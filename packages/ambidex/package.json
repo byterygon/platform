@@ -1,0 +1,12 @@
+{
+  "name": "@byterygon/ambidex",
+  "version": "0.0.0",
+  "description": "TypeScript client for Ambidex, the dual-transport RPC protocol.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "private": true,
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/security-types",
+    "crates/ambidex",
+    "crates/ambidex-macros",
+    "crates/plugin-host",
+    "crates/db-driver",
+    "apps/dbee",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+repository = "https://github.com/byterygon/platform"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

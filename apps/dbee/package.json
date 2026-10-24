@@ -1,0 +1,10 @@
+{
+  "name": "@byterygon/dbee",
+  "version": "0.0.0",
+  "description": "DBee database client (placeholder).",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "scripts": {
+    "typecheck": "echo 'dbee: no TypeScript yet'"
+  }
+}

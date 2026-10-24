@@ -1,1 +1,16 @@
-{}
+{
+  "name": "byterygon-platform",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "check:licenses": "node scripts/check-licenses.mjs"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}

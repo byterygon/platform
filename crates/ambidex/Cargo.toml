@@ -1,0 +1,12 @@
+[package]
+name = "ambidex"
+version = "0.0.0"
+description = "Ambidex: dual-transport RPC protocol engine."
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
