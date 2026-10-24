@@ -1,0 +1,12 @@
+[package]
+name = "security-types"
+version = "0.0.0"
+description = "Shared security types: Principal, authorization requests/decisions, audit record."
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true

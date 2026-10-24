@@ -1,0 +1,33 @@
+# cargo-deny policy. See ADR "Repository layout and licensing" (Notion DOC-10).
+# Libraries are MIT OR Apache-2.0 and may only use permissive dependencies.
+# AGPL-3.0 is allowed only for the product crates listed under `exceptions`;
+# scripts/check-licenses.mjs additionally fails if a permissive crate depends on one of them.
+
+[graph]
+all-features = true
+
+[licenses]
+unused-allowed-license = "allow"
+confidence-threshold = 0.93
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+exceptions = [
+    { crate = "dbee", allow = ["AGPL-3.0-only"] },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

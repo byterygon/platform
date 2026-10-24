@@ -1,0 +1,15 @@
+# Claude Code worktrees
+.claude/worktrees/
+
+# Rust
+target/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
