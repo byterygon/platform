@@ -142,3 +142,22 @@ proptest! {
         prop_assert_eq!(Header::parse(&bytes, MAX), Err(FrameError::UnsupportedFlags(bits)));
     }
 }
+
+#[test]
+fn many_coalesced_frames_decode_in_linear_time() {
+    let mut chunk = Vec::new();
+    for _ in 0..100_000 {
+        Frame::new(Kind::Ping, 0, Vec::new())
+            .encode_into(&mut chunk, MAX)
+            .unwrap();
+    }
+    let started = std::time::Instant::now();
+    let mut decoder = FrameDecoder::new(MAX);
+    decoder.push(&chunk);
+    let frames = decode_all(&mut decoder).unwrap();
+    let elapsed = started.elapsed();
+    assert_eq!(frames.len(), 100_000);
+    assert_eq!(decoder.buffered(), 0);
+    // The quadratic decoder needed 1.8 s for 80k frames (PR #3 review); linear takes milliseconds.
+    assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
+}

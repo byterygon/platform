@@ -6,6 +6,7 @@ version = 4
 name = "ambidex"
 version = "0.0.0"
 dependencies = [
+ "getrandom",
  "proptest",
  "serde",
  "serde_json",

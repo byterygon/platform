@@ -21,6 +21,10 @@ struct TokenAuth;
 impl Authenticate for TokenAuth {
     fn authenticate<'a>(&'a self, hello: &'a Hello) -> BoxFuture<'a, Option<Session>> {
         Box::pin(async move {
+            if hello.auth == Some(json!("hang")) {
+                // An authenticator that never answers, e.g. a stuck IdP call.
+                std::future::pending::<()>().await;
+            }
             (hello.auth == Some(json!("good"))).then(|| Session { id: "s-1".into() })
         })
     }
@@ -75,6 +79,7 @@ impl Dispatch for Fixture {
 fn config() -> ServerConfig {
     let mut config = ServerConfig::new("dbee", SCHEMA, "9.9.9");
     config.max_frame_bytes = 1024;
+    config.max_hello_bytes = 512;
     config.max_concurrent_calls = 4;
     config
 }
@@ -159,7 +164,12 @@ fn start() -> (Client, Connection) {
 }
 
 fn start_with(fixture: Fixture) -> (Client, Connection) {
-    let ((client_rx, client_tx), (server_rx, server_tx)) = memory(16);
+    start_with_capacity(fixture, 16)
+}
+
+/// `capacity` is the number of chunks each transport direction holds before the sender waits.
+fn start_with_capacity(fixture: Fixture, capacity: usize) -> (Client, Connection) {
+    let ((client_rx, client_tx), (server_rx, server_tx)) = memory(capacity);
     let server = Server::new(config(), TokenAuth, fixture);
     let conn = server.serve(server_rx, server_tx);
     let client = Client {
@@ -509,4 +519,123 @@ async fn server_only_kinds_from_client_close_connection() {
             "{kind:?}"
         );
     }
+}
+
+async fn handshake(client: &mut Client) {
+    client.send_json(Kind::Hello, 0, hello_json()).await;
+    assert_eq!(client.recv().await.unwrap().kind, Kind::HelloAck);
+}
+
+/// `n` Ping frames coalesced into one transport chunk.
+fn pings(n: usize) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for i in 0..n {
+        Frame::binary(Kind::Ping, 0, vec![i as u8])
+            .encode_into(&mut bytes, u32::MAX)
+            .unwrap();
+    }
+    bytes
+}
+
+/// Lets the server task process everything sent so far (time is paused, so this only advances
+/// once every task is idle).
+async fn settle() {
+    tokio::time::sleep(Duration::from_millis(10)).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn goaway_completes_while_peer_never_reads() {
+    // Review repro: 49 coalesced Pings over memory(2), and the client never reads the Pongs.
+    let (mut client, conn) = start_with_capacity(Fixture::default(), 2);
+    handshake(&mut client).await;
+    client.send_raw(pings(49)).await;
+    settle().await;
+    let closed = tokio::time::timeout(Duration::from_secs(1), async {
+        conn.goaway(Code::Unavailable, "shutting down").await;
+        conn.closed().await
+    })
+    .await
+    .expect("goaway/closed blocked by a peer that does not read");
+    assert!(matches!(closed, Closed::Goaway(_)), "{closed:?}");
+    // The transport is dropped: the client drains what was delivered, then sees the close.
+    while client.recv().await.is_some() {}
+}
+
+#[tokio::test(start_paused = true)]
+async fn peer_that_never_reads_is_disconnected() {
+    // More Pongs than the transport and the outbound queue (64 frames) can hold.
+    let (mut client, conn) = start_with_capacity(Fixture::default(), 2);
+    handshake(&mut client).await;
+    client.send_raw(pings(200)).await;
+    settle().await;
+    let closed = tokio::time::timeout(Duration::from_secs(1), async {
+        conn.goaway(Code::Unavailable, "shutting down").await;
+        conn.closed().await
+    })
+    .await
+    .expect("connection wedged by a slow peer");
+    assert_eq!(closed, Closed::SlowConsumer);
+    while client.recv().await.is_some() {}
+}
+
+#[tokio::test]
+async fn pre_handshake_frames_use_the_hello_limit() {
+    let (mut client, conn) = start();
+    // 513 bytes: above max_hello_bytes (512) but below max_frame_bytes (1024).
+    let header = Header {
+        kind: Kind::Hello,
+        flags: Flags::empty(),
+        call_id: 0,
+        payload_len: 513,
+    };
+    client.send_raw(header.to_bytes().to_vec()).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (0, Code::ResourceExhausted));
+    client.expect_closed().await;
+    assert_eq!(
+        conn.closed().await,
+        Closed::ProtocolViolation(Code::ResourceExhausted)
+    );
+}
+
+#[tokio::test]
+async fn frame_limit_applies_once_the_session_exists() {
+    let (mut client, _conn) = start();
+    // Hello and a 1000-byte Ping in one chunk: the Ping's header is parsed after HelloAck.
+    let mut bytes = Frame::new(Kind::Hello, 0, serde_json::to_vec(&hello_json()).unwrap())
+        .encode(u32::MAX)
+        .unwrap();
+    Frame::binary(Kind::Ping, 0, vec![7; 1000])
+        .encode_into(&mut bytes, u32::MAX)
+        .unwrap();
+    client.send_raw(bytes).await;
+    assert_eq!(client.recv().await.unwrap().kind, Kind::HelloAck);
+    assert_eq!(
+        client.recv().await.unwrap(),
+        Frame::binary(Kind::Pong, 0, vec![7; 1000])
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn hung_authentication_times_out() {
+    let (mut client, conn) = start();
+    let mut hello = hello_json();
+    hello["auth"] = json!("hang");
+    client.send_json(Kind::Hello, 0, hello).await;
+    assert_eq!(conn.closed().await, Closed::HelloTimeout);
+    client.expect_closed().await;
+}
+
+#[tokio::test]
+async fn correlation_ids_use_a_random_connection_prefix() {
+    let mut prefixes = Vec::new();
+    for _ in 0..2 {
+        let (mut client, _conn) = connected().await;
+        client.call(3, "fail", Value::Null).await;
+        let (_, err) = client.recv_error().await;
+        let (prefix, call) = err.correlation_id.split_once('-').unwrap();
+        assert_eq!((prefix.len(), call), (16, "3"));
+        prefixes.push(prefix.to_owned());
+    }
+    assert_ne!(prefixes[0], prefixes[1]);
 }

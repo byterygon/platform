@@ -256,11 +256,17 @@ impl std::error::Error for FrameError {}
 
 /// Incremental frame decoder.
 ///
+/// Decoding is linear in the bytes received: frames are read at an offset into the buffer, and
+/// the consumed prefix is dropped only once it is at least half the buffer, so each byte is
+/// moved at most a bounded number of times however many frames one chunk holds.
+///
 /// After an error the decoder is poisoned and keeps returning that error: the stream has lost
 /// framing and the connection must be closed.
 #[derive(Debug)]
 pub struct FrameDecoder {
     buf: Vec<u8>,
+    /// Start of the unconsumed bytes in `buf`.
+    pos: usize,
     max_payload: u32,
     header: Option<Header>,
     error: Option<FrameError>,
@@ -270,6 +276,7 @@ impl FrameDecoder {
     pub fn new(max_payload: u32) -> FrameDecoder {
         FrameDecoder {
             buf: Vec::new(),
+            pos: 0,
             max_payload,
             header: None,
             error: None,
@@ -280,16 +287,27 @@ impl FrameDecoder {
         self.max_payload
     }
 
+    /// Changes the payload limit for headers not yet parsed. A frame whose header was already
+    /// accepted keeps the limit it was checked against.
+    pub fn set_max_payload(&mut self, max_payload: u32) {
+        self.max_payload = max_payload;
+    }
+
     /// Appends received bytes. Call [`FrameDecoder::next_frame`] until it returns `Ok(None)`.
     pub fn push(&mut self, bytes: &[u8]) {
-        if self.error.is_none() {
-            self.buf.extend_from_slice(bytes);
+        if self.error.is_some() {
+            return;
         }
+        if self.pos > 0 && self.pos >= self.buf.len() / 2 {
+            self.buf.drain(..self.pos);
+            self.pos = 0;
+        }
+        self.buf.extend_from_slice(bytes);
     }
 
     /// Bytes received but not yet returned as a frame.
     pub fn buffered(&self) -> usize {
-        self.buf.len()
+        self.buf.len() - self.pos
     }
 
     pub fn next_frame(&mut self) -> Result<Option<Frame>, FrameError> {
@@ -299,17 +317,18 @@ impl FrameDecoder {
         let header = match self.header {
             Some(header) => header,
             None => {
-                let Some(raw) = self.buf.first_chunk::<HEADER_LEN>() else {
+                let Some(raw) = self.buf[self.pos..].first_chunk::<HEADER_LEN>() else {
                     return Ok(None);
                 };
                 match Header::parse(raw, self.max_payload) {
                     Ok(header) => {
-                        self.buf.drain(..HEADER_LEN);
+                        self.pos += HEADER_LEN;
                         self.header = Some(header);
                         header
                     }
                     Err(err) => {
                         self.buf = Vec::new();
+                        self.pos = 0;
                         self.error = Some(err.clone());
                         return Err(err);
                     }
@@ -317,13 +336,19 @@ impl FrameDecoder {
             }
         };
         let len = header.payload_len as usize;
-        if self.buf.len() < len {
-            // Reserve once for the whole payload; bounded by max_payload.
-            self.buf.reserve(len - self.buf.len());
+        let available = self.buffered();
+        if available < len {
+            // Reserve once for the whole payload; bounded by max_payload, which the header was
+            // checked against before anything was allocated.
+            self.buf.reserve(len - available);
             return Ok(None);
         }
-        let rest = self.buf.split_off(len);
-        let payload = std::mem::replace(&mut self.buf, rest);
+        let payload = self.buf[self.pos..self.pos + len].to_vec();
+        self.pos += len;
+        if self.pos == self.buf.len() {
+            self.buf.clear();
+            self.pos = 0;
+        }
         self.header = None;
         Ok(Some(Frame {
             kind: header.kind,
@@ -387,6 +412,21 @@ mod tests {
         header[8] = 0;
         decoder.push(&header);
         assert!(decoder.next_frame().is_err());
+    }
+
+    #[test]
+    fn set_max_payload_applies_to_the_next_header() {
+        let mut decoder = FrameDecoder::new(4);
+        let frame = Frame::binary(Kind::Ping, 0, vec![1; 8]);
+        decoder.push(&frame.encode(8).unwrap());
+        decoder.set_max_payload(8);
+        assert_eq!(decoder.next_frame(), Ok(Some(frame)));
+        decoder.set_max_payload(4);
+        decoder.push(&Frame::binary(Kind::Ping, 0, vec![1; 5]).encode(8).unwrap());
+        assert_eq!(
+            decoder.next_frame(),
+            Err(FrameError::PayloadTooLarge { len: 5, max: 4 })
+        );
     }
 
     #[test]
