@@ -26,6 +26,7 @@ summarises what a session needs when Notion is unavailable.
 | --- | --- | --- |
 | `crates/security-types` | Principal, authz request/decision, audit record | MIT OR Apache-2.0 |
 | `crates/ambidex`, `crates/ambidex-macros` | Ambidex dual-transport RPC engine and macros | MIT OR Apache-2.0 |
+| `crates/ambidex-axum` | Ambidex WebSocket transport (`/rpc/ws`, rustls TLS, Host/Origin checks) | MIT OR Apache-2.0 |
 | `crates/plugin-host` | Plugin Host | MIT OR Apache-2.0 |
 | `crates/db-driver` | db-driver contract (Rust trait + WIT) | MIT OR Apache-2.0 |
 | `packages/ambidex` | `@byterygon/ambidex` TypeScript client | MIT OR Apache-2.0 |
