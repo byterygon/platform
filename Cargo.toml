@@ -5,6 +5,7 @@ members = [
     "crates/ambidex",
     "crates/ambidex-macros",
     "crates/ambidex-axum",
+    "crates/ambidex-tauri",
     "crates/plugin-host",
     "crates/db-driver",
     "apps/dbee",
