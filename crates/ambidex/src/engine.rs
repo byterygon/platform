@@ -43,6 +43,8 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::Instant;
 
+use security_types::Principal;
+
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
@@ -98,11 +100,13 @@ impl ServerConfig {
 
 /// An authenticated session.
 ///
-/// Placeholder until sessions and principals land (security-types, M3): it carries only the id
-/// the server returns in HelloAck. That id is not a credential.
+/// `id` is what the server returns in HelloAck; it is not a credential. `principal` is who acts
+/// on this connection, built by the [`Authenticate`] implementation (never from client input);
+/// the router authorizes every call against it. Session lifetime, revocation and expiry land in M3.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Session {
     pub id: String,
+    pub principal: Principal,
 }
 
 /// Decides whether a Hello is allowed to open a session.
@@ -114,7 +118,7 @@ pub trait Authenticate: Send + Sync + 'static {
     fn authenticate<'a>(&'a self, hello: &'a Hello) -> BoxFuture<'a, Option<Session>>;
 }
 
-/// Executes calls. The router (TSK-6) implements this.
+/// Executes calls. [`Router`](crate::Router) implements this.
 pub trait Dispatch: Send + Sync + 'static {
     fn call(
         &self,

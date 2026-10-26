@@ -6,16 +6,24 @@ version = 4
 name = "ambidex"
 version = "0.0.0"
 dependencies = [
+ "ambidex-macros",
  "getrandom",
  "proptest",
+ "security-types",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
 ]
 
 [[package]]
 name = "ambidex-macros"
 version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "autocfg"
