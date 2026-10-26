@@ -23,11 +23,19 @@
 //!   disconnected ([`Closed::SlowConsumer`]).
 //! - [`Connection::goaway`] sends `Goaway` and closes; a peer's `Goaway` closes without reply.
 //!   Final frames (Goaway, a rejection, a violation) get at most [`ServerConfig::close_timeout`]
-//!   to be delivered before the transport is dropped.
+//!   to be delivered before the transport is dropped. Session revocation sends Goaway
+//!   `Unauthenticated` and closes the same way ([`Closed::Revoked`]).
+//! - Every call runs under a [`CallScope`] (spec §7, see [`crate::cancel`]): its token fires on a
+//!   `Cancel` frame for the call, its deadline, session revocation ([`Authenticate::revocation`]),
+//!   Goaway or disconnect. The call then gets [`ServerConfig::cancel_grace`] to stop before its
+//!   future is dropped, and answers with one `Error` (`Cancelled` or `DeadlineExceeded`) while the
+//!   connection is still open. A `Cancel` for a call id that is not in flight is ignored: the call
+//!   already answered.
+//! - When the connection closes for any reason, every call's token fires; calls get the same
+//!   grace, their answers are discarded, and the rest are dropped.
 //!
-//! Closing the connection drops all in-flight call futures. Cancel frames, deadlines and
-//! cancellation tokens are the deadlines-and-cancellation task (TSK-11); subscriptions, streams
-//! and credits arrive with their own tasks and are rejected or ignored here as noted below.
+//! Subscriptions, streams and credits arrive with their own tasks and are rejected or ignored
+//! here as noted below.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -42,9 +50,11 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 use security_types::Principal;
 
+use crate::cancel::CallScope;
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
@@ -74,6 +84,9 @@ pub struct ServerConfig {
     pub outbound_queue_frames: usize,
     /// Time allowed to deliver final frames (Goaway, rejections) before the transport is dropped.
     pub close_timeout: Duration,
+    /// Time a call may keep running after its cancellation token fired (to stop cooperatively,
+    /// e.g. send the database's cancel request) before its future is dropped.
+    pub cancel_grace: Duration,
 }
 
 impl ServerConfig {
@@ -94,6 +107,7 @@ impl ServerConfig {
             hello_timeout: Duration::from_secs(10),
             outbound_queue_frames: 64,
             close_timeout: Duration::from_millis(500),
+            cancel_grace: Duration::from_secs(1),
         }
     }
 }
@@ -116,9 +130,21 @@ pub struct Session {
 pub trait Authenticate: Send + Sync + 'static {
     /// `None` rejects. The client only ever learns `Unauthenticated`, never the reason.
     fn authenticate<'a>(&'a self, hello: &'a Hello) -> BoxFuture<'a, Option<Session>>;
+
+    /// A token that fires when `session` is revoked. The connection then cancels all its calls,
+    /// sends Goaway `Unauthenticated` and closes. `None` (the default) means the session is never
+    /// revoked while connected; session lifetime and revocation land in M3.
+    fn revocation(&self, session: &Session) -> Option<CancellationToken> {
+        let _ = session;
+        None
+    }
 }
 
 /// Executes calls. [`Router`](crate::Router) implements this.
+///
+/// The returned future runs with the call's [`CallScope`] as [`CallScope::current`]; a dispatcher
+/// should apply the procedure's timeouts to it ([`CallScope::apply_timeouts`]) and hand its token
+/// to the handler.
 pub trait Dispatch: Send + Sync + 'static {
     fn call(
         &self,
@@ -136,6 +162,8 @@ pub enum Closed {
     PeerGoaway(Goaway),
     /// This side sent Goaway through [`Connection::goaway`].
     Goaway(Goaway),
+    /// The session was revoked ([`Authenticate::revocation`]); Goaway `Unauthenticated` was sent.
+    Revoked,
     /// The handshake, authentication included, did not finish within the configured timeout.
     HelloTimeout,
     /// Hello was refused with this code (`VersionMismatch` or `Unauthenticated`).
@@ -194,7 +222,8 @@ pub struct Connection {
 }
 
 impl Connection {
-    /// Asks the connection to send Goaway and close. No-op if it already closed.
+    /// Asks the connection to send Goaway and close, cancelling every call on it. No-op if it
+    /// already closed.
     pub async fn goaway(&self, code: Code, message: impl Into<String>) {
         let goaway = Goaway {
             code,
@@ -239,18 +268,30 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         out,
         session: None,
         calls: JoinSet::new(),
+        tasks: HashMap::new(),
         in_flight: HashMap::new(),
+        conn_token: CancellationToken::new(),
+        revoked: None,
         close_by: None,
     };
     let closed = conn.run_loop(&mut rx, &mut control, &mut writer).await;
     let close_by = conn.close_deadline();
-    // Dropping the state aborts in-flight calls and the queue's only sender, so the writer
-    // delivers what is queued, closes the transport and exits.
+    // Every call's token fires. Calls get the grace period to stop; their answers are discarded.
+    conn.conn_token.cancel();
+    let calls = std::mem::take(&mut conn.calls);
+    let drained = drain_calls(calls, config.cancel_grace);
+    // Dropping the state drops the queue's only sender, so the writer delivers what is queued,
+    // closes the transport and exits.
     drop(conn);
     if writer.finished {
+        drained.await;
         return closed;
     }
-    match tokio::time::timeout_at(close_by, &mut writer.handle).await {
+    let (written, ()) = tokio::join!(
+        tokio::time::timeout_at(close_by, &mut writer.handle),
+        drained
+    );
+    match written {
         Ok(Ok(Err(err))) if matches!(closed, Closed::Transport(_)) => Closed::Transport(err.kind()),
         Ok(_) => closed,
         Err(_) => {
@@ -264,6 +305,62 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
 struct Writer {
     handle: JoinHandle<io::Result<()>>,
     finished: bool,
+}
+
+/// Waits up to `grace` for cancelled calls to stop, then drops (aborts) the rest.
+async fn drain_calls(mut calls: JoinSet<Frame>, grace: Duration) {
+    let _ = tokio::time::timeout(grace, async { while calls.join_next().await.is_some() {} }).await;
+}
+
+/// Runs one call under its scope: the answer, or the cancellation reason once the token fires.
+///
+/// The deadline is re-read whenever the dispatcher moves it. Once the token has fired the answer
+/// is the reason, whatever the call returns: it gets `grace` to finish cooperatively, and if it
+/// has not finished by then its future is dropped.
+async fn run_call(
+    fut: impl Future<Output = Result<Value, ErrorPayload>>,
+    scope: CallScope,
+    grace: Duration,
+) -> Result<Value, ErrorPayload> {
+    let mut fut = std::pin::pin!(scope.clone().enter(fut));
+    let finished = loop {
+        let deadline = scope.deadline();
+        tokio::select! {
+            biased;
+            result = &mut fut => break Some(result),
+            () = scope.cancelled() => break None,
+            () = tokio::time::sleep_until(deadline) => {
+                if scope.deadline() <= deadline {
+                    scope.fire(Code::DeadlineExceeded);
+                    break None;
+                }
+            }
+            () = scope.deadline_changed() => {}
+        }
+    };
+    match finished {
+        // A handler that reacts to its token can finish in the poll that observed it; that
+        // answer is discarded too, so a Cancel that reached the call always wins.
+        Some(result) if !scope.is_cancelled() => return result,
+        Some(_) => {}
+        None => {
+            let _ = tokio::time::timeout(grace, &mut fut).await;
+        }
+    }
+    Err(match scope.reason() {
+        Some(Code::DeadlineExceeded) => {
+            ErrorPayload::new(Code::DeadlineExceeded, "deadline exceeded")
+        }
+        _ => ErrorPayload::new(Code::Cancelled, "call cancelled"),
+    })
+}
+
+/// Resolves when `token` fires; never when there is none.
+async fn revoked(token: Option<CancellationToken>) {
+    match token {
+        Some(token) => token.cancelled_owned().await,
+        None => std::future::pending().await,
+    }
 }
 
 async fn write_loop<T: TransportTx>(
@@ -286,7 +383,14 @@ struct ConnState<A, D> {
     hello_deadline: Instant,
     session: Option<Arc<Session>>,
     calls: JoinSet<Frame>,
-    in_flight: HashMap<tokio::task::Id, u32>,
+    /// Call id of each running call task.
+    tasks: HashMap<tokio::task::Id, u32>,
+    /// Scope of each call in flight, by call id.
+    in_flight: HashMap<u32, CallScope>,
+    /// Parent of every call token; fires when the connection closes.
+    conn_token: CancellationToken,
+    /// Fires when the session is revoked.
+    revoked: Option<CancellationToken>,
     /// Set when the connection starts closing; bounds delivery of the final frames.
     close_by: Option<Instant>,
 }
@@ -310,6 +414,14 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 Some(goaway) = control.recv() => {
                     self.send_final(Kind::Goaway, 0, &goaway).await;
                     return Closed::Goaway(goaway);
+                }
+                () = revoked(self.revoked.clone()) => {
+                    let goaway = Goaway {
+                        code: Code::Unauthenticated,
+                        message: "session revoked".into(),
+                    };
+                    self.send_final(Kind::Goaway, 0, &goaway).await;
+                    return Closed::Revoked;
                 }
                 () = tokio::time::sleep_until(self.hello_deadline), if self.session.is_none() => {
                     return Closed::HelloTimeout;
@@ -377,9 +489,21 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             }
             // No server-initiated pings yet, so a Pong needs no bookkeeping.
             Kind::Pong => Ok(()),
-            // Cancel: TSK-11. Credit: binary streams (M2). Unsubscribe: subscriptions. Until those
-            // land there is nothing to cancel, credit or unsubscribe, so these are no-ops.
-            Kind::Cancel | Kind::Credit | Kind::Unsubscribe => Ok(()),
+            Kind::Cancel => {
+                if frame.call_id == 0 {
+                    return Err(self
+                        .violation(Code::InvalidArgument, "Cancel on call id 0")
+                        .await);
+                }
+                // A call that is no longer in flight already answered; its Cancel lost the race.
+                if let Some(scope) = self.in_flight.get(&frame.call_id) {
+                    scope.cancel();
+                }
+                Ok(())
+            }
+            // Credit: binary streams (M2). Unsubscribe: subscriptions. Until those land there is
+            // nothing to credit or unsubscribe, so these are no-ops.
+            Kind::Credit | Kind::Unsubscribe => Ok(()),
             Kind::Subscribe => {
                 if frame.call_id == 0 || self.is_in_flight(frame.call_id) {
                     return Err(self
@@ -444,6 +568,16 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             }
             Ok(Some(session)) => session,
         };
+        let revocation = self.inner.auth.revocation(&session);
+        if revocation
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+        {
+            return Err(self
+                .reject(Code::Unauthenticated, "authentication failed")
+                .await);
+        }
+        self.revoked = revocation;
         let config = &self.inner.config;
         let ack = HelloAck {
             session: session.id.clone(),
@@ -486,27 +620,37 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 return self.send_error(call_id, err);
             }
         };
+        // The deadline runs from here; the dispatcher narrows it to the procedure's bounds.
+        let scope = CallScope::with_token(self.conn_token.child_token(), call.timeout());
         let fut = self.inner.dispatch.call(session, call);
         let correlation_id = self.correlation_id(call_id);
-        let max = self.inner.config.max_frame_bytes;
-        let handle = self
-            .calls
-            .spawn(async move { result_frame(call_id, fut.await, correlation_id, max) });
-        self.in_flight.insert(handle.id(), call_id);
+        let config = &self.inner.config;
+        let (max, grace) = (config.max_frame_bytes, config.cancel_grace);
+        let task_scope = scope.clone();
+        let handle = self.calls.spawn(async move {
+            let result = run_call(fut, task_scope, grace).await;
+            result_frame(call_id, result, correlation_id, max)
+        });
+        self.tasks.insert(handle.id(), call_id);
+        self.in_flight.insert(call_id, scope);
         Ok(())
     }
 
+    /// Sends the one terminal frame of a finished call task.
     fn finish_call(
         &mut self,
         done: Result<(tokio::task::Id, Frame), tokio::task::JoinError>,
     ) -> Step {
         match done {
             Ok((task, frame)) => {
-                self.in_flight.remove(&task);
+                if let Some(call_id) = self.tasks.remove(&task) {
+                    self.in_flight.remove(&call_id);
+                }
                 self.send(&frame)
             }
             Err(err) => {
-                let call_id = self.in_flight.remove(&err.id()).unwrap_or(0);
+                let call_id = self.tasks.remove(&err.id()).unwrap_or(0);
+                self.in_flight.remove(&call_id);
                 // A panicking handler must not take the connection down or leak its message.
                 let mut payload = ErrorPayload::new(Code::Internal, "internal error");
                 payload.correlation_id = self.correlation_id(call_id);
@@ -516,7 +660,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     }
 
     fn is_in_flight(&self, call_id: u32) -> bool {
-        self.in_flight.values().any(|id| *id == call_id)
+        self.in_flight.contains_key(&call_id)
     }
 
     fn correlation_id(&self, call_id: u32) -> String {

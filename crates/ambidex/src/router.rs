@@ -11,6 +11,10 @@
 //!    cannot be built without one, and the authorizer denies unknown permissions (default-deny);
 //! 4. decodes the input, runs the handler and encodes its result or typed error.
 //!
+//! Right after the lookup it applies the procedure's `timeout_default`/`timeout_max` to the call's
+//! [`CallScope`], so the deadline covers authorization too. Handlers observe cancellation through
+//! [`Ctx::cancelled`] and pass [`Ctx::cancellation_token`] on (e.g. to the Plugin Host driver call).
+//!
 //! Handlers re-check targets and escalated risk with [`Ctx::authorize`].
 
 use std::collections::HashMap;
@@ -28,6 +32,10 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use sha2::Digest as _;
 
+use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
+
+use crate::cancel::CallScope;
 use crate::engine::{BoxFuture, Dispatch, Session};
 use crate::error::{IntoErrorPayload, RpcError};
 use crate::message::{Call, Code, ErrorPayload};
@@ -227,6 +235,7 @@ pub struct Ctx {
     meta: Arc<ProcedureMeta>,
     guard: Arc<Guard>,
     input_digest: Digest,
+    scope: CallScope,
     /// Approval id recorded by the last [`Ctx::authorize`] of this call, if any.
     approval_id: Arc<Mutex<Option<String>>>,
 }
@@ -248,6 +257,29 @@ impl Ctx {
     /// SHA-256 over the canonical JSON of the call input; see [`input_digest`].
     pub fn input_digest(&self) -> Digest {
         self.input_digest
+    }
+
+    /// Resolves once the call is cancelled: `Cancel` frame, deadline, session revocation or
+    /// disconnect (spec §7). After that the handler has the server's cancel grace period to stop
+    /// before its future is dropped, and the client gets `Cancelled` or `DeadlineExceeded` whatever
+    /// the handler returns.
+    pub async fn cancelled(&self) {
+        self.scope.cancelled().await
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.scope.is_cancelled()
+    }
+
+    /// The call's token, to hand to work that must react to cancellation itself (e.g. the Plugin
+    /// Host driver call, which issues the database's cancel request).
+    pub fn cancellation_token(&self) -> &CancellationToken {
+        self.scope.token()
+    }
+
+    /// When the server cancels the call with `DeadlineExceeded`.
+    pub fn deadline(&self) -> Instant {
+        self.scope.deadline()
     }
 
     /// Authorizes this call again for a concrete `target` and the risk the handler determined at
@@ -364,6 +396,9 @@ impl Router {
     ///
     /// Whatever a handler returns, an `Internal` error leaves without its message and details, and
     /// an `ApprovalRequired` error without details gets the id recorded by [`Ctx::authorize`].
+    ///
+    /// The call uses [`CallScope::current`] (set by the engine), or a fresh scope from the call's
+    /// `timeout_ms` when called outside the engine; the deadline is then the caller's to enforce.
     pub fn call(
         &self,
         session: Arc<Session>,
@@ -372,6 +407,7 @@ impl Router {
         let procedure = self.read().get(&call.procedure).cloned();
         let guard = Arc::clone(&self.guard);
         async move {
+            let scope = CallScope::current().unwrap_or_else(|| CallScope::new(call.timeout()));
             // To an agent, a hidden procedure is indistinguishable from a missing one.
             let procedure = procedure
                 .filter(|p| p.meta.agent == Agent::Exposed || !acts_as_agent(&session.principal));
@@ -379,6 +415,7 @@ impl Router {
                 return Err(ErrorPayload::new(Code::NotFound, "unknown procedure"));
             };
             let meta = procedure.meta;
+            scope.apply_timeouts(meta.timeout_default, meta.timeout_max);
             let digest = input_digest(&call.input);
             guard
                 .enforce(&session.principal, &meta, None, meta.risk, digest)
@@ -396,6 +433,7 @@ impl Router {
                 meta,
                 guard,
                 input_digest: digest,
+                scope,
                 approval_id: Arc::clone(&approval_id),
             };
             handler(ctx, call.input)

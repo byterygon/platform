@@ -4,12 +4,13 @@
 //! - [`message`]: JSON control payloads (Hello, HelloAck, Call, Error, Goaway).
 //! - [`transport`]: the byte-pipe traits transports implement, plus an in-memory pair.
 //! - [`engine`]: the per-connection protocol engine.
+//! - [`cancel`]: per-call cancellation tokens and deadlines.
 //! - [`procedure`]: procedure metadata (permission, risk, agent exposure, timeouts, redaction).
 //! - [`router`]: the procedure registry; authorizes every call before dispatch.
 //! - [`error`]: the typed error model, `RpcError<E>`.
 //! - [`rpc`]: the `#[rpc::router]` and procedure attribute macros.
 //!
-//! Spec: Notion "Ambidex spec" (DOC-5), §2, §3, §8, §10.
+//! Spec: Notion "Ambidex spec" (DOC-5), §2, §3, §7, §8, §10.
 //!
 //! ```
 //! use ambidex::{Agent, Ctx, Risk, RpcError, rpc};
@@ -64,6 +65,7 @@
 //! }
 //! ```
 
+pub mod cancel;
 pub mod engine;
 pub mod error;
 pub mod frame;
@@ -97,6 +99,7 @@ pub mod rpc {
     pub use ambidex_macros::{mutation, query, router, stream, subscription};
 }
 
+pub use cancel::CallScope;
 pub use engine::{Authenticate, Closed, Connection, Dispatch, Server, ServerConfig, Session};
 pub use error::{DomainError, IntoErrorPayload, NoDetails, RpcError};
 pub use frame::{Flags, Frame, FrameDecoder, FrameError, Kind};
@@ -108,3 +111,4 @@ pub use router::{
 };
 pub use security_types;
 pub use security_types::{Risk, TargetRef};
+pub use tokio_util::sync::CancellationToken;

@@ -96,6 +96,7 @@ fn config() -> ServerConfig {
     config.max_frame_bytes = 1024;
     config.max_hello_bytes = 512;
     config.max_concurrent_calls = 4;
+    config.cancel_grace = Duration::from_millis(50);
     config
 }
 

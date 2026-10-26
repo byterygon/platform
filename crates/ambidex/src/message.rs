@@ -52,12 +52,32 @@ pub struct Limits {
 
 /// Payload of a `Call` frame.
 ///
-/// The spec does not define this shape; `{procedure, input}` is provisional (Open question).
+/// The spec does not define this shape; `{procedure, input, timeout_ms}` is provisional (Open
+/// questions 14b and 20).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Call {
     pub procedure: String,
     #[serde(default)]
     pub input: Value,
+    /// Client timeout in milliseconds (spec §7 `timeoutMs`). The server caps it at the
+    /// procedure's `timeout_max` and uses `timeout_default` when it is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_ms: Option<u64>,
+}
+
+impl Call {
+    /// A call without a client timeout.
+    pub fn new(procedure: impl Into<String>, input: Value) -> Call {
+        Call {
+            procedure: procedure.into(),
+            input,
+            timeout_ms: None,
+        }
+    }
+
+    pub fn timeout(&self) -> Option<std::time::Duration> {
+        self.timeout_ms.map(std::time::Duration::from_millis)
+    }
 }
 
 /// Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on
