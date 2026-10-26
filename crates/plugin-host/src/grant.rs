@@ -21,12 +21,15 @@ use security_types::{
 use tokio::sync::watch;
 
 use crate::audit::{AuditSink, Clock};
-use crate::manifest::{Capabilities, Manifest, PackageKind, Protocol, SecretScope};
+use crate::manifest::{Capabilities, Manifest, PackageKind, Protocol, SecretScope, TlsRequirement};
 use crate::net::{AddressPolicy, IpNet, normalize_dns_name};
 use crate::{encode_digest, error_code};
 
-/// Action and permission checked when a grant is created. Provisional names (Plugin Host spec,
-/// Open questions); the Ambidex admin API uses the `admin.grants.*` family.
+/// Action and permission checked when a grant is created or revoked.
+///
+/// NOTE: provisional names (Plugin Host spec, Open question 13, accepted as provisional by Uy Son
+/// on 2026-10-26). Update them here, in the broker constants and in the spec once the permission
+/// catalogue is fixed; the Ambidex admin API uses the `admin.grants.*` family.
 pub const GRANT_CREATE_ACTION: &str = "plugin-host.grants.create";
 pub const GRANT_CREATE_PERM: &str = "admin.grants.create";
 pub const GRANT_REVOKE_ACTION: &str = "plugin-host.grants.revoke";
@@ -122,8 +125,35 @@ impl fmt::Display for Host {
     }
 }
 
-/// When TLS starts. Both modes verify the certificate chain and the server name; neither ever
-/// falls back to plaintext.
+/// Transport security of a connection, chosen by the approver when the grant is created
+/// (Plugin Host spec, Open question 14). The broker applies it to data and cancel connections
+/// alike and never falls back from TLS to plaintext.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TlsPolicy {
+    /// Plaintext TCP. Only when the template says `tls = "optional"`; `start_tls` is refused.
+    Disabled,
+    Enabled(TlsSettings),
+}
+
+impl TlsPolicy {
+    pub fn settings(&self) -> Option<&TlsSettings> {
+        match self {
+            TlsPolicy::Disabled => None,
+            TlsPolicy::Enabled(s) => Some(s),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TlsSettings {
+    pub mode: TlsMode,
+    /// Sent as SNI and, with CA verification, the name (or IP) the certificate must match.
+    /// `start_tls` must be called with exactly this.
+    pub server_name: String,
+    pub trust: ServerTrust,
+}
+
+/// When TLS starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TlsMode {
     /// TLS handshake immediately after TCP connect.
@@ -133,21 +163,21 @@ pub enum TlsMode {
     InProtocolUpgrade,
 }
 
-/// Which CA certificates verify the server.
+/// How the server certificate is verified. Every option verifies; there is no "accept any
+/// certificate" mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TrustRoots {
-    /// The roots the deployment configured on the broker (tenant-configured CAs).
-    Deployment,
-    /// Only these DER-encoded CA certificates.
-    Pinned(Vec<Vec<u8>>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TlsPolicy {
-    pub mode: TlsMode,
-    /// The name (or IP) the certificate must match. `start_tls` must be called with exactly this.
-    pub server_name: String,
-    pub roots: TrustRoots,
+pub enum ServerTrust {
+    /// Chain to a CA the deployment configured on the broker, matching `server_name`, within its
+    /// validity period.
+    DeploymentCas,
+    /// Chain to one of these DER-encoded CA certificates (e.g. a company-internal CA), matching
+    /// `server_name`, within its validity period.
+    PinnedCas(Vec<Vec<u8>>),
+    /// The server presents exactly one of these certificates, identified by the SHA-256 of its
+    /// DER encoding. For self-signed certificates: the name and validity period are not checked,
+    /// because the pin already identifies the certificate. The TLS handshake signature is still
+    /// verified, so only the holder of the private key passes.
+    PinnedCertificates(Vec<Digest>),
 }
 
 /// Who may use a grant. Every principal in the caller's `on_behalf_of` chain must be eligible:
@@ -244,17 +274,11 @@ impl ConnectionGrant {
         }
         None
     }
+}
 
-    /// The CA store for this grant, given the deployment's roots.
-    pub(crate) fn root_store(&self, deployment: &Arc<RootCertStore>) -> Arc<RootCertStore> {
-        match &self.tls.roots {
-            TrustRoots::Deployment => deployment.clone(),
-            TrustRoots::Pinned(certs) => Arc::new(pinned_store(certs).unwrap_or_else(|| {
-                // Validated at creation; an empty store fails every handshake.
-                RootCertStore::empty()
-            })),
-        }
-    }
+/// The CA store for pinned CAs. Validated at grant creation; an empty store fails every handshake.
+pub(crate) fn pinned_ca_store(certs: &[Vec<u8>]) -> Arc<RootCertStore> {
+    Arc::new(pinned_store(certs).unwrap_or_else(RootCertStore::empty))
 }
 
 fn pinned_store(certs: &[Vec<u8>]) -> Option<RootCertStore> {
@@ -628,18 +652,36 @@ impl GrantStore {
                 "host address is outside the address policy",
             ));
         }
-        if req.tls.mode == TlsMode::InProtocolUpgrade && !template.allow_in_protocol_tls_upgrade {
-            return Err(GrantError::Invalid(
-                "template does not allow in-protocol TLS upgrade",
-            ));
-        }
-        if ServerName::try_from(req.tls.server_name.clone()).is_err() {
-            return Err(GrantError::Invalid("tls server_name"));
-        }
-        if let TrustRoots::Pinned(certs) = &req.tls.roots
-            && pinned_store(certs).is_none()
-        {
-            return Err(GrantError::Invalid("pinned trust roots"));
+        match &req.tls {
+            TlsPolicy::Disabled => {
+                if template.tls == TlsRequirement::Required {
+                    return Err(GrantError::Invalid("template requires TLS"));
+                }
+            }
+            TlsPolicy::Enabled(tls) => {
+                if tls.mode == TlsMode::InProtocolUpgrade && !template.allow_in_protocol_tls_upgrade
+                {
+                    return Err(GrantError::Invalid(
+                        "template does not allow in-protocol TLS upgrade",
+                    ));
+                }
+                if ServerName::try_from(tls.server_name.clone()).is_err() {
+                    return Err(GrantError::Invalid("tls server_name"));
+                }
+                match &tls.trust {
+                    ServerTrust::DeploymentCas => {}
+                    ServerTrust::PinnedCas(certs) => {
+                        if pinned_store(certs).is_none() {
+                            return Err(GrantError::Invalid("pinned CA certificates"));
+                        }
+                    }
+                    ServerTrust::PinnedCertificates(pins) => {
+                        if pins.is_empty() {
+                            return Err(GrantError::Invalid("pinned server certificates"));
+                        }
+                    }
+                }
+            }
         }
         if req.allow_cancel_connection && !template.allow_cancel_connection {
             return Err(GrantError::Invalid(

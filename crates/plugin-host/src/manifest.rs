@@ -76,12 +76,16 @@ pub enum Protocol {
     Tcp,
 }
 
-/// TLS requirement of a network template. The spec defines only `required`; any other value is
-/// rejected rather than guessed (see Plugin Host spec, Open questions).
+/// TLS requirement of a network template (Plugin Host spec, Open question 14). The approver picks
+/// the actual policy per connection; this only says which policies the driver supports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TlsRequirement {
+    /// Connections must use TLS.
     Required,
+    /// The driver also supports plaintext; a grant may choose it explicitly (self-hosted
+    /// databases without TLS). Never chosen implicitly or as a fallback.
+    Optional,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -303,6 +307,16 @@ scope = "user-selected"
     }
 
     #[test]
+    fn tls_may_be_optional() {
+        let text = SPEC_EXAMPLE.replace("tls = \"required\"", "tls = \"optional\"");
+        let m = Manifest::from_toml(&text).unwrap();
+        assert_eq!(
+            m.network_template("db-transport").unwrap().tls,
+            TlsRequirement::Optional
+        );
+    }
+
+    #[test]
     fn template_flags_default_to_false() {
         let text = SPEC_EXAMPLE
             .replace("allow_in_protocol_tls_upgrade = true\n", "")
@@ -349,8 +363,8 @@ scope = "user-selected"
     #[test]
     fn unknown_enum_values_are_rejected() {
         for (from, to) in [
-            ("tls = \"required\"", "tls = \"optional\""),
             ("tls = \"required\"", "tls = \"disabled\""),
+            ("tls = \"required\"", "tls = \"prefer\""),
             ("protocol = \"tcp\"", "protocol = \"udp\""),
             ("kind = \"wasm\"", "kind = \"native\""),
             ("scope = \"connection\"", "scope = \"tenant\""),

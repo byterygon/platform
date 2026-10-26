@@ -12,6 +12,40 @@
 //!
 //! Identity, authorization and the audit record come from `security-types`; Plugin Host does not
 //! depend on Ambidex.
+//!
+//! # Security decisions
+//!
+//! Recorded in the Plugin Host spec, Open questions 12–17 (Uy Son, 2026-10-26):
+//!
+//! 1. **Who approves grants (12).** Only a human acting directly (no `on_behalf_of`) creates or
+//!    revokes a grant. Agents cannot, with or without approval; an `Authorizer` `NeedsApproval`
+//!    decision is a denial.
+//! 2. **Names (13).** Action and permission names are provisional; see the `NOTE` on the
+//!    constants in [`grant`] and [`broker`].
+//! 3. **Transport security (14).** Self-hosted databases often run without TLS or with
+//!    self-signed certificates. The approver picks one [`TlsPolicy`] per connection:
+//!    - [`TlsPolicy::Disabled`]: plaintext, only if the template says `tls = "optional"`;
+//!    - TLS with [`ServerTrust::DeploymentCas`] or [`ServerTrust::PinnedCas`] (chain, name and
+//!      validity checked);
+//!    - TLS with [`ServerTrust::PinnedCertificates`] for self-signed certificates (exact
+//!      certificate by SHA-256; name and validity not checked; handshake signature checked).
+//!
+//!    There is no "accept any certificate" mode and no fallback from TLS to plaintext.
+//! 4. **Cancel connections (15).** A cancel connection follows exactly the data connection's
+//!    policy: same endpoint, address checks, TLS policy and audit. With an in-protocol upgrade,
+//!    the driver negotiates and calls `start_tls` before sending the cancel request, as on the
+//!    data connection (PostgreSQL: `SSLRequest` then `CancelRequest`; MySQL: a normal TLS login
+//!    then `KILL QUERY`). The broker allows at most
+//!    [`BrokerLimits::pre_tls_plaintext_bytes`] of plaintext before `start_tls` on any
+//!    upgrade-mode handle. It cannot tell negotiation bytes from protocol bytes, so first-party
+//!    drivers are held to "upgrade first" by code review and tests.
+//! 5. **Address policy (16).** Every grant carries an explicit allowlist. The connection form
+//!    proposes [`AddressPolicy::loopback`] (`127.0.0.1`, `::1`); the approver widens it for
+//!    remote databases.
+//! 6. **Eligibility and limits (17).** Every principal in the caller's `on_behalf_of` chain must
+//!    be in the grant's tenant and be eligible (listed by id or by role). The plugin is checked
+//!    through its binding (id, digest, driver kind) and is audited as the first principal of the
+//!    chain. The defaults are in [`BrokerLimits`].
 
 pub mod audit;
 pub mod broker;
@@ -25,9 +59,9 @@ pub use broker::{
 };
 pub use grant::{
     ConnectionGrant, DriverKind, Eligibility, GrantError, GrantId, GrantRequest, GrantStore, Host,
-    InstalledPlugin, PluginBinding, SecretBinding, TlsMode, TlsPolicy, TrustRoots,
+    InstalledPlugin, PluginBinding, SecretBinding, ServerTrust, TlsMode, TlsPolicy, TlsSettings,
 };
-pub use manifest::{Manifest, ManifestError, NetworkTemplate};
+pub use manifest::{Manifest, ManifestError, NetworkTemplate, TlsRequirement};
 pub use net::{AddressPolicy, IpNet, Resolver, SystemResolver};
 
 use security_types::Digest;

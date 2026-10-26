@@ -135,6 +135,17 @@ impl AddressPolicy {
         }
     }
 
+    /// The policy the connection form proposes for a new grant: this machine only
+    /// (`127.0.0.1` and `::1`, which is what `localhost` resolves to). The approver widens it to
+    /// the database's real addresses when the database runs elsewhere (Plugin Host spec, Open
+    /// question 16).
+    pub fn loopback() -> Self {
+        Self::new([
+            IpNet::host(IpAddr::V4(Ipv4Addr::LOCALHOST)),
+            IpNet::host(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+        ])
+    }
+
     /// Whether the broker may connect to `ip`. Addresses that can never be a TCP peer
     /// (unspecified, multicast, broadcast) are refused whatever the policy says.
     pub fn permits(&self, ip: IpAddr) -> bool {
@@ -246,6 +257,17 @@ mod tests {
             assert!(!any.permits(ip(s)), "permitted {s}");
         }
         assert!(!AddressPolicy::new([]).permits(ip("192.0.2.1")));
+    }
+
+    #[test]
+    fn loopback_proposal_is_this_machine_only() {
+        let p = AddressPolicy::loopback();
+        assert!(p.permits(ip("127.0.0.1")));
+        assert!(p.permits(ip("::1")));
+        assert!(p.permits(ip("::ffff:127.0.0.1")));
+        assert!(!p.permits(ip("127.0.0.2")));
+        assert!(!p.permits(ip("172.17.0.1")));
+        assert!(!p.permits(ip("10.0.0.1")));
     }
 
     #[test]

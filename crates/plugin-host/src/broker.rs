@@ -24,14 +24,16 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
-use rustls::RootCertStore;
 use rustls::client::ClientConfig;
-use rustls::crypto::CryptoProvider;
-use rustls::pki_types::ServerName;
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signature};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{CertificateError, DigitallySignedStruct, RootCertStore, SignatureScheme};
 use security_types::{
     Action, AuditDecision, AuditEntry, AuditPrincipal, Digest, Outcome, Principal, PrincipalKind,
     Reason, Risk, TargetRef,
 };
+use sha2::{Digest as _, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, watch};
@@ -41,12 +43,15 @@ use tokio_rustls::client::TlsStream;
 use crate::encode_digest;
 use crate::error_code;
 use crate::grant::{
-    ConnectionGrant, DriverKind, GrantEntry, GrantStore, Host, Revocable, TlsMode, policy,
+    ConnectionGrant, DriverKind, GrantEntry, GrantStore, Host, Revocable, ServerTrust, TlsMode,
+    TlsPolicy, TlsSettings, pinned_ca_store, policy,
 };
 use crate::net::{Resolver, SystemResolver, canonical};
 
-/// Audit action names and the permission recorded with them. Provisional (Plugin Host spec, Open
-/// questions).
+/// Audit action names and the permission recorded with them.
+///
+/// NOTE: provisional names (Plugin Host spec, Open question 13). Update together with the grant
+/// constants in [`crate::grant`] once the permission catalogue is fixed.
 pub const OPEN_ACTION: &str = "plugin-host.broker.open";
 pub const OPEN_CANCEL_ACTION: &str = "plugin-host.broker.open-cancel";
 pub const START_TLS_ACTION: &str = "plugin-host.broker.start-tls";
@@ -517,27 +522,41 @@ impl<R: Resolver> BrokerScope<R> {
         let (tcp, peer) = connected.ok_or(last)?;
         let _ = tcp.set_nodelay(true);
 
-        match grant.tls.mode {
-            TlsMode::Direct => {
-                let tls = self.handshake(grant, tcp).await?;
+        match &grant.tls {
+            TlsPolicy::Enabled(tls) if tls.mode == TlsMode::Direct => {
+                let tls = self.handshake(tls, tcp).await?;
                 Ok((Stream::Tls(Box::new(tls)), peer, true))
             }
-            TlsMode::InProtocolUpgrade => Ok((Stream::Plain(tcp), peer, false)),
+            TlsPolicy::Enabled(_) | TlsPolicy::Disabled => Ok((Stream::Plain(tcp), peer, false)),
         }
     }
 
     async fn handshake(
         &self,
-        grant: &ConnectionGrant,
+        tls: &TlsSettings,
         tcp: TcpStream,
     ) -> Result<TlsStream<TcpStream>, BrokerError> {
-        let server_name = ServerName::try_from(grant.tls.server_name.clone())
-            .map_err(|_| BrokerError::TlsFailed)?;
-        let config = ClientConfig::builder_with_provider(self.broker.provider.clone())
+        let server_name =
+            ServerName::try_from(tls.server_name.clone()).map_err(|_| BrokerError::TlsFailed)?;
+        let provider = &self.broker.provider;
+        let builder = ClientConfig::builder_with_provider(provider.clone())
             .with_safe_default_protocol_versions()
-            .map_err(|_| BrokerError::Internal)?
-            .with_root_certificates(grant.root_store(&self.broker.config.deployment_roots))
-            .with_no_client_auth();
+            .map_err(|_| BrokerError::Internal)?;
+        let config = match &tls.trust {
+            ServerTrust::DeploymentCas => builder
+                .with_root_certificates(self.broker.config.deployment_roots.clone())
+                .with_no_client_auth(),
+            ServerTrust::PinnedCas(cas) => builder
+                .with_root_certificates(pinned_ca_store(cas))
+                .with_no_client_auth(),
+            ServerTrust::PinnedCertificates(pins) => builder
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(PinnedCertVerifier {
+                    pins: pins.clone(),
+                    provider: provider.clone(),
+                }))
+                .with_no_client_auth(),
+        };
         let connector = TlsConnector::from(Arc::new(config));
         match tokio::time::timeout(
             self.broker.config.limits.tls_handshake_timeout,
@@ -554,7 +573,7 @@ impl<R: Resolver> BrokerScope<R> {
     /// Send all of `bytes`. Returns the number of bytes sent.
     pub async fn send(&self, io: &mut Transport, bytes: &[u8]) -> Result<usize, BrokerError> {
         self.check(io)?;
-        if !io.tls {
+        if awaiting_tls(io) {
             let budget = self.broker.config.limits.pre_tls_plaintext_bytes;
             if io.plaintext_bytes + bytes.len() > budget {
                 close(io).await;
@@ -572,7 +591,7 @@ impl<R: Resolver> BrokerScope<R> {
         }
         drop(stream);
         result?;
-        if !io.tls {
+        if awaiting_tls(io) {
             io.plaintext_bytes += bytes.len();
         }
         Ok(bytes.len())
@@ -586,7 +605,7 @@ impl<R: Resolver> BrokerScope<R> {
             return Err(BrokerError::Unsupported("max_bytes must be positive"));
         }
         let mut max = max_bytes.min(self.broker.config.limits.max_recv_bytes);
-        if !io.tls {
+        if awaiting_tls(io) {
             let budget = self.broker.config.limits.pre_tls_plaintext_bytes;
             let remaining = budget.saturating_sub(io.plaintext_bytes);
             if remaining == 0 {
@@ -608,7 +627,7 @@ impl<R: Resolver> BrokerScope<R> {
         }
         drop(stream);
         let n = result?;
-        if !io.tls {
+        if awaiting_tls(io) {
             io.plaintext_bytes += n;
         }
         buf.truncate(n);
@@ -659,9 +678,13 @@ impl<R: Resolver> BrokerScope<R> {
     ) -> Result<(), BrokerError> {
         self.check(io)?;
         let grant = io.entry.grant.clone();
-        if grant.tls.mode != TlsMode::InProtocolUpgrade
+        let Some(tls) = grant.tls.settings() else {
+            // Plaintext grant: TLS was not approved for this connection.
+            return Err(BrokerError::PermissionDenied);
+        };
+        if tls.mode != TlsMode::InProtocolUpgrade
             || io.tls
-            || !server_name.eq_ignore_ascii_case(&grant.tls.server_name)
+            || !server_name.eq_ignore_ascii_case(&tls.server_name)
         {
             return Err(BrokerError::PermissionDenied);
         }
@@ -671,7 +694,7 @@ impl<R: Resolver> BrokerScope<R> {
             return Err(BrokerError::ConnectionLost);
         };
         let result = tokio::select! {
-            r = self.handshake(&grant, tcp) => r,
+            r = self.handshake(tls, tcp) => r,
             e = interrupted(&mut io.revoked, until_expiry) => Err(e),
         };
         match result {
@@ -768,5 +791,74 @@ async fn interrupted(
     tokio::select! {
         _ = revoked.wait_for(|r| *r) => BrokerError::PermissionDenied,
         () = expiry => BrokerError::PermissionDenied,
+    }
+}
+
+/// Whether the transport still has to upgrade to TLS: its grant requires TLS and `start_tls` has
+/// not succeeded yet. Plaintext grants have no budget; they never upgrade.
+fn awaiting_tls(io: &Transport) -> bool {
+    !io.tls && io.entry.grant.tls.settings().is_some()
+}
+
+/// Accepts exactly the pinned server certificates ([`ServerTrust::PinnedCertificates`]), for
+/// self-signed certificates in self-hosted deployments. The handshake signature is still checked
+/// against the presented certificate, so a copied certificate without its private key fails.
+#[derive(Debug)]
+struct PinnedCertVerifier {
+    pins: Vec<Digest>,
+    provider: Arc<CryptoProvider>,
+}
+
+impl ServerCertVerifier for PinnedCertVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        let fingerprint = Digest(Sha256::digest(end_entity.as_ref()).into());
+        if self.pins.contains(&fingerprint) {
+            Ok(ServerCertVerified::assertion())
+        } else {
+            Err(rustls::Error::InvalidCertificate(
+                CertificateError::ApplicationVerificationFailure,
+            ))
+        }
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &self.provider.signature_verification_algorithms,
+        )
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &self.provider.signature_verification_algorithms,
+        )
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.provider
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }

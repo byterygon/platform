@@ -12,8 +12,8 @@ use plugin_host::grant::address_policy;
 use plugin_host::{
     AddressPolicy, AuditSink, BrokerConfig, BrokerError, BrokerLimits, BrokerScope, Caller, Clock,
     DriverKind, Eligibility, GrantError, GrantRequest, GrantStore, InstalledPlugin, Manifest,
-    MemoryAuditLog, NativeBroker, Resolver, SecretBinding, TlsMode, TlsPolicy, Transport,
-    TrustRoots,
+    MemoryAuditLog, NativeBroker, Resolver, SecretBinding, ServerTrust, TlsMode, TlsPolicy,
+    TlsSettings, Transport,
 };
 use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair};
 use rustls::RootCertStore;
@@ -48,6 +48,13 @@ allow_cancel_connection = true
 id = "direct-only"
 protocol = "tcp"
 tls = "required"
+
+[[capabilities.network]]
+id = "tls-optional"
+protocol = "tcp"
+tls = "optional"
+allow_in_protocol_tls_upgrade = true
+allow_cancel_connection = true
 
 [[capabilities.secrets]]
 id = "db-credentials"
@@ -99,6 +106,37 @@ impl Pki {
         )
         .unwrap();
         Arc::new(config)
+    }
+}
+
+/// A self-signed server certificate for `name`, as self-hosted databases often have. Returns the
+/// server config and the SHA-256 fingerprint of the certificate.
+fn self_signed(name: &str) -> (Arc<rustls::ServerConfig>, Digest) {
+    use sha2::Digest as _;
+    let key = KeyPair::generate().unwrap();
+    let cert = CertificateParams::new(vec![name.to_owned()])
+        .unwrap()
+        .self_signed(&key)
+        .unwrap();
+    let fingerprint = Digest(sha2::Sha256::digest(cert.der().as_ref()).into());
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_no_client_auth()
+    .with_single_cert(
+        vec![cert.der().clone()],
+        PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der())),
+    )
+    .unwrap();
+    (Arc::new(config), fingerprint)
+}
+
+fn tls_mut(req: &mut GrantRequest) -> &mut TlsSettings {
+    match &mut req.tls {
+        TlsPolicy::Enabled(s) => s,
+        TlsPolicy::Disabled => panic!("plaintext request"),
     }
 }
 
@@ -283,11 +321,11 @@ fn request(port: u16, mode: TlsMode, ca: &CertificateDer<'_>) -> GrantRequest {
         template_id: "db-transport".into(),
         host: "db.test".into(),
         port,
-        tls: TlsPolicy {
+        tls: TlsPolicy::Enabled(TlsSettings {
             mode,
             server_name: "db.test".into(),
-            roots: TrustRoots::Pinned(vec![ca.to_vec()]),
-        },
+            trust: ServerTrust::PinnedCas(vec![ca.to_vec()]),
+        }),
         addresses: address_policy(&["127.0.0.1/32"]).unwrap(),
         secret: Some(SecretBinding {
             template_id: "db-credentials".into(),
@@ -433,7 +471,7 @@ async fn grant_creation_is_checked_against_the_template() {
 
     let mut r = base();
     r.template_id = "direct-only".into();
-    r.tls.mode = TlsMode::Direct;
+    tls_mut(&mut r).mode = TlsMode::Direct;
     assert_eq!(
         create(r).await,
         Err(GrantError::Invalid(
@@ -476,10 +514,10 @@ async fn grant_creation_is_checked_against_the_template() {
     );
 
     let mut r = base();
-    r.tls.roots = TrustRoots::Pinned(vec![b"not a certificate".to_vec()]);
+    tls_mut(&mut r).trust = ServerTrust::PinnedCas(vec![b"not a certificate".to_vec()]);
     assert_eq!(
         create(r).await,
-        Err(GrantError::Invalid("pinned trust roots"))
+        Err(GrantError::Invalid("pinned CA certificates"))
     );
 
     let mut r = base();
@@ -645,7 +683,7 @@ async fn deployment_roots_are_explicit() {
     )
     .await;
     let mut req = request(srv.addr.port(), TlsMode::Direct, &pki.ca);
-    req.tls.roots = TrustRoots::Deployment;
+    tls_mut(&mut req).trust = ServerTrust::DeploymentCas;
 
     // No roots configured: nothing verifies.
     let env_empty = env();
@@ -1236,4 +1274,104 @@ async fn audit_is_chained_attributed_and_redacted() {
     let json = serde_json::to_string(&records).unwrap();
     assert!(!json.contains(SECRET_REF));
     assert!(!json.contains("payload-bytes"));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Self-hosted: plaintext and self-signed certificates (Open question 14)
+// ---------------------------------------------------------------------------------------------
+
+#[tokio::test]
+async fn plaintext_needs_an_optional_template_and_an_explicit_grant() {
+    let pki = Pki::new("CA");
+    let srv = server(
+        "127.0.0.1",
+        0,
+        ServerMode::Plain,
+        pki.server_config("db.test"),
+    )
+    .await;
+    let env = env();
+
+    let mut req = request(srv.addr.port(), TlsMode::Direct, &pki.ca);
+    req.tls = TlsPolicy::Disabled;
+    assert_eq!(
+        env.grants
+            .create(&allow(), &admin(), &plugin(), req.clone(), "c")
+            .await
+            .map(|_| ()),
+        Err(GrantError::Invalid("template requires TLS"))
+    );
+
+    req.template_id = "tls-optional".into();
+    env.grant(req).await;
+    let scope = env.scope(alice());
+    let mut t = scope.open("pg1", "data").await.unwrap();
+    assert!(!t.is_tls());
+    // No plaintext budget: the approver chose plaintext for this connection.
+    round_trip(&scope, &mut t, &[1u8; 4000]).await;
+    assert_eq!(
+        scope.start_tls(&mut t, "db.test").await,
+        Err(BrokerError::PermissionDenied)
+    );
+    // The cancel connection follows the same (plaintext) policy.
+    let mut cancel = scope.open("pg1", "cancel").await.unwrap();
+    round_trip(&scope, &mut cancel, b"cancel").await;
+}
+
+#[tokio::test]
+async fn pinned_self_signed_certificate_is_accepted() {
+    // The certificate's name does not even match: the pin identifies it.
+    let (tls, fingerprint) = self_signed("localhost");
+    let srv = server("127.0.0.1", 0, ServerMode::UpgradeTls, tls).await;
+    let env = env();
+    let mut req = request(
+        srv.addr.port(),
+        TlsMode::InProtocolUpgrade,
+        &Pki::new("x").ca,
+    );
+    tls_mut(&mut req).trust = ServerTrust::PinnedCertificates(vec![fingerprint]);
+    env.grant(req).await;
+
+    let scope = env.scope(alice());
+    let mut t = scope.open("pg1", "data").await.unwrap();
+    negotiate_upgrade(&scope, &mut t).await;
+    scope.start_tls(&mut t, "db.test").await.unwrap();
+    round_trip(&scope, &mut t, b"self-signed but pinned").await;
+}
+
+#[tokio::test]
+async fn unpinned_self_signed_certificate_is_rejected() {
+    let (tls, _) = self_signed("db.test");
+    let (_, other_fingerprint) = self_signed("db.test");
+    let srv = server("127.0.0.1", 0, ServerMode::DirectTls, tls.clone()).await;
+    let env = env();
+    let mut req = request(srv.addr.port(), TlsMode::Direct, &Pki::new("x").ca);
+    tls_mut(&mut req).trust = ServerTrust::PinnedCertificates(vec![other_fingerprint]);
+    env.grant(req).await;
+    assert_eq!(
+        env.scope(alice()).open("pg1", "data").await.unwrap_err(),
+        BrokerError::TlsFailed
+    );
+
+    // Without a pin, a self-signed certificate fails CA verification.
+    let srv = server("127.0.0.1", 0, ServerMode::DirectTls, tls).await;
+    let ca_env = self::env();
+    ca_env
+        .grant(request(srv.addr.port(), TlsMode::Direct, &Pki::new("x").ca))
+        .await;
+    assert_eq!(
+        ca_env.scope(alice()).open("pg1", "data").await.unwrap_err(),
+        BrokerError::TlsFailed
+    );
+
+    let mut req = request(5432, TlsMode::Direct, &Pki::new("x").ca);
+    req.target_id = "pg2".into();
+    tls_mut(&mut req).trust = ServerTrust::PinnedCertificates(vec![]);
+    assert_eq!(
+        env.grants
+            .create(&allow(), &admin(), &plugin(), req, "c")
+            .await
+            .map(|_| ()),
+        Err(GrantError::Invalid("pinned server certificates"))
+    );
 }
