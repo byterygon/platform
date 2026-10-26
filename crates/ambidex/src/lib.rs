@@ -47,6 +47,22 @@
 //!     }
 //! }
 //! ```
+//!
+//! Nor does a risk spelled with another type's path:
+//!
+//! ```compile_fail
+//! use ambidex::{Agent, Ctx, RpcError, rpc};
+//!
+//! pub struct ItemsApi;
+//!
+//! #[rpc::router(namespace = "items")]
+//! impl ItemsApi {
+//!     #[rpc::query(perm = "items.read", risk = Agent::Read)]
+//!     async fn get(&self, _ctx: Ctx, input: u32) -> Result<u32, RpcError> {
+//!         Ok(input)
+//!     }
+//! }
+//! ```
 
 pub mod engine;
 pub mod error;

@@ -5,7 +5,7 @@
 //! It implements [`Dispatch`], so the engine hands it every decoded call. For each call it:
 //!
 //! 1. looks the procedure up (`NotFound` otherwise);
-//! 2. refuses agent principals on procedures not marked `agent = Agent::Exposed`;
+//! 2. answers `NotFound` to agent principals for procedures not marked `agent = Agent::Exposed`;
 //! 3. asks the [`Authorizer`] with the procedure's action, baseline risk and the input digest,
 //!    and runs the handler only on [`Decision::Allow`]. There is no default authorizer: a router
 //!    cannot be built without one, and the authorizer denies unknown permissions (default-deny);
@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt;
 use std::future::Future;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use security_types::{
     ApprovalSpec, Authorizer, AuthzRequest, Decision, Digest, Principal, PrincipalKind, Risk,
@@ -213,7 +213,7 @@ impl IntoErrorPayload for Rejected {
 }
 
 /// Lets a handler whose error type is `RpcError<E>` use `?` on [`Ctx::authorize`]. The approval
-/// id is not kept (it is not an `E`); handlers that need it return [`Rejected`] or `ErrorPayload`.
+/// id cannot be an `E`; the router restores it in the wire `details` (see [`Router::call`]).
 impl<E> From<Rejected> for RpcError<E> {
     fn from(rejected: Rejected) -> Self {
         RpcError::new(rejected.code, rejected.to_string())
@@ -227,6 +227,8 @@ pub struct Ctx {
     meta: Arc<ProcedureMeta>,
     guard: Arc<Guard>,
     input_digest: Digest,
+    /// Approval id recorded by the last [`Ctx::authorize`] of this call, if any.
+    approval_id: Arc<Mutex<Option<String>>>,
 }
 
 impl Ctx {
@@ -252,7 +254,8 @@ impl Ctx {
     /// runtime (e.g. SQL classified as DDL). Risk only escalates from the procedure's baseline.
     pub async fn authorize(&self, target: Option<&TargetRef>, risk: Risk) -> Result<(), Rejected> {
         let risk = self.meta.risk.escalate(risk);
-        self.guard
+        let result = self
+            .guard
             .enforce(
                 self.principal(),
                 &self.meta,
@@ -260,7 +263,15 @@ impl Ctx {
                 risk,
                 self.input_digest,
             )
-            .await
+            .await;
+        if let Err(Rejected {
+            approval_id: Some(id),
+            ..
+        }) = &result
+        {
+            *lock(&self.approval_id) = Some(id.clone());
+        }
+        result
     }
 }
 
@@ -350,6 +361,9 @@ impl Router {
 
     /// Runs one call for `session`. This is [`Dispatch::call`]; the MCP adapter calls it directly
     /// with an agent session.
+    ///
+    /// Whatever a handler returns, an `Internal` error leaves without its message and details, and
+    /// an `ApprovalRequired` error without details gets the id recorded by [`Ctx::authorize`].
     pub fn call(
         &self,
         session: Arc<Session>,
@@ -358,16 +372,13 @@ impl Router {
         let procedure = self.read().get(&call.procedure).cloned();
         let guard = Arc::clone(&self.guard);
         async move {
+            // To an agent, a hidden procedure is indistinguishable from a missing one.
+            let procedure = procedure
+                .filter(|p| p.meta.agent == Agent::Exposed || !acts_as_agent(&session.principal));
             let Some(procedure) = procedure else {
                 return Err(ErrorPayload::new(Code::NotFound, "unknown procedure"));
             };
             let meta = procedure.meta;
-            if meta.agent != Agent::Exposed && acts_as_agent(&session.principal) {
-                return Err(ErrorPayload::new(
-                    Code::PermissionDenied,
-                    "permission denied",
-                ));
-            }
             let digest = input_digest(&call.input);
             guard
                 .enforce(&session.principal, &meta, None, meta.risk, digest)
@@ -379,13 +390,32 @@ impl Router {
                     "this call kind is not supported yet",
                 ));
             };
+            let approval_id = Arc::new(Mutex::new(None));
             let ctx = Ctx {
                 session,
                 meta,
                 guard,
                 input_digest: digest,
+                approval_id: Arc::clone(&approval_id),
             };
-            handler(ctx, call.input).await
+            handler(ctx, call.input)
+                .await
+                .map_err(|err| match err.code {
+                    Code::Internal => {
+                        let mut scrubbed = ErrorPayload::new(Code::Internal, "internal error");
+                        scrubbed.correlation_id = err.correlation_id;
+                        scrubbed
+                    }
+                    Code::ApprovalRequired if err.details.is_none() => {
+                        let mut err = err;
+                        err.details = lock(&approval_id).take().map(|approval_id| {
+                            serde_json::to_value(ApprovalRequired { approval_id })
+                                .expect("ApprovalRequired serializes")
+                        });
+                        err
+                    }
+                    _ => err,
+                })
         }
     }
 
@@ -419,10 +449,18 @@ impl Dispatch for Router {
     }
 }
 
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Same grammar as `#[rpc::router]`: at least two `.`-separated segments of `[A-Za-z0-9_-]`.
 fn validate(meta: &ProcedureMeta) -> Result<(), RegistryError> {
-    let valid_name = meta.name.split('.').count() >= 2
-        && meta.name.split('.').all(|s| !s.is_empty())
-        && !meta.name.chars().any(char::is_whitespace);
+    let segment_ok = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    };
+    let valid_name = meta.name.split('.').count() >= 2 && meta.name.split('.').all(segment_ok);
     if !valid_name {
         return Err(RegistryError::InvalidName(meta.name.clone()));
     }

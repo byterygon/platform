@@ -109,6 +109,26 @@ impl DemoApi {
         ))
     }
 
+    #[rpc::mutation(perm = "demo.drop", risk = Risk::Write)]
+    async fn purge(&self, ctx: Ctx, _input: ()) -> Result<(), RpcError<QueryError>> {
+        // `?` into `RpcError<E>` cannot carry the approval id; the router restores it.
+        ctx.authorize(Some(&TargetRef::connection("c-1")), Risk::Destructive)
+            .await?;
+        Ok(())
+    }
+
+    #[rpc::mutation(perm = "demo.read", risk = Risk::Read)]
+    async fn leak(&self, _ctx: Ctx, _input: ()) -> Result<(), ErrorPayload> {
+        let mut err = ErrorPayload::new(Code::Internal, "db at 10.1.2.3 refused");
+        err.details = Some(json!({"dsn": "postgres://admin:pw@db"}));
+        Err(err)
+    }
+
+    #[rpc::query(perm = "demo.read", risk = Risk::Read, timeout_max = "10s")]
+    async fn r#type(&self, _ctx: Ctx, _input: ()) -> Result<(), RpcError> {
+        Ok(())
+    }
+
     #[rpc::stream(perm = "demo.stream", risk = Risk::Read, timeout_default = "2h")]
     async fn rows(&self, _ctx: Ctx, _input: ()) {}
 
@@ -295,6 +315,9 @@ fn macro_builds_procedure_meta() {
             "demo.dropTable",
             "demo.lower",
             "demo.internal",
+            "demo.purge",
+            "demo.leak",
+            "demo.type",
             "demo.rows",
             "demo.watch",
         ]
@@ -321,14 +344,21 @@ fn macro_builds_procedure_meta() {
         Some(json!({"connection": "c1", "password": "<redacted>"}))
     );
 
-    let rows = &metas[5];
+    let ty = &metas[7];
+    assert_eq!(ty.timeout_max, Duration::from_secs(10));
+    assert_eq!(
+        ty.timeout_default, ty.timeout_max,
+        "the default follows a lower max down"
+    );
+
+    let rows = &metas[8];
     assert_eq!(rows.kind, ProcedureKind::Stream);
     assert_eq!(rows.timeout_default, Duration::from_secs(7200));
     assert_eq!(
         rows.timeout_max, rows.timeout_default,
         "max follows a larger default"
     );
-    assert_eq!(metas[6].kind, ProcedureKind::Subscription);
+    assert_eq!(metas[9].kind, ProcedureKind::Subscription);
 }
 
 // ---- authorization before dispatch ---------------------------------------------------------
@@ -487,10 +517,18 @@ async fn agents_only_reach_exposed_procedures() {
         .unwrap();
     assert_eq!(out["principal"], "agent:token:bot");
 
-    let err = call(&router, agent(), "demo.lower", json!(null))
+    // A hidden procedure looks exactly like a missing one to an agent.
+    let hidden = call(&router, agent(), "demo.lower", json!(null))
         .await
         .unwrap_err();
-    assert_eq!(err.code, Code::PermissionDenied);
+    let missing = call(&router, agent(), "demo.nope", json!(null))
+        .await
+        .unwrap_err();
+    assert_eq!(hidden.code, Code::NotFound);
+    assert_eq!(
+        (hidden.message, hidden.details),
+        (missing.message, missing.details)
+    );
 
     // A plugin acting for an agent is still an agent call.
     let plugin = Principal {
@@ -502,7 +540,7 @@ async fn agents_only_reach_exposed_procedures() {
     let err = call(&router, plugin, "demo.lower", json!(null))
         .await
         .unwrap_err();
-    assert_eq!(err.code, Code::PermissionDenied);
+    assert_eq!(err.code, Code::NotFound);
     assert_eq!(
         policy.seen().len(),
         1,
@@ -567,6 +605,39 @@ async fn internal_errors_are_scrubbed() {
         .unwrap_err();
     assert_eq!(err.code, Code::Internal);
     assert_eq!(err.message, "internal error");
+
+    // A raw `ErrorPayload` does not bypass the scrubbing.
+    let err = call(&router, human(), "demo.leak", json!(null))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, Code::Internal);
+    assert_eq!(err.message, "internal error");
+    assert_eq!(err.details, None);
+}
+
+#[tokio::test]
+async fn approval_id_survives_question_mark_into_typed_error() {
+    let policy = open_policy();
+    let queue = Queue::default();
+    let router = Router::with_approvals(policy.clone(), queue.clone());
+    router.mount(DemoApi::default()).unwrap();
+    let err = call(&router, human(), "demo.purge", json!(null))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, Code::ApprovalRequired);
+    assert_eq!(err.details, Some(json!({"approval_id": "apr-1"})));
+}
+
+#[tokio::test]
+async fn raw_identifier_names_are_unrawed() {
+    let policy = open_policy();
+    let (router, _) = setup(&policy);
+    assert_eq!(
+        call(&router, human(), "demo.type", json!(null))
+            .await
+            .unwrap(),
+        json!(null)
+    );
 }
 
 // ---- registry ------------------------------------------------------------------------------
@@ -620,9 +691,17 @@ async fn dynamic_procedures_can_be_added_and_removed() {
 
     let bad = ProcedureMeta::new("noNamespace", ProcedureKind::Query, "p", Risk::Read);
     assert_eq!(
-        router.insert(Procedure::new(bad, handler)),
+        router.insert(Procedure::new(bad, handler.clone())),
         Err(RegistryError::InvalidName("noNamespace".into()))
     );
+    // Same name grammar as the macro: no path or quote characters.
+    for name in ["plugin.p.op/../x", "plugin.p.op\"", "plugin..op"] {
+        let bad = ProcedureMeta::new(name, ProcedureKind::Query, "p", Risk::Read);
+        assert_eq!(
+            router.insert(Procedure::new(bad, handler.clone())),
+            Err(RegistryError::InvalidName(name.into()))
+        );
+    }
 }
 
 #[test]

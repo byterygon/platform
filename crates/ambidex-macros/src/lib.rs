@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
+use syn::ext::IdentExt;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
@@ -292,7 +293,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
     }
 
     let input_ty = check_signature(method, kind)?;
-    let method_name = name.map_or_else(|| method.sig.ident.to_string(), |lit| lit.value());
+    let method_name = name.map_or_else(|| method.sig.ident.unraw().to_string(), |lit| lit.value());
     Ok(Some(Procedure {
         kind,
         method: method.sig.ident.clone(),
@@ -373,9 +374,28 @@ fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<Option<Type>>
 }
 
 fn enum_variant(path: &Path, variants: &[&str], ty: &str) -> syn::Result<Ident> {
-    let last = path.segments.last().map(|s| &s.ident);
-    match last {
-        Some(ident) if variants.iter().any(|v| ident == v) => Ok(ident.clone()),
+    // `Ty::X`, `ambidex::Ty::X`, `security_types::Ty::X` or `ambidex::security_types::Ty::X`:
+    // a look-alike path such as `Agent::Read` or `MyRisk::Write` must not pass as a risk.
+    let segments: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+    let (prefix, rest) = segments.split_at(segments.len().saturating_sub(2));
+    let prefix_ok = matches!(
+        prefix
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .as_slice(),
+        [] | ["ambidex"] | ["security_types"] | ["ambidex", "security_types"]
+    );
+    let generic_free = path.segments.iter().all(|s| s.arguments.is_none());
+    match rest {
+        [t, v] if prefix_ok && generic_free && t == ty && variants.contains(&v.as_str()) => {
+            Ok(Ident::new(
+                v,
+                path.segments
+                    .last()
+                    .map_or(Span::call_site(), |s| s.ident.span()),
+            ))
+        }
         _ => Err(syn::Error::new(
             path.span(),
             format!(
@@ -445,7 +465,14 @@ fn meta_expr(p: &Procedure) -> TokenStream2 {
         .map(|ms| quote!(meta.timeout_default = ::std::time::Duration::from_millis(#ms);));
     // When only `timeout_default` is set above the default maximum, the maximum follows it.
     let timeout_max = match (p.timeout_max_ms, p.timeout_default_ms) {
-        (Some(ms), _) => Some(quote!(meta.timeout_max = ::std::time::Duration::from_millis(#ms);)),
+        // Only a maximum below the default deadline: the default follows it down.
+        (Some(ms), None) => Some(quote! {
+            meta.timeout_max = ::std::time::Duration::from_millis(#ms);
+            meta.timeout_default = meta.timeout_default.min(meta.timeout_max);
+        }),
+        (Some(ms), Some(_)) => {
+            Some(quote!(meta.timeout_max = ::std::time::Duration::from_millis(#ms);))
+        }
         (None, Some(_)) => {
             Some(quote!(meta.timeout_max = meta.timeout_max.max(meta.timeout_default);))
         }
