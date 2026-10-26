@@ -341,12 +341,37 @@ async fn calls_run_concurrently_and_complete_out_of_order() {
 }
 
 #[tokio::test]
-async fn call_ids_may_be_reused_after_completion() {
-    let (mut client, _conn) = connected().await;
-    for _ in 0..3 {
-        client.call(5, "echo", json!(null)).await;
-        assert_eq!(client.recv_result().await.0, 5);
-    }
+async fn call_ids_must_increase_even_after_completion() {
+    let (mut client, conn) = connected().await;
+    client.call(5, "echo", json!(null)).await;
+    assert_eq!(client.recv_result().await.0, 5);
+    // Gaps are fine.
+    client.call(9, "echo", json!(null)).await;
+    assert_eq!(client.recv_result().await.0, 9);
+    // A late Cancel for a finished call cannot reach anything: its id is never reused.
+    client.send(Frame::new(Kind::Cancel, 5, vec![])).await;
+    client.call(9, "echo", json!(null)).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (0, Code::InvalidArgument));
+    client.expect_closed().await;
+    assert_eq!(
+        conn.closed().await,
+        Closed::ProtocolViolation(Code::InvalidArgument)
+    );
+}
+
+#[tokio::test]
+async fn a_lower_call_id_closes_connection() {
+    let (mut client, conn) = connected().await;
+    client.call(4, "echo", json!(null)).await;
+    assert_eq!(client.recv_result().await.0, 4);
+    client.call(3, "echo", json!(null)).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (0, Code::InvalidArgument));
+    assert_eq!(
+        conn.closed().await,
+        Closed::ProtocolViolation(Code::InvalidArgument)
+    );
 }
 
 #[tokio::test]

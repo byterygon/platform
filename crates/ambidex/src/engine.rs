@@ -15,7 +15,9 @@
 //!   then [`Authenticate`] decides, otherwise `Unauthenticated`. Either way the connection closes.
 //!   After HelloAck the payload limit becomes [`ServerConfig::max_frame_bytes`].
 //! - Frame-level violations (bad header, oversize payload, a frame kind the client may not send,
-//!   call id 0 or a reused in-flight call id on `Call`) answer with `Error` on call 0 and close.
+//!   a `Call` or `Subscribe` whose call id is not greater than every id used before on the
+//!   connection, including 0) answer with `Error` on call 0 and close. Ids strictly increase, so a
+//!   late `Cancel` can never reach a newer call (spec Open question 15).
 //! - Per-call problems (undecodable `Call` payload, concurrency limit) answer with `Error` on that
 //!   call id and keep the connection.
 //! - `Ping` is answered with `Pong` echoing call id and payload.
@@ -272,6 +274,7 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         in_flight: HashMap::new(),
         conn_token: CancellationToken::new(),
         revoked: None,
+        last_call_id: 0,
         close_by: None,
     };
     let closed = conn.run_loop(&mut rx, &mut control, &mut writer).await;
@@ -391,6 +394,8 @@ struct ConnState<A, D> {
     conn_token: CancellationToken,
     /// Fires when the session is revoked.
     revoked: Option<CancellationToken>,
+    /// Highest call id used on this connection; new calls must use a higher one.
+    last_call_id: u32,
     /// Set when the connection starts closing; bounds delivery of the final frames.
     close_by: Option<Instant>,
 }
@@ -505,9 +510,9 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             // nothing to credit or unsubscribe, so these are no-ops.
             Kind::Credit | Kind::Unsubscribe => Ok(()),
             Kind::Subscribe => {
-                if frame.call_id == 0 || self.is_in_flight(frame.call_id) {
+                if !self.claim_call_id(frame.call_id) {
                     return Err(self
-                        .violation(Code::InvalidArgument, "invalid call id")
+                        .violation(Code::InvalidArgument, "call id not increasing")
                         .await);
                 }
                 let err = ErrorPayload::new(Code::Unimplemented, "subscriptions are not supported");
@@ -594,14 +599,9 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
 
     async fn on_call(&mut self, session: Arc<Session>, frame: Frame) -> Step {
         let call_id = frame.call_id;
-        if call_id == 0 {
+        if !self.claim_call_id(call_id) {
             return Err(self
-                .violation(Code::InvalidArgument, "Call on call id 0")
-                .await);
-        }
-        if self.is_in_flight(call_id) {
-            return Err(self
-                .violation(Code::InvalidArgument, "call id already in flight")
+                .violation(Code::InvalidArgument, "call id not increasing")
                 .await);
         }
         if self.in_flight.len() >= self.inner.config.max_concurrent_calls as usize {
@@ -659,8 +659,13 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         }
     }
 
-    fn is_in_flight(&self, call_id: u32) -> bool {
-        self.in_flight.contains_key(&call_id)
+    /// Accepts `call_id` for a new call if it is greater than every id used so far (so never 0).
+    fn claim_call_id(&mut self, call_id: u32) -> bool {
+        let fresh = call_id > self.last_call_id;
+        if fresh {
+            self.last_call_id = call_id;
+        }
+        fresh
     }
 
     fn correlation_id(&self, call_id: u32) -> String {
