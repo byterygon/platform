@@ -11,12 +11,24 @@ use ambidex::{
     Authenticate, Call, Closed, Code, Connection, Dispatch, ErrorPayload, Flags, Goaway, Hello,
     HelloAck, Server, ServerConfig, Session,
 };
+use security_types::{Principal, PrincipalKind, SessionId, TenantId};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
 const SCHEMA: &str = "schema-1";
 
 struct TokenAuth;
+
+fn principal() -> Principal {
+    Principal {
+        kind: PrincipalKind::Human,
+        id: "human:local:tester".into(),
+        tenant: TenantId::new("t-1"),
+        on_behalf_of: None,
+        roles: vec![],
+        session: SessionId::new("s-1"),
+    }
+}
 
 impl Authenticate for TokenAuth {
     fn authenticate<'a>(&'a self, hello: &'a Hello) -> BoxFuture<'a, Option<Session>> {
@@ -25,7 +37,10 @@ impl Authenticate for TokenAuth {
                 // An authenticator that never answers, e.g. a stuck IdP call.
                 std::future::pending::<()>().await;
             }
-            (hello.auth == Some(json!("good"))).then(|| Session { id: "s-1".into() })
+            (hello.auth == Some(json!("good"))).then(|| Session {
+                id: "s-1".into(),
+                principal: principal(),
+            })
         })
     }
 }
