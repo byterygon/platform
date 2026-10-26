@@ -52,8 +52,8 @@ pub struct Limits {
 
 /// Payload of a `Call` frame.
 ///
-/// The spec does not define this shape; `{procedure, input, timeout_ms}` is provisional (Open
-/// questions 14b and 20).
+/// `{procedure, input, timeout_ms}`: `{procedure, input}` is provisional (spec Open question 14b);
+/// `timeout_ms` was confirmed in Open question 21.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Call {
     pub procedure: String,
