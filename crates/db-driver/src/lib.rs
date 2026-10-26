@@ -1,6 +1,6 @@
 //! Database driver contract v0.1 shared by native drivers and WIT adapters.
 //!
-//! See the crate README for lifecycle rules and provisional decisions.
+//! See the crate README for lifecycle rules and confirmed decisions.
 //! No transport, authorization, secret storage or runtime is implemented here.
 
 use std::{future::Future, pin::Pin};
@@ -11,6 +11,16 @@ pub type DbFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, DbError>> + Sen
 /// Opaque caller-assigned ID, scoped to one logical connection; never reuse it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OperationId(pub String);
+
+/// Status of an idempotent cancellation request, separate from query outcome.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CancelOutcome {
+    /// Driver recorded the request and arranged backend propagation. Repeated
+    /// pending requests return this too. The database may still finish normally.
+    Requested,
+    /// ID is unknown or already terminal on this connection; no action needed.
+    NotRunning,
+}
 
 /// Structured database diagnostic. Position is a one-based Unicode scalar offset.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -47,7 +57,7 @@ impl std::error::Error for DbError {}
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExecuteOptions {
     pub max_rows: Option<u64>,
-    /// Relative milliseconds from execute admission (provisional).
+    /// Relative milliseconds from execute admission, measured with a monotonic clock.
     pub deadline_ms: Option<u64>,
     /// Desired rows per batch; None lets the driver choose, zero is invalid.
     pub batch_size_hint: Option<u32>,
@@ -105,7 +115,7 @@ pub trait ConnectionBroker: Send + Sync {
 /// Drop must arrange cancellation/drain without requiring an async destructor.
 pub trait ResultStream: Send {
     fn next(&mut self) -> DbFuture<'_, Option<NextItem>>;
-    fn cancel(&self) -> DbFuture<'_, ()>;
+    fn cancel(&self) -> DbFuture<'_, CancelOutcome>;
 }
 
 /// Logical connection, already bound to its broker authorization context.
@@ -117,8 +127,9 @@ pub trait Connection: Send + Sync {
         sql: &'a str,
         opts: ExecuteOptions,
     ) -> DbFuture<'a, Box<dyn ResultStream>>;
-    /// Idempotent request; success does not assert that the backend stopped.
-    fn cancel<'a>(&'a self, operation_id: &'a OperationId) -> DbFuture<'a, ()>;
+    /// Idempotent request. Requested acknowledges driver state, not backend termination.
+    /// Unknown/already terminal IDs return NotRunning. Failures return DbError.
+    fn cancel<'a>(&'a self, operation_id: &'a OperationId) -> DbFuture<'a, CancelOutcome>;
     fn schemas(&self) -> DbFuture<'_, Vec<String>>;
     fn tables<'a>(&'a self, schema: Option<&'a str>) -> DbFuture<'a, Vec<TableInfo>>;
     fn columns<'a>(

@@ -2,6 +2,8 @@ package byterygon:db-driver@0.1.0;
 
 interface db-types {
     type operation-id = string;
+    /// Request status only; the terminal stream outcome confirms cancellation.
+    enum cancel-outcome { requested, not-running }
     record query-error {
         message: string,
         position: option<u64>,
@@ -47,15 +49,15 @@ interface connection-broker {
 }
 
 interface driver {
-    use db-types.{operation-id, db-error, execute-options, next-item, table-info, column-info};
+    use db-types.{operation-id, cancel-outcome, db-error, execute-options, next-item, table-info, column-info};
     resource connection;
     resource result-stream {
         next: func() -> result<option<next-item>, db-error>;
-        cancel: func() -> result<_, db-error>;
+        cancel: func() -> result<cancel-outcome, db-error>;
     }
     connect: func(target-id: string, credential-ref: option<string>) -> result<connection, db-error>;
     execute: func(conn: borrow<connection>, id: operation-id, sql: string, opts: execute-options) -> result<result-stream, db-error>;
-    cancel: func(conn: borrow<connection>, id: operation-id) -> result<_, db-error>;
+    cancel: func(conn: borrow<connection>, id: operation-id) -> result<cancel-outcome, db-error>;
     schemas: func(conn: borrow<connection>) -> result<list<string>, db-error>;
     tables: func(conn: borrow<connection>, schema: option<string>) -> result<list<table-info>, db-error>;
     columns: func(conn: borrow<connection>, schema: option<string>, table: string) -> result<list<column-info>, db-error>;

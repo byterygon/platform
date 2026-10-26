@@ -34,6 +34,35 @@ fn wit_resolves_and_exports_driver_without_ambient_imports() {
     }
     assert_eq!(interface.functions["execute"].params.len(), 4);
     let types = &resolve.interfaces[resolve.packages[package].interfaces["db-types"]];
+    let wit_parser::TypeDefKind::Enum(outcomes) =
+        &resolve.types[types.types["cancel-outcome"]].kind
+    else {
+        panic!("expected cancellation outcome enum")
+    };
+    assert_eq!(
+        outcomes
+            .cases
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["requested", "not-running"]
+    );
+    for name in ["cancel", "[method]result-stream.cancel"] {
+        let Some(wit_parser::Type::Id(result)) = interface.functions[name].result else {
+            panic!("expected result")
+        };
+        let wit_parser::TypeDefKind::Result(result) = &resolve.types[result].kind else {
+            panic!("expected result")
+        };
+        assert_eq!(
+            result.ok,
+            Some(wit_parser::Type::Id(interface.types["cancel-outcome"]))
+        );
+        assert_eq!(
+            result.err,
+            Some(wit_parser::Type::Id(interface.types["db-error"]))
+        );
+    }
     for (name, fields) in [
         (
             "execute-options",
@@ -104,10 +133,13 @@ impl ResultStream for ReferenceStream {
             }
         })
     }
-    fn cancel(&self) -> DbFuture<'_, ()> {
+    fn cancel(&self) -> DbFuture<'_, CancelOutcome> {
         Box::pin(async {
+            if self.terminal {
+                return Ok(CancelOutcome::NotRunning);
+            }
             self.cancel_requested.store(true, Ordering::SeqCst);
-            Ok(())
+            Ok(CancelOutcome::Requested)
         })
     }
 }
@@ -139,15 +171,15 @@ fn cancellation_is_idempotent_and_completion_can_win() {
             ..Default::default()
         };
         let (mut stream, requested) = stream(vec![Ok(NextItem::Finished(summary.clone()))]);
-        stream.cancel().await.unwrap();
-        stream.cancel().await.unwrap();
+        assert_eq!(stream.cancel().await.unwrap(), CancelOutcome::Requested);
+        assert_eq!(stream.cancel().await.unwrap(), CancelOutcome::Requested);
         assert!(requested.load(Ordering::SeqCst));
         assert_eq!(
             stream.next().await.unwrap(),
             Some(NextItem::Finished(summary))
         );
         assert_eq!(stream.next().await.unwrap(), None);
-        stream.cancel().await.unwrap();
+        assert_eq!(stream.cancel().await.unwrap(), CancelOutcome::NotRunning);
         assert_eq!(stream.next().await.unwrap(), None);
     });
 }
@@ -157,6 +189,7 @@ fn observed_cancellation_is_one_terminal_error_and_drop_requests_cancel() {
     block_on(async {
         let (mut stream, _) = stream(vec![Err(DbError::Cancelled)]);
         assert_eq!(stream.next().await, Err(DbError::Cancelled));
+        assert_eq!(stream.cancel().await.unwrap(), CancelOutcome::NotRunning);
         assert_eq!(stream.next().await.unwrap(), None);
         assert_eq!(stream.next().await.unwrap(), None);
     });

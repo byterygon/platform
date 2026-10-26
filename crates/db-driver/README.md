@@ -25,25 +25,31 @@ not ordinary EOF. Drivers must respect limits without collecting all rows.
 Dropping a stream must schedule backend cancellation/drain and release resources;
 Rust Drop cannot await. WIT resource destruction has the same requirement.
 
-## Provisional semantics needing human confirmation
+## Confirmed semantics
 
-Plugin Host Open question 12 records these proposals, not an approved decision:
+Uy Son confirmed these decisions; Plugin Host Open question 12 records them:
 
 - Caller allocates an opaque operation ID before execute, unique for the entire
   logical connection lifetime. Never reuse IDs, so delayed cancel cannot hit a
   later query. Execute registers the ID before starting backend work.
 - Cancel is idempotent; unknown/completed IDs on the same connection are no-ops.
-  A cancellation request acknowledges dispatch only, not backend termination.
+  `CancelOutcome::Requested` means the driver recorded the cancellation request
+  and arranged backend propagation; repeated pending requests return Requested.
+  It does not confirm backend termination. `NotRunning` means the ID is unknown
+  or already terminal in this connection. Failures return DbError.
+  Display “Cancellation requested; waiting for database outcome” for Requested
+  and “No running operation to cancel” for NotRunning. Only an observed
+  Cancelled terminal error means “Query cancelled”.
   Completion can win and yield Finished; observed backend cancellation yields
   Cancelled. Each operation has a single terminal outcome. Retain enough state
   to reject ID reuse; do not retain completed query payloads.
-- deadline_ms is a relative duration from execute admission; a zero deadline is
+- deadline_ms is a relative duration from execute admission, measured
+  with a monotonic clock; a zero deadline is
   immediately expired. batch_size_hint is optional rows per batch, zero invalid.
 - Error position is a one-based Unicode scalar offset in the submitted SQL;
   adapters normalize vendor byte/character positions. SQLSTATE and vendor codes
   remain separate optional strings. Diagnostics must exclude credentials.
 
-TSK-13 cannot meet its “semantics decided” acceptance criterion until confirmed.
 Contract tests parse/resolve the WIT and exercise a reference stream lifecycle;
 concrete drivers/adapters must additionally test backend cancellation, Arrow
 validity and host ownership enforcement. This crate does not claim to enforce
