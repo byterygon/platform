@@ -1,6 +1,6 @@
 [package]
 name = "db-driver"
-version = "0.0.0"
+version = "0.1.0"
 description = "db-driver contract shared by DBee and database driver plugins."
 license = "MIT OR Apache-2.0"
 edition.workspace = true
@@ -10,3 +10,7 @@ publish = false
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+wit-parser = "0.239"
+futures-executor = "0.3"

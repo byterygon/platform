@@ -1,0 +1,69 @@
+package byterygon:db-driver@0.1.0;
+
+interface db-types {
+    type operation-id = string;
+    /// Request status only; the terminal stream outcome confirms cancellation.
+    enum cancel-outcome { requested, not-running }
+    record query-error {
+        message: string,
+        position: option<u64>,
+        sqlstate: option<string>,
+        vendor-code: option<string>,
+    }
+    variant db-error {
+        permission-denied,
+        authentication-failed,
+        tls-failed,
+        connection-lost,
+        cancelled,
+        timeout,
+        invalid-query(query-error),
+        database-error(query-error),
+        unsupported(string),
+        internal,
+    }
+    record execute-options {
+        max-rows: option<u64>,
+        deadline-ms: option<u64>,
+        batch-size-hint: option<u32>,
+    }
+    record query-summary {
+        rows-affected: option<u64>,
+        rows-returned: option<u64>,
+        elapsed-ms: u64,
+        notices: list<string>,
+        truncated: bool,
+    }
+    variant next-item { chunk(list<u8>), finished(query-summary) }
+    record table-info { schema: option<string>, name: string, kind: string }
+    record column-info { name: string, type-name: string, nullable: bool }
+}
+
+interface connection-broker {
+    use db-types.{db-error};
+    resource transport;
+    open: func(target-id: string, purpose: string) -> result<transport, db-error>;
+    send: func(io: borrow<transport>, bytes: list<u8>) -> result<u32, db-error>;
+    recv: func(io: borrow<transport>, max-bytes: u32) -> result<list<u8>, db-error>;
+    start-tls: func(io: borrow<transport>, server-name: string) -> result<_, db-error>;
+}
+
+interface driver {
+    use db-types.{operation-id, cancel-outcome, db-error, execute-options, next-item, table-info, column-info};
+    resource connection;
+    resource result-stream {
+        next: func() -> result<option<next-item>, db-error>;
+        cancel: func() -> result<cancel-outcome, db-error>;
+    }
+    connect: func(target-id: string, credential-ref: option<string>) -> result<connection, db-error>;
+    execute: func(conn: borrow<connection>, id: operation-id, sql: string, opts: execute-options) -> result<result-stream, db-error>;
+    cancel: func(conn: borrow<connection>, id: operation-id) -> result<cancel-outcome, db-error>;
+    schemas: func(conn: borrow<connection>) -> result<list<string>, db-error>;
+    tables: func(conn: borrow<connection>, schema: option<string>) -> result<list<table-info>, db-error>;
+    columns: func(conn: borrow<connection>, schema: option<string>, table: string) -> result<list<column-info>, db-error>;
+}
+
+world db-driver {
+    import connection-broker;
+    export driver;
+}
