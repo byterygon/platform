@@ -4,11 +4,13 @@
 //! routes that webview's client chunks to them, and closes them when the webview reloads or goes
 //! away. A connection id is only looked up under the label of the webview that sent the invoke,
 //! so one webview can never write into another's connection, and an id from a foreign webview is
-//! indistinguishable from an unknown one.
+//! indistinguishable from an unknown one. When sessions start and end is up to a
+//! [`SessionPolicy`].
 
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
 use ambidex::engine::BoxFuture;
 use ambidex::{Call, Connection, Dispatch, ErrorPayload, Server, ServerConfig, Session};
@@ -16,7 +18,9 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::pipe::{FrameSink, IpcRx, IpcTx, pipe};
-use crate::session::{DesktopAuth, DesktopSession, LocalIdentity};
+use crate::session::{
+    DefaultSessionPolicy, DesktopAuth, DesktopSession, LocalIdentity, SessionPolicy,
+};
 
 /// Transport limits.
 #[derive(Debug, Clone)]
@@ -45,6 +49,11 @@ impl Default for HubConfig {
 pub enum IpcError {
     /// The webview's label is not in [`HubConfig::allowed_webviews`].
     WebviewNotAllowed,
+    /// The [`SessionPolicy`] refused to start a session (e.g. the app is locked).
+    SessionRefused,
+    /// The session passed its [`SessionPolicy::max_age`] and was ended with its connections.
+    /// The webview may `connect` again.
+    SessionExpired,
     /// The webview already has [`HubConfig::max_connections_per_webview`] connections.
     TooManyConnections,
     /// No open connection with this id belongs to the calling webview.
@@ -59,6 +68,8 @@ impl fmt::Display for IpcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             IpcError::WebviewNotAllowed => "webview not allowed",
+            IpcError::SessionRefused => "session refused",
+            IpcError::SessionExpired => "session expired",
             IpcError::TooManyConnections => "too many connections",
             IpcError::UnknownConnection => "unknown connection",
             IpcError::BadRequest => "bad request",
@@ -75,6 +86,7 @@ type ServeFn = dyn Fn(Arc<DesktopSession>, IpcRx, IpcTx) -> Connection + Send + 
 pub struct Hub {
     config: HubConfig,
     identity: LocalIdentity,
+    policy: Arc<dyn SessionPolicy>,
     serve: Box<ServeFn>,
     webviews: Mutex<HashMap<String, WebviewState>>,
 }
@@ -82,12 +94,14 @@ pub struct Hub {
 struct WebviewState {
     window_label: String,
     session: Arc<DesktopSession>,
+    started: Instant,
     connections: HashMap<String, mpsc::Sender<Vec<u8>>>,
 }
 
 impl Hub {
     /// A hub whose connections run the Ambidex engine with `server_config` and `dispatch`
-    /// (usually a [`Router`](ambidex::Router)), authenticated as `identity`.
+    /// (usually a [`Router`](ambidex::Router)), authenticated as `identity`, with the
+    /// [`DefaultSessionPolicy`].
     pub fn new<D: Dispatch>(
         config: HubConfig,
         identity: LocalIdentity,
@@ -98,6 +112,7 @@ impl Hub {
         Hub {
             config,
             identity,
+            policy: Arc::new(DefaultSessionPolicy),
             serve: Box::new(move |session, rx, tx| {
                 let auth = DesktopAuth::new(session);
                 Server::new(server_config.clone(), auth, Shared(Arc::clone(&dispatch)))
@@ -107,12 +122,19 @@ impl Hub {
         }
     }
 
+    /// Replaces the session policy.
+    pub fn with_session_policy(mut self, policy: Arc<dyn SessionPolicy>) -> Hub {
+        self.policy = policy;
+        self
+    }
+
     pub fn config(&self) -> &HubConfig {
         &self.config
     }
 
     /// Opens a connection for webview `webview_label` in window `window_label`; server frames go
-    /// to `sink`. Returns the connection id the webview passes with its client frames.
+    /// to `sink`. Returns the connection id the webview passes with its client frames. Starts a
+    /// session if the webview has none (or only an expired one) and the policy allows it.
     ///
     /// Must run inside a Tokio runtime: the engine is spawned on it.
     pub fn connect(
@@ -135,9 +157,18 @@ impl Hub {
         let (inbound, rx, tx) = pipe(sink, self.config.inbound_queue_chunks);
         let session = {
             let mut webviews = self.lock();
+            if webviews
+                .get(webview_label)
+                .is_some_and(|state| self.expired(webview_label, state))
+            {
+                webviews.remove(webview_label);
+            }
             let state = match webviews.get_mut(webview_label) {
                 Some(state) => state,
                 None => {
+                    if !self.policy.allow_session(webview_label) {
+                        return Err(IpcError::SessionRefused);
+                    }
                     let session = DesktopSession::new(&self.identity, webview_label)
                         .map_err(|_| IpcError::Internal)?;
                     webviews
@@ -145,6 +176,7 @@ impl Hub {
                         .or_insert(WebviewState {
                             window_label: window_label.to_owned(),
                             session: Arc::new(session),
+                            started: Instant::now(),
                             connections: HashMap::new(),
                         })
                 }
@@ -176,12 +208,22 @@ impl Hub {
         id: &str,
         bytes: Vec<u8>,
     ) -> Result<(), IpcError> {
-        let inbound = self
-            .lock()
-            .get(webview_label)
-            .and_then(|state| state.connections.get(id))
-            .cloned()
-            .ok_or(IpcError::UnknownConnection)?;
+        let inbound = {
+            let mut webviews = self.lock();
+            let state = webviews
+                .get(webview_label)
+                .ok_or(IpcError::UnknownConnection)?;
+            let inbound = state
+                .connections
+                .get(id)
+                .cloned()
+                .ok_or(IpcError::UnknownConnection)?;
+            if self.expired(webview_label, state) {
+                webviews.remove(webview_label);
+                return Err(IpcError::SessionExpired);
+            }
+            inbound
+        };
         inbound
             .send(bytes)
             .await
@@ -197,13 +239,29 @@ impl Hub {
             .ok_or(IpcError::UnknownConnection)
     }
 
-    /// Ends the webview's session and closes all its connections. Called when the webview starts
-    /// loading a page (navigation or reload): the new page gets a new session.
-    pub fn end_webview(&self, webview_label: &str) {
+    /// The webview started loading a page (navigation or reload). Its connections are closed,
+    /// because the old page can no longer use them; its session ends too unless
+    /// [`SessionPolicy::end_on_page_load`] says otherwise.
+    pub fn page_loaded(&self, webview_label: &str) {
+        let mut webviews = self.lock();
+        if self.policy.end_on_page_load(webview_label) {
+            webviews.remove(webview_label);
+        } else if let Some(state) = webviews.get_mut(webview_label) {
+            state.connections.clear();
+        }
+    }
+
+    /// Ends the webview's session and closes all its connections, e.g. on logout or app lock.
+    pub fn end_session(&self, webview_label: &str) {
         self.lock().remove(webview_label);
     }
 
-    /// Ends the sessions of all webviews in a destroyed window.
+    /// Ends every session and closes every connection, e.g. when the app locks.
+    pub fn end_all_sessions(&self) {
+        self.lock().clear();
+    }
+
+    /// Ends the sessions of all webviews in a destroyed window, whatever the policy says.
     pub fn end_window(&self, window_label: &str) {
         self.lock()
             .retain(|_, state| state.window_label != window_label);
@@ -221,6 +279,12 @@ impl Hub {
         self.lock()
             .get(webview_label)
             .map_or(0, |state| state.connections.len())
+    }
+
+    fn expired(&self, webview_label: &str, state: &WebviewState) -> bool {
+        self.policy
+            .max_age(webview_label)
+            .is_some_and(|max_age| state.started.elapsed() >= max_age)
     }
 
     fn forget(&self, webview_label: &str, id: &str) {

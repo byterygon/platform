@@ -4,10 +4,11 @@ mod common;
 
 use std::io;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use ambidex::frame::{Frame, Kind};
-use ambidex_tauri::{FrameSink, Hub, HubConfig, IpcError};
+use ambidex_tauri::{FrameSink, Hub, HubConfig, IpcError, SessionPolicy};
 use common::{Frames, WhoAmI, call, hello, identity, payload, server_config};
 use tokio::sync::mpsc;
 
@@ -196,7 +197,102 @@ async fn page_load_ends_the_session_and_its_connections() {
     let mut peer = connect(&hub, "main").unwrap();
     let old = handshake(&hub, "main", &mut peer).await;
 
-    hub.end_webview("main");
+    hub.page_loaded("main");
+    peer.closed().await;
+    assert!(hub.session("main").is_none());
+
+    let mut fresh = connect(&hub, "main").unwrap();
+    let new = handshake(&hub, "main", &mut fresh).await;
+    assert_ne!(old["session"], new["session"]);
+}
+
+/// A configurable policy: keep sessions across page loads, refuse while locked, cap the age.
+#[derive(Default)]
+struct TestPolicy {
+    keep_on_page_load: bool,
+    locked: AtomicBool,
+    max_age: Option<Duration>,
+}
+
+/// Lets the test keep a handle on the policy it gave the hub.
+struct SharedPolicy(Arc<TestPolicy>);
+
+impl SessionPolicy for SharedPolicy {
+    fn allow_session(&self, _webview_label: &str) -> bool {
+        !self.0.locked.load(Ordering::SeqCst)
+    }
+
+    fn end_on_page_load(&self, _webview_label: &str) -> bool {
+        !self.0.keep_on_page_load
+    }
+
+    fn max_age(&self, _webview_label: &str) -> Option<Duration> {
+        self.0.max_age
+    }
+}
+
+fn hub_with(policy: &Arc<TestPolicy>) -> Arc<Hub> {
+    Arc::new(
+        Hub::new(HubConfig::default(), identity(), server_config(), WhoAmI)
+            .with_session_policy(Arc::new(SharedPolicy(Arc::clone(policy)))),
+    )
+}
+
+#[tokio::test]
+async fn policy_can_keep_the_session_across_page_loads() {
+    let policy = Arc::new(TestPolicy {
+        keep_on_page_load: true,
+        ..TestPolicy::default()
+    });
+    let hub = hub_with(&policy);
+    let mut peer = connect(&hub, "main").unwrap();
+    let old = handshake(&hub, "main", &mut peer).await;
+
+    hub.page_loaded("main");
+    // The old page's connections are closed either way; the session survives.
+    peer.closed().await;
+    assert_eq!(hub.connection_count("main"), 0);
+    let mut fresh = connect(&hub, "main").unwrap();
+    let new = handshake(&hub, "main", &mut fresh).await;
+    assert_eq!(old["session"], new["session"]);
+}
+
+#[tokio::test]
+async fn policy_can_refuse_sessions_and_the_app_can_end_them() {
+    let policy = Arc::new(TestPolicy::default());
+    let hub = hub_with(&policy);
+    let mut peer = connect(&hub, "main").unwrap();
+    handshake(&hub, "main", &mut peer).await;
+
+    // App lock: refuse new sessions, end the live ones.
+    policy.locked.store(true, Ordering::SeqCst);
+    hub.end_all_sessions();
+    peer.closed().await;
+    assert!(hub.session("main").is_none());
+    assert_eq!(connect(&hub, "main").err(), Some(IpcError::SessionRefused));
+
+    policy.locked.store(false, Ordering::SeqCst);
+    let mut unlocked = connect(&hub, "main").unwrap();
+    handshake(&hub, "main", &mut unlocked).await;
+    hub.end_session("main");
+    unlocked.closed().await;
+}
+
+#[tokio::test]
+async fn policy_max_age_expires_the_session() {
+    let policy = Arc::new(TestPolicy {
+        max_age: Some(Duration::from_millis(100)),
+        ..TestPolicy::default()
+    });
+    let hub = hub_with(&policy);
+    let mut peer = connect(&hub, "main").unwrap();
+    let old = handshake(&hub, "main", &mut peer).await;
+
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(
+        hub.send("main", &peer.id, call(1, "whoami")).await,
+        Err(IpcError::SessionExpired)
+    );
     peer.closed().await;
     assert!(hub.session("main").is_none());
 

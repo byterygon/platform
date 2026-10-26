@@ -8,6 +8,7 @@
 
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 
 use ambidex::engine::BoxFuture;
 use ambidex::{Authenticate, Hello, Session};
@@ -82,8 +83,9 @@ impl LocalIdentity {
 
 /// A session bound to one webview label.
 ///
-/// Created when that webview opens its first connection after a page load; every connection of
-/// the webview shares it until the webview navigates, reloads or is destroyed.
+/// Created when that webview opens its first connection without a live session; every connection
+/// of the webview shares it until it ends. When it ends is decided by the [`SessionPolicy`]
+/// (default: on the next page load) and always when the webview's window is destroyed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopSession {
     pub id: SessionId,
@@ -117,6 +119,44 @@ impl DesktopSession {
         })
     }
 }
+
+/// Decides when desktop sessions start and end, so a deployment can change the default lifetime
+/// (one session per page load of a webview) without changing the transport.
+///
+/// Every method has a default; implement only what you need. Examples: refuse sessions while an
+/// app lock is engaged, keep a session across reloads, or cap its age. To end sessions from app
+/// code (lock, logout), call [`Hub::end_session`](crate::Hub::end_session) or
+/// [`Hub::end_all_sessions`](crate::Hub::end_all_sessions).
+pub trait SessionPolicy: Send + Sync + 'static {
+    /// Whether `webview_label` may start a session now. Refusing makes `connect` fail with
+    /// [`IpcError::SessionRefused`](crate::IpcError::SessionRefused). Default: allow.
+    fn allow_session(&self, webview_label: &str) -> bool {
+        let _ = webview_label;
+        true
+    }
+
+    /// Whether a page load (navigation or reload) in the webview also ends its session. The
+    /// webview's connections are closed on every page load regardless, because the old page can
+    /// no longer use them. Default: `true`, so each page gets a new session.
+    fn end_on_page_load(&self, webview_label: &str) -> bool {
+        let _ = webview_label;
+        true
+    }
+
+    /// Longest a session lives. An older session is ended on the webview's next `connect` or
+    /// `send` (which then fails with [`IpcError::SessionExpired`](crate::IpcError::SessionExpired)).
+    /// Default: no limit.
+    fn max_age(&self, webview_label: &str) -> Option<Duration> {
+        let _ = webview_label;
+        None
+    }
+}
+
+/// The default lifetime: one session per page load, no age limit, never refused.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DefaultSessionPolicy;
+
+impl SessionPolicy for DefaultSessionPolicy {}
 
 /// [`Authenticate`] for one desktop connection: always yields the connection's
 /// [`DesktopSession`], whatever the Hello carries.

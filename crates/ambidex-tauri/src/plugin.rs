@@ -20,7 +20,7 @@ use tauri::{Manager, RunEvent, Runtime, State, Webview, WindowEvent};
 
 use crate::hub::{Hub, HubConfig, IpcError};
 use crate::pipe::FrameSink;
-use crate::session::LocalIdentity;
+use crate::session::{DefaultSessionPolicy, LocalIdentity, SessionPolicy};
 
 /// Plugin name; commands are `plugin:ambidex|<command>` and permissions `ambidex:<permission>`.
 pub const PLUGIN_NAME: &str = "ambidex";
@@ -47,6 +47,7 @@ pub struct Builder<D> {
     identity: LocalIdentity,
     server_config: ServerConfig,
     dispatch: D,
+    session_policy: Arc<dyn SessionPolicy>,
 }
 
 impl<D: Dispatch> Builder<D> {
@@ -56,6 +57,7 @@ impl<D: Dispatch> Builder<D> {
             identity,
             server_config,
             dispatch,
+            session_policy: Arc::new(DefaultSessionPolicy),
         }
     }
 
@@ -65,13 +67,22 @@ impl<D: Dispatch> Builder<D> {
         self
     }
 
+    /// Replaces the [`SessionPolicy`] (default: one session per page load).
+    pub fn session_policy(mut self, policy: impl SessionPolicy) -> Builder<D> {
+        self.session_policy = Arc::new(policy);
+        self
+    }
+
     pub fn build<R: Runtime>(self) -> TauriPlugin<R> {
-        let hub = Arc::new(Hub::new(
-            self.hub_config,
-            self.identity,
-            self.server_config,
-            self.dispatch,
-        ));
+        let hub = Arc::new(
+            Hub::new(
+                self.hub_config,
+                self.identity,
+                self.server_config,
+                self.dispatch,
+            )
+            .with_session_policy(self.session_policy),
+        );
         let on_load = Arc::clone(&hub);
         let on_event = Arc::clone(&hub);
         PluginBuilder::new(PLUGIN_NAME)
@@ -82,7 +93,7 @@ impl<D: Dispatch> Builder<D> {
             })
             .on_page_load(move |webview, payload| {
                 if payload.event() == PageLoadEvent::Started {
-                    on_load.end_webview(webview.label());
+                    on_load.page_loaded(webview.label());
                 }
             })
             .on_event(move |_app, event| {
@@ -99,7 +110,7 @@ impl<D: Dispatch> Builder<D> {
     }
 }
 
-/// The hub as Tauri managed state, for the app to inspect sessions.
+/// The hub as Tauri managed state, for the app to inspect or end sessions (e.g. on app lock).
 pub struct HubState(pub Arc<Hub>);
 
 struct ChannelSink(Channel<InvokeResponseBody>);

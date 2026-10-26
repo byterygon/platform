@@ -11,6 +11,9 @@
 //!   by the webview that opened it. The session's principal is the local human
 //!   (`human:local:<os-user>`), built from the app's [`LocalIdentity`] and never from client
 //!   input. Calls still pass the router's Authorizer like on web.
+//! - When sessions start and end is a [`SessionPolicy`] the app can replace (default: one
+//!   session per page load). The app can also end sessions itself through [`HubState`], e.g. on
+//!   app lock.
 //! - No network listener is opened and no URI scheme is registered.
 //!
 //! # App configuration (required)
@@ -40,7 +43,9 @@ pub mod session;
 pub use hub::{Hub, HubConfig, IpcError};
 pub use pipe::{FrameSink, IpcRx, IpcTx};
 pub use plugin::{Builder, CONNECTION_HEADER, HubState, PLUGIN_NAME};
-pub use session::{DesktopAuth, DesktopSession, InvalidOsUser, LocalIdentity};
+pub use session::{
+    DefaultSessionPolicy, DesktopAuth, DesktopSession, InvalidOsUser, LocalIdentity, SessionPolicy,
+};
 
 /// Content Security Policy for apps using this transport (spec §8: strict CSP, no remote
 /// scripts). Only bundled resources load; the only connections allowed are Tauri's IPC origins
