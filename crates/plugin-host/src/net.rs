@@ -138,7 +138,7 @@ impl AddressPolicy {
     /// The policy the connection form proposes for a new grant: this machine only
     /// (`127.0.0.1` and `::1`, which is what `localhost` resolves to). The approver widens it to
     /// the database's real addresses when the database runs elsewhere (Plugin Host spec, Open
-    /// question 16).
+    /// question 28).
     pub fn loopback() -> Self {
         Self::new([
             IpNet::host(IpAddr::V4(Ipv4Addr::LOCALHOST)),

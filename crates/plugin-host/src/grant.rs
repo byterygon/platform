@@ -27,7 +27,7 @@ use crate::{encode_digest, error_code};
 
 /// Action and permission checked when a grant is created or revoked.
 ///
-/// NOTE: provisional names (Plugin Host spec, Open question 13, accepted as provisional by Uy Son
+/// NOTE: provisional names (Plugin Host spec, Open question 25, accepted as provisional by Uy Son
 /// on 2026-10-26). Update them here, in the broker constants and in the spec once the permission
 /// catalogue is fixed; the Ambidex admin API uses the `admin.grants.*` family.
 pub const GRANT_CREATE_ACTION: &str = "plugin-host.grants.create";
@@ -126,7 +126,7 @@ impl fmt::Display for Host {
 }
 
 /// Transport security of a connection, chosen by the approver when the grant is created
-/// (Plugin Host spec, Open question 14). The broker applies it to data and cancel connections
+/// (Plugin Host spec, Open question 26). The broker applies it to data and cancel connections
 /// alike and never falls back from TLS to plaintext.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TlsPolicy {

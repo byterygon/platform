@@ -50,7 +50,7 @@ use crate::net::{Resolver, SystemResolver, canonical};
 
 /// Audit action names and the permission recorded with them.
 ///
-/// NOTE: provisional names (Plugin Host spec, Open question 13). Update together with the grant
+/// NOTE: provisional names (Plugin Host spec, Open question 25). Update together with the grant
 /// constants in [`crate::grant`] once the permission catalogue is fixed.
 pub const OPEN_ACTION: &str = "plugin-host.broker.open";
 pub const OPEN_CANCEL_ACTION: &str = "plugin-host.broker.open-cancel";

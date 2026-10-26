@@ -76,7 +76,7 @@ pub enum Protocol {
     Tcp,
 }
 
-/// TLS requirement of a network template (Plugin Host spec, Open question 14). The approver picks
+/// TLS requirement of a network template (Plugin Host spec, Open question 26). The approver picks
 /// the actual policy per connection; this only says which policies the driver supports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
