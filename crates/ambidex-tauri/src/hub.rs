@@ -15,9 +15,8 @@ use std::time::Instant;
 use ambidex::engine::BoxFuture;
 use ambidex::{Call, Connection, Dispatch, ErrorPayload, Server, ServerConfig, Session};
 use serde_json::Value;
-use tokio::sync::mpsc;
 
-use crate::pipe::{FrameSink, IpcRx, IpcTx, pipe};
+use crate::pipe::{FrameSink, Inbound, IpcRx, IpcTx, pipe};
 use crate::session::{
     DefaultSessionPolicy, DesktopAuth, DesktopSession, LocalIdentity, SessionPolicy,
 };
@@ -95,7 +94,8 @@ struct WebviewState {
     window_label: String,
     session: Arc<DesktopSession>,
     started: Instant,
-    connections: HashMap<String, mpsc::Sender<Vec<u8>>>,
+    /// Removing a connection, or the whole state, drops its [`Inbound`] and so revokes its pipe.
+    connections: HashMap<String, Inbound>,
 }
 
 impl Hub {
@@ -201,7 +201,8 @@ impl Hub {
     }
 
     /// Queues a client chunk for connection `id` of webview `webview_label`. Waits while the
-    /// connection's inbound queue is full.
+    /// connection's inbound queue is full. Fails with [`IpcError::UnknownConnection`] if the
+    /// connection is closed or its session ends meanwhile; the chunk is then never read.
     pub async fn send(
         &self,
         webview_label: &str,
@@ -216,7 +217,7 @@ impl Hub {
             let inbound = state
                 .connections
                 .get(id)
-                .cloned()
+                .map(Inbound::handle)
                 .ok_or(IpcError::UnknownConnection)?;
             if self.expired(webview_label, state) {
                 webviews.remove(webview_label);
@@ -230,7 +231,8 @@ impl Hub {
             .map_err(|_| IpcError::UnknownConnection)
     }
 
-    /// Closes connection `id` of webview `webview_label`: the engine sees end of stream.
+    /// Closes connection `id` of webview `webview_label`: its pipe is revoked, so the engine
+    /// closes and drops the connection's in-flight calls.
     pub fn close(&self, webview_label: &str, id: &str) -> Result<(), IpcError> {
         self.lock()
             .get_mut(webview_label)
@@ -252,6 +254,7 @@ impl Hub {
     }
 
     /// Ends the webview's session and closes all its connections, e.g. on logout or app lock.
+    /// Chunks not yet read and `send`s still waiting are discarded; in-flight calls are dropped.
     pub fn end_session(&self, webview_label: &str) {
         self.lock().remove(webview_label);
     }

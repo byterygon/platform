@@ -2,12 +2,17 @@
 
 mod common;
 
+use std::future::{Future, poll_fn};
 use std::io;
+use std::pin::pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::Poll;
 use std::time::Duration;
 
+use ambidex::engine::BoxFuture;
 use ambidex::frame::{Frame, Kind};
+use ambidex::{Call, Dispatch, ErrorPayload, Session};
 use ambidex_tauri::{FrameSink, Hub, HubConfig, IpcError, SessionPolicy};
 use common::{Frames, WhoAmI, call, hello, identity, payload, server_config};
 use tokio::sync::mpsc;
@@ -331,4 +336,97 @@ async fn engine_close_forgets_the_connection() {
     })
     .await
     .expect("connection not forgotten");
+}
+
+/// Collects the server frames until the transport drops the sink.
+async fn frames_until_closed(peer: &mut Peer) -> Vec<Frame> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut frames = Vec::new();
+        while let Some(chunk) = peer.chunks.recv().await {
+            frames.extend(peer.frames.push(&chunk));
+        }
+        frames
+    })
+    .await
+    .expect("transport still open")
+}
+
+/// Runs on the current-thread runtime, so the engine only runs when the test awaits something
+/// that is not ready. That fixes the interleaving: a chunk is queued but unread and another
+/// `send` is waiting on the full queue when the app locks.
+#[tokio::test(flavor = "current_thread")]
+async fn ending_the_session_discards_queued_and_waiting_chunks() {
+    let hub = hub(HubConfig {
+        inbound_queue_chunks: 1,
+        ..HubConfig::default()
+    });
+    let mut peer = connect(&hub, "main").unwrap();
+    handshake(&hub, "main", &mut peer).await;
+
+    hub.send("main", &peer.id, call(1, "whoami")).await.unwrap();
+    let id = peer.id.clone();
+    let mut waiting = pin!(hub.send("main", &id, call(2, "whoami")));
+    let pending = poll_fn(|cx| Poll::Ready(waiting.as_mut().poll(cx).is_pending())).await;
+    assert!(pending, "the second send should wait on the full queue");
+
+    hub.end_all_sessions();
+    assert_eq!(waiting.await, Err(IpcError::UnknownConnection));
+    let frames = frames_until_closed(&mut peer).await;
+    assert!(
+        frames.iter().all(|f| f.kind != Kind::Result),
+        "a call sent before the lock ran after it: {frames:?}"
+    );
+}
+
+/// `hang` never finishes; it reports when it starts and when its future is dropped.
+struct Hang {
+    started: mpsc::UnboundedSender<()>,
+    dropped: mpsc::UnboundedSender<()>,
+}
+
+struct OnDrop(mpsc::UnboundedSender<()>);
+
+impl Drop for OnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.send(());
+    }
+}
+
+impl Dispatch for Hang {
+    fn call(
+        &self,
+        _session: Arc<Session>,
+        _call: Call,
+    ) -> BoxFuture<'static, Result<serde_json::Value, ErrorPayload>> {
+        let _ = self.started.send(());
+        let guard = OnDrop(self.dropped.clone());
+        Box::pin(async move {
+            let _guard = guard;
+            std::future::pending().await
+        })
+    }
+}
+
+#[tokio::test]
+async fn ending_the_session_drops_its_pending_calls() {
+    let (started, mut started_rx) = mpsc::unbounded_channel();
+    let (dropped, mut dropped_rx) = mpsc::unbounded_channel();
+    let hub = Arc::new(Hub::new(
+        HubConfig::default(),
+        identity(),
+        server_config(),
+        Hang { started, dropped },
+    ));
+    let mut peer = connect(&hub, "main").unwrap();
+    handshake(&hub, "main", &mut peer).await;
+    hub.send("main", &peer.id, call(1, "hang")).await.unwrap();
+    started_rx.recv().await.unwrap();
+
+    hub.end_all_sessions();
+    tokio::time::timeout(Duration::from_secs(5), dropped_rx.recv())
+        .await
+        .expect("pending call still running after the session ended")
+        .unwrap();
+    let frames = frames_until_closed(&mut peer).await;
+    assert!(frames.iter().all(|f| f.kind != Kind::Result));
 }
