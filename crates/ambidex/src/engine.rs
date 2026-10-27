@@ -342,10 +342,19 @@ async fn run_call(
         }
     };
     match finished {
-        // A handler that reacts to its token can finish in the poll that observed it; that
-        // answer is discarded too, so a Cancel that reached the call always wins.
-        Some(result) if !scope.is_cancelled() => return result,
-        Some(_) => {}
+        Some(result) => {
+            // The handler is polled first, so it can finish after its deadline has passed (a zero
+            // timeout, or a task first polled late): that answer is too late. `fire` keeps the
+            // first reason, so a Cancel that already fired still wins.
+            if tokio::time::Instant::now() >= scope.deadline() {
+                scope.fire(Code::DeadlineExceeded);
+            }
+            // A handler that reacts to its token can finish in the poll that observed it; that
+            // answer is discarded too, so a Cancel that reached the call always wins.
+            if !scope.is_cancelled() {
+                return result;
+            }
+        }
         None => {
             let _ = tokio::time::timeout(grace, &mut fut).await;
         }

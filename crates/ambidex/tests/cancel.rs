@@ -392,6 +392,18 @@ async fn a_stubborn_handler_past_its_deadline_is_dropped() {
     assert_eq!(h.state.dropped(), 1);
 }
 
+/// A handler that answers at once still misses a zero deadline: the Result is never sent.
+#[tokio::test(start_paused = true)]
+async fn an_immediate_answer_past_a_zero_deadline_is_deadline_exceeded() {
+    let mut h = Harness::start().await;
+    h.client
+        .call(3, "slow.quick", json!({"input": 0, "timeout_ms": 0}))
+        .await;
+    let (call_id, err) = h.client.recv_error().await;
+    assert_eq!((call_id, err.code), (3, Code::DeadlineExceeded));
+    h.client.expect_quiet().await;
+}
+
 #[tokio::test(start_paused = true)]
 async fn malformed_timeout_is_invalid_argument() {
     let mut h = Harness::start().await;
