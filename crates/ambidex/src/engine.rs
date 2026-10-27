@@ -325,6 +325,11 @@ async fn run_call(
     scope: CallScope,
     grace: Duration,
 ) -> Result<Value, ErrorPayload> {
+    // A call cancelled or out of time before its task first ran never starts: `fut` is dropped
+    // unpolled, so the handler has no side effects.
+    if scope.check().is_some() {
+        return Err(scope.error());
+    }
     let mut fut = std::pin::pin!(scope.clone().enter(fut));
     let finished = loop {
         let deadline = scope.deadline();
@@ -346,12 +351,9 @@ async fn run_call(
             // The handler is polled first, so it can finish after its deadline has passed (a zero
             // timeout, or a task first polled late): that answer is too late. `fire` keeps the
             // first reason, so a Cancel that already fired still wins.
-            if tokio::time::Instant::now() >= scope.deadline() {
-                scope.fire(Code::DeadlineExceeded);
-            }
             // A handler that reacts to its token can finish in the poll that observed it; that
             // answer is discarded too, so a Cancel that reached the call always wins.
-            if !scope.is_cancelled() {
+            if scope.check().is_none() {
                 return result;
             }
         }
@@ -359,12 +361,7 @@ async fn run_call(
             let _ = tokio::time::timeout(grace, &mut fut).await;
         }
     }
-    Err(match scope.reason() {
-        Some(Code::DeadlineExceeded) => {
-            ErrorPayload::new(Code::DeadlineExceeded, "deadline exceeded")
-        }
-        _ => ErrorPayload::new(Code::Cancelled, "call cancelled"),
-    })
+    Err(scope.error())
 }
 
 /// Resolves when `token` fires; never when there is none.

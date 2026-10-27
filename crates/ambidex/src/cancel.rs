@@ -19,6 +19,10 @@
 //! that moves the call future to another task loses the scope; the engine still enforces the
 //! deadline and cancellation, but the handler can no longer observe them.
 //!
+//! A call whose token already fired or whose deadline already passed never starts: the engine
+//! checks before polling the dispatcher, and [`Router`](crate::Router) checks again after narrowing
+//! the deadline and after authorization, before running the handler.
+//!
 //! Cancellation is cooperative, then forced: once the token fires, the handler gets
 //! [`ServerConfig::cancel_grace`](crate::ServerConfig::cancel_grace) to stop (e.g. to send the
 //! database's out-of-band cancel), then its future is dropped. Either way the call answers with
@@ -33,7 +37,7 @@ use tokio::sync::Notify;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::message::Code;
+use crate::message::{Code, ErrorPayload};
 use crate::procedure::{DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX};
 
 tokio::task_local! {
@@ -125,6 +129,25 @@ impl CallScope {
         self.inner.token.cancel();
     }
 
+    /// Fires `DeadlineExceeded` if the deadline has passed, then returns why the token fired, if it
+    /// has. Checked before a call starts and before its answer is accepted.
+    pub(crate) fn check(&self) -> Option<Code> {
+        if Instant::now() >= self.deadline() {
+            self.fire(Code::DeadlineExceeded);
+        }
+        self.reason()
+    }
+
+    /// The `Error` a call answers once its token fired.
+    pub(crate) fn error(&self) -> ErrorPayload {
+        match self.reason() {
+            Some(Code::DeadlineExceeded) => {
+                ErrorPayload::new(Code::DeadlineExceeded, "deadline exceeded")
+            }
+            _ => ErrorPayload::new(Code::Cancelled, "call cancelled"),
+        }
+    }
+
     /// Timeout the client asked for, if any.
     pub fn requested_timeout(&self) -> Option<Duration> {
         self.inner.requested
@@ -191,6 +214,23 @@ mod tests {
         scope.fire(Code::DeadlineExceeded);
         scope.cancel();
         assert_eq!(scope.reason(), Some(Code::DeadlineExceeded));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn check_fires_once_the_deadline_passed() {
+        let scope = CallScope::new(Some(Duration::from_millis(10)));
+        assert_eq!(scope.check(), None);
+        tokio::time::advance(Duration::from_millis(10)).await;
+        assert_eq!(scope.check(), Some(Code::DeadlineExceeded));
+        assert_eq!(scope.error().code, Code::DeadlineExceeded);
+    }
+
+    #[test]
+    fn check_keeps_an_earlier_cancel() {
+        let scope = CallScope::new(Some(Duration::ZERO));
+        scope.cancel();
+        assert_eq!(scope.check(), Some(Code::Cancelled));
+        assert_eq!(scope.error().code, Code::Cancelled);
     }
 
     #[test]

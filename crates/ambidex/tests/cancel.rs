@@ -11,7 +11,7 @@ use ambidex::security_types::{
 };
 use ambidex::transport::{MemoryRx, MemoryTx, TransportRx, TransportTx, memory};
 use ambidex::{
-    Authenticate, CallScope, CancellationToken, Closed, Code, Connection, Ctx, ErrorPayload,
+    Authenticate, Call, CallScope, CancellationToken, Closed, Code, Connection, Ctx, ErrorPayload,
     Goaway, Hello, Router, RpcError, Server, ServerConfig, Session, rpc,
 };
 use serde_json::{Value, json};
@@ -104,6 +104,13 @@ impl SlowApi {
             tokio::task::yield_now().await;
         }
         Ok(n)
+    }
+
+    /// Blocks the thread for `ms` milliseconds, then answers: finishes in a single poll.
+    #[rpc::query(perm = "slow.run", risk = Risk::Read)]
+    async fn blocking(&self, _ctx: Ctx, ms: u64) -> Result<u64, RpcError> {
+        std::thread::sleep(Duration::from_millis(ms));
+        Ok(ms)
     }
 }
 
@@ -313,6 +320,23 @@ async fn a_handler_that_ignores_the_token_is_dropped_after_the_grace_period() {
     h.client.expect_quiet().await;
 }
 
+/// A Cancel read in the same chunk as its Call fires before the call task first runs: the handler
+/// never starts.
+#[tokio::test(start_paused = true)]
+async fn a_cancel_before_the_call_runs_never_starts_the_handler() {
+    let mut h = Harness::start().await;
+    h.client
+        .send(&[
+            call_frame(1, "slow.cooperative", json!({})),
+            Frame::new(Kind::Cancel, 1, vec![]),
+        ])
+        .await;
+    let (call_id, err) = h.client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::Cancelled));
+    assert!(h.started.try_recv().is_err(), "handler started");
+    h.client.expect_quiet().await;
+}
+
 #[tokio::test(start_paused = true)]
 async fn cancel_for_an_unknown_call_is_ignored_and_call_zero_is_a_violation() {
     let mut h = Harness::start().await;
@@ -392,7 +416,7 @@ async fn a_stubborn_handler_past_its_deadline_is_dropped() {
     assert_eq!(h.state.dropped(), 1);
 }
 
-/// A handler that answers at once still misses a zero deadline: the Result is never sent.
+/// A handler that would answer at once still misses a zero deadline: the Result is never sent.
 #[tokio::test(start_paused = true)]
 async fn an_immediate_answer_past_a_zero_deadline_is_deadline_exceeded() {
     let mut h = Harness::start().await;
@@ -401,6 +425,32 @@ async fn an_immediate_answer_past_a_zero_deadline_is_deadline_exceeded() {
         .await;
     let (call_id, err) = h.client.recv_error().await;
     assert_eq!((call_id, err.code), (3, Code::DeadlineExceeded));
+    h.client.expect_quiet().await;
+}
+
+/// A zero deadline has passed before the call runs, so the handler never starts.
+#[tokio::test(start_paused = true)]
+async fn a_zero_deadline_never_starts_the_handler() {
+    let mut h = Harness::start().await;
+    h.client
+        .call(4, "slow.cooperative", json!({"timeout_ms": 0}))
+        .await;
+    let (call_id, err) = h.client.recv_error().await;
+    assert_eq!((call_id, err.code), (4, Code::DeadlineExceeded));
+    assert!(h.started.try_recv().is_err(), "handler started");
+    h.client.expect_quiet().await;
+}
+
+/// A handler that overruns its deadline within one poll (here, blocking the thread) finishes
+/// before the timer is looked at; its answer is still too late.
+#[tokio::test]
+async fn an_answer_after_the_deadline_within_one_poll_is_deadline_exceeded() {
+    let mut h = Harness::start().await;
+    h.client
+        .call(6, "slow.blocking", json!({"input": 30, "timeout_ms": 5}))
+        .await;
+    let (call_id, err) = h.client.recv_error().await;
+    assert_eq!((call_id, err.code), (6, Code::DeadlineExceeded));
     h.client.expect_quiet().await;
 }
 
@@ -576,4 +626,37 @@ async fn a_scope_outside_the_engine_applies_procedure_bounds() {
     assert_eq!(scope.reason(), None);
     scope.cancel();
     assert_eq!(scope.reason(), Some(Code::Cancelled));
+}
+
+/// Outside the engine the router refuses a call that is already out of time.
+#[tokio::test(start_paused = true)]
+async fn the_router_refuses_an_expired_call_outside_the_engine() {
+    let (started_tx, mut started) = mpsc::unbounded_channel();
+    let state = Arc::new(State {
+        started: started_tx,
+        saw_cancel: AtomicUsize::new(0),
+        dropped: AtomicUsize::new(0),
+        deadlines: Mutex::default(),
+    });
+    let router = Router::new(AllowRun);
+    router.mount(SlowApi(state)).unwrap();
+    let auth = Revocable {
+        revoke: CancellationToken::new(),
+    };
+    let session = auth.authenticate(&hello()).await.unwrap();
+    let mut call = Call::new("slow.cooperative", Value::Null);
+    call.timeout_ms = Some(0);
+    let err = router.call(Arc::new(session), call).await.unwrap_err();
+    assert_eq!(err.code, Code::DeadlineExceeded);
+    assert!(started.try_recv().is_err(), "handler started");
+}
+
+fn hello() -> Hello {
+    Hello {
+        protocol: 1,
+        api: "dbee".into(),
+        schema_hash: "h".into(),
+        client_version: "1".into(),
+        auth: None,
+    }
 }

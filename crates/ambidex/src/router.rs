@@ -398,7 +398,9 @@ impl Router {
     /// an `ApprovalRequired` error without details gets the id recorded by [`Ctx::authorize`].
     ///
     /// The call uses [`CallScope::current`] (set by the engine), or a fresh scope from the call's
-    /// `timeout_ms` when called outside the engine; the deadline is then the caller's to enforce.
+    /// `timeout_ms` when called outside the engine. Either way a call whose deadline has passed or
+    /// whose token fired is refused before authorization and again before the handler runs;
+    /// outside the engine, interrupting a running handler is the caller's job.
     pub fn call(
         &self,
         session: Arc<Session>,
@@ -416,6 +418,11 @@ impl Router {
             };
             let meta = procedure.meta;
             scope.apply_timeouts(meta.timeout_default, meta.timeout_max);
+            // Nothing runs for a call that is already over: not the authorizer (which may record
+            // an approval request), not the handler.
+            if scope.check().is_some() {
+                return Err(scope.error());
+            }
             let digest = input_digest(&call.input);
             guard
                 .enforce(&session.principal, &meta, None, meta.risk, digest)
@@ -427,6 +434,9 @@ impl Router {
                     "this call kind is not supported yet",
                 ));
             };
+            if scope.check().is_some() {
+                return Err(scope.error());
+            }
             let approval_id = Arc::new(Mutex::new(None));
             let ctx = Ctx {
                 session,
