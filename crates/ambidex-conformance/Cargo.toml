@@ -1,0 +1,46 @@
+[package]
+name = "ambidex-conformance"
+version = "0.0.0"
+description = "Ambidex conformance suite: one set of protocol cases run on every transport."
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["ws", "tauri"]
+# WebSocket harness: the real axum server over rustls TLS on an ephemeral loopback port.
+ws = [
+    "dep:ambidex-axum",
+    "dep:axum",
+    "dep:futures-util",
+    "dep:rcgen",
+    "dep:rustls",
+    "dep:tokio-rustls",
+    "dep:tokio-tungstenite",
+    "tokio/net",
+]
+# Tauri harness: the real plugin through Tauri's IPC and ACL layer on the mock runtime.
+tauri = ["dep:ambidex-tauri", "dep:tauri"]
+
+[dependencies]
+ambidex = { path = "../ambidex" }
+security-types = { path = "../security-types" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", default-features = false, features = ["macros", "rt", "sync", "time"] }
+
+ambidex-axum = { path = "../ambidex-axum", optional = true }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "ws"], optional = true }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink"], optional = true }
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"], optional = true }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"], optional = true }
+tokio-tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"], optional = true }
+
+ambidex-tauri = { path = "../ambidex-tauri", optional = true }
+tauri = { version = "2.12.5", default-features = false, features = ["test"], optional = true }
