@@ -91,7 +91,9 @@ struct Procedure {
     log_input: bool,
     redact: Vec<LitStr>,
     deprecated: bool,
-    input_ty: Option<Type>,
+    input_ty: Type,
+    /// The return type as written, `Result<O, E>`.
+    ret_ty: Type,
 }
 
 fn expand_router(args: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
@@ -292,7 +294,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
         ));
     }
 
-    let input_ty = check_signature(method, kind)?;
+    let (input_ty, ret_ty) = check_signature(method, kind)?;
     let method_name = name.map_or_else(|| method.sig.ident.unraw().to_string(), |lit| lit.value());
     Ok(Some(Procedure {
         kind,
@@ -307,6 +309,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
         redact,
         deprecated,
         input_ty,
+        ret_ty,
     }))
 }
 
@@ -327,8 +330,13 @@ fn procedure_kind(path: &Path) -> Option<Kind> {
     }
 }
 
-/// Checks the method shape and returns the input type for kinds with a handler.
-fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<Option<Type>> {
+/// Checks the method shape and returns its input type and its return type as written.
+///
+/// Queries and mutations are `(&self, ctx: Ctx, input: I) -> Result<O, E>`. Subscriptions and
+/// streams have no handler yet; they take `(&self, ctx: Ctx, input: I, ..)` and declare
+/// `-> Result<O, E>` with `O` the event (subscription) or final result (stream), so codegen can
+/// export their types.
+fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<(Type, Type)> {
     let sig = &method.sig;
     if sig.asyncness.is_none() {
         return Err(syn::Error::new(
@@ -354,23 +362,36 @@ fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<Option<Type>>
             ));
         }
     }
-    if !kind.has_handler() {
-        return Ok(None);
-    }
     let typed: Vec<_> = sig.inputs.iter().skip(1).collect();
-    let [FnArg::Typed(_ctx), FnArg::Typed(input)] = typed.as_slice() else {
-        return Err(syn::Error::new(
-            sig.inputs.span(),
-            "queries and mutations have the shape `async fn name(&self, ctx: Ctx, input: I)`",
-        ));
+    let input = match (kind.has_handler(), typed.as_slice()) {
+        (true, [FnArg::Typed(_ctx), FnArg::Typed(input)]) => input,
+        (false, [FnArg::Typed(_ctx), FnArg::Typed(input), ..]) => input,
+        (true, _) => {
+            return Err(syn::Error::new(
+                sig.inputs.span(),
+                "queries and mutations have the shape `async fn name(&self, ctx: Ctx, input: I)`",
+            ));
+        }
+        (false, _) => {
+            return Err(syn::Error::new(
+                sig.inputs.span(),
+                "subscriptions and streams have the shape \
+                 `async fn name(&self, ctx: Ctx, input: I, ..)`",
+            ));
+        }
     };
-    if matches!(sig.output, ReturnType::Default) {
+    let ReturnType::Type(_, ret) = &sig.output else {
         return Err(syn::Error::new(
             sig.ident.span(),
-            "queries and mutations return `Result<O, E>`",
+            if kind.has_handler() {
+                "queries and mutations return `Result<O, E>`"
+            } else {
+                "subscriptions and streams declare `-> Result<O, E>` (O: the event of a \
+                 subscription, the final result of a stream) so their types can be exported"
+            },
         ));
-    }
-    Ok(Some((*input.ty).clone()))
+    };
+    Ok(((*input.ty).clone(), (**ret).clone()))
 }
 
 fn enum_variant(path: &Path, variants: &[&str], ty: &str) -> syn::Result<Ident> {
@@ -498,27 +519,32 @@ fn meta_expr(p: &Procedure) -> TokenStream2 {
 
 fn entry_expr(p: &Procedure) -> TokenStream2 {
     let method = &p.method;
-    match &p.input_ty {
-        Some(input_ty) => {
-            quote! {
-                ::ambidex::Procedure::new(
-                    next(),
-                    ::ambidex::router::__private::handler(&api, |api, ctx, input| {
-                        ::std::boxed::Box::pin(async move {
-                            let input: #input_ty =
-                                ::ambidex::router::__private::decode_input(input)?;
-                            ::ambidex::router::__private::encode_output(
-                                api.#method(ctx, input).await,
-                            )
-                        })
-                    }),
-                )
-            }
+    let input_ty = &p.input_ty;
+    let ret_ty = &p.ret_ty;
+    let types = quote! {
+        ::ambidex::codegen::ProcedureTypes::of::<#input_ty, #ret_ty>()
+    };
+    if p.kind.has_handler() {
+        quote! {
+            ::ambidex::Procedure::new(
+                next(),
+                ::ambidex::router::__private::handler(&api, |api, ctx, input| {
+                    ::std::boxed::Box::pin(async move {
+                        let input: #input_ty =
+                            ::ambidex::router::__private::decode_input(input)?;
+                        ::ambidex::router::__private::encode_output(
+                            api.#method(ctx, input).await,
+                        )
+                    })
+                }),
+            )
+            .with_types(#types)
         }
-        None => quote! {{
+    } else {
+        quote! {{
             // Declared only until the engine supports this call kind; keep the method "used".
             let _ = Self::#method;
-            ::ambidex::Procedure::declared(next())
-        }},
+            ::ambidex::Procedure::declared(next()).with_types(#types)
+        }}
     }
 }

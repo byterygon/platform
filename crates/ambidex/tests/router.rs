@@ -16,30 +16,32 @@ use ambidex::{
     Procedure, ProcedureKind, ProcedureMeta, RegistryError, Rejected, Risk, Router, RpcError,
     Server, ServerConfig, Session, TargetRef, input_digest, rpc,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use ts_rs::TS;
 
 // ---- fixture API ----------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS, JsonSchema)]
 struct EchoInput {
     text: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS, JsonSchema)]
 struct EchoOutput {
     text: String,
     principal: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS, JsonSchema)]
 struct DropInput {
     connection: String,
     #[allow(dead_code)]
     password: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(tag = "kind")]
 enum QueryError {
     Syntax { position: u32 },
@@ -130,10 +132,14 @@ impl DemoApi {
     }
 
     #[rpc::stream(perm = "demo.stream", risk = Risk::Read, timeout_default = "2h")]
-    async fn rows(&self, _ctx: Ctx, _input: ()) {}
+    async fn rows(&self, _ctx: Ctx, _input: ()) -> Result<u64, RpcError> {
+        Err(RpcError::new(Code::Unimplemented, "declared only"))
+    }
 
     #[rpc::subscription(perm = "demo.watch", risk = Risk::Read)]
-    async fn watch(&self, _ctx: Ctx, _input: ()) {}
+    async fn watch(&self, _ctx: Ctx, _input: ()) -> Result<u64, RpcError> {
+        Err(RpcError::new(Code::Unimplemented, "declared only"))
+    }
 
     /// Not a procedure: plain methods stay plain.
     #[allow(dead_code)]

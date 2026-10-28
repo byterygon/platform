@@ -36,6 +36,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::cancel::CallScope;
+use crate::codegen::ProcedureTypes;
 use crate::engine::{BoxFuture, Dispatch, Session};
 use crate::error::{IntoErrorPayload, RpcError};
 use crate::message::{Call, Code, ErrorPayload};
@@ -50,6 +51,7 @@ pub type Handler =
 pub struct Procedure {
     meta: Arc<ProcedureMeta>,
     handler: Option<Handler>,
+    types: Option<ProcedureTypes>,
 }
 
 impl Procedure {
@@ -58,6 +60,7 @@ impl Procedure {
         Procedure {
             meta: Arc::new(meta),
             handler: Some(handler),
+            types: None,
         }
     }
 
@@ -67,11 +70,24 @@ impl Procedure {
         Procedure {
             meta: Arc::new(meta),
             handler: None,
+            types: None,
         }
+    }
+
+    /// Attaches the input, output and error types codegen exports (`#[rpc::router]` always does).
+    #[must_use]
+    pub fn with_types(mut self, types: ProcedureTypes) -> Procedure {
+        self.types = Some(types);
+        self
     }
 
     pub fn meta(&self) -> &Arc<ProcedureMeta> {
         &self.meta
+    }
+
+    /// `None` for procedures built without types, e.g. dynamic plugin procedures.
+    pub fn types(&self) -> Option<&ProcedureTypes> {
+        self.types.as_ref()
     }
 }
 
@@ -388,6 +404,13 @@ impl Router {
     pub fn procedures(&self) -> Vec<Arc<ProcedureMeta>> {
         let mut all: Vec<_> = self.read().values().map(|p| Arc::clone(&p.meta)).collect();
         all.sort_by(|a, b| a.name.cmp(&b.name));
+        all
+    }
+
+    /// Every registered procedure, sorted by name: what codegen exports.
+    pub fn entries(&self) -> Vec<Procedure> {
+        let mut all: Vec<_> = self.read().values().cloned().collect();
+        all.sort_by(|a, b| a.meta.name.cmp(&b.meta.name));
         all
     }
 
