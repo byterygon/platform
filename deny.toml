@@ -21,6 +21,9 @@ allow = [
 ]
 exceptions = [
     { crate = "dbee", allow = ["AGPL-3.0-only"] },
+    # Approved by Uy Son on 2026-10-28 (Plugin Host spec Open question 34).
+    # Arrow's wasm32 dependency path requires this crate; CC0-1.0 is not allowed globally.
+    { crate = "tiny-keccak", allow = ["CC0-1.0"] },
     # MPL-2.0 (file-level copyleft) crates that Tauri itself requires (tauri-utils, dirs), pulled
     # in by ambidex-tauri. Accepted per crate by Uy Son on 2026-10-27 (Ambidex spec Open
     # question 19a); MPL-2.0 is not allowed globally.
