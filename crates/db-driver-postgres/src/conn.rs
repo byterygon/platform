@@ -223,17 +223,19 @@ impl Shared {
                     }
                 }
             }
-            loop {
-                // PostgreSQL can ignore a cancel received between Describe and Execute (or
-                // before it begins processing Execute). Retry until this operation is terminal.
+            // PostgreSQL can ignore a cancel received between Describe and Execute (or before
+            // it begins processing Execute). Retry until this operation is terminal, for at most
+            // as long as settling would wait, and not after the broker refused a cancel.
+            let give_up = Instant::now() + SETTLE_LIMIT;
+            while Instant::now() < give_up {
                 if let Ok(Err(_)) =
                     tokio::time::timeout(RECANCEL_INTERVAL, requests.changed()).await
                 {
                     return;
                 }
-                if matches!(
+                if !matches!(
                     shared.cancel(&operation_id).await,
-                    Ok(CancelOutcome::NotRunning)
+                    Ok(CancelOutcome::Requested)
                 ) {
                     return;
                 }

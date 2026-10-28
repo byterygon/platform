@@ -48,7 +48,7 @@ query, cancel), which is about 1,000 lines and covered by the tests below.
   broker refusals are errors. A cancel is sent only while its operation is on the wire, and a
   new statement waits until earlier cancels were delivered, so a late cancel cannot stop the next
   statement. Cancellation is checked before each protocol phase and retried once per second
-  until the operation ends, including when the first request arrived while the backend was idle.
+  until the operation ends (for at most 30 s, and not after a broker refusal), including when the first request arrived while the backend was idle.
   Deadlines trigger cancellation independently of result-stream polling; results still use
   pull-based backpressure. Polling or dropping an expired stream drains the session (re-sending
   every second, giving the session up after 30 s), as does dropping an unfinished stream.
