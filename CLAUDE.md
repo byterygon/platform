@@ -52,6 +52,7 @@ cargo test --workspace --locked
 pnpm install --frozen-lockfile && pnpm typecheck
 node scripts/check-licenses.mjs
 cargo deny check licenses bans sources
+cargo run -p ambidex-conformance --bin rpc-gen -- --check   # drop --check to regenerate
 ```
 
 The PostgreSQL driver tests start a throwaway server from `initdb`/`postgres` and need a
@@ -62,6 +63,12 @@ and runs `cargo test -p ambidex-conformance --offline` again inside a network na
 loopback (spec §12: the suite must pass network-disconnected). Protocol behaviour that must hold
 on every transport goes in `crates/ambidex-conformance/src/cases.rs`, not in one transport's tests.
 The Rust toolchain is pinned in `rust-toolchain.toml`; pnpm is pinned via `packageManager`.
+
+Codegen (spec §2, TSK-7): `#[rpc::router]` attaches ts-rs and schemars types to every procedure;
+`ambidex::codegen` turns a `Router` into `api.ts` and `api.manifest.json` (with the schema hash the
+server puts in `ServerConfig`) and fails if ts-rs and schemars disagree. Procedure input/output
+types therefore derive `TS` and `JsonSchema`. The fixture API's generated files live in
+`packages/ambidex/test/conformance/` and are committed; CI fails when they are stale.
 
 ## Notion links
 

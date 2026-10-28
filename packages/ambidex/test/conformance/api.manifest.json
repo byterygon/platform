@@ -1,0 +1,304 @@
+{
+  "$defs": {
+    "Code": {
+      "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
+      "enum": [
+        "Cancelled",
+        "DeadlineExceeded",
+        "Unauthenticated",
+        "PermissionDenied",
+        "ApprovalRequired",
+        "InvalidArgument",
+        "NotFound",
+        "FailedPrecondition",
+        "ResourceExhausted",
+        "Unavailable",
+        "Unimplemented",
+        "VersionMismatch",
+        "Internal"
+      ],
+      "type": "string"
+    },
+    "FailInput": {
+      "description": "Input of [`FixtureApi::fail`].",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Code"
+        },
+        "retryable": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "type": "object"
+    },
+    "FixtureError": {
+      "description": "The typed domain error of [`FixtureApi::fail`].",
+      "oneOf": [
+        {
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/Code"
+            },
+            "kind": {
+              "const": "Requested",
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "code",
+            "retryable"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "api": {
+    "name": "conformance",
+    "version": "0.0.0"
+  },
+  "format": "ambidex.manifest.v1",
+  "procedures": [
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "mutation",
+      "log_input": false,
+      "name": "fixture.approval",
+      "output": {
+        "type": "null"
+      },
+      "perm": "fixture.approve",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "format": "uint",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.big",
+      "output": {
+        "type": "string"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.capped",
+      "output": {
+        "type": "string"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 50,
+      "timeout_max_ms": 50
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "subscription",
+      "log_input": false,
+      "name": "fixture.counter",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.echo",
+      "output": true,
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "mutation",
+      "log_input": false,
+      "name": "fixture.escalate",
+      "output": {
+        "type": "null"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/FixtureError"
+      },
+      "input": {
+        "$ref": "#/$defs/FailInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.fail",
+      "output": {
+        "type": "null"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": true,
+      "input": true,
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.leak",
+      "output": {
+        "type": "null"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/FailInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "fixture.protected",
+      "output": {
+        "type": "null"
+      },
+      "perm": "fixture.admin",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "stream",
+      "log_input": false,
+      "name": "fixture.rows",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.stubborn",
+      "output": {
+        "type": "string"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.wait",
+      "output": {
+        "type": "string"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.whoami",
+      "output": true,
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    }
+  ],
+  "protocol": 1,
+  "schema_hash": "sha256:b07aaae60f31ad60d514a9e7a0a995b5ea5ec821eb975f5547361dad3d28a01c"
+}

@@ -72,7 +72,7 @@ pub async fn version_mismatch_is_rejected<H: Harness>(h: &H) {
     let mut client = h.connect().await;
     let mut hello = client.hello_frame();
     let mut value: Value = serde_json::from_slice(&hello.payload).unwrap();
-    value["schema_hash"] = json!(format!("{SCHEMA_HASH}-stale"));
+    value["schema_hash"] = json!(format!("{}-stale", *SCHEMA_HASH));
     hello.payload = serde_json::to_vec(&value).unwrap();
     client.send(&[hello]).await;
     client.expect_fatal(Code::VersionMismatch).await;

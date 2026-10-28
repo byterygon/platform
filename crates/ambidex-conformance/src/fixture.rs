@@ -9,24 +9,48 @@
 //! engine support (subscriptions are a later M1 task, streams and credits are M2). They are
 //! declared, so the router authorizes them and answers `Unimplemented`; see the crate docs.
 
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
+use ambidex::codegen::{self, ApiInfo};
 use ambidex::security_types::{
     Action, ApprovalSpec, Authorizer, AuthzRequest, Decision, Principal, Reason, Risk, TargetRef,
 };
 use ambidex::{
     Approvals, Code, Ctx, DomainError, Router, RpcError, ServerConfig, engine::BoxFuture, rpc,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{Mutex, mpsc};
+use ts_rs::TS;
 
-/// API name, schema hash and server version every harness configures.
+/// API name and server version every harness configures.
 pub const API: &str = "conformance";
-pub const SCHEMA_HASH: &str = "conformance-schema-1";
 pub const SERVER_VERSION: &str = "0.0.0-conformance";
+
+/// The schema hash of the fixture API, computed from its router as `rpc-gen` computes it, so the
+/// generated TypeScript client's Hello matches the servers every harness starts.
+pub static SCHEMA_HASH: LazyLock<String> = LazyLock::new(|| {
+    codegen::schema_hash(&Fixture::new().router(), &api_info()).expect("fixture API exports")
+});
+
+/// Identity written into the generated `api.ts` and `api.manifest.json`.
+pub fn api_info() -> ApiInfo {
+    ApiInfo::new(API, env!("CARGO_PKG_VERSION"))
+}
+
+/// Where the fixture API's generated `api.ts` and `api.manifest.json` are committed: next to the
+/// TypeScript client's conformance scenarios.
+pub fn generated_dir() -> PathBuf {
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("crates/<name> is two levels below the workspace root");
+    workspace.join("packages/ambidex/test/conformance")
+}
 
 /// Largest payload a client may send once the session exists. Small, so the limit cases stay
 /// cheap on every transport.
@@ -46,7 +70,7 @@ pub const APPROVAL_ID: &str = "approval-1";
 
 /// The engine configuration every harness uses.
 pub fn server_config() -> ServerConfig {
-    let mut config = ServerConfig::new(API, SCHEMA_HASH, SERVER_VERSION);
+    let mut config = ServerConfig::new(API, SCHEMA_HASH.as_str(), SERVER_VERSION);
     config.max_frame_bytes = MAX_FRAME_BYTES;
     config.max_hello_bytes = 1024;
     config.max_concurrent_calls = MAX_CONCURRENT_CALLS;
@@ -148,7 +172,7 @@ impl Fixture {
 }
 
 /// The typed domain error of [`FixtureApi::fail`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(tag = "kind")]
 pub enum FixtureError {
     Requested { code: Code, retryable: bool },
@@ -173,7 +197,7 @@ impl DomainError for FixtureError {
 }
 
 /// Input of [`FixtureApi::fail`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
 pub struct FailInput {
     pub code: Code,
     #[serde(default)]
@@ -307,11 +331,15 @@ impl FixtureApi {
 
     /// Counter subscription (spec §12). Declared only: subscriptions have no engine support yet.
     #[rpc::subscription(perm = "fixture.call", risk = Risk::Read)]
-    async fn counter(&self, _ctx: Ctx, _input: Value) {}
+    async fn counter(&self, _ctx: Ctx, _input: Value) -> Result<u64, RpcError> {
+        Err(RpcError::new(Code::Unimplemented, "declared only"))
+    }
 
     /// Synthetic Arrow row stream (spec §12). Declared only: streams and credits are M2.
     #[rpc::stream(perm = "fixture.call", risk = Risk::Read)]
-    async fn rows(&self, _ctx: Ctx, _input: Value) {}
+    async fn rows(&self, _ctx: Ctx, _input: Value) -> Result<u64, RpcError> {
+        Err(RpcError::new(Code::Unimplemented, "declared only"))
+    }
 }
 
 /// Default-deny policy: `fixture.call` is allowed up to `Write` and needs approval above it,
