@@ -13,7 +13,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 use ambidex::engine::BoxFuture;
-use ambidex::{Call, Connection, Dispatch, ErrorPayload, Server, ServerConfig, Session};
+use ambidex::{
+    Call, CancellationToken, Connection, Dispatch, ErrorPayload, Server, ServerConfig, Session,
+};
 use serde_json::Value;
 
 use crate::pipe::{FrameSink, Inbound, IpcRx, IpcTx, pipe};
@@ -79,7 +81,8 @@ impl fmt::Display for IpcError {
 
 impl std::error::Error for IpcError {}
 
-type ServeFn = dyn Fn(Arc<DesktopSession>, IpcRx, IpcTx) -> Connection + Send + Sync;
+type ServeFn =
+    dyn Fn(Arc<DesktopSession>, CancellationToken, IpcRx, IpcTx) -> Connection + Send + Sync;
 
 /// Open connections and sessions of all webviews.
 pub struct Hub {
@@ -94,8 +97,18 @@ struct WebviewState {
     window_label: String,
     session: Arc<DesktopSession>,
     started: Instant,
+    /// Fires when the session ends; the engine then cancels the session's calls, sends Goaway
+    /// `Unauthenticated` and closes ([`Authenticate::revocation`](ambidex::Authenticate)).
+    revoked: CancellationToken,
     /// Removing a connection, or the whole state, drops its [`Inbound`] and so revokes its pipe.
     connections: HashMap<String, Inbound>,
+}
+
+/// Every way a session ends removes its state from the map, so ending it is dropping it.
+impl Drop for WebviewState {
+    fn drop(&mut self) {
+        self.revoked.cancel();
+    }
 }
 
 impl Hub {
@@ -113,8 +126,8 @@ impl Hub {
             config,
             identity,
             policy: Arc::new(DefaultSessionPolicy),
-            serve: Box::new(move |session, rx, tx| {
-                let auth = DesktopAuth::new(session);
+            serve: Box::new(move |session, revoked, rx, tx| {
+                let auth = DesktopAuth::new(session, revoked);
                 Server::new(server_config.clone(), auth, Shared(Arc::clone(&dispatch)))
                     .serve(rx, tx)
             }),
@@ -155,7 +168,7 @@ impl Hub {
             .map(|n| format!("{n:016x}"))
             .map_err(|_| IpcError::Internal)?;
         let (inbound, rx, tx) = pipe(sink, self.config.inbound_queue_chunks);
-        let session = {
+        let (session, revoked) = {
             let mut webviews = self.lock();
             if webviews
                 .get(webview_label)
@@ -177,6 +190,7 @@ impl Hub {
                             window_label: window_label.to_owned(),
                             session: Arc::new(session),
                             started: Instant::now(),
+                            revoked: CancellationToken::new(),
                             connections: HashMap::new(),
                         })
                 }
@@ -185,10 +199,10 @@ impl Hub {
                 return Err(IpcError::TooManyConnections);
             }
             state.connections.insert(id.clone(), inbound);
-            Arc::clone(&state.session)
+            (Arc::clone(&state.session), state.revoked.clone())
         };
 
-        let connection = (self.serve)(session, rx, tx);
+        let connection = (self.serve)(session, revoked, rx, tx);
         let hub = Arc::downgrade(self);
         let (label, conn_id) = (webview_label.to_owned(), id.clone());
         tokio::spawn(async move {
@@ -232,7 +246,7 @@ impl Hub {
     }
 
     /// Closes connection `id` of webview `webview_label`: its pipe is revoked, so the engine
-    /// closes and drops the connection's in-flight calls.
+    /// closes and cancels the connection's in-flight calls.
     pub fn close(&self, webview_label: &str, id: &str) -> Result<(), IpcError> {
         self.lock()
             .get_mut(webview_label)
@@ -254,7 +268,8 @@ impl Hub {
     }
 
     /// Ends the webview's session and closes all its connections, e.g. on logout or app lock.
-    /// Chunks not yet read and `send`s still waiting are discarded; in-flight calls are dropped.
+    /// The session is revoked: its connections cancel their in-flight calls, send Goaway
+    /// `Unauthenticated` and close. Chunks not yet read and `send`s still waiting are discarded.
     pub fn end_session(&self, webview_label: &str) {
         self.lock().remove(webview_label);
     }

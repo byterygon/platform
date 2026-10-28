@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use ambidex::engine::BoxFuture;
 use ambidex::frame::{Frame, Kind};
-use ambidex::{Call, Dispatch, ErrorPayload, Session};
+use ambidex::{Call, CallScope, Code, Dispatch, ErrorPayload, Goaway, Session};
 use ambidex_tauri::{FrameSink, Hub, HubConfig, IpcError, SessionPolicy};
 use common::{Frames, WhoAmI, call, hello, identity, payload, server_config};
 use tokio::sync::mpsc;
@@ -371,16 +371,24 @@ async fn ending_the_session_discards_queued_and_waiting_chunks() {
 
     hub.end_all_sessions();
     assert_eq!(waiting.await, Err(IpcError::UnknownConnection));
-    let frames = frames_until_closed(&mut peer).await;
-    assert!(
-        frames.iter().all(|f| f.kind != Kind::Result),
-        "a call sent before the lock ran after it: {frames:?}"
-    );
+    // The engine sees the revocation before reading: neither call runs, the webview is told why.
+    assert_only_revoked_goaway(frames_until_closed(&mut peer).await);
 }
 
-/// `hang` never finishes; it reports when it starts and when its future is dropped.
+fn assert_only_revoked_goaway(frames: Vec<Frame>) {
+    let [frame] = frames.as_slice() else {
+        panic!("expected only Goaway, got {frames:?}");
+    };
+    assert_eq!((frame.kind, frame.call_id), (Kind::Goaway, 0));
+    let goaway: Goaway = serde_json::from_slice(&frame.payload).unwrap();
+    assert_eq!(goaway.code, Code::Unauthenticated);
+}
+
+/// `hang` reports that it started, waits for its cancellation token, reports that it fired, then
+/// never finishes; its future reports when it is dropped.
 struct Hang {
     started: mpsc::UnboundedSender<()>,
+    cancelled: mpsc::UnboundedSender<()>,
     dropped: mpsc::UnboundedSender<()>,
 }
 
@@ -398,24 +406,35 @@ impl Dispatch for Hang {
         _session: Arc<Session>,
         _call: Call,
     ) -> BoxFuture<'static, Result<serde_json::Value, ErrorPayload>> {
-        let _ = self.started.send(());
+        let (started, cancelled) = (self.started.clone(), self.cancelled.clone());
         let guard = OnDrop(self.dropped.clone());
         Box::pin(async move {
             let _guard = guard;
+            let scope = CallScope::current().expect("calls run in a scope");
+            let _ = started.send(());
+            scope.token().cancelled().await;
+            let _ = cancelled.send(());
             std::future::pending().await
         })
     }
 }
 
 #[tokio::test]
-async fn ending_the_session_drops_its_pending_calls() {
+async fn ending_the_session_cancels_its_pending_calls() {
     let (started, mut started_rx) = mpsc::unbounded_channel();
+    let (cancelled, mut cancelled_rx) = mpsc::unbounded_channel();
     let (dropped, mut dropped_rx) = mpsc::unbounded_channel();
+    let mut config = server_config();
+    config.cancel_grace = Duration::from_millis(50);
     let hub = Arc::new(Hub::new(
         HubConfig::default(),
         identity(),
-        server_config(),
-        Hang { started, dropped },
+        config,
+        Hang {
+            started,
+            cancelled,
+            dropped,
+        },
     ));
     let mut peer = connect(&hub, "main").unwrap();
     handshake(&hub, "main", &mut peer).await;
@@ -423,10 +442,11 @@ async fn ending_the_session_drops_its_pending_calls() {
     started_rx.recv().await.unwrap();
 
     hub.end_all_sessions();
+    tokio::time::timeout(Duration::from_secs(5), cancelled_rx.recv())
+        .await
+        .expect("the call's token did not fire when the session ended");
     tokio::time::timeout(Duration::from_secs(5), dropped_rx.recv())
         .await
-        .expect("pending call still running after the session ended")
-        .unwrap();
-    let frames = frames_until_closed(&mut peer).await;
-    assert!(frames.iter().all(|f| f.kind != Kind::Result));
+        .expect("the call still runs after the grace period");
+    assert_only_revoked_goaway(frames_until_closed(&mut peer).await);
 }

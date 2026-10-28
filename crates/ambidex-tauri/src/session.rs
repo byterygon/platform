@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ambidex::engine::BoxFuture;
-use ambidex::{Authenticate, Hello, Session};
+use ambidex::{Authenticate, CancellationToken, Hello, Session};
 use security_types::{Principal, PrincipalKind, RoleId, SessionId, TenantId};
 
 /// Longest OS user name accepted.
@@ -163,11 +163,16 @@ impl SessionPolicy for DefaultSessionPolicy {}
 ///
 /// The webview is trusted only as far as the Tauri capability lets it reach the plugin; the
 /// session it gets is decided by the label it was bound to when the connection opened.
-pub struct DesktopAuth(Arc<DesktopSession>);
+pub struct DesktopAuth {
+    session: Arc<DesktopSession>,
+    revoked: CancellationToken,
+}
 
 impl DesktopAuth {
-    pub fn new(session: Arc<DesktopSession>) -> DesktopAuth {
-        DesktopAuth(session)
+    /// `revoked` fires when the session ends; the engine then cancels the connection's calls,
+    /// sends Goaway `Unauthenticated` and closes.
+    pub fn new(session: Arc<DesktopSession>, revoked: CancellationToken) -> DesktopAuth {
+        DesktopAuth { session, revoked }
     }
 }
 
@@ -175,10 +180,14 @@ impl Authenticate for DesktopAuth {
     fn authenticate<'a>(&'a self, _hello: &'a Hello) -> BoxFuture<'a, Option<Session>> {
         Box::pin(async move {
             Some(Session {
-                id: self.0.id.as_str().to_owned(),
-                principal: self.0.principal.clone(),
+                id: self.session.id.as_str().to_owned(),
+                principal: self.session.principal.clone(),
             })
         })
+    }
+
+    fn revocation(&self, _session: &Session) -> Option<CancellationToken> {
+        Some(self.revoked.clone())
     }
 }
 
@@ -219,7 +228,8 @@ mod tests {
     #[tokio::test]
     async fn authenticate_ignores_client_auth() {
         let session = Arc::new(DesktopSession::new(&identity("alice").unwrap(), "main").unwrap());
-        let auth = DesktopAuth::new(Arc::clone(&session));
+        let revoked = CancellationToken::new();
+        let auth = DesktopAuth::new(Arc::clone(&session), revoked.clone());
         let hello = Hello {
             protocol: 1,
             api: "dbee".into(),
@@ -230,5 +240,12 @@ mod tests {
         let got = auth.authenticate(&hello).await.unwrap();
         assert_eq!(got.id, session.id.as_str());
         assert_eq!(got.principal, session.principal);
+
+        let token = auth
+            .revocation(&got)
+            .expect("desktop sessions can be revoked");
+        assert!(!token.is_cancelled());
+        revoked.cancel();
+        assert!(token.is_cancelled());
     }
 }
