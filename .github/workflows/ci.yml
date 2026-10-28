@@ -24,12 +24,15 @@ jobs:
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      # ambidex-tauri links Tauri, which needs WebKitGTK (and GTK 3) on Linux.
-      - name: Install Tauri system libraries
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev
+      # ambidex-tauri links Tauri, which needs WebKitGTK (and GTK 3) on Linux. The PostgreSQL
+      # driver tests start a throwaway server from the postgresql binaries.
+      - name: Install system libraries and PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev postgresql
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+        env:
+          BYTERYGON_REQUIRE_POSTGRES: "1"
       # Ambidex spec §12: the conformance suite must pass on a network-disconnected runner. It
       # runs again in a fresh network namespace with only loopback, as the runner user, offline.
       - name: Conformance suite (network disconnected)

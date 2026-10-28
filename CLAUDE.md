@@ -30,7 +30,8 @@ summarises what a session needs when Notion is unavailable.
 | `crates/ambidex-tauri` | Ambidex Tauri IPC transport and desktop session (Tauri plugin) | MIT OR Apache-2.0 |
 | `crates/ambidex-conformance` | Ambidex conformance suite: each case written once, run on in-process, WebSocket and Tauri (mock runtime) harnesses | MIT OR Apache-2.0 |
 | `crates/plugin-host` | Plugin Host | MIT OR Apache-2.0 |
-| `crates/db-driver` | db-driver contract (Rust trait + WIT) | MIT OR Apache-2.0 |
+| `crates/db-driver` | db-driver contract (Rust trait + WIT); `conformance` feature for driver tests | MIT OR Apache-2.0 |
+| `crates/db-driver-postgres` | First-party native PostgreSQL driver (sans-IO `postgres-protocol`, all I/O via the broker) | MIT OR Apache-2.0 |
 | `packages/ambidex` | `@byterygon/ambidex` TypeScript client | MIT OR Apache-2.0 |
 | `apps/dbee` | DBee product (placeholder) | AGPL-3.0-only |
 
@@ -52,6 +53,9 @@ pnpm install --frozen-lockfile && pnpm typecheck
 node scripts/check-licenses.mjs
 cargo deny check licenses bans sources
 ```
+
+The PostgreSQL driver tests start a throwaway server from `initdb`/`postgres` and need a
+non-root user; without them they skip, unless `BYTERYGON_REQUIRE_POSTGRES=1` (set in CI).
 
 CI (`.github/workflows/ci.yml`) runs all of the above plus a gitleaks scan of the full history,
 and runs `cargo test -p ambidex-conformance --offline` again inside a network namespace with only

@@ -11,6 +11,11 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Shared stream lifecycle checks for driver tests (`db_driver::conformance`).
+conformance = []
+
 [dev-dependencies]
 wit-parser = "0.239"
 futures-executor = "0.3"
+db-driver = { path = ".", features = ["conformance"] }

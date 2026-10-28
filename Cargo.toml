@@ -9,6 +9,7 @@ members = [
     "crates/ambidex-conformance",
     "crates/plugin-host",
     "crates/db-driver",
+    "crates/db-driver-postgres",
     "apps/dbee",
 ]
 

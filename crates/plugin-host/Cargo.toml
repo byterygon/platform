@@ -12,6 +12,7 @@ publish = false
 workspace = true
 
 [dependencies]
+db-driver = { path = "../db-driver" }
 getrandom = "0.4.3"
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 security-types = { path = "../security-types" }

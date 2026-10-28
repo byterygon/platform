@@ -8,6 +8,8 @@
 //!   It resolves names itself, checks addresses at connect time, verifies TLS (including
 //!   in-protocol `start_tls`), audits every open and closes handles when a grant is revoked.
 //! - [`net`]: address policy and host-side resolution.
+//! - [`contract`]: the broker behind the db-driver contract's `ConnectionBroker`, for native
+//!   drivers.
 //! - [`audit`]: audit sink and clock.
 //!
 //! Identity, authorization and the audit record come from `security-types`; Plugin Host does not
@@ -50,6 +52,7 @@
 
 pub mod audit;
 pub mod broker;
+pub mod contract;
 pub mod grant;
 pub mod manifest;
 pub mod net;
@@ -58,6 +61,7 @@ pub use audit::{AuditError, AuditSink, Clock, MemoryAuditLog, SystemClock};
 pub use broker::{
     BrokerConfig, BrokerError, BrokerLimits, BrokerScope, Caller, NativeBroker, Purpose, Transport,
 };
+pub use contract::ContractBroker;
 pub use grant::{
     ConnectionGrant, DriverKind, Eligibility, GrantError, GrantId, GrantRequest, GrantStore, Host,
     InstalledPlugin, PluginBinding, SecretBinding, ServerTrust, TlsMode, TlsPolicy, TlsSettings,

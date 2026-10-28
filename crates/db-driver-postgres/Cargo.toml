@@ -1,0 +1,33 @@
+[package]
+name = "db-driver-postgres"
+version = "0.1.0"
+description = "First-party native PostgreSQL driver behind the db-driver contract."
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# No socket, TLS or DNS dependency: every byte goes through the host broker (db_driver::Transport).
+[dependencies]
+arrow-array = { version = "60.1.0", default-features = false }
+arrow-ipc = { version = "60.1.0", default-features = false }
+arrow-schema = { version = "60.1.0", default-features = false }
+bytes = "1.11"
+db-driver = { path = "../db-driver" }
+fallible-iterator = "0.2"
+postgres-protocol = { version = "0.6.12", default-features = false }
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "sync", "time"] }
+zeroize = "1.8"
+
+[dev-dependencies]
+db-driver = { path = "../db-driver", features = ["conformance"] }
+plugin-host = { path = "../plugin-host" }
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+security-types = { path = "../security-types" }
+sha2 = "0.11"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }
