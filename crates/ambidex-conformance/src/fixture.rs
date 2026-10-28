@@ -201,6 +201,7 @@ impl DomainError for FixtureError {
 pub struct FailInput {
     pub code: Code,
     #[serde(default)]
+    #[ts(optional = nullable)]
     pub retryable: bool,
 }
 

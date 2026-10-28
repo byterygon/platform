@@ -1,5 +1,17 @@
 {
   "$defs": {
+    "ApprovalRequiredDetails": {
+      "description": "`details` of an `ApprovalRequired` error raised by the authorizer: the id of the recorded\napproval request.",
+      "properties": {
+        "approval_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id"
+      ],
+      "type": "object"
+    },
     "Code": {
       "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
       "enum": [
@@ -64,6 +76,9 @@
   "api": {
     "name": "conformance",
     "version": "0.0.0"
+  },
+  "approval_required_details": {
+    "$ref": "#/$defs/ApprovalRequiredDetails"
   },
   "format": "ambidex.manifest.v1",
   "procedures": [
@@ -300,5 +315,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:b07aaae60f31ad60d514a9e7a0a995b5ea5ec821eb975f5547361dad3d28a01c"
+  "schema_hash": "sha256:1b4ecdcfb4ddb225ec481744cf72a2ab1530cba5953fae249647b81f563c2695"
 }

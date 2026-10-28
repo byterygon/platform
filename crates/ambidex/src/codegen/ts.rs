@@ -29,6 +29,8 @@ pub enum Ty {
     /// An object with arbitrary string keys and values of one type.
     Map(Box<Ty>),
     Object(BTreeMap<String, Field>),
+    /// An object with these properties and any others of one type (a `#[serde(flatten)]` map).
+    Open(BTreeMap<String, Field>, Box<Ty>),
     /// Flattened, sorted, without duplicates, at least two members.
     Union(Vec<Ty>),
     /// Kept only while a part is still a reference; see [`agree`](super::agree).
@@ -94,21 +96,29 @@ impl Ty {
             Ty::Tuple(items) => Ty::Tuple(items.iter().map(sub).collect()),
             Ty::Union(items) => Ty::union(items.iter().map(sub)),
             Ty::Intersection(items) => Ty::Intersection(items.iter().map(sub).collect()),
-            Ty::Object(fields) => Ty::Object(
-                fields
-                    .iter()
-                    .map(|(k, f)| {
-                        let field = Field {
-                            ty: sub(&f.ty),
-                            ..f.clone()
-                        };
-                        (k.clone(), field)
-                    })
-                    .collect(),
-            ),
+            Ty::Object(fields) => Ty::Object(substitute_fields(fields, params)),
+            Ty::Open(fields, rest) => {
+                Ty::Open(substitute_fields(fields, params), Box::new(sub(rest)))
+            }
             other => other.clone(),
         }
     }
+}
+
+fn substitute_fields(
+    fields: &BTreeMap<String, Field>,
+    params: &BTreeMap<String, Ty>,
+) -> BTreeMap<String, Field> {
+    fields
+        .iter()
+        .map(|(k, f)| {
+            let field = Field {
+                ty: f.ty.substitute(params),
+                ..f.clone()
+            };
+            (k.clone(), field)
+        })
+        .collect()
 }
 
 impl fmt::Display for Ty {
@@ -137,11 +147,14 @@ impl fmt::Display for Ty {
                 join(f, items, ", ")?;
                 f.write_str("]")
             }
-            Ty::Object(fields) => {
+            Ty::Object(fields) | Ty::Open(fields, _) => {
                 f.write_str("{ ")?;
                 for (key, field) in fields {
                     let opt = if field.optional { "?" } else { "" };
                     write!(f, "{key}{opt}: {}, ", field.ty)?;
+                }
+                if let Ty::Open(_, rest) = self {
+                    write!(f, "[key: string]: {rest}, ")?;
                 }
                 f.write_str("}")
             }
@@ -427,9 +440,7 @@ impl Parser {
         }
         match map {
             Some(value) if fields.is_empty() => Ok(Ty::Map(Box::new(value))),
-            Some(_) => Err(ParseError(
-                "objects mixing properties and an index signature are not supported".into(),
-            )),
+            Some(value) => Ok(Ty::Open(fields, Box::new(value))),
             None => Ok(Ty::Object(fields)),
         }
     }

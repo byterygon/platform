@@ -205,6 +205,8 @@ pub enum CodegenError {
         first: String,
         second: String,
     },
+    /// A Rust type exports a TypeScript name that `api.ts` defines itself (`RpcError`, `Api`, ...).
+    ReservedName { name: String, rust: String },
     /// A procedure name is also a namespace (`a.b` and `a.b.c`), so the client tree cannot hold
     /// both.
     NamespaceConflict(String),
@@ -228,6 +230,11 @@ impl fmt::Display for CodegenError {
                 f,
                 "TypeScript name {name} is exported by two different types ({first} and \
                  {second}); rename one with #[ts(rename)] and #[schemars(rename)]"
+            ),
+            CodegenError::ReservedName { name, rust } => write!(
+                f,
+                "TypeScript name {name} of {rust} is reserved by the generated api.ts; rename \
+                 the type with #[ts(rename)] and #[schemars(rename)]"
             ),
             CodegenError::NamespaceConflict(name) => write!(
                 f,
@@ -304,7 +311,10 @@ impl TypeVisitor for Collector {
 }
 
 /// ts-rs settings for every export. 64-bit integers are `number`: serde_json writes them as JSON
-/// numbers, and that is what `JSON.parse` returns (exact up to 2^53).
+/// numbers, and that is what `JSON.parse` returns. A value above 2^53 loses precision in a
+/// JavaScript client; a contract that needs the full range sends such values as strings (e.g.
+/// `#[serde(with = ...)]` plus `#[ts(type = "string")]` and `#[schemars(with = "String")]`). The
+/// manifest keeps the exact range (`format: "uint64"`), and `api.ts` states the limit in its header.
 pub(crate) fn ts_config() -> Config {
     Config::new().with_large_int("number")
 }
@@ -337,8 +347,10 @@ fn resolve(router: &Router, api: &ApiInfo) -> Result<Model, CodegenError> {
     let mut collector = Collector::new();
     // The protocol's own types, referenced by the RpcError union in api.ts.
     collector.visit::<crate::Code>();
+    collector.visit::<crate::ApprovalRequired>();
     let mut generator = schema_generator();
     generator.subschema_for::<crate::Code>();
+    generator.subschema_for::<crate::ApprovalRequired>();
     let mut procedures = Vec::new();
     for entry in router.entries() {
         let meta = std::sync::Arc::clone(entry.meta());
@@ -366,6 +378,16 @@ fn resolve(router: &Router, api: &ApiInfo) -> Result<Model, CodegenError> {
     }
     if let Some(err) = collector.error {
         return Err(err);
+    }
+    if let Some((name, decl)) = collector
+        .decls
+        .iter()
+        .find(|(name, _)| render::RESERVED.contains(&name.as_str()))
+    {
+        return Err(CodegenError::ReservedName {
+            name: name.clone(),
+            rust: decl.rust.to_owned(),
+        });
     }
     check_namespaces(&procedures)?;
     let defs = generator.take_definitions(true).into_iter().collect();
@@ -409,9 +431,10 @@ pub fn generate(router: &Router, api: &ApiInfo) -> Result<Output, CodegenError> 
 }
 
 /// The schema hash of `router`'s contract, for [`ServerConfig::schema_hash`](crate::ServerConfig).
+/// Runs all of [`generate`], so a server never announces a hash for a contract rpc-gen would
+/// refuse; compute it once at startup.
 pub fn schema_hash(router: &Router, api: &ApiInfo) -> Result<String, CodegenError> {
-    let model = resolve(router, api)?;
-    Ok(manifest::hash(&model))
+    generate(router, api).map(|output| output.schema_hash)
 }
 
 /// Writes `api.ts` and `api.manifest.json` into `dir`, creating it if needed.

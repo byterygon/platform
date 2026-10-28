@@ -39,6 +39,7 @@ pub struct ExecuteInput {
     pub sql: String,
     pub batch_rows: Option<u32>,
     #[serde(default)]
+    #[ts(optional = nullable)]
     pub dry_run: bool,
     #[serde(rename = "params")]
     pub parameters: Vec<Param>,
@@ -143,6 +144,21 @@ pub struct Tree {
     pub attrs: Option<Box<BTreeMap<String, Value>>>,
 }
 
+/// Fixed-size arrays: tuples in TypeScript.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Fingerprint {
+    pub sha256: [u8; 32],
+    pub pair: [String; 2],
+}
+
+/// A flattened map: known properties plus any others of one type.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
+pub struct WithExtras {
+    pub id: String,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, u32>,
+}
+
 #[derive(Default)]
 pub struct ZooApi;
 
@@ -175,6 +191,11 @@ impl ZooApi {
     #[rpc::mutation(perm = "zoo.write", risk = Risk::Write, deprecated)]
     async fn flat(&self, _ctx: Ctx, _input: WithFlatten) -> Result<Tree, ErrorPayload> {
         Err(ErrorPayload::new(Code::NotFound, "no tree"))
+    }
+
+    #[rpc::query(perm = "zoo.read", risk = Risk::Read)]
+    async fn fingerprint(&self, _ctx: Ctx, _input: WithExtras) -> Result<Fingerprint, RpcError> {
+        Err(RpcError::new(Code::NotFound, "none"))
     }
 }
 
@@ -239,7 +260,10 @@ fn api_ts_exports_types_and_a_typed_procedure_table() {
         "connectionId: ConnectionId",
         "params: Array<Param>",
         "note?: string",
+        "dryRun?: boolean",
         "batchRows: number | null",
+        "export type ApprovalRequiredDetails = {",
+        "details?: ApprovalRequiredDetails | D;",
         "export type ColumnType = \"int\" | \"text\" | \"timestamp_tz\";",
         "export type Page<T> = {",
         "export type Code = ",
@@ -253,8 +277,9 @@ fn api_ts_exports_types_and_a_typed_procedure_table() {
     ] {
         assert!(ts.contains(expected), "api.ts lacks {expected:?}:\n{ts}");
     }
-    // 64-bit integers are numbers, as serde_json writes them.
+    // 64-bit integers are numbers, as serde_json writes them, and the header says where that ends.
     assert!(!ts.contains("bigint"), "{ts}");
+    assert!(ts.contains("exact only up to 2^53"), "{ts}");
     // Doc comments carry over.
     assert!(ts.contains("Input of `zoo.execute`."), "{ts}");
 }
@@ -302,10 +327,20 @@ fn manifest_reflects_the_registry() {
         "ExecuteSummary",
         "QueryError",
         "Code",
+        "ApprovalRequiredDetails",
         "Tree",
     ] {
         assert!(defs.contains_key(name), "missing $defs/{name}");
     }
+    // Any procedure's ApprovalRequired error may carry the router's approval id instead.
+    assert_eq!(
+        m["approval_required_details"],
+        json!({"$ref": "#/$defs/ApprovalRequiredDetails"})
+    );
+    assert_eq!(
+        defs["ApprovalRequiredDetails"]["required"],
+        json!(["approval_id"])
+    );
     assert_eq!(
         defs["ExecuteInput"]["properties"]["params"]["items"],
         json!({"$ref": "#/$defs/Param"})
@@ -366,6 +401,23 @@ item_api!(reordered, "items.read", {
     pub name: String,
     pub id: u32,
 });
+item_api!(titled, "items.read", {
+    /// # Identifier
+    ///
+    /// A doc heading becomes a schema `title`, which is not part of the contract either.
+    pub id: u32,
+    pub name: String,
+});
+// Fields named like JSON Schema keywords are schemas too: their docs are not hashed.
+item_api!(keywords, "items.read", { pub default: u32, pub r#enum: Vec<u8>, pub title: String });
+item_api!(keywords_documented, "items.read", {
+    /// Docs.
+    pub title: String,
+    /// # Heading
+    pub r#enum: Vec<u8>,
+    /// More docs.
+    pub default: u32,
+});
 item_api!(renamed_field, "items.read", { #[serde(rename = "ident")] pub id: u32, pub name: String });
 item_api!(optional_field, "items.read", { pub id: u32, pub name: Option<String> });
 item_api!(retyped_field, "items.read", { pub id: String, pub name: String });
@@ -375,6 +427,8 @@ item_api!(other_perm, "items.list", { pub id: u32, pub name: String });
 #[test]
 fn hash_ignores_declaration_order_and_docs() {
     assert_eq!(base::hash(), reordered::hash());
+    assert_eq!(base::hash(), titled::hash());
+    assert_eq!(keywords::hash(), keywords_documented::hash());
 }
 
 #[test]
@@ -511,6 +565,30 @@ fn two_types_with_one_typescript_name_are_refused() {
     );
 }
 
+mod clash {
+    use super::*;
+    /// Same name as the generated `Api` interface.
+    #[derive(Serialize, Deserialize, TS, JsonSchema)]
+    pub struct Api {
+        pub id: u32,
+    }
+}
+
+#[test]
+fn types_named_like_generated_declarations_are_refused() {
+    let router = Router::new(DenyAll);
+    router
+        .insert(
+            declared("a.get").with_types(ProcedureTypes::of::<clash::Api, Result<(), RpcError>>()),
+        )
+        .unwrap();
+    let err = codegen::generate(&router, &api()).unwrap_err();
+    assert!(
+        matches!(&err, CodegenError::ReservedName { name, .. } if name == "Api"),
+        "{err}"
+    );
+}
+
 // ---- ts-rs / schemars / serde agreement ------------------------------------------------------
 
 fn checker<T: Type>() -> Checker {
@@ -559,6 +637,8 @@ fn every_zoo_type_agrees() {
     agree::<Page<Column>>();
     agree::<WithFlatten>();
     agree::<Tree>();
+    agree::<Fingerprint>();
+    agree::<WithExtras>();
     agree::<Code>();
     agree::<Option<Vec<Shape>>>();
     agree::<BTreeMap<String, Page<u64>>>();
@@ -578,6 +658,13 @@ fn serde_output_fits_both_descriptions() {
         note: None,
     };
     fits(&input);
+    // serde fills in a `#[serde(default)]` field, so both descriptions let a client omit it.
+    let mut omitted = serde_json::to_value(&input).unwrap();
+    omitted.as_object_mut().unwrap().remove("dryRun");
+    serde_json::from_value::<ExecuteInput>(omitted.clone()).unwrap();
+    let c = checker::<ExecuteInput>();
+    assert_eq!(c.ts_accepts(&omitted), Ok(true));
+    assert_eq!(c.schema_accepts(&omitted), Ok(true));
     fits(&ExecuteInput {
         batch_rows: Some(10),
         note: Some("n".into()),
@@ -638,6 +725,14 @@ fn serde_output_fits_both_descriptions() {
         attrs: None,
     });
     fits(&Code::ApprovalRequired);
+    fits(&Fingerprint {
+        sha256: [7; 32],
+        pair: ["a".into(), "b".into()],
+    });
+    fits(&WithExtras {
+        id: "x".into(),
+        extra: BTreeMap::from([("rows".into(), 3), ("cols".into(), 4)]),
+    });
 }
 
 #[test]
@@ -664,6 +759,9 @@ fn json_serde_would_not_produce_fits_neither_description() {
         "distinct": [],
     }));
     misfits::<BTreeMap<String, String>>(json!({"a": 1}));
+    // A fixed-size array of the wrong length; a flattened map value of the wrong type.
+    misfits::<Fingerprint>(json!({"sha256": vec![0; 31], "pair": ["a", "b"]}));
+    misfits::<WithExtras>(json!({"id": "x", "rows": "three"}));
 }
 
 // Types where ts-rs is told something serde does not do: the checker must notice.
@@ -702,6 +800,13 @@ pub struct SkippedOption {
     pub id: Option<u32>,
 }
 
+/// `#[serde(default)]`: a client may omit the field, so TypeScript must not require it.
+#[derive(Serialize, Deserialize, TS, JsonSchema)]
+pub struct DefaultRequired {
+    #[serde(default)]
+    pub n: u32,
+}
+
 #[derive(Serialize, Deserialize, TS, JsonSchema)]
 pub enum WrongVariant {
     A,
@@ -717,6 +822,7 @@ fn disagreements_are_detected() {
         ("nullability", checker::<WrongNullable>().agree()),
         ("optionality", checker::<WrongOptional>().agree()),
         ("variant rename", checker::<WrongVariant>().agree()),
+        ("required default", checker::<DefaultRequired>().agree()),
     ] {
         result.expect_err(name);
     }
@@ -732,6 +838,8 @@ fn generation_fails_on_disagreement() {
         )
         .unwrap();
     let err = codegen::generate(&router, &api()).unwrap_err();
+    // A server cannot announce a hash for a contract rpc-gen refuses.
+    assert_eq!(codegen::schema_hash(&router, &api()).unwrap_err(), err);
     let CodegenError::Disagreement(m) = &err else {
         panic!("{err}");
     };

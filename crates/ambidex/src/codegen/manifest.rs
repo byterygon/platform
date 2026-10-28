@@ -11,6 +11,8 @@
 //!   `timeout_max_ms`, `log_input`, `redact`) and the JSON Schemas `input`, `output` (the event
 //!   of a subscription, the final result of a stream) and `error` (the `details` of its errors;
 //!   `false` when it has none);
+//! - `approval_required_details`: what else the `details` of any procedure's `ApprovalRequired`
+//!   error can be: the approval id the router sets when the authorizer asks for approval;
 //! - `$defs`: every named schema, referenced as `#/$defs/<name>`, so the manifest is itself a
 //!   valid JSON Schema document to resolve them against.
 //!
@@ -27,8 +29,9 @@
 //!  "$defs": {...}}
 //! ```
 //!
-//! with procedures sorted by name, every `description` annotation removed and every `required` list
-//! sorted (a set: its order is field declaration order). So the hash
+//! with procedures sorted by name and every schema normalized by [`normalize`]: the `description`
+//! and `title` annotations (doc comments) removed and every `required` list sorted (a set: its
+//! order is field declaration order). So the hash
 //!
 //! - changes with any procedure added, removed or renamed, any change of kind, permission, risk,
 //!   agent exposure or deprecation, and any change of what JSON an input, output or error accepts
@@ -87,13 +90,21 @@ pub(crate) fn hash(model: &Model) -> String {
         .map(|p| Value::Object(procedure_contract(p)))
         .collect();
     procedures.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-    let mut contract = json!({
+    for p in &mut procedures {
+        for key in ["input", "output", "error"] {
+            normalize(&mut p[key]);
+        }
+    }
+    let mut defs = defs(model);
+    if let Value::Object(defs) = &mut defs {
+        defs.values_mut().for_each(normalize);
+    }
+    let contract = json!({
         "api": model.api.name,
         "protocol": PROTOCOL_VERSION,
         "procedures": procedures,
-        "$defs": defs(model),
+        "$defs": defs,
     });
-    normalize(&mut contract);
     hash_contract(&contract)
 }
 
@@ -101,7 +112,7 @@ pub(crate) fn hash(model: &Model) -> String {
 pub fn hash_contract(contract: &Value) -> String {
     let mut bytes = HASH_DOMAIN.to_vec();
     bytes.push(0);
-    write_canonical(contract, &mut bytes);
+    crate::router::write_canonical(contract, &mut bytes);
     let digest = sha2::Sha256::digest(&bytes);
     let mut out = String::from("sha256:");
     for b in digest {
@@ -110,27 +121,55 @@ pub fn hash_contract(contract: &Value) -> String {
     out
 }
 
-/// Removes `description` annotations and sorts `required` lists, everywhere except inside literal
-/// values.
-pub fn normalize(value: &mut Value) {
-    match value {
-        Value::Object(obj) => {
-            if obj.get("description").is_some_and(Value::is_string) {
-                obj.remove("description");
-            }
-            if let Some(Value::Array(required)) = obj.get_mut("required")
-                && required.iter().all(Value::is_string)
-            {
-                required.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
-            }
-            for (key, child) in obj.iter_mut() {
-                if !matches!(key.as_str(), "const" | "default" | "enum" | "examples") {
-                    normalize(child);
+/// Normalizes the JSON Schema `schema`: removes the `description` and `title` annotations (doc
+/// comments) and sorts `required` lists, in it and in every subschema.
+///
+/// It walks the schema by keyword, so a property or definition that happens to be named like a
+/// keyword (`default`, `enum`, `title`, ...) is still treated as a schema, and literal values
+/// (`const`, `default`, `enum`, `examples`) and unknown keywords are left as they are.
+pub fn normalize(schema: &mut Value) {
+    let Value::Object(obj) = schema else {
+        return; // `true`, `false`
+    };
+    for annotation in ["description", "title"] {
+        if obj.get(annotation).is_some_and(Value::is_string) {
+            obj.remove(annotation);
+        }
+    }
+    for (key, child) in obj.iter_mut() {
+        match key.as_str() {
+            "required" => {
+                if let Value::Array(required) = child
+                    && required.iter().all(Value::is_string)
+                {
+                    required.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
                 }
             }
+            // A schema.
+            "items"
+            | "additionalProperties"
+            | "unevaluatedProperties"
+            | "unevaluatedItems"
+            | "propertyNames"
+            | "contains"
+            | "not"
+            | "if"
+            | "then"
+            | "else" => normalize(child),
+            // A list of schemas.
+            "allOf" | "anyOf" | "oneOf" | "prefixItems" => {
+                if let Value::Array(items) = child {
+                    items.iter_mut().for_each(normalize);
+                }
+            }
+            // Schemas by name: the names are data, not keywords.
+            "properties" | "patternProperties" | "dependentSchemas" | "$defs" | "definitions" => {
+                if let Value::Object(map) = child {
+                    map.values_mut().for_each(normalize);
+                }
+            }
+            _ => {}
         }
-        Value::Array(items) => items.iter_mut().for_each(normalize),
-        _ => {}
     }
 }
 
@@ -161,6 +200,7 @@ pub(crate) fn render(model: &Model) -> (String, String) {
         "protocol": PROTOCOL_VERSION,
         "api": { "name": model.api.name, "version": model.api.version },
         "schema_hash": schema_hash,
+        "approval_required_details": { "$ref": "#/$defs/ApprovalRequiredDetails" },
         "procedures": procedures,
         "$defs": defs(model),
     });
@@ -172,38 +212,6 @@ pub(crate) fn render(model: &Model) -> (String, String) {
 
 pub(crate) fn duration_ms(d: std::time::Duration) -> u64 {
     u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
-}
-
-/// Compact canonical JSON: keys sorted by byte order, independent of serde_json's
-/// `preserve_order` feature.
-fn write_canonical(value: &Value, out: &mut Vec<u8>) {
-    match value {
-        Value::Array(items) => {
-            out.push(b'[');
-            for (i, item) in items.iter().enumerate() {
-                if i > 0 {
-                    out.push(b',');
-                }
-                write_canonical(item, out);
-            }
-            out.push(b']');
-        }
-        Value::Object(map) => {
-            let mut entries: Vec<_> = map.iter().collect();
-            entries.sort_by(|a, b| a.0.cmp(b.0));
-            out.push(b'{');
-            for (i, (key, item)) in entries.into_iter().enumerate() {
-                if i > 0 {
-                    out.push(b',');
-                }
-                out.extend_from_slice(Value::String(key.clone()).to_string().as_bytes());
-                out.push(b':');
-                write_canonical(item, out);
-            }
-            out.push(b'}');
-        }
-        scalar => out.extend_from_slice(scalar.to_string().as_bytes()),
-    }
 }
 
 /// Pretty canonical JSON: keys sorted, two-space indentation.
@@ -246,9 +254,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hash_ignores_key_order_and_descriptions() {
-        let a = json!({"b": 1, "a": {"type": "string", "description": "x"}});
-        let mut b = json!({"a": {"description": "y", "type": "string"}, "b": 1});
+    fn hash_ignores_key_order_and_annotations() {
+        let a = json!({"type": "object", "title": "A", "properties": {
+            "x": {"type": "string", "description": "x"}}});
+        let mut b = json!({"properties": {"x": {"description": "y", "type": "string"}},
+            "type": "object", "title": "B"});
         let mut a2 = a.clone();
         normalize(&mut a2);
         normalize(&mut b);
@@ -257,17 +267,34 @@ mod tests {
     }
 
     #[test]
-    fn descriptions_inside_literals_and_properties_stay() {
+    fn properties_named_like_keywords_are_still_schemas() {
         let mut v = json!({
-            "properties": {"description": {"type": "string", "description": "doc"}},
-            "default": {"description": "kept"},
+            "type": "object",
+            "properties": {
+                "default": {"type": "object", "description": "doc", "title": "T",
+                            "required": ["b", "a"]},
+                "enum": {"type": "string", "description": "doc"},
+                "description": {"type": "string", "description": "doc"},
+            },
+            "required": ["enum", "default"],
+            "$defs": {"title": {"type": "object", "description": "doc", "required": ["z", "y"]}},
+            "default": {"description": "kept", "required": ["b", "a"]},
+            "enum": [{"title": "kept"}],
         });
         normalize(&mut v);
         assert_eq!(
             v,
             json!({
-                "properties": {"description": {"type": "string"}},
-                "default": {"description": "kept"},
+                "type": "object",
+                "properties": {
+                    "default": {"type": "object", "required": ["a", "b"]},
+                    "enum": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["default", "enum"],
+                "$defs": {"title": {"type": "object", "required": ["y", "z"]}},
+                "default": {"description": "kept", "required": ["b", "a"]},
+                "enum": [{"title": "kept"}],
             })
         );
     }

@@ -200,8 +200,13 @@ impl Guard {
     }
 }
 
-/// `details` of an `ApprovalRequired` error that has an approval id.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+/// `details` of an `ApprovalRequired` error raised by the authorizer: the id of the recorded
+/// approval request.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, ts_rs::TS, schemars::JsonSchema,
+)]
+#[ts(rename = "ApprovalRequiredDetails")]
+#[schemars(rename = "ApprovalRequiredDetails")]
 pub struct ApprovalRequired {
     pub approval_id: String,
 }
@@ -555,7 +560,8 @@ pub fn input_digest(input: &Value) -> Digest {
     Digest(sha2::Sha256::digest(&buf).into())
 }
 
-fn write_canonical(value: &Value, out: &mut Vec<u8>) {
+/// Canonical JSON, shared by [`input_digest`] and the schema hash (`codegen::manifest`).
+pub(crate) fn write_canonical(value: &Value, out: &mut Vec<u8>) {
     match value {
         Value::Array(items) => {
             out.push(b'[');

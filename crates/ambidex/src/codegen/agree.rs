@@ -16,10 +16,14 @@
 //!   `Option` with `skip_serializing_if`: never sent as `null`, but accepted).
 //! - TS `k: T | null` against an optional nullable schema property: an `Option` field, which
 //!   serde writes as `null` and reads when missing.
-//! - TS `k: T` against an optional schema property with a `default`: `#[serde(default)]`, always
-//!   written, may be omitted on input.
+//! - TS `k: T` against an optional schema property with a `default` disagrees: the field is
+//!   `#[serde(default)]`, so a client may omit it, and TypeScript must say so. Mark it
+//!   `#[ts(optional = nullable)]`, which writes `k?: T` and keeps `T` as is.
 //! - TS `k?: T` against a required schema property disagrees: a client could omit a field the
 //!   server requires.
+//!
+//! Fixed-size arrays (`[T; N]`) are tuples on both sides up to ts-rs's tuple limit, and a
+//! `#[serde(flatten)]` map adds a type for all other properties (an open object).
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -161,7 +165,16 @@ fn typed(t: &str, obj: &serde_json::Map<String, Value>) -> Ty {
             (Some(Value::Array(items)), _) | (None, Some(Value::Array(items))) => {
                 Ty::Tuple(items.iter().map(from_schema).collect())
             }
-            (_, Some(items)) => Ty::Array(Box::new(from_schema(items))),
+            (_, Some(items)) => {
+                let item = from_schema(items);
+                match fixed_len(obj) {
+                    // `[T; N]`: ts-rs writes an N-tuple up to its tuple limit.
+                    Some(n) if n <= super::ts_config().array_tuple_limit() => {
+                        Ty::Tuple(vec![item; n])
+                    }
+                    _ => Ty::Array(Box::new(item)),
+                }
+            }
             _ => Ty::Array(Box::new(Ty::Any)),
         },
         "object" => match obj.get("properties") {
@@ -170,19 +183,24 @@ fn typed(t: &str, obj: &serde_json::Map<String, Value>) -> Ty {
                     Some(Value::Array(r)) => r.iter().filter_map(Value::as_str).collect(),
                     _ => Vec::new(),
                 };
-                Ty::Object(
-                    props
-                        .iter()
-                        .map(|(key, schema)| {
-                            let field = Field {
-                                ty: from_schema(schema),
-                                optional: !required.contains(&key.as_str()),
-                                has_default: schema.get("default").is_some(),
-                            };
-                            (key.clone(), field)
-                        })
-                        .collect(),
-                )
+                let fields = props
+                    .iter()
+                    .map(|(key, schema)| {
+                        let field = Field {
+                            ty: from_schema(schema),
+                            optional: !required.contains(&key.as_str()),
+                            has_default: schema.get("default").is_some(),
+                        };
+                        (key.clone(), field)
+                    })
+                    .collect();
+                match obj.get("additionalProperties") {
+                    // `#[serde(flatten)]` of a map: more properties of one type.
+                    Some(rest) if *rest != Value::Bool(false) => {
+                        Ty::Open(fields, Box::new(from_schema(rest)))
+                    }
+                    _ => Ty::Object(fields),
+                }
             }
             _ => match obj.get("additionalProperties") {
                 Some(Value::Bool(false)) => Ty::Object(BTreeMap::new()),
@@ -191,6 +209,17 @@ fn typed(t: &str, obj: &serde_json::Map<String, Value>) -> Ty {
             },
         },
         _ => Ty::Any,
+    }
+}
+
+/// `N` when the schema fixes the array length (`minItems == maxItems == N`).
+fn fixed_len(obj: &serde_json::Map<String, Value>) -> Option<usize> {
+    let min = obj.get("minItems")?.as_u64()?;
+    let max = obj.get("maxItems")?.as_u64()?;
+    if min == max {
+        usize::try_from(min).ok()
+    } else {
+        None
     }
 }
 
@@ -224,8 +253,9 @@ fn head_at(ty: &Ty, r: &dyn Resolver, depth: usize) -> Result<Ty, String> {
             Ok(Ty::union(members))
         }
         Ty::Intersection(parts) => {
-            // Distribute over unions: (A | B) & C = (A & C) | (B & C), then merge objects.
-            let mut alternatives = vec![BTreeMap::new()];
+            // Distribute over unions: (A | B) & C = (A & C) | (B & C), then merge objects. A map
+            // part (a flattened map) adds the type of all other properties.
+            let mut alternatives = vec![(BTreeMap::new(), None)];
             for part in parts {
                 let part = head_at(part, r, depth + 1)?;
                 if part == Ty::Any {
@@ -233,27 +263,37 @@ fn head_at(ty: &Ty, r: &dyn Resolver, depth: usize) -> Result<Ty, String> {
                 }
                 let mut next = Vec::new();
                 for member in part.members() {
-                    let Ty::Object(fields) = member else {
-                        return Err(format!("cannot intersect non-object type {member}"));
+                    let (fields, rest) = match member {
+                        Ty::Object(fields) => (fields.clone(), None),
+                        Ty::Open(fields, rest) => (fields.clone(), Some((**rest).clone())),
+                        Ty::Map(rest) => (BTreeMap::new(), Some((**rest).clone())),
+                        _ => return Err(format!("cannot intersect non-object type {member}")),
                     };
                     for acc in &alternatives {
-                        next.push(merge(acc, fields)?);
+                        next.push(merge(acc, (&fields, &rest))?);
                     }
                 }
                 alternatives = next;
             }
-            Ok(Ty::union(alternatives.into_iter().map(Ty::Object)))
+            Ok(Ty::union(alternatives.into_iter().map(
+                |(fields, rest)| match rest {
+                    Some(rest) => Ty::Open(fields, Box::new(rest)),
+                    None => Ty::Object(fields),
+                },
+            )))
         }
         other => Ok(other.clone()),
     }
 }
 
+type Shape = (BTreeMap<String, Field>, Option<Ty>);
+
 fn merge(
-    a: &BTreeMap<String, Field>,
-    b: &BTreeMap<String, Field>,
-) -> Result<BTreeMap<String, Field>, String> {
-    let mut out = a.clone();
-    for (key, field) in b {
+    a: &Shape,
+    (fields, rest): (&BTreeMap<String, Field>, &Option<Ty>),
+) -> Result<Shape, String> {
+    let (mut out, mut out_rest) = a.clone();
+    for (key, field) in fields {
         match out.get(key) {
             Some(existing) if existing != field => {
                 return Err(format!("intersection defines property {key} twice"));
@@ -263,7 +303,14 @@ fn merge(
             }
         }
     }
-    Ok(out)
+    match (&out_rest, rest) {
+        (Some(a), Some(b)) if a != b => {
+            return Err("intersection flattens two maps of different types".into());
+        }
+        (None, Some(b)) => out_rest = Some(b.clone()),
+        _ => {}
+    }
+    Ok((out, out_rest))
 }
 
 /// Compares a TypeScript type with a JSON Schema type.
@@ -315,6 +362,10 @@ impl Comparison<'_> {
                 Ok(())
             }
             (Ty::Object(xs), Ty::Object(ys)) => self.eq_objects(xs, ys),
+            (Ty::Open(xs, x), Ty::Open(ys, y)) => {
+                self.eq_objects(xs, ys)?;
+                self.eq(x, y).map_err(|e| format!("[other keys] {e}"))
+            }
             (Ty::Literal(x), Ty::Literal(y)) if literal_eq(x, y) => Ok(()),
             (Ty::Any, Ty::Any)
             | (Ty::Never, Ty::Never)
@@ -379,17 +430,18 @@ impl Comparison<'_> {
                     self.eq(&t.ty, &without_null).map_err(|_| e)
                 }
             },
+            (false, true) if s.has_default => Err(
+                "is required in TypeScript but has a default (`#[serde(default)]`), so a client \
+                 may omit it; mark the field `#[ts(optional = nullable)]`"
+                    .into(),
+            ),
             (false, true) => {
                 let nullable = self.nullable(&t.ty, self.ts_defs)?
                     && self.nullable(&s.ty, self.schema_defs)?;
-                if s.has_default || nullable {
+                if nullable {
                     self.eq(&t.ty, &s.ty)
                 } else {
-                    Err(
-                        "is required in TypeScript but optional in JSON Schema without a \
-                         default"
-                            .into(),
-                    )
+                    Err("is required in TypeScript but optional in JSON Schema".into())
                 }
             }
         }
@@ -461,9 +513,17 @@ pub fn accepts(ty: &Ty, value: &Value, r: &dyn Resolver) -> Result<bool, String>
             }
             true
         }
-        (Ty::Object(fields), Value::Object(map)) => {
-            if map.keys().any(|k| !fields.contains_key(k)) {
-                return Ok(false);
+        (Ty::Object(fields) | Ty::Open(fields, _), Value::Object(map)) => {
+            for (key, v) in map {
+                if fields.contains_key(key) {
+                    continue;
+                }
+                let Ty::Open(_, rest) = &ty else {
+                    return Ok(false);
+                };
+                if !accepts(rest, v, r)? {
+                    return Ok(false);
+                }
             }
             for (key, field) in fields {
                 match map.get(key) {
