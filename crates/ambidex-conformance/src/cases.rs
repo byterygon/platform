@@ -348,14 +348,21 @@ pub async fn oversize_result_is_resource_exhausted<H: Harness>(h: &H) {
 
 pub async fn permission_denied_never_runs_handler<H: Harness>(h: &H) {
     let mut client = ready(h).await;
-    client.call(1, "fixture.protected", json!(null)).await;
-    let err = client.expect_code(1, Code::PermissionDenied).await;
+    // `protected` and `fail` share an input type. This input fails to decode, as the allowed
+    // `fail` shows, yet `protected` answers PermissionDenied: authorization runs before input
+    // decoding, so a denied caller learns nothing about input validity.
+    let undecodable = json!([1, 2, 3]);
+    client.call(1, "fixture.fail", undecodable.clone()).await;
+    client.expect_code(1, Code::InvalidArgument).await;
+    client.call(2, "fixture.protected", undecodable).await;
+    client.expect_code(2, Code::PermissionDenied).await;
+    client
+        .call(3, "fixture.protected", json!({ "code": "NotFound" }))
+        .await;
+    let err = client.expect_code(3, Code::PermissionDenied).await;
     // The deny reason stays on the server.
     assert_eq!(err.message, "permission denied");
     assert_eq!(err.details, None);
-    // Authorization runs before input decoding, so invalid input changes nothing.
-    client.call(2, "fixture.protected", json!([1, 2, 3])).await;
-    client.expect_code(2, Code::PermissionDenied).await;
     assert_eq!(h.fixture().probe.runs(), 0);
 }
 

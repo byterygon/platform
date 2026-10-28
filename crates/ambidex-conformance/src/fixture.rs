@@ -271,9 +271,10 @@ impl FixtureApi {
         unreachable!("never completes")
     }
 
-    /// Requires a permission the fixture policy does not grant (default-deny).
+    /// Requires a permission the fixture policy does not grant (default-deny). Its input is typed
+    /// like `fail`'s, so a case can send input that would fail decoding.
     #[rpc::mutation(perm = "fixture.admin", risk = Risk::Write)]
-    async fn protected(&self, _ctx: Ctx, _input: Value) -> Result<(), RpcError> {
+    async fn protected(&self, _ctx: Ctx, _input: FailInput) -> Result<(), RpcError> {
         let _guard = self.guard("protected");
         Ok(())
     }
