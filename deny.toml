@@ -21,6 +21,14 @@ allow = [
 ]
 exceptions = [
     { crate = "dbee", allow = ["AGPL-3.0-only"] },
+    # MPL-2.0 (file-level copyleft) crates that Tauri itself requires (tauri-utils, dirs), pulled
+    # in by ambidex-tauri. Accepted per crate by Uy Son on 2026-10-27 (Ambidex spec Open
+    # question 19a); MPL-2.0 is not allowed globally.
+    { crate = "cssparser", allow = ["MPL-2.0"] },
+    { crate = "cssparser-macros", allow = ["MPL-2.0"] },
+    { crate = "dtoa-short", allow = ["MPL-2.0"] },
+    { crate = "option-ext", allow = ["MPL-2.0"] },
+    { crate = "selectors", allow = ["MPL-2.0"] },
 ]
 
 [bans]
