@@ -149,3 +149,6 @@ pub trait Driver: Send + Sync {
         credential_ref: Option<&'a str>,
     ) -> DbFuture<'a, Box<dyn Connection>>;
 }
+
+#[cfg(feature = "conformance")]
+pub mod conformance;

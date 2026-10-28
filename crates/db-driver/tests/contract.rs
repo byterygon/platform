@@ -171,27 +171,21 @@ fn cancellation_is_idempotent_and_completion_can_win() {
             ..Default::default()
         };
         let (mut stream, requested) = stream(vec![Ok(NextItem::Finished(summary.clone()))]);
-        assert_eq!(stream.cancel().await.unwrap(), CancelOutcome::Requested);
-        assert_eq!(stream.cancel().await.unwrap(), CancelOutcome::Requested);
+        conformance::cancel_is_idempotent(&*stream).await;
         assert!(requested.load(Ordering::SeqCst));
-        assert_eq!(
-            stream.next().await.unwrap(),
-            Some(NextItem::Finished(summary))
-        );
-        assert_eq!(stream.next().await.unwrap(), None);
-        assert_eq!(stream.cancel().await.unwrap(), CancelOutcome::NotRunning);
-        assert_eq!(stream.next().await.unwrap(), None);
+        let drained = conformance::drain(&mut *stream).await;
+        assert!(drained.chunks.is_empty());
+        assert_eq!(drained.terminal, Ok(summary));
     });
 }
 
 #[test]
 fn observed_cancellation_is_one_terminal_error_and_drop_requests_cancel() {
     block_on(async {
-        let (mut stream, _) = stream(vec![Err(DbError::Cancelled)]);
-        assert_eq!(stream.next().await, Err(DbError::Cancelled));
-        assert_eq!(stream.cancel().await.unwrap(), CancelOutcome::NotRunning);
-        assert_eq!(stream.next().await.unwrap(), None);
-        assert_eq!(stream.next().await.unwrap(), None);
+        let (mut stream, _) = stream(vec![Ok(NextItem::Chunk(vec![1])), Err(DbError::Cancelled)]);
+        let drained = conformance::drain(&mut *stream).await;
+        assert_eq!(drained.chunks, [vec![1]]);
+        assert_eq!(drained.terminal, Err(DbError::Cancelled));
     });
     let (stream, requested) = stream(vec![]);
     drop(stream);
