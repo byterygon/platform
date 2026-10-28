@@ -28,6 +28,7 @@ summarises what a session needs when Notion is unavailable.
 | `crates/ambidex`, `crates/ambidex-macros` | Ambidex dual-transport RPC engine and macros | MIT OR Apache-2.0 |
 | `crates/ambidex-axum` | Ambidex WebSocket transport (`/rpc/ws`, rustls TLS, Host/Origin checks) | MIT OR Apache-2.0 |
 | `crates/ambidex-tauri` | Ambidex Tauri IPC transport and desktop session (Tauri plugin) | MIT OR Apache-2.0 |
+| `crates/ambidex-conformance` | Ambidex conformance suite: each case written once, run on in-process, WebSocket and Tauri (mock runtime) harnesses | MIT OR Apache-2.0 |
 | `crates/plugin-host` | Plugin Host | MIT OR Apache-2.0 |
 | `crates/db-driver` | db-driver contract (Rust trait + WIT) | MIT OR Apache-2.0 |
 | `packages/ambidex` | `@byterygon/ambidex` TypeScript client | MIT OR Apache-2.0 |
@@ -52,7 +53,10 @@ node scripts/check-licenses.mjs
 cargo deny check licenses bans sources
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above plus a gitleaks scan of the full history.
+CI (`.github/workflows/ci.yml`) runs all of the above plus a gitleaks scan of the full history,
+and runs `cargo test -p ambidex-conformance --offline` again inside a network namespace with only
+loopback (spec §12: the suite must pass network-disconnected). Protocol behaviour that must hold
+on every transport goes in `crates/ambidex-conformance/src/cases.rs`, not in one transport's tests.
 The Rust toolchain is pinned in `rust-toolchain.toml`; pnpm is pinned via `packageManager`.
 
 ## Notion links

@@ -30,6 +30,19 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      # Ambidex spec §12: the conformance suite must pass on a network-disconnected runner. It
+      # runs again in a fresh network namespace with only loopback, as the runner user, offline.
+      - name: Conformance suite (network disconnected)
+        run: |
+          sudo unshare --net -- sh -c '
+            ip link set lo up
+            if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+              echo "network is reachable"; exit 1
+            fi
+            exec setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
+              env PATH="$1" HOME="$2" CARGO_TERM_COLOR=always \
+              cargo test -p ambidex-conformance --locked --offline
+          ' sh "$PATH" "$HOME"
 
   typescript:
     name: TypeScript (typecheck)
