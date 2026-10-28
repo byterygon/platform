@@ -294,10 +294,7 @@ async fn call(
     procedure: &str,
     input: Value,
 ) -> Result<Value, ErrorPayload> {
-    let call = Call {
-        procedure: procedure.into(),
-        input,
-    };
+    let call = Call::new(procedure, input);
     router.call(session(principal), call).await
 }
 
