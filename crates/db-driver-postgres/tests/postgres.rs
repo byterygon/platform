@@ -283,13 +283,12 @@ async fn max_rows_truncates_without_reading_the_rest() {
         assert_eq!(summary.rows_returned, Some(expect_rows as u64));
         assert_eq!(summary.truncated, truncated, "max_rows {max}");
     }
-    // The server stopped at the limit: an endless result returns promptly.
+    // The server stops at the limit: six rows of 0.1 s each, not a thousand.
     let started = Instant::now();
     let (_, batches, summary) = query(
         &*conn,
-        "endless",
-        // In the select list the set-returning function streams; in FROM it would materialize.
-        "SELECT generate_series(1, 1000000000) AS g",
+        "slow",
+        "SELECT g, pg_sleep(0.1) FROM generate_series(1, 1000) g",
         ExecuteOptions {
             max_rows: Some(5),
             ..opts()
@@ -554,11 +553,12 @@ async fn deadline_stops_the_statement_on_the_server() {
     .await;
     assert_eq!(drained.terminal, Err(DbError::Timeout));
     assert!(started.elapsed() < Duration::from_secs(10));
-    // The deadline applies while rows are flowing too.
+    // The deadline applies while rows are flowing too. Rows are larger than the server's 8 KiB
+    // output buffer, so each one is sent as soon as it is produced.
     let drained = run(
         &*conn,
         "q2",
-        "SELECT g, pg_sleep(0.01) FROM generate_series(1, 100000) g",
+        "SELECT g, repeat('x', 10000), pg_sleep(0.01) FROM generate_series(1, 100000) g",
         ExecuteOptions {
             deadline_ms: Some(300),
             batch_size_hint: Some(1),
