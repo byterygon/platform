@@ -45,7 +45,7 @@ pub(crate) async fn execute(
     let deadline = opts
         .deadline_ms
         .and_then(|ms| admitted.checked_add(Duration::from_millis(ms)));
-    let op = shared.begin(id)?;
+    let op = shared.begin(id, deadline)?;
     if opts.deadline_ms == Some(0) {
         return Err(DbError::Timeout);
     }
@@ -126,6 +126,13 @@ impl PgStream {
         self.session.as_deref_mut().ok_or(DbError::Internal)
     }
 
+    fn check_cancelled(&self) -> Result<(), Halt> {
+        if self.deadline.is_some_and(|d| Instant::now() >= d) {
+            return Err(Halt::Deadline);
+        }
+        Ok(self.op.check_cancelled()?)
+    }
+
     /// The next message, unless the deadline passes first.
     async fn read(&mut self) -> Result<Message, Halt> {
         let deadline = self.deadline;
@@ -144,6 +151,7 @@ impl PgStream {
         let read_only = self.op.shared().access == AccessMode::ReadOnly;
         let shared = self.op.shared().clone();
         self.session()?.settle(&shared).await?;
+        self.check_cancelled()?;
 
         let mut buf = BytesMut::new();
         if read_only {
@@ -201,6 +209,7 @@ impl PgStream {
         .map_err(|_| DbError::Internal)?;
         frontend::execute("", limit, &mut buf).map_err(|_| DbError::Internal)?;
         frontend::sync(&mut buf);
+        self.check_cancelled()?;
         self.session()?.send(&buf, 1).await?;
         Ok(())
     }

@@ -47,8 +47,11 @@ query, cancel), which is about 1,000 lines and covered by the tests below.
   `CancelRequest`; returns after the server closed it. `Requested` only once that succeeded;
   broker refusals are errors. A cancel is sent only while its operation is on the wire, and a
   new statement waits until earlier cancels were delivered, so a late cancel cannot stop the next
-  statement. Deadlines and dropped streams cancel the same way and drain the session (re-sending
-  every second, giving the session up after 30 s).
+  statement. Cancellation is checked before each protocol phase and retried once per second
+  until the operation ends, including when the first request arrived while the backend was idle.
+  Deadlines trigger cancellation independently of result-stream polling; results still use
+  pull-based backpressure. Polling or dropping an expired stream drains the session (re-sending
+  every second, giving the session up after 30 s), as does dropping an unfinished stream.
 - **One operation at a time** per connection: a second `execute` or introspection call while a
   stream is live is `Unsupported("connection is busy …")`. Operation IDs are never reused.
 - **`AccessMode::ReadOnly`** (agent Read calls): session starts with

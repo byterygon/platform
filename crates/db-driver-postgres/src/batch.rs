@@ -10,12 +10,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow_array::RecordBatch;
 use arrow_array::builder::{
     ArrayBuilder, BinaryBuilder, BooleanBuilder, Date32Builder, FixedSizeBinaryBuilder,
     Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, StringBuilder,
     Time64MicrosecondBuilder, TimestampMicrosecondBuilder, UInt32Builder,
 };
+use arrow_array::{RecordBatch, RecordBatchOptions};
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
 use db_driver::DbError;
@@ -131,6 +131,7 @@ impl Kind {
 pub(crate) struct Columns {
     kinds: Vec<Kind>,
     schema: SchemaRef,
+    has_rows: bool,
 }
 
 impl Columns {
@@ -138,6 +139,7 @@ impl Columns {
         Self {
             kinds: Vec::new(),
             schema: Arc::new(Schema::empty()),
+            has_rows: false,
         }
     }
 
@@ -159,11 +161,12 @@ impl Columns {
         Ok(Self {
             kinds,
             schema: Arc::new(Schema::new(fields)),
+            has_rows: true,
         })
     }
 
     pub(crate) fn has_rows(&self) -> bool {
-        !self.kinds.is_empty()
+        self.has_rows
     }
 
     /// Result format codes for `Bind`, one per column.
@@ -227,9 +230,11 @@ impl BatchBuilder {
     /// The accumulated rows as a batch; the builder starts over.
     pub(crate) fn finish(&mut self) -> Result<RecordBatch, DbError> {
         let columns = self.builders.iter_mut().map(|b| b.finish()).collect();
+        let options = RecordBatchOptions::new().with_row_count(Some(self.rows));
         self.rows = 0;
         self.bytes = 0;
-        RecordBatch::try_new(self.schema.clone(), columns).map_err(|_| DbError::Internal)
+        RecordBatch::try_new_with_options(self.schema.clone(), columns, &options)
+            .map_err(|_| DbError::Internal)
     }
 }
 

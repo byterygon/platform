@@ -225,6 +225,47 @@ async fn schema_comes_first_even_without_rows() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn zero_column_results_preserve_rows_and_summary() {
+    let cluster = require_cluster!();
+    let (_env, conn) = app(cluster).await;
+    for (id, sql, max_rows, expected, truncated) in [
+        ("rows", "SELECT FROM generate_series(1, 3)", None, 3, false),
+        ("empty", "SELECT WHERE false", None, 0, false),
+        (
+            "truncated",
+            "SELECT FROM generate_series(1, 3)",
+            Some(2),
+            2,
+            true,
+        ),
+        (
+            "zero",
+            "SELECT FROM generate_series(1, 3)",
+            Some(0),
+            0,
+            true,
+        ),
+    ] {
+        let (schema, batches, summary) = query(
+            &*conn,
+            id,
+            sql,
+            ExecuteOptions {
+                max_rows,
+                batch_size_hint: Some(1),
+                ..opts()
+            },
+        )
+        .await;
+        assert!(schema.fields().is_empty());
+        assert_eq!(rows(&batches), expected);
+        assert_eq!(summary.rows_returned, Some(expected as u64));
+        assert_eq!(summary.rows_affected, None);
+        assert_eq!(summary.truncated, truncated);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn batch_hint_bounds_batches_of_a_large_result() {
     let cluster = require_cluster!();
     let (_env, conn) = app(cluster).await;

@@ -23,7 +23,7 @@ use postgres_protocol::authentication::md5_hash;
 use postgres_protocol::authentication::sasl::{ChannelBinding, SCRAM_SHA_256, ScramSha256};
 use postgres_protocol::message::backend::Message;
 use postgres_protocol::message::frontend;
-use tokio::sync::{OwnedMutexGuard, RwLock};
+use tokio::sync::{OwnedMutexGuard, RwLock, watch};
 use zeroize::Zeroize;
 
 use crate::cancel::{self, BackendKey};
@@ -154,8 +154,9 @@ struct Current {
     id: String,
     /// Statement bytes were sent; a cancel must reach the backend.
     on_wire: bool,
-    /// Cancelled before it reached the wire; it stops before sending anything.
+    /// Cancellation was requested; stop before sending the next protocol phase.
     cancelled: bool,
+    retry_cancel: watch::Sender<bool>,
 }
 
 pub(crate) struct Shared {
@@ -179,7 +180,11 @@ impl Shared {
     }
 
     /// Register a new operation. Fails if the ID was used before or another operation is live.
-    pub(crate) fn begin(self: &Arc<Self>, id: &OperationId) -> Result<OpGuard, DbError> {
+    pub(crate) fn begin(
+        self: &Arc<Self>,
+        id: &OperationId,
+        deadline: Option<Instant>,
+    ) -> Result<OpGuard, DbError> {
         let mut ops = self.ops();
         if ops.current.is_some() {
             return Err(busy());
@@ -189,10 +194,50 @@ impl Shared {
                 "operation ID was already used on this connection".into(),
             ));
         }
+        let (retry_cancel, mut requests) = watch::channel(false);
         ops.current = Some(Current {
             id: id.0.clone(),
             on_wire: false,
             cancelled: false,
+            retry_cancel,
+        });
+        let shared = self.clone();
+        let operation_id = id.0.clone();
+        // Finish drops the sender to stop this task. Do not abort an in-progress delivery:
+        // it must retain the gate until the server closes its cancel transport.
+        tokio::spawn(async move {
+            // Wait for either a successful explicit cancel or the deadline. This task never
+            // reads query results, so backpressure remains controlled by the result stream.
+            match deadline {
+                Some(d) => match tokio::time::timeout_at(d.into(), requests.changed()).await {
+                    Ok(Err(_)) => return,
+                    Ok(Ok(())) => {}
+                    Err(_) => {
+                        let _ = shared.cancel(&operation_id).await;
+                        requests.borrow_and_update();
+                    }
+                },
+                None => {
+                    if requests.changed().await.is_err() {
+                        return;
+                    }
+                }
+            }
+            loop {
+                // PostgreSQL can ignore a cancel received between Describe and Execute (or
+                // before it begins processing Execute). Retry until this operation is terminal.
+                if let Ok(Err(_)) =
+                    tokio::time::timeout(RECANCEL_INTERVAL, requests.changed()).await
+                {
+                    return;
+                }
+                if matches!(
+                    shared.cancel(&operation_id).await,
+                    Ok(CancelOutcome::NotRunning)
+                ) {
+                    return;
+                }
+            }
         });
         Ok(OpGuard {
             shared: self.clone(),
@@ -225,12 +270,12 @@ impl Shared {
 
     async fn cancel(&self, id: &str) -> Result<CancelOutcome, DbError> {
         let _gate = self.gate.read().await;
-        let on_wire = {
+        let (on_wire, retry_cancel) = {
             let mut ops = self.ops();
             match ops.current.as_mut() {
                 Some(c) if c.id == id => {
                     c.cancelled = true;
-                    c.on_wire
+                    (c.on_wire, c.retry_cancel.clone())
                 }
                 _ => return Ok(CancelOutcome::NotRunning),
             }
@@ -238,7 +283,22 @@ impl Shared {
         if on_wire {
             self.send_cancel().await?;
         }
+        retry_cancel.send_if_modified(|requested| {
+            if *requested {
+                false
+            } else {
+                *requested = true;
+                true
+            }
+        });
         Ok(CancelOutcome::Requested)
+    }
+
+    fn check_cancelled(&self, id: &str) -> Result<(), DbError> {
+        match self.ops().current.as_ref() {
+            Some(c) if c.id == id && !c.cancelled => Ok(()),
+            _ => Err(DbError::Cancelled),
+        }
     }
 
     fn finish(&self, id: &str) {
@@ -275,6 +335,10 @@ impl OpGuard {
             self.done = true;
             self.shared.finish(&self.id);
         }
+    }
+
+    pub(crate) fn check_cancelled(&self) -> Result<(), DbError> {
+        self.shared.check_cancelled(&self.id)
     }
 
     pub(crate) async fn cancel(&self) -> Result<CancelOutcome, DbError> {
