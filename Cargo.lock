@@ -52,6 +52,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ambidex-conformance"
+version = "0.0.0"
+dependencies = [
+ "ambidex",
+ "ambidex-axum",
+ "ambidex-tauri",
+ "axum",
+ "futures-util",
+ "rcgen",
+ "rustls",
+ "security-types",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "ambidex-macros"
 version = "0.0.0"
 dependencies = [
