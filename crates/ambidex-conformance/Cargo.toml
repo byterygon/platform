@@ -33,6 +33,13 @@ tauri = ["dep:ambidex-tauri", "dep:tauri"]
 name = "rpc-gen"
 path = "src/bin/rpc-gen.rs"
 
+# `conformance-server` serves the fixture API over the real WebSocket transport for the
+# TypeScript client's integration tests (packages/ambidex/test/integration.test.ts).
+[[bin]]
+name = "conformance-server"
+path = "src/bin/conformance-server.rs"
+required-features = ["ws"]
+
 [dependencies]
 ambidex = { path = "../ambidex" }
 schemars = { version = "1.2.3", default-features = false, features = ["derive"] }
