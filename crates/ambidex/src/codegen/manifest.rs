@@ -60,6 +60,7 @@ use sha2::Digest as _;
 
 use super::Model;
 use crate::frame::PROTOCOL_VERSION;
+use security_types::Digest;
 
 pub const FORMAT: &str = "ambidex.manifest.v1";
 pub const HASH_DOMAIN: &[u8] = b"ambidex.schema-hash.v1";
@@ -121,12 +122,7 @@ pub fn hash_contract(contract: &Value) -> String {
     let mut bytes = HASH_DOMAIN.to_vec();
     bytes.push(0);
     crate::router::write_canonical(contract, &mut bytes);
-    let digest = sha2::Sha256::digest(&bytes);
-    let mut out = String::from("sha256:");
-    for b in digest {
-        out.push_str(&format!("{b:02x}"));
-    }
-    out
+    format!("sha256:{}", Digest(sha2::Sha256::digest(&bytes).into()))
 }
 
 /// Reduces the JSON Schema `schema`, in place, to the keywords that decide which JSON it describes
@@ -344,11 +340,9 @@ mod tests {
         let h = hash_contract(&json!({}));
         let mut bytes = HASH_DOMAIN.to_vec();
         bytes.extend_from_slice(b"\0{}");
-        let expected: String = sha2::Sha256::digest(&bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let expected = Digest(sha2::Sha256::digest(&bytes).into());
         assert_eq!(h, format!("sha256:{expected}"));
+        assert_eq!(h.len(), "sha256:".len() + 64);
     }
 
     #[test]

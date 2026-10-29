@@ -19,8 +19,9 @@
 //! | stream | `async fn name(&self, ctx: Ctx, input: I, ..) -> Result<O, E>` | the final result |
 //!
 //! `I` and `O` implement [`ts_rs::TS`] and [`schemars::JsonSchema`]. `E` is any handler error
-//! ([`RpcError<D>`](crate::RpcError), a [`DomainError`](crate::DomainError), [`Rejected`] or a raw
-//! [`ErrorPayload`]); its [`ErrorType::Details`] is what TypeScript sees in `details`.
+//! ([`RpcError<D>`](crate::RpcError), a [`DomainError`](crate::DomainError),
+//! [`Rejected`](crate::Rejected) or a raw [`ErrorPayload`](crate::ErrorPayload)); its
+//! [`IntoErrorPayload::Details`] is what TypeScript sees in `details`.
 
 pub mod agree;
 pub mod manifest;
@@ -38,9 +39,8 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
 use serde_json::Value;
 use ts_rs::{Config, TS, TypeVisitor};
 
-use crate::error::{DomainError, NoDetails, RpcError};
-use crate::message::ErrorPayload;
-use crate::router::{Rejected, Router};
+use crate::error::{IntoErrorPayload, NoDetails};
+use crate::router::Router;
 
 /// File names [`write`] and [`check`] use inside the output directory.
 pub const API_TS: &str = "api.ts";
@@ -96,12 +96,12 @@ impl ProcedureTypes {
     pub fn of<I: Type, R: ProcedureResult>() -> ProcedureTypes
     where
         R::Output: Type,
-        <R::Error as ErrorType>::Details: Type,
+        <R::Error as IntoErrorPayload>::Details: Type,
     {
         ProcedureTypes {
             input: TypeRef::of::<I>(),
             output: TypeRef::of::<R::Output>(),
-            error: TypeRef::of::<<R::Error as ErrorType>::Details>(),
+            error: TypeRef::of::<<R::Error as IntoErrorPayload>::Details>(),
         }
     }
 }
@@ -110,35 +110,12 @@ impl ProcedureTypes {
 /// for `Result` works as a return type too.
 pub trait ProcedureResult {
     type Output;
-    type Error: ErrorType;
+    type Error: IntoErrorPayload;
 }
 
-impl<O, E: ErrorType> ProcedureResult for Result<O, E> {
+impl<O, E: IntoErrorPayload> ProcedureResult for Result<O, E> {
     type Output = O;
     type Error = E;
-}
-
-/// The typed `details` a handler error carries to the client.
-pub trait ErrorType {
-    type Details;
-}
-
-impl<D> ErrorType for RpcError<D> {
-    type Details = D;
-}
-
-impl<E: DomainError> ErrorType for E {
-    type Details = E;
-}
-
-/// A raw payload's details are arbitrary JSON.
-impl ErrorType for ErrorPayload {
-    type Details = Value;
-}
-
-/// The router sends `ApprovalRequired` details itself; every client error type has that slot.
-impl ErrorType for Rejected {
-    type Details = NoDetails;
 }
 
 impl TS for NoDetails {
@@ -205,7 +182,9 @@ pub enum CodegenError {
         first: String,
         second: String,
     },
-    /// A Rust type exports a TypeScript name that `api.ts` defines itself (`RpcError`, `Api`, ...).
+    /// A Rust type exports a TypeScript name `api.ts` already uses: one it defines (`RpcError`,
+    /// `Api`, ...), a TypeScript global it refers to (`Record`, `Array`, `Exclude`, ...), or
+    /// `JsonValue`, the declaration of serde_json::Value.
     ReservedName { name: String, rust: String },
     /// A procedure name is also a namespace (`a.b` and `a.b.c`), so the client tree cannot hold
     /// both.
@@ -233,7 +212,8 @@ impl fmt::Display for CodegenError {
             ),
             CodegenError::ReservedName { name, rust } => write!(
                 f,
-                "TypeScript name {name} of {rust} is reserved by the generated api.ts; rename \
+                "TypeScript name {name} of {rust} is reserved in the generated api.ts (a name it \
+                 defines, a TypeScript global it uses, or serde_json::Value's JsonValue); rename \
                  the type with #[ts(rename)] and #[schemars(rename)]"
             ),
             CodegenError::NamespaceConflict(name) => write!(
@@ -263,16 +243,47 @@ pub struct Collector {
     seen: HashSet<TypeId>,
     decls: BTreeMap<String, Decl>,
     error: Option<CodegenError>,
+    /// serde_json::Value and the private stand-in ts-rs declares `JsonValue` with.
+    json_value: HashSet<TypeId>,
 }
 
 impl Collector {
     fn new() -> Collector {
-        Collector {
+        let cfg = ts_config();
+        let mut find = FindJsonValue {
             cfg: ts_config(),
+            seen: HashSet::new(),
+            found: HashSet::new(),
+        };
+        find.visit::<Value>();
+        Collector {
+            cfg,
             seen: HashSet::new(),
             decls: BTreeMap::new(),
             error: None,
+            json_value: find.found,
         }
+    }
+}
+
+/// Finds the types that declare serde_json::Value's `JsonValue`: the value itself and the private
+/// type ts-rs implements it with.
+struct FindJsonValue {
+    cfg: Config,
+    seen: HashSet<TypeId>,
+    found: HashSet<TypeId>,
+}
+
+impl TypeVisitor for FindJsonValue {
+    fn visit<T: TS + 'static + ?Sized>(&mut self) {
+        if !self.seen.insert(TypeId::of::<T>()) {
+            return;
+        }
+        if T::output_path().is_some() && T::ident(&self.cfg) == "JsonValue" {
+            self.found.insert(TypeId::of::<T>());
+        }
+        T::visit_dependencies(self);
+        T::visit_generics(self);
     }
 }
 
@@ -285,6 +296,16 @@ impl TypeVisitor for Collector {
         // containers are inlined by name and only contribute their dependencies.
         if T::output_path().is_some() {
             let name = T::ident(&self.cfg);
+            // `JsonValue` is ts-rs's declaration of serde_json::Value, which the agreement check
+            // takes as any JSON; no other type may take the name.
+            let impostor = name == "JsonValue" && !self.json_value.contains(&TypeId::of::<T>());
+            if impostor || render::is_reserved(&name) {
+                self.error.get_or_insert(CodegenError::ReservedName {
+                    name,
+                    rust: std::any::type_name::<T>().to_owned(),
+                });
+                return;
+            }
             let decl = Decl {
                 rust: std::any::type_name::<T>(),
                 decl: T::decl(&self.cfg),
@@ -473,16 +494,6 @@ fn resolve(router: &Router, api: &ApiInfo) -> Result<Model, CodegenError> {
     if let Some(err) = collector.error {
         return Err(err);
     }
-    if let Some((name, decl)) = collector
-        .decls
-        .iter()
-        .find(|(name, _)| render::RESERVED.contains(&name.as_str()))
-    {
-        return Err(CodegenError::ReservedName {
-            name: name.clone(),
-            rust: decl.rust.to_owned(),
-        });
-    }
     check_namespaces(&procedures)?;
     let input_defs = input_gen.take_definitions(true).into_iter().collect();
     let output_defs = output_gen.take_definitions(true).into_iter().collect();
@@ -548,21 +559,40 @@ pub fn write(output: &Output, dir: &Path) -> std::io::Result<()> {
 }
 
 /// Compares `output` with the files in `dir` without touching them. Returns the stale or
-/// missing files; empty means up to date.
-pub fn check(output: &Output, dir: &Path) -> Vec<PathBuf> {
-    [
+/// missing files; empty means up to date. Line endings do not count: a checkout that turned the
+/// committed LF files into CRLF (`core.autocrlf` on Windows) is up to date. Any read error other
+/// than a missing file is returned as an error, naming the file.
+pub fn check(output: &Output, dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+    let mut stale = Vec::new();
+    for (file, expected) in [
         (API_TS, &output.api_ts),
         (MANIFEST_JSON, &output.manifest_json),
-    ]
-    .into_iter()
-    .filter_map(|(file, expected)| {
+    ] {
         let path = dir.join(file);
-        match std::fs::read_to_string(&path) {
-            Ok(actual) if actual == *expected => None,
-            _ => Some(path),
+        match std::fs::read(&path) {
+            Ok(actual) if without_cr(&actual) == expected.as_bytes() => {}
+            Ok(_) => stale.push(path),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => stale.push(path),
+            Err(e) => {
+                return Err(std::io::Error::new(
+                    e.kind(),
+                    format!("cannot read {}: {e}", path.display()),
+                ));
+            }
         }
-    })
-    .collect()
+    }
+    Ok(stale)
+}
+
+/// `bytes` with every CRLF turned into LF. The generated files contain no other CR.
+fn without_cr(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    for (i, &b) in bytes.iter().enumerate() {
+        if !(b == b'\r' && bytes.get(i + 1) == Some(&b'\n')) {
+            out.push(b);
+        }
+    }
+    out
 }
 
 /// `main` of a product's `rpc-gen` binary.
@@ -600,7 +630,13 @@ pub fn cli(router: &Router, api: &ApiInfo, default_out: &Path) -> ExitCode {
         }
     };
     if check_only {
-        let stale = check(&output, &out);
+        let stale = match check(&output, &out) {
+            Ok(stale) => stale,
+            Err(err) => {
+                eprintln!("rpc-gen: {err}");
+                return ExitCode::FAILURE;
+            }
+        };
         if stale.is_empty() {
             println!(
                 "rpc-gen: {} is up to date ({})",

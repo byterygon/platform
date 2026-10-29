@@ -516,30 +516,63 @@ fn check_detects_stale_and_missing_artifacts_without_writing() {
     let out = generate(&zoo_router(false));
     let expected = [dir.join(codegen::API_TS), dir.join(codegen::MANIFEST_JSON)];
 
-    assert_eq!(
-        codegen::check(&out, &dir),
-        expected,
-        "missing files are stale"
-    );
+    let check = |out: &codegen::Output| codegen::check(out, &dir).unwrap();
+
+    assert_eq!(check(&out), expected, "missing files are stale");
     assert!(!dir.exists(), "check must not create anything");
 
     codegen::write(&out, &dir).unwrap();
-    assert!(codegen::check(&out, &dir).is_empty());
+    assert!(check(&out).is_empty());
 
     // A contract change in Rust: the committed files no longer match.
     let changed = Router::new(DenyAll);
     changed.mount(ZooApi).unwrap();
     let changed = generate(&changed);
-    assert_eq!(codegen::check(&changed, &dir), expected);
+    assert_eq!(check(&changed), expected);
 
     // A hand edit of one file.
     let ts = std::fs::read_to_string(&expected[0]).unwrap();
     std::fs::write(&expected[0], ts.replace("readonly", "readonly ")).unwrap();
-    assert_eq!(codegen::check(&out, &dir), [expected[0].clone()]);
+    assert_eq!(check(&out), [expected[0].clone()]);
     let before = std::fs::read_to_string(&expected[0]).unwrap();
-    let _ = codegen::check(&out, &dir);
+    let _ = check(&out);
     assert_eq!(std::fs::read_to_string(&expected[0]).unwrap(), before);
 
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn check_ignores_crlf_line_endings() {
+    let dir = temp_dir("crlf");
+    let out = generate(&zoo_router(false));
+    codegen::write(&out, &dir).unwrap();
+    // What a Windows checkout with `core.autocrlf=true` makes of the committed files.
+    for file in [codegen::API_TS, codegen::MANIFEST_JSON] {
+        let path = dir.join(file);
+        let lf = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, lf.replace('\n', "\r\n")).unwrap();
+    }
+    assert_eq!(codegen::check(&out, &dir).unwrap(), Vec::<PathBuf>::new());
+    // A content change is still caught.
+    let path = dir.join(codegen::API_TS);
+    let crlf = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, crlf.replace("readonly", "readonly ")).unwrap();
+    assert_eq!(codegen::check(&out, &dir).unwrap(), [path]);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn check_reports_read_errors_as_errors() {
+    let dir = temp_dir("unreadable");
+    let out = generate(&zoo_router(false));
+    codegen::write(&out, &dir).unwrap();
+    // A directory where api.ts should be: not missing, and not readable.
+    let path = dir.join(codegen::API_TS);
+    std::fs::remove_file(&path).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    let err = codegen::check(&out, &dir).unwrap_err();
+    assert_ne!(err.kind(), std::io::ErrorKind::NotFound);
+    assert!(err.to_string().contains(codegen::API_TS), "{err}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -643,6 +676,66 @@ mod clash {
     pub struct Api {
         pub id: u32,
     }
+}
+
+mod shadow {
+    use super::*;
+    /// Would shadow the TypeScript global that ts-rs writes for structs without fields
+    /// (`Record<symbol, never>`), so api.ts would not compile.
+    #[derive(Serialize, Deserialize, TS, JsonSchema)]
+    pub struct Record {
+        pub id: u32,
+        pub empty: ListInput,
+    }
+}
+
+mod impostor {
+    use super::*;
+    /// Not serde_json::Value, and ts-rs and schemars disagree about it: taking the name must not
+    /// make the agreement check treat it as any JSON.
+    #[derive(Serialize, Deserialize, TS, JsonSchema)]
+    pub struct JsonValue {
+        #[ts(type = "string")]
+        pub id: u32,
+    }
+}
+
+#[test]
+fn types_named_like_typescript_globals_are_refused() {
+    let router = Router::new(DenyAll);
+    router
+        .insert(
+            declared("a.get")
+                .with_types(ProcedureTypes::of::<shadow::Record, Result<(), RpcError>>()),
+        )
+        .unwrap();
+    let err = codegen::generate(&router, &api()).unwrap_err();
+    assert!(
+        matches!(&err, CodegenError::ReservedName { name, rust }
+            if name == "Record" && rust.ends_with("shadow::Record")),
+        "{err}"
+    );
+    assert!(err.to_string().contains("shadow::Record"), "{err}");
+    assert_eq!(codegen::schema_hash(&router, &api()).unwrap_err(), err);
+}
+
+#[test]
+fn only_serde_json_value_may_be_called_json_value() {
+    let router = Router::new(DenyAll);
+    router
+        .insert(declared("a.get").with_types(ProcedureTypes::of::<
+            impostor::JsonValue,
+            Result<(), RpcError>,
+        >()))
+        .unwrap();
+    let err = codegen::generate(&router, &api()).unwrap_err();
+    assert!(
+        matches!(&err, CodegenError::ReservedName { name, .. } if name == "JsonValue"),
+        "{err}"
+    );
+    assert!(Checker::of::<impostor::JsonValue>().is_err());
+    // serde_json::Value itself still exports and agrees.
+    checker::<Value>().agree().unwrap();
 }
 
 #[test]

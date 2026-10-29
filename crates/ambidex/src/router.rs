@@ -230,7 +230,11 @@ impl fmt::Display for Rejected {
 
 impl std::error::Error for Rejected {}
 
+/// Its only details are the approval id, which every client error type has a slot for
+/// (`ApprovalRequiredDetails` in `api.ts`).
 impl IntoErrorPayload for Rejected {
+    type Details = crate::error::NoDetails;
+
     fn into_error_payload(self) -> ErrorPayload {
         let mut payload = ErrorPayload::new(self.code, self.to_string());
         payload.details = self.approval_id.map(|approval_id| {
@@ -407,14 +411,20 @@ impl Router {
 
     /// Metadata of every registered procedure, sorted by name.
     pub fn procedures(&self) -> Vec<Arc<ProcedureMeta>> {
-        self.entries().iter().map(|p| Arc::clone(&p.meta)).collect()
+        self.sorted(|p| Arc::clone(&p.meta))
     }
 
     /// Every registered procedure, sorted by name: what codegen exports.
     pub fn entries(&self) -> Vec<Procedure> {
-        let mut all: Vec<_> = self.read().values().cloned().collect();
+        self.sorted(Procedure::clone)
+    }
+
+    /// One snapshot of the registry, sorted by name, taking only what `f` keeps.
+    fn sorted<T>(&self, f: impl Fn(&Procedure) -> T) -> Vec<T> {
+        let procedures = self.read();
+        let mut all: Vec<&Procedure> = procedures.values().collect();
         all.sort_by(|a, b| a.meta.name.cmp(&b.meta.name));
-        all
+        all.into_iter().map(f).collect()
     }
 
     /// Runs one call for `session`. This is [`Dispatch::call`]; the MCP adapter calls it directly

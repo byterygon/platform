@@ -8,7 +8,7 @@ use ambidex_conformance::fixture::{Fixture, SCHEMA_HASH, SERVER_VERSION, api_inf
 fn committed_artifacts_match_the_fixture_router() {
     let output =
         codegen::generate(&Fixture::new().router(), &api_info()).unwrap_or_else(|e| panic!("{e}"));
-    let stale = codegen::check(&output, &generated_dir());
+    let stale = codegen::check(&output, &generated_dir()).unwrap_or_else(|e| panic!("{e}"));
     assert!(
         stale.is_empty(),
         "stale generated files {stale:?}; regenerate with \

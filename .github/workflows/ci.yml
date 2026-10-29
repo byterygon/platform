@@ -34,10 +34,10 @@ jobs:
         env:
           BYTERYGON_REQUIRE_POSTGRES: "1"
       # Ambidex spec §12: the conformance suite must pass on a network-disconnected runner. It
-      # runs again in a fresh network namespace with only loopback, as the runner user, offline,
-      # followed by rpc-gen. Spec §2: generation needs no network, and the committed api.ts and
-      # api.manifest.json must match the Rust registry (also a test in `cargo test`).
-      - name: Conformance suite and rpc-gen (network disconnected)
+      # runs again in a fresh network namespace with only loopback, as the runner user, offline.
+      # It includes the rpc-gen drift test (tests/codegen.rs), so this also shows that generation
+      # needs no network and that the committed api.ts and api.manifest.json are current (spec §2).
+      - name: Conformance suite (network disconnected)
         run: |
           sudo unshare --net -- sh -c '
             ip link set lo up
@@ -46,8 +46,7 @@ jobs:
             fi
             exec setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
               env PATH="$1" HOME="$2" CARGO_TERM_COLOR=always \
-              sh -c "cargo test -p ambidex-conformance --locked --offline &&
-                     cargo run -p ambidex-conformance --bin rpc-gen --locked --offline -- --check"
+              cargo test -p ambidex-conformance --locked --offline
           ' sh "$PATH" "$HOME"
 
   typescript:

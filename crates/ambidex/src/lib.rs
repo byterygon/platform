@@ -103,7 +103,7 @@ pub mod transport;
 /// engine support lands.
 ///
 /// `I` and `O` (and the details of `E`) also derive `ts_rs::TS` and `schemars::JsonSchema`, so
-/// [`codegen`] can export them; see [`codegen::ErrorType`] for error types.
+/// [`codegen`] can export them; [`IntoErrorPayload::Details`] is the type of `details`.
 pub mod rpc {
     pub use ambidex_macros::{mutation, query, router, stream, subscription};
 }

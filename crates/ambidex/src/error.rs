@@ -180,22 +180,33 @@ impl<E: DomainError> From<E> for RpcError<E> {
 /// [`Rejected`](crate::Rejected) from [`Ctx::authorize`](crate::Ctx::authorize), or a raw
 /// [`ErrorPayload`].
 pub trait IntoErrorPayload {
+    /// The type of the payload's `details`, as the generated client sees it
+    /// ([`codegen`](crate::codegen)).
+    type Details;
+
     fn into_error_payload(self) -> ErrorPayload;
 }
 
 impl<E: Serialize> IntoErrorPayload for RpcError<E> {
+    type Details = E;
+
     fn into_error_payload(self) -> ErrorPayload {
         self.into_payload()
     }
 }
 
 impl<E: DomainError> IntoErrorPayload for E {
+    type Details = E;
+
     fn into_error_payload(self) -> ErrorPayload {
         RpcError::from(self).into_payload()
     }
 }
 
+/// A raw payload's details are arbitrary JSON.
 impl IntoErrorPayload for ErrorPayload {
+    type Details = serde_json::Value;
+
     fn into_error_payload(self) -> ErrorPayload {
         self
     }

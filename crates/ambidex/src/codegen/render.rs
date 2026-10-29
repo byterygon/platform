@@ -25,10 +25,18 @@ const HEADER: &str = "\
 // 64-bit integers (u64, i64, usize) are `number`, exact only up to 2^53 (MAX_SAFE_INTEGER).
 ";
 
-/// Names `api.ts` defines itself. A ts-rs declaration with one of them is refused
-/// ([`CodegenError::ReservedName`](super::CodegenError::ReservedName)); `Code` and
-/// `ApprovalRequiredDetails` are the engine's own declarations.
-pub(crate) const RESERVED: &[&str] = &[
+/// Names a ts-rs declaration must not take, or it would shadow something `api.ts` uses: what it
+/// defines itself ([`GENERATED`]), and the TypeScript globals and keywords it and ts-rs's output
+/// refer to ([`TS_GLOBALS`]). `generate` refuses them with
+/// [`CodegenError::ReservedName`](super::CodegenError::ReservedName). `Code`,
+/// `ApprovalRequiredDetails` and `JsonValue` are declarations of the engine and of
+/// `serde_json::Value`; another type with one of those names is refused too.
+pub(crate) fn is_reserved(name: &str) -> bool {
+    GENERATED.contains(&name) || TS_GLOBALS.contains(&name)
+}
+
+/// Names `api.ts` defines.
+pub(crate) const GENERATED: &[&str] = &[
     "API",
     "API_VERSION",
     "PROTOCOL",
@@ -41,6 +49,39 @@ pub(crate) const RESERVED: &[&str] = &[
     "Procedures",
     "Api",
     "procedures",
+];
+
+/// TypeScript globals `api.ts` refers to: `Exclude` (the template), `Array` and `Record` (ts-rs),
+/// and those the runtime's contract types build on and a template change would reach for. Plus
+/// the type keywords, which TypeScript refuses as type names anyway (a clear error beats `tsc`'s).
+/// [`ts::parse_type`](super::ts::parse_type) reads all of them as built-ins, so a user type with
+/// such a name would also escape the agreement check.
+pub(crate) const TS_GLOBALS: &[&str] = &[
+    "Array",
+    "ReadonlyArray",
+    "Record",
+    "Exclude",
+    "Extract",
+    "Partial",
+    "Required",
+    "Readonly",
+    "Pick",
+    "Omit",
+    "NonNullable",
+    "Promise",
+    "Uint8Array",
+    "string",
+    "number",
+    "bigint",
+    "boolean",
+    "symbol",
+    "object",
+    "null",
+    "undefined",
+    "void",
+    "never",
+    "unknown",
+    "any",
 ];
 
 const PROTOCOL_TYPES: &str = "\

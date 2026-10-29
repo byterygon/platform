@@ -58,8 +58,8 @@ cargo run -p ambidex-conformance --bin rpc-gen -- --check   # drop --check to re
 The PostgreSQL driver tests start a throwaway server from `initdb`/`postgres` and need a
 non-root user; without them they skip, unless `BYTERYGON_REQUIRE_POSTGRES=1` (set in CI).
 
-CI (`.github/workflows/ci.yml`) runs all of the above plus a gitleaks scan of the full history,
-and runs `cargo test -p ambidex-conformance --offline` again inside a network namespace with only
+CI (`.github/workflows/ci.yml`) runs all of the above (the `rpc-gen --check` as the drift test in
+`crates/ambidex-conformance/tests/codegen.rs`) plus a gitleaks scan of the full history, and runs `cargo test -p ambidex-conformance --offline` again inside a network namespace with only
 loopback (spec §12: the suite must pass network-disconnected). Protocol behaviour that must hold
 on every transport goes in `crates/ambidex-conformance/src/cases.rs`, not in one transport's tests.
 The Rust toolchain is pinned in `rust-toolchain.toml`; pnpm is pinned via `packageManager`.

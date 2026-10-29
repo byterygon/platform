@@ -40,6 +40,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
+use std::rc::Rc;
 
 use serde_json::Value;
 
@@ -86,6 +87,11 @@ impl TsDecls {
 
 impl Resolver for TsDecls {
     fn resolve(&self, name: &str, args: &[Ty]) -> Option<Ty> {
+        // ts-rs's declaration of serde_json::Value: any JSON. The collector refuses any other
+        // type named `JsonValue`, so the name alone identifies it.
+        if name == "JsonValue" && args.is_empty() {
+            return Some(Ty::Any);
+        }
         let decl = self.0.get(name)?;
         if decl.params.len() != args.len() {
             return None;
@@ -253,8 +259,6 @@ fn head_at(ty: &Ty, r: &dyn Resolver, depth: usize) -> Result<Ty, String> {
         return Err(format!("type {ty} does not resolve to a structure"));
     }
     match ty {
-        // ts-rs's declaration of serde_json::Value: any JSON.
-        Ty::Ref(name, args) if name == "JsonValue" && args.is_empty() => Ok(Ty::Any),
         Ty::Ref(name, args) => {
             let body = r
                 .resolve(name, args)
@@ -343,18 +347,65 @@ pub fn compare(
 /// One side of a check: memoizes results, so a type reached from many places, or a union of
 /// unions, is compared once per pair.
 pub(crate) struct Comparison<'a> {
-    ts_defs: &'a dyn Resolver,
-    schema_defs: &'a dyn Resolver,
+    ts: Side<'a>,
+    schema: Side<'a>,
     direction: Direction,
     /// Pairs being compared further up: assumed equal (coinduction for recursive types).
-    stack: Vec<(Ty, Ty)>,
+    stack: Vec<Pair>,
     /// The lowest stack position the current comparison has assumed so far.
     low: usize,
     /// Pairs that agree without any assumption still open.
-    proven: HashSet<(Ty, Ty)>,
+    proven: HashSet<Pair>,
     /// Pairs that disagree. Assumptions only ever make a comparison succeed, so a failure is
     /// final whatever was assumed.
-    failed: HashMap<(Ty, Ty), String>,
+    failed: HashMap<Pair, String>,
+}
+
+/// A TypeScript and a JSON Schema type, by their ids on each [`Side`].
+type Pair = (usize, usize);
+
+/// One side of a comparison: its named types, and every type met so far interned to an id, with
+/// its resolved head once computed. Each type is copied once, when first met, and each reference
+/// is resolved once.
+struct Side<'a> {
+    defs: &'a dyn Resolver,
+    ids: HashMap<Ty, usize>,
+    heads: Vec<Option<Rc<Ty>>>,
+}
+
+impl<'a> Side<'a> {
+    fn new(defs: &'a dyn Resolver) -> Side<'a> {
+        Side {
+            defs,
+            ids: HashMap::new(),
+            heads: Vec::new(),
+        }
+    }
+
+    fn id(&mut self, ty: &Ty) -> usize {
+        if let Some(&id) = self.ids.get(ty) {
+            return id;
+        }
+        let id = self.heads.len();
+        self.ids.insert(ty.clone(), id);
+        self.heads.push(None);
+        id
+    }
+
+    /// [`head`] of the type with this id, computed once.
+    fn head_of(&mut self, id: usize, ty: &Ty) -> Result<Rc<Ty>, String> {
+        if let Some(head) = &self.heads[id] {
+            return Ok(Rc::clone(head));
+        }
+        let resolved = Rc::new(head(ty, self.defs)?);
+        self.heads[id] = Some(Rc::clone(&resolved));
+        Ok(resolved)
+    }
+
+    fn head(&mut self, ty: &Ty) -> Result<Rc<Ty>, String> {
+        let id = self.id(ty);
+        self.head_of(id, ty)
+    }
 }
 
 impl<'a> Comparison<'a> {
@@ -364,8 +415,8 @@ impl<'a> Comparison<'a> {
         direction: Direction,
     ) -> Comparison<'a> {
         Comparison {
-            ts_defs,
-            schema_defs,
+            ts: Side::new(ts_defs),
+            schema: Side::new(schema_defs),
             direction,
             stack: Vec::new(),
             low: usize::MAX,
@@ -375,7 +426,7 @@ impl<'a> Comparison<'a> {
     }
 
     pub(crate) fn eq(&mut self, ts: &Ty, schema: &Ty) -> Result<(), String> {
-        let pair = (ts.clone(), schema.clone());
+        let pair = (self.ts.id(ts), self.schema.id(schema));
         if self.proven.contains(&pair) {
             return Ok(());
         }
@@ -389,8 +440,8 @@ impl<'a> Comparison<'a> {
         let depth = self.stack.len();
         self.stack.push(pair);
         let outer_low = std::mem::replace(&mut self.low, usize::MAX);
-        let result = self.eq_heads(ts, schema);
-        let pair = self.stack.pop().expect("pushed above");
+        let result = self.eq_heads(pair, ts, schema);
+        self.stack.pop();
         let low = self.low;
         self.low = outer_low.min(low);
         match &result {
@@ -406,12 +457,13 @@ impl<'a> Comparison<'a> {
         result
     }
 
-    fn eq_heads(&mut self, ts: &Ty, schema: &Ty) -> Result<(), String> {
-        let a = head(ts, self.ts_defs)?;
-        let b = head(schema, self.schema_defs)?;
+    fn eq_heads(&mut self, (a, b): Pair, ts: &Ty, schema: &Ty) -> Result<(), String> {
+        let a = self.ts.head_of(a, ts)?;
+        let b = self.schema.head_of(b, schema)?;
+        let (a, b) = (&*a, &*b);
         let differ = || Err(format!("TypeScript `{a}` but JSON Schema `{b}`"));
-        match (&a, &b) {
-            (Ty::Union(_), _) | (_, Ty::Union(_)) => self.eq_unions(&a, &b),
+        match (a, b) {
+            (Ty::Union(_), _) | (_, Ty::Union(_)) => self.eq_unions(a, b),
             (Ty::Array(x), Ty::Array(y)) => self.eq(x, y).map_err(|e| format!("[] {e}")),
             (Ty::Map(x), Ty::Map(y)) => self.eq(x, y).map_err(|e| format!("[key] {e}")),
             (Ty::Tuple(xs), Ty::Tuple(ys)) if xs.len() == ys.len() => {
@@ -494,8 +546,8 @@ impl<'a> Comparison<'a> {
             ),
             // A plain `Option`: the server reads a missing field as None; TypeScript sends null.
             (Direction::Input, false, true) => {
-                let nullable = self.nullable(&t.ty, self.ts_defs)?
-                    && self.nullable(&s.ty, self.schema_defs)?;
+                let nullable = self.ts.head(&t.ty)?.members().contains(&Ty::Null)
+                    && self.schema.head(&s.ty)?.members().contains(&Ty::Null);
                 if nullable {
                     self.eq(&t.ty, &s.ty)
                 } else {
@@ -527,12 +579,8 @@ impl<'a> Comparison<'a> {
         }
     }
 
-    fn nullable(&self, ty: &Ty, r: &dyn Resolver) -> Result<bool, String> {
-        Ok(head(ty, r)?.members().contains(&Ty::Null))
-    }
-
-    fn without_null(&self, ty: &Ty) -> Result<Ty, String> {
-        let ty = head(ty, self.schema_defs)?;
+    fn without_null(&mut self, ty: &Ty) -> Result<Ty, String> {
+        let ty = self.schema.head(ty)?;
         Ok(Ty::union(
             ty.members().iter().filter(|m| **m != Ty::Null).cloned(),
         ))
