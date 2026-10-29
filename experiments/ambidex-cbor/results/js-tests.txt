@@ -1,0 +1,19 @@
+✔ baseline loses precision; lossless mapping preserves it (0.483875ms)
+✔ reject noncanonical and out-of-range values (0.086792ms)
+✔ golden vectors, both languages and logical digest (486.07425ms)
+✔ scalar domain rejection and scale identity (0.287458ms)
+✔ JSON prevalidation, hostile keys and limits (0.477208ms)
+✔ authorization before sensitive validation, logs and approval binding (0.572125ms)
+✔ compatibility matrix and nonretryable mutation ambiguity (0.173708ms)
+✔ strict ordering differs from preferred acceptance (2.606917ms)
+✔ structure-aware and mutation differential smoke (78.616458ms)
+✔ resource thresholds reject before declared oversized allocation (17.998792ms)
+✔ pinned cbor-x is a comparator, not the profile validator (177.058125ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 811.147792

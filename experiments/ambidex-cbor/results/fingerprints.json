@@ -1,0 +1,82 @@
+{
+  "contract": "sha256:88c069d67ff6182cd959cdf46a16dd53b1756164ab0e7291daa2cf4e80988f30",
+  "limitations": [
+    "Not a generic semantic derive",
+    "ts-rs agreement extension not implemented",
+    "Nominal recursion and untagged precedence not implemented"
+  ],
+  "model": {
+    "api": "spike",
+    "input": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "amount": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "id": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "local": {
+          "type": "string"
+        },
+        "secret": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "at",
+        "date",
+        "id",
+        "local",
+        "secret"
+      ],
+      "title": "EditInput",
+      "type": "object"
+    },
+    "kind": "mutation",
+    "logical": {
+      "amount": {
+        "maxAbsScale": "1000",
+        "precision": "38",
+        "scaleSignificant": true,
+        "type": "decimal"
+      },
+      "at": {
+        "precision": "9",
+        "type": "instant"
+      },
+      "date": {
+        "type": "date"
+      },
+      "id": {
+        "maximum": "18446744073709551615",
+        "type": "uint64"
+      },
+      "local": {
+        "precision": "9",
+        "type": "local-datetime"
+      }
+    },
+    "mapping": "bigint",
+    "procedure": "fixture.edit"
+  },
+  "policy": "sha256:b78e5ad7e7cd40b44c5cb6ba352f0f3cd497014b666d6746a4346ca22e43e892",
+  "policyModel": {
+    "agent": "hidden",
+    "deprecated": false,
+    "logInput": false,
+    "perm": "fixture.edit",
+    "risk": "write",
+    "timeoutDefaultMs": "30000",
+    "timeoutMaxMs": "300000"
+  }
+}

@@ -1,0 +1,5 @@
+import { readFileSync,writeFileSync } from 'node:fs';
+const load=p=>JSON.parse(readFileSync(new URL('../results/'+p,import.meta.url)));
+const quantile=(a,p)=>a.slice().sort((x,y)=>x-y)[Math.floor((a.length-1)*p)];
+const summarize=rows=>{const groups=new Map();for(const r of rows){const key=r.name+'/'+r.codec;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r);}return Array.from(groups,([key,rs])=>{const samples=rs.flatMap(r=>r.samplesMs),p95=rs.map(r=>quantile(r.samplesMs,.95));return {key,bytes:rs[0].bytes,p50Ms:quantile(samples,.5),p95Ms:quantile(samples,.95),trialP95RangeMs:[Math.min(...p95),Math.max(...p95)],uncertainty:'range across five trials; not a confidence interval',samples:samples.length};});};
+const node=load('node-bench.json'),browsers=load('browser-bench.json');const summary={node:summarize(node.results),browsers:browsers.results.map(r=>({engine:r.engine,error:r.error,summary:r.raw?summarize(r.raw):[]}))};writeFileSync(new URL('../results/summary.json',import.meta.url),JSON.stringify(summary,null,2)+'\n');console.log(JSON.stringify(summary,null,2));

@@ -1,0 +1,15 @@
+{
+  "caveat": "Both typed profiles currently retain codec switching; delta is not production package delta.",
+  "rows": [
+    {
+      "name": "json",
+      "minifiedBytes": 8731,
+      "gzipBytes": 3506
+    },
+    {
+      "name": "dual",
+      "minifiedBytes": 8904,
+      "gzipBytes": 3590
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "ambidex-cbor-spike",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "packageManager": "pnpm@12.15.0",
+  "scripts": {
+    "test": "node --test *.test.mjs",
+    "bench": "node bench.mjs",
+    "bench:browser": "node browser-bench.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "playwright": "1.61.1"
+  },
+  "dependencies": {
+    "cbor-x": "1.6.4"
+  }
+}

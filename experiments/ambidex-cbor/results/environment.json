@@ -1,0 +1,13 @@
+{
+  "architecture": "arm64",
+  "cpu": "Apple M3 (verified outside sandbox with os.cpus())",
+  "commands": {
+    "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "node": "v24.18.0",
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t26.6.2\nBuildVersion:\t\t25G83",
+    "base": "fd3fc42141a647729d65c6b410065472ba914d31",
+    "runtimeBaseline": "174b74aeb88aac05916b612e38d074f14042caf4"
+  },
+  "offline": "Cached offline execution only; no hard network isolation",
+  "browser": "Playwright WebKit proxy; not Tauri WKWebView"
+}
