@@ -82,7 +82,9 @@ impl Call {
 
 /// Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on
 /// `e.code === "ApprovalRequired"`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ts_rs::TS, schemars::JsonSchema,
+)]
 pub enum Code {
     Cancelled,
     DeadlineExceeded,

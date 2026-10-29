@@ -9,17 +9,20 @@
 //! - [`router`]: the procedure registry; authorizes every call before dispatch.
 //! - [`error`]: the typed error model, `RpcError<E>`.
 //! - [`rpc`]: the `#[rpc::router]` and procedure attribute macros.
+//! - [`codegen`]: `api.ts` and `api.manifest.json` from a router, for a product's `rpc-gen`.
 //!
 //! Spec: Notion "Ambidex spec" (DOC-5), §2, §3, §7, §8, §10.
 //!
 //! ```
 //! use ambidex::{Agent, Ctx, Risk, RpcError, rpc};
+//! use schemars::JsonSchema;
 //! use serde::{Deserialize, Serialize};
+//! use ts_rs::TS;
 //!
-//! #[derive(Deserialize)]
+//! #[derive(Deserialize, TS, JsonSchema)]
 //! pub struct GetInput { pub id: u32 }
 //!
-//! #[derive(Serialize)]
+//! #[derive(Serialize, TS, JsonSchema)]
 //! pub struct Item { pub id: u32 }
 //!
 //! pub struct ItemsApi;
@@ -66,6 +69,7 @@
 //! ```
 
 pub mod cancel;
+pub mod codegen;
 pub mod engine;
 pub mod error;
 pub mod frame;
@@ -94,7 +98,12 @@ pub mod transport;
 ///
 /// Queries and mutations are `async fn name(&self, ctx: Ctx, input: I) -> Result<O, E>` with
 /// `I: Deserialize`, `O: Serialize` and `E:` [`IntoErrorPayload`]. Subscriptions and streams are
-/// registered and authorized, then answered with `Unimplemented` until their engine support lands.
+/// `async fn name(&self, ctx: Ctx, input: I, ..) -> Result<O, E>`, `O` being the event or the final
+/// result; they are registered and authorized, then answered with `Unimplemented` until their
+/// engine support lands.
+///
+/// `I` and `O` (and the details of `E`) also derive `ts_rs::TS` and `schemars::JsonSchema`, so
+/// [`codegen`] can export them; [`IntoErrorPayload::Details`] is the type of `details`.
 pub mod rpc {
     pub use ambidex_macros::{mutation, query, router, stream, subscription};
 }
@@ -109,6 +118,8 @@ pub use router::{
     Api, ApprovalRequired, Approvals, Ctx, Handler, Procedure, RegistryError, Rejected, Router,
     input_digest,
 };
+pub use schemars;
 pub use security_types;
 pub use security_types::{Risk, TargetRef};
 pub use tokio_util::sync::CancellationToken;
+pub use ts_rs;

@@ -27,12 +27,20 @@ ws = [
 # Tauri harness: the real plugin through Tauri's IPC and ACL layer on the mock runtime.
 tauri = ["dep:ambidex-tauri", "dep:tauri"]
 
+# `rpc-gen` writes the fixture API's `api.ts` and `api.manifest.json` for the TypeScript client's
+# conformance scenarios (Ambidex spec §2, §12). It needs no transport.
+[[bin]]
+name = "rpc-gen"
+path = "src/bin/rpc-gen.rs"
+
 [dependencies]
 ambidex = { path = "../ambidex" }
+schemars = { version = "1.2.3", default-features = false, features = ["derive"] }
 security-types = { path = "../security-types" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tokio = { version = "1.54.1", default-features = false, features = ["macros", "rt", "sync", "time"] }
+ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat"] }
 
 ambidex-axum = { path = "../ambidex-axum", optional = true }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "ws"], optional = true }

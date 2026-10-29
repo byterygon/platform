@@ -35,6 +35,8 @@ jobs:
           BYTERYGON_REQUIRE_POSTGRES: "1"
       # Ambidex spec §12: the conformance suite must pass on a network-disconnected runner. It
       # runs again in a fresh network namespace with only loopback, as the runner user, offline.
+      # It includes the rpc-gen drift test (tests/codegen.rs), so this also shows that generation
+      # needs no network and that the committed api.ts and api.manifest.json are current (spec §2).
       - name: Conformance suite (network disconnected)
         run: |
           sudo unshare --net -- sh -c '

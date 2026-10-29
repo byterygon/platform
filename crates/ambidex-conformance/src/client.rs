@@ -67,7 +67,7 @@ impl Client {
 
     /// A Hello for the fixture API with this transport's auth.
     pub fn hello_frame(&self) -> Frame {
-        hello_frame(SCHEMA_HASH, self.auth.clone())
+        hello_frame(&SCHEMA_HASH, self.auth.clone())
     }
 
     pub async fn hello(&mut self) {

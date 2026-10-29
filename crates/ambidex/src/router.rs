@@ -36,6 +36,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::cancel::CallScope;
+use crate::codegen::ProcedureTypes;
 use crate::engine::{BoxFuture, Dispatch, Session};
 use crate::error::{IntoErrorPayload, RpcError};
 use crate::message::{Call, Code, ErrorPayload};
@@ -50,6 +51,7 @@ pub type Handler =
 pub struct Procedure {
     meta: Arc<ProcedureMeta>,
     handler: Option<Handler>,
+    types: Option<ProcedureTypes>,
 }
 
 impl Procedure {
@@ -58,6 +60,7 @@ impl Procedure {
         Procedure {
             meta: Arc::new(meta),
             handler: Some(handler),
+            types: None,
         }
     }
 
@@ -67,11 +70,24 @@ impl Procedure {
         Procedure {
             meta: Arc::new(meta),
             handler: None,
+            types: None,
         }
+    }
+
+    /// Attaches the input, output and error types codegen exports (`#[rpc::router]` always does).
+    #[must_use]
+    pub fn with_types(mut self, types: ProcedureTypes) -> Procedure {
+        self.types = Some(types);
+        self
     }
 
     pub fn meta(&self) -> &Arc<ProcedureMeta> {
         &self.meta
+    }
+
+    /// `None` for procedures built without types, e.g. dynamic plugin procedures.
+    pub fn types(&self) -> Option<&ProcedureTypes> {
+        self.types.as_ref()
     }
 }
 
@@ -184,8 +200,13 @@ impl Guard {
     }
 }
 
-/// `details` of an `ApprovalRequired` error that has an approval id.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+/// `details` of an `ApprovalRequired` error raised by the authorizer: the id of the recorded
+/// approval request.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, ts_rs::TS, schemars::JsonSchema,
+)]
+#[ts(rename = "ApprovalRequiredDetails")]
+#[schemars(rename = "ApprovalRequiredDetails")]
 pub struct ApprovalRequired {
     pub approval_id: String,
 }
@@ -209,7 +230,11 @@ impl fmt::Display for Rejected {
 
 impl std::error::Error for Rejected {}
 
+/// Its only details are the approval id, which every client error type has a slot for
+/// (`ApprovalRequiredDetails` in `api.ts`).
 impl IntoErrorPayload for Rejected {
+    type Details = crate::error::NoDetails;
+
     fn into_error_payload(self) -> ErrorPayload {
         let mut payload = ErrorPayload::new(self.code, self.to_string());
         payload.details = self.approval_id.map(|approval_id| {
@@ -386,9 +411,20 @@ impl Router {
 
     /// Metadata of every registered procedure, sorted by name.
     pub fn procedures(&self) -> Vec<Arc<ProcedureMeta>> {
-        let mut all: Vec<_> = self.read().values().map(|p| Arc::clone(&p.meta)).collect();
-        all.sort_by(|a, b| a.name.cmp(&b.name));
-        all
+        self.sorted(|p| Arc::clone(&p.meta))
+    }
+
+    /// Every registered procedure, sorted by name: what codegen exports.
+    pub fn entries(&self) -> Vec<Procedure> {
+        self.sorted(Procedure::clone)
+    }
+
+    /// One snapshot of the registry, sorted by name, taking only what `f` keeps.
+    fn sorted<T>(&self, f: impl Fn(&Procedure) -> T) -> Vec<T> {
+        let procedures = self.read();
+        let mut all: Vec<&Procedure> = procedures.values().collect();
+        all.sort_by(|a, b| a.meta.name.cmp(&b.meta.name));
+        all.into_iter().map(f).collect()
     }
 
     /// Runs one call for `session`. This is [`Dispatch::call`]; the MCP adapter calls it directly
@@ -532,7 +568,8 @@ pub fn input_digest(input: &Value) -> Digest {
     Digest(sha2::Sha256::digest(&buf).into())
 }
 
-fn write_canonical(value: &Value, out: &mut Vec<u8>) {
+/// Canonical JSON, shared by [`input_digest`] and the schema hash (`codegen::manifest`).
+pub(crate) fn write_canonical(value: &Value, out: &mut Vec<u8>) {
     match value {
         Value::Array(items) => {
             out.push(b'[');
