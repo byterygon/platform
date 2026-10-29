@@ -37,9 +37,10 @@ pub static SCHEMA_HASH: LazyLock<String> = LazyLock::new(|| {
     codegen::schema_hash(&Fixture::new().router(), &api_info()).expect("fixture API exports")
 });
 
-/// Identity written into the generated `api.ts` and `api.manifest.json`.
+/// Identity written into the generated `api.ts` and `api.manifest.json`: the version the servers
+/// announce in Welcome, so `API_VERSION` matches them.
 pub fn api_info() -> ApiInfo {
-    ApiInfo::new(API, env!("CARGO_PKG_VERSION"))
+    ApiInfo::new(API, SERVER_VERSION)
 }
 
 /// Where the fixture API's generated `api.ts` and `api.manifest.json` are committed: next to the

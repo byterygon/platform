@@ -33,13 +33,10 @@ jobs:
       - run: cargo test --workspace --locked
         env:
           BYTERYGON_REQUIRE_POSTGRES: "1"
-      # Ambidex spec §2: the committed api.ts and api.manifest.json must match the Rust registry.
-      # Read-only; regenerate with `cargo run -p ambidex-conformance --bin rpc-gen`.
-      - name: Generated API is current (rpc-gen --check)
-        run: cargo run --locked -p ambidex-conformance --bin rpc-gen -- --check
       # Ambidex spec §12: the conformance suite must pass on a network-disconnected runner. It
       # runs again in a fresh network namespace with only loopback, as the runner user, offline,
-      # followed by rpc-gen (spec §2: generation needs no network).
+      # followed by rpc-gen. Spec §2: generation needs no network, and the committed api.ts and
+      # api.manifest.json must match the Rust registry (also a test in `cargo test`).
       - name: Conformance suite and rpc-gen (network disconnected)
         run: |
           sudo unshare --net -- sh -c '

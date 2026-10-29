@@ -319,12 +319,30 @@ pub(crate) fn ts_config() -> Config {
     Config::new().with_large_int("number")
 }
 
-/// JSON Schema settings for every export: draft 2020-12, definitions under `$defs`.
-pub(crate) fn schema_generator() -> SchemaGenerator {
-    SchemaGenerator::new(SchemaSettings::draft2020_12())
+/// Which side of the wire a JSON Schema describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    /// What the server accepts (serde's `Deserialize`): procedure inputs.
+    Input,
+    /// What the server sends (serde's `Serialize`): outputs and error details.
+    Output,
 }
 
-/// One procedure with everything resolved.
+/// JSON Schema settings for every export: draft 2020-12, definitions under `$defs`, describing
+/// what serde reads (`Input`) or writes (`Output`). The two differ: a `#[serde(default)]` field is
+/// optional to read but always written, a plain `Option` may be missing on input but is written as
+/// `null`, `skip_serializing_if` makes a field optional on output only.
+pub(crate) fn schema_generator(direction: Direction) -> SchemaGenerator {
+    let settings = SchemaSettings::draft2020_12();
+    match direction {
+        Direction::Input => settings.for_deserialize(),
+        Direction::Output => settings.for_serialize(),
+    }
+    .into_generator()
+}
+
+/// One procedure with everything resolved. `input_schema` refers to `Model::input_defs`,
+/// `output_schema` and `error_schema` to `Model::output_defs`.
 pub(crate) struct Resolved {
     pub(crate) meta: std::sync::Arc<crate::ProcedureMeta>,
     pub(crate) input_ts: String,
@@ -340,7 +358,82 @@ pub(crate) struct Model {
     pub(crate) api: ApiInfo,
     pub(crate) procedures: Vec<Resolved>,
     pub(crate) decls: BTreeMap<String, Decl>,
+    /// Named schemas of what the server reads.
+    pub(crate) input_defs: BTreeMap<String, Value>,
+    /// Named schemas of what the server writes.
+    pub(crate) output_defs: BTreeMap<String, Value>,
+    /// Both, as published in the manifest's `$defs`: one entry where the two sides agree, and
+    /// the output side renamed `<Name>.Output` where they differ (see [`Model::published`]).
     pub(crate) defs: BTreeMap<String, Value>,
+    output_renames: BTreeMap<String, String>,
+}
+
+/// Suffix of a `$defs` name for the output side of a type that reads and writes differently.
+pub const OUTPUT_SUFFIX: &str = ".Output";
+
+impl Model {
+    /// A schema as the manifest publishes it: output-side references renamed.
+    pub(crate) fn published(&self, schema: &Value, direction: Direction) -> Value {
+        let mut schema = schema.clone();
+        if direction == Direction::Output {
+            rename_refs(&mut schema, &self.output_renames);
+        }
+        schema
+    }
+}
+
+/// Rewrites `{"$ref": "#/$defs/<old>"}` to the new name.
+fn rename_refs(value: &mut Value, renames: &BTreeMap<String, String>) {
+    match value {
+        Value::Object(obj) => {
+            if let Some(Value::String(reference)) = obj.get_mut("$ref")
+                && let Some(new) = reference
+                    .strip_prefix("#/$defs/")
+                    .and_then(|name| renames.get(name))
+            {
+                *reference = format!("#/$defs/{new}");
+            }
+            obj.values_mut().for_each(|v| rename_refs(v, renames));
+        }
+        Value::Array(items) => items.iter_mut().for_each(|v| rename_refs(v, renames)),
+        _ => {}
+    }
+}
+
+/// Merges the two sides' `$defs`. A type whose output schema differs from its input schema (also
+/// through a type it refers to) gets a second entry, `<Name>.Output`.
+fn merge_defs(
+    input: &BTreeMap<String, Value>,
+    output: &BTreeMap<String, Value>,
+) -> (BTreeMap<String, Value>, BTreeMap<String, String>) {
+    let mut renames = BTreeMap::new();
+    loop {
+        let before = renames.len();
+        for (name, schema) in output {
+            if renames.contains_key(name) {
+                continue;
+            }
+            let Some(input_schema) = input.get(name) else {
+                continue;
+            };
+            let mut renamed = schema.clone();
+            rename_refs(&mut renamed, &renames);
+            if renamed != *input_schema {
+                renames.insert(name.clone(), format!("{name}{OUTPUT_SUFFIX}"));
+            }
+        }
+        if renames.len() == before {
+            break;
+        }
+    }
+    let mut defs = input.clone();
+    for (name, schema) in output {
+        let mut schema = schema.clone();
+        rename_refs(&mut schema, &renames);
+        let published = renames.get(name).unwrap_or(name);
+        defs.insert(published.clone(), schema);
+    }
+    (defs, renames)
 }
 
 fn resolve(router: &Router, api: &ApiInfo) -> Result<Model, CodegenError> {
@@ -348,24 +441,25 @@ fn resolve(router: &Router, api: &ApiInfo) -> Result<Model, CodegenError> {
     // The protocol's own types, referenced by the RpcError union in api.ts.
     collector.visit::<crate::Code>();
     collector.visit::<crate::ApprovalRequired>();
-    let mut generator = schema_generator();
-    generator.subschema_for::<crate::Code>();
-    generator.subschema_for::<crate::ApprovalRequired>();
+    let mut input_gen = schema_generator(Direction::Input);
+    let mut output_gen = schema_generator(Direction::Output);
+    output_gen.subschema_for::<crate::Code>();
+    output_gen.subschema_for::<crate::ApprovalRequired>();
     let mut procedures = Vec::new();
     for entry in router.entries() {
         let meta = std::sync::Arc::clone(entry.meta());
         let types = *entry
             .types()
             .ok_or_else(|| CodegenError::MissingTypes(meta.name.clone()))?;
-        let mut one = |t: TypeRef| {
+        let mut one = |t: TypeRef, generator: &mut SchemaGenerator| {
             (t.collect)(&mut collector);
             let ts = (t.ts_name)(&collector.cfg);
-            let schema = (t.schema)(&mut generator).to_value();
+            let schema = (t.schema)(generator).to_value();
             (ts, schema)
         };
-        let (input_ts, input_schema) = one(types.input);
-        let (output_ts, output_schema) = one(types.output);
-        let (error_ts, error_schema) = one(types.error);
+        let (input_ts, input_schema) = one(types.input, &mut input_gen);
+        let (output_ts, output_schema) = one(types.output, &mut output_gen);
+        let (error_ts, error_schema) = one(types.error, &mut output_gen);
         procedures.push(Resolved {
             meta,
             input_ts,
@@ -390,12 +484,17 @@ fn resolve(router: &Router, api: &ApiInfo) -> Result<Model, CodegenError> {
         });
     }
     check_namespaces(&procedures)?;
-    let defs = generator.take_definitions(true).into_iter().collect();
+    let input_defs = input_gen.take_definitions(true).into_iter().collect();
+    let output_defs = output_gen.take_definitions(true).into_iter().collect();
+    let (defs, output_renames) = merge_defs(&input_defs, &output_defs);
     Ok(Model {
         api: api.clone(),
         procedures,
         decls: collector.decls,
+        input_defs,
+        output_defs,
         defs,
+        output_renames,
     })
 }
 
@@ -431,10 +530,14 @@ pub fn generate(router: &Router, api: &ApiInfo) -> Result<Output, CodegenError> 
 }
 
 /// The schema hash of `router`'s contract, for [`ServerConfig::schema_hash`](crate::ServerConfig).
-/// Runs all of [`generate`], so a server never announces a hash for a contract rpc-gen would
-/// refuse; compute it once at startup.
+///
+/// Collects the types and runs the agreement check, like [`generate`], so a server never
+/// announces a hash for a contract rpc-gen would refuse, but renders neither artifact. Compute it
+/// once at startup.
 pub fn schema_hash(router: &Router, api: &ApiInfo) -> Result<String, CodegenError> {
-    generate(router, api).map(|output| output.schema_hash)
+    let model = resolve(router, api)?;
+    agree::check_model(&model).map_err(CodegenError::Disagreement)?;
+    Ok(manifest::hash(&model))
 }
 
 /// Writes `api.ts` and `api.manifest.json` into `dir`, creating it if needed.

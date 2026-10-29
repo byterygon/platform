@@ -196,6 +196,16 @@ fn key(name: &str) -> String {
     }
 }
 
+/// A key in an object literal. `__proto__: v` (bare or quoted) would set the prototype instead of
+/// defining a property, so it is written as a computed key.
+fn value_key(name: &str) -> String {
+    if name == "__proto__" {
+        "[\"__proto__\"]".to_owned()
+    } else {
+        key(name)
+    }
+}
+
 enum Tree<'a> {
     Leaf(&'a Resolved),
     Node(BTreeMap<&'a str, Tree<'a>>),
@@ -264,7 +274,7 @@ impl<'a> Tree<'a> {
             Tree::Node(children) => {
                 out.push_str("{\n");
                 for (name, child) in children {
-                    let _ = write!(out, "{pad}{}: ", key(name));
+                    let _ = write!(out, "{pad}{}: ", value_key(name));
                     child.write_value(depth + 1, out);
                     out.push_str(",\n");
                 }

@@ -407,9 +407,7 @@ impl Router {
 
     /// Metadata of every registered procedure, sorted by name.
     pub fn procedures(&self) -> Vec<Arc<ProcedureMeta>> {
-        let mut all: Vec<_> = self.read().values().map(|p| Arc::clone(&p.meta)).collect();
-        all.sort_by(|a, b| a.name.cmp(&b.name));
-        all
+        self.entries().iter().map(|p| Arc::clone(&p.meta)).collect()
     }
 
     /// Every registered procedure, sorted by name: what codegen exports.

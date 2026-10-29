@@ -6,11 +6,11 @@
 /** API name the client announces in Hello. */
 export const API = "conformance";
 /** Version of the API this file was generated from. */
-export const API_VERSION = "0.0.0";
+export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:1b4ecdcfb4ddb225ec481744cf72a2ab1530cba5953fae249647b81f563c2695";
+export const SCHEMA_HASH = "sha256:9ff3ce4dd80a2d781ce366b8a8e9f6da349e454f24eee7f9b248b691589e5383";
 
 // ---- Types
 

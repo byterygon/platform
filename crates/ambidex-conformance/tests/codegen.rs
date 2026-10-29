@@ -2,7 +2,7 @@
 //! §2: CI fails on drift), and describe the servers the harnesses start.
 
 use ambidex::codegen;
-use ambidex_conformance::fixture::{Fixture, SCHEMA_HASH, api_info, generated_dir};
+use ambidex_conformance::fixture::{Fixture, SCHEMA_HASH, SERVER_VERSION, api_info, generated_dir};
 
 #[test]
 fn committed_artifacts_match_the_fixture_router() {
@@ -21,6 +21,9 @@ fn servers_announce_the_generated_schema_hash() {
     let manifest = std::fs::read_to_string(generated_dir().join(codegen::MANIFEST_JSON)).unwrap();
     let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
     assert_eq!(manifest["schema_hash"], SCHEMA_HASH.as_str());
+    assert_eq!(manifest["api"]["version"], SERVER_VERSION);
     let api_ts = std::fs::read_to_string(generated_dir().join(codegen::API_TS)).unwrap();
     assert!(api_ts.contains(&format!("export const SCHEMA_HASH = \"{}\";", *SCHEMA_HASH)));
+    // The version the servers announce in Welcome.
+    assert!(api_ts.contains(&format!("export const API_VERSION = \"{SERVER_VERSION}\";")));
 }

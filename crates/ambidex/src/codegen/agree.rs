@@ -9,29 +9,42 @@
 //! What JSON cannot tell apart is ignored: integer formats and ranges, `uniqueItems`,
 //! `additionalProperties: false`, descriptions and titles.
 //!
-//! Optional properties follow serde:
+//! A type is checked against what serde reads where it is an input, and against what serde writes
+//! where it is an output or error details (schemars' deserialize and serialize contracts; see
+//! [`Direction`]). The two differ in which properties may be missing, so optional properties follow
+//! serde by direction. As an **input** (TypeScript must not let a client send what the server
+//! refuses, nor force it to send what the server would fill in):
 //!
-//! - TS `k: T` against a schema property that is required: `T` must agree.
-//! - TS `k?: T` against an optional schema property: agree, or the schema adds `null` (an
-//!   `Option` with `skip_serializing_if`: never sent as `null`, but accepted).
-//! - TS `k: T | null` against an optional nullable schema property: an `Option` field, which
-//!   serde writes as `null` and reads when missing.
-//! - TS `k: T` against an optional schema property with a `default` disagrees: the field is
+//! - TS `k: T` against a required property: `T` must agree.
+//! - TS `k?: T` against an optional property: agree, or the schema adds `null` (an `Option` with
+//!   `skip_serializing_if`: never sent as `null` by TypeScript, but read).
+//! - TS `k: T | null` against an optional nullable property: a plain `Option`, read as None
+//!   when missing.
+//! - TS `k: T` against an optional property with a `default` disagrees: the field is
 //!   `#[serde(default)]`, so a client may omit it, and TypeScript must say so. Mark it
 //!   `#[ts(optional = nullable)]`, which writes `k?: T` and keeps `T` as is.
-//! - TS `k?: T` against a required schema property disagrees: a client could omit a field the
-//!   server requires.
+//! - TS `k?: T` against a required property disagrees: a client could omit a field the server
+//!   requires.
+//!
+//! As an **output** (TypeScript must expect everything the server may send):
+//!
+//! - TS `k: T` against a required property: `T` must agree, `null` included, so `#[ts(optional)]`
+//!   on a plain `Option` (always written, as `null`) disagrees.
+//! - TS `k?: T` against a required property: agree (a `#[serde(default)]` field, always written).
+//! - TS `k?: T` against an optional property (`skip_serializing_if`): agree, or the schema adds
+//!   `null`; schemars does not say whether the predicate is `Option::is_none`.
+//! - TS `k: T` against an optional property disagrees: the server may leave it out.
 //!
 //! Fixed-size arrays (`[T; N]`) are tuples on both sides up to ts-rs's tuple limit, and a
 //! `#[serde(flatten)]` map adds a type for all other properties (an open object).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 
 use serde_json::Value;
 
-use super::Model;
 use super::ts::{self, Field, Ty};
+use super::{Direction, Model};
 
 /// Where and how the two descriptions differ.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -203,9 +216,12 @@ fn typed(t: &str, obj: &serde_json::Map<String, Value>) -> Ty {
                 }
             }
             _ => match obj.get("additionalProperties") {
-                Some(Value::Bool(false)) => Ty::Object(BTreeMap::new()),
-                Some(schema) => Ty::Map(Box::new(from_schema(schema))),
-                None => Ty::Map(Box::new(Ty::Any)),
+                // A map; `true` (any value) for serde_json::Map.
+                Some(schema) if *schema != Value::Bool(false) => {
+                    Ty::Map(Box::new(from_schema(schema)))
+                }
+                // A struct without fields (`{"type": "object"}`).
+                _ => Ty::Object(BTreeMap::new()),
             },
         },
         _ => Ty::Any,
@@ -313,37 +329,80 @@ fn merge(
     Ok((out, out_rest))
 }
 
-/// Compares a TypeScript type with a JSON Schema type.
+/// Compares a TypeScript type with a JSON Schema type of what the server reads or writes.
 pub fn compare(
     ts: &Ty,
     schema: &Ty,
     ts_defs: &dyn Resolver,
     schema_defs: &dyn Resolver,
+    direction: Direction,
 ) -> Result<(), String> {
-    Comparison {
-        ts_defs,
-        schema_defs,
-        assumed: Vec::new(),
-    }
-    .eq(ts, schema)
+    Comparison::new(ts_defs, schema_defs, direction).eq(ts, schema)
 }
 
-struct Comparison<'a> {
+/// One side of a check: memoizes results, so a type reached from many places, or a union of
+/// unions, is compared once per pair.
+pub(crate) struct Comparison<'a> {
     ts_defs: &'a dyn Resolver,
     schema_defs: &'a dyn Resolver,
+    direction: Direction,
     /// Pairs being compared further up: assumed equal (coinduction for recursive types).
-    assumed: Vec<(Ty, Ty)>,
+    stack: Vec<(Ty, Ty)>,
+    /// The lowest stack position the current comparison has assumed so far.
+    low: usize,
+    /// Pairs that agree without any assumption still open.
+    proven: HashSet<(Ty, Ty)>,
+    /// Pairs that disagree. Assumptions only ever make a comparison succeed, so a failure is
+    /// final whatever was assumed.
+    failed: HashMap<(Ty, Ty), String>,
 }
 
-impl Comparison<'_> {
-    fn eq(&mut self, ts: &Ty, schema: &Ty) -> Result<(), String> {
+impl<'a> Comparison<'a> {
+    pub(crate) fn new(
+        ts_defs: &'a dyn Resolver,
+        schema_defs: &'a dyn Resolver,
+        direction: Direction,
+    ) -> Comparison<'a> {
+        Comparison {
+            ts_defs,
+            schema_defs,
+            direction,
+            stack: Vec::new(),
+            low: usize::MAX,
+            proven: HashSet::new(),
+            failed: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn eq(&mut self, ts: &Ty, schema: &Ty) -> Result<(), String> {
         let pair = (ts.clone(), schema.clone());
-        if self.assumed.contains(&pair) {
+        if self.proven.contains(&pair) {
             return Ok(());
         }
-        self.assumed.push(pair);
+        if let Some(e) = self.failed.get(&pair) {
+            return Err(e.clone());
+        }
+        if let Some(at) = self.stack.iter().position(|p| *p == pair) {
+            self.low = self.low.min(at);
+            return Ok(());
+        }
+        let depth = self.stack.len();
+        self.stack.push(pair);
+        let outer_low = std::mem::replace(&mut self.low, usize::MAX);
         let result = self.eq_heads(ts, schema);
-        self.assumed.pop();
+        let pair = self.stack.pop().expect("pushed above");
+        let low = self.low;
+        self.low = outer_low.min(low);
+        match &result {
+            // Only what rests on this pair or deeper (finished) ones is settled.
+            Ok(()) if low >= depth => {
+                self.proven.insert(pair);
+            }
+            Ok(()) => {}
+            Err(e) => {
+                self.failed.insert(pair, e.clone());
+            }
+        }
         result
     }
 
@@ -418,31 +477,52 @@ impl Comparison<'_> {
         Ok(())
     }
 
+    /// Optionality, by direction (see the module docs).
     fn eq_field(&mut self, t: &Field, s: &Field) -> Result<(), String> {
-        match (t.optional, s.optional) {
-            (false, false) => self.eq(&t.ty, &s.ty),
-            (true, false) => Err("is optional in TypeScript but required in JSON Schema".into()),
-            (true, true) => match self.eq(&t.ty, &s.ty) {
-                Ok(()) => Ok(()),
-                // `Option` + `skip_serializing_if`: the schema also accepts null.
-                Err(e) => {
-                    let without_null = self.without_null(&s.ty)?;
-                    self.eq(&t.ty, &without_null).map_err(|_| e)
-                }
-            },
-            (false, true) if s.has_default => Err(
+        match (self.direction, t.optional, s.optional) {
+            (_, false, false) => self.eq(&t.ty, &s.ty),
+
+            (Direction::Input, true, false) => {
+                Err("is optional in TypeScript but the server requires it".into())
+            }
+            // `Option` with `skip_serializing_if`: the server also reads null.
+            (Direction::Input, true, true) => self.eq_or_without_null(t, s),
+            (Direction::Input, false, true) if s.has_default => Err(
                 "is required in TypeScript but has a default (`#[serde(default)]`), so a client \
                  may omit it; mark the field `#[ts(optional = nullable)]`"
                     .into(),
             ),
-            (false, true) => {
+            // A plain `Option`: the server reads a missing field as None; TypeScript sends null.
+            (Direction::Input, false, true) => {
                 let nullable = self.nullable(&t.ty, self.ts_defs)?
                     && self.nullable(&s.ty, self.schema_defs)?;
                 if nullable {
                     self.eq(&t.ty, &s.ty)
                 } else {
-                    Err("is required in TypeScript but optional in JSON Schema".into())
+                    Err("is required in TypeScript but optional to the server".into())
                 }
+            }
+
+            // Always sent (`#[serde(default)]` read optionally, written always): TypeScript may
+            // be more careful than needed, but the type must match, null included.
+            (Direction::Output, true, false) => self.eq(&t.ty, &s.ty),
+            // `skip_serializing_if`: the server may leave the field out. schemars cannot tell
+            // `Option::is_none` from other predicates, so `k?: T` is accepted against `T | null`.
+            (Direction::Output, true, true) => self.eq_or_without_null(t, s),
+            (Direction::Output, false, true) => {
+                Err("is required in TypeScript but the server may leave it out \
+                 (`skip_serializing_if`); mark the field `#[ts(optional)]`"
+                    .into())
+            }
+        }
+    }
+
+    fn eq_or_without_null(&mut self, t: &Field, s: &Field) -> Result<(), String> {
+        match self.eq(&t.ty, &s.ty) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let without_null = self.without_null(&s.ty)?;
+                self.eq(&t.ty, &without_null).map_err(|_| e)
             }
         }
     }
@@ -542,49 +622,73 @@ pub fn accepts(ty: &Ty, value: &Value, r: &dyn Resolver) -> Result<bool, String>
     })
 }
 
-/// Checks every procedure type and every named type of `model`.
+/// Checks every procedure type and every named type of `model`: inputs against what the server
+/// reads, outputs and error details against what it writes.
 pub(crate) fn check_model(model: &Model) -> Result<(), Mismatch> {
     let ts_defs = TsDecls::parse(model.decls.values().map(|d| d.decl.as_str()))?;
-    let schema_defs = SchemaDefs::convert(&model.defs);
-    let check = |path: String, ts_src: &str, schema: &Value| {
+    let input_defs = SchemaDefs::convert(&model.input_defs);
+    let output_defs = SchemaDefs::convert(&model.output_defs);
+    let mut input = Comparison::new(&ts_defs, &input_defs, Direction::Input);
+    let mut output = Comparison::new(&ts_defs, &output_defs, Direction::Output);
+    let check = |side: &mut Comparison<'_>, path: String, ts_src: &str, schema: &Value| {
         let ts = ts::parse_type(ts_src).map_err(|e| Mismatch {
             path: path.clone(),
             reason: format!("cannot parse `{ts_src}`: {e}"),
         })?;
-        compare(&ts, &from_schema(schema), &ts_defs, &schema_defs)
+        side.eq(&ts, &from_schema(schema))
             .map_err(|reason| Mismatch { path, reason })
     };
     for p in &model.procedures {
         let name = &p.meta.name;
-        check(format!("{name} input"), &p.input_ts, &p.input_schema)?;
-        check(format!("{name} output"), &p.output_ts, &p.output_schema)?;
         check(
+            &mut input,
+            format!("{name} input"),
+            &p.input_ts,
+            &p.input_schema,
+        )?;
+        check(
+            &mut output,
+            format!("{name} output"),
+            &p.output_ts,
+            &p.output_schema,
+        )?;
+        check(
+            &mut output,
             format!("{name} error details"),
             &p.error_ts,
             &p.error_schema,
         )?;
     }
-    // Named types on both sides, also those only reached through the protocol (Code).
+    // Named types on each side they are used on, also those only reached through the protocol.
     for (name, decl) in &ts_defs.0 {
-        if decl.params.is_empty()
-            && let Some(schema) = schema_defs.0.get(name)
-        {
-            compare(&decl.body, schema, &ts_defs, &schema_defs).map_err(|reason| Mismatch {
-                path: name.clone(),
-                reason,
-            })?;
+        if !decl.params.is_empty() {
+            continue;
+        }
+        for (side, defs, label) in [
+            (&mut input, &input_defs, "as read"),
+            (&mut output, &output_defs, "as written"),
+        ] {
+            if let Some(schema) = defs.0.get(name) {
+                side.eq(&decl.body, schema).map_err(|reason| Mismatch {
+                    path: format!("{name} ({label})"),
+                    reason,
+                })?;
+            }
         }
     }
     Ok(())
 }
 
 /// Both descriptions of one type, for tests and tools: does serde's JSON for a value fit the
-/// TypeScript type and the JSON Schema, and do the two agree?
+/// TypeScript type and the JSON Schemas, and do they agree? The type is checked as an input
+/// (against what serde reads) and as an output (against what serde writes).
 pub struct Checker {
     ts: Ty,
-    schema: Ty,
+    input: Ty,
+    output: Ty,
     ts_defs: TsDecls,
-    schema_defs: SchemaDefs,
+    input_defs: SchemaDefs,
+    output_defs: SchemaDefs,
 }
 
 impl Checker {
@@ -597,9 +701,14 @@ impl Checker {
                 reason: err.to_string(),
             });
         }
-        let mut generator = super::schema_generator();
-        let schema = generator.subschema_for::<T>().to_value();
-        let defs = generator.take_definitions(true);
+        let schema = |direction| {
+            let mut generator = super::schema_generator(direction);
+            let schema = generator.subschema_for::<T>().to_value();
+            let defs = generator.take_definitions(true);
+            (from_schema(&schema), SchemaDefs::convert(defs.iter()))
+        };
+        let (input, input_defs) = schema(Direction::Input);
+        let (output, output_defs) = schema(Direction::Output);
         let ts_src = <T as ts_rs::TS>::name(&collector.cfg);
         let ts = ts::parse_type(&ts_src).map_err(|e| Mismatch {
             path: std::any::type_name::<T>().into(),
@@ -607,21 +716,41 @@ impl Checker {
         })?;
         Ok(Checker {
             ts,
-            schema: from_schema(&schema),
+            input,
+            output,
             ts_defs: TsDecls::parse(collector.decls.values().map(|d| d.decl.as_str()))?,
-            schema_defs: SchemaDefs::convert(defs.iter()),
+            input_defs,
+            output_defs,
         })
     }
 
+    /// Agrees both as an input and as an output.
     pub fn agree(&self) -> Result<(), String> {
-        compare(&self.ts, &self.schema, &self.ts_defs, &self.schema_defs)
+        self.agree_as(Direction::Input)
+            .map_err(|e| format!("as input: {e}"))?;
+        self.agree_as(Direction::Output)
+            .map_err(|e| format!("as output: {e}"))
+    }
+
+    pub fn agree_as(&self, direction: Direction) -> Result<(), String> {
+        let (schema, defs) = match direction {
+            Direction::Input => (&self.input, &self.input_defs),
+            Direction::Output => (&self.output, &self.output_defs),
+        };
+        compare(&self.ts, schema, &self.ts_defs, defs, direction)
     }
 
     pub fn ts_accepts(&self, value: &Value) -> Result<bool, String> {
         accepts(&self.ts, value, &self.ts_defs)
     }
 
-    pub fn schema_accepts(&self, value: &Value) -> Result<bool, String> {
-        accepts(&self.schema, value, &self.schema_defs)
+    /// Whether the server reads `value`, as far as the schema can tell.
+    pub fn input_schema_accepts(&self, value: &Value) -> Result<bool, String> {
+        accepts(&self.input, value, &self.input_defs)
+    }
+
+    /// Whether `value` is something the server may write.
+    pub fn output_schema_accepts(&self, value: &Value) -> Result<bool, String> {
+        accepts(&self.output, value, &self.output_defs)
     }
 }

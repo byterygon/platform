@@ -75,7 +75,7 @@
   },
   "api": {
     "name": "conformance",
-    "version": "0.0.0"
+    "version": "0.0.0-conformance"
   },
   "approval_required_details": {
     "$ref": "#/$defs/ApprovalRequiredDetails"
@@ -315,5 +315,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:1b4ecdcfb4ddb225ec481744cf72a2ab1530cba5953fae249647b81f563c2695"
+  "schema_hash": "sha256:9ff3ce4dd80a2d781ce366b8a8e9f6da349e454f24eee7f9b248b691589e5383"
 }

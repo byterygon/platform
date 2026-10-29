@@ -8,13 +8,16 @@
 //! - `api`: `{name, version}`; `schema_hash`;
 //! - `procedures`: sorted by name, each with the full [`ProcedureMeta`](crate::ProcedureMeta)
 //!   (`name`, `kind`, `perm`, `risk`, `agent`, `deprecated`, `timeout_default_ms`,
-//!   `timeout_max_ms`, `log_input`, `redact`) and the JSON Schemas `input`, `output` (the event
-//!   of a subscription, the final result of a stream) and `error` (the `details` of its errors;
-//!   `false` when it has none);
+//!   `timeout_max_ms`, `log_input`, `redact`) and the JSON Schemas `input` (what the server
+//!   accepts), `output` (what it sends: the event of a subscription, the final result of a stream)
+//!   and `error` (the `details` of its errors as sent; `false` when it has none);
 //! - `approval_required_details`: what else the `details` of any procedure's `ApprovalRequired`
 //!   error can be: the approval id the router sets when the authorizer asks for approval;
 //! - `$defs`: every named schema, referenced as `#/$defs/<name>`, so the manifest is itself a
-//!   valid JSON Schema document to resolve them against.
+//!   valid JSON Schema document to resolve them against. A type that serde writes differently
+//!   from how it reads it (`#[serde(default)]`, `skip_serializing_if`, a plain `Option`, ...) has
+//!   two entries: `<Name>` as read and `<Name>.Output` as written, and output schemas refer to the
+//!   latter.
 //!
 //! # Schema hash
 //!
@@ -29,18 +32,22 @@
 //!  "$defs": {...}}
 //! ```
 //!
-//! with procedures sorted by name and every schema normalized by [`normalize`]: the `description`
-//! and `title` annotations (doc comments) removed and every `required` list sorted (a set: its
-//! order is field declaration order). So the hash
+//! with procedures sorted by name and every schema reduced by [`normalize`] to its shape keywords
+//! ([`SHAPE_KEYWORDS`]: `$ref`, `type`, `properties`, `required`, `items`, `enum`, `oneOf`, ...),
+//! with `required` and `type` lists sorted. Doc comments, numeric formats and ranges, `default`,
+//! `readOnly`/`writeOnly` and anything else schemars may add do not reach the hash. So the hash
 //!
 //! - changes with any procedure added, removed or renamed, any change of kind, permission, risk,
 //!   agent exposure or deprecation, and any change of what JSON an input, output or error accepts
 //!   (fields, renames, optionality, enum variants and their order, tagging), including renaming a
 //!   named type;
-//! - does not change with declaration order of procedures, fields or types, doc comments, the API
-//!   version, timeouts or audit settings (`log_input`, `redact`), none of which a client depends
-//!   on;
-//! - depends on nothing but the registry: no time, path, host or environment.
+//! - does not change with declaration order of procedures, fields or types, doc comments, integer
+//!   widths (`u32` to `u64` is `number` either way), the API version, timeouts or audit settings
+//!   (`log_input`, `redact`), none of which a client depends on;
+//! - depends on the registry and on how the locked schemars version writes shapes: no time, path,
+//!   host or environment. A schemars upgrade that writes a shape differently (a type name, how a
+//!   nullable type is spelled) changes it; the CI drift check then fails, so that never ships
+//!   unnoticed.
 //!
 //! A server puts it in [`ServerConfig::schema_hash`], which the engine compares exactly with the
 //! client's `Hello.schema_hash`; the engine treats it as an opaque string, so the wire protocol is
@@ -57,7 +64,8 @@ use crate::frame::PROTOCOL_VERSION;
 pub const FORMAT: &str = "ambidex.manifest.v1";
 pub const HASH_DOMAIN: &[u8] = b"ambidex.schema-hash.v1";
 
-fn procedure_contract(p: &super::Resolved) -> Map<String, Value> {
+fn procedure_contract(model: &Model, p: &super::Resolved) -> Map<String, Value> {
+    use super::Direction::{Input, Output};
     let meta = &p.meta;
     let mut obj = Map::new();
     obj.insert("name".into(), json!(meta.name));
@@ -66,9 +74,9 @@ fn procedure_contract(p: &super::Resolved) -> Map<String, Value> {
     obj.insert("risk".into(), json!(meta.risk));
     obj.insert("agent".into(), json!(meta.agent));
     obj.insert("deprecated".into(), json!(meta.deprecated));
-    obj.insert("input".into(), p.input_schema.clone());
-    obj.insert("output".into(), p.output_schema.clone());
-    obj.insert("error".into(), p.error_schema.clone());
+    obj.insert("input".into(), model.published(&p.input_schema, Input));
+    obj.insert("output".into(), model.published(&p.output_schema, Output));
+    obj.insert("error".into(), model.published(&p.error_schema, Output));
     obj
 }
 
@@ -87,7 +95,7 @@ pub(crate) fn hash(model: &Model) -> String {
     let mut procedures: Vec<_> = model
         .procedures
         .iter()
-        .map(|p| Value::Object(procedure_contract(p)))
+        .map(|p| Value::Object(procedure_contract(model, p)))
         .collect();
     procedures.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
     for p in &mut procedures {
@@ -121,28 +129,27 @@ pub fn hash_contract(contract: &Value) -> String {
     out
 }
 
-/// Normalizes the JSON Schema `schema`: removes the `description` and `title` annotations (doc
-/// comments) and sorts `required` lists, in it and in every subschema.
+/// Reduces the JSON Schema `schema`, in place, to the keywords that decide which JSON it describes
+/// as TypeScript sees it ([`SHAPE_KEYWORDS`]), and sorts what is a set (`required`, a `type`
+/// list). Everything else goes, in it and in every subschema: doc comments (`description`,
+/// `title`), numeric formats and ranges (`format: "uint64"`, `minimum`), `default`, `readOnly`,
+/// `writeOnly`, `uniqueItems`, examples, and any keyword a later schemars adds.
 ///
 /// It walks the schema by keyword, so a property or definition that happens to be named like a
 /// keyword (`default`, `enum`, `title`, ...) is still treated as a schema, and literal values
-/// (`const`, `default`, `enum`, `examples`) and unknown keywords are left as they are.
+/// (`const`, `enum`) are kept as they are.
 pub fn normalize(schema: &mut Value) {
     let Value::Object(obj) = schema else {
         return; // `true`, `false`
     };
-    for annotation in ["description", "title"] {
-        if obj.get(annotation).is_some_and(Value::is_string) {
-            obj.remove(annotation);
-        }
-    }
+    obj.retain(|key, _| SHAPE_KEYWORDS.contains(&key.as_str()));
     for (key, child) in obj.iter_mut() {
         match key.as_str() {
-            "required" => {
-                if let Value::Array(required) = child
-                    && required.iter().all(Value::is_string)
+            "required" | "type" => {
+                if let Value::Array(set) = child
+                    && set.iter().all(Value::is_string)
                 {
-                    required.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
+                    set.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
                 }
             }
             // A schema.
@@ -151,11 +158,7 @@ pub fn normalize(schema: &mut Value) {
             | "unevaluatedProperties"
             | "unevaluatedItems"
             | "propertyNames"
-            | "contains"
-            | "not"
-            | "if"
-            | "then"
-            | "else" => normalize(child),
+            | "not" => normalize(child),
             // A list of schemas.
             "allOf" | "anyOf" | "oneOf" | "prefixItems" => {
                 if let Value::Array(items) = child {
@@ -163,7 +166,7 @@ pub fn normalize(schema: &mut Value) {
                 }
             }
             // Schemas by name: the names are data, not keywords.
-            "properties" | "patternProperties" | "dependentSchemas" | "$defs" | "definitions" => {
+            "properties" | "patternProperties" | "$defs" => {
                 if let Value::Object(map) = child {
                     map.values_mut().for_each(normalize);
                 }
@@ -173,6 +176,31 @@ pub fn normalize(schema: &mut Value) {
     }
 }
 
+/// The keywords the schema hash keeps (see [`normalize`]). `minItems`/`maxItems` stay because
+/// equal bounds make an array a fixed-length tuple in TypeScript.
+pub const SHAPE_KEYWORDS: &[&str] = &[
+    "$ref",
+    "$defs",
+    "type",
+    "const",
+    "enum",
+    "properties",
+    "required",
+    "additionalProperties",
+    "patternProperties",
+    "propertyNames",
+    "unevaluatedProperties",
+    "items",
+    "prefixItems",
+    "minItems",
+    "maxItems",
+    "unevaluatedItems",
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+];
+
 /// Renders the manifest and returns it with its schema hash.
 pub(crate) fn render(model: &Model) -> (String, String) {
     let schema_hash = hash(model);
@@ -180,7 +208,7 @@ pub(crate) fn render(model: &Model) -> (String, String) {
         .procedures
         .iter()
         .map(|p| {
-            let mut obj = procedure_contract(p);
+            let mut obj = procedure_contract(model, p);
             let meta = &p.meta;
             obj.insert(
                 "timeout_default_ms".into(),
@@ -278,8 +306,7 @@ mod tests {
             },
             "required": ["enum", "default"],
             "$defs": {"title": {"type": "object", "description": "doc", "required": ["z", "y"]}},
-            "default": {"description": "kept", "required": ["b", "a"]},
-            "enum": [{"title": "kept"}],
+            "const": {"title": "kept", "required": ["b", "a"]},
         });
         normalize(&mut v);
         assert_eq!(
@@ -293,9 +320,22 @@ mod tests {
                 },
                 "required": ["default", "enum"],
                 "$defs": {"title": {"type": "object", "required": ["y", "z"]}},
-                "default": {"description": "kept", "required": ["b", "a"]},
-                "enum": [{"title": "kept"}],
+                "const": {"title": "kept", "required": ["b", "a"]},
             })
+        );
+    }
+
+    #[test]
+    fn only_shape_keywords_are_hashed() {
+        let mut v = json!({
+            "type": ["null", "integer"], "format": "uint64", "minimum": 0, "default": 3,
+            "readOnly": true, "x-future": 1, "items": {"type": "string", "maxLength": 3},
+            "enum": [1, 2],
+        });
+        normalize(&mut v);
+        assert_eq!(
+            v,
+            json!({"type": ["integer", "null"], "items": {"type": "string"}, "enum": [1, 2]})
         );
     }
 

@@ -159,6 +159,19 @@ pub struct WithExtras {
     pub extra: BTreeMap<String, u32>,
 }
 
+/// A struct without fields: `Record<symbol, never>` in ts-rs, `{"type": "object"}` in schemars.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ListInput {}
+
+/// Read and written differently: `limit` may be omitted on input but is always sent.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
+pub struct Settings {
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub limit: u32,
+    pub owner: Option<String>,
+}
+
 #[derive(Default)]
 pub struct ZooApi;
 
@@ -196,6 +209,16 @@ impl ZooApi {
     #[rpc::query(perm = "zoo.read", risk = Risk::Read)]
     async fn fingerprint(&self, _ctx: Ctx, _input: WithExtras) -> Result<Fingerprint, RpcError> {
         Err(RpcError::new(Code::NotFound, "none"))
+    }
+
+    #[rpc::query(perm = "zoo.read", risk = Risk::Read)]
+    async fn list(&self, _ctx: Ctx, _input: ListInput) -> Result<Vec<Column>, RpcError> {
+        Ok(vec![])
+    }
+
+    #[rpc::mutation(perm = "zoo.write", risk = Risk::Write)]
+    async fn settings(&self, _ctx: Ctx, input: Settings) -> Result<Settings, RpcError> {
+        Ok(input)
     }
 }
 
@@ -273,6 +296,8 @@ fn api_ts_exports_types_and_a_typed_procedure_table() {
         "readonly \"zoo.columns\": ProcedureDef<\"query\", number, Page<Column>, QueryError>;",
         "readonly \"zoo.flat\": ProcedureDef<\"mutation\", WithFlatten, Tree, JsonValue>;",
         "readonly reset: Procedures[\"zoo.admin.reset\"];",
+        "export type ListInput = Record<symbol, never>;",
+        "readonly \"zoo.settings\": ProcedureDef<\"mutation\", Settings, Settings, never>;",
         "export const procedures: Api = {",
     ] {
         assert!(ts.contains(expected), "api.ts lacks {expected:?}:\n{ts}");
@@ -345,6 +370,32 @@ fn manifest_reflects_the_registry() {
         defs["ExecuteInput"]["properties"]["params"]["items"],
         json!({"$ref": "#/$defs/Param"})
     );
+
+    // Inputs are described as serde reads them, outputs as it writes them. A type that differs
+    // gets a second definition for the output side; one that does not is shared.
+    let settings = &procs[metas.iter().position(|m| m.name == "zoo.settings").unwrap()];
+    assert_eq!(settings["input"], json!({"$ref": "#/$defs/Settings"}));
+    assert_eq!(
+        settings["output"],
+        json!({"$ref": "#/$defs/Settings.Output"})
+    );
+    // Both fields may be omitted on input; both are always written.
+    assert!(
+        defs["Settings"].get("required").is_none(),
+        "{}",
+        defs["Settings"]
+    );
+    assert_eq!(
+        defs["Settings.Output"]["required"],
+        json!(["limit", "owner"])
+    );
+    assert!(defs.contains_key("Column"));
+    assert!(
+        !defs.contains_key("Column.Output"),
+        "Column reads and writes alike"
+    );
+    let list = &procs[metas.iter().position(|m| m.name == "zoo.list").unwrap()];
+    assert_eq!(list["input"], json!({"$ref": "#/$defs/ListInput"}));
 }
 
 #[test]
@@ -408,6 +459,8 @@ item_api!(titled, "items.read", {
     pub id: u32,
     pub name: String,
 });
+// `number` either way in TypeScript; only schemars' `format` and `minimum` differ.
+item_api!(wider_int, "items.read", { pub id: u64, pub name: String });
 // Fields named like JSON Schema keywords are schemas too: their docs are not hashed.
 item_api!(keywords, "items.read", { pub default: u32, pub r#enum: Vec<u8>, pub title: String });
 item_api!(keywords_documented, "items.read", {
@@ -428,6 +481,7 @@ item_api!(other_perm, "items.list", { pub id: u32, pub name: String });
 fn hash_ignores_declaration_order_and_docs() {
     assert_eq!(base::hash(), reordered::hash());
     assert_eq!(base::hash(), titled::hash());
+    assert_eq!(base::hash(), wider_int::hash());
     assert_eq!(keywords::hash(), keywords_documented::hash());
 }
 
@@ -565,6 +619,23 @@ fn two_types_with_one_typescript_name_are_refused() {
     );
 }
 
+#[test]
+fn a_proto_segment_is_an_own_property_of_the_table() {
+    let router = Router::new(DenyAll);
+    router
+        .insert(declared("zoo.__proto__").with_types(unit_types()))
+        .unwrap();
+    let out = generate(&router);
+    // `__proto__: {...}` in a literal would set the prototype; a computed key defines a property.
+    assert!(out.api_ts.contains("[\"__proto__\"]: {"), "{}", out.api_ts);
+    assert!(!out.api_ts.contains("  __proto__: {"), "{}", out.api_ts);
+    // As a type it is an ordinary property.
+    assert!(
+        out.api_ts
+            .contains("readonly __proto__: Procedures[\"zoo.__proto__\"];")
+    );
+}
+
 mod clash {
     use super::*;
     /// Same name as the generated `Api` interface.
@@ -595,26 +666,37 @@ fn checker<T: Type>() -> Checker {
     Checker::of::<T>().unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// serde's JSON for `value` fits both the TypeScript type and the JSON Schema.
+/// serde's JSON for `value` fits the TypeScript type and both JSON Schemas (what serde writes, and
+/// what it reads back).
 fn fits<T: Type + Serialize>(value: &T) {
     let json = serde_json::to_value(value).unwrap();
     let c = checker::<T>();
     assert_eq!(c.ts_accepts(&json), Ok(true), "TypeScript rejects {json}");
     assert_eq!(
-        c.schema_accepts(&json),
+        c.output_schema_accepts(&json),
         Ok(true),
-        "JSON Schema rejects {json}"
+        "output JSON Schema rejects {json}"
+    );
+    assert_eq!(
+        c.input_schema_accepts(&json),
+        Ok(true),
+        "input JSON Schema rejects {json}"
     );
 }
 
-/// `json` fits neither description of `T`.
+/// `json` fits no description of `T`.
 fn misfits<T: Type>(json: Value) {
     let c = checker::<T>();
     assert_eq!(c.ts_accepts(&json), Ok(false), "TypeScript accepts {json}");
     assert_eq!(
-        c.schema_accepts(&json),
+        c.input_schema_accepts(&json),
         Ok(false),
-        "JSON Schema accepts {json}"
+        "input JSON Schema accepts {json}"
+    );
+    assert_eq!(
+        c.output_schema_accepts(&json),
+        Ok(false),
+        "output JSON Schema accepts {json}"
     );
 }
 
@@ -639,6 +721,8 @@ fn every_zoo_type_agrees() {
     agree::<Tree>();
     agree::<Fingerprint>();
     agree::<WithExtras>();
+    agree::<ListInput>();
+    agree::<Settings>();
     agree::<Code>();
     agree::<Option<Vec<Shape>>>();
     agree::<BTreeMap<String, Page<u64>>>();
@@ -664,7 +748,7 @@ fn serde_output_fits_both_descriptions() {
     serde_json::from_value::<ExecuteInput>(omitted.clone()).unwrap();
     let c = checker::<ExecuteInput>();
     assert_eq!(c.ts_accepts(&omitted), Ok(true));
-    assert_eq!(c.schema_accepts(&omitted), Ok(true));
+    assert_eq!(c.input_schema_accepts(&omitted), Ok(true));
     fits(&ExecuteInput {
         batch_rows: Some(10),
         note: Some("n".into()),
@@ -732,6 +816,11 @@ fn serde_output_fits_both_descriptions() {
     fits(&WithExtras {
         id: "x".into(),
         extra: BTreeMap::from([("rows".into(), 3), ("cols".into(), 4)]),
+    });
+    fits(&ListInput {});
+    fits(&Settings {
+        limit: 0,
+        owner: None,
     });
 }
 
@@ -814,19 +903,101 @@ pub enum WrongVariant {
     B,
 }
 
+/// A plain `Option` is always written, as `null` when None; `#[ts(optional)]` makes TypeScript
+/// expect `number | undefined`.
+#[derive(Serialize, Deserialize, TS, JsonSchema)]
+pub struct OptionalButSentAsNull {
+    #[ts(optional)]
+    pub id: Option<u32>,
+}
+
+/// `skip_serializing_if` without `#[ts(optional)]`: TypeScript expects a field that may be missing.
+#[derive(Serialize, Deserialize, TS, JsonSchema)]
+pub struct SkippedButRequired {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<u32>,
+}
+
+/// `skip_serializing`: TypeScript expects a field the server never sends.
+#[derive(Serialize, Deserialize, TS, JsonSchema)]
+pub struct WriteOnly {
+    pub name: String,
+    #[serde(skip_serializing)]
+    pub secret: String,
+}
+
 #[test]
 fn disagreements_are_detected() {
+    use ambidex::codegen::Direction::{Input, Output};
     for (name, result) in [
         ("type override", checker::<WrongType>().agree()),
         ("field rename", checker::<WrongName>().agree()),
         ("nullability", checker::<WrongNullable>().agree()),
         ("optionality", checker::<WrongOptional>().agree()),
         ("variant rename", checker::<WrongVariant>().agree()),
-        ("required default", checker::<DefaultRequired>().agree()),
+        (
+            "required default",
+            checker::<DefaultRequired>().agree_as(Input),
+        ),
+        (
+            "optional but sent as null",
+            checker::<OptionalButSentAsNull>().agree_as(Output),
+        ),
+        (
+            "may be left out but required",
+            checker::<SkippedButRequired>().agree_as(Output),
+        ),
+        ("never sent", checker::<WriteOnly>().agree_as(Output)),
     ] {
         result.expect_err(name);
     }
     checker::<SkippedOption>().agree().unwrap();
+    // A defaulted field is always written: required in TypeScript is right for output only.
+    checker::<DefaultRequired>().agree_as(Output).unwrap();
+    // Each of these is fine the other way round.
+    checker::<OptionalButSentAsNull>().agree_as(Input).unwrap();
+    checker::<SkippedButRequired>().agree_as(Input).unwrap();
+    checker::<WriteOnly>().agree_as(Input).unwrap();
+}
+
+/// Nested untagged enums: every level is a union whose members are unions. Without memoization the
+/// comparison tries every pairing at every level, exponential in the depth.
+mod nested {
+    use super::*;
+
+    macro_rules! level {
+        ($name:ident, $inner:ty) => {
+            #[derive(Serialize, Deserialize, TS, JsonSchema)]
+            #[serde(untagged)]
+            pub enum $name {
+                A { a: $inner },
+                B { b: $inner, n: u32 },
+                C(Vec<$inner>),
+                D(String),
+            }
+        };
+    }
+    level!(L0, bool);
+    level!(L1, L0);
+    level!(L2, L1);
+    level!(L3, L2);
+    level!(L4, L3);
+    level!(L5, L4);
+    level!(L6, L5);
+    level!(L7, L6);
+    level!(L8, L7);
+    level!(L9, L8);
+}
+
+#[test]
+fn deeply_nested_unions_are_compared_quickly() {
+    let started = std::time::Instant::now();
+    checker::<nested::L9>().agree().unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "took {:?}",
+        started.elapsed()
+    );
 }
 
 #[test]

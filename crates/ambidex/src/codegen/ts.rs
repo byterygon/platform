@@ -457,6 +457,10 @@ fn named(name: String, mut args: Vec<Ty>) -> Ty {
         ("never", 0) => Ty::Never,
         ("unknown" | "any", 0) => Ty::Any,
         ("Array", 1) => Ty::Array(Box::new(args.pop().expect("one argument"))),
+        // ts-rs's struct without fields: no string keys at all.
+        ("Record", 2) if args == [Ty::Ref("symbol".into(), vec![]), Ty::Never] => {
+            Ty::Object(BTreeMap::new())
+        }
         ("Record", 2) => Ty::Map(Box::new(args.pop().expect("two arguments"))),
         _ => Ty::Ref(name, args),
     }

@@ -67,9 +67,11 @@ The Rust toolchain is pinned in `rust-toolchain.toml`; pnpm is pinned via `packa
 Codegen (spec §2, TSK-7): `#[rpc::router]` attaches ts-rs and schemars types to every procedure;
 `ambidex::codegen` turns a `Router` into `api.ts` and `api.manifest.json` (with the schema hash the
 server puts in `ServerConfig`) and fails if ts-rs and schemars disagree. Procedure input/output
-types therefore derive `TS` and `JsonSchema`, and `#[serde(default)]` fields also need
-`#[ts(optional = nullable)]` (clients may omit them). The fixture API's generated files live in
-`packages/ambidex/test/conformance/` and are committed; CI fails when they are stale.
+types therefore derive `TS` and `JsonSchema`. Inputs are checked as serde reads them, outputs as
+it writes them: `#[serde(default)]` fields need `#[ts(optional = nullable)]` (clients may omit
+them), `skip_serializing_if` fields `#[ts(optional)]` (the server may leave them out). The fixture
+API's generated files live in `packages/ambidex/test/conformance/` and are committed; CI fails
+when they are stale.
 
 ## Notion links
 
