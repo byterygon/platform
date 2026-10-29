@@ -50,10 +50,15 @@ jobs:
           ' sh "$PATH" "$HOME"
 
   typescript:
-    name: TypeScript (typecheck)
+    name: TypeScript (typecheck, build, test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # The runtime's integration tests run against the Rust conformance server
+      # (ambidex-conformance, WebSocket feature only, so no WebKitGTK is needed).
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -61,6 +66,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test
+        env:
+          AMBIDEX_REQUIRE_RUST_SERVER: "1"
 
   licenses:
     name: License policy

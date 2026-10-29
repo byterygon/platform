@@ -32,7 +32,7 @@ summarises what a session needs when Notion is unavailable.
 | `crates/plugin-host` | Plugin Host | MIT OR Apache-2.0 |
 | `crates/db-driver` | db-driver contract (Rust trait + WIT); `conformance` feature for driver tests | MIT OR Apache-2.0 |
 | `crates/db-driver-postgres` | First-party native PostgreSQL driver (sans-IO `postgres-protocol`, all I/O via the broker) | MIT OR Apache-2.0 |
-| `packages/ambidex` | `@byterygon/ambidex` TypeScript client | MIT OR Apache-2.0 |
+| `packages/ambidex` | `@byterygon/ambidex` TypeScript runtime: `createClient`, WebSocket and Tauri transports, `autoTransport` | MIT OR Apache-2.0 |
 | `apps/dbee` | DBee product (placeholder) | AGPL-3.0-only |
 
 - Every `Cargo.toml` and `package.json` declares `license` explicitly. New crates/packages in
@@ -49,7 +49,7 @@ summarises what a session needs when Notion is unavailable.
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
-pnpm install --frozen-lockfile && pnpm typecheck
+pnpm install --frozen-lockfile && pnpm typecheck && pnpm build && pnpm test
 node scripts/check-licenses.mjs
 cargo deny check licenses bans sources
 cargo run -p ambidex-conformance --bin rpc-gen -- --check   # drop --check to regenerate

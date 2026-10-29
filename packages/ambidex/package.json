@@ -5,8 +5,22 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "private": true,
-  "exports": "./src/index.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit -p ."
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 \".test-build/test/**/*.test.js\""
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2"
   }
 }
