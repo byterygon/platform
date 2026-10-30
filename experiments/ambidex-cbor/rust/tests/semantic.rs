@@ -321,3 +321,8 @@ fn typed_error_contract_matches_handler() {
     );
     model::checked::<ambidex_cbor_spike::fixture::FixtureError>(Direction::Output).unwrap();
 }
+#[test]
+fn decimal_minimum_i128_endpoint_rejects_before_formatting() {
+    let raw = cbor::decode(&hex("c48200c3507fffffffffffffffffffffffffffffff"), true).unwrap();
+    assert!(Decimal::from_cbor(&raw).is_err());
+}

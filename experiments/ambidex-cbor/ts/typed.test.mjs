@@ -291,3 +291,12 @@ test("integral JSON numeric spellings normalize consistently in the conservative
     assert.equal(r.hex, hex(encodeTyped(js, "dynamic", "cbor")));
   }
 });
+test("out-of-profile negative bignum endpoint is rejected without a Rust panic", () => {
+  const value = "c48200c3507fffffffffffffffffffffffffffffff";
+  assert.throws(() =>
+    decodeTyped(Uint8Array.from(Buffer.from(value, "hex")), "decimal", "cbor"),
+  );
+  const [r] = rust([{ hex: value, schema: "decimal" }]);
+  assert.equal(r.ok, false);
+  assert.equal(r.panic, undefined);
+});

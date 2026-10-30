@@ -762,357 +762,357 @@
     {
       "key": "in-process/codec/ExecuteSummary/json-v1",
       "bytes": 112,
-      "p50Ms": 0.001084,
-      "p95Ms": 0.001291,
-      "p95MedianTrialMs": 0.00125,
+      "p50Ms": 0.0011250000000000001,
+      "p95Ms": 0.001333,
+      "p95MedianTrialMs": 0.0011250000000000001,
       "p95MedianTrialBootstrap95CI": [
-        0.001083,
-        0.0014169999999999999
+        0.0011250000000000001,
+        0.0013340000000000001
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.001083,
-        0.0014169999999999999
+        0.0011250000000000001,
+        0.0013340000000000001
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/ExecuteSummary/json",
       "bytes": 116,
-      "p50Ms": 0.021584,
-      "p95Ms": 0.030083,
-      "p95MedianTrialMs": 0.021834000000000003,
+      "p50Ms": 0.02175,
+      "p95Ms": 0.030375,
+      "p95MedianTrialMs": 0.02225,
       "p95MedianTrialBootstrap95CI": [
-        0.018834,
-        0.035792
+        0.019167,
+        0.030833000000000003
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.018834,
-        0.035792
+        0.019167,
+        0.030833000000000003
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/ExecuteSummary/cbor",
       "bytes": 87,
-      "p50Ms": 0.009290999999999999,
-      "p95Ms": 0.009833,
-      "p95MedianTrialMs": 0.009458,
+      "p50Ms": 0.008584,
+      "p95Ms": 0.009292,
+      "p95MedianTrialMs": 0.008792,
       "p95MedianTrialBootstrap95CI": [
-        0.008791,
-        0.010291
+        0.008624999999999999,
+        0.009333000000000001
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.008791,
-        0.010291
+        0.008624999999999999,
+        0.009333000000000001
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/metadata-500/json-v1",
       "bytes": 26891,
-      "p50Ms": 0.162541,
-      "p95Ms": 0.18620799999999998,
-      "p95MedianTrialMs": 0.171959,
+      "p50Ms": 0.161791,
+      "p95Ms": 0.184917,
+      "p95MedianTrialMs": 0.171125,
       "p95MedianTrialBootstrap95CI": [
-        0.167958,
-        0.194709
+        0.17075,
+        0.192334
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.167958,
-        0.194709
+        0.17075,
+        0.192334
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/metadata-500/json",
       "bytes": 26891,
-      "p50Ms": 1.460667,
-      "p95Ms": 1.562208,
-      "p95MedianTrialMs": 1.5529579999999998,
+      "p50Ms": 1.462667,
+      "p95Ms": 1.563542,
+      "p95MedianTrialMs": 1.522125,
       "p95MedianTrialBootstrap95CI": [
-        1.5149169999999998,
-        1.602834
+        1.5131249999999998,
+        1.680375
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        1.5149169999999998,
-        1.602834
+        1.5131249999999998,
+        1.680375
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/metadata-500/cbor",
       "bytes": 20393,
-      "p50Ms": 0.882,
-      "p95Ms": 0.918416,
-      "p95MedianTrialMs": 0.91925,
+      "p50Ms": 0.8819579999999999,
+      "p95Ms": 0.921917,
+      "p95MedianTrialMs": 0.9212079999999999,
       "p95MedianTrialBootstrap95CI": [
-        0.914708,
-        0.923208
+        0.919791,
+        0.9267080000000001
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.914708,
-        0.923208
+        0.919791,
+        0.9267080000000001
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/mutation-20/json-v1",
       "bytes": 1243,
-      "p50Ms": 0.002792,
-      "p95Ms": 0.0028339999999999997,
-      "p95MedianTrialMs": 0.0028339999999999997,
+      "p50Ms": 0.002833,
+      "p95Ms": 0.002875,
+      "p95MedianTrialMs": 0.002875,
       "p95MedianTrialBootstrap95CI": [
-        0.0028339999999999997,
-        0.003125
+        0.002667,
+        0.00325
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.0028339999999999997,
-        0.003125
+        0.002667,
+        0.00325
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/mutation-20/json",
       "bytes": 1249,
-      "p50Ms": 0.037042000000000005,
-      "p95Ms": 0.039166,
-      "p95MedianTrialMs": 0.039958,
+      "p50Ms": 0.037,
+      "p95Ms": 0.040083999999999995,
+      "p95MedianTrialMs": 0.038083,
       "p95MedianTrialBootstrap95CI": [
-        0.037209,
-        0.042375
+        0.037584,
+        0.042833
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.037209,
-        0.042375
+        0.037584,
+        0.042833
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/mutation-20/cbor",
       "bytes": 1167,
-      "p50Ms": 0.021291,
-      "p95Ms": 0.022500000000000003,
-      "p95MedianTrialMs": 0.021665999999999998,
+      "p50Ms": 0.021500000000000002,
+      "p95Ms": 0.024,
+      "p95MedianTrialMs": 0.022333000000000002,
       "p95MedianTrialBootstrap95CI": [
-        0.021292,
-        0.024541
+        0.02175,
+        0.025167000000000002
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.021292,
-        0.024541
+        0.02175,
+        0.025167000000000002
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/edited-grid/json-v1",
       "bytes": 11091,
-      "p50Ms": 0.045125,
-      "p95Ms": 0.046708,
-      "p95MedianTrialMs": 0.046209,
+      "p50Ms": 0.044834,
+      "p95Ms": 0.04825,
+      "p95MedianTrialMs": 0.046417,
       "p95MedianTrialBootstrap95CI": [
-        0.045292,
-        0.048625
+        0.045083000000000005,
+        0.050875000000000004
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.045292,
-        0.048625
+        0.045083000000000005,
+        0.050875000000000004
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/edited-grid/json",
       "bytes": 11291,
-      "p50Ms": 0.5575000000000001,
-      "p95Ms": 0.584041,
-      "p95MedianTrialMs": 0.5835830000000001,
+      "p50Ms": 0.559875,
+      "p95Ms": 0.590875,
+      "p95MedianTrialMs": 0.585417,
       "p95MedianTrialBootstrap95CI": [
-        0.581333,
-        0.59225
+        0.579791,
+        1.138083
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.581333,
-        0.59225
+        0.579791,
+        1.138083
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/edited-grid/cbor",
       "bytes": 9378,
-      "p50Ms": 0.35724999999999996,
-      "p95Ms": 0.38170800000000005,
-      "p95MedianTrialMs": 0.37625000000000003,
+      "p50Ms": 0.359041,
+      "p95Ms": 0.380625,
+      "p95MedianTrialMs": 0.37708400000000003,
       "p95MedianTrialBootstrap95CI": [
-        0.371667,
-        0.7951670000000001
+        0.376083,
+        0.391084
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.371667,
-        0.7951670000000001
+        0.376083,
+        0.391084
       ],
       "samples": 1000
     },
     {
       "key": "in-process/codec/large-control-256KiB/json-v1",
       "bytes": 262177,
-      "p50Ms": 0.106875,
-      "p95Ms": 0.11299999999999999,
-      "p95MedianTrialMs": 0.107584,
+      "p50Ms": 0.106584,
+      "p95Ms": 0.11429199999999999,
+      "p95MedianTrialMs": 0.107375,
       "p95MedianTrialBootstrap95CI": [
-        0.106958,
-        0.117209
+        0.106584,
+        0.118834
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.106958,
-        0.117209
+        0.106584,
+        0.118834
       ],
       "samples": 50
     },
     {
       "key": "in-process/codec/large-control-256KiB/json",
       "bytes": 262177,
-      "p50Ms": 0.2585,
-      "p95Ms": 0.273416,
-      "p95MedianTrialMs": 0.25975,
+      "p50Ms": 0.242,
+      "p95Ms": 0.263875,
+      "p95MedianTrialMs": 0.24245899999999998,
       "p95MedianTrialBootstrap95CI": [
-        0.258625,
-        0.285959
+        0.24212499999999998,
+        0.266125
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.258625,
-        0.285959
+        0.24212499999999998,
+        0.266125
       ],
       "samples": 50
     },
     {
       "key": "in-process/codec/large-control-256KiB/cbor",
       "bytes": 262178,
-      "p50Ms": 0.024457999999999997,
-      "p95Ms": 0.027375,
-      "p95MedianTrialMs": 0.024708,
+      "p50Ms": 0.024708,
+      "p95Ms": 0.025292000000000002,
+      "p95MedianTrialMs": 0.02525,
       "p95MedianTrialBootstrap95CI": [
-        0.024624999999999998,
-        0.027708
+        0.024958,
+        0.025667
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.024624999999999998,
-        0.027708
+        0.024958,
+        0.025667
       ],
       "samples": 50
     },
     {
       "key": "in-process/codec/large-control-512KiB/json-v1",
       "bytes": 524353,
-      "p50Ms": 0.210792,
-      "p95Ms": 0.214667,
-      "p95MedianTrialMs": 0.211625,
+      "p50Ms": 0.208166,
+      "p95Ms": 0.22599999999999998,
+      "p95MedianTrialMs": 0.211375,
       "p95MedianTrialBootstrap95CI": [
-        0.211,
-        0.214667
+        0.196625,
+        0.22924999999999998
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.211,
-        0.214667
+        0.196625,
+        0.22924999999999998
       ],
       "samples": 50
     },
     {
       "key": "in-process/codec/large-control-512KiB/json",
       "bytes": 524353,
-      "p50Ms": 0.51525,
-      "p95Ms": 0.54075,
-      "p95MedianTrialMs": 0.527875,
+      "p50Ms": 0.481166,
+      "p95Ms": 0.536292,
+      "p95MedianTrialMs": 0.505166,
       "p95MedianTrialBootstrap95CI": [
-        0.517708,
-        0.5681250000000001
+        0.481417,
+        0.57
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.517708,
-        0.5681250000000001
+        0.481417,
+        0.57
       ],
       "samples": 50
     },
     {
       "key": "in-process/codec/large-control-512KiB/cbor",
       "bytes": 524354,
-      "p50Ms": 0.046542,
-      "p95Ms": 0.046959,
-      "p95MedianTrialMs": 0.04675,
+      "p50Ms": 0.043708000000000004,
+      "p95Ms": 0.046541,
+      "p95MedianTrialMs": 0.043958000000000004,
       "p95MedianTrialBootstrap95CI": [
-        0.046584,
-        0.046959
+        0.04375,
+        0.047125
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.046584,
-        0.046959
+        0.04375,
+        0.047125
       ],
       "samples": 50
     },
     {
       "key": "in-process/codec/large-control-near-1MiB/json-v1",
       "bytes": 1040512,
-      "p50Ms": 0.425666,
-      "p95Ms": 0.450208,
-      "p95MedianTrialMs": 0.4325,
+      "p50Ms": 0.424625,
+      "p95Ms": 0.43929100000000004,
+      "p95MedianTrialMs": 0.426084,
       "p95MedianTrialBootstrap95CI": [
-        0.42975,
-        0.471041
+        0.42104199999999997,
+        0.43929100000000004
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.42975,
-        0.471041
+        0.42104199999999997,
+        0.43929100000000004
       ],
       "samples": 50
     },
     {
       "key": "in-process/codec/large-control-near-1MiB/json",
       "bytes": 1040512,
-      "p50Ms": 1.026084,
-      "p95Ms": 1.057667,
-      "p95MedianTrialMs": 1.034416,
+      "p50Ms": 1.01375,
+      "p95Ms": 1.061792,
+      "p95MedianTrialMs": 1.034083,
       "p95MedianTrialBootstrap95CI": [
-        1.029959,
-        1.050875
+        1.014292,
+        1.102917
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        1.029959,
-        1.050875
+        1.014292,
+        1.102917
       ],
       "samples": 50
     },
     {
       "key": "in-process/codec/large-control-near-1MiB/cbor",
       "bytes": 1040513,
-      "p50Ms": 0.095833,
-      "p95Ms": 0.099667,
-      "p95MedianTrialMs": 0.096792,
+      "p50Ms": 0.095125,
+      "p95Ms": 0.100458,
+      "p95MedianTrialMs": 0.095833,
       "p95MedianTrialBootstrap95CI": [
-        0.090708,
-        0.105667
+        0.095125,
+        0.104417
       ],
       "confidenceCaveat": "Seeded bootstrap across only five trial p95 values; exploratory, timer batching and host variability still apply",
       "trialP95RangeMs": [
-        0.090708,
-        0.105667
+        0.095125,
+        0.104417
       ],
       "samples": 50
     }

@@ -1,6 +1,6 @@
 {
-  "rustTests": 15,
-  "javascriptTests": 30,
+  "rustTests": 16,
+  "javascriptTests": 31,
   "rustFmt": "pass",
   "rustClippyWarningsDenied": "pass",
   "typescriptTypecheck": "pass",

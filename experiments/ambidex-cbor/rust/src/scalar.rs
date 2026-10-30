@@ -134,6 +134,10 @@ impl Decimal {
             }
             _ => return Err("mantissa".into()),
         };
+        const MAX_COEFFICIENT: i128 = 10i128.pow(38) - 1;
+        if !(-MAX_COEFFICIENT..=MAX_COEFFICIENT).contains(&n) {
+            return Err("decimal precision".into());
+        }
         let d = Self {
             coefficient: n,
             scale: -e as i32,
