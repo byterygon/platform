@@ -6,12 +6,18 @@
   "packageManager": "pnpm@12.15.0",
   "scripts": {
     "test": "node --test *.test.mjs",
-    "bench": "node bench.mjs",
-    "bench:browser": "node browser-bench.mjs"
+    "bench": "node --expose-gc bench.mjs",
+    "bench:browser": "node browser-bench.mjs",
+    "typecheck": "tsc --project tsconfig.json",
+    "format:check": "prettier --check *.mjs *.ts *.mts package.json tsconfig.json pnpm-workspace.yaml",
+    "bench:transport": "node transport-bench.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.1",
-    "playwright": "1.61.1"
+    "playwright": "1.61.1",
+    "prettier": "3.8.1",
+    "typescript": "7.0.2",
+    "ws": "8.21.0"
   },
   "dependencies": {
     "cbor-x": "1.6.4"

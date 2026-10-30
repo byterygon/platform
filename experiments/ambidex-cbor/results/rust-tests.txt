@@ -1,6 +1,6 @@
    Compiling ambidex-cbor-spike v0.0.0 (/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/rust)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.26s
-     Running unittests src/lib.rs (experiments/ambidex-cbor/rust/target/debug/deps/ambidex_cbor_spike-1129cffa94a79d9b)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.94s
+     Running unittests src/lib.rs (rust/target/debug/deps/ambidex_cbor_spike-c09356409935cbf3)
 
 running 2 tests
 test baseline::serde_json_preserves_full_u64 ... ok
@@ -8,26 +8,62 @@ test tests::exact_integer_boundaries ... ok
 
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/main.rs (experiments/ambidex-cbor/rust/target/debug/deps/ambidex_cbor_spike-2ec0a7a16ae6af6e)
+     Running unittests src/main.rs (rust/target/debug/deps/ambidex_cbor_spike-d2d9ee3eda4cb228)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/bin/bench.rs (experiments/ambidex-cbor/rust/target/debug/deps/bench-7212aa77b345b194)
+     Running unittests src/bin/bench.rs (rust/target/debug/deps/bench-513a2adbe102148a)
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running unittests src/bin/fingerprint.rs (experiments/ambidex-cbor/rust/target/debug/deps/fingerprint-2c98d01c129d2048)
+     Running unittests src/bin/fingerprint.rs (rust/target/debug/deps/fingerprint-cb68fcbee2250025)
 
-running 1 test
-test tests::identity ... ok
+running 0 tests
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/legacy.rs (rust/target/debug/deps/legacy-4ccbc7cceac18e87)
+
+running 2 tests
+test unchanged_ack_and_control_frames_stay_json ... ok
+test unchanged_engine_ignores_capability_extension ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/semantic.rs (rust/target/debug/deps/semantic-4dd6dbd5100df695)
+
+running 11 tests
+test library_defaults_need_validator ... ok
+test frozen_vectors_cross_checked_with_independent_library ... ok
+test json_raw_duplicate_and_resource_rejection ... ok
+test decimal_and_temporal_boundaries ... ok
+test enum_order_and_exact_bounds ... ok
+test recursive_graph_and_directional_agreement ... ok
+test standalone_router_auth_binding_redaction_and_real_typed_handler ... ok
+test semantic_hash_mutation_matrix_and_codec_independence ... ok
+test typed_error_contract_matches_handler ... ok
+test policy_drift_is_independent_from_contract ... ok
+test typed_rust_pipeline ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (rust/target/debug/deps/semantic_derive-760728c13c21aa3c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
    Doc-tests ambidex_cbor_spike
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests semantic_derive
 
 running 0 tests
 

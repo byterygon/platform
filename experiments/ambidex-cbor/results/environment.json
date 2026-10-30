@@ -9,5 +9,15 @@
     "runtimeBaseline": "174b74aeb88aac05916b612e38d074f14042caf4"
   },
   "offline": "Cached offline execution only; no hard network isolation",
-  "browser": "Playwright WebKit proxy; not Tauri WKWebView"
+  "browser": "Playwright WebKit proxy; not Tauri WKWebView",
+  "benchmarkDate": "2026-10-30",
+  "benchmarkOrder": "bench.sh runs Rust, Node, Chromium/WebKit and separate transport sequentially",
+  "tooling": {
+    "pnpm": "12.15.0",
+    "playwright": "1.61.1",
+    "ws": "8.21.0",
+    "typescript": "7.0.2",
+    "esbuild": "0.28.1"
+  },
+  "performanceHost": "ordinary developer machine; no systemwide power/firewall changes; no dedicated-host claim"
 }

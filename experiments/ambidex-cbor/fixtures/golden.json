@@ -1,0 +1,69 @@
+[
+  {
+    "id": "I01",
+    "cbor": "00",
+    "json": "0",
+    "digest": "sha256:c5bd4d531a2227626fb9b86229a138f11ea92c4d21ff0668fa9b16e00ecc0f49"
+  },
+  {
+    "id": "I02",
+    "cbor": "1b0020000000000001",
+    "json": "9007199254740993",
+    "digest": "sha256:9615f90f0c8c93df9c205a37318f677c5ed21a4d447c3a1fabf656395db31dc0"
+  },
+  {
+    "id": "I03",
+    "cbor": "1bffffffffffffffff",
+    "json": "18446744073709551615",
+    "digest": "sha256:f3404f8b2e3b72df0a893d95e399d58405a0cac321729bf48903ca7a1abe89bd"
+  },
+  {
+    "id": "I04",
+    "cbor": "1b7fffffffffffffff",
+    "json": "9223372036854775807",
+    "digest": "sha256:0a9c3f3a96011b6fe24796ebc62e236657ce9cfad46d20a6f80222aee831d66d"
+  },
+  {
+    "id": "I05",
+    "cbor": "3b7fffffffffffffff",
+    "json": "-9223372036854775808",
+    "digest": "sha256:d539ffb55a74081b54b29e1cc285661440abe36124adf862b4a0593b0b596bbb"
+  },
+  {
+    "id": "D01",
+    "cbor": "c4822319300c",
+    "json": "1.2300",
+    "digest": "sha256:360216eefc01dce8bec2b8cc0454e5b1bcf6f8a75e884ecf675e7be342d04dd1"
+  },
+  {
+    "id": "D02",
+    "cbor": "c48200c2500949b0f6f0023313c4499050de38f34e",
+    "json": "12345678901234567890123456789012345678",
+    "digest": "sha256:24d0c463fb47457cf9df1398bd78ac3bbbc5f4cb6b3e4fd259d4fb053beb5a58"
+  },
+  {
+    "id": "T01",
+    "cbor": "c0781e323032362d31302d32395431323a33343a35362e3132333435363738395a",
+    "json": "2026-10-29T12:34:56.123456789Z",
+    "digest": "sha256:2cc49d9606a3d42b1db7ebae767cec258c7cb5e0b047324ae23a958df1472e64"
+  },
+  {
+    "id": "T02",
+    "cbor": "d903ec6a323032362d30322d3238",
+    "json": "2026-02-28",
+    "digest": "sha256:e79127650fdfd06c3d2e735381f616fcfcb596e74ed9f9ce9b7c8b49775bc500"
+  },
+  {
+    "id": "N01",
+    "cbor": "a6626174c0781e323032362d31302d32395431323a33343a35362e3132333435363738395a6269641bffffffffffffffff6464617465d903ec6a323032362d30322d3238656c6f63616c781d323032362d31302d32395431323a33343a35362e31323334353637383966616d6f756e74c4822319300c667365637265746973656e736974697665",
+    "json": {
+      "id": "18446744073709551615",
+      "amount": "1.2300",
+      "at": "2026-10-29T12:34:56.123456789Z",
+      "date": "2026-02-28",
+      "local": "2026-10-29T12:34:56.123456789",
+      "secret": "sensitive"
+    },
+    "digest": "sha256:aad7b7bf3737f3bec6a1b32b0b12bd91942d9cfe55782f04fc50d39d9c837ec6"
+  }
+]

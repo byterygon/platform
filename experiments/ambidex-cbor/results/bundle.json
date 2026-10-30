@@ -1,15 +1,21 @@
 {
-  "caveat": "Both typed profiles currently retain codec switching; delta is not production package delta.",
+  "measurement": "Experimental JSON-only build excludes raw CBOR implementations through an explicit build transform; dual adds them. This is not a production package-size promise. cbor-x is a separate library comparator.",
+  "incrementalGzipBytes": 984,
   "rows": [
     {
       "name": "json",
-      "minifiedBytes": 8731,
-      "gzipBytes": 3506
+      "minifiedBytes": 10263,
+      "gzipBytes": 3719
     },
     {
       "name": "dual",
-      "minifiedBytes": 8904,
-      "gzipBytes": 3590
+      "minifiedBytes": 12684,
+      "gzipBytes": 4703
+    },
+    {
+      "name": "cborX",
+      "minifiedBytes": 28854,
+      "gzipBytes": 10768
     }
   ]
 }

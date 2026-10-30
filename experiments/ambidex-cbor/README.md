@@ -1,10 +1,12 @@
-# Ambidex codec spike (TSK-21)
+# Ambidex codec and semantic-hash spike (TSK-21)
 
-Experimental research only. No production registration, protocol changes or adoption.
-See [REPORT.md](REPORT.md) for separate recommendations, acceptance gaps and reproduction commands.
+Isolated research only; no production registration, protocol/security changes or adoption.
 
-- `rust/`: independent bounded CBOR parser/encoder, integer baseline, fixture fingerprint tool and parser benchmark; standalone workspace and lockfile.
-- `ts/`: raw validators, schema-directed scalar codecs, simulated authorization/handshake, differential tests, benchmark scripts and standalone pnpm project.
-- `results/`: exact golden fixtures, fuzz evidence, Rust/Node/browser raw measurements, summaries and environment.
+- [REPORT.md](REPORT.md): findings, supported profile, limitations, migration/rollback and separate recommendations.
+- [RESULTS.md](RESULTS.md): measured latency, allocation/CPU, size and adoption-gate evidence.
+- [ACCEPTANCE.md](ACCEPTANCE.md): Stage A–E and B1–B9 evidence map.
+- [FILES.txt](FILES.txt): every changed file.
 
-The experiment intentionally reports **No-Go for production CBOR adoption**. The full generic semantic derive and Rust typed pipeline are not delivered; read the acceptance-gap discussion before interpreting passing fixture tests.
+Run `./verify.sh`, `node ts/check-generated.mjs`, then `./bench.sh` and `node ts/analyze.mjs`. The report explains one-time provisioning and cached-offline execution. Rust and pnpm have independent workspaces and lockfiles. Benchmark browser/loopback processes require local execution permissions.
+
+Recommendations: Conditional Go for production lossless JSON follow-up; bigint preferred for full-range TS integers; No-Go for CBOR production adoption on this evidence. No merge is authorized.

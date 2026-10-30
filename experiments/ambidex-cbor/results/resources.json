@@ -1,0 +1,201 @@
+{
+  "thresholds": "RFC PoC thresholds; allocation is parser-accounted, measured heap/RSS is reported separately",
+  "rows": [
+    {
+      "label": "array-65535",
+      "bytes": 65538,
+      "accepted": true,
+      "jsElapsedMs": 4.640499999999999,
+      "rustAccepted": true
+    },
+    {
+      "label": "array-65536",
+      "bytes": 65541,
+      "accepted": true,
+      "jsElapsedMs": 7.3442079999999805,
+      "rustAccepted": true
+    },
+    {
+      "label": "array-65537",
+      "bytes": 65542,
+      "accepted": false,
+      "jsElapsedMs": 0.08083399999998164,
+      "rustAccepted": false
+    },
+    {
+      "label": "map-4095",
+      "bytes": 27558,
+      "accepted": true,
+      "jsElapsedMs": 2.8867079999999987,
+      "rustAccepted": true
+    },
+    {
+      "label": "map-4096",
+      "bytes": 27565,
+      "accepted": true,
+      "jsElapsedMs": 2.482915999999932,
+      "rustAccepted": true
+    },
+    {
+      "label": "map-4097",
+      "bytes": 27572,
+      "accepted": false,
+      "jsElapsedMs": 0.02687500000001819,
+      "rustAccepted": false
+    },
+    {
+      "label": "field-cbor-262143",
+      "bytes": 262148,
+      "accepted": true,
+      "jsElapsedMs": 0.048042000000009466,
+      "rustAccepted": true
+    },
+    {
+      "label": "field-json-262143",
+      "bytes": 262145,
+      "accepted": true,
+      "jsElapsedMs": 1.9111669999999776,
+      "rustAccepted": true
+    },
+    {
+      "label": "field-cbor-262144",
+      "bytes": 262149,
+      "accepted": true,
+      "jsElapsedMs": 0.05258400000002439,
+      "rustAccepted": true
+    },
+    {
+      "label": "field-json-262144",
+      "bytes": 262146,
+      "accepted": true,
+      "jsElapsedMs": 1.1734170000000859,
+      "rustAccepted": true
+    },
+    {
+      "label": "field-cbor-262145",
+      "bytes": 262150,
+      "accepted": false,
+      "jsElapsedMs": 0.028042000000027656,
+      "rustAccepted": false
+    },
+    {
+      "label": "field-json-262145",
+      "bytes": 262147,
+      "accepted": false,
+      "jsElapsedMs": 1.5723330000000715,
+      "rustAccepted": false
+    },
+    {
+      "label": "depth-63",
+      "bytes": 64,
+      "accepted": true,
+      "jsElapsedMs": 0.017749999999978172,
+      "rustAccepted": true
+    },
+    {
+      "label": "json-depth-63",
+      "bytes": 130,
+      "accepted": true,
+      "jsElapsedMs": 0.13329099999998562,
+      "rustAccepted": true
+    },
+    {
+      "label": "depth-64",
+      "bytes": 65,
+      "accepted": true,
+      "jsElapsedMs": 0.013041999999927611,
+      "rustAccepted": true
+    },
+    {
+      "label": "json-depth-64",
+      "bytes": 132,
+      "accepted": true,
+      "jsElapsedMs": 0.08800000000007913,
+      "rustAccepted": true
+    },
+    {
+      "label": "depth-65",
+      "bytes": 66,
+      "accepted": false,
+      "jsElapsedMs": 0.07558300000005147,
+      "rustAccepted": false
+    },
+    {
+      "label": "json-depth-65",
+      "bytes": 134,
+      "accepted": false,
+      "jsElapsedMs": 0.060665999999969245,
+      "rustAccepted": false
+    },
+    {
+      "label": "nodes-99999",
+      "bytes": 100003,
+      "accepted": true,
+      "jsElapsedMs": 5.654416999999853,
+      "rustAccepted": true
+    },
+    {
+      "label": "nodes-100000",
+      "bytes": 100004,
+      "accepted": true,
+      "jsElapsedMs": 3.2309159999999792,
+      "rustAccepted": true
+    },
+    {
+      "label": "nodes-100001",
+      "bytes": 100005,
+      "accepted": false,
+      "jsElapsedMs": 4.404624999999896,
+      "rustAccepted": false
+    },
+    {
+      "label": "accounted-budget-31",
+      "bytes": 1,
+      "accepted": false,
+      "jsElapsedMs": 0.028083000000151515,
+      "rustAccepted": false
+    },
+    {
+      "label": "accounted-budget-32",
+      "bytes": 1,
+      "accepted": true,
+      "jsElapsedMs": 0.0035410000000410946,
+      "rustAccepted": true
+    },
+    {
+      "label": "accounted-budget-33",
+      "bytes": 1,
+      "accepted": true,
+      "jsElapsedMs": 0.0016249999998763087,
+      "rustAccepted": true
+    },
+    {
+      "label": "payload-json-1048575",
+      "bytes": 1048575,
+      "accepted": true,
+      "jsElapsedMs": 13.600582999999915,
+      "rustAccepted": true
+    },
+    {
+      "label": "payload-json-1048576",
+      "bytes": 1048576,
+      "accepted": true,
+      "jsElapsedMs": 15.122082999999975,
+      "rustAccepted": true
+    },
+    {
+      "label": "payload-json-1048577",
+      "bytes": 1048577,
+      "accepted": false,
+      "jsElapsedMs": 0.01637499999992542,
+      "rustAccepted": false
+    },
+    {
+      "label": "payload-cbor-1048577",
+      "bytes": 1048577,
+      "accepted": false,
+      "jsElapsedMs": 0.01241600000003018,
+      "rustAccepted": false
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "input": "9007199254740991.0",
+  "observedRustDefaultFloatParse": "9007199254740990",
+  "expectedJavaScriptBinary64IntegralValue": "9007199254740991",
+  "resolution": "Enable serde_json float_roundtrip in the standalone experiment only; add a Rust/JS semantic regression test. Full-range i64/u64 remain decimal strings on JSON-v2."
+}

@@ -1,19 +1,38 @@
-✔ baseline loses precision; lossless mapping preserves it (0.483875ms)
-✔ reject noncanonical and out-of-range values (0.086792ms)
-✔ golden vectors, both languages and logical digest (486.07425ms)
-✔ scalar domain rejection and scale identity (0.287458ms)
-✔ JSON prevalidation, hostile keys and limits (0.477208ms)
-✔ authorization before sensitive validation, logs and approval binding (0.572125ms)
-✔ compatibility matrix and nonretryable mutation ambiguity (0.173708ms)
-✔ strict ordering differs from preferred acceptance (2.606917ms)
-✔ structure-aware and mutation differential smoke (78.616458ms)
-✔ resource thresholds reject before declared oversized allocation (17.998792ms)
-✔ pinned cbor-x is a comparator, not the profile validator (177.058125ms)
-ℹ tests 11
+✔ baseline loses precision; lossless mapping preserves it (0.719667ms)
+✔ reject noncanonical and out-of-range values (0.090958ms)
+✔ actual pinned TS runtime ignores HelloAck capability extension (0.958416ms)
+✔ separately negotiated relay transcodes with stable approval digest and preserves opaque Arrow frames (8.812459ms)
+✔ mutation commits once, malformed result reports outcome unknown without replay (0.233083ms)
+✔ approval scope is codec-independent, versioned and policy-bound (0.598167ms)
+✔ no silent required-profile downgrade or auth/protocol fallback (0.07575ms)
+✔ new/old peers use explicit safe-only legacy adapter; unsafe mutations are rejected before send (0.572666ms)
+✔ all structural thresholds at minus one, exact and plus one in Rust and JS (1242.390834ms)
+✔ golden vectors, both languages and logical digest (577.439417ms)
+✔ scalar domain rejection and scale identity (0.354708ms)
+✔ JSON prevalidation, hostile keys and limits (0.475042ms)
+✔ authorization before sensitive validation, logs and approval binding (0.637333ms)
+✔ compatibility matrix and nonretryable mutation ambiguity (0.182125ms)
+✔ strict ordering differs from preferred acceptance (3.381625ms)
+✔ structure-aware and mutation differential smoke (81.772125ms)
+✔ resource thresholds reject before declared oversized allocation (18.98425ms)
+✔ pinned cbor-x is a comparator, not the profile validator (10.246667ms)
+✔ Rust-derived descriptors hydrate exact wrappers and both Rust wire paths (540.698083ms)
+✔ semantic differential corpus, not just syntax acceptance (134.598208ms)
+✔ JSON scanner equivalence for malformed Unicode, duplicates, flatten and untagged (2.857333ms)
+✔ recursive, flattened, optional and enum descriptors preserve serde semantics across codecs (24.661042ms)
+✔ edited Arrow-aligned values retain scale, nanoseconds and timezone absence (0.767208ms)
+✔ checked mapping keeps safe fields numeric and full-range fields exact (0.695916ms)
+✔ scale-insignificant Decimal canonicalizes but scale-significant fields remain distinct (2.129042ms)
+✔ malformed nested structs, flatten and untagged reject duplicates before serde/JS hydration (5.798417ms)
+✔ finite fractional JSON is syntax-valid but rejected by the conservative dynamic integer domain (2.0185ms)
+✔ explicit byte scalar uses canonical base64 JSON and a CBOR byte string (3.521166ms)
+✔ absent, explicit null and undefined keep separate contract behavior (0.844125ms)
+✔ integral JSON numeric spellings normalize consistently in the conservative dynamic domain (6.824542ms)
+ℹ tests 30
 ℹ suites 0
-ℹ pass 11
+ℹ pass 30
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 811.147792
+ℹ duration_ms 1296.13275

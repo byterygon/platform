@@ -1,0 +1,8 @@
+{
+  "sharedBrowserWorkflowsWithAtLeast15PercentObservedP95Gain": [],
+  "latencyGainGateObserved": false,
+  "heapGate": "not established: WebKit exposes neither heap nor GC; Chromium heap is sampled/nonstandard",
+  "incrementalExperimentalGzipBytes": 984,
+  "bundleGateObserved": true,
+  "cborDecision": "No-Go for production adoption"
+}

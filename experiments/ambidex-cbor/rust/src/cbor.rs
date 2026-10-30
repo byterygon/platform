@@ -31,11 +31,17 @@ pub fn encode(v: &Value) -> Vec<u8> {
     }
     fn put(o: &mut Vec<u8>, v: &Value) {
         match v {
-            Value::Int(n) => head(
-                o,
-                if *n < 0 { 1 } else { 0 },
-                if *n < 0 { (-1 - *n) as u64 } else { *n as u64 },
-            ),
+            Value::Int(n) => {
+                assert!(
+                    (-18446744073709551616..=18446744073709551615).contains(n),
+                    "native CBOR integer out of range; use validated Decimal bignum"
+                );
+                head(
+                    o,
+                    if *n < 0 { 1 } else { 0 },
+                    if *n < 0 { (-1 - *n) as u64 } else { *n as u64 },
+                )
+            }
             Value::Text(s) => {
                 head(o, 3, s.len() as u64);
                 o.extend_from_slice(s.as_bytes());
@@ -75,11 +81,15 @@ pub fn encode(v: &Value) -> Vec<u8> {
     o
 }
 pub fn decode(b: &[u8], strict: bool) -> Result<Value, &'static str> {
+    decode_with_budget(b, strict, 8388608)
+}
+pub fn decode_with_budget(b: &[u8], strict: bool, budget: usize) -> Result<Value, &'static str> {
     struct Reader<'a> {
         b: &'a [u8],
         p: usize,
         nodes: usize,
         alloc: usize,
+        budget: usize,
         strict: bool,
     }
     impl Reader<'_> {
@@ -93,7 +103,7 @@ pub fn decode(b: &[u8], strict: bool) -> Result<Value, &'static str> {
         }
         fn reserve(&mut self, n: usize) -> Result<(), &'static str> {
             self.alloc = self.alloc.checked_add(n).ok_or("allocation")?;
-            if self.alloc > 8388608 {
+            if self.alloc > self.budget {
                 return Err("allocation");
             };
             Ok(())
@@ -233,6 +243,7 @@ pub fn decode(b: &[u8], strict: bool) -> Result<Value, &'static str> {
         p: 0,
         nodes: 0,
         alloc: 0,
+        budget: budget.min(8388608),
         strict,
     };
     let v = r.value(0, 99, 0)?;
