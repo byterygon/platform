@@ -63,8 +63,9 @@ pub use broker::{
 };
 pub use contract::ContractBroker;
 pub use grant::{
-    ConnectionGrant, DriverKind, Eligibility, GrantError, GrantId, GrantRequest, GrantStore, Host,
-    InstalledPlugin, PluginBinding, SecretBinding, ServerTrust, TlsMode, TlsPolicy, TlsSettings,
+    ConnectionGrant, DriverKind, Eligibility, GRANT_CREATE_DIGEST_DOMAIN, GrantError, GrantId,
+    GrantRequest, GrantStore, Host, InstalledPlugin, PluginBinding, SecretBinding, ServerTrust,
+    TlsMode, TlsPolicy, TlsSettings, grant_create_digest,
 };
 pub use manifest::{Manifest, ManifestError, NetworkTemplate, TlsRequirement};
 pub use net::{AddressPolicy, IpNet, Resolver, SystemResolver};
