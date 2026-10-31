@@ -1,0 +1,7 @@
+{
+  "seed": 21,
+  "executions": 2011,
+  "rustExecutions": 2011,
+  "coverage": "not instrumented",
+  "failures": []
+}

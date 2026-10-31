@@ -1,0 +1,10 @@
+{
+  "seed": "0x21cb0",
+  "executionsPerLanguage": 12000,
+  "syntaxCBOR": 10000,
+  "syntaxJSON": 2000,
+  "elapsedMs": 253.251916,
+  "coverage": "grammar categories and differential acceptance; no instrumented edge coverage",
+  "panics": 0,
+  "failures": []
+}

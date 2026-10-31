@@ -1,0 +1,185 @@
+{
+  "MIT": [
+    {
+      "name": "@cbor-extract/cbor-extract-darwin-arm64",
+      "versions": [
+        "2.2.2"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/@cbor-extract+cbor-extract-darwin-arm64@2.2.2/node_modules/@cbor-extract/cbor-extract-darwin-arm64"
+      ],
+      "license": "MIT",
+      "author": "Kris Zyp",
+      "homepage": "https://github.com/kriszyp/cbor-extract#readme",
+      "description": "Platform specific binary for cbor-extract on darwin OS with arm64 architecture"
+    },
+    {
+      "name": "@esbuild/darwin-arm64",
+      "versions": [
+        "0.28.1"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/@esbuild+darwin-arm64@0.28.1/node_modules/@esbuild/darwin-arm64"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/evanw/esbuild#readme",
+      "description": "The macOS ARM 64-bit binary for esbuild, a JavaScript bundler."
+    },
+    {
+      "name": "cbor-extract",
+      "versions": [
+        "2.2.2"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/cbor-extract@2.2.2/node_modules/cbor-extract"
+      ],
+      "license": "MIT",
+      "author": "Kris Zyp",
+      "homepage": "https://github.com/kriszyp/cbor-extract#readme",
+      "description": "Node addon for string extraction for cbor-x"
+    },
+    {
+      "name": "cbor-x",
+      "versions": [
+        "1.6.4"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/cbor-x@1.6.4/node_modules/cbor-x"
+      ],
+      "license": "MIT",
+      "author": "Kris Zyp",
+      "homepage": "https://github.com/kriszyp/cbor-x#readme",
+      "description": "Ultra-fast and conformant CBOR (RFC 8949) implementation with support for numerous tag extensions including records and structured cloning"
+    },
+    {
+      "name": "esbuild",
+      "versions": [
+        "0.28.1"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/esbuild@0.28.1/node_modules/esbuild"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/evanw/esbuild#readme",
+      "description": "An extremely fast JavaScript and CSS bundler and minifier."
+    },
+    {
+      "name": "fsevents",
+      "versions": [
+        "2.3.2"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/fsevents@2.3.2/node_modules/fsevents"
+      ],
+      "license": "MIT",
+      "homepage": "https://github.com/fsevents/fsevents",
+      "description": "Native Access to MacOS FSEvents"
+    },
+    {
+      "name": "node-gyp-build-optional-packages",
+      "versions": [
+        "5.1.1"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/node-gyp-build-optional-packages@5.1.1/node_modules/node-gyp-build-optional-packages"
+      ],
+      "license": "MIT",
+      "author": "Mathias Buus",
+      "homepage": "https://github.com/prebuild/node-gyp-build",
+      "description": "Build tool and bindings loader for node-gyp that supports prebuilds"
+    },
+    {
+      "name": "prettier",
+      "versions": [
+        "3.8.1"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/prettier@3.8.1/node_modules/prettier"
+      ],
+      "license": "MIT",
+      "author": "James Long",
+      "homepage": "https://prettier.io",
+      "description": "Prettier is an opinionated code formatter"
+    },
+    {
+      "name": "ws",
+      "versions": [
+        "8.21.0"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/ws@8.21.0/node_modules/ws"
+      ],
+      "license": "MIT",
+      "author": "Einar Otto Stangvik",
+      "homepage": "https://github.com/websockets/ws",
+      "description": "Simple to use, blazing fast and thoroughly tested websocket client and server for Node.js"
+    }
+  ],
+  "Apache-2.0": [
+    {
+      "name": "@typescript/typescript-darwin-arm64",
+      "versions": [
+        "7.0.2"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/@typescript+typescript-darwin-arm64@7.0.2/node_modules/@typescript/typescript-darwin-arm64"
+      ],
+      "license": "Apache-2.0",
+      "author": "Microsoft Corp.",
+      "homepage": "https://www.typescriptlang.org/",
+      "description": "TypeScript is a language for application scale JavaScript development"
+    },
+    {
+      "name": "detect-libc",
+      "versions": [
+        "2.1.2"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/detect-libc@2.1.2/node_modules/detect-libc"
+      ],
+      "license": "Apache-2.0",
+      "author": "Lovell Fuller",
+      "homepage": "https://github.com/lovell/detect-libc#readme",
+      "description": "Node.js module to detect the C standard library (libc) implementation family and version"
+    },
+    {
+      "name": "playwright",
+      "versions": [
+        "1.61.1"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/playwright@1.61.1/node_modules/playwright"
+      ],
+      "license": "Apache-2.0",
+      "author": "Microsoft Corporation",
+      "homepage": "https://playwright.dev",
+      "description": "A high-level API to automate web browsers"
+    },
+    {
+      "name": "playwright-core",
+      "versions": [
+        "1.61.1"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/playwright-core@1.61.1/node_modules/playwright-core"
+      ],
+      "license": "Apache-2.0",
+      "author": "Microsoft Corporation",
+      "homepage": "https://playwright.dev",
+      "description": "A high-level API to automate web browsers"
+    },
+    {
+      "name": "typescript",
+      "versions": [
+        "7.0.2"
+      ],
+      "paths": [
+        "/Users/sontran/platform/.worktrees/tsk-21-ambidex-cbor-spike/experiments/ambidex-cbor/ts/node_modules/.pnpm/typescript@7.0.2/node_modules/typescript"
+      ],
+      "license": "Apache-2.0",
+      "author": "Microsoft Corp.",
+      "homepage": "https://www.typescriptlang.org/",
+      "description": "TypeScript is a language for application scale JavaScript development"
+    }
+  ]
+}

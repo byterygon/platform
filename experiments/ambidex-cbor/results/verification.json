@@ -1,0 +1,16 @@
+{
+  "rustTests": 16,
+  "javascriptTests": 31,
+  "rustFmt": "pass",
+  "rustClippyWarningsDenied": "pass",
+  "typescriptTypecheck": "pass",
+  "javascriptFormatting": "pass",
+  "generatedArtifactDrift": "pass",
+  "repositoryLicensePolicy": "pass",
+  "cachedOfflinePnpmInstall": "pass",
+  "fuzzCasesPerLanguage": 18017,
+  "fuzzCoverage": "smoke counts only, not instrumented coverage",
+  "productionChangedFiles": [],
+  "networkIsolation": "not performed; offline flags and loopback do not prove hard isolation",
+  "spikeTestsRunByUnchangedProductionCI": false
+}

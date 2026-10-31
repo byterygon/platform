@@ -1,0 +1,22 @@
+{
+  "seed": "0x21cb0",
+  "executionsPerLanguage": 12000,
+  "syntaxCBOR": 10000,
+  "syntaxJSON": 2000,
+  "elapsedMs": 278.4615,
+  "coverage": "grammar categories and differential acceptance; no instrumented edge coverage",
+  "panics": 0,
+  "failures": [
+    {
+      "case": {
+        "jsonPayload": "{\"k8\":[20553.3298,\"1175291595\",true]}",
+        "schema": "dynamic"
+      },
+      "rust": {
+        "error": "nonintegral JSON outside experimental dynamic profile",
+        "ok": false
+      },
+      "js": true
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+✔ baseline loses precision; lossless mapping preserves it (0.483583ms)
+✔ reject noncanonical and out-of-range values (0.088917ms)
+✔ actual pinned TS runtime ignores HelloAck capability extension (0.76475ms)
+✔ separately negotiated relay transcodes with stable approval digest and preserves opaque Arrow frames (5.592875ms)
+✔ mutation commits once, malformed result reports outcome unknown without replay (0.239667ms)
+✔ approval scope is codec-independent, versioned and policy-bound (0.420792ms)
+✔ no silent required-profile downgrade or auth/protocol fallback (0.076875ms)
+✔ new/old peers use explicit safe-only legacy adapter; unsafe mutations are rejected before send (0.55875ms)
+✔ all structural thresholds at minus one, exact and plus one in Rust and JS (1142.341042ms)
+✔ golden vectors, both languages and logical digest (494.108167ms)
+✔ scalar domain rejection and scale identity (0.366583ms)
+✔ JSON prevalidation, hostile keys and limits (0.458875ms)
+✔ authorization before sensitive validation, logs and approval binding (0.603583ms)
+✔ compatibility matrix and nonretryable mutation ambiguity (0.180458ms)
+✔ strict ordering differs from preferred acceptance (2.835416ms)
+✔ structure-aware and mutation differential smoke (78.484875ms)
+✔ resource thresholds reject before declared oversized allocation (20.284375ms)
+✔ pinned cbor-x is a comparator, not the profile validator (10.080667ms)
+✔ Rust-derived descriptors hydrate exact wrappers and both Rust wire paths (460.926958ms)
+✔ semantic differential corpus, not just syntax acceptance (129.436666ms)
+✔ JSON scanner equivalence for malformed Unicode, duplicates, flatten and untagged (2.960542ms)
+✔ recursive, flattened, optional and enum descriptors preserve serde semantics across codecs (24.377542ms)
+✔ edited Arrow-aligned values retain scale, nanoseconds and timezone absence (0.85425ms)
+✔ checked mapping keeps safe fields numeric and full-range fields exact (0.719084ms)
+✔ scale-insignificant Decimal canonicalizes but scale-significant fields remain distinct (2.475917ms)
+✔ malformed nested structs, flatten and untagged reject duplicates before serde/JS hydration (6.184625ms)
+✔ finite fractional JSON is syntax-valid but rejected by the conservative dynamic integer domain (1.899417ms)
+✔ explicit byte scalar uses canonical base64 JSON and a CBOR byte string (3.651375ms)
+✔ absent, explicit null and undefined keep separate contract behavior (0.564125ms)
+✔ integral JSON numeric spellings normalize consistently in the conservative dynamic domain (6.800042ms)
+✔ out-of-profile negative bignum endpoint is rejected without a Rust panic (1.988792ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1201.772333

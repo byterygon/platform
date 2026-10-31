@@ -1,0 +1,14 @@
+{
+  "resolved": [
+    {
+      "package": "ws",
+      "from": "8.18.3",
+      "to": "8.21.0",
+      "advisories": [
+        "GHSA-58qx-3vcg-4xpx",
+        "GHSA-96hv-2xvq-fx4p"
+      ],
+      "scope": "experiment-only development dependency used for loopback benchmarks"
+    }
+  ]
+}
