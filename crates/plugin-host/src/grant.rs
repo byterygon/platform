@@ -598,10 +598,10 @@ impl GrantEntry {
         let handles = {
             let mut handles = lock(&self.handles);
             self.state.send_if_modified(|s| {
-                let change = match (*s, to) {
-                    (EntryState::Active, _) | (EntryState::Expired, EntryState::Revoked) => true,
-                    _ => false,
-                };
+                let change = matches!(
+                    (*s, to),
+                    (EntryState::Active, _) | (EntryState::Expired, EntryState::Revoked)
+                );
                 if change {
                     *s = to;
                 }

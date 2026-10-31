@@ -49,6 +49,15 @@
 //!    be in the grant's tenant and be eligible (listed by id or by role). The plugin is checked
 //!    through its binding (id, digest, driver kind) and is audited as the first principal of the
 //!    chain. The defaults are in [`BrokerLimits`].
+//!
+//! Follow-ups from the PR #5 review (TSK-20):
+//!
+//! - **Grant digest.** Grant creation is authorized and audited with [`grant_create_digest`]
+//!   ([`GRANT_CREATE_DIGEST_DOMAIN`], `.v2`), which covers every [`GrantRequest`] field.
+//! - **Expiry.** A grant ends at its `expires_at`: its transports are closed then, idle or in
+//!   flight, and its target is free for a new grant (see [`grant`]).
+//! - **Connect deadline.** [`BrokerLimits::connect_timeout`] bounds the TCP connect of one
+//!   `open` across all permitted addresses together.
 
 pub mod audit;
 pub mod broker;
