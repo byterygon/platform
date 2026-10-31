@@ -1,6 +1,6 @@
 // Experimental restricted control profile. No production imports or registration.
 const te = new TextEncoder(),
-  td = new TextDecoder("utf-8", { fatal: true });
+  td = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 export const limits = {
   bytes: 1048576,
   depth: 64,
@@ -118,7 +118,12 @@ export function decode(bytes, strict = true, budget = limits.allocation) {
       if (len > limits.field) fail();
       reserve(len * 2);
       const b = take(len);
-      return major === 2 ? b.slice() : td.decode(b);
+      if (major === 2) return b.slice();
+      try {
+        return td.decode(b);
+      } catch {
+        fail();
+      }
     }
     if (major === 4) {
       if (len > limits.array) fail();
@@ -186,7 +191,12 @@ export function decode(bytes, strict = true, budget = limits.allocation) {
 // Recursive-descent JSON scanner validates duplicates and budgets before JSON.parse.
 export function parseJSON(bytes) {
   if (bytes.length > limits.bytes) fail();
-  const s = td.decode(bytes);
+  let s;
+  try {
+    s = td.decode(bytes);
+  } catch {
+    fail();
+  }
   let p = 0,
     nodes = 0,
     allocation = 0;
@@ -201,7 +211,12 @@ export function parseJSON(bytes) {
         const raw = s.slice(start, p);
         allocation += te.encode(raw).length * 2;
         if (allocation > limits.allocation) fail();
-        const decoded = JSON.parse(raw);
+        let decoded;
+        try {
+          decoded = JSON.parse(raw);
+        } catch {
+          fail();
+        }
         if (
           te.encode(decoded).length > limits.field ||
           td.decode(te.encode(decoded)) !== decoded
@@ -271,16 +286,21 @@ export function parseJSON(bytes) {
   val();
   ws();
   if (p !== s.length) fail();
-  return JSON.parse(s, (k, v) => {
-    if (
-      typeof v === "number" &&
-      (!Number.isFinite(v) || (Number.isInteger(v) && !Number.isSafeInteger(v)))
-    )
-      fail();
-    if (v && typeof v === "object" && !Array.isArray(v))
-      return Object.assign(Object.create(null), v);
-    return v;
-  });
+  try {
+    return JSON.parse(s, (k, v) => {
+      if (
+        typeof v === "number" &&
+        (!Number.isFinite(v) ||
+          (Number.isInteger(v) && !Number.isSafeInteger(v)))
+      )
+        fail();
+      if (v && typeof v === "object" && !Array.isArray(v))
+        return Object.assign(Object.create(null), v);
+      return v;
+    });
+  } catch {
+    fail();
+  }
 }
 export const jsonBytes = (v) => te.encode(JSON.stringify(v));
 export const hex = (b) =>

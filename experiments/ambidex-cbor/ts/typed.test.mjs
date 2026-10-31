@@ -9,7 +9,7 @@ import {
   AmbidexDecimal,
   AmbidexTemporal,
 } from "./semantic.mjs";
-import { hex, encode, jsonBytes, parseJSON } from "./codec.mjs";
+import { hex, encode, jsonBytes, parseJSON, Tag } from "./codec.mjs";
 import { descriptor } from "./descriptor.mjs";
 const executable = new URL(
   "../rust/target/debug/ambidex-cbor-spike",
@@ -32,6 +32,80 @@ const input = {
   local: "2026-10-29T12:34:56.123456789",
   secret: "hidden",
 };
+test("validation findings reject noncanonical scalars on JSON and CBOR paths", () => {
+  const invalid = [
+    ...["695668", "123456789", "1234567"].map((fraction) => [
+      "instant",
+      `2026-10-29T12:34:56.${fraction}z`,
+    ]),
+    ...["+999-01-01", "-001-01-01", " 999-01-01"].flatMap((date) => [
+      ["date", date],
+      ["local", `${date}T12:34:56`],
+    ]),
+    ["time", " 1:34:56"],
+    ["local", "2026-10-29T 1:34:56"],
+    ["decimal", "1e-0"],
+  ];
+  for (const [kind, value] of invalid) {
+    const jsonPayload = JSON.stringify(value);
+    const cbor = encode(
+      kind === "instant"
+        ? new Tag(0, value)
+        : kind === "date"
+          ? new Tag(1004, value)
+          : value,
+    );
+    for (const [codec, bytes] of [
+      ["json", new TextEncoder().encode(jsonPayload)],
+      ["cbor", cbor],
+    ])
+      assert.throws(
+        () => decodeTyped(bytes, kind, codec),
+        RangeError,
+        `${kind} ${value}`,
+      );
+    for (const result of rust([
+      { jsonPayload, schema: kind },
+      { hex: hex(cbor), schema: kind },
+    ]))
+      assert.equal(result.ok, false, `${kind} ${value}`);
+  }
+});
+test("nine-digit instant fraction round-trips exactly on both wire paths", () => {
+  const value = "2026-10-29T12:34:56.123456789Z";
+  const json = new TextEncoder().encode(JSON.stringify(value));
+  const cbor = encode(new Tag(0, value));
+  for (const [codec, bytes] of [
+    ["json", json],
+    ["cbor", cbor],
+  ]) {
+    const decoded = decodeTyped(bytes, "instant", codec);
+    assert.equal(decoded.toString(), value);
+    assert.equal(hex(encodeTyped(decoded, "instant", "cbor")), hex(cbor));
+  }
+  const [a, b] = rust([
+    { jsonPayload: JSON.stringify(value), schema: "instant" },
+    { hex: hex(cbor), schema: "instant" },
+  ]);
+  assert.equal(a.ok, true);
+  assert.equal(a.hex, hex(cbor));
+  assert.equal(a.hex, b.hex);
+  assert.equal(a.digest, b.digest);
+});
+test("decoder failures are RangeError, including BOM and malformed text", () => {
+  const cases = [
+    () => parseJSON(Uint8Array.from([0xef, 0xbb, 0xbf, 0x7b, 0x7d])),
+    () => parseJSON(new TextEncoder().encode('"\\q"')),
+    () => decodeTyped(Uint8Array.from([0x61, 0xff]), "string", "cbor"),
+    () => decodeTyped(new TextEncoder().encode('"!"'), "bytes", "json"),
+  ];
+  for (const reject of cases) assert.throws(reject, RangeError);
+  const [bom] = rust([{ jsonPayload: "\ufeff{}", schema: "dynamic" }]);
+  assert.equal(bom.ok, false);
+  const [surrogate] = rust([{ jsonPayload: "\ud800", schema: "dynamic" }]);
+  assert.equal(surrogate.ok, false);
+  assert.notEqual(surrogate.panic, true);
+});
 test("Rust-derived descriptors hydrate exact wrappers and both Rust wire paths", () => {
   assert.match(CONTRACT, /^sha256:/);
   const payload = new TextDecoder().decode(encodeTyped(input, schema, "json")),

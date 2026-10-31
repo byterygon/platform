@@ -3,10 +3,9 @@ import { exact, checked } from "./integers.mjs";
 export function decimal(text) {
   if (typeof text !== "string" || text.length > 1100)
     throw new RangeError("decimal length");
-  const m =
-    /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:e(-?(?:0|[1-9][0-9]*)))?$/.exec(
-      text,
-    );
+  const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:e(0|-?[1-9][0-9]*))?$/.exec(
+    text,
+  );
   if (!m) throw new RangeError("decimal syntax");
   const digits = m[2] + (m[3] ?? ""),
     precision = digits.replace(/^0+/, "").length || 1;
@@ -217,7 +216,12 @@ export function convert(value, schema, toWire, codec, profile = "bigint") {
       return value;
     }
     if (typeof value !== "string") throw new RangeError("base64");
-    const text = atob(value);
+    let text;
+    try {
+      text = atob(value);
+    } catch {
+      throw new RangeError("invalid control payload");
+    }
     if (btoa(text) !== value) throw new RangeError("noncanonical base64");
     return Uint8Array.from(text, (c) => c.charCodeAt(0));
   }

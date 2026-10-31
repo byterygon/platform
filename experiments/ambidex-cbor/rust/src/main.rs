@@ -5,11 +5,15 @@ fn main() {
     for line in io::stdin().lock().lines() {
         let Ok(line) = line else { break };
         let result = std::panic::catch_unwind(|| {
-            let req: serde_json::Value = serde_json::from_str(&line).unwrap();
+            let Ok(req): Result<serde_json::Value, _> = serde_json::from_str(&line) else {
+                return serde_json::json!({"ok":false,"error":"invalid request"});
+            };
             if req.get("jsonPayload").is_some() {
                 return typed_json(&req);
             }
-            let s = req["hex"].as_str().unwrap();
+            let Some(s) = req["hex"].as_str() else {
+                return serde_json::json!({"ok":false,"error":"missing hex"});
+            };
             if s.len() > 2097152 || !s.len().is_multiple_of(2) || !s.is_ascii() {
                 return serde_json::json!({"ok":false});
             };

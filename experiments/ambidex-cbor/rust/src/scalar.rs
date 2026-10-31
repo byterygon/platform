@@ -153,10 +153,21 @@ pub fn temporal(s: &str, kind: &str) -> Result<String, String> {
         s.len() == 10
             && s.as_bytes()[4] == b'-'
             && s.as_bytes()[7] == b'-'
+            && s.bytes()
+                .enumerate()
+                .all(|(i, b)| i == 4 || i == 7 || b.is_ascii_digit())
             && NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
     }
     fn time(s: &str) -> bool {
         if s.len() < 8 || s.as_bytes()[2] != b':' || s.as_bytes()[5] != b':' {
+            return false;
+        }
+        if !s
+            .bytes()
+            .enumerate()
+            .all(|(i, b)| i == 2 || i == 5 || i == 8 || b.is_ascii_digit())
+            || s.len() > 8 && s.as_bytes()[8] != b'.'
+        {
             return false;
         }
         if let Some((_, frac)) = s.split_once('.') {
@@ -204,6 +215,11 @@ pub fn temporal(s: &str, kind: &str) -> Result<String, String> {
             if s.len() < 20 || s.as_bytes()[10] != b'T' || !date(&s[..10]) {
                 return Err("instant".into());
             }
+            // The PoC wire grammar currently requires uppercase Z. Check it before
+            // slicing the time; chrono also accepts lowercase z.
+            if s.ends_with('z') {
+                return Err("offset".into());
+            }
             let offset = if s.ends_with('Z') { 1 } else { 6 };
             if s.len() < 19 + offset || s.ends_with("-00:00") {
                 return Err("offset".into());
@@ -226,5 +242,31 @@ pub fn temporal(s: &str, kind: &str) -> Result<String, String> {
             Ok(base.trim_end_matches('Z').to_owned() + &fraction + "Z")
         }
         _ => Err("temporal".into()),
+    }
+}
+
+#[cfg(test)]
+mod validation {
+    use super::temporal;
+
+    #[test]
+    fn rejects_noncanonical_temporal_spellings() {
+        for fraction in ["695668", "123456789", "1234567"] {
+            let instant = format!("2026-10-29T12:34:56.{fraction}z");
+            assert!(temporal(&instant, "instant").is_err(), "{instant}");
+        }
+        for date in ["+999-01-01", "-001-01-01", " 999-01-01"] {
+            assert!(temporal(date, "date").is_err(), "{date}");
+            let local = format!("{date}T12:34:56");
+            assert!(temporal(&local, "local").is_err(), "{local}");
+        }
+        assert!(temporal(" 1:34:56", "time").is_err());
+        assert!(temporal("2026-10-29T 1:34:56", "local").is_err());
+    }
+
+    #[test]
+    fn exact_nanosecond_fraction() {
+        let instant = "2026-10-29T12:34:56.123456789Z";
+        assert_eq!(temporal(instant, "instant").unwrap(), instant);
     }
 }
