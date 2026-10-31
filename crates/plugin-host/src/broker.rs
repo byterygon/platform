@@ -43,8 +43,8 @@ use tokio_rustls::client::TlsStream;
 use crate::encode_digest;
 use crate::error_code;
 use crate::grant::{
-    ConnectionGrant, DriverKind, GrantEntry, GrantStore, Host, Revocable, ServerTrust, TlsMode,
-    TlsPolicy, TlsSettings, pinned_ca_store, policy,
+    ConnectionGrant, DriverKind, EntryState, GrantEntry, GrantStore, Host, Revocable, ServerTrust,
+    TlsMode, TlsPolicy, TlsSettings, pinned_ca_store, policy,
 };
 use crate::net::{Resolver, SystemResolver, canonical};
 
@@ -136,6 +136,9 @@ pub struct BrokerLimits {
     /// Upper bound for one `recv`; larger requests are clamped.
     pub max_recv_bytes: usize,
     pub resolve_timeout: Duration,
+    /// One overall budget for the TCP connect of an `open`, across every permitted address the
+    /// target resolved to (not per address). Running out gives [`BrokerError::Timeout`]. Name
+    /// resolution and the TLS handshake have their own timeouts.
     pub connect_timeout: Duration,
     pub tls_handshake_timeout: Duration,
     /// Plaintext bytes (sent plus received) allowed on an in-protocol-upgrade transport before
@@ -245,7 +248,7 @@ pub struct Transport {
     purpose: Purpose,
     peer: SocketAddr,
     entry: Arc<GrantEntry>,
-    revoked: watch::Receiver<bool>,
+    ended: watch::Receiver<EntryState>,
     handle: Arc<Handle>,
     tls: bool,
     plaintext_bytes: usize,
@@ -420,6 +423,9 @@ impl<R: Resolver> BrokerScope<R> {
         if entry.is_revoked() {
             return Err(deny("grant revoked"));
         }
+        if !entry.is_active(self.now()) {
+            return Err(deny("grant expired"));
+        }
         if grant.plugin.plugin_id != caller.plugin_id
             || grant.plugin.digest != caller.plugin_digest
             || grant.plugin.driver_kind != caller.driver_kind
@@ -428,9 +434,6 @@ impl<R: Resolver> BrokerScope<R> {
         }
         if let Some(reason) = grant.ineligible(&caller.principal) {
             return Err(OpenError::Denied(Denied { reason }));
-        }
-        if grant.is_expired(self.now()) {
-            return Err(deny("grant expired"));
         }
         if purpose == Purpose::Cancel && !grant.allow_cancel_connection {
             return Err(deny("cancel connection not granted"));
@@ -447,11 +450,11 @@ impl<R: Resolver> BrokerScope<R> {
         }
         let slot = Slot(self.open.clone());
 
-        let mut revoked = entry.revoked();
+        let mut ended = entry.state();
         let connect = self.connect(grant);
         let (stream, peer, tls) = tokio::select! {
             r = connect => r?,
-            e = interrupted(&mut revoked, self.until_expiry(grant)) => return Err(e.into()),
+            e = interrupted(&mut ended) => return Err(e.into()),
         };
 
         let handle = Arc::new(Handle {
@@ -461,14 +464,14 @@ impl<R: Resolver> BrokerScope<R> {
         });
         let weak: Weak<dyn Revocable> = Arc::downgrade(&handle) as Weak<dyn Revocable>;
         if !entry.track(weak) {
-            return Err(deny("grant revoked"));
+            return Err(deny("grant revoked or expired"));
         }
         Ok(Transport {
             scope_id: self.id,
             purpose,
             peer,
             entry: entry.clone(),
-            revoked,
+            ended,
             handle,
             tls,
             plaintext_bytes: 0,
@@ -501,25 +504,7 @@ impl<R: Resolver> BrokerScope<R> {
             return Err(deny("resolved address not permitted by the grant"));
         }
 
-        let mut last = BrokerError::ConnectionLost;
-        let mut connected = None;
-        for ip in permitted {
-            let addr = SocketAddr::new(ip, grant.port);
-            match tokio::time::timeout(limits.connect_timeout, TcpStream::connect(addr)).await {
-                Ok(Ok(tcp)) => {
-                    // Connect-time check: the socket must be connected to the address we checked.
-                    let peer = tcp.peer_addr().map_err(|e| BrokerError::from_io(&e))?;
-                    if canonical(peer.ip()) != ip || peer.port() != grant.port {
-                        return Err(BrokerError::Internal.into());
-                    }
-                    connected = Some((tcp, addr));
-                    break;
-                }
-                Ok(Err(e)) => last = BrokerError::from_io(&e),
-                Err(_) => last = BrokerError::Timeout,
-            }
-        }
-        let (tcp, peer) = connected.ok_or(last)?;
+        let (tcp, peer) = connect_any(&permitted, grant.port, limits.connect_timeout).await?;
         let _ = tcp.set_nodelay(true);
 
         match &grant.tls {
@@ -580,11 +565,11 @@ impl<R: Resolver> BrokerScope<R> {
                 return Err(BrokerError::TlsFailed);
             }
         }
-        let until_expiry = self.until_expiry(&io.entry.grant);
+
         let mut stream = io.handle.stream.lock().await;
         let result = tokio::select! {
             r = stream.write_all(bytes) => r.map_err(|e| BrokerError::from_io(&e)),
-            e = interrupted(&mut io.revoked, until_expiry) => Err(e),
+            e = interrupted(&mut io.ended) => Err(e),
         };
         if result.is_err() {
             *stream = Stream::Closed;
@@ -616,11 +601,11 @@ impl<R: Resolver> BrokerScope<R> {
             max = max.min(remaining);
         }
         let mut buf = vec![0u8; max];
-        let until_expiry = self.until_expiry(&io.entry.grant);
+
         let mut stream = io.handle.stream.lock().await;
         let result = tokio::select! {
             r = stream.read(&mut buf) => r.map_err(|e| BrokerError::from_io(&e)),
-            e = interrupted(&mut io.revoked, until_expiry) => Err(e),
+            e = interrupted(&mut io.ended) => Err(e),
         };
         if result.is_err() {
             *stream = Stream::Closed;
@@ -688,14 +673,14 @@ impl<R: Resolver> BrokerScope<R> {
         {
             return Err(BrokerError::PermissionDenied);
         }
-        let until_expiry = self.until_expiry(&grant);
+
         let mut stream = io.handle.stream.lock().await;
         let Stream::Plain(tcp) = std::mem::replace(&mut *stream, Stream::Closed) else {
             return Err(BrokerError::ConnectionLost);
         };
         let result = tokio::select! {
             r = self.handshake(tls, tcp) => r,
-            e = interrupted(&mut io.revoked, until_expiry) => Err(e),
+            e = interrupted(&mut io.ended) => Err(e),
         };
         match result {
             Ok(tls) => {
@@ -714,7 +699,7 @@ impl<R: Resolver> BrokerScope<R> {
             // Handles are not transferable between plugin instances or principals.
             return Err(BrokerError::PermissionDenied);
         }
-        if io.entry.is_revoked() || io.entry.grant.is_expired(self.now()) {
+        if !io.entry.is_active(self.now()) {
             io.handle.close_now();
             return Err(BrokerError::PermissionDenied);
         }
@@ -726,12 +711,6 @@ impl<R: Resolver> BrokerScope<R> {
 
     fn now(&self) -> u64 {
         self.broker.grants.clock().now_unix_ms()
-    }
-
-    fn until_expiry(&self, grant: &ConnectionGrant) -> Option<Duration> {
-        grant
-            .expires_at_unix_ms
-            .map(|t| Duration::from_millis(t.saturating_sub(self.now())))
     }
 
     fn audit(
@@ -771,27 +750,64 @@ async fn close(io: &mut Transport) {
     *io.handle.stream.lock().await = Stream::Closed;
 }
 
+/// TCP-connect to the first of `addrs` (already checked against the grant) that accepts, within
+/// one overall `deadline` for all of them ([`BrokerLimits::connect_timeout`]).
+///
+/// Addresses are tried in order, one at a time. Each attempt may use the time still left divided
+/// by the number of addresses still untried, so a hanging address cannot use up the time of the
+/// ones after it, and the total never exceeds `deadline`, however many addresses there are.
+///
+/// Returns [`BrokerError::Timeout`] if any attempt ran out of time, otherwise the last connect
+/// error ([`BrokerError::ConnectionLost`] for a refused connection). An abandoned attempt drops
+/// its socket, so no half-open connection is left behind.
+async fn connect_any(
+    addrs: &[IpAddr],
+    port: u16,
+    deadline: Duration,
+) -> Result<(TcpStream, SocketAddr), BrokerError> {
+    let started = Instant::now();
+    let mut timed_out = false;
+    let mut last = BrokerError::ConnectionLost;
+    for (i, &ip) in addrs.iter().enumerate() {
+        let left = deadline.saturating_sub(started.elapsed());
+        if left.is_zero() {
+            timed_out = true;
+            break;
+        }
+        let untried = u32::try_from(addrs.len() - i).unwrap_or(u32::MAX);
+        let addr = SocketAddr::new(ip, port);
+        match tokio::time::timeout(left / untried, TcpStream::connect(addr)).await {
+            Ok(Ok(tcp)) => {
+                // Connect-time check: the socket must be connected to the address we checked.
+                let peer = tcp.peer_addr().map_err(|e| BrokerError::from_io(&e))?;
+                if canonical(peer.ip()) != ip || peer.port() != port {
+                    return Err(BrokerError::Internal);
+                }
+                return Ok((tcp, addr));
+            }
+            Ok(Err(e)) => last = BrokerError::from_io(&e),
+            Err(_) => timed_out = true,
+        }
+    }
+    Err(if timed_out {
+        BrokerError::Timeout
+    } else {
+        last
+    })
+}
+
 fn error_outcome(e: &BrokerError) -> Outcome {
     Outcome::Error {
         code: e.code().to_owned(),
     }
 }
 
-/// Resolves when the grant is revoked or expires; the caller then abandons its I/O.
-async fn interrupted(
-    revoked: &mut watch::Receiver<bool>,
-    until_expiry: Option<Duration>,
-) -> BrokerError {
-    let expiry = async {
-        match until_expiry {
-            Some(d) => tokio::time::sleep(d).await,
-            None => std::future::pending().await,
-        }
-    };
-    tokio::select! {
-        _ = revoked.wait_for(|r| *r) => BrokerError::PermissionDenied,
-        () = expiry => BrokerError::PermissionDenied,
-    }
+/// Resolves when the grant is revoked or expires (the grant store's expiry task ends it at
+/// `expires_at`); the caller then abandons its I/O and closes the stream.
+async fn interrupted(ended: &mut watch::Receiver<EntryState>) -> BrokerError {
+    // An error means the grant entry is gone, which also ends access.
+    let _ = ended.wait_for(|s| *s != EntryState::Active).await;
+    BrokerError::PermissionDenied
 }
 
 /// Whether the transport still has to upgrade to TLS: its grant requires TLS and `start_tls` has

@@ -44,6 +44,15 @@ impl IpNet {
         Self { addr, prefix }
     }
 
+    /// The network address (host bits zero, IPv4-mapped addresses as IPv4).
+    pub fn addr(&self) -> IpAddr {
+        self.addr
+    }
+
+    pub fn prefix(&self) -> u8 {
+        self.prefix
+    }
+
     pub fn contains(&self, ip: IpAddr) -> bool {
         let ip = canonical(ip);
         ip.is_ipv4() == self.addr.is_ipv4() && mask(ip, self.prefix) == bits(self.addr)

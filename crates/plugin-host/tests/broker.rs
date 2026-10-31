@@ -4,7 +4,6 @@
 use std::collections::{BTreeSet, VecDeque};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -13,7 +12,7 @@ use plugin_host::{
     AddressPolicy, AuditSink, BrokerConfig, BrokerError, BrokerLimits, BrokerScope, Caller, Clock,
     DriverKind, Eligibility, GrantError, GrantRequest, GrantStore, InstalledPlugin, Manifest,
     MemoryAuditLog, NativeBroker, Resolver, SecretBinding, ServerTrust, TlsMode, TlsPolicy,
-    TlsSettings, Transport,
+    TlsSettings, Transport, grant_create_digest,
 };
 use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair};
 use rustls::RootCertStore;
@@ -210,22 +209,40 @@ async fn echo<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(mut s: S)
     }
 }
 
-#[derive(Default)]
-struct ManualClock(AtomicU64);
+/// A clock that moves only when a test advances it. Grant expiry tasks wait on it, so expiry is
+/// deterministic and no test sleeps.
+struct ManualClock(tokio::sync::watch::Sender<u64>);
 
 impl ManualClock {
     fn at(ms: u64) -> Arc<Self> {
-        Arc::new(Self(AtomicU64::new(ms)))
+        Arc::new(Self(tokio::sync::watch::Sender::new(ms)))
     }
 
     fn advance(&self, ms: u64) {
-        self.0.fetch_add(ms, Ordering::SeqCst);
+        self.0.send_modify(|now| *now += ms);
     }
 }
 
 impl Clock for ManualClock {
     fn now_unix_ms(&self) -> u64 {
-        self.0.load(Ordering::SeqCst)
+        *self.0.borrow()
+    }
+
+    fn sleep_until(
+        &self,
+        deadline_unix_ms: u64,
+    ) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        let mut now = self.0.subscribe();
+        Box::pin(async move {
+            let _ = now.wait_for(|now| *now >= deadline_unix_ms).await;
+        })
+    }
+}
+
+/// Let spawned tasks (the grant expiry task) run on the current-thread test runtime.
+async fn settle() {
+    for _ in 0..16 {
+        tokio::task::yield_now().await;
     }
 }
 
@@ -1373,5 +1390,229 @@ async fn unpinned_self_signed_certificate_is_rejected() {
             .await
             .map(|_| ()),
         Err(GrantError::Invalid("pinned server certificates"))
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Grant digest v2 (TSK-20)
+// ---------------------------------------------------------------------------------------------
+
+/// Records the input digest the grant store asks the authorizer about.
+#[derive(Default)]
+struct Recording(Mutex<Vec<(String, Digest)>>);
+
+impl Authorizer for Recording {
+    fn check(&self, req: &AuthzRequest<'_>) -> impl Future<Output = Decision> + Send {
+        self.0
+            .lock()
+            .unwrap()
+            .push((req.action.name.clone(), req.input_digest));
+        std::future::ready(Decision::Allow)
+    }
+}
+
+#[tokio::test]
+async fn grant_creation_is_authorized_and_audited_with_the_v2_digest() {
+    let env = env();
+    let pki = Pki::new("CA");
+    let tls_req = request(5432, TlsMode::Direct, &pki.ca);
+    let mut plain_req = tls_req.clone();
+    plain_req.template_id = "tls-optional".into();
+    plain_req.tls = TlsPolicy::Disabled;
+    plain_req.target_id = "pg-plain".into();
+
+    let authz = Recording::default();
+    for req in [tls_req.clone(), plain_req.clone()] {
+        env.grants
+            .create(&authz, &admin(), &plugin(), req, "corr-grant")
+            .await
+            .unwrap();
+    }
+    let want = [
+        grant_create_digest(&plugin(), &tls_req),
+        grant_create_digest(&plugin(), &plain_req),
+    ];
+    let asked: Vec<Digest> = authz.0.lock().unwrap().iter().map(|(_, d)| *d).collect();
+    assert_eq!(asked, want);
+    let audited: Vec<Digest> = env
+        .audit
+        .records()
+        .into_iter()
+        .filter(|r| r.entry.action.name == "plugin-host.grants.create")
+        .map(|r| r.entry.input_digest)
+        .collect();
+    assert_eq!(audited, want);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Eager expiry (TSK-20). The manual clock drives the expiry task; no test sleeps.
+// ---------------------------------------------------------------------------------------------
+
+/// A plaintext server that accepts one connection, reports every byte it reads, and reports
+/// when the client closes it.
+struct Sink {
+    addr: SocketAddr,
+    bytes: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    closed: tokio::sync::oneshot::Receiver<()>,
+}
+
+async fn sink() -> Sink {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (bytes_tx, bytes) = tokio::sync::mpsc::unbounded_channel();
+    let (closed_tx, closed) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let (mut tcp, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 1024];
+        loop {
+            match tcp.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    let _ = bytes_tx.send(buf[..n].to_vec());
+                }
+            }
+        }
+        let _ = closed_tx.send(());
+    });
+    Sink {
+        addr,
+        bytes,
+        closed,
+    }
+}
+
+/// A plaintext grant to `port` expiring `ttl_ms` after the clock's current time.
+fn expiring(env: &Env<FakeResolver>, port: u16, ttl_ms: u64) -> GrantRequest {
+    let mut req = request(port, TlsMode::Direct, &Pki::new("unused").ca);
+    req.template_id = "tls-optional".into();
+    req.tls = TlsPolicy::Disabled;
+    req.expires_at_unix_ms = Some(env.clock.now_unix_ms() + ttl_ms);
+    req
+}
+
+/// Wait for the server to see the client close. Bounded so a regression fails instead of hanging;
+/// in a passing run this completes as soon as the broker closes the socket.
+async fn closed_by_broker(closed: tokio::sync::oneshot::Receiver<()>) {
+    tokio::time::timeout(Duration::from_secs(10), closed)
+        .await
+        .expect("the broker did not close the socket")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn idle_transport_is_closed_at_expires_at() {
+    let mut srv = sink().await;
+    let env = env();
+    let id = env.grant(expiring(&env, srv.addr.port(), 60_000)).await;
+    let scope = env.scope(alice());
+    let mut t = scope.open("pg1", "data").await.unwrap();
+    scope.send(&mut t, b"hello").await.unwrap();
+    assert_eq!(srv.bytes.recv().await.unwrap(), b"hello");
+
+    // One millisecond before expiry nothing happens.
+    env.clock.advance(59_999);
+    settle().await;
+    assert!(env.grants.is_active(&id));
+    assert_eq!(
+        srv.closed.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+    );
+
+    // At expires_at the idle transport is closed without the plugin touching it.
+    env.clock.advance(1);
+    closed_by_broker(srv.closed).await;
+    assert!(!env.grants.is_active(&id));
+    assert!(!env.grants.is_revoked(&id), "expiry is not revocation");
+
+    // The transport stays dead and the target has no active grant.
+    assert_eq!(
+        scope.send(&mut t, b"late").await,
+        Err(BrokerError::PermissionDenied)
+    );
+    assert_eq!(
+        scope.open("pg1", "data").await.unwrap_err(),
+        BrokerError::PermissionDenied
+    );
+    assert!(
+        srv.bytes.try_recv().is_err(),
+        "nothing was sent after expiry"
+    );
+}
+
+#[tokio::test]
+async fn expired_grant_no_longer_blocks_a_new_grant_for_the_target() {
+    let env = env();
+    let create = |req: GrantRequest| {
+        let grants = env.grants.clone();
+        async move {
+            grants
+                .create(&allow(), &admin(), &plugin(), req, "c")
+                .await
+                .map(|g| g.id.clone())
+        }
+    };
+
+    // Before expiry the target is in use.
+    let first = create(expiring(&env, 5432, 1_000)).await.unwrap();
+    assert_eq!(
+        create(expiring(&env, 5432, 1_000)).await,
+        Err(GrantError::TargetInUse)
+    );
+
+    // After the expiry task ran.
+    env.clock.advance(1_000);
+    settle().await;
+    let second = create(expiring(&env, 5432, 1_000)).await.unwrap();
+    assert_ne!(first, second);
+    assert!(!env.grants.is_active(&first));
+    assert!(env.grants.is_active(&second));
+
+    // Also when `create` runs before the expiry task had a chance to (the clock alone decides).
+    env.clock.advance(1_000);
+    let third = create(expiring(&env, 5432, 1_000)).await.unwrap();
+    assert!(!env.grants.is_active(&second));
+    assert!(env.grants.is_active(&third));
+    assert_eq!(
+        create(expiring(&env, 5432, 1_000)).await,
+        Err(GrantError::TargetInUse)
+    );
+
+    // A grant revoked before its expiry stays revoked, and its target stays free.
+    env.grants
+        .revoke(&allow(), &admin(), &third, "c")
+        .await
+        .unwrap();
+    env.clock.advance(1_000);
+    settle().await;
+    assert!(env.grants.is_revoked(&third));
+    create(expiring(&env, 5432, 1_000)).await.unwrap();
+}
+
+#[tokio::test]
+async fn in_flight_operation_is_aborted_at_expires_at() {
+    let srv = sink().await;
+    let env = env();
+    let id = env.grant(expiring(&env, srv.addr.port(), 60_000)).await;
+    let scope = env.scope(alice());
+    let mut t = scope.open("pg1", "data").await.unwrap();
+
+    // A recv waiting for a reply that never comes is in flight when the grant expires.
+    // The timeout only bounds a regression; a passing run ends as soon as the clock advances.
+    let (result, ()) = tokio::join!(
+        tokio::time::timeout(Duration::from_secs(10), scope.recv(&mut t, 1024)),
+        async {
+            settle().await;
+            env.clock.advance(60_000);
+        }
+    );
+    assert_eq!(
+        result.expect("recv was not aborted at expiry"),
+        Err(BrokerError::PermissionDenied)
+    );
+    closed_by_broker(srv.closed).await;
+    assert!(!env.grants.is_active(&id));
+    assert_eq!(
+        scope.recv(&mut t, 1024).await,
+        Err(BrokerError::PermissionDenied)
     );
 }
