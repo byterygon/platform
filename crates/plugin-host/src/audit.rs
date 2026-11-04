@@ -5,8 +5,10 @@
 //! payload bytes.
 
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use security_types::{AuditChain, AuditEntry, AuditRecord};
 
@@ -62,7 +64,29 @@ impl AuditSink for MemoryAuditLog {
 /// Wall-clock time in Unix milliseconds, used for grant expiry and audit timestamps.
 pub trait Clock: Send + Sync + 'static {
     fn now_unix_ms(&self) -> u64;
+
+    /// Completes once [`now_unix_ms`](Clock::now_unix_ms) has reached `deadline_unix_ms`. The
+    /// grant store uses it to close grants eagerly at their expiry.
+    ///
+    /// The default sleeps on the Tokio timer and reads the clock again at least every
+    /// [`CLOCK_RECHECK`], so a wall clock that is stepped forward is noticed within that time.
+    /// Clocks that are not driven by real time (for example a manual test clock) override it.
+    fn sleep_until(&self, deadline_unix_ms: u64) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async move {
+            loop {
+                let now = self.now_unix_ms();
+                if now >= deadline_unix_ms {
+                    return;
+                }
+                let wait = Duration::from_millis(deadline_unix_ms - now).min(CLOCK_RECHECK);
+                tokio::time::sleep(wait).await;
+            }
+        })
+    }
 }
+
+/// Longest time the default [`Clock::sleep_until`] waits before reading the clock again.
+pub const CLOCK_RECHECK: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SystemClock;
