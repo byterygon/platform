@@ -2,13 +2,18 @@
 // workspace settings, and `Client<typeof procedures>` gives each procedure the input, output and
 // error types of its Rust declaration. Checked by `pnpm typecheck`; nothing here runs.
 
-import type {
-  Client,
-  ErrorOf,
-  InputOf,
-  StreamCall,
-  Subscription,
+import {
+  type AmbidexClient,
+  type Client,
+  createClient,
+  type ErrorOf,
+  type InputOf,
+  isRpcError,
+  type StreamCall,
+  type Subscription,
+  type Transport,
 } from "../src/index.js";
+import * as generated from "./conformance/api.js";
 import {
   API,
   PROTOCOL,
@@ -82,4 +87,33 @@ if (plain.code !== "ApprovalRequired") {
   assert<Equal<typeof plain.details, undefined>>();
 } else {
   assert<Equal<typeof plain.details, ApprovalRequiredDetails | undefined>>();
+}
+
+// The runtime's `createClient` over the generated module (TSK-8).
+declare const transport: Transport;
+const real = createClient(generated, transport);
+assert<Equal<typeof real, AmbidexClient<generated.Api>>>();
+const viaTable = createClient(procedures, transport, { api: API, schemaHash: SCHEMA_HASH });
+assert<Equal<typeof viaTable, AmbidexClient<generated.Api>>>();
+// @ts-expect-error: a bare table needs the API identity for Hello
+createClient(procedures, transport);
+const viaReal: Promise<string> = real.fixture.big(1, { timeoutMs: 5, signal: opts.signal });
+const sub: Subscription<number> = real.fixture.counter(null);
+const rows: StreamCall<number, Uint8Array> = real.fixture.rows(null);
+void [viaReal, sub, rows, real.$connect(), real.$ping(), real.$close()];
+// @ts-expect-error: no such procedure
+void real.fixture.nope;
+// @ts-expect-error: wrong input type
+void real.fixture.big(true);
+
+// `isRpcError` with a procedure narrows to that procedure's generated error union.
+declare const caught: unknown;
+if (isRpcError(caught, procedures.fixture.fail)) {
+  if (caught.code === "ApprovalRequired") {
+    assert<Equal<typeof caught.details, ApprovalRequiredDetails | FixtureError | undefined>>();
+  } else {
+    assert<Equal<typeof caught.details, FixtureError | undefined>>();
+  }
+  const correlation: string = caught.correlation_id;
+  void correlation;
 }

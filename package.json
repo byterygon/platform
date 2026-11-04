@@ -8,6 +8,8 @@
   },
   "scripts": {
     "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
     "check:licenses": "node scripts/check-licenses.mjs"
   },
   "devDependencies": {
