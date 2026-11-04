@@ -71,7 +71,9 @@ use crate::cancel::CallScope;
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
-use crate::message::{Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits};
+use crate::message::{
+    Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits, MAX_JSON_SAFE_INTEGER,
+};
 use crate::subscription::{Events, Held, Queued};
 use crate::transport::{TransportRx, TransportTx};
 
@@ -696,9 +698,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             limits: Limits {
                 max_frame_bytes: config.max_frame_bytes,
                 max_concurrent_calls: config.max_concurrent_calls,
-                cancel_grace_ms: Some(
-                    u64::try_from(config.cancel_grace.as_millis()).unwrap_or(u64::MAX),
-                ),
+                cancel_grace_ms: Some(advertised_ms(config.cancel_grace)),
             },
             server_version: config.server_version.clone(),
         };
@@ -959,6 +959,14 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             TrySendError::Closed(_) => Closed::Transport(io::ErrorKind::BrokenPipe),
         })
     }
+}
+
+/// `duration` in whole milliseconds for HelloAck, clamped so a JavaScript client reads it exactly
+/// (a `cancel_grace` of `Duration::MAX` means "never drop"; any value this large reads the same).
+fn advertised_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis())
+        .unwrap_or(u64::MAX)
+        .min(MAX_JSON_SAFE_INTEGER)
 }
 
 /// Builds the Result or Error frame for a finished call.

@@ -51,10 +51,15 @@ pub struct Limits {
     /// How long a cancelled call may keep running before the server drops it, in milliseconds
     /// ([`ServerConfig::cancel_grace`](crate::ServerConfig::cancel_grace)). A client waits this
     /// long, plus its own network margin, past a deadline before it gives up on the server's
-    /// answer (spec Open question 23b). Optional and additive: older servers omit it.
+    /// answer (spec Open question 23b). Optional and additive: older servers omit it. At most
+    /// [`MAX_JSON_SAFE_INTEGER`], so a JavaScript client reads it exactly; a longer grace is
+    /// advertised as that.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cancel_grace_ms: Option<u64>,
 }
+
+/// The largest integer a JavaScript number holds exactly (`Number.MAX_SAFE_INTEGER`, 2^53 - 1).
+pub const MAX_JSON_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// Payload of a `Call` frame.
 ///

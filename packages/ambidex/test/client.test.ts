@@ -418,6 +418,22 @@ describe("deadlines", () => {
     }
   });
 
+  it("clamps a cancel_grace_ms beyond MAX_SAFE_INTEGER instead of refusing the HelloAck", async () => {
+    // Review finding [4]: e.g. u64::MAX from a server configured never to drop a call.
+    for (const huge of [2 ** 53, 2 ** 64]) {
+      const { transport, client } = setup({}, ackWithGrace(huge));
+      const ack = await client.$connect();
+      assert.equal(ack.limits.cancel_grace_ms, Number.MAX_SAFE_INTEGER);
+      // Calls still work; the safety timer is beyond what setTimeout can wait, so there is none.
+      const r = client.fixture.capped(null);
+      const peer = await transport.peer();
+      const call = await peer.nextOf(Kind.Call);
+      peer.json(Kind.Result, call.callId, "ok");
+      assert.equal(await r, "ok");
+      client.$close();
+    }
+  });
+
   it("waits cancel_grace_ms + networkMarginMs past the deadline when advertised", async (t) => {
     const { transport, client } = setup({ timeoutSlackMs: 60_000 }, ackWithGrace(200));
     await client.$connect();

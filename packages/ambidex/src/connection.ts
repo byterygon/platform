@@ -423,6 +423,18 @@ function isU32(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_CALL_ID;
 }
 
+/**
+ * `limits.cancel_grace_ms`: `undefined` when absent, `null` when malformed (negative, fractional
+ * or not a number). A value beyond what a number holds exactly (an older server may send up to
+ * u64::MAX) means a grace longer than any timer, so it is clamped to `MAX_SAFE_INTEGER`.
+ */
+function cancelGraceMs(value: unknown): number | undefined | null {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0) return null;
+  if (value > Number.MAX_SAFE_INTEGER) return Number.MAX_SAFE_INTEGER;
+  return Number.isInteger(value) ? value : null;
+}
+
 function parseAck(value: unknown): HelloAck | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const v = value as Record<string, unknown>;
@@ -438,17 +450,15 @@ function parseAck(value: unknown): HelloAck | undefined {
     return undefined;
   }
   // Additive and optional; when present it must be a non-negative integer of milliseconds.
-  const grace = limits["cancel_grace_ms"];
-  if (grace !== undefined && !(Number.isSafeInteger(grace) && (grace as number) >= 0)) {
-    return undefined;
-  }
+  const grace = cancelGraceMs(limits["cancel_grace_ms"]);
+  if (grace === null) return undefined;
   return {
     session: v["session"],
     server_version: v["server_version"],
     limits: {
       max_frame_bytes: limits["max_frame_bytes"],
       max_concurrent_calls: limits["max_concurrent_calls"],
-      ...(grace !== undefined ? { cancel_grace_ms: grace as number } : {}),
+      ...(grace !== undefined ? { cancel_grace_ms: grace } : {}),
     },
   };
 }

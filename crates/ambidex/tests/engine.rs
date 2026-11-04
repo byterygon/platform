@@ -305,6 +305,26 @@ async fn handshake_returns_session_and_limits() {
 }
 
 #[tokio::test]
+async fn a_huge_cancel_grace_is_advertised_as_a_safe_integer() {
+    // Review finding [4]: Duration::MAX would be u64::MAX ms, which a JavaScript client cannot
+    // read exactly.
+    for (grace, advertised) in [
+        (Duration::MAX, (1u64 << 53) - 1),
+        (Duration::from_millis(1 << 60), (1 << 53) - 1),
+        (Duration::from_millis((1 << 53) - 1), (1 << 53) - 1),
+        (Duration::from_micros(1500), 1),
+    ] {
+        let mut config = config();
+        config.cancel_grace = grace;
+        let (mut client, _conn) = start_with_config(Fixture::default(), config, 16);
+        client.send_json(Kind::Hello, 0, hello_json()).await;
+        let frame = client.recv().await.unwrap();
+        let ack: HelloAck = serde_json::from_slice(&frame.payload).unwrap();
+        assert_eq!(ack.limits.cancel_grace_ms, Some(advertised), "{grace:?}");
+    }
+}
+
+#[tokio::test]
 async fn handshake_survives_byte_by_byte_delivery() {
     let (mut client, _conn) = start();
     let bytes = Frame::new(Kind::Hello, 0, serde_json::to_vec(&hello_json()).unwrap())
