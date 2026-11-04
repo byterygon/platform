@@ -768,6 +768,42 @@ async fn unsubscribe_discards_queued_events_and_silences_the_end() {
     drop(conn);
 }
 
+#[tokio::test(start_paused = true)]
+async fn unsubscribe_after_the_handler_returned_drops_its_waiting_frames() {
+    // Review finding [2]. One chunk per transport direction and a 4-frame outbound queue, and the
+    // peer reads nothing: the handler sends 8 events and returns, so most of them and its end
+    // frame are still waiting in the engine when the Unsubscribe arrives.
+    let mut config = config();
+    config.outbound_queue_frames = 4;
+    let (mut client, _conn) = start_with_config(Fixture::default(), config, 1);
+    handshake(&mut client).await;
+    client.subscribe(1, "ticks", json!(8)).await;
+    settle().await;
+    let mut bytes = Frame::new(Kind::Unsubscribe, 1, Vec::new())
+        .encode(u32::MAX)
+        .unwrap();
+    Frame::new(Kind::Ping, 9, Vec::new())
+        .encode_into(&mut bytes, u32::MAX)
+        .unwrap();
+    client.send_raw(bytes).await;
+    // Frames already handed to the outbound queue are in flight; the end is not among them.
+    let mut next_event = 0;
+    loop {
+        let frame = client.recv().await.expect("Pong, got close");
+        if frame.kind == Kind::Pong {
+            break;
+        }
+        assert_eq!((frame.kind, frame.call_id), (Kind::Event, 1), "{frame:?}");
+        assert_eq!(frame.payload, next_event.to_string().into_bytes());
+        next_event += 1;
+    }
+    assert!(next_event < 8, "waiting events were dropped");
+    // Nothing more for id 1: not the remaining events, not its Result.
+    client.expect_pong(10).await;
+    client.call(2, "echo", json!(2)).await;
+    assert_eq!(client.recv_result().await.0, 2);
+}
+
 #[tokio::test]
 async fn unsubscribe_rules() {
     let (mut client, _conn) = connected().await;

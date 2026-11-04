@@ -783,13 +783,15 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         self.in_flight.insert(call_id, scope);
     }
 
-    /// `Unsubscribe`: nothing more is sent for `call_id`, and the handler is cancelled. A call id
-    /// that is not a subscription in flight (already ended, or a call) is ignored.
+    /// `Unsubscribe`: nothing more is sent for `call_id`, and the handler is cancelled. Its frames
+    /// still waiting here are dropped even when the handler already returned (its end frame may
+    /// be among them). Otherwise a call id that is not a subscription in flight (already ended,
+    /// or a call) is ignored: `ordered` only ever holds subscription frames.
     fn unsubscribe(&mut self, call_id: u32) {
+        self.ordered.retain(|frame| frame.call_id() != call_id);
         if !self.subscriptions.remove(&call_id) {
             return;
         }
-        self.ordered.retain(|frame| frame.call_id() != call_id);
         if let Some(scope) = self.in_flight.get(&call_id) {
             scope.cancel();
         }
