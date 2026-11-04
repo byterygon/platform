@@ -23,7 +23,10 @@ export interface ProcedureLike {
 export interface CallOptions {
   /** Aborting sends Cancel; the call rejects with `Cancelled`. */
   readonly signal?: AbortSignal;
-  /** Client deadline; the server caps it at the procedure's `timeoutMaxMs`. */
+  /**
+   * Client deadline; the server caps it at the procedure's `timeoutMaxMs`, if any. Without it a
+   * call gets `timeoutDefaultMs`, and a subscription has no deadline unless it declares a maximum.
+   */
   readonly timeoutMs?: number;
 }
 
