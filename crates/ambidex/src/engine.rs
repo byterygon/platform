@@ -40,9 +40,11 @@
 //!   [`Dispatch::subscribe`] under its own [`CallScope`]. Its `Event` frames and its one terminal
 //!   frame leave in order through a per-connection queue that may use at most half of the
 //!   outbound queue, so a busy subscription cannot crowd out call answers and get a reading
-//!   client disconnected as a slow consumer. `Unsubscribe` gets no reply: the subscription's
-//!   queued events are discarded, nothing more is sent for its id, and its token fires (the
-//!   handler gets the grace period). `Unsubscribe` on call 0 is a violation; for an id that is no
+//!   client disconnected as a slow consumer. Events count against their subscription's buffer
+//!   until the writer hands them to the transport. `Unsubscribe` gets no reply: the frames still
+//!   waiting in the engine (events, and the end if the handler already returned) are discarded,
+//!   nothing more is queued for its id, and its token fires (the handler gets the grace period).
+//!   Frames already in the outbound queue are in flight; the client drops them. `Unsubscribe` on call 0 is a violation; for an id that is no
 //!   subscription in flight it is ignored.
 //!
 //! Streams and credits are M2: a stream procedure called with `Call` is authorized, then answered
@@ -70,7 +72,7 @@ use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
 use crate::message::{Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits};
-use crate::subscription::{Events, Queued};
+use crate::subscription::{Events, Held, Queued};
 use crate::transport::{TransportRx, TransportTx};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -100,12 +102,13 @@ pub struct ServerConfig {
     /// e.g. send the database's cancel request) before its future is dropped. Advertised to the
     /// client as `HelloAck.limits.cancel_grace_ms`.
     pub cancel_grace: Duration,
-    /// Events one subscription may have waiting for the transport. One more ends the
-    /// subscription with `ResourceExhausted` (see [`crate::subscription`]).
+    /// Events one subscription may have waiting for the transport, counting those in the
+    /// outbound queue until the writer hands them over. One more ends the subscription with
+    /// `ResourceExhausted` (see [`crate::subscription`]).
     pub subscription_buffer_events: usize,
-    /// Payload bytes one subscription may have waiting for the transport. An event that does not
-    /// fit ends the subscription with `ResourceExhausted`; one event up to `max_frame_bytes`
-    /// always fits an empty buffer.
+    /// Payload bytes one subscription may have waiting for the transport, counted like
+    /// `subscription_buffer_events`. An event that does not fit ends the subscription with
+    /// `ResourceExhausted`; one event up to `max_frame_bytes` always fits an empty buffer.
     pub subscription_buffer_bytes: usize,
 }
 
@@ -401,7 +404,7 @@ async fn run_call(
 
 /// Waits until `out` has at least `slots` free slots; `false` once the writer is gone. The
 /// reservation is released at once: the caller is the queue's only sender.
-async fn has_room(out: &mpsc::Sender<Vec<u8>>, slots: usize) -> bool {
+async fn has_room(out: &mpsc::Sender<Outbound>, slots: usize) -> bool {
     out.reserve_many(slots).await.is_ok()
 }
 
@@ -413,12 +416,26 @@ async fn revoked(token: Option<CancellationToken>) {
     }
 }
 
+/// An encoded frame for the writer. An event frame carries its share of its subscription's
+/// buffer, so the event counts against the buffer until the transport has taken it.
+struct Outbound {
+    bytes: Vec<u8>,
+    held: Option<Held>,
+}
+
+impl From<Vec<u8>> for Outbound {
+    fn from(bytes: Vec<u8>) -> Outbound {
+        Outbound { bytes, held: None }
+    }
+}
+
 async fn write_loop<T: TransportTx>(
     mut tx: T,
-    mut queue: mpsc::Receiver<Vec<u8>>,
+    mut queue: mpsc::Receiver<Outbound>,
 ) -> io::Result<()> {
-    while let Some(bytes) = queue.recv().await {
+    while let Some(Outbound { bytes, held }) = queue.recv().await {
         tx.send(bytes).await?;
+        drop(held);
     }
     tx.close().await
 }
@@ -450,7 +467,7 @@ struct ConnState<A, D> {
     /// Random per-connection prefix of correlation ids.
     prefix: u64,
     /// Encoded frames for the writer task.
-    out: mpsc::Sender<Vec<u8>>,
+    out: mpsc::Sender<Outbound>,
     decoder: FrameDecoder,
     hello_deadline: Instant,
     session: Option<Arc<Session>>,
@@ -800,14 +817,18 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     /// Moves the oldest subscription frame to the outbound queue. Only called once
     /// [`has_room`] saw room, which only the writer changes (by taking frames), so it fits.
     fn send_ordered(&mut self) -> Step {
-        let bytes = match self.ordered.pop_front() {
-            Some(Ordered::Event(queued)) => queued.bytes,
+        let outbound = match self.ordered.pop_front() {
+            Some(Ordered::Event(queued)) => Outbound {
+                bytes: queued.bytes,
+                held: Some(queued.held),
+            },
             Some(Ordered::End(frame)) => frame
                 .encode(self.inner.config.max_frame_bytes)
-                .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?,
+                .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?
+                .into(),
             None => return Ok(()),
         };
-        self.out.try_send(bytes).map_err(|err| match err {
+        self.out.try_send(outbound).map_err(|err| match err {
             TrySendError::Full(_) => Closed::SlowConsumer,
             TrySendError::Closed(_) => Closed::Transport(io::ErrorKind::BrokenPipe),
         })
@@ -911,7 +932,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             return;
         };
         let close_by = self.close_deadline();
-        let _ = tokio::time::timeout_at(close_by, self.out.send(bytes)).await;
+        let _ = tokio::time::timeout_at(close_by, self.out.send(bytes.into())).await;
     }
 
     fn send_error(&mut self, call_id: u32, mut err: ErrorPayload) -> Step {
@@ -933,7 +954,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         let bytes = frame
             .encode(self.inner.config.max_frame_bytes)
             .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?;
-        self.out.try_send(bytes).map_err(|err| match err {
+        self.out.try_send(bytes.into()).map_err(|err| match err {
             TrySendError::Full(_) => Closed::SlowConsumer,
             TrySendError::Closed(_) => Closed::Transport(io::ErrorKind::BrokenPipe),
         })

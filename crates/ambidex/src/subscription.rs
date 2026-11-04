@@ -22,10 +22,15 @@
 //! [`EventSink::send`] never waits for the client. Events the transport has not taken yet are
 //! buffered per subscription, up to [`ServerConfig::subscription_buffer_events`] events and
 //! [`ServerConfig::subscription_buffer_bytes`] bytes of payload (one event up to the frame limit
-//! always fits an empty buffer). An event that does not fit ends the subscription with
-//! `ResourceExhausted`: the token fires, the handler gets its grace period, the events buffered
-//! before it are still delivered, then the `Error`. Credit-based flow control, where `send` waits
-//! for the client, is M2 (spec §6).
+//! always fits an empty buffer). An event counts until the connection's writer has handed it to
+//! the transport, including while it waits in the connection's outbound queue. An event that
+//! does not fit ends the subscription with `ResourceExhausted`: the token fires, the handler gets
+//! its grace period, the events buffered before it are still delivered, then the `Error`.
+//! Credit-based flow control, where `send` waits for the client, is M2 (spec §6).
+//!
+//! `Unsubscribe` discards the events still waiting in the engine. Events already in the
+//! outbound queue (at most half of it, see [`crate::engine`]) are in flight: they are still
+//! written, and the client drops them (spec Open question 23a).
 //!
 //! [`ServerConfig::cancel_grace`]: crate::ServerConfig::cancel_grace
 //! [`ServerConfig::subscription_buffer_events`]: crate::ServerConfig::subscription_buffer_events
@@ -60,13 +65,13 @@ struct EventsInner {
     max_frame_bytes: u32,
 }
 
-/// An encoded `Event` frame waiting for the connection to write it. Holds its share of the
-/// subscription's buffer until it is dropped (written, discarded after `Unsubscribe`, or the
-/// connection closed).
+/// An encoded `Event` frame waiting for the connection to write it. `held` is its share of the
+/// subscription's buffer; it is released when it is dropped (after the writer handed the frame
+/// to the transport, when `Unsubscribe` discards it, or when the connection closes).
 pub(crate) struct Queued {
     pub(crate) call_id: u32,
     pub(crate) bytes: Vec<u8>,
-    _held: Held,
+    pub(crate) held: Held,
 }
 
 /// The per-subscription buffer budget: events and payload bytes not yet taken by the transport.
@@ -94,7 +99,8 @@ impl Budget {
     }
 }
 
-struct Held {
+/// One event's share of its subscription's buffer, released on drop.
+pub(crate) struct Held {
     budget: Arc<Budget>,
     bytes: usize,
 }
@@ -156,7 +162,7 @@ impl Events {
         let queued = Queued {
             call_id: inner.call_id,
             bytes,
-            _held: held,
+            held,
         };
         // The receiver lives as long as the connection; once it is gone the token has fired.
         inner.queue.send(queued).map_err(|_| SubscriptionEnded {

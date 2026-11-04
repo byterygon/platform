@@ -128,6 +128,15 @@ impl Dispatch for Fixture {
                         _ => Ok(()),
                     }
                 }
+                // Sends, yielding after each event so the engine can forward it, until refused.
+                "trickle" => {
+                    let mut i = 0;
+                    while send(i).is_ok() {
+                        i += 1;
+                        tokio::task::yield_now().await;
+                    }
+                    Ok(())
+                }
                 "flood" => {
                     let mut i = 0;
                     loop {
@@ -837,6 +846,21 @@ async fn cancel_ends_a_subscription_after_its_queued_events() {
     client.expect_events(1, 0..3).await;
     let (call_id, err) = client.recv_error().await;
     assert_eq!((call_id, err.code), (1, Code::Cancelled));
+}
+
+#[tokio::test(start_paused = true)]
+async fn events_in_the_outbound_queue_count_against_the_buffer() {
+    // Review finding [3]. The peer reads nothing and the transport holds one chunk; the 64-frame
+    // outbound queue would take 32 events. They count until the writer hands them over, so the
+    // subscription ends after the 8-event buffer plus the one event the transport took.
+    let (mut client, _conn) = start_with_capacity(Fixture::default(), 1);
+    handshake(&mut client).await;
+    client.subscribe(1, "trickle", Value::Null).await;
+    settle().await;
+    client.expect_events(1, 0..9).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::ResourceExhausted));
+    assert_eq!(err.message, "subscription event buffer is full");
 }
 
 #[tokio::test]
