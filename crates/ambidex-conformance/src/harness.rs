@@ -14,7 +14,8 @@ pub trait Harness: Sized {
     /// Shown in failure messages.
     const NAME: &'static str;
 
-    /// Starts a server for `fixture` with [`crate::fixture::server_config`].
+    /// Starts a server for `fixture` with [`Fixture::server_config`], so its deadlines are
+    /// measured on the fixture's clock.
     fn start(fixture: Fixture) -> impl Future<Output = Self>;
 
     fn fixture(&self) -> &Fixture;
@@ -54,8 +55,10 @@ impl fmt::Display for Unsupported {
 /// then shuts the server down.
 ///
 /// A fresh server per case keeps cases independent. Real time (not Tokio's paused clock) because
-/// the WebSocket and Tauri harnesses do real I/O; cases only depend on what arrives, never on how
-/// fast.
+/// the WebSocket and Tauri harnesses do real I/O, and the Tauri engine runs on Tauri's own
+/// runtime; cases only depend on what arrives, never on how fast. Deadlines are the exception:
+/// they are measured on the fixture's [`ManualClock`](crate::ManualClock), which cases move by
+/// hand, so no case waits for one.
 pub fn run<H, F>(case: F)
 where
     H: Harness,
@@ -115,6 +118,8 @@ macro_rules! conformance_suite {
             zero_timeout_never_runs_handler,
             deadline_cancels_running_handler,
             procedure_timeout_max_caps_client_timeout,
+            calls_keep_the_default_deadline,
+            calls_keep_the_timeout_cap,
             cancel_reaches_running_handler,
             cancel_in_same_chunk_as_call_wins,
             cancel_after_result_is_ignored,
@@ -134,6 +139,9 @@ macro_rules! conformance_suite {
             cancel_ends_subscription_and_reaches_handler,
             stubborn_subscription_is_dropped_after_grace,
             deadline_ends_subscription,
+            subscription_without_timeout_has_no_deadline,
+            subscription_ends_at_its_client_timeout,
+            declared_maximum_caps_a_subscription,
             disconnect_cancels_subscriptions,
             session_revocation_ends_subscriptions_with_goaway,
             unauthorized_subscribe_is_denied_and_audited,

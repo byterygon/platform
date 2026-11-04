@@ -204,6 +204,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
     let mut risk: Option<Ident> = None;
     let mut agent: Option<Ident> = None;
     let mut timeout_default_ms = None;
+    let mut timeout_default_span = None;
     let mut timeout_max_ms = None;
     let mut log_input = false;
     let mut redact = Vec::new();
@@ -232,6 +233,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
             let path: Path = meta.value()?.parse()?;
             agent = Some(enum_variant(&path, &["Exposed", "Hidden"], "Agent")?);
         } else if meta.path.is_ident("timeout_default") {
+            timeout_default_span = Some(meta.path.span());
             timeout_default_ms = Some(parse_duration(&meta.value()?.parse()?)?);
         } else if meta.path.is_ident("timeout_max") {
             timeout_max_ms = Some(parse_duration(&meta.value()?.parse()?)?);
@@ -287,6 +289,15 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
             "missing `risk = Risk::Read | Risk::Write | Risk::Destructive`",
         )
     })?;
+    if kind == Kind::Subscription
+        && let Some(span) = timeout_default_span
+    {
+        return Err(syn::Error::new(
+            span,
+            "subscriptions have no default deadline; bound them with `timeout_max`, or let the \
+             client send `timeoutMs`",
+        ));
+    }
     if let (Some(default), Some(max)) = (timeout_default_ms, timeout_max_ms)
         && default > max
     {
@@ -524,21 +535,30 @@ fn meta_expr(p: &Procedure) -> TokenStream2 {
         ..
     } = p;
     let kind = p.kind.variant();
-    let timeout_default = p
-        .timeout_default_ms
-        .map(|ms| quote!(meta.timeout_default = ::std::time::Duration::from_millis(#ms);));
-    // When only `timeout_default` is set above the default maximum, the maximum follows it.
+    // `ProcedureMeta::new` starts from the kind's defaults: 30 s / 5 min for calls, none for
+    // subscriptions (which cannot declare `timeout_default`, see `take_procedure`).
+    let ms = |ms: u64| quote!(::std::time::Duration::from_millis(#ms));
+    let timeout_default = p.timeout_default_ms.map(|d| {
+        let d = ms(d);
+        quote!(meta.timeout_default = ::std::option::Option::Some(#d);)
+    });
     let timeout_max = match (p.timeout_max_ms, p.timeout_default_ms) {
-        // Only a maximum below the default deadline: the default follows it down.
-        (Some(ms), None) => Some(quote! {
-            meta.timeout_max = ::std::time::Duration::from_millis(#ms);
-            meta.timeout_default = meta.timeout_default.min(meta.timeout_max);
-        }),
-        (Some(ms), Some(_)) => {
-            Some(quote!(meta.timeout_max = ::std::time::Duration::from_millis(#ms);))
+        // Only a maximum: a default above it follows it down (a subscription has no default).
+        (Some(max), None) => {
+            let max = ms(max);
+            Some(quote! {
+                meta.timeout_max = ::std::option::Option::Some(#max);
+                meta.timeout_default = meta.timeout_default.map(|d| d.min(#max));
+            })
         }
-        (None, Some(_)) => {
-            Some(quote!(meta.timeout_max = meta.timeout_max.max(meta.timeout_default);))
+        (Some(max), Some(_)) => {
+            let max = ms(max);
+            Some(quote!(meta.timeout_max = ::std::option::Option::Some(#max);))
+        }
+        // Only a default above the default maximum: the maximum follows it up.
+        (None, Some(d)) => {
+            let d = ms(d);
+            Some(quote!(meta.timeout_max = meta.timeout_max.map(|m| m.max(#d));))
         }
         (None, None) => None,
     };

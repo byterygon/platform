@@ -125,8 +125,10 @@ export interface ProcedureDef<
   readonly risk: Risk;
   readonly agent: AgentExposure;
   readonly deprecated: boolean;
-  readonly timeoutDefaultMs: number;
-  readonly timeoutMaxMs: number;
+  /** Deadline when the caller passes no `timeoutMs`; `null` for subscriptions, which have none. */
+  readonly timeoutDefaultMs: number | null;
+  /** Upper bound for any deadline; `null`: none (a subscription that declares no maximum). */
+  readonly timeoutMaxMs: number | null;
   readonly __types?: {
     readonly input: I;
     readonly output: O;
@@ -305,8 +307,11 @@ impl<'a> Tree<'a> {
                     ("risk", json!(m.risk)),
                     ("agent", json!(m.agent)),
                     ("deprecated", json!(m.deprecated)),
-                    ("timeoutDefaultMs", json!(duration_ms(m.timeout_default))),
-                    ("timeoutMaxMs", json!(duration_ms(m.timeout_max))),
+                    (
+                        "timeoutDefaultMs",
+                        json!(m.timeout_default.map(duration_ms)),
+                    ),
+                    ("timeoutMaxMs", json!(m.timeout_max.map(duration_ms))),
                 ];
                 for (name, value) in fields {
                     let _ = writeln!(out, "{pad}{name}: {value},");

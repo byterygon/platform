@@ -333,15 +333,15 @@ fn macro_builds_procedure_meta() {
     assert_eq!(echo.risk, Risk::Read);
     assert_eq!(echo.agent, Agent::Exposed);
     assert!(!echo.log_input && !echo.deprecated && echo.redact.is_empty());
-    assert_eq!(echo.timeout_default, Duration::from_secs(30));
-    assert_eq!(echo.timeout_max, Duration::from_secs(300));
+    assert_eq!(echo.timeout_default, Some(Duration::from_secs(30)));
+    assert_eq!(echo.timeout_max, Some(Duration::from_secs(300)));
 
     let drop = &metas[2];
     assert_eq!(drop.kind, ProcedureKind::Mutation);
     assert_eq!(drop.risk, Risk::Write);
     assert_eq!(drop.agent, Agent::Hidden, "agent exposure is opt-in");
-    assert_eq!(drop.timeout_default, Duration::from_secs(10));
-    assert_eq!(drop.timeout_max, Duration::from_secs(3600));
+    assert_eq!(drop.timeout_default, Some(Duration::from_secs(10)));
+    assert_eq!(drop.timeout_max, Some(Duration::from_secs(3600)));
     assert!(drop.log_input && drop.deprecated);
     assert_eq!(
         drop.loggable_input(&json!({"connection": "c1", "password": "pw"})),
@@ -349,7 +349,7 @@ fn macro_builds_procedure_meta() {
     );
 
     let ty = &metas[7];
-    assert_eq!(ty.timeout_max, Duration::from_secs(10));
+    assert_eq!(ty.timeout_max, Some(Duration::from_secs(10)));
     assert_eq!(
         ty.timeout_default, ty.timeout_max,
         "the default follows a lower max down"
@@ -357,12 +357,18 @@ fn macro_builds_procedure_meta() {
 
     let rows = &metas[8];
     assert_eq!(rows.kind, ProcedureKind::Stream);
-    assert_eq!(rows.timeout_default, Duration::from_secs(7200));
+    assert_eq!(rows.timeout_default, Some(Duration::from_secs(7200)));
     assert_eq!(
         rows.timeout_max, rows.timeout_default,
         "max follows a larger default"
     );
-    assert_eq!(metas[9].kind, ProcedureKind::Subscription);
+    let watch = &metas[9];
+    assert_eq!(watch.kind, ProcedureKind::Subscription);
+    assert_eq!(
+        (watch.timeout_default, watch.timeout_max),
+        (None, None),
+        "subscriptions have no default deadline and no cap unless they declare one"
+    );
 }
 
 // ---- authorization before dispatch ---------------------------------------------------------

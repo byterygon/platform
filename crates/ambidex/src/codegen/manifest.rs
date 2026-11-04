@@ -8,7 +8,9 @@
 //! - `api`: `{name, version}`; `schema_hash`;
 //! - `procedures`: sorted by name, each with the full [`ProcedureMeta`](crate::ProcedureMeta)
 //!   (`name`, `kind`, `perm`, `risk`, `agent`, `deprecated`, `timeout_default_ms`,
-//!   `timeout_max_ms`, `log_input`, `redact`) and the JSON Schemas `input` (what the server
+//!   `timeout_max_ms`, `log_input`, `redact`; a timeout is `null` when the procedure has none: a
+//!   subscription never has a default deadline, and has a maximum only if it declares one) and
+//!   the JSON Schemas `input` (what the server
 //!   accepts), `output` (what it sends: the event of a subscription, the final result of a stream)
 //!   and `error` (the `details` of its errors as sent; `false` when it has none);
 //! - `approval_required_details`: what else the `details` of any procedure's `ApprovalRequired`
@@ -208,11 +210,11 @@ pub(crate) fn render(model: &Model) -> (String, String) {
             let meta = &p.meta;
             obj.insert(
                 "timeout_default_ms".into(),
-                json!(duration_ms(meta.timeout_default)),
+                json!(meta.timeout_default.map(duration_ms)),
             );
             obj.insert(
                 "timeout_max_ms".into(),
-                json!(duration_ms(meta.timeout_max)),
+                json!(meta.timeout_max.map(duration_ms)),
             );
             obj.insert("log_input".into(), json!(meta.log_input));
             obj.insert("redact".into(), json!(meta.redact));

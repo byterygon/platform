@@ -30,7 +30,7 @@ struct State {
     /// Handler futures dropped before they finished.
     dropped: AtomicUsize,
     /// Deadline each handler saw, and when it started.
-    deadlines: Mutex<Vec<(Instant, Instant)>>,
+    deadlines: Mutex<Vec<(Instant, Option<Instant>)>>,
 }
 
 impl State {
@@ -365,7 +365,7 @@ async fn assert_deadline(procedure: &str, extra: Value, expected: Duration) {
     assert_eq!(sent.elapsed(), expected);
     assert_eq!(h.state.saw_cancel(), 1);
     let (start, deadline) = h.state.deadlines.lock().unwrap()[0];
-    assert_eq!(deadline - start, expected);
+    assert_eq!(deadline.expect("calls have a deadline") - start, expected);
     h.client.expect_quiet().await;
 }
 
@@ -621,8 +621,11 @@ async fn a_cancel_after_the_result_is_ignored() {
 async fn a_scope_outside_the_engine_applies_procedure_bounds() {
     let scope = CallScope::new(Some(Duration::from_secs(3600)));
     let start = Instant::now();
-    scope.apply_timeouts(Duration::from_secs(30), Duration::from_secs(300));
-    assert_eq!(scope.deadline() - start, Duration::from_secs(300));
+    scope.apply_timeouts(
+        Some(Duration::from_secs(30)),
+        Some(Duration::from_secs(300)),
+    );
+    assert_eq!(scope.deadline().unwrap() - start, Duration::from_secs(300));
     assert_eq!(scope.reason(), None);
     scope.cancel();
     assert_eq!(scope.reason(), Some(Code::Cancelled));
