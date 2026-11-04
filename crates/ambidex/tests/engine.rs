@@ -945,6 +945,44 @@ async fn busy_subscription_leaves_room_for_call_answers() {
     drop(conn);
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_one_frame_outbound_queue_still_leaves_room_for_answers() {
+    // Review finding [9a]: with one slot, an event could take it and the next call answer would
+    // close the connection as a slow consumer. The engine raises the queue to two slots.
+    let mut config = config();
+    config.outbound_queue_frames = 1;
+    let fixture = Fixture::default();
+    let started = Arc::clone(&fixture.started);
+    let (mut client, conn) = start_with_config(fixture, config, 1);
+    handshake(&mut client).await;
+    client.subscribe(1, "hold", json!(8)).await;
+    started.notified().await;
+    settle().await;
+    // The client reads nothing yet; the answer fits in the slot events left free.
+    client.call(2, "echo", json!(2)).await;
+    settle().await;
+    let mut events = 0;
+    loop {
+        let frame = client.recv().await.expect("connection stays open");
+        match frame.kind {
+            Kind::Result => {
+                assert_eq!(frame.call_id, 2);
+                break;
+            }
+            Kind::Event => {
+                assert_eq!(frame.payload, events.to_string().into_bytes());
+                events += 1;
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    client.expect_events(1, events..8).await;
+    client.cancel(1).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::Cancelled));
+    drop(conn);
+}
+
 #[tokio::test]
 async fn disconnect_cancels_subscriptions() {
     let fixture = Fixture::default();

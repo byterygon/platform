@@ -79,6 +79,10 @@ use crate::transport::{TransportRx, TransportTx};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// The smallest outbound queue the engine runs with: one slot for subscription frames, one kept
+/// free for call answers.
+pub const MIN_OUTBOUND_QUEUE_FRAMES: usize = 2;
+
 /// Server configuration.
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
@@ -97,6 +101,9 @@ pub struct ServerConfig {
     /// Time allowed between connection start and a completed handshake, authentication included.
     pub hello_timeout: Duration,
     /// Encoded frames waiting for the peer to read. When full, the peer is disconnected.
+    /// Subscription frames may use at most half of it, so call answers keep room; values below
+    /// [`MIN_OUTBOUND_QUEUE_FRAMES`] are raised to it (with one slot, an event could take the
+    /// only one and the next call answer would disconnect a peer that is reading).
     pub outbound_queue_frames: usize,
     /// Time allowed to deliver final frames (Goaway, rejections) before the transport is dropped.
     pub close_timeout: Duration,
@@ -136,6 +143,12 @@ impl ServerConfig {
             subscription_buffer_events: 64,
             subscription_buffer_bytes: 1024 * 1024,
         }
+    }
+
+    /// The outbound queue size the engine uses: `outbound_queue_frames`, at least
+    /// [`MIN_OUTBOUND_QUEUE_FRAMES`].
+    fn outbound_frames(&self) -> usize {
+        self.outbound_queue_frames.max(MIN_OUTBOUND_QUEUE_FRAMES)
     }
 }
 
@@ -292,7 +305,7 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         return Closed::Internal;
     };
     let config = &inner.config;
-    let (out, out_rx) = mpsc::channel(config.outbound_queue_frames.max(1));
+    let (out, out_rx) = mpsc::channel(config.outbound_frames());
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut writer = Writer {
         handle: tokio::spawn(write_loop(tx, out_rx)),
@@ -507,7 +520,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     ) -> Closed {
         // Subscription frames leave only while this many outbound slots stay free, so call
         // answers (sent without waiting) always find room while the peer reads.
-        let headroom = self.inner.config.outbound_queue_frames.max(1) / 2;
+        let headroom = self.inner.config.outbound_frames() / 2;
         loop {
             if let Err(closed) = self.drain_frames().await {
                 return closed;
