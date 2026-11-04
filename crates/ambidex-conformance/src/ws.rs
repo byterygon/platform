@@ -23,7 +23,7 @@ use tokio_tungstenite::tungstenite::http::{HeaderValue, header};
 use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 
 use crate::client::{Client, LocalBoxFuture, Wire};
-use crate::fixture::{Fixture, server_config};
+use crate::fixture::Fixture;
 use crate::harness::{Harness, Unsupported};
 
 /// Host the server accepts.
@@ -61,7 +61,7 @@ impl Harness for Ws {
         let sessions = Arc::new(PlaceholderSessions::new());
         let transport = WsTransport::new(
             WsConfig::new([HOST], ORIGIN),
-            server_config(),
+            fixture.server_config(),
             Arc::clone(&sessions),
             fixture.router(),
         )

@@ -10,7 +10,7 @@ use ambidex::transport::{MemoryRx, MemoryTx, TransportRx, TransportTx, memory};
 use ambidex::{Authenticate, CancellationToken, Connection, Hello, Router, Server, Session};
 
 use crate::client::{Client, LocalBoxFuture, Wire};
-use crate::fixture::{Fixture, server_config};
+use crate::fixture::Fixture;
 use crate::harness::{Harness, Unsupported};
 
 /// Principal of every in-process session.
@@ -62,7 +62,7 @@ impl Harness for InProcess {
         let auth = TestAuth {
             revoke: Arc::clone(&revoke),
         };
-        let server = Server::new(server_config(), auth, fixture.router());
+        let server = Server::new(fixture.server_config(), auth, fixture.router());
         InProcess {
             fixture,
             server,

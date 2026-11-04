@@ -37,9 +37,11 @@
 //!   grace, their answers are discarded, and the rest are dropped.
 //! - `Subscribe` starts a subscription (see [`crate::subscription`]): admitted like a `Call` (same
 //!   payload, call id rule and `max_concurrent_calls` slot), run through
-//!   [`Dispatch::subscribe`] under its own [`CallScope`]. Its `Event` frames and its one terminal
-//!   frame leave in order through a per-connection queue that may use at most half of the
-//!   outbound queue, so a busy subscription cannot crowd out call answers and get a reading
+//!   [`Dispatch::subscribe`] under its own [`CallScope`], which has no default deadline: only the
+//!   client's `timeout_ms` and the procedure's declared maximum bound it (spec Open question
+//!   24f). Its `Event` frames and its one terminal frame leave in order through a
+//!   per-connection queue that may use at most half of the outbound queue, so a busy
+//!   subscription cannot crowd out call answers and get a reading
 //!   client disconnected as a slow consumer. Events count against their subscription's buffer
 //!   until the writer hands them to the transport. `Unsubscribe` gets no reply: the frames still
 //!   waiting in the engine (events, and the end if the handler already returned) are discarded,
@@ -67,13 +69,14 @@ use tokio_util::sync::CancellationToken;
 
 use security_types::Principal;
 
-use crate::cancel::CallScope;
+use crate::cancel::{CallScope, DeadlineClock, TokioClock};
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
 use crate::message::{
     Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits, MAX_JSON_SAFE_INTEGER,
 };
+use crate::procedure::ProcedureKind;
 use crate::subscription::{Events, Held, Queued};
 use crate::transport::{TransportRx, TransportTx};
 
@@ -119,6 +122,10 @@ pub struct ServerConfig {
     /// `subscription_buffer_events`. An event that does not fit ends the subscription with
     /// `ResourceExhausted`; one event up to `max_frame_bytes` always fits an empty buffer.
     pub subscription_buffer_bytes: usize,
+    /// The clock call and subscription deadlines are measured on (see [`crate::cancel`]).
+    /// Default [`TokioClock`]; tests may supply one they move by hand. Grace periods and the
+    /// handshake and close timeouts always use Tokio's timer.
+    pub deadline_clock: Arc<dyn DeadlineClock>,
 }
 
 impl ServerConfig {
@@ -142,6 +149,7 @@ impl ServerConfig {
             cancel_grace: Duration::from_secs(1),
             subscription_buffer_events: 64,
             subscription_buffer_bytes: 1024 * 1024,
+            deadline_clock: Arc::new(TokioClock),
         }
     }
 
@@ -381,9 +389,10 @@ async fn drain_calls(mut calls: JoinSet<Frame>, grace: Duration) {
 
 /// Runs one call under its scope: the answer, or the cancellation reason once the token fires.
 ///
-/// The deadline is re-read whenever the dispatcher moves it. Once the token has fired the answer
-/// is the reason, whatever the call returns: it gets `grace` to finish cooperatively, and if it
-/// has not finished by then its future is dropped.
+/// The deadline is re-read whenever the dispatcher moves it; without one (a subscription with no
+/// client timeout and no declared maximum) only the token ends the call. Once the token has fired
+/// the answer is the reason, whatever the call returns: it gets `grace` to finish cooperatively,
+/// and if it has not finished by then its future is dropped.
 async fn run_call(
     fut: impl Future<Output = Result<Value, ErrorPayload>>,
     scope: CallScope,
@@ -401,8 +410,13 @@ async fn run_call(
             biased;
             result = &mut fut => break Some(result),
             () = scope.cancelled() => break None,
-            () = tokio::time::sleep_until(deadline) => {
-                if scope.deadline() <= deadline {
+            () = scope.reached(deadline) => {
+                // It passed, unless the dispatcher moved it later (or removed it) meanwhile.
+                if scope
+                    .deadline()
+                    .zip(deadline)
+                    .is_some_and(|(current, reached)| current <= reached)
+                {
                     scope.fire(Code::DeadlineExceeded);
                     break None;
                 }
@@ -732,7 +746,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     }
 
     async fn on_call(&mut self, session: Arc<Session>, frame: Frame) -> Step {
-        let Some((call, scope)) = self.admit(&frame).await? else {
+        let Some((call, scope)) = self.admit(&frame, ProcedureKind::Query).await? else {
             return Ok(());
         };
         let fut = self.inner.dispatch.call(session, call);
@@ -741,7 +755,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     }
 
     async fn on_subscribe(&mut self, session: Arc<Session>, frame: Frame) -> Step {
-        let Some((call, scope)) = self.admit(&frame).await? else {
+        let Some((call, scope)) = self.admit(&frame, ProcedureKind::Subscription).await? else {
             return Ok(());
         };
         let config = &self.inner.config;
@@ -762,8 +776,14 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     }
 
     /// Admits a `Call` or `Subscribe`: claims its id, takes a concurrency slot and decodes the
-    /// payload. `Ok(None)` when the call was answered with an error and the connection stays.
-    async fn admit(&mut self, frame: &Frame) -> Result<Option<(Call, CallScope)>, Closed> {
+    /// payload. Its scope starts with the default timeouts of `kind` (any call kind for `Call`,
+    /// they share them). `Ok(None)` when the call was answered with an error and the connection
+    /// stays.
+    async fn admit(
+        &mut self,
+        frame: &Frame,
+        kind: ProcedureKind,
+    ) -> Result<Option<(Call, CallScope)>, Closed> {
         let call_id = frame.call_id;
         if !self.claim_call_id(call_id) {
             return Err(self
@@ -794,6 +814,8 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             self.conn_token.child_token(),
             call.timeout(),
             self.correlation_id(call_id),
+            Arc::clone(&self.inner.config.deadline_clock),
+            kind,
         );
         Ok(Some((call, scope)))
     }

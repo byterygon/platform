@@ -18,7 +18,10 @@
 //! [`Events`], typed as an [`EventSink`](crate::EventSink) by `#[rpc::router]`.
 //!
 //! Right after the lookup it applies the procedure's `timeout_default`/`timeout_max` to the call's
-//! [`CallScope`], so the deadline covers authorization too. Handlers observe cancellation through
+//! [`CallScope`], so the deadline covers authorization too. Queries, mutations and streams always
+//! have both; a subscription never has a default and has a maximum only if it declares one, so
+//! without a client `timeout_ms` it may have no deadline at all (spec Open question 24f; the
+//! registry refuses metadata that breaks these rules). Handlers observe cancellation through
 //! [`Ctx::cancelled`] and pass [`Ctx::cancellation_token`] on (e.g. to the Plugin Host driver call).
 //!
 //! Handlers re-check targets and escalated risk with [`Ctx::authorize`].
@@ -171,6 +174,10 @@ pub enum RegistryError {
     /// The handler does not match the procedure's kind (a unary handler on a subscription, or a
     /// subscription handler on anything else).
     KindMismatch(String),
+    /// The timeouts break the rules of the kind: a query, mutation or stream without
+    /// `timeout_default` or `timeout_max`, or a subscription with a `timeout_default`
+    /// (subscriptions have no default deadline).
+    InvalidTimeouts(String),
 }
 
 impl fmt::Display for RegistryError {
@@ -183,6 +190,12 @@ impl fmt::Display for RegistryError {
             }
             RegistryError::KindMismatch(name) => {
                 write!(f, "procedure {name} has a handler for another call kind")
+            }
+            RegistryError::InvalidTimeouts(name) => {
+                write!(
+                    f,
+                    "procedure {name} has timeouts its call kind does not allow"
+                )
             }
         }
     }
@@ -426,8 +439,10 @@ impl Ctx {
         self.scope.token()
     }
 
-    /// When the server cancels the call with `DeadlineExceeded`.
-    pub fn deadline(&self) -> Instant {
+    /// When the server cancels the call with `DeadlineExceeded`, on the server's
+    /// [`DeadlineClock`](crate::DeadlineClock); `None` for a subscription without a deadline (no
+    /// client `timeout_ms` and no declared maximum).
+    pub fn deadline(&self) -> Option<Instant> {
         self.scope.deadline()
     }
 
@@ -760,6 +775,17 @@ fn validate(meta: &ProcedureMeta) -> Result<(), RegistryError> {
     }
     if !is_valid_perm(meta.perm.as_str()) {
         return Err(RegistryError::InvalidPermission(meta.name.clone()));
+    }
+    // Calls keep a default deadline and a cap; subscriptions have no default (spec Open question
+    // 24f) and may declare a cap.
+    let timeouts_ok = match meta.kind {
+        ProcedureKind::Subscription => meta.timeout_default.is_none(),
+        ProcedureKind::Query | ProcedureKind::Mutation | ProcedureKind::Stream => {
+            meta.timeout_default.is_some() && meta.timeout_max.is_some()
+        }
+    };
+    if !timeouts_ok {
+        return Err(RegistryError::InvalidTimeouts(meta.name.clone()));
     }
     Ok(())
 }
