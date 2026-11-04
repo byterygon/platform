@@ -14,13 +14,17 @@ workspace = true
 [dependencies]
 db-driver = { path = "../db-driver" }
 getrandom = "0.4.3"
+ring = "0.17.14"
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 security-types = { path = "../security-types" }
+semver = "1.0.27"
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 sha2 = "0.11"
 tokio = { version = "1.54.1", default-features = false, features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
 toml = { version = "1.1.8", default-features = false, features = ["parse", "serde", "std"] }
+zip = { version = "6.0.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
