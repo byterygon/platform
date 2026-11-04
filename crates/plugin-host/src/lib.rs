@@ -55,7 +55,9 @@
 //! - **Grant digest.** Grant creation is authorized and audited with [`grant_create_digest`]
 //!   ([`GRANT_CREATE_DIGEST_DOMAIN`], `.v2`), which covers every [`GrantRequest`] field.
 //! - **Expiry.** A grant ends at its `expires_at`: its transports are closed then, idle or in
-//!   flight, and its target is free for a new grant (see [`grant`]).
+//!   flight, and its target is free for a new grant (see [`grant`]). An `open` still connecting
+//!   when its grant expires or is revoked is audited as a denial, with the reason `grant expired`
+//!   or `grant revoked`.
 //! - **Connect deadline.** [`BrokerLimits::connect_timeout`] bounds the TCP connect of one
 //!   `open` across all permitted addresses together.
 

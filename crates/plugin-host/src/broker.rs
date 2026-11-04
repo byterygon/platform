@@ -359,6 +359,22 @@ fn deny(message: &str) -> OpenError {
     })
 }
 
+/// Audit reasons for an open whose grant is no longer active.
+const GRANT_REVOKED: &str = "grant revoked";
+const GRANT_EXPIRED: &str = "grant expired";
+
+/// The denial for an open whose grant ended while the open was in progress, with the reason
+/// taken from the grant's final state, as for a grant that had already ended before the open.
+/// Revocation wins over expiry, as in the grant store.
+fn grant_ended(state: EntryState) -> OpenError {
+    match state {
+        EntryState::Revoked => deny(GRANT_REVOKED),
+        EntryState::Expired => deny(GRANT_EXPIRED),
+        // Not reached: callers read the state after it left `Active`, and it never returns.
+        EntryState::Active => deny("grant revoked or expired"),
+    }
+}
+
 impl<R: Resolver> BrokerScope<R> {
     pub fn caller(&self) -> &Caller {
         &self.caller
@@ -421,10 +437,10 @@ impl<R: Resolver> BrokerScope<R> {
         let grant = &entry.grant;
         let caller = &self.caller;
         if entry.is_revoked() {
-            return Err(deny("grant revoked"));
+            return Err(deny(GRANT_REVOKED));
         }
         if !entry.is_active(self.now()) {
-            return Err(deny("grant expired"));
+            return Err(deny(GRANT_EXPIRED));
         }
         if grant.plugin.plugin_id != caller.plugin_id
             || grant.plugin.digest != caller.plugin_digest
@@ -450,11 +466,15 @@ impl<R: Resolver> BrokerScope<R> {
         }
         let slot = Slot(self.open.clone());
 
+        // A grant that ends while connecting is a denial, audited with how it ended. The
+        // abandoned connect drops its socket here, and the slot is released on return.
         let mut ended = entry.state();
-        let connect = self.connect(grant);
-        let (stream, peer, tls) = tokio::select! {
-            r = connect => r?,
-            e = interrupted(&mut ended) => return Err(e.into()),
+        let connected = tokio::select! {
+            r = self.connect(grant) => Some(r?),
+            _ = interrupted(&mut ended) => None,
+        };
+        let Some((stream, peer, tls)) = connected else {
+            return Err(grant_ended(*ended.borrow()));
         };
 
         let handle = Arc::new(Handle {
@@ -464,7 +484,8 @@ impl<R: Resolver> BrokerScope<R> {
         });
         let weak: Weak<dyn Revocable> = Arc::downgrade(&handle) as Weak<dyn Revocable>;
         if !entry.track(weak) {
-            return Err(deny("grant revoked or expired"));
+            // The grant ended after the connect completed; dropping `handle` closes the socket.
+            return Err(grant_ended(*ended.borrow()));
         }
         Ok(Transport {
             scope_id: self.id,

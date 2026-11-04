@@ -1,9 +1,11 @@
 //! End-to-end tests of the native connection broker against real sockets and real TLS
 //! (Plugin Host spec §3 and §8 acceptance tests).
 
+mod support;
+
 use std::collections::{BTreeSet, VecDeque};
 use std::io;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -21,6 +23,7 @@ use security_types::{
     Action, ApprovalSpec, AuditChain, AuditDecision, Authorizer, AuthzRequest, Decision, Digest,
     Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, SessionId, TenantId,
 };
+use support::hanging;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsAcceptor;
@@ -1615,4 +1618,74 @@ async fn in_flight_operation_is_aborted_at_expires_at() {
         scope.recv(&mut t, 1024).await,
         Err(BrokerError::PermissionDenied)
     );
+}
+
+/// The one `plugin-host.broker.open` audit entry: a denial for `reason`, outcome
+/// `PermissionDenied`.
+fn assert_open_denied(env: &Env<FakeResolver>, reason: &str) {
+    let opens: Vec<_> = env
+        .broker_audit()
+        .into_iter()
+        .filter(|r| r.entry.action.name == "plugin-host.broker.open")
+        .collect();
+    assert_eq!(opens.len(), 1, "one audited open");
+    let open = &opens[0].entry;
+    assert_eq!(
+        open.decision,
+        AuditDecision::Deny {
+            reason: Reason::Policy {
+                message: reason.into()
+            }
+        }
+    );
+    assert_eq!(
+        open.outcome,
+        Outcome::Error {
+            code: "PermissionDenied".into()
+        }
+    );
+}
+
+#[tokio::test]
+async fn open_still_connecting_at_expires_at_is_audited_as_expired() {
+    let (_peer, port) = hanging(Ipv4Addr::LOCALHOST, 0).await;
+    let env = env();
+    let id = env.grant(expiring(&env, port, 60_000)).await;
+    let scope = env.scope(alice());
+
+    // The open is waiting for the TCP connect to the hanging peer when the grant expires. A
+    // regression is bounded by `connect_timeout`, which gives `Timeout` instead.
+    let (result, ()) = tokio::join!(scope.open("pg1", "data"), async {
+        settle().await;
+        env.clock.advance(60_000);
+    });
+    assert_eq!(result.unwrap_err(), BrokerError::PermissionDenied);
+    assert!(!env.grants.is_active(&id));
+    assert!(!env.grants.is_revoked(&id));
+    assert_open_denied(&env, "grant expired");
+}
+
+#[tokio::test]
+async fn open_still_connecting_when_revoked_is_audited_as_revoked() {
+    let (_peer, port) = hanging(Ipv4Addr::LOCALHOST, 0).await;
+    let env = env();
+    let id = env
+        .grant(request(
+            port,
+            TlsMode::InProtocolUpgrade,
+            &Pki::new("CA").ca,
+        ))
+        .await;
+    let scope = env.scope(alice());
+
+    let (result, ()) = tokio::join!(scope.open("pg1", "data"), async {
+        settle().await;
+        env.grants
+            .revoke(&allow(), &admin(), &id, "c")
+            .await
+            .unwrap();
+    });
+    assert_eq!(result.unwrap_err(), BrokerError::PermissionDenied);
+    assert!(env.grants.is_revoked(&id));
+    assert_open_denied(&env, "grant revoked");
 }

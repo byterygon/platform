@@ -9,6 +9,8 @@
 
 #![cfg(target_os = "linux")]
 
+mod support;
+
 use std::collections::BTreeSet;
 use std::future::Future;
 use std::io;
@@ -26,7 +28,8 @@ use security_types::{
     Authorizer, AuthzRequest, Decision, Digest, Outcome, Principal, PrincipalKind, RoleId,
     SessionId, TenantId,
 };
-use tokio::net::{TcpListener, TcpSocket, TcpStream};
+use support::{Hanging, hanging};
+use tokio::net::TcpListener;
 
 const MANIFEST: &str = r#"
 manifest_version = 1
@@ -133,37 +136,6 @@ async fn scope(addrs: &[Ipv4Addr], port: u16) -> (BrokerScope<Answer>, Arc<Memor
         correlation_id: "corr-1".into(),
     });
     (scope, audit)
-}
-
-/// A listener on `ip:port` that never accepts, with its accept queue filled so that further
-/// connection attempts hang.
-struct Hanging {
-    _listener: TcpListener,
-    _queued: Vec<TcpStream>,
-}
-
-async fn hanging(ip: Ipv4Addr, port: u16) -> (Hanging, u16) {
-    let socket = TcpSocket::new_v4().unwrap();
-    socket.bind(SocketAddr::new(ip.into(), port)).unwrap();
-    let listener = socket.listen(0).unwrap();
-    let addr = listener.local_addr().unwrap();
-    let mut queued = Vec::new();
-    loop {
-        match tokio::time::timeout(Duration::from_millis(100), TcpStream::connect(addr)).await {
-            Ok(Ok(s)) => queued.push(s),
-            Ok(Err(e)) => panic!("filling the accept queue of {addr}: {e}"),
-            // The queue is full: this attempt hung, and so will the broker's.
-            Err(_) => break,
-        }
-        assert!(queued.len() < 16, "the accept queue of {addr} never filled");
-    }
-    (
-        Hanging {
-            _listener: listener,
-            _queued: queued,
-        },
-        addr.port(),
-    )
 }
 
 /// Hanging listeners on 127.0.0.2, .3, ... (`n` of them), all on one port. Returns the port.
