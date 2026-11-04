@@ -689,6 +689,37 @@ async fn subscription_sends_events_in_order_then_a_null_result() {
     client.expect_pong(0).await;
 }
 
+/// A dispatcher written before subscriptions existed: it only serves calls.
+struct CallsOnly;
+
+impl Dispatch for CallsOnly {
+    fn call(
+        &self,
+        _session: Arc<Session>,
+        _call: Call,
+    ) -> BoxFuture<'static, Result<Value, ErrorPayload>> {
+        Box::pin(async { Ok(json!("called")) })
+    }
+}
+
+#[tokio::test]
+async fn a_dispatcher_without_subscribe_answers_unimplemented() {
+    // Review finding [7]: `Dispatch::subscribe` has a default, as before this change.
+    let ((client_rx, client_tx), (server_rx, server_tx)) = memory(16);
+    let _conn = Server::new(config(), TokenAuth, CallsOnly).serve(server_rx, server_tx);
+    let mut client = Client {
+        rx: client_rx,
+        tx: client_tx,
+        decoder: FrameDecoder::new(u32::MAX),
+    };
+    handshake(&mut client).await;
+    client.subscribe(1, "anything", Value::Null).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::Unimplemented));
+    client.call(2, "anything", Value::Null).await;
+    assert_eq!(client.recv_result().await, (2, json!("called")));
+}
+
 #[tokio::test]
 async fn a_finished_subscription_closes_sinks_it_left_behind() {
     // Review finding [1]: the scope fires when the handler returns, not only on cancel.

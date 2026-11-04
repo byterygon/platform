@@ -184,7 +184,9 @@ pub trait Authenticate: Send + Sync + 'static {
 ///
 /// The returned futures run with the call's [`CallScope`] as [`CallScope::current`]; a dispatcher
 /// should apply the procedure's timeouts to it ([`CallScope::apply_timeouts`]) and hand its token
-/// to the handler. A wrapper must forward both methods.
+/// to the handler. A wrapper must forward both methods: `subscribe` has a default (answering
+/// `Unimplemented`, as before subscriptions existed) so dispatchers that only serve calls keep
+/// compiling, which also means a wrapper that forgets it silently turns subscriptions off.
 pub trait Dispatch: Send + Sync + 'static {
     /// A `Call`: the result, or the error, of a query, mutation or stream.
     fn call(
@@ -194,13 +196,22 @@ pub trait Dispatch: Send + Sync + 'static {
     ) -> BoxFuture<'static, Result<Value, ErrorPayload>>;
 
     /// A `Subscribe` (payload as for a `Call`): sends events to `events` until it ends. `Ok(())`
-    /// ends the subscription with `Result` (payload `null`), an error with `Error`.
+    /// ends the subscription with `Result` (payload `null`), an error with `Error`. The default
+    /// answers `Unimplemented`; [`Router`](crate::Router) overrides it.
     fn subscribe(
         &self,
         session: Arc<Session>,
         call: Call,
         events: Events,
-    ) -> BoxFuture<'static, Result<(), ErrorPayload>>;
+    ) -> BoxFuture<'static, Result<(), ErrorPayload>> {
+        let _ = (session, call, events);
+        Box::pin(async {
+            Err(ErrorPayload::new(
+                Code::Unimplemented,
+                "subscriptions are not supported",
+            ))
+        })
+    }
 }
 
 /// Why a connection ended.
