@@ -32,12 +32,28 @@ pub enum Agent {
     Hidden,
 }
 
-/// Default for `timeout_default` when a procedure does not set one. Provisional (spec Open
-/// question 9).
+/// Default for `timeout_default` when a query, mutation or stream does not set one. Provisional
+/// (spec Open question 9).
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Default for `timeout_max` when a procedure does not set one. Provisional (spec Open question 9).
+/// Default for `timeout_max` when a query, mutation or stream does not set one. Provisional (spec
+/// Open question 9).
 pub const DEFAULT_TIMEOUT_MAX: Duration = Duration::from_secs(5 * 60);
+
+impl ProcedureKind {
+    /// `(timeout_default, timeout_max)` for a procedure of this kind that declares neither (spec
+    /// §7): [`DEFAULT_TIMEOUT`] and [`DEFAULT_TIMEOUT_MAX`] for queries, mutations and streams;
+    /// none for subscriptions, which have no default deadline and no upper bound unless they
+    /// declare one (spec Open question 24f).
+    pub fn default_timeouts(self) -> (Option<Duration>, Option<Duration>) {
+        match self {
+            ProcedureKind::Subscription => (None, None),
+            ProcedureKind::Query | ProcedureKind::Mutation | ProcedureKind::Stream => {
+                (Some(DEFAULT_TIMEOUT), Some(DEFAULT_TIMEOUT_MAX))
+            }
+        }
+    }
+}
 
 /// Placeholder that replaces redacted input fields in loggable input.
 pub const REDACTED: &str = "<redacted>";
@@ -53,10 +69,12 @@ pub struct ProcedureMeta {
     /// Baseline risk; a handler may escalate it at runtime, never lower it.
     pub risk: Risk,
     pub agent: Agent,
-    /// Deadline when the client sets none.
-    pub timeout_default: Duration,
-    /// Upper bound for any client-requested deadline.
-    pub timeout_max: Duration,
+    /// Deadline when the client sets none. Always set for queries, mutations and streams; never
+    /// for subscriptions, which have no default deadline (the router refuses anything else).
+    pub timeout_default: Option<Duration>,
+    /// Upper bound for any deadline, the client's or the default. Always set for queries,
+    /// mutations and streams; for a subscription, `None` means no upper bound.
+    pub timeout_max: Option<Duration>,
     /// Whether input values may be written to the audit log. Off unless the procedure opts in.
     pub log_input: bool,
     /// Input field paths (dot-separated, e.g. `"auth.password"`) that are never logged, even
@@ -66,7 +84,8 @@ pub struct ProcedureMeta {
 }
 
 impl ProcedureMeta {
-    /// Metadata with conservative defaults: hidden from agents, input not logged.
+    /// Metadata with conservative defaults: hidden from agents, input not logged, the kind's
+    /// [default timeouts](ProcedureKind::default_timeouts).
     ///
     /// # Panics
     ///
@@ -82,14 +101,15 @@ impl ProcedureMeta {
             is_valid_perm(perm.as_str()),
             "procedure permission must be non-empty and contain no whitespace"
         );
+        let (timeout_default, timeout_max) = kind.default_timeouts();
         ProcedureMeta {
             name: name.into(),
             kind,
             perm,
             risk,
             agent: Agent::Hidden,
-            timeout_default: DEFAULT_TIMEOUT,
-            timeout_max: DEFAULT_TIMEOUT_MAX,
+            timeout_default,
+            timeout_max,
             log_input: false,
             redact: Vec::new(),
             deprecated: false,
@@ -157,6 +177,21 @@ mod tests {
         assert_eq!(meta.agent, Agent::Hidden);
         assert!(!meta.log_input);
         assert_eq!(meta.loggable_input(&json!({"a": 1})), None);
+    }
+
+    #[test]
+    fn calls_have_default_timeouts_and_subscriptions_none() {
+        let call = (Some(DEFAULT_TIMEOUT), Some(DEFAULT_TIMEOUT_MAX));
+        for kind in [
+            ProcedureKind::Query,
+            ProcedureKind::Mutation,
+            ProcedureKind::Stream,
+        ] {
+            let meta = ProcedureMeta::new("x.y", kind, "p", Risk::Read);
+            assert_eq!((meta.timeout_default, meta.timeout_max), call, "{kind:?}");
+        }
+        let sub = ProcedureMeta::new("x.y", ProcedureKind::Subscription, "p", Risk::Read);
+        assert_eq!((sub.timeout_default, sub.timeout_max), (None, None));
     }
 
     #[test]

@@ -2,12 +2,20 @@
 //!
 //! Expectations come from the Ambidex spec (§3 wire protocol, §5 call kinds, §7 cancellation and
 //! deadlines, §8 authorization and audit, §10 errors) and the decisions recorded in its Open
-//! questions 14–16, 21 and 23 (subscriptions). Cases assert outcomes, not timing: where a race is allowed by the spec (a deadline may
-//! fire before or after the handler first runs), every allowed outcome is accepted and checked.
+//! questions 14–16, 21, 23 and 24 (subscriptions, and their deadlines in 24f). Cases assert
+//! outcomes, not timing: where a race is allowed by the spec, every allowed outcome is accepted
+//! and checked.
+//!
+//! Deadlines are measured on the fixture's [`ManualClock`](crate::ManualClock), which only moves
+//! when a case calls [`advance`]. A case therefore waits until the handler started before moving
+//! it, and can check a call one millisecond before and exactly at its deadline, minutes or hours
+//! after it started, without waiting.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use ambidex::frame::{Flags, Frame, HEADER_LEN, Kind};
+use ambidex::procedure::{DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX};
 use ambidex::security_types::{
     AuditDecision, AuditEntry, AuditEntryKind, AuditFailureEffect, Delivery, Outcome, Reason, Risk,
 };
@@ -18,8 +26,9 @@ use crate::client::{
     Client, call_frame, cancel_frame, encode, json_frame, subscribe_frame, unsubscribe_frame,
 };
 use crate::fixture::{
-    APPROVAL_ID, AUDIT_WRITE_TIMEOUT, CANCEL_GRACE, Event, MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES,
-    SCHEMA_HASH, SERVER_VERSION, SUBSCRIPTION_BUFFER_EVENTS, completed_with,
+    APPROVAL_ID, AUDIT_WRITE_TIMEOUT, CANCEL_GRACE, CAPPED_TIMEOUT_MAX, Event,
+    MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES, SCHEMA_HASH, SERVER_VERSION, SUBSCRIPTION_BUFFER_EVENTS,
+    TICKS_CAPPED_TIMEOUT_MAX, completed_with,
 };
 use crate::harness::Harness;
 
@@ -54,6 +63,17 @@ fn error_code(frame: &Frame) -> Code {
         .expect("Error payload")
         .code
 }
+
+/// Moves the fixture's deadline clock forward by `ms`.
+fn advance<H: Harness>(h: &H, ms: u64) {
+    h.fixture().clock.advance(Duration::from_millis(ms));
+}
+
+fn millis(d: Duration) -> u64 {
+    u64::try_from(d.as_millis()).expect("fits")
+}
+
+const HOUR_MS: u64 = 3_600_000;
 
 /// After a call was cancelled before or while running: either the handler never started, or it
 /// started, saw its token and returned within the grace period.
@@ -476,8 +496,11 @@ pub async fn deadline_cancels_running_handler<H: Harness>(h: &H) {
     client
         .call_with_timeout(1, "fixture.wait", json!(null), 200)
         .await;
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("wait")).await;
+    advance(h, 200);
     client.expect_code(1, Code::DeadlineExceeded).await;
-    assert_never_started_or_saw_cancel(h, "wait").await;
+    probe.expect(Event::Cancelled("wait")).await;
     client.expect_alive(0).await;
 }
 
@@ -485,10 +508,56 @@ pub async fn procedure_timeout_max_caps_client_timeout<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     // An hour requested, 50 ms allowed by the procedure: the procedure wins.
     client
-        .call_with_timeout(1, "fixture.capped", json!(null), 3_600_000)
+        .call_with_timeout(1, "fixture.capped", json!(null), HOUR_MS)
         .await;
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("capped")).await;
+    advance(h, millis(CAPPED_TIMEOUT_MAX));
     client.expect_code(1, Code::DeadlineExceeded).await;
-    assert_never_started_or_saw_cancel(h, "capped").await;
+    probe.expect(Event::Cancelled("capped")).await;
+}
+
+/// Calls keep their 30 s default deadline (spec Open question 24f changes subscriptions only): a
+/// call still running 1 ms before it is answered, one running at it gets `DeadlineExceeded`.
+pub async fn calls_keep_the_default_deadline<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let default = millis(DEFAULT_TIMEOUT);
+    // `fixture.sleep` answers once the clock moved that far; the engine checks the deadline when
+    // it accepts the answer.
+    client.call(1, "fixture.sleep", json!(default - 1)).await;
+    client.call(2, "fixture.sleep", json!(default)).await;
+    let started = Event::Started("sleep");
+    h.fixture()
+        .probe
+        .expect_all(&[started.clone(), started])
+        .await;
+    advance(h, default - 1);
+    assert_eq!(client.expect_result(1).await, json!(default - 1));
+    advance(h, 1);
+    client.expect_code(2, Code::DeadlineExceeded).await;
+    client.expect_alive(0).await;
+}
+
+/// Calls keep the 5 min cap on a client timeout: an hour requested, 5 min granted.
+pub async fn calls_keep_the_timeout_cap<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let max = millis(DEFAULT_TIMEOUT_MAX);
+    client
+        .call_with_timeout(1, "fixture.sleep", json!(max - 1), HOUR_MS)
+        .await;
+    client
+        .call_with_timeout(2, "fixture.sleep", json!(max), HOUR_MS)
+        .await;
+    let started = Event::Started("sleep");
+    h.fixture()
+        .probe
+        .expect_all(&[started.clone(), started])
+        .await;
+    advance(h, max - 1);
+    assert_eq!(client.expect_result(1).await, json!(max - 1));
+    advance(h, 1);
+    client.expect_code(2, Code::DeadlineExceeded).await;
+    client.expect_alive(0).await;
 }
 
 // ---- cancellation (§7) ---------------------------------------------------------------------
@@ -754,8 +823,11 @@ pub async fn deadline_ends_subscription<H: Harness>(h: &H) {
     client
         .subscribe_with_timeout(1, "fixture.counter", counter(0, "wait"), 200)
         .await;
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("counter")).await;
+    advance(h, 200);
     client.expect_code(1, Code::DeadlineExceeded).await;
-    assert_never_started_or_saw_cancel(h, "counter").await;
+    probe.expect(Event::Cancelled("counter")).await;
     // Already expired: the handler never runs.
     let runs = h.fixture().probe.runs();
     client
@@ -763,6 +835,92 @@ pub async fn deadline_ends_subscription<H: Harness>(h: &H) {
         .await;
     client.expect_code(2, Code::DeadlineExceeded).await;
     assert_eq!(h.fixture().probe.runs(), runs);
+    client.expect_alive(0).await;
+}
+
+// ---- subscription deadlines (§7, Open question 24f) -----------------------------------------
+
+/// One `Event` for each of `ids`, in whatever order they arrive.
+async fn one_event_each(client: &mut Client, ids: &[u32]) -> BTreeMap<u32, Value> {
+    let mut events = BTreeMap::new();
+    while events.len() < ids.len() {
+        let frame = client.recv().await.expect("event, got close");
+        assert!(
+            frame.kind == Kind::Event && ids.contains(&frame.call_id),
+            "{frame:?}"
+        );
+        let event = serde_json::from_slice(&frame.payload).expect("JSON event");
+        assert!(events.insert(frame.call_id, event).is_none(), "two events");
+    }
+    events
+}
+
+/// Without `timeout_ms` and without a declared maximum a subscription has no deadline: it still
+/// runs past the call default (30 s) and an hour later, far past the call cap (5 min), until the
+/// client ends it.
+pub async fn subscription_without_timeout_has_no_deadline<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    // `fixture.ticks` sends the time since it started each time the clock moves; the engine
+    // checks the deadline when it queues each event, so a deadline at or before that time would
+    // end the subscription instead.
+    client.subscribe(1, "fixture.ticks", json!(null)).await;
+    h.fixture().probe.expect(Event::Started("ticks")).await;
+    let default = millis(DEFAULT_TIMEOUT);
+    advance(h, default);
+    assert_eq!(client.expect_event(1).await, json!(default));
+    advance(h, HOUR_MS - default);
+    assert_eq!(client.expect_event(1).await, json!(HOUR_MS));
+    client.cancel(1).await;
+    client.expect_code(1, Code::Cancelled).await;
+    client.expect_alive(0).await;
+}
+
+/// A client `timeout_ms` still ends a subscription with `DeadlineExceeded` at exactly that time,
+/// here twice the call cap, which no longer applies.
+pub async fn subscription_ends_at_its_client_timeout<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let timeout = 2 * millis(DEFAULT_TIMEOUT_MAX);
+    client
+        .subscribe_with_timeout(1, "fixture.ticks", json!(null), timeout)
+        .await;
+    h.fixture().probe.expect(Event::Started("ticks")).await;
+    advance(h, timeout - 1);
+    assert_eq!(client.expect_event(1).await, json!(timeout - 1));
+    advance(h, 1);
+    client.expect_code(1, Code::DeadlineExceeded).await;
+    client.expect_alive(0).await;
+}
+
+/// A procedure-declared maximum caps a larger `timeout_ms`, and bounds a subscription that sent
+/// none.
+pub async fn declared_maximum_caps_a_subscription<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let max = millis(TICKS_CAPPED_TIMEOUT_MAX);
+    client
+        .subscribe_with_timeout(1, "fixture.ticks_capped", json!(null), HOUR_MS)
+        .await;
+    client
+        .subscribe(2, "fixture.ticks_capped", json!(null))
+        .await;
+    let started = Event::Started("ticks_capped");
+    h.fixture()
+        .probe
+        .expect_all(&[started.clone(), started])
+        .await;
+    advance(h, max - 1);
+    let ticks = one_event_each(&mut client, &[1, 2]).await;
+    assert_eq!(
+        ticks,
+        BTreeMap::from([(1, json!(max - 1)), (2, json!(max - 1))])
+    );
+    advance(h, 1);
+    for (id, frame) in terminal_frames(&mut client, &[1, 2]).await {
+        assert_eq!(
+            error_code(&frame),
+            Code::DeadlineExceeded,
+            "subscription {id}"
+        );
+    }
     client.expect_alive(0).await;
 }
 
@@ -1027,6 +1185,7 @@ pub async fn completion_records_handler_outcome_and_delivery<H: Harness>(h: &H) 
         .call_with_timeout(2, "fixture.wait", json!(null), 300)
         .await;
     probe.expect(Event::Started("wait")).await;
+    advance(h, 300);
     let err = client.expect_code(2, Code::DeadlineExceeded).await;
     probe.expect(Event::Cancelled("wait")).await;
     let entry = wait_for_completion(h, &err.correlation_id).await;
@@ -1614,10 +1773,10 @@ pub async fn a_call_waiting_for_room_ends_at_its_deadline<H: Harness>(h: &H) {
         fixture.audit.held_now() == bound
     })
     .await;
-    // Both wait for room; the subscription's deadline comes first.
+    // Both wait for room; the subscription's deadline comes first. The Pong shows both frames
+    // were read, so both deadlines run from now on the fixture clock.
     let (subscription, call) = (MAX_CONCURRENT_CALLS + 1, MAX_CONCURRENT_CALLS + 2);
     let (sub_timeout, call_timeout) = (150, 300);
-    let sent = tokio::time::Instant::now();
     client
         .subscribe_with_timeout(
             subscription,
@@ -1629,30 +1788,19 @@ pub async fn a_call_waiting_for_room_ends_at_its_deadline<H: Harness>(h: &H) {
     client
         .call_with_timeout(call, "fixture.echo", json!(call), call_timeout)
         .await;
-    // The call's answer is its deadline, on time; nothing came for the subscription before it.
+    client.expect_alive(1000).await;
+    // At the subscription's deadline it is dropped: a Ping is answered by its Pong with nothing
+    // before it, no Error or end frame for the expired subscription.
+    advance(h, sub_timeout);
+    client.expect_alive(1001).await;
+    // One millisecond before the call's deadline it still waits.
+    advance(h, call_timeout - sub_timeout - 1);
+    client.expect_alive(1002).await;
+    // At its deadline the call answers, while every completion write is still held: it ends at
+    // its deadline, not once a write ended.
+    advance(h, 1);
     client.expect_code(call, Code::DeadlineExceeded).await;
-    let waited = sent.elapsed();
-    // The subscription's deadline passed before the call's, so whatever the server would send
-    // for it is already queued. A Ping now must be answered by its Pong, with nothing before it:
-    // no Error or end frame for the expired subscription.
-    assert!(sub_timeout < call_timeout);
-    client
-        .send(&[Frame::new(Kind::Ping, 1000, b"after-expiry".to_vec())])
-        .await;
-    let next = client.recv().await.expect("Pong, got close");
-    assert_eq!(
-        (next.kind, next.call_id, next.payload.as_slice()),
-        (Kind::Pong, 1000, b"after-expiry".as_slice()),
-        "nothing may be sent for the expired subscription {subscription}: {next:?}"
-    );
-    assert!(
-        waited >= std::time::Duration::from_millis(call_timeout),
-        "not before its deadline: {waited:?}"
-    );
-    assert!(
-        waited < AUDIT_WRITE_TIMEOUT,
-        "at its deadline, not once a write ended: {waited:?}"
-    );
+    client.expect_alive(1003).await;
     assert_eq!(
         fixture.audit.held_now(),
         bound,
@@ -1672,7 +1820,7 @@ pub async fn a_call_waiting_for_room_ends_at_its_deadline<H: Harness>(h: &H) {
             .iter()
             .all(|e| e.input_digest != input_digest(&json!(call)))
     );
-    client.expect_alive(1001).await;
+    client.expect_alive(1004).await;
     assert!(
         audited(h, "fixture.counter").is_empty(),
         "the subscription never ran"

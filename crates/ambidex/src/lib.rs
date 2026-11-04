@@ -53,7 +53,9 @@
 //! }
 //! ```
 //!
-//! A subscription sends events through its [`EventSink`] and ends with `Ok(())`:
+//! A subscription sends events through its [`EventSink`] and ends with `Ok(())`. It has no default
+//! deadline: the client's `timeoutMs` and a `timeout_max` the procedure declares bound it, and
+//! with neither it runs until Cancel, Unsubscribe, session revocation or disconnect:
 //!
 //! ```
 //! use ambidex::{Ctx, EventSink, Risk, RpcError, rpc};
@@ -62,7 +64,7 @@
 //!
 //! #[rpc::router(namespace = "jobs")]
 //! impl JobsApi {
-//!     #[rpc::subscription(perm = "jobs.watch", risk = Risk::Read, timeout_default = "1h")]
+//!     #[rpc::subscription(perm = "jobs.watch", risk = Risk::Read, timeout_max = "1h")]
 //!     async fn progress(&self, _ctx: Ctx, steps: u32, events: EventSink<u32>) -> Result<(), RpcError> {
 //!         for step in 0..steps {
 //!             events.send(&step).await?; // fails once the subscription is over
@@ -84,6 +86,22 @@
 //!     #[rpc::subscription(perm = "jobs.watch", risk = Risk::Read)]
 //!     async fn progress(&self, _ctx: Ctx, _steps: u32, _events: EventSink<u32>) -> Result<u32, RpcError> {
 //!         Ok(1)
+//!     }
+//! }
+//! ```
+//!
+//! Nor does one that declares a default deadline (spec Open question 24f):
+//!
+//! ```compile_fail
+//! use ambidex::{Ctx, EventSink, Risk, RpcError, rpc};
+//!
+//! pub struct JobsApi;
+//!
+//! #[rpc::router(namespace = "jobs")]
+//! impl JobsApi {
+//!     #[rpc::subscription(perm = "jobs.watch", risk = Risk::Read, timeout_default = "1h")]
+//!     async fn progress(&self, _ctx: Ctx, _steps: u32, _events: EventSink<u32>) -> Result<(), RpcError> {
+//!         Ok(())
 //!     }
 //! }
 //! ```
@@ -143,8 +161,8 @@ pub mod transport;
 /// | `perm = "a.b"` | yes | Permission the procedure requires |
 /// | `risk = Risk::Read` | yes | Baseline risk (`Read`, `Write`, `Destructive`) |
 /// | `agent = Agent::Exposed` | no | Visible to MCP; default `Agent::Hidden` |
-/// | `timeout_default = "30s"` | no | Deadline when the client sets none (`ms`, `s`, `m`, `h`) |
-/// | `timeout_max = "5m"` | no | Upper bound for a client deadline |
+/// | `timeout_default = "30s"` | no | Deadline when the client sets none (`ms`, `s`, `m`, `h`); default 30 s. Not on subscriptions: they have no default deadline |
+/// | `timeout_max = "5m"` | no | Upper bound for any deadline; default 5 min, none for subscriptions |
 /// | `log_input` | no | Input values may be written to the audit log |
 /// | `redact = ["password"]` | no | Input field paths never logged |
 /// | `name = "other"` | no | Method part of the procedure name; default the Rust name |
@@ -168,7 +186,7 @@ pub mod rpc {
 }
 
 pub use audit::{AuditPolicy, HumanReads};
-pub use cancel::CallScope;
+pub use cancel::{CallScope, DeadlineClock, TokioClock};
 pub use engine::{Authenticate, Closed, Connection, Dispatch, Server, ServerConfig, Session};
 pub use error::{DomainError, IntoErrorPayload, NoDetails, RpcError};
 pub use frame::{Flags, Frame, FrameDecoder, FrameError, Kind};

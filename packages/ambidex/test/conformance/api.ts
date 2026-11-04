@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:1baf57831b31b59cb7bcb819806b4f12b5e90707a97d9532009ea9098496421d";
+export const SCHEMA_HASH = "sha256:f65976186e6b5c7f0a6a93c2db1c1011a7bbc6e1da78c57d30bf72852e145af7";
 
 // ---- Types
 
@@ -98,8 +98,10 @@ export interface ProcedureDef<
   readonly risk: Risk;
   readonly agent: AgentExposure;
   readonly deprecated: boolean;
-  readonly timeoutDefaultMs: number;
-  readonly timeoutMaxMs: number;
+  /** Deadline when the caller passes no `timeoutMs`; `null` for subscriptions, which have none. */
+  readonly timeoutDefaultMs: number | null;
+  /** Upper bound for any deadline; `null`: none (a subscription that declares no maximum). */
+  readonly timeoutMaxMs: number | null;
   readonly __types?: {
     readonly input: I;
     readonly output: O;
@@ -123,7 +125,10 @@ export interface Procedures {
   readonly "fixture.protected": ProcedureDef<"mutation", FailInput, null, never>;
   readonly "fixture.rows": ProcedureDef<"stream", JsonValue, number, never>;
   readonly "fixture.secret": ProcedureDef<"subscription", JsonValue, number, never>;
+  readonly "fixture.sleep": ProcedureDef<"query", number, number, never>;
   readonly "fixture.stubborn": ProcedureDef<"query", JsonValue, string, never>;
+  readonly "fixture.ticks": ProcedureDef<"subscription", JsonValue, number, never>;
+  readonly "fixture.ticks_capped": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.wait": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.whoami": ProcedureDef<"query", JsonValue, JsonValue, never>;
   readonly "fixture.write": ProcedureDef<"mutation", JsonValue, JsonValue, never>;
@@ -146,7 +151,10 @@ export interface Api {
     readonly protected: Procedures["fixture.protected"];
     readonly rows: Procedures["fixture.rows"];
     readonly secret: Procedures["fixture.secret"];
+    readonly sleep: Procedures["fixture.sleep"];
     readonly stubborn: Procedures["fixture.stubborn"];
+    readonly ticks: Procedures["fixture.ticks"];
+    readonly ticks_capped: Procedures["fixture.ticks_capped"];
     readonly wait: Procedures["fixture.wait"];
     readonly whoami: Procedures["fixture.whoami"];
     readonly write: Procedures["fixture.write"];
@@ -183,8 +191,8 @@ export const procedures: Api = {
       risk: "Read",
       agent: "hidden",
       deprecated: false,
-      timeoutDefaultMs: 30000,
-      timeoutMaxMs: 300000,
+      timeoutDefaultMs: null,
+      timeoutMaxMs: null,
     },
     capped: {
       name: "fixture.capped",
@@ -203,8 +211,8 @@ export const procedures: Api = {
       risk: "Read",
       agent: "hidden",
       deprecated: false,
-      timeoutDefaultMs: 30000,
-      timeoutMaxMs: 300000,
+      timeoutDefaultMs: null,
+      timeoutMaxMs: null,
     },
     echo: {
       name: "fixture.echo",
@@ -243,8 +251,8 @@ export const procedures: Api = {
       risk: "Read",
       agent: "hidden",
       deprecated: false,
-      timeoutDefaultMs: 30000,
-      timeoutMaxMs: 300000,
+      timeoutDefaultMs: null,
+      timeoutMaxMs: null,
     },
     leak: {
       name: "fixture.leak",
@@ -263,8 +271,8 @@ export const procedures: Api = {
       risk: "Read",
       agent: "hidden",
       deprecated: false,
-      timeoutDefaultMs: 30000,
-      timeoutMaxMs: 300000,
+      timeoutDefaultMs: null,
+      timeoutMaxMs: null,
     },
     protected: {
       name: "fixture.protected",
@@ -293,6 +301,16 @@ export const procedures: Api = {
       risk: "Read",
       agent: "hidden",
       deprecated: false,
+      timeoutDefaultMs: null,
+      timeoutMaxMs: null,
+    },
+    sleep: {
+      name: "fixture.sleep",
+      kind: "query",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
     },
@@ -305,6 +323,26 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
+    },
+    ticks: {
+      name: "fixture.ticks",
+      kind: "subscription",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: null,
+      timeoutMaxMs: null,
+    },
+    ticks_capped: {
+      name: "fixture.ticks_capped",
+      kind: "subscription",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: null,
+      timeoutMaxMs: 600000,
     },
     wait: {
       name: "fixture.wait",

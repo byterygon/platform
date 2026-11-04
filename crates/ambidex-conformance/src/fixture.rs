@@ -5,7 +5,8 @@
 //! sink and error model. Handlers report what happened to them through a shared [`Probe`], which
 //! the cases read to check that cancellation reached the handler, that a denied call never ran,
 //! and so on; audit entries land in the fixture's [`AuditLog`], which a case can make fail, and
-//! sink failures in its [`AuditReports`].
+//! sink failures in its [`AuditReports`]. Deadlines are measured on the fixture's
+//! [`ManualClock`], which cases move (see [`crate::clock`]).
 //!
 //! Not in the fixture yet: the synthetic 1M-row Arrow stream (streams and credits are M2). It is
 //! declared, so the router authorizes it and answers `Unimplemented`; see the crate docs.
@@ -31,6 +32,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{Mutex, mpsc};
 use ts_rs::TS;
+
+use crate::clock::ManualClock;
 
 /// API name and server version every harness configures.
 pub const API: &str = "conformance";
@@ -71,6 +74,10 @@ pub const CANCEL_GRACE: Duration = Duration::from_millis(100);
 /// `timeout_max` of `FixtureApi::capped`.
 pub const CAPPED_TIMEOUT_MAX: Duration = Duration::from_millis(50);
 
+/// `timeout_max` of [`FixtureApi::ticks_capped`]: above the 5 min cap of calls, which does not
+/// apply to subscriptions.
+pub const TICKS_CAPPED_TIMEOUT_MAX: Duration = Duration::from_secs(10 * 60);
+
 /// Id the fixture approval queue gives every request.
 pub const APPROVAL_ID: &str = "approval-1";
 
@@ -82,8 +89,9 @@ pub const SUBSCRIPTION_BUFFER_EVENTS: usize = 8;
 /// sees its writes give up quickly; long enough that a working sink always answers in time.
 pub const AUDIT_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// The engine configuration every harness uses, without a writer gate (see
-/// [`Fixture::server_config`]).
+/// The engine configuration, with deadlines on real time (Tokio's clock) and without a writer
+/// gate: what `conformance-server` runs for the TypeScript client's tests. Harnesses use
+/// [`Fixture::server_config`].
 pub fn server_config() -> ServerConfig {
     let mut config = ServerConfig::new(API, SCHEMA_HASH.as_str(), SERVER_VERSION);
     config.max_frame_bytes = MAX_FRAME_BYTES;
@@ -315,12 +323,14 @@ pub fn completed_with(entry: &AuditEntry, code: Option<&str>) -> bool {
 }
 
 /// One server's fixture: the probe its handlers report to, the audit log its router writes, the
-/// sink failures it reported, and the gate its connections' writers pass before each send.
+/// sink failures it reported, the clock its deadlines are measured on, and the gate its
+/// connections' writers pass before each send.
 #[derive(Clone)]
 pub struct Fixture {
     pub probe: Arc<Probe>,
     pub audit: AuditLog,
     pub reports: AuditReports,
+    pub clock: Arc<ManualClock>,
     #[cfg(feature = "writer-gate")]
     pub writer_gate: WriterGate,
 }
@@ -337,16 +347,18 @@ impl Fixture {
             probe: Arc::new(Probe::new()),
             audit: AuditLog::default(),
             reports: AuditReports::default(),
+            clock: Arc::new(ManualClock::new()),
             #[cfg(feature = "writer-gate")]
             writer_gate: WriterGate::new(),
         }
     }
 
-    /// [`server_config`] with this fixture's writer gate (open unless a case closes it), when
-    /// the crate is built with `writer-gate`.
+    /// [`server_config`] with deadlines measured on this fixture's [`ManualClock`] and, when the
+    /// crate is built with `writer-gate`, this fixture's writer gate (open unless a case closes
+    /// it): what every harness runs.
     pub fn server_config(&self) -> ServerConfig {
-        #[cfg_attr(not(feature = "writer-gate"), allow(unused_mut))]
         let mut config = server_config();
+        config.deadline_clock = self.clock.clone();
         #[cfg(feature = "writer-gate")]
         {
             config.writer_gate = Some(self.writer_gate.clone());
@@ -366,6 +378,7 @@ impl Fixture {
         router
             .mount(FixtureApi {
                 probe: Arc::clone(&self.probe),
+                clock: Arc::clone(&self.clock),
             })
             .expect("fixture API registers");
         router
@@ -449,6 +462,7 @@ impl Drop for DropGuard {
 
 pub struct FixtureApi {
     probe: Arc<Probe>,
+    clock: Arc<ManualClock>,
 }
 
 impl FixtureApi {
@@ -469,6 +483,36 @@ impl FixtureApi {
         guard.armed = false;
         Ok("finished after cancel".into())
     }
+
+    /// Sends the time since it started on the fixture clock, in ms, each time the clock moves,
+    /// until the subscription is over.
+    async fn tick(&self, name: &'static str, events: EventSink<u64>) -> Result<(), RpcError> {
+        // Read the start before reporting it: a case moves the clock once it saw `Started`.
+        let mut moved = self.clock.watch();
+        let start = *moved.borrow();
+        let mut guard = self.guard(name);
+        let result = loop {
+            tokio::select! {
+                changed = moved.changed() => {
+                    if changed.is_err() {
+                        break Ok(());
+                    }
+                    let elapsed = *moved.borrow_and_update() - start;
+                    // Refused once the subscription is over, e.g. at its deadline.
+                    if let Err(ended) = events.send(&millis(elapsed)).await {
+                        break Err(ended.into());
+                    }
+                }
+                () = events.closed() => break Ok(()),
+            }
+        };
+        guard.armed = false;
+        result
+    }
+}
+
+fn millis(d: Duration) -> u64 {
+    u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[rpc::router(namespace = "fixture")]
@@ -513,6 +557,22 @@ impl FixtureApi {
     #[rpc::query(perm = "fixture.call", risk = Risk::Read, timeout_max = "50ms")]
     async fn capped(&self, ctx: Ctx, _input: Value) -> Result<String, RpcError> {
         self.until_cancelled(&ctx, "capped").await
+    }
+
+    /// Returns `ms` once the fixture clock moved `ms` past the call's start, or after its token
+    /// fired (recording [`Event::Cancelled`]). The engine checks the deadline when it accepts the
+    /// answer, so the answer shows whether the deadline had passed at exactly that time.
+    #[rpc::query(perm = "fixture.call", risk = Risk::Read)]
+    async fn sleep(&self, ctx: Ctx, ms: u64) -> Result<u64, RpcError> {
+        // Read the start before reporting it: a case moves the clock once it saw `Started`.
+        let until = self.clock.elapsed() + Duration::from_millis(ms);
+        let mut guard = self.guard("sleep");
+        tokio::select! {
+            () = self.clock.wait_until(until) => {}
+            () = ctx.cancelled() => self.probe.record(Event::Cancelled("sleep")),
+        }
+        guard.armed = false;
+        Ok(ms)
     }
 
     /// Ignores its token entirely; only dropping its future stops it.
@@ -653,6 +713,30 @@ impl FixtureApi {
         self.probe.record(Event::Cancelled("panic_on_cancel"));
         guard.armed = false;
         panic!("fixture handler panicked after its token fired");
+    }
+
+    /// Sends the time since it started on the fixture clock (ms) each time the clock moves. Like
+    /// every subscription without a declared maximum, it has no deadline unless the client sets
+    /// one (spec Open question 24f).
+    #[rpc::subscription(perm = "fixture.call", risk = Risk::Read)]
+    async fn ticks(
+        &self,
+        _ctx: Ctx,
+        _input: Value,
+        events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        self.tick("ticks", events).await
+    }
+
+    /// Like `ticks`, with a declared maximum ([`TICKS_CAPPED_TIMEOUT_MAX`]).
+    #[rpc::subscription(perm = "fixture.call", risk = Risk::Read, timeout_max = "10m")]
+    async fn ticks_capped(
+        &self,
+        _ctx: Ctx,
+        _input: Value,
+        events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        self.tick("ticks_capped", events).await
     }
 
     /// Requires a permission the fixture policy does not grant (default-deny).

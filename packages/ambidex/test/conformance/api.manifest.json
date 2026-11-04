@@ -180,8 +180,8 @@
       "perm": "fixture.call",
       "redact": [],
       "risk": "Read",
-      "timeout_default_ms": 30000,
-      "timeout_max_ms": 300000
+      "timeout_default_ms": null,
+      "timeout_max_ms": null
     },
     {
       "agent": "hidden",
@@ -220,8 +220,8 @@
       "perm": "fixture.call",
       "redact": [],
       "risk": "Read",
-      "timeout_default_ms": 30000,
-      "timeout_max_ms": 300000
+      "timeout_default_ms": null,
+      "timeout_max_ms": null
     },
     {
       "agent": "hidden",
@@ -292,8 +292,8 @@
       "perm": "fixture.call",
       "redact": [],
       "risk": "Read",
-      "timeout_default_ms": 30000,
-      "timeout_max_ms": 300000
+      "timeout_default_ms": null,
+      "timeout_max_ms": null
     },
     {
       "agent": "hidden",
@@ -328,8 +328,8 @@
       "perm": "fixture.call",
       "redact": [],
       "risk": "Read",
-      "timeout_default_ms": 30000,
-      "timeout_max_ms": 300000
+      "timeout_default_ms": null,
+      "timeout_max_ms": null
     },
     {
       "agent": "hidden",
@@ -385,6 +385,29 @@
       "perm": "fixture.admin",
       "redact": [],
       "risk": "Read",
+      "timeout_default_ms": null,
+      "timeout_max_ms": null
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "fixture.sleep",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
     },
@@ -404,6 +427,44 @@
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "subscription",
+      "log_input": false,
+      "name": "fixture.ticks",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": null,
+      "timeout_max_ms": null
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "subscription",
+      "log_input": false,
+      "name": "fixture.ticks_capped",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": null,
+      "timeout_max_ms": 600000
     },
     {
       "agent": "hidden",
@@ -454,5 +515,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:1baf57831b31b59cb7bcb819806b4f12b5e90707a97d9532009ea9098496421d"
+  "schema_hash": "sha256:f65976186e6b5c7f0a6a93c2db1c1011a7bbc6e1da78c57d30bf72852e145af7"
 }

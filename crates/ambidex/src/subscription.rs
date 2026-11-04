@@ -17,6 +17,14 @@
 //! Session revocation, Goaway and disconnect end subscriptions the way they end calls: every
 //! token fires, and the connection closes with Goaway (revocation) or without any frame.
 //!
+//! # Deadlines
+//!
+//! Unlike calls, subscriptions have no default deadline (spec Open question 24f): the client's
+//! `timeout_ms` applies, capped by a `timeout_max` the procedure declares, and a subscription
+//! with neither runs until one of the ends above. Authorization is checked once, at `Subscribe`:
+//! a role change does not end a running subscription; revoking the session does (accepted risk,
+//! spec §7).
+//!
 //! # Bounded buffering
 //!
 //! [`EventSink::send`] never waits for the client. Events the transport has not taken yet are

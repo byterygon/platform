@@ -5,6 +5,8 @@
 //!   approval-gated procedures, the counter, flood and denied subscriptions, a declared stream),
 //!   served through the production router, authorizer hook, audit sink and error model.
 //! - [`client`]: a raw frame client over a transport's client end ([`client::Wire`]).
+//! - [`clock`]: the [`ManualClock`] every harness measures deadlines on; cases move it, so
+//!   deadline cases (seconds, minutes or hours long) take no real time.
 //! - [`harness`]: the [`Harness`] trait and [`conformance_suite!`], which turns every case into
 //!   one `#[test]` per harness.
 //! - [`cases`]: the cases, each written once.
@@ -83,6 +85,7 @@
 
 pub mod cases;
 pub mod client;
+pub mod clock;
 pub mod fixture;
 pub mod harness;
 pub mod in_process;
@@ -92,5 +95,6 @@ pub mod tauri;
 pub mod ws;
 
 pub use client::Client;
+pub use clock::ManualClock;
 pub use fixture::Fixture;
 pub use harness::{Harness, Unsupported};

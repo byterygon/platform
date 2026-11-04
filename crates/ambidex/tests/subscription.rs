@@ -92,8 +92,25 @@ impl WatchApi {
     /// Reports its deadline, then waits for the end of the subscription.
     #[rpc::subscription(perm = "watch.read", risk = Risk::Read, timeout_max = "100ms")]
     async fn capped(&self, ctx: Ctx, _input: (), events: EventSink<u64>) -> Result<(), RpcError> {
-        let left = ctx.deadline() - tokio::time::Instant::now();
+        let left = ctx.deadline().expect("capped") - tokio::time::Instant::now();
         events.send(&(left.as_millis() as u64)).await?;
+        events.closed().await;
+        Ok(())
+    }
+
+    /// Reports the time left until its deadline (`null`: none), then waits for its end. Declares
+    /// no maximum.
+    #[rpc::subscription(perm = "watch.read", risk = Risk::Read)]
+    async fn open(
+        &self,
+        ctx: Ctx,
+        _input: (),
+        events: EventSink<Option<u64>>,
+    ) -> Result<(), RpcError> {
+        let left = ctx
+            .deadline()
+            .map(|d| (d - tokio::time::Instant::now()).as_millis() as u64);
+        events.send(&left).await?;
         events.closed().await;
         Ok(())
     }
@@ -394,6 +411,95 @@ async fn the_procedure_caps_a_subscription_deadline() {
     // The handler sees the procedure's 100 ms, not the hour the client asked for.
     assert_eq!(client.event(1).await, json!(100));
     assert_eq!(client.error(1).await.code, Code::DeadlineExceeded);
+    // The declared maximum bounds a subscription without a client timeout too.
+    client.subscribe(2, "watch.capped", Value::Null).await;
+    assert_eq!(client.event(2).await, json!(100));
+    assert_eq!(client.error(2).await.code, Code::DeadlineExceeded);
+}
+
+// ---- no default deadline (spec Open question 24f) -------------------------------------------
+
+#[tokio::test(start_paused = true)]
+async fn a_subscription_has_no_default_deadline() {
+    let mut client = Client::start(human(), Log::default()).await;
+    client.subscribe(1, "watch.open", Value::Null).await;
+    assert_eq!(client.event(1).await, Value::Null, "no deadline");
+    // Far past the call default (30 s) and cap (5 min): any deadline timer would have fired and
+    // its Error would come before the answer to the Cancel below.
+    tokio::time::sleep(Duration::from_secs(24 * 3600)).await;
+    client.send(Kind::Cancel, 1, &Value::Null).await;
+    assert_eq!(client.error(1).await.code, Code::Cancelled);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_client_timeout_beyond_the_call_cap_bounds_a_subscription() {
+    let mut client = Client::start(human(), Log::default()).await;
+    let hour = 3_600_000u64;
+    let call = json!({ "procedure": "watch.open", "input": null, "timeout_ms": hour });
+    let sent = tokio::time::Instant::now();
+    client.send(Kind::Subscribe, 1, &call).await;
+    // The hour, not the 5 min cap of calls.
+    assert_eq!(client.event(1).await, json!(hour));
+    // (`recv` gives up after 5 s, so wait for the deadline first.)
+    tokio::time::sleep_until(sent + Duration::from_millis(hour)).await;
+    assert_eq!(client.error(1).await.code, Code::DeadlineExceeded);
+    assert_eq!(sent.elapsed(), Duration::from_millis(hour));
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_largest_client_timeout_neither_overflows_nor_expires() {
+    let mut client = Client::start(human(), Log::default()).await;
+    // No declared maximum caps it. Where an Instant cannot hold it, there is no deadline.
+    let call = json!({ "procedure": "watch.open", "input": null, "timeout_ms": u64::MAX });
+    client.send(Kind::Subscribe, 1, &call).await;
+    let left = client.event(1).await;
+    assert!(left == json!(u64::MAX) || left.is_null(), "{left}");
+    tokio::time::sleep(Duration::from_secs(24 * 3600)).await;
+    client.send(Kind::Cancel, 1, &Value::Null).await;
+    assert_eq!(client.error(1).await.code, Code::Cancelled);
+}
+
+#[test]
+fn the_registry_enforces_the_timeouts_of_each_kind() {
+    let router = Router::new(Policy);
+    let sub: ambidex::SubscriptionHandler = Arc::new(|_, _, _| Box::pin(async { Ok(()) }));
+    let unary: ambidex::Handler = Arc::new(|_, _| Box::pin(async { Ok(Value::Null) }));
+    let meta = |name: &str, kind| ProcedureMeta::new(name, kind, "watch.read", Risk::Read);
+    let invalid = |name: &str| Err(RegistryError::InvalidTimeouts(name.into()));
+
+    // A subscription may declare a maximum, never a default.
+    let mut defaulted = meta("x.defaulted", ProcedureKind::Subscription);
+    defaulted.timeout_default = Some(Duration::from_secs(30));
+    assert_eq!(
+        router.insert(Procedure::subscription(defaulted, sub.clone())),
+        invalid("x.defaulted")
+    );
+    let mut capped = meta("x.capped", ProcedureKind::Subscription);
+    capped.timeout_max = Some(Duration::from_secs(600));
+    assert_eq!(
+        router.insert(Procedure::subscription(capped, sub.clone())),
+        Ok(())
+    );
+
+    // Calls keep both bounds.
+    let mut uncapped = meta("x.uncapped", ProcedureKind::Query);
+    uncapped.timeout_max = None;
+    assert_eq!(
+        router.insert(Procedure::new(uncapped, unary.clone())),
+        invalid("x.uncapped")
+    );
+    let mut undefaulted = meta("x.undefaulted", ProcedureKind::Mutation);
+    undefaulted.timeout_default = None;
+    assert_eq!(
+        router.insert(Procedure::new(undefaulted, unary)),
+        invalid("x.undefaulted")
+    );
+    let mut stream = meta("x.stream", ProcedureKind::Stream);
+    stream.timeout_max = None;
+    assert_eq!(
+        router.insert(Procedure::declared(stream)),
+        invalid("x.stream")
+    );
 }
 
 #[test]

@@ -71,7 +71,9 @@ pub struct Call {
     #[serde(default)]
     pub input: Value,
     /// Client timeout in milliseconds (spec §7 `timeoutMs`). The server caps it at the
-    /// procedure's `timeout_max` and uses `timeout_default` when it is absent.
+    /// procedure's `timeout_max`, if it has one. When it is absent a call gets the procedure's
+    /// `timeout_default`; a subscription has no default deadline, so only its declared
+    /// `timeout_max` (if any) bounds it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u64>,
 }
