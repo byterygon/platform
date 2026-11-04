@@ -21,7 +21,9 @@
 // safety timer, for a server that never answers, at the procedure's effective deadline plus a
 // slack: the server's advertised `cancel_grace_ms` plus `networkMarginMs` when its HelloAck has
 // one (spec Open question 23b), otherwise `timeoutSlackMs`. Calls, subscriptions and streams all
-// get it.
+// get it when they have a deadline. A subscription has no default deadline (spec Open question
+// 24f): without `timeoutMs` and without a declared maximum (`timeoutMaxMs: null`) it has none, and
+// no safety timer either.
 
 import type { CallOptions, Client, ProcedureKind, ProcedureLike } from "./contract.js";
 import { Connection, type HelloAck } from "./connection.js";
@@ -257,8 +259,8 @@ function slackMs(conn: Connection, options: RuntimeOptions): number {
 }
 
 /**
- * Calls `fire` at the effective deadline plus the slack, unless that is beyond what `setTimeout`
- * can wait. Returns the timer, if any.
+ * Calls `fire` at the effective deadline plus the slack, unless there is no deadline or it is
+ * beyond what `setTimeout` can wait. Returns the timer, if any.
  */
 function safetyTimer(
   def: ProcedureLike,
@@ -272,7 +274,12 @@ function safetyTimer(
   return delay <= MAX_TIMER_MS ? setTimeout(fire, delay) : undefined;
 }
 
-/** Reads the generated table's timeouts, if present (`ProcedureDef.timeoutDefaultMs/MaxMs`). */
+/**
+ * The effective deadline as the server computes it, from the generated table's timeouts
+ * (`ProcedureDef.timeoutDefaultMs/MaxMs`): `timeoutMs`, or the default without it, capped by the
+ * maximum. A bound that is `null` (or absent) is no bound, so a subscription (no default) without
+ * `timeoutMs` and without a declared maximum has no deadline: `undefined`.
+ */
 function deadlineMs(def: ProcedureLike, timeoutMs: number | undefined): number | undefined {
   const d = def as { timeoutDefaultMs?: unknown; timeoutMaxMs?: unknown };
   const max = typeof d.timeoutMaxMs === "number" ? d.timeoutMaxMs : undefined;

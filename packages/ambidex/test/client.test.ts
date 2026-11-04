@@ -478,7 +478,102 @@ describe("deadlines", () => {
     client.$close();
   });
 
-  it("gives subscriptions the same safety timer, then unsubscribes", async (t) => {
+  it("keeps the 30 s default deadline for a call without timeoutMs", async (t) => {
+    const { transport, client } = setup({ networkMarginMs: 0 }, ackWithGrace(100));
+    await client.$connect();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const call: { out?: Awaited<ReturnType<typeof settle>> } = {};
+    void settle(client.fixture.wait(null)).then((r) => {
+      call.out = r;
+    });
+    const current = () => call.out;
+    const peer = await transport.peer();
+    const sent = await peer.nextOf(Kind.Call);
+    assert.equal("timeout_ms" in json(sent), false);
+    // timeoutDefaultMs 30000 + cancel_grace_ms 100 + networkMarginMs 0.
+    t.mock.timers.tick(30_099);
+    await drain();
+    assert.equal(current(), undefined);
+    t.mock.timers.tick(1);
+    await drain();
+    const out = current();
+    assert.ok(out !== undefined && !out.ok);
+    assert.equal(out.error.code, "DeadlineExceeded");
+    assert.equal(out.error.local, true);
+    assert.equal((await peer.nextOf(Kind.Cancel)).callId, sent.callId);
+    client.$close();
+  });
+
+  it("sets no safety timer for a subscription without a deadline", async (t) => {
+    // Spec Open question 24f: subscriptions have no default deadline. fixture.ticks declares no
+    // maximum (timeoutMaxMs null) and no timeoutMs is given, so nothing ends it but the caller.
+    assert.equal(api.procedures.fixture.ticks.timeoutDefaultMs, null);
+    assert.equal(api.procedures.fixture.ticks.timeoutMaxMs, null);
+    const { transport, client } = setup({ networkMarginMs: 0 }, ackWithGrace(100));
+    await client.$connect();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const sub = client.fixture.ticks(null);
+    const it = sub[Symbol.asyncIterator]();
+    const peer = await transport.peer();
+    const s = await peer.nextOf(Kind.Subscribe);
+    assert.equal("timeout_ms" in json(s), false);
+    // A day: far past the call default (30 s) and cap (5 min), plus any slack.
+    t.mock.timers.tick(24 * 3_600_000);
+    await drain();
+    peer.json(Kind.Event, s.callId, 86_400_000);
+    assert.deepEqual(await it.next(), { value: 86_400_000, done: false });
+    assert.deepEqual(peer.unread(), [], "the runtime sent nothing: no Unsubscribe");
+    sub.unsubscribe();
+    assert.equal((await peer.nextOf(Kind.Unsubscribe)).callId, s.callId);
+    client.$close();
+  });
+
+  it("times a subscription out at its declared maximum, which also caps timeoutMs", async (t) => {
+    const { transport, client } = setup({ networkMarginMs: 0 }, ackWithGrace(100));
+    await client.$connect();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // fixture.ticks_capped: timeoutMaxMs 600000. With no timeoutMs and with an hour alike, the
+    // timer fires at 600000 + cancel_grace_ms 100 + networkMarginMs 0.
+    assert.equal(api.procedures.fixture.ticks_capped.timeoutMaxMs, 600_000);
+    const outcomes: (Awaited<ReturnType<typeof settle>> | undefined)[] = [undefined, undefined];
+    const subs = [
+      client.fixture.ticks_capped(null),
+      client.fixture.ticks_capped(null, { timeoutMs: 3_600_000 }),
+    ];
+    subs.forEach((sub, i) => {
+      void settle(sub[Symbol.asyncIterator]().next()).then((r) => {
+        outcomes[i] = r;
+      });
+    });
+    const peer = await transport.peer();
+    const sent = [await peer.nextOf(Kind.Subscribe), await peer.nextOf(Kind.Subscribe)];
+    assert.deepEqual(
+      sent.map((s) => json(s).timeout_ms),
+      [undefined, 3_600_000],
+    );
+    t.mock.timers.tick(600_099);
+    await drain();
+    assert.deepEqual(
+      outcomes.map((out) => out?.ok),
+      [undefined, undefined],
+      "still running",
+    );
+    t.mock.timers.tick(1);
+    await drain();
+    for (const out of outcomes) {
+      assert.ok(out !== undefined && !out.ok);
+      assert.equal(out.error.code, "DeadlineExceeded");
+      assert.equal(out.error.local, true);
+    }
+    const unsubscribed = [await peer.nextOf(Kind.Unsubscribe), await peer.nextOf(Kind.Unsubscribe)];
+    assert.deepEqual(
+      unsubscribed.map((f) => f.callId).sort(),
+      sent.map((f) => f.callId).sort(),
+    );
+    client.$close();
+  });
+
+  it("gives a subscription with timeoutMs the same safety timer, then unsubscribes", async (t) => {
     const { transport, client } = setup({ networkMarginMs: 0 }, ackWithGrace(100));
     await client.$connect();
     t.mock.timers.enable({ apis: ["setTimeout"] });
