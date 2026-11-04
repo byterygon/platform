@@ -52,6 +52,21 @@ impl Dispatch for Fixture {
             }
         })
     }
+
+    /// Subscriptions are covered by the conformance suite; this fixture only tests the transport.
+    fn subscribe(
+        &self,
+        _session: Arc<Session>,
+        _call: Call,
+        _events: ambidex::Events,
+    ) -> BoxFuture<'static, Result<(), ErrorPayload>> {
+        Box::pin(async {
+            Err(ErrorPayload::new(
+                Code::Unimplemented,
+                "not in this fixture",
+            ))
+        })
+    }
 }
 
 struct TestServer {

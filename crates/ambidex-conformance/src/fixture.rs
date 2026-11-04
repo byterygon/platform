@@ -1,13 +1,13 @@
 //! The fixture API every harness serves (Ambidex spec §12).
 //!
 //! Procedures live in namespace `fixture` and are declared with the real `#[rpc::router]` macro,
-//! so calls go through the production [`Router`], [`Authorizer`] hook and error model. Handlers
-//! report what happened to them through a shared [`Probe`], which the cases read to check that
-//! cancellation reached the handler, that a denied call never ran, and so on.
+//! so calls and subscriptions go through the production [`Router`], [`Authorizer`] hook, audit
+//! sink and error model. Handlers report what happened to them through a shared [`Probe`], which
+//! the cases read to check that cancellation reached the handler, that a denied call never ran,
+//! and so on; refusals land in the fixture's [`AuditLog`].
 //!
-//! Not in the fixture yet: the counter subscription and the synthetic 1M-row Arrow stream have no
-//! engine support (subscriptions are a later M1 task, streams and credits are M2). They are
-//! declared, so the router authorizes them and answers `Unimplemented`; see the crate docs.
+//! Not in the fixture yet: the synthetic 1M-row Arrow stream (streams and credits are M2). It is
+//! declared, so the router authorizes it and answers `Unimplemented`; see the crate docs.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -16,10 +16,12 @@ use std::time::Duration;
 
 use ambidex::codegen::{self, ApiInfo};
 use ambidex::security_types::{
-    Action, ApprovalSpec, Authorizer, AuthzRequest, Decision, Principal, Reason, Risk, TargetRef,
+    Action, ApprovalSpec, AuditEntry, Authorizer, AuthzRequest, Decision, Principal, Reason, Risk,
+    TargetRef,
 };
 use ambidex::{
-    Approvals, Code, Ctx, DomainError, Router, RpcError, ServerConfig, engine::BoxFuture, rpc,
+    Approvals, AuditError, AuditSink, Code, Ctx, DomainError, EventSink, Router, RpcError,
+    ServerConfig, engine::BoxFuture, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -69,6 +71,10 @@ pub const CAPPED_TIMEOUT_MAX: Duration = Duration::from_millis(50);
 /// Id the fixture approval queue gives every request.
 pub const APPROVAL_ID: &str = "approval-1";
 
+/// Events one subscription may have waiting for the transport. Small, so the bound is cheap to
+/// reach.
+pub const SUBSCRIPTION_BUFFER_EVENTS: usize = 8;
+
 /// The engine configuration every harness uses.
 pub fn server_config() -> ServerConfig {
     let mut config = ServerConfig::new(API, SCHEMA_HASH.as_str(), SERVER_VERSION);
@@ -76,6 +82,7 @@ pub fn server_config() -> ServerConfig {
     config.max_hello_bytes = 1024;
     config.max_concurrent_calls = MAX_CONCURRENT_CALLS;
     config.cancel_grace = CANCEL_GRACE;
+    config.subscription_buffer_events = SUBSCRIPTION_BUFFER_EVENTS;
     config
 }
 
@@ -130,6 +137,23 @@ impl Probe {
         assert_eq!(event, expected);
     }
 
+    /// Waits for the next `expected.len()` events and checks they are `expected`, in any order
+    /// (handlers on different calls may report concurrently).
+    pub async fn expect_all(&self, expected: &[Event]) {
+        let mut events = self.events.lock().await;
+        let mut seen = Vec::new();
+        while seen.len() < expected.len() {
+            let event = tokio::time::timeout(crate::client::RECV_TIMEOUT, events.recv())
+                .await
+                .unwrap_or_else(|_| panic!("no handler event, expected {expected:?}, saw {seen:?}"))
+                .expect("probe sender lives in the fixture");
+            seen.push(event);
+        }
+        let mut missing = expected.to_vec();
+        missing.retain(|e| !seen.contains(e));
+        assert!(missing.is_empty(), "expected {expected:?}, saw {seen:?}");
+    }
+
     /// Events recorded so far and not yet consumed by [`Probe::expect`].
     pub async fn pending(&self) -> Vec<Event> {
         let mut events = self.events.lock().await;
@@ -141,10 +165,34 @@ impl Probe {
     }
 }
 
-/// One server's fixture: the probe its handlers report to.
+/// The audit entries the router recorded, in order.
+#[derive(Clone, Default)]
+pub struct AuditLog(Arc<std::sync::Mutex<Vec<AuditEntry>>>);
+
+impl AuditLog {
+    pub fn entries(&self) -> Vec<AuditEntry> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl AuditSink for AuditLog {
+    fn append(&self, entry: AuditEntry) -> Result<(), AuditError> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(entry);
+        Ok(())
+    }
+}
+
+/// One server's fixture: the probe its handlers report to and the audit log its router writes.
 #[derive(Clone)]
 pub struct Fixture {
     pub probe: Arc<Probe>,
+    pub audit: AuditLog,
 }
 
 impl Default for Fixture {
@@ -157,12 +205,14 @@ impl Fixture {
     pub fn new() -> Fixture {
         Fixture {
             probe: Arc::new(Probe::new()),
+            audit: AuditLog::default(),
         }
     }
 
-    /// The production router with the fixture API, authorizer and approval queue.
+    /// The production router with the fixture API, authorizer, approval queue and audit log.
     pub fn router(&self) -> Router {
-        let router = Router::with_approvals(FixtureAuthorizer, FixtureApprovals);
+        let router = Router::with_approvals(FixtureAuthorizer, FixtureApprovals)
+            .with_audit(self.audit.clone());
         router
             .mount(FixtureApi {
                 probe: Arc::clone(&self.probe),
@@ -204,6 +254,32 @@ pub struct FailInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub retryable: bool,
+}
+
+/// What [`FixtureApi::counter`] does after its last event.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum CounterEnd {
+    /// Ends normally: `Result` with payload `null`.
+    #[default]
+    Finish,
+    /// Ends with `FailedPrecondition` and a typed [`FixtureError`] in `details`.
+    Fail,
+    /// Waits for its token (Cancel, Unsubscribe, deadline, revocation, disconnect), records
+    /// [`Event::Cancelled`], then returns `Ok` (which the client must never see).
+    Wait,
+    /// Ignores its token; only dropping its future stops it.
+    Hang,
+}
+
+/// Input of [`FixtureApi::counter`].
+#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
+pub struct CounterInput {
+    /// Events sent: 0, 1, …, `count - 1`.
+    pub count: u64,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub then: CounterEnd,
 }
 
 /// Counts a handler future dropped before it finished.
@@ -331,10 +407,76 @@ impl FixtureApi {
         Err(err)
     }
 
-    /// Counter subscription (spec §12). Declared only: subscriptions have no engine support yet.
+    /// Counter subscription (spec §12): events 0, 1, …, `count - 1`, then what `then` says.
     #[rpc::subscription(perm = "fixture.call", risk = Risk::Read)]
-    async fn counter(&self, _ctx: Ctx, _input: Value) -> Result<u64, RpcError> {
-        Err(RpcError::new(Code::Unimplemented, "declared only"))
+    async fn counter(
+        &self,
+        ctx: Ctx,
+        input: CounterInput,
+        events: EventSink<u64>,
+    ) -> Result<(), RpcError<FixtureError>> {
+        let mut guard = self.guard("counter");
+        let result = async {
+            for n in 0..input.count {
+                events.send(&n).await?;
+            }
+            match input.then {
+                CounterEnd::Finish => Ok(()),
+                CounterEnd::Fail => {
+                    let code = Code::FailedPrecondition;
+                    let details = FixtureError::Requested {
+                        code,
+                        retryable: false,
+                    };
+                    Err(RpcError::new(code, details.message()).with_details(details))
+                }
+                CounterEnd::Wait => {
+                    ctx.cancelled().await;
+                    self.probe.record(Event::Cancelled("counter"));
+                    Ok(())
+                }
+                CounterEnd::Hang => std::future::pending().await,
+            }
+        }
+        .await;
+        guard.armed = false;
+        result
+    }
+
+    /// Sends 0, 1, 2, … without ever yielding until the server refuses an event, then records
+    /// [`Event::Cancelled`] and returns `Ok` (the client gets the server's reason instead).
+    /// On a current-thread runtime nothing is forwarded meanwhile, so exactly
+    /// [`SUBSCRIPTION_BUFFER_EVENTS`] events are accepted.
+    #[rpc::subscription(perm = "fixture.call", risk = Risk::Read)]
+    async fn flood(
+        &self,
+        _ctx: Ctx,
+        _input: Value,
+        events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        let mut guard = self.guard("flood");
+        guard.armed = false;
+        // A bound in case every event is taken (a multi-threaded runtime can forward meanwhile).
+        for n in 0..1_000_000u64 {
+            if events.send(&n).await.is_err() {
+                self.probe.record(Event::Cancelled("flood"));
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Requires a permission the fixture policy does not grant (default-deny).
+    #[rpc::subscription(perm = "fixture.admin", risk = Risk::Read)]
+    async fn secret(
+        &self,
+        _ctx: Ctx,
+        _input: Value,
+        events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        let _guard = self.guard("secret");
+        events.send(&0).await?;
+        Ok(())
     }
 
     /// Synthetic Arrow row stream (spec §12). Declared only: streams and credits are M2.

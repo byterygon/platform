@@ -107,6 +107,26 @@ impl Client {
         self.send(&[cancel_frame(call_id)]).await;
     }
 
+    pub async fn subscribe(&mut self, call_id: u32, procedure: &str, input: Value) {
+        self.send(&[subscribe_frame(call_id, procedure, input, None)])
+            .await;
+    }
+
+    pub async fn subscribe_with_timeout(
+        &mut self,
+        call_id: u32,
+        procedure: &str,
+        input: Value,
+        timeout_ms: u64,
+    ) {
+        self.send(&[subscribe_frame(call_id, procedure, input, Some(timeout_ms))])
+            .await;
+    }
+
+    pub async fn unsubscribe(&mut self, call_id: u32) {
+        self.send(&[unsubscribe_frame(call_id)]).await;
+    }
+
     /// Next frame from the server, or `None` once it closed the connection.
     ///
     /// # Panics
@@ -136,6 +156,17 @@ impl Client {
             "{frame:?}"
         );
         serde_json::from_slice(&frame.payload).expect("Result payload")
+    }
+
+    /// The next frame must be a JSON Event for `call_id`; returns its value.
+    pub async fn expect_event(&mut self, call_id: u32) -> Value {
+        let frame = self.recv().await.expect("Event, got close");
+        assert_eq!(
+            (frame.kind, frame.call_id, frame.flags.is_binary()),
+            (Kind::Event, call_id, false),
+            "{frame:?}"
+        );
+        serde_json::from_slice(&frame.payload).expect("Event payload")
     }
 
     /// The next frame must be an Error for `call_id`; returns its payload.
@@ -223,6 +254,26 @@ pub fn call_frame(call_id: u32, procedure: &str, input: Value, timeout_ms: Optio
 
 pub fn cancel_frame(call_id: u32) -> Frame {
     Frame::new(Kind::Cancel, call_id, Vec::new())
+}
+
+/// `Subscribe` carries the `Call` payload (spec Open question 23a).
+pub fn subscribe_frame(
+    call_id: u32,
+    procedure: &str,
+    input: Value,
+    timeout_ms: Option<u64>,
+) -> Frame {
+    let call = Call {
+        procedure: procedure.into(),
+        input,
+        timeout_ms,
+    };
+    json_frame(Kind::Subscribe, call_id, &call)
+}
+
+/// `Unsubscribe` has an empty payload and gets no reply.
+pub fn unsubscribe_frame(call_id: u32) -> Frame {
+    Frame::new(Kind::Unsubscribe, call_id, Vec::new())
 }
 
 pub fn json_frame(kind: Kind, call_id: u32, value: &impl serde::Serialize) -> Frame {

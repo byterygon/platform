@@ -45,7 +45,7 @@ use tokio_rustls::TlsAcceptor;
 
 use ambidex::engine::BoxFuture;
 use ambidex::frame::HEADER_LEN;
-use ambidex::{Call, Dispatch, ErrorPayload, Server, ServerConfig, Session};
+use ambidex::{Call, Dispatch, ErrorPayload, Events, Server, ServerConfig, Session};
 
 pub use session::{IssuedSession, PlaceholderSessions, WebSession, WebSessions};
 pub use transport::{WsRx, WsTx, split};
@@ -345,6 +345,15 @@ impl<D: Dispatch> Dispatch for SharedDispatch<D> {
         call: Call,
     ) -> BoxFuture<'static, Result<serde_json::Value, ErrorPayload>> {
         self.0.call(session, call)
+    }
+
+    fn subscribe(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        events: Events,
+    ) -> BoxFuture<'static, Result<(), ErrorPayload>> {
+        self.0.subscribe(session, call, events)
     }
 }
 

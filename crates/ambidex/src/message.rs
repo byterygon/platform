@@ -46,8 +46,14 @@ pub struct HelloAck {
 pub struct Limits {
     /// Largest payload the server accepts in one frame.
     pub max_frame_bytes: u32,
-    /// Calls the server runs concurrently on this connection.
+    /// Calls and subscriptions the server runs concurrently on this connection.
     pub max_concurrent_calls: u32,
+    /// How long a cancelled call may keep running before the server drops it, in milliseconds
+    /// ([`ServerConfig::cancel_grace`](crate::ServerConfig::cancel_grace)). A client waits this
+    /// long, plus its own network margin, past a deadline before it gives up on the server's
+    /// answer (spec Open question 23b). Optional and additive: older servers omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel_grace_ms: Option<u64>,
 }
 
 /// Payload of a `Call` frame.
@@ -159,6 +165,25 @@ mod tests {
         let value = serde_json::to_value(&err).unwrap();
         assert_eq!(value["code"], "ApprovalRequired");
         assert!(value.get("details").is_none());
+    }
+
+    #[test]
+    fn limits_cancel_grace_is_optional() {
+        let old: Limits =
+            serde_json::from_value(json!({ "max_frame_bytes": 1, "max_concurrent_calls": 2 }))
+                .unwrap();
+        assert_eq!(old.cancel_grace_ms, None);
+        assert!(
+            serde_json::to_value(&old)
+                .unwrap()
+                .get("cancel_grace_ms")
+                .is_none()
+        );
+        let new = Limits {
+            cancel_grace_ms: Some(1000),
+            ..old
+        };
+        assert_eq!(serde_json::to_value(&new).unwrap()["cancel_grace_ms"], 1000);
     }
 
     #[test]

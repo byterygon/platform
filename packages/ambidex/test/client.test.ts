@@ -9,13 +9,22 @@ import { debugState } from "../src/client.js";
 import { Connection } from "../src/connection.js";
 import { type ClientOptions, Kind, RpcError, createClient, isRpcError } from "../src/index.js";
 import * as api from "./conformance/api.js";
-import { CountingSignal, MockTransport, json, settle, tick } from "./support/mock-server.js";
+import { ACK, CountingSignal, MockTransport, json, settle, tick } from "./support/mock-server.js";
 
-function setup(options: ClientOptions = {}) {
+function setup(options: ClientOptions = {}, ack: unknown = ACK) {
   const transport = new MockTransport();
+  transport.ack = ack;
   const client = createClient(api, transport, options);
   return { transport, client };
 }
+
+/** A HelloAck advertising the server's cancel grace (spec Open question 23b). */
+function ackWithGrace(cancelGraceMs: unknown) {
+  return { ...ACK, limits: { ...ACK.limits, cancel_grace_ms: cancelGraceMs } };
+}
+
+/** Lets pending promise callbacks run (setImmediate is not mocked). */
+const drain = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 describe("handshake", () => {
   it("sends Hello with api, schema hash, protocol and auth, then calls", async () => {
@@ -393,6 +402,85 @@ describe("deadlines", () => {
     assert.equal(cancel.callId, call.callId);
   });
 
+  it("exposes cancel_grace_ms from HelloAck and refuses a malformed one", async () => {
+    const { client } = setup({}, ackWithGrace(250));
+    assert.equal((await client.$connect()).limits.cancel_grace_ms, 250);
+    client.$close();
+    // Without it the field stays absent.
+    const plain = setup();
+    assert.equal((await plain.client.$connect()).limits.cancel_grace_ms, undefined);
+    plain.client.$close();
+    for (const bad of [-1, 1.5, "100", null]) {
+      const { client: c } = setup({}, ackWithGrace(bad));
+      const r = await settle(c.$connect());
+      assert.equal(r.ok, false, `cancel_grace_ms ${JSON.stringify(bad)}`);
+      assert.equal(r.error.code, "Unavailable");
+    }
+  });
+
+  it("waits cancel_grace_ms + networkMarginMs past the deadline when advertised", async (t) => {
+    const { transport, client } = setup({ timeoutSlackMs: 60_000 }, ackWithGrace(200));
+    await client.$connect();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const call: { out?: Awaited<ReturnType<typeof settle>> } = {};
+    // fixture.capped: timeoutMaxMs 50. Slack: 200 + the default 1000 ms margin.
+    void settle(client.fixture.capped(null)).then((r) => {
+      call.out = r;
+    });
+    const current = () => call.out;
+    const peer = await transport.peer();
+    const sent = await peer.nextOf(Kind.Call);
+    t.mock.timers.tick(1249);
+    await drain();
+    assert.equal(current(), undefined);
+    t.mock.timers.tick(1);
+    await drain();
+    const out = current();
+    assert.ok(out !== undefined && !out.ok);
+    assert.equal(out.error.code, "DeadlineExceeded");
+    assert.equal(out.error.local, true);
+    assert.equal((await peer.nextOf(Kind.Cancel)).callId, sent.callId);
+    client.$close();
+  });
+
+  it("takes networkMarginMs as an option", async (t) => {
+    const { transport, client } = setup({ networkMarginMs: 5 }, ackWithGrace(0));
+    await client.$connect();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const call: { out?: Awaited<ReturnType<typeof settle>> } = {};
+    void settle(client.fixture.wait(null, { timeoutMs: 10 })).then((r) => {
+      call.out = r;
+    });
+    const current = () => call.out;
+    await (await transport.peer()).nextOf(Kind.Call);
+    t.mock.timers.tick(14);
+    await drain();
+    assert.equal(current(), undefined);
+    t.mock.timers.tick(1);
+    await drain();
+    assert.equal(current()?.ok, false);
+    client.$close();
+  });
+
+  it("gives subscriptions the same safety timer, then unsubscribes", async (t) => {
+    const { transport, client } = setup({ networkMarginMs: 0 }, ackWithGrace(100));
+    await client.$connect();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const sub = client.fixture.counter({ count: 1, then: "wait" }, { timeoutMs: 20 });
+    const next = settle(sub[Symbol.asyncIterator]().next());
+    const peer = await transport.peer();
+    const s = await peer.nextOf(Kind.Subscribe);
+    assert.equal(json(s).timeout_ms, 20);
+    t.mock.timers.tick(120);
+    const r = await next;
+    assert.equal(r.ok, false);
+    assert.equal(r.error.code, "DeadlineExceeded");
+    assert.equal(r.error.local, true);
+    // The server is told it can stop; nothing more is delivered.
+    assert.equal((await peer.nextOf(Kind.Unsubscribe)).callId, s.callId);
+    client.$close();
+  });
+
   it("lets the server's answer win inside the slack window", async () => {
     const { transport, client } = setup({ timeoutSlackMs: 500 });
     const r = client.fixture.capped(null);
@@ -547,10 +635,10 @@ describe("call id exhaustion", () => {
 describe("subscriptions", () => {
   it("sends Subscribe and yields events in order", async () => {
     const { transport, client } = setup();
-    const sub = client.fixture.counter(null);
+    const sub = client.fixture.counter({ count: 0 });
     const peer = await transport.peer();
     const s = await peer.nextOf(Kind.Subscribe);
-    assert.deepEqual(json(s), { procedure: "fixture.counter", input: null });
+    assert.deepEqual(json(s), { procedure: "fixture.counter", input: { count: 0 } });
     for (let i = 1; i <= 5; i++) peer.json(Kind.Event, s.callId, i);
     const seen: number[] = [];
     for await (const n of sub) {
@@ -566,7 +654,7 @@ describe("subscriptions", () => {
   it("unsubscribe() sends Unsubscribe once, ends the iterator and drops later events", async () => {
     const { transport, client } = setup();
     const signal = new CountingSignal();
-    const sub = client.fixture.counter(null, { signal: signal.signal });
+    const sub = client.fixture.counter({ count: 0 }, { signal: signal.signal });
     const peer = await transport.peer();
     const s = await peer.nextOf(Kind.Subscribe);
     const it = sub[Symbol.asyncIterator]();
@@ -584,7 +672,7 @@ describe("subscriptions", () => {
 
   it("propagates the server's Error to the consumer after buffered events", async () => {
     const { transport, client } = setup();
-    const sub = client.fixture.counter(null);
+    const sub = client.fixture.counter({ count: 0 });
     const peer = await transport.peer();
     const s = await peer.nextOf(Kind.Subscribe);
     peer.json(Kind.Event, s.callId, 1);
@@ -602,7 +690,7 @@ describe("subscriptions", () => {
   it("abort ends the iteration with Cancelled and unsubscribes", async () => {
     const { transport, client } = setup();
     const controller = new AbortController();
-    const sub = client.fixture.counter(null, { signal: controller.signal });
+    const sub = client.fixture.counter({ count: 0 }, { signal: controller.signal });
     const peer = await transport.peer();
     const s = await peer.nextOf(Kind.Subscribe);
     const it = sub[Symbol.asyncIterator]();
@@ -614,7 +702,7 @@ describe("subscriptions", () => {
 
   it("ends on disconnect and on Goaway", async () => {
     const { transport, client } = setup();
-    const sub = client.fixture.counter(null);
+    const sub = client.fixture.counter({ count: 0 });
     const peer = await transport.peer();
     await peer.nextOf(Kind.Subscribe);
     peer.json(Kind.Goaway, 0, { code: "Unauthenticated", message: "session revoked" });
@@ -626,7 +714,7 @@ describe("subscriptions", () => {
 
   it("ends with ResourceExhausted when the consumer falls behind the buffer limit", async () => {
     const { transport, client } = setup({ maxBufferedEvents: 3 });
-    const sub = client.fixture.counter(null);
+    const sub = client.fixture.counter({ count: 0 });
     const peer = await transport.peer();
     const s = await peer.nextOf(Kind.Subscribe);
     for (let i = 0; i < 5; i++) peer.json(Kind.Event, s.callId, i);
@@ -643,7 +731,7 @@ describe("subscriptions", () => {
 
   it("allows one iteration only", () => {
     const { client } = setup();
-    const sub = client.fixture.counter(null);
+    const sub = client.fixture.counter({ count: 0 });
     sub[Symbol.asyncIterator]();
     assert.throws(() => sub[Symbol.asyncIterator](), TypeError);
     sub.unsubscribe();
@@ -697,7 +785,7 @@ describe("leaks", () => {
     const aborted = settle(client.fixture.wait(null, { signal: sig() }));
     const timedOutClient = createClient(api, transport, { timeoutSlackMs: 1 });
     const timedOut = settle(timedOutClient.fixture.capped(null));
-    const sub = client.fixture.counter(null, { signal: sig() });
+    const sub = client.fixture.counter({ count: 0 }, { signal: sig() });
     const f1 = await peer.nextOf(Kind.Call);
     const f2 = await peer.nextOf(Kind.Call);
     await peer.nextOf(Kind.Call);

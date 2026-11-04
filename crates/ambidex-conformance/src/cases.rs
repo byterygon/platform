@@ -1,19 +1,23 @@
 //! The conformance cases, each written once and run on every [`Harness`].
 //!
 //! Expectations come from the Ambidex spec (§3 wire protocol, §5 call kinds, §7 cancellation and
-//! deadlines, §8 authorization, §10 errors) and the decisions recorded in its Open questions 14–16
-//! and 21. Cases assert outcomes, not timing: where a race is allowed by the spec (a deadline may
+//! deadlines, §8 authorization and audit, §10 errors) and the decisions recorded in its Open
+//! questions 14–16, 21 and 23 (subscriptions). Cases assert outcomes, not timing: where a race is allowed by the spec (a deadline may
 //! fire before or after the handler first runs), every allowed outcome is accepted and checked.
 
 use std::collections::BTreeMap;
 
 use ambidex::frame::{Flags, Frame, HEADER_LEN, Kind};
-use ambidex::{Code, Goaway};
+use ambidex::security_types::{AuditDecision, Outcome, Reason};
+use ambidex::{Code, Goaway, input_digest};
 use serde_json::{Value, json};
 
-use crate::client::{Client, call_frame, cancel_frame, encode, json_frame};
+use crate::client::{
+    Client, call_frame, cancel_frame, encode, json_frame, subscribe_frame, unsubscribe_frame,
+};
 use crate::fixture::{
-    APPROVAL_ID, Event, MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES, SCHEMA_HASH, SERVER_VERSION,
+    APPROVAL_ID, CANCEL_GRACE, Event, MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES, SCHEMA_HASH,
+    SERVER_VERSION, SUBSCRIPTION_BUFFER_EVENTS,
 };
 use crate::harness::Harness;
 
@@ -66,6 +70,9 @@ pub async fn handshake_returns_ack_with_limits<H: Harness>(h: &H) {
     assert_eq!(ack.server_version, SERVER_VERSION);
     assert_eq!(ack.limits.max_frame_bytes, MAX_FRAME_BYTES);
     assert_eq!(ack.limits.max_concurrent_calls, MAX_CONCURRENT_CALLS);
+    // Spec Open question 23b: the client sizes its safety slack from it.
+    let grace_ms = u64::try_from(CANCEL_GRACE.as_millis()).unwrap();
+    assert_eq!(ack.limits.cancel_grace_ms, Some(grace_ms));
 }
 
 pub async fn version_mismatch_is_rejected<H: Harness>(h: &H) {
@@ -364,6 +371,16 @@ pub async fn permission_denied_never_runs_handler<H: Harness>(h: &H) {
     assert_eq!(err.message, "permission denied");
     assert_eq!(err.details, None);
     assert_eq!(h.fixture().probe.runs(), 0);
+    // Both refusals are audited, with the reason the client never saw.
+    let entries = h.fixture().audit.entries();
+    assert_eq!(entries.len(), 2, "{entries:?}");
+    assert!(entries.iter().all(|e| e.action.name == "fixture.protected"
+        && matches!(e.decision, AuditDecision::Deny { .. })
+        && e.outcome
+            == Outcome::Error {
+                code: "PermissionDenied".into()
+            }));
+    assert_eq!(entries[1].correlation_id, err.correlation_id);
 }
 
 pub async fn approval_required_carries_approval_id<H: Harness>(h: &H) {
@@ -413,13 +430,9 @@ pub async fn call_id_zero_is_fatal<H: Harness>(h: &H) {
 pub async fn subscribe_must_also_increase_call_id<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     client
-        .send(&[json_frame(
-            Kind::Subscribe,
-            3,
-            &json!({ "procedure": "fixture.counter", "input": null }),
-        )])
+        .subscribe(3, "fixture.counter", counter(0, "finish"))
         .await;
-    client.expect_code(3, Code::Unimplemented).await;
+    assert_eq!(client.expect_result(3).await, Value::Null);
     client.call(3, "fixture.echo", json!(null)).await;
     client.expect_fatal(Code::InvalidArgument).await;
 }
@@ -600,23 +613,310 @@ pub async fn connections_are_independent<H: Harness>(h: &H) {
     a.expect_code(1, Code::Cancelled).await;
 }
 
-// ---- call kinds without engine support yet (§5) --------------------------------------------
+// ---- subscriptions (§5, Open questions 21 and 23) -------------------------------------------
 
-pub async fn subscriptions_are_unimplemented_and_keep_connection<H: Harness>(h: &H) {
-    let mut client = ready(h).await;
-    let subscribe = json!({ "procedure": "fixture.counter", "input": null });
-    client
-        .send(&[json_frame(Kind::Subscribe, 1, &subscribe)])
-        .await;
-    client.expect_code(1, Code::Unimplemented).await;
-    client
-        .send(&[Frame::new(Kind::Unsubscribe, 1, Vec::new())])
-        .await;
-    client.expect_alive(0).await;
-    // Called as a unary call, a subscription is authorized, then unimplemented.
-    client.call(2, "fixture.counter", json!(null)).await;
-    client.expect_code(2, Code::Unimplemented).await;
+/// Input of `fixture.counter`: events 0..count, then `then` (finish, fail, wait, hang).
+fn counter(count: u64, then: &str) -> Value {
+    json!({ "count": count, "then": then })
 }
+
+/// The next frames must be the events 0..`count` of subscription `call_id`, in order.
+async fn expect_counter(client: &mut Client, call_id: u32, count: u64) {
+    for n in 0..count {
+        assert_eq!(client.expect_event(call_id).await, json!(n));
+    }
+}
+
+pub async fn subscription_events_arrive_in_order_then_result<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(5, "finish"))
+        .await;
+    expect_counter(&mut client, 1, 5).await;
+    // A normal end: Result with payload null, exactly once.
+    assert_eq!(client.expect_result(1).await, Value::Null);
+    client.expect_alive(0).await;
+}
+
+pub async fn subscription_ends_with_server_error<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(2, "fail"))
+        .await;
+    expect_counter(&mut client, 1, 2).await;
+    let err = client.expect_code(1, Code::FailedPrecondition).await;
+    assert_eq!(
+        err.details,
+        Some(json!({ "kind": "Requested", "code": "FailedPrecondition", "retryable": false }))
+    );
+    assert!(!err.correlation_id.is_empty());
+    client.expect_alive(0).await;
+}
+
+pub async fn nothing_is_sent_after_unsubscribe<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let count = SUBSCRIPTION_BUFFER_EVENTS as u64;
+    client
+        .subscribe(1, "fixture.counter", counter(count, "wait"))
+        .await;
+    assert_eq!(client.expect_event(1).await, json!(0));
+    // Unsubscribe and a Ping in one chunk. Events the server sent before it read them may still
+    // be in flight; after the Pong nothing more may come for id 1.
+    let ping = Frame::new(Kind::Ping, 1, b"after".to_vec());
+    client.send(&[unsubscribe_frame(1), ping]).await;
+    let mut next = 1;
+    loop {
+        let frame = client.recv().await.expect("Pong, got close");
+        if frame.kind == Kind::Pong {
+            assert_eq!(frame.call_id, 1, "{frame:?}");
+            break;
+        }
+        assert_eq!((frame.kind, frame.call_id), (Kind::Event, 1), "{frame:?}");
+        assert_eq!(frame.payload, next.to_string().into_bytes(), "in order");
+        next += 1;
+    }
+    // The handler was cancelled and returned Ok; that end is not sent either.
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("counter")).await;
+    probe.expect(Event::Cancelled("counter")).await;
+    client.expect_alive(2).await;
+    client.call(2, "fixture.echo", json!(2)).await;
+    assert_eq!(client.expect_result(2).await, json!(2));
+}
+
+pub async fn unsubscribed_handler_gets_cancel_grace<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(1, "hang"))
+        .await;
+    assert_eq!(client.expect_event(1).await, json!(0));
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("counter")).await;
+    client.unsubscribe(1).await;
+    // The handler ignores its token: its future is dropped after the grace period, silently.
+    probe.expect(Event::Dropped("counter")).await;
+    client.expect_alive(0).await;
+    client.call(2, "fixture.echo", json!(2)).await;
+    assert_eq!(client.expect_result(2).await, json!(2));
+}
+
+pub async fn unsubscribe_for_unknown_or_ended_id_is_ignored<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.unsubscribe(99).await;
+    client.expect_alive(0).await;
+    client
+        .subscribe(100, "fixture.counter", counter(1, "finish"))
+        .await;
+    expect_counter(&mut client, 100, 1).await;
+    client.expect_result(100).await;
+    client.unsubscribe(100).await;
+    client.expect_alive(0).await;
+}
+
+pub async fn unsubscribe_on_call_zero_is_fatal<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.unsubscribe(0).await;
+    client.expect_fatal(Code::InvalidArgument).await;
+}
+
+pub async fn cancel_ends_subscription_and_reaches_handler<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(1, "wait"))
+        .await;
+    assert_eq!(client.expect_event(1).await, json!(0));
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("counter")).await;
+    client.cancel(1).await;
+    // The handler returned Ok after seeing its token; the client still gets Cancelled, once.
+    client.expect_code(1, Code::Cancelled).await;
+    probe.expect(Event::Cancelled("counter")).await;
+    client.expect_alive(0).await;
+}
+
+pub async fn stubborn_subscription_is_dropped_after_grace<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(0, "hang"))
+        .await;
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("counter")).await;
+    client.cancel(1).await;
+    client.expect_code(1, Code::Cancelled).await;
+    probe.expect(Event::Dropped("counter")).await;
+    client.expect_alive(0).await;
+}
+
+pub async fn deadline_ends_subscription<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe_with_timeout(1, "fixture.counter", counter(0, "wait"), 200)
+        .await;
+    client.expect_code(1, Code::DeadlineExceeded).await;
+    assert_never_started_or_saw_cancel(h, "counter").await;
+    // Already expired: the handler never runs.
+    let runs = h.fixture().probe.runs();
+    client
+        .subscribe_with_timeout(2, "fixture.counter", counter(3, "finish"), 0)
+        .await;
+    client.expect_code(2, Code::DeadlineExceeded).await;
+    assert_eq!(h.fixture().probe.runs(), runs);
+    client.expect_alive(0).await;
+}
+
+pub async fn disconnect_cancels_subscriptions<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(1, "wait"))
+        .await;
+    assert_eq!(client.expect_event(1).await, json!(0));
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("counter")).await;
+    client.disconnect().await;
+    probe.expect(Event::Cancelled("counter")).await;
+}
+
+pub async fn session_revocation_ends_subscriptions_with_goaway<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(1, "wait"))
+        .await;
+    assert_eq!(client.expect_event(1).await, json!(0));
+    client.call(2, "fixture.wait", json!(null)).await;
+    let probe = &h.fixture().probe;
+    // The counter started before it sent event 0, so before the call was sent.
+    probe.expect(Event::Started("counter")).await;
+    probe.expect(Event::Started("wait")).await;
+    if let Err(reason) = h.revoke_sessions() {
+        eprintln!("{}: session revocation not applicable: {reason}", H::NAME);
+        client.send(&[cancel_frame(1), cancel_frame(2)]).await;
+        for frame in terminal_frames(&mut client, &[1, 2]).await.values() {
+            assert_eq!(error_code(frame), Code::Cancelled);
+        }
+        return;
+    }
+    // Goaway is the only frame: no Error for the subscription or the call (Open question 21d).
+    let goaway = client.expect_goaway().await;
+    assert_eq!(goaway.code, Code::Unauthenticated);
+    assert_eq!(goaway.message, "session revoked");
+    client.expect_closed().await;
+    probe
+        .expect_all(&[Event::Cancelled("counter"), Event::Cancelled("wait")])
+        .await;
+}
+
+pub async fn unauthorized_subscribe_is_denied_and_audited<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.subscribe(1, "fixture.secret", json!(null)).await;
+    let err = client.expect_code(1, Code::PermissionDenied).await;
+    assert_eq!(err.message, "permission denied");
+    assert_eq!(err.details, None);
+    assert_eq!(h.fixture().probe.runs(), 0, "the handler never ran");
+    // The same audit path as calls (spec §8): who, what, why, and the id the client got.
+    let entries = h.fixture().audit.entries();
+    assert_eq!(entries.len(), 1, "{entries:?}");
+    let entry = &entries[0];
+    assert_eq!(entry.action.name, "fixture.secret");
+    assert_eq!(entry.action.perm.as_str(), "fixture.admin");
+    assert_eq!(entry.principal_chain[0].id, h.principal_id());
+    assert_eq!(
+        entry.decision,
+        AuditDecision::Deny {
+            reason: Reason::UnknownPermission {
+                perm: "fixture.admin".into()
+            }
+        }
+    );
+    assert_eq!(
+        entry.outcome,
+        Outcome::Error {
+            code: "PermissionDenied".into()
+        }
+    );
+    assert_eq!(entry.approval_id, None);
+    assert_eq!(entry.correlation_id, err.correlation_id);
+    assert_eq!(entry.input_digest, input_digest(&Value::Null));
+    client.expect_alive(0).await;
+}
+
+pub async fn call_kind_must_match_frame_kind<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    // Refused before authorization: kinds are public in the manifest, like names.
+    client.subscribe(1, "fixture.echo", json!(1)).await;
+    client.expect_code(1, Code::InvalidArgument).await;
+    client.subscribe(2, "fixture.rows", json!(null)).await;
+    client.expect_code(2, Code::InvalidArgument).await;
+    client
+        .call(3, "fixture.counter", counter(1, "finish"))
+        .await;
+    client.expect_code(3, Code::InvalidArgument).await;
+    // A subscription that is not registered is NotFound, as for calls.
+    client.subscribe(4, "fixture.missing", json!(null)).await;
+    client.expect_code(4, Code::NotFound).await;
+    assert_eq!(h.fixture().probe.runs(), 0);
+    assert!(h.fixture().audit.entries().is_empty());
+    client.expect_alive(0).await;
+}
+
+pub async fn subscriptions_count_toward_concurrency_limit<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let limit = MAX_CONCURRENT_CALLS;
+    // limit - 1 subscriptions and one call fill the connection's slots.
+    let mut frames: Vec<_> = (1..limit)
+        .map(|id| subscribe_frame(id, "fixture.counter", counter(0, "wait"), None))
+        .collect();
+    frames.push(call_frame(limit, "fixture.wait", json!(null), None));
+    client.send(&frames).await;
+    // One more of either kind is refused, retryably.
+    client
+        .subscribe(limit + 1, "fixture.counter", counter(0, "wait"))
+        .await;
+    assert!(
+        client
+            .expect_code(limit + 1, Code::ResourceExhausted)
+            .await
+            .retryable
+    );
+    client.call(limit + 2, "fixture.echo", json!(null)).await;
+    assert!(
+        client
+            .expect_code(limit + 2, Code::ResourceExhausted)
+            .await
+            .retryable
+    );
+    let cancels: Vec<_> = (1..=limit).map(cancel_frame).collect();
+    client.send(&cancels).await;
+    let ids: Vec<_> = (1..=limit).collect();
+    for frame in terminal_frames(&mut client, &ids).await.values() {
+        assert_eq!(error_code(frame), Code::Cancelled);
+    }
+    // Ended subscriptions free their slots.
+    client
+        .subscribe(limit + 3, "fixture.counter", counter(1, "finish"))
+        .await;
+    expect_counter(&mut client, limit + 3, 1).await;
+    client.expect_result(limit + 3).await;
+}
+
+pub async fn full_event_buffer_ends_subscription<H: Harness>(h: &H) {
+    if let Err(reason) = h.engine_on_case_runtime() {
+        eprintln!("{}: exact buffer bound not asserted: {reason}", H::NAME);
+        return;
+    }
+    let mut client = ready(h).await;
+    // The handler sends without yielding, so nothing is forwarded meanwhile: the buffer takes
+    // exactly SUBSCRIPTION_BUFFER_EVENTS, the next event ends the subscription.
+    client.subscribe(1, "fixture.flood", json!(null)).await;
+    expect_counter(&mut client, 1, SUBSCRIPTION_BUFFER_EVENTS as u64).await;
+    let err = client.expect_code(1, Code::ResourceExhausted).await;
+    assert_eq!(err.message, "subscription event buffer is full");
+    let probe = &h.fixture().probe;
+    probe.expect(Event::Started("flood")).await;
+    probe.expect(Event::Cancelled("flood")).await;
+    client.expect_alive(0).await;
+}
+
+// ---- call kinds without engine support yet (§5) --------------------------------------------
 
 pub async fn streams_are_unimplemented_and_keep_connection<H: Harness>(h: &H) {
     let mut client = ready(h).await;

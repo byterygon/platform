@@ -114,6 +114,11 @@ impl Harness for Ws {
         ))
     }
 
+    fn engine_on_case_runtime(&self) -> Result<(), Unsupported> {
+        // The server and every connection it accepts are spawned on the case's runtime.
+        Ok(())
+    }
+
     async fn shutdown(self) {
         let _ = self.stop.send(());
         self.server

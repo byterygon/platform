@@ -35,7 +35,7 @@ export class MockPeer {
   #waiters: Array<() => void> = [];
   #ended = false;
 
-  constructor(sink: PipeSink, autoAck: boolean, auth?: unknown) {
+  constructor(sink: PipeSink, autoAck: boolean, auth?: unknown, ack: unknown = ACK) {
     this.#sink = sink;
     this.pipe = {
       send: (bytes) => {
@@ -44,7 +44,7 @@ export class MockPeer {
         for (let f = this.#decoder.next(); f !== undefined; f = this.#decoder.next()) {
           this.received.push(f);
           if (autoAck && f.kind === Kind.Hello) {
-            queueMicrotask(() => this.json(Kind.HelloAck, 0, ACK));
+            queueMicrotask(() => this.json(Kind.HelloAck, 0, ack));
           }
         }
         const waiters = this.#waiters;
@@ -134,6 +134,8 @@ export class MockTransport implements Transport {
   readonly name = "mock";
   readonly peers: MockPeer[] = [];
   autoAck = true;
+  /** The HelloAck `autoAck` answers with. */
+  ack: unknown = ACK;
   auth: unknown;
   /** Make `open` reject. */
   failOpen = false;
@@ -144,7 +146,7 @@ export class MockTransport implements Transport {
   open(sink: PipeSink): Promise<Pipe> {
     if (this.failOpen) return Promise.reject(new Error("refused"));
     if (this.hangOpen) return new Promise(() => {});
-    const peer = new MockPeer(sink, this.autoAck, this.auth);
+    const peer = new MockPeer(sink, this.autoAck, this.auth, this.ack);
     this.peers.push(peer);
     for (const w of this.#waiters.splice(0)) w();
     return Promise.resolve(peer.pipe);

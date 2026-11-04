@@ -5,6 +5,8 @@
 //!
 //! - a `Cancel` frame for the call ([`Code::Cancelled`]);
 //! - the deadline ([`Code::DeadlineExceeded`]);
+//! - for a subscription, an `Unsubscribe` frame ([`Code::Cancelled`]) or an event the server cannot
+//!   buffer ([`Code::ResourceExhausted`], see [`crate::subscription`]);
 //! - session revocation, [`Connection::goaway`](crate::Connection::goaway) or disconnect: these
 //!   cancel the connection's parent token, so every call on it fires ([`Code::Cancelled`]).
 //!
@@ -52,8 +54,11 @@ pub struct CallScope {
 
 struct Inner {
     token: CancellationToken,
-    /// Why the token fired. Unset when a parent (connection) token fired: that is `Cancelled`.
-    reason: OnceLock<Code>,
+    /// Why the token fired, with the message the call answers. Unset when a parent (connection)
+    /// token fired: that is `Cancelled`.
+    reason: OnceLock<(Code, &'static str)>,
+    /// The id the call's errors carry; empty outside the engine.
+    correlation_id: String,
     start: Instant,
     requested: Option<Duration>,
     deadline: Mutex<Instant>,
@@ -68,15 +73,20 @@ impl CallScope {
     /// (e.g. the MCP adapter calling [`Router::call`](crate::Router::call)), where the caller
     /// enforces the deadline.
     pub fn new(requested: Option<Duration>) -> CallScope {
-        CallScope::with_token(CancellationToken::new(), requested)
+        CallScope::with_token(CancellationToken::new(), requested, String::new())
     }
 
-    pub(crate) fn with_token(token: CancellationToken, requested: Option<Duration>) -> CallScope {
+    pub(crate) fn with_token(
+        token: CancellationToken,
+        requested: Option<Duration>,
+        correlation_id: String,
+    ) -> CallScope {
         let start = Instant::now();
         CallScope {
             inner: Arc::new(Inner {
                 token,
                 reason: OnceLock::new(),
+                correlation_id,
                 start,
                 requested,
                 deadline: Mutex::new(
@@ -101,6 +111,11 @@ impl CallScope {
         &self.inner.token
     }
 
+    /// The id the engine puts on this call's errors and audit entries (`""` outside the engine).
+    pub fn correlation_id(&self) -> &str {
+        &self.inner.correlation_id
+    }
+
     /// Resolves once the token fires.
     pub async fn cancelled(&self) {
         self.inner.token.cancelled().await
@@ -110,10 +125,11 @@ impl CallScope {
         self.inner.token.is_cancelled()
     }
 
-    /// `Cancelled` or `DeadlineExceeded` once the token fired, `None` before.
+    /// Why the token fired (`Cancelled`, `DeadlineExceeded`, or `ResourceExhausted` for a
+    /// subscription whose events could not be buffered), `None` before.
     pub fn reason(&self) -> Option<Code> {
         self.is_cancelled()
-            .then(|| *self.inner.reason.get().unwrap_or(&Code::Cancelled))
+            .then(|| self.inner.reason.get().map_or(Code::Cancelled, |r| r.0))
     }
 
     /// Fires the token with `Cancelled`. No-op if it already fired.
@@ -123,8 +139,17 @@ impl CallScope {
 
     /// Fires the token; the first reason wins.
     pub(crate) fn fire(&self, reason: Code) {
+        let message = match reason {
+            Code::DeadlineExceeded => "deadline exceeded",
+            _ => "call cancelled",
+        };
+        self.fail(reason, message);
+    }
+
+    /// Fires the token with `code` and the message the call then answers; the first reason wins.
+    pub(crate) fn fail(&self, code: Code, message: &'static str) {
         if !self.is_cancelled() {
-            let _ = self.inner.reason.set(reason);
+            let _ = self.inner.reason.set((code, message));
         }
         self.inner.token.cancel();
     }
@@ -140,10 +165,8 @@ impl CallScope {
 
     /// The `Error` a call answers once its token fired.
     pub(crate) fn error(&self) -> ErrorPayload {
-        match self.reason() {
-            Some(Code::DeadlineExceeded) => {
-                ErrorPayload::new(Code::DeadlineExceeded, "deadline exceeded")
-            }
+        match self.inner.reason.get() {
+            Some(&(code, message)) if self.is_cancelled() => ErrorPayload::new(code, message),
             _ => ErrorPayload::new(Code::Cancelled, "call cancelled"),
         }
     }
@@ -234,9 +257,20 @@ mod tests {
     }
 
     #[test]
+    fn fail_keeps_its_code_and_message() {
+        let scope = CallScope::new(None);
+        scope.fail(Code::ResourceExhausted, "subscription event buffer is full");
+        scope.cancel();
+        assert_eq!(scope.reason(), Some(Code::ResourceExhausted));
+        let err = scope.error();
+        assert_eq!(err.code, Code::ResourceExhausted);
+        assert_eq!(err.message, "subscription event buffer is full");
+    }
+
+    #[test]
     fn parent_cancel_reads_as_cancelled() {
         let parent = CancellationToken::new();
-        let scope = CallScope::with_token(parent.child_token(), None);
+        let scope = CallScope::with_token(parent.child_token(), None, String::new());
         parent.cancel();
         assert_eq!(scope.reason(), Some(Code::Cancelled));
     }

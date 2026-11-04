@@ -44,7 +44,13 @@ export interface HelloInfo {
 /** Limits the server enforces on this connection (`HelloAck.limits`). */
 export interface Limits {
   readonly max_frame_bytes: number;
+  /** Calls and subscriptions in flight at once. */
   readonly max_concurrent_calls: number;
+  /**
+   * How long the server lets a cancelled call run before dropping it, in milliseconds (spec Open
+   * question 23b). Optional: older servers omit it.
+   */
+  readonly cancel_grace_ms?: number;
 }
 
 /** The server's `HelloAck`. `session` identifies the session; it is not a credential. */
@@ -431,12 +437,18 @@ function parseAck(value: unknown): HelloAck | undefined {
   ) {
     return undefined;
   }
+  // Additive and optional; when present it must be a non-negative integer of milliseconds.
+  const grace = limits["cancel_grace_ms"];
+  if (grace !== undefined && !(Number.isSafeInteger(grace) && (grace as number) >= 0)) {
+    return undefined;
+  }
   return {
     session: v["session"],
     server_version: v["server_version"],
     limits: {
       max_frame_bytes: limits["max_frame_bytes"],
       max_concurrent_calls: limits["max_concurrent_calls"],
+      ...(grace !== undefined ? { cancel_grace_ms: grace as number } : {}),
     },
   };
 }

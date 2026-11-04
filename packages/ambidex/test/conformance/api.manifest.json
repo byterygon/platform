@@ -31,6 +31,50 @@
       ],
       "type": "string"
     },
+    "CounterEnd": {
+      "description": "What [`FixtureApi::counter`] does after its last event.",
+      "oneOf": [
+        {
+          "const": "finish",
+          "description": "Ends normally: `Result` with payload `null`.",
+          "type": "string"
+        },
+        {
+          "const": "fail",
+          "description": "Ends with `FailedPrecondition` and a typed [`FixtureError`] in `details`.",
+          "type": "string"
+        },
+        {
+          "const": "wait",
+          "description": "Waits for its token (Cancel, Unsubscribe, deadline, revocation, disconnect), records\n[`Event::Cancelled`], then returns `Ok` (which the client must never see).",
+          "type": "string"
+        },
+        {
+          "const": "hang",
+          "description": "Ignores its token; only dropping its future stops it.",
+          "type": "string"
+        }
+      ]
+    },
+    "CounterInput": {
+      "description": "Input of [`FixtureApi::counter`].",
+      "properties": {
+        "count": {
+          "description": "Events sent: 0, 1, …, `count - 1`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "then": {
+          "$ref": "#/$defs/CounterEnd",
+          "default": "finish"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    },
     "FailInput": {
       "description": "Input of [`FixtureApi::fail`].",
       "properties": {
@@ -140,8 +184,12 @@
     {
       "agent": "hidden",
       "deprecated": false,
-      "error": false,
-      "input": true,
+      "error": {
+        "$ref": "#/$defs/FixtureError"
+      },
+      "input": {
+        "$ref": "#/$defs/CounterInput"
+      },
       "kind": "subscription",
       "log_input": false,
       "name": "fixture.counter",
@@ -212,6 +260,25 @@
     {
       "agent": "hidden",
       "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "subscription",
+      "log_input": false,
+      "name": "fixture.flood",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
       "error": true,
       "input": true,
       "kind": "query",
@@ -269,6 +336,25 @@
       "deprecated": false,
       "error": false,
       "input": true,
+      "kind": "subscription",
+      "log_input": false,
+      "name": "fixture.secret",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.admin",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
       "kind": "query",
       "log_input": false,
       "name": "fixture.stubborn",
@@ -315,5 +401,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:9ff3ce4dd80a2d781ce366b8a8e9f6da349e454f24eee7f9b248b691589e5383"
+  "schema_hash": "sha256:f1a35441eea15c98250ce1c83da0c1d335561100f5befab024268c8e4459e4dd"
 }

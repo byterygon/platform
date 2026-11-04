@@ -6,16 +6,30 @@
 //!
 //! 1. looks the procedure up (`NotFound` otherwise);
 //! 2. answers `NotFound` to agent principals for procedures not marked `agent = Agent::Exposed`;
-//! 3. asks the [`Authorizer`] with the procedure's action, baseline risk and the input digest,
+//! 3. checks the call kind: a subscription is started with `Subscribe` ([`Router::subscribe`]),
+//!    everything else with `Call` ([`Router::call`]); otherwise `InvalidArgument`, before any
+//!    authorization (kinds are public in the manifest, like names);
+//! 4. asks the [`Authorizer`] with the procedure's action, baseline risk and the input digest,
 //!    and runs the handler only on [`Decision::Allow`]. There is no default authorizer: a router
 //!    cannot be built without one, and the authorizer denies unknown permissions (default-deny);
-//! 4. decodes the input, runs the handler and encodes its result or typed error.
+//! 5. decodes the input, runs the handler and encodes its result or typed error.
+//!
+//! Calls and subscriptions share every step; a subscription handler also gets the subscription's
+//! [`Events`], typed as an [`EventSink`](crate::EventSink) by `#[rpc::router]`.
 //!
 //! Right after the lookup it applies the procedure's `timeout_default`/`timeout_max` to the call's
 //! [`CallScope`], so the deadline covers authorization too. Handlers observe cancellation through
 //! [`Ctx::cancelled`] and pass [`Ctx::cancellation_token`] on (e.g. to the Plugin Host driver call).
 //!
 //! Handlers re-check targets and escalated risk with [`Ctx::authorize`].
+//!
+//! **Audit** (spec §8, provisional, spec Open question 24): with an [`AuditSink`]
+//! ([`Router::with_audit`]), every refusal by the authorizer, at dispatch or in
+//! [`Ctx::authorize`], of any call kind, is recorded as one [`AuditEntry`]: principal chain,
+//! tenant, action, target, risk, decision (with the deny reason), approval id, outcome
+//! (`PermissionDenied` or `ApprovalRequired`), correlation id and input digest. A sink failure
+//! cannot let a refused call through. Entries for calls that run (Write/Destructive, agent
+//! calls) are not written yet.
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -24,8 +38,8 @@ use std::future::Future;
 use std::sync::{Arc, Mutex, RwLock};
 
 use security_types::{
-    ApprovalSpec, Authorizer, AuthzRequest, Decision, Digest, Principal, PrincipalKind, Risk,
-    TargetRef,
+    Action, ApprovalSpec, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest,
+    Decision, Digest, Outcome, Principal, PrincipalKind, Risk, TargetRef,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -40,36 +54,57 @@ use crate::codegen::ProcedureTypes;
 use crate::engine::{BoxFuture, Dispatch, Session};
 use crate::error::{IntoErrorPayload, RpcError};
 use crate::message::{Call, Code, ErrorPayload};
-use crate::procedure::{Agent, ProcedureMeta, is_valid_perm};
+use crate::procedure::{Agent, ProcedureKind, ProcedureMeta, is_valid_perm};
+use crate::subscription::Events;
 
 /// Type-erased handler: decoded call context and JSON input in, JSON result or wire error out.
 pub type Handler =
     Arc<dyn Fn(Ctx, Value) -> BoxFuture<'static, Result<Value, ErrorPayload>> + Send + Sync>;
 
+/// Type-erased subscription handler: context, JSON input and the subscription's events in;
+/// `Ok(())` for a normal end, or the wire error it ends with.
+pub type SubscriptionHandler =
+    Arc<dyn Fn(Ctx, Value, Events) -> BoxFuture<'static, Result<(), ErrorPayload>> + Send + Sync>;
+
+/// What runs when a procedure is called.
+#[derive(Clone)]
+enum Run {
+    /// A query or mutation.
+    Unary(Handler),
+    Subscription(SubscriptionHandler),
+    /// Listed and authorized, then answered with `Unimplemented` (streams until M2).
+    Declared,
+}
+
 /// One registry entry.
 #[derive(Clone)]
 pub struct Procedure {
     meta: Arc<ProcedureMeta>,
-    handler: Option<Handler>,
+    run: Run,
     types: Option<ProcedureTypes>,
 }
 
 impl Procedure {
     /// A query or mutation with its handler.
     pub fn new(meta: ProcedureMeta, handler: Handler) -> Procedure {
-        Procedure {
-            meta: Arc::new(meta),
-            handler: Some(handler),
-            types: None,
-        }
+        Procedure::with_run(meta, Run::Unary(handler))
     }
 
-    /// A procedure whose call kind the engine cannot run yet (subscriptions and streams). It is
-    /// listed and authorized like any other, then answered with `Unimplemented`.
+    /// A subscription with its handler.
+    pub fn subscription(meta: ProcedureMeta, handler: SubscriptionHandler) -> Procedure {
+        Procedure::with_run(meta, Run::Subscription(handler))
+    }
+
+    /// A procedure whose call kind the engine cannot run yet (streams, until M2). It is listed
+    /// and authorized like any other, then answered with `Unimplemented`.
     pub fn declared(meta: ProcedureMeta) -> Procedure {
+        Procedure::with_run(meta, Run::Declared)
+    }
+
+    fn with_run(meta: ProcedureMeta, run: Run) -> Procedure {
         Procedure {
             meta: Arc::new(meta),
-            handler: None,
+            run,
             types: None,
         }
     }
@@ -93,9 +128,14 @@ impl Procedure {
 
 impl fmt::Debug for Procedure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let run = match self.run {
+            Run::Unary(_) => "unary",
+            Run::Subscription(_) => "subscription",
+            Run::Declared => "declared",
+        };
         f.debug_struct("Procedure")
             .field("meta", &self.meta)
-            .field("handler", &self.handler.is_some())
+            .field("run", &run)
             .finish()
     }
 }
@@ -128,6 +168,9 @@ pub enum RegistryError {
     InvalidName(String),
     /// The permission is empty or contains whitespace.
     InvalidPermission(String),
+    /// The handler does not match the procedure's kind (a unary handler on a subscription, or a
+    /// subscription handler on anything else).
+    KindMismatch(String),
 }
 
 impl fmt::Display for RegistryError {
@@ -137,6 +180,9 @@ impl fmt::Display for RegistryError {
             RegistryError::InvalidName(name) => write!(f, "invalid procedure name {name:?}"),
             RegistryError::InvalidPermission(name) => {
                 write!(f, "procedure {name} has an invalid permission")
+            }
+            RegistryError::KindMismatch(name) => {
+                write!(f, "procedure {name} has a handler for another call kind")
             }
         }
     }
@@ -155,49 +201,121 @@ impl<Z: Authorizer> DynAuthorizer for Z {
     }
 }
 
-/// Authorizer plus approval queue, shared by the router and every [`Ctx`].
+/// Receives audit entries (spec §8). The entry format is shared with Plugin Host
+/// (`security_types::AuditEntry`), so both can write one hash-chained log.
+pub trait AuditSink: Send + Sync + 'static {
+    fn append(&self, entry: AuditEntry) -> Result<(), AuditError>;
+}
+
+/// An [`AuditSink`] could not record an entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditError(pub String);
+
+impl fmt::Display for AuditError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "audit sink failed: {}", self.0)
+    }
+}
+
+impl std::error::Error for AuditError {}
+
+/// Authorizer, approval queue and audit sink, shared by the router and every [`Ctx`].
 struct Guard {
-    authorizer: Box<dyn DynAuthorizer>,
-    approvals: Option<Box<dyn Approvals>>,
+    authorizer: Arc<dyn DynAuthorizer>,
+    approvals: Option<Arc<dyn Approvals>>,
+    audit: Option<Arc<dyn AuditSink>>,
+}
+
+/// What a check is about, for the authorizer and the audit entry.
+struct Check<'a> {
+    principal: &'a Principal,
+    meta: &'a ProcedureMeta,
+    target: Option<&'a TargetRef>,
+    risk: Risk,
+    input_digest: Digest,
+    correlation_id: &'a str,
 }
 
 impl Guard {
-    /// Asks the authorizer and maps anything but `Allow` to the error the caller sees.
-    async fn enforce(
-        &self,
-        principal: &Principal,
-        meta: &ProcedureMeta,
-        target: Option<&TargetRef>,
-        risk: Risk,
-        input_digest: Digest,
-    ) -> Result<(), Rejected> {
-        let action = meta.action();
+    /// Asks the authorizer and maps anything but `Allow` to the error the caller sees. A refusal
+    /// is audited.
+    async fn enforce(&self, check: Check<'_>) -> Result<(), Rejected> {
+        let action = check.meta.action();
         let req = AuthzRequest {
-            principal,
+            principal: check.principal,
             action: &action,
-            target,
-            risk,
-            input_digest,
+            target: check.target,
+            risk: check.risk,
+            input_digest: check.input_digest,
         };
-        match self.authorizer.check(&req).await {
-            Decision::Allow => Ok(()),
+        let decision = self.authorizer.check(&req).await;
+        let rejected = match &decision {
+            Decision::Allow => return Ok(()),
             // The reason stays on the server: the client learns only that it was denied.
-            Decision::Deny { .. } => Err(Rejected {
+            Decision::Deny { .. } => Rejected {
                 code: Code::PermissionDenied,
                 approval_id: None,
-            }),
+            },
             Decision::NeedsApproval { approval } => {
                 let approval_id = match &self.approvals {
-                    Some(approvals) => approvals.request(principal, &approval).await,
+                    Some(approvals) => approvals.request(check.principal, approval).await,
                     None => None,
                 };
-                Err(Rejected {
+                Rejected {
                     code: Code::ApprovalRequired,
                     approval_id,
-                })
+                }
             }
-        }
+        };
+        self.audit_refusal(&check, action, &decision, &rejected);
+        Err(rejected)
     }
+
+    fn audit_refusal(
+        &self,
+        check: &Check<'_>,
+        action: Action,
+        decision: &Decision,
+        rejected: &Rejected,
+    ) {
+        let Some(audit) = &self.audit else {
+            return;
+        };
+        let entry = AuditEntry {
+            timestamp_unix_ms: now_unix_ms(),
+            principal_chain: AuditPrincipal::chain_of(check.principal),
+            tenant: check.principal.tenant.clone(),
+            action,
+            target: check.target.cloned(),
+            risk: check.risk,
+            decision: AuditDecision::from(decision),
+            approval_id: rejected.approval_id.clone(),
+            outcome: Outcome::Error {
+                code: code_name(rejected.code),
+            },
+            duration_ms: None,
+            correlation_id: check.correlation_id.to_owned(),
+            input_digest: check.input_digest,
+            statement_digest: None,
+        };
+        // The call is refused whether or not the entry was recorded, so a failing sink cannot
+        // let anything through. Reporting sink failures is the audit store's job (M3).
+        let _ = audit.append(entry);
+    }
+}
+
+/// The wire name of `code`, e.g. `"PermissionDenied"`.
+fn code_name(code: Code) -> String {
+    match serde_json::to_value(code) {
+        Ok(Value::String(name)) => name,
+        _ => format!("{code:?}"),
+    }
+}
+
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 /// `details` of an `ApprovalRequired` error raised by the authorizer: the id of the recorded
@@ -313,13 +431,14 @@ impl Ctx {
         let risk = self.meta.risk.escalate(risk);
         let result = self
             .guard
-            .enforce(
-                self.principal(),
-                &self.meta,
+            .enforce(Check {
+                principal: self.principal(),
+                meta: &self.meta,
                 target,
                 risk,
-                self.input_digest,
-            )
+                input_digest: self.input_digest,
+                correlation_id: self.scope.correlation_id(),
+            })
             .await;
         if let Err(Rejected {
             approval_id: Some(id),
@@ -363,10 +482,25 @@ impl Router {
     fn build(authorizer: Box<dyn DynAuthorizer>, approvals: Option<Box<dyn Approvals>>) -> Router {
         Router {
             guard: Arc::new(Guard {
-                authorizer,
-                approvals,
+                authorizer: Arc::from(authorizer),
+                approvals: approvals.map(Arc::from),
+                audit: None,
             }),
             procedures: Arc::default(),
+        }
+    }
+
+    /// This router (same registry, authorizer and approvals) recording refusals in `audit`.
+    /// Clones made before keep their own sink.
+    #[must_use]
+    pub fn with_audit(self, audit: impl AuditSink) -> Router {
+        Router {
+            guard: Arc::new(Guard {
+                authorizer: Arc::clone(&self.guard.authorizer),
+                approvals: self.guard.approvals.clone(),
+                audit: Some(Arc::new(audit)),
+            }),
+            procedures: self.procedures,
         }
     }
 
@@ -377,6 +511,7 @@ impl Router {
         let mut seen = std::collections::HashSet::new();
         for p in &procs {
             validate(&p.meta)?;
+            validate_run(p)?;
             if map.contains_key(&p.meta.name) || !seen.insert(p.meta.name.as_str()) {
                 return Err(RegistryError::Duplicate(p.meta.name.clone()));
             }
@@ -391,6 +526,7 @@ impl Router {
     /// is enabled.
     pub fn insert(&self, procedure: Procedure) -> Result<(), RegistryError> {
         validate(&procedure.meta)?;
+        validate_run(&procedure)?;
         match self.write().entry(procedure.meta.name.clone()) {
             Entry::Occupied(e) => Err(RegistryError::Duplicate(e.key().clone())),
             Entry::Vacant(e) => {
@@ -445,61 +581,40 @@ impl Router {
         let procedure = self.read().get(&call.procedure).cloned();
         let guard = Arc::clone(&self.guard);
         async move {
-            let scope = CallScope::current().unwrap_or_else(|| CallScope::new(call.timeout()));
-            // To an agent, a hidden procedure is indistinguishable from a missing one.
-            let procedure = procedure
-                .filter(|p| p.meta.agent == Agent::Exposed || !acts_as_agent(&session.principal));
-            let Some(procedure) = procedure else {
-                return Err(ErrorPayload::new(Code::NotFound, "unknown procedure"));
-            };
-            let meta = procedure.meta;
-            scope.apply_timeouts(meta.timeout_default, meta.timeout_max);
-            // Nothing runs for a call that is already over: not the authorizer (which may record
-            // an approval request), not the handler.
-            if scope.check().is_some() {
-                return Err(scope.error());
-            }
-            let digest = input_digest(&call.input);
-            guard
-                .enforce(&session.principal, &meta, None, meta.risk, digest)
-                .await
-                .map_err(Rejected::into_error_payload)?;
-            let Some(handler) = procedure.handler else {
+            let (run, ctx) = admit(guard, procedure, session, &call, false).await?;
+            let Run::Unary(handler) = run else {
                 return Err(ErrorPayload::new(
                     Code::Unimplemented,
                     "this call kind is not supported yet",
                 ));
             };
-            if scope.check().is_some() {
-                return Err(scope.error());
-            }
-            let approval_id = Arc::new(Mutex::new(None));
-            let ctx = Ctx {
-                session,
-                meta,
-                guard,
-                input_digest: digest,
-                scope,
-                approval_id: Arc::clone(&approval_id),
+            let approval_id = Arc::clone(&ctx.approval_id);
+            let result = handler(ctx, call.input).await;
+            result.map_err(|err| scrub(err, &approval_id))
+        }
+    }
+
+    /// Runs one subscription for `session`, sending its events to `events`. This is
+    /// [`Dispatch::subscribe`]; every step before the handler is the one [`Router::call`] takes.
+    pub fn subscribe(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        events: Events,
+    ) -> impl Future<Output = Result<(), ErrorPayload>> + Send + 'static {
+        let procedure = self.read().get(&call.procedure).cloned();
+        let guard = Arc::clone(&self.guard);
+        async move {
+            let (run, ctx) = admit(guard, procedure, session, &call, true).await?;
+            let Run::Subscription(handler) = run else {
+                return Err(ErrorPayload::new(
+                    Code::Unimplemented,
+                    "this call kind is not supported yet",
+                ));
             };
-            handler(ctx, call.input)
-                .await
-                .map_err(|err| match err.code {
-                    Code::Internal => {
-                        let mut scrubbed = ErrorPayload::new(Code::Internal, "internal error");
-                        scrubbed.correlation_id = err.correlation_id;
-                        scrubbed
-                    }
-                    Code::ApprovalRequired if err.details.is_none() => {
-                        let mut err = err;
-                        err.details = lock(&approval_id).take().map(|approval_id| {
-                            serde_json::to_value(ApprovalRequired { approval_id })
-                                .expect("ApprovalRequired serializes")
-                        });
-                        err
-                    }
-                    _ => err,
-                })
+            let approval_id = Arc::clone(&ctx.approval_id);
+            let result = handler(ctx, call.input, events).await;
+            result.map_err(|err| scrub(err, &approval_id))
         }
     }
 
@@ -531,6 +646,95 @@ impl Dispatch for Router {
     ) -> BoxFuture<'static, Result<Value, ErrorPayload>> {
         Box::pin(Router::call(self, session, call))
     }
+
+    fn subscribe(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        events: Events,
+    ) -> BoxFuture<'static, Result<(), ErrorPayload>> {
+        Box::pin(Router::subscribe(self, session, call, events))
+    }
+}
+
+/// Every step before a handler runs, shared by calls and subscriptions: lookup and agent
+/// exposure, call kind, the procedure's timeouts, authorization. Returns what to run and its
+/// context.
+async fn admit(
+    guard: Arc<Guard>,
+    procedure: Option<Procedure>,
+    session: Arc<Session>,
+    call: &Call,
+    subscribe: bool,
+) -> Result<(Run, Ctx), ErrorPayload> {
+    let scope = CallScope::current().unwrap_or_else(|| CallScope::new(call.timeout()));
+    // To an agent, a hidden procedure is indistinguishable from a missing one.
+    let procedure =
+        procedure.filter(|p| p.meta.agent == Agent::Exposed || !acts_as_agent(&session.principal));
+    let Some(procedure) = procedure else {
+        return Err(ErrorPayload::new(Code::NotFound, "unknown procedure"));
+    };
+    let meta = procedure.meta;
+    if subscribe != (meta.kind == ProcedureKind::Subscription) {
+        let message = if subscribe {
+            "only subscriptions are started with Subscribe"
+        } else {
+            "subscriptions are started with Subscribe"
+        };
+        return Err(ErrorPayload::new(Code::InvalidArgument, message));
+    }
+    scope.apply_timeouts(meta.timeout_default, meta.timeout_max);
+    // Nothing runs for a call that is already over: not the authorizer (which may record an
+    // approval request), not the handler.
+    if scope.check().is_some() {
+        return Err(scope.error());
+    }
+    let digest = input_digest(&call.input);
+    guard
+        .enforce(Check {
+            principal: &session.principal,
+            meta: &meta,
+            target: None,
+            risk: meta.risk,
+            input_digest: digest,
+            correlation_id: scope.correlation_id(),
+        })
+        .await
+        .map_err(Rejected::into_error_payload)?;
+    if scope.check().is_some() {
+        return Err(scope.error());
+    }
+    let ctx = Ctx {
+        session,
+        meta,
+        guard,
+        input_digest: digest,
+        scope,
+        approval_id: Arc::new(Mutex::new(None)),
+    };
+    Ok((procedure.run, ctx))
+}
+
+/// What a handler's error looks like on the wire: an `Internal` error leaves without its message
+/// and details, and an `ApprovalRequired` error without details gets the id recorded by
+/// [`Ctx::authorize`].
+fn scrub(err: ErrorPayload, approval_id: &Mutex<Option<String>>) -> ErrorPayload {
+    match err.code {
+        Code::Internal => {
+            let mut scrubbed = ErrorPayload::new(Code::Internal, "internal error");
+            scrubbed.correlation_id = err.correlation_id;
+            scrubbed
+        }
+        Code::ApprovalRequired if err.details.is_none() => {
+            let mut err = err;
+            err.details = lock(approval_id).take().map(|approval_id| {
+                serde_json::to_value(ApprovalRequired { approval_id })
+                    .expect("ApprovalRequired serializes")
+            });
+            err
+        }
+        _ => err,
+    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -552,6 +756,21 @@ fn validate(meta: &ProcedureMeta) -> Result<(), RegistryError> {
         return Err(RegistryError::InvalidPermission(meta.name.clone()));
     }
     Ok(())
+}
+
+/// A unary handler serves a query or mutation, a subscription handler a subscription.
+fn validate_run(procedure: &Procedure) -> Result<(), RegistryError> {
+    let kind = procedure.meta.kind;
+    let ok = match procedure.run {
+        Run::Unary(_) => matches!(kind, ProcedureKind::Query | ProcedureKind::Mutation),
+        Run::Subscription(_) => kind == ProcedureKind::Subscription,
+        Run::Declared => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(RegistryError::KindMismatch(procedure.meta.name.clone()))
+    }
 }
 
 /// Whether an agent is anywhere in the principal's `on_behalf_of` chain.
@@ -632,5 +851,22 @@ pub mod __private {
     {
         let api = Arc::clone(api);
         Arc::new(move |ctx, input| f(Arc::clone(&api), ctx, input))
+    }
+
+    /// The normal end (`Ok(())`) or the error a subscription handler ended with.
+    pub fn encode_end<E: IntoErrorPayload>(result: Result<(), E>) -> Result<(), ErrorPayload> {
+        result.map_err(IntoErrorPayload::into_error_payload)
+    }
+
+    pub fn subscription_handler<A, F>(api: &Arc<A>, f: F) -> SubscriptionHandler
+    where
+        A: Send + Sync + 'static,
+        F: Fn(Arc<A>, Ctx, Value, Events) -> BoxFuture<'static, Result<(), ErrorPayload>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        let api = Arc::clone(api);
+        Arc::new(move |ctx, input, events| f(Arc::clone(&api), ctx, input, events))
     }
 }

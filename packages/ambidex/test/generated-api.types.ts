@@ -98,7 +98,9 @@ assert<Equal<typeof viaTable, AmbidexClient<generated.Api>>>();
 // @ts-expect-error: a bare table needs the API identity for Hello
 createClient(procedures, transport);
 const viaReal: Promise<string> = real.fixture.big(1, { timeoutMs: 5, signal: opts.signal });
-const sub: Subscription<number> = real.fixture.counter(null);
+const sub: Subscription<number> = real.fixture.counter({ count: 3, then: "wait" });
+// @ts-expect-error: the counter input is required and typed
+void real.fixture.counter(null);
 const rows: StreamCall<number, Uint8Array> = real.fixture.rows(null);
 void [viaReal, sub, rows, real.$connect(), real.$ping(), real.$close()];
 // @ts-expect-error: no such procedure
