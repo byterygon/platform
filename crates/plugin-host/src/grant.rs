@@ -72,18 +72,18 @@ pub const GRANT_CREATE_DIGEST_DOMAIN: &str = "byterygon.plugin-host.grant.create
 /// | 3 | driver kind | u8: native 0, wasm 1, sidecar 2 |
 /// | 4 | tenant | str |
 /// | 5 | owner | str |
-/// | 6 | eligible principals | list<str>, sorted |
-/// | 7 | eligible roles | list<str>, sorted |
+/// | 6 | eligible principals | `list<str>`, sorted |
+/// | 7 | eligible roles | `list<str>`, sorted |
 /// | 8 | connection id | str |
 /// | 9 | target id | str |
 /// | 10 | template id | str |
 /// | 11 | host | str, as requested |
 /// | 12 | port | u16 |
-/// | 13 | TLS policy | u8: disabled 0; enabled 1, then mode u8 (direct 0, in-protocol upgrade 1), server name str, trust u8 (deployment CAs 0; pinned CAs 1, then list<bytes>; pinned certificates 2, then list<32 bytes>) |
+/// | 13 | TLS policy | u8: disabled 0; enabled 1, then mode u8 (direct 0, in-protocol upgrade 1), server name str, trust u8 (deployment CAs 0; pinned CAs 1, then `list<bytes>`; pinned certificates 2, then `list<32 bytes>`) |
 /// | 14 | address policy | list of networks: u8 family (4 or 6), 4 or 16 address bytes, u8 prefix |
 /// | 15 | secret binding | option: template id str, secret reference str |
 /// | 16 | allow cancel connection | bool |
-/// | 17 | expires at (Unix ms) | option<u64> |
+/// | 17 | expires at (Unix ms) | `option<u64>` |
 ///
 /// Lists that are sets (eligibility, address policy, pinned CAs and pinned certificates) are
 /// encoded sorted by their encoding and without duplicates, so equal sets give equal digests.
