@@ -834,7 +834,13 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             call_id: 0,
             subscription: false,
         });
-        self.in_flight.remove(&call_id);
+        // A finished subscription is over: a sink clone the handler left behind (e.g. in a task
+        // it spawned) is refused from now on, and its `closed()` resolves.
+        if let Some(scope) = self.in_flight.remove(&call_id)
+            && subscription
+        {
+            scope.cancel();
+        }
         let frame = frame.unwrap_or_else(|()| {
             // A panicking handler must not take the connection down or leak its message.
             let mut payload = ErrorPayload::new(Code::Internal, "internal error");

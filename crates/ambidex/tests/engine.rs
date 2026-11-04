@@ -50,6 +50,8 @@ struct Fixture {
     gate: Arc<Notify>,
     started: Arc<Notify>,
     dropped: Arc<AtomicBool>,
+    /// What a sink clone left behind by the `orphan` handler saw: `send` after `closed()`.
+    orphan: Arc<std::sync::Mutex<Option<Result<(), Code>>>>,
 }
 
 struct DropFlag(Arc<AtomicBool>);
@@ -102,6 +104,7 @@ impl Dispatch for Fixture {
     ) -> BoxFuture<'static, Result<(), ErrorPayload>> {
         let started = Arc::clone(&self.started);
         let dropped = Arc::clone(&self.dropped);
+        let orphan = Arc::clone(&self.orphan);
         Box::pin(async move {
             let n = call.input.as_u64().unwrap_or(0);
             let send = |i: u64| {
@@ -139,6 +142,17 @@ impl Dispatch for Fixture {
                 "huge" => events
                     .send_json(format!("\"{}\"", "x".repeat(2048)).into_bytes())
                     .map_err(|ended| ErrorPayload::new(ended.code(), "ended")),
+                // Leaves a sink clone in a task of its own, then returns `Ok`.
+                "orphan" => {
+                    let left = events.clone();
+                    tokio::spawn(async move {
+                        left.closed().await;
+                        let sent = left.send_json(b"1".to_vec()).map_err(|e| e.code());
+                        *orphan.lock().unwrap() = Some(sent);
+                        started.notify_one();
+                    });
+                    Ok(())
+                }
                 _ => Err(ErrorPayload::new(Code::NotFound, "unknown procedure")),
             }
         })
@@ -643,6 +657,23 @@ async fn subscription_sends_events_in_order_then_a_null_result() {
     client.subscribe(1, "ticks", json!(5)).await;
     client.expect_events(1, 0..5).await;
     assert_eq!(client.recv_result().await, (1, Value::Null));
+    client.expect_pong(0).await;
+}
+
+#[tokio::test]
+async fn a_finished_subscription_closes_sinks_it_left_behind() {
+    // Review finding [1]: the scope fires when the handler returns, not only on cancel.
+    let fixture = Fixture::default();
+    let (started, orphan) = (Arc::clone(&fixture.started), Arc::clone(&fixture.orphan));
+    let (mut client, _conn) = start_with(fixture);
+    handshake(&mut client).await;
+    client.subscribe(1, "orphan", Value::Null).await;
+    assert_eq!(client.recv_result().await, (1, Value::Null));
+    tokio::time::timeout(Duration::from_secs(5), started.notified())
+        .await
+        .expect("the left-behind sink's closed() resolves");
+    assert_eq!(*orphan.lock().unwrap(), Some(Err(Code::Cancelled)));
+    // And nothing it tried to send went out.
     client.expect_pong(0).await;
 }
 
