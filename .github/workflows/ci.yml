@@ -50,7 +50,8 @@ jobs:
           ' sh "$PATH" "$HOME"
 
   typescript:
-    name: TypeScript (typecheck, build, test)
+    # Must match the required status check in the protect-main ruleset; do not rename without updating it.
+    name: TypeScript (typecheck)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
