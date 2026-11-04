@@ -14,8 +14,11 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
 import {
+  type Frame,
   FrameDecoder,
   Kind,
+  type Pipe,
+  type PipeSink,
   RpcError,
   TAURI_COMMANDS,
   type TauriIpc,
@@ -263,15 +266,91 @@ for (const [name, makeTransport] of [
       await server.waitForEvent("Cancelled:wait");
     });
 
-    it("surfaces the server's Unimplemented for subscriptions and streams (no engine support yet)", async () => {
+    it("subscriptions yield the server's events in order and end with its Result", async () => {
       const client = createClient(api, await makeTransport());
-      const sub = client.fixture.counter(null);
-      await assert.rejects(
+      const seen: number[] = [];
+      for await (const n of client.fixture.counter({ count: 5 })) seen.push(n);
+      assert.deepEqual(seen, [0, 1, 2, 3, 4]);
+      // The connection keeps working, and the ended subscription left nothing registered.
+      assert.equal(await client.fixture.echo("alive"), "alive");
+      client.$close();
+    });
+
+    it("a server-side Error ends the iteration after the events, with typed details", async () => {
+      const client = createClient(api, await makeTransport());
+      const seen: number[] = [];
+      const ended = await settle(
         (async () => {
-          for await (const _ of sub) assert.fail("no events expected");
+          for await (const n of client.fixture.counter({ count: 2, then: "fail" })) seen.push(n);
         })(),
-        (e: RpcError) => e.code === "Unimplemented",
       );
+      assert.deepEqual(seen, [0, 1]);
+      assert.equal(ended.ok, false);
+      assert.ok(isRpcError(ended.error, api.procedures.fixture.counter));
+      assert.equal(ended.error.code, "FailedPrecondition");
+      assert.equal(ended.error.local, false);
+      assert.deepEqual(ended.error.details, {
+        kind: "Requested",
+        code: "FailedPrecondition",
+        retryable: false,
+      });
+      client.$close();
+    });
+
+    it("unsubscribe() cancels the handler; the connection keeps working", async () => {
+      const client = createClient(api, await makeTransport());
+      await client.$connect();
+      await server.events();
+      const sub = client.fixture.counter({ count: 3, then: "wait" });
+      for await (const n of sub) {
+        assert.equal(n, 0);
+        break; // leaving the loop unsubscribes
+      }
+      await server.waitForEvent("Cancelled:counter");
+      assert.equal(await client.fixture.echo(1), 1);
+      client.$close();
+    });
+
+    it("abort ends the subscription with Cancelled and reaches the handler", async () => {
+      const client = createClient(api, await makeTransport());
+      await client.$connect();
+      await server.events();
+      const controller = new AbortController();
+      const sub = client.fixture.counter({ count: 1, then: "wait" }, { signal: controller.signal });
+      const it = sub[Symbol.asyncIterator]();
+      assert.deepEqual(await it.next(), { value: 0, done: false });
+      controller.abort();
+      const r = await settle(it.next());
+      assert.equal(r.ok, false);
+      assert.equal(r.error.code, "Cancelled");
+      assert.equal(r.error.local, true);
+      await server.waitForEvent("Cancelled:counter");
+      assert.equal(await client.fixture.echo(2), 2);
+      client.$close();
+    });
+
+    it("timeoutMs ends a subscription with the server's DeadlineExceeded", async () => {
+      const client = createClient(api, await makeTransport());
+      const sub = client.fixture.counter({ count: 0, then: "wait" }, { timeoutMs: 100 });
+      const r = await settle(sub[Symbol.asyncIterator]().next());
+      assert.equal(r.ok, false);
+      assert.equal(r.error.code, "DeadlineExceeded");
+      assert.equal(r.error.local, false, "the server's deadline, not the client's");
+      client.$close();
+    });
+
+    it("an unauthorized subscription is refused with PermissionDenied", async () => {
+      const client = createClient(api, await makeTransport());
+      const r = await settle(client.fixture.secret(null)[Symbol.asyncIterator]().next());
+      assert.equal(r.ok, false);
+      assert.equal(r.error.code, "PermissionDenied");
+      assert.equal(r.error.message, "permission denied");
+      assert.equal(await client.fixture.echo("alive"), "alive");
+      client.$close();
+    });
+
+    it("surfaces the server's Unimplemented for streams (M2)", async () => {
+      const client = createClient(api, await makeTransport());
       const stream = client.fixture.rows(null);
       await assert.rejects(stream.result, (e: RpcError) => e.code === "Unimplemented");
       assert.equal(await client.fixture.echo("alive"), "alive");
@@ -279,6 +358,79 @@ for (const [name, makeTransport] of [
     });
   });
 }
+
+/**
+ * Wraps a transport and withholds the server's terminal frames (Result, Error) for calls, like a
+ * server that never answers. `withheld` resolves with the first one it held back.
+ */
+class Unanswered implements Transport {
+  readonly name = "unanswered";
+  readonly withheld: Promise<Frame>;
+  #inner: Transport;
+  #resolve!: (frame: Frame) => void;
+
+  constructor(inner: Transport) {
+    this.#inner = inner;
+    this.withheld = new Promise((resolve) => {
+      this.#resolve = resolve;
+    });
+  }
+
+  open(sink: PipeSink): Promise<Pipe> {
+    const decoder = new FrameDecoder(Number.MAX_SAFE_INTEGER);
+    return this.#inner.open({
+      data: (bytes) => {
+        decoder.push(bytes);
+        for (let f = decoder.next(); f !== undefined; f = decoder.next()) {
+          if ((f.kind === Kind.Result || f.kind === Kind.Error) && f.callId !== 0) {
+            this.#resolve(f);
+            continue;
+          }
+          sink.data(encodeFrame(f, Number.MAX_SAFE_INTEGER));
+        }
+      },
+      closed: (error) => sink.closed(error),
+    });
+  }
+}
+
+/** Lets pending promise callbacks and I/O run (setImmediate is not mocked). */
+const drain = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+describe("safety timer against the Rust engine", { skip }, () => {
+  it("uses the advertised cancel_grace_ms plus networkMarginMs, not timeoutSlackMs", async (t) => {
+    const transport = new Unanswered(await webSocket());
+    const client = createClient(api, transport, { networkMarginMs: 50, timeoutSlackMs: 60_000 });
+    const ack = await client.$connect();
+    // The fixture server's cancel_grace (crates/ambidex-conformance, CANCEL_GRACE).
+    assert.equal(ack.limits.cancel_grace_ms, 100);
+
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // An already-expired deadline: the server answers DeadlineExceeded at once, which the
+    // wrapper withholds, so only the client's safety timer can end the call.
+    const call: { outcome?: Awaited<ReturnType<typeof settle>> } = {};
+    void settle(client.fixture.wait(null, { timeoutMs: 0 })).then((r) => {
+      call.outcome = r;
+    });
+    // Read through a function: an assertion on `call.outcome` would narrow it for good.
+    const current = () => call.outcome;
+    const withheld = await transport.withheld;
+    assert.equal(withheld.kind, Kind.Error);
+    await drain();
+    // deadline 0 + cancel_grace_ms 100 + networkMarginMs 50.
+    t.mock.timers.tick(149);
+    await drain();
+    assert.equal(current(), undefined, "still waiting for the server inside the slack");
+    t.mock.timers.tick(1);
+    await drain();
+    const outcome = current();
+    assert.ok(outcome !== undefined && !outcome.ok);
+    assert.equal(outcome.error.code, "DeadlineExceeded");
+    assert.equal(outcome.error.local, true, "the client's safety timer");
+    t.mock.timers.reset();
+    client.$close();
+  });
+});
 
 describe("handshake against the Rust engine", { skip }, () => {
   it("a stale schema hash gets VersionMismatch", async () => {

@@ -35,11 +35,22 @@
 //!   already answered.
 //! - When the connection closes for any reason, every call's token fires; calls get the same
 //!   grace, their answers are discarded, and the rest are dropped.
+//! - `Subscribe` starts a subscription (see [`crate::subscription`]): admitted like a `Call` (same
+//!   payload, call id rule and `max_concurrent_calls` slot), run through
+//!   [`Dispatch::subscribe`] under its own [`CallScope`]. Its `Event` frames and its one terminal
+//!   frame leave in order through a per-connection queue that may use at most half of the
+//!   outbound queue, so a busy subscription cannot crowd out call answers and get a reading
+//!   client disconnected as a slow consumer. Events count against their subscription's buffer
+//!   until the writer hands them to the transport. `Unsubscribe` gets no reply: the frames still
+//!   waiting in the engine (events, and the end if the handler already returned) are discarded,
+//!   nothing more is queued for its id, and its token fires (the handler gets the grace period).
+//!   Frames already in the outbound queue are in flight; the client drops them. `Unsubscribe` on call 0 is a violation; for an id that is no
+//!   subscription in flight it is ignored.
 //!
-//! Subscriptions, streams and credits arrive with their own tasks and are rejected or ignored
-//! here as noted below.
+//! Streams and credits are M2: a stream procedure called with `Call` is authorized, then answered
+//! with `Unimplemented`, and `Credit` frames are ignored.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -60,10 +71,17 @@ use crate::cancel::CallScope;
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
-use crate::message::{Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits};
+use crate::message::{
+    Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits, MAX_JSON_SAFE_INTEGER,
+};
+use crate::subscription::{Events, Held, Queued};
 use crate::transport::{TransportRx, TransportTx};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// The smallest outbound queue the engine runs with: one slot for subscription frames, one kept
+/// free for call answers.
+pub const MIN_OUTBOUND_QUEUE_FRAMES: usize = 2;
 
 /// Server configuration.
 #[derive(Debug, Clone)]
@@ -83,12 +101,24 @@ pub struct ServerConfig {
     /// Time allowed between connection start and a completed handshake, authentication included.
     pub hello_timeout: Duration,
     /// Encoded frames waiting for the peer to read. When full, the peer is disconnected.
+    /// Subscription frames may use at most half of it, so call answers keep room; values below
+    /// [`MIN_OUTBOUND_QUEUE_FRAMES`] are raised to it (with one slot, an event could take the
+    /// only one and the next call answer would disconnect a peer that is reading).
     pub outbound_queue_frames: usize,
     /// Time allowed to deliver final frames (Goaway, rejections) before the transport is dropped.
     pub close_timeout: Duration,
     /// Time a call may keep running after its cancellation token fired (to stop cooperatively,
-    /// e.g. send the database's cancel request) before its future is dropped.
+    /// e.g. send the database's cancel request) before its future is dropped. Advertised to the
+    /// client as `HelloAck.limits.cancel_grace_ms`.
     pub cancel_grace: Duration,
+    /// Events one subscription may have waiting for the transport, counting those in the
+    /// outbound queue until the writer hands them over. One more ends the subscription with
+    /// `ResourceExhausted` (see [`crate::subscription`]).
+    pub subscription_buffer_events: usize,
+    /// Payload bytes one subscription may have waiting for the transport, counted like
+    /// `subscription_buffer_events`. An event that does not fit ends the subscription with
+    /// `ResourceExhausted`; one event up to `max_frame_bytes` always fits an empty buffer.
+    pub subscription_buffer_bytes: usize,
 }
 
 impl ServerConfig {
@@ -110,7 +140,15 @@ impl ServerConfig {
             outbound_queue_frames: 64,
             close_timeout: Duration::from_millis(500),
             cancel_grace: Duration::from_secs(1),
+            subscription_buffer_events: 64,
+            subscription_buffer_bytes: 1024 * 1024,
         }
+    }
+
+    /// The outbound queue size the engine uses: `outbound_queue_frames`, at least
+    /// [`MIN_OUTBOUND_QUEUE_FRAMES`].
+    fn outbound_frames(&self) -> usize {
+        self.outbound_queue_frames.max(MIN_OUTBOUND_QUEUE_FRAMES)
     }
 }
 
@@ -142,17 +180,38 @@ pub trait Authenticate: Send + Sync + 'static {
     }
 }
 
-/// Executes calls. [`Router`](crate::Router) implements this.
+/// Executes calls and subscriptions. [`Router`](crate::Router) implements this.
 ///
-/// The returned future runs with the call's [`CallScope`] as [`CallScope::current`]; a dispatcher
+/// The returned futures run with the call's [`CallScope`] as [`CallScope::current`]; a dispatcher
 /// should apply the procedure's timeouts to it ([`CallScope::apply_timeouts`]) and hand its token
-/// to the handler.
+/// to the handler. A wrapper must forward both methods: `subscribe` has a default (answering
+/// `Unimplemented`, as before subscriptions existed) so dispatchers that only serve calls keep
+/// compiling, which also means a wrapper that forgets it silently turns subscriptions off.
 pub trait Dispatch: Send + Sync + 'static {
+    /// A `Call`: the result, or the error, of a query, mutation or stream.
     fn call(
         &self,
         session: Arc<Session>,
         call: Call,
     ) -> BoxFuture<'static, Result<Value, ErrorPayload>>;
+
+    /// A `Subscribe` (payload as for a `Call`): sends events to `events` until it ends. `Ok(())`
+    /// ends the subscription with `Result` (payload `null`), an error with `Error`. The default
+    /// answers `Unimplemented`; [`Router`](crate::Router) overrides it.
+    fn subscribe(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        events: Events,
+    ) -> BoxFuture<'static, Result<(), ErrorPayload>> {
+        let _ = (session, call, events);
+        Box::pin(async {
+            Err(ErrorPayload::new(
+                Code::Unimplemented,
+                "subscriptions are not supported",
+            ))
+        })
+    }
 }
 
 /// Why a connection ended.
@@ -257,7 +316,8 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         return Closed::Internal;
     };
     let config = &inner.config;
-    let (out, out_rx) = mpsc::channel(config.outbound_queue_frames.max(1));
+    let (out, out_rx) = mpsc::channel(config.outbound_frames());
+    let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut writer = Writer {
         handle: tokio::spawn(write_loop(tx, out_rx)),
         finished: false,
@@ -272,6 +332,10 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         calls: JoinSet::new(),
         tasks: HashMap::new(),
         in_flight: HashMap::new(),
+        subscriptions: HashSet::new(),
+        events_tx,
+        events_rx,
+        ordered: VecDeque::new(),
         conn_token: CancellationToken::new(),
         revoked: None,
         last_call_id: 0,
@@ -364,6 +428,12 @@ async fn run_call(
     Err(scope.error())
 }
 
+/// Waits until `out` has at least `slots` free slots; `false` once the writer is gone. The
+/// reservation is released at once: the caller is the queue's only sender.
+async fn has_room(out: &mpsc::Sender<Outbound>, slots: usize) -> bool {
+    out.reserve_many(slots).await.is_ok()
+}
+
 /// Resolves when `token` fires; never when there is none.
 async fn revoked(token: Option<CancellationToken>) {
     match token {
@@ -372,14 +442,50 @@ async fn revoked(token: Option<CancellationToken>) {
     }
 }
 
+/// An encoded frame for the writer. An event frame carries its share of its subscription's
+/// buffer, so the event counts against the buffer until the transport has taken it.
+struct Outbound {
+    bytes: Vec<u8>,
+    held: Option<Held>,
+}
+
+impl From<Vec<u8>> for Outbound {
+    fn from(bytes: Vec<u8>) -> Outbound {
+        Outbound { bytes, held: None }
+    }
+}
+
 async fn write_loop<T: TransportTx>(
     mut tx: T,
-    mut queue: mpsc::Receiver<Vec<u8>>,
+    mut queue: mpsc::Receiver<Outbound>,
 ) -> io::Result<()> {
-    while let Some(bytes) = queue.recv().await {
+    while let Some(Outbound { bytes, held }) = queue.recv().await {
         tx.send(bytes).await?;
+        drop(held);
     }
     tx.close().await
+}
+
+/// A running call task, by task id.
+struct Task {
+    call_id: u32,
+    subscription: bool,
+}
+
+/// A subscription frame waiting for room in the outbound queue, in order.
+enum Ordered {
+    Event(Queued),
+    /// The subscription's terminal Result or Error.
+    End(Frame),
+}
+
+impl Ordered {
+    fn call_id(&self) -> u32 {
+        match self {
+            Ordered::Event(queued) => queued.call_id,
+            Ordered::End(frame) => frame.call_id,
+        }
+    }
 }
 
 struct ConnState<A, D> {
@@ -387,15 +493,22 @@ struct ConnState<A, D> {
     /// Random per-connection prefix of correlation ids.
     prefix: u64,
     /// Encoded frames for the writer task.
-    out: mpsc::Sender<Vec<u8>>,
+    out: mpsc::Sender<Outbound>,
     decoder: FrameDecoder,
     hello_deadline: Instant,
     session: Option<Arc<Session>>,
     calls: JoinSet<Frame>,
-    /// Call id of each running call task.
-    tasks: HashMap<tokio::task::Id, u32>,
-    /// Scope of each call in flight, by call id.
+    /// Call id of each running call or subscription task.
+    tasks: HashMap<tokio::task::Id, Task>,
+    /// Scope of each call and subscription in flight, by call id.
     in_flight: HashMap<u32, CallScope>,
+    /// Subscriptions whose frames are still sent: in flight and not unsubscribed.
+    subscriptions: HashSet<u32>,
+    /// Handed to every subscription's [`Events`]; events arrive on `events_rx`.
+    events_tx: mpsc::UnboundedSender<Queued>,
+    events_rx: mpsc::UnboundedReceiver<Queued>,
+    /// Subscription frames (events, then their terminal frame) waiting for outbound room.
+    ordered: VecDeque<Ordered>,
     /// Parent of every call token; fires when the connection closes.
     conn_token: CancellationToken,
     /// Fires when the session is revoked.
@@ -416,6 +529,9 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         control: &mut mpsc::Receiver<Goaway>,
         writer: &mut Writer,
     ) -> Closed {
+        // Subscription frames leave only while this many outbound slots stay free, so call
+        // answers (sent without waiting) always find room while the peer reads.
+        let headroom = self.inner.config.outbound_frames() / 2;
         loop {
             if let Err(closed) = self.drain_frames().await {
                 return closed;
@@ -450,11 +566,22 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                         return closed;
                     }
                 }
+                // Client frames come before more subscription output, so a busy subscription
+                // cannot delay its own Cancel or Unsubscribe.
                 chunk = rx.recv() => match chunk {
                     Ok(Some(bytes)) => self.decoder.push(&bytes),
                     Ok(None) => return Closed::PeerClosed,
                     Err(err) => return Closed::Transport(err.kind()),
                 },
+                room = has_room(&self.out, headroom + 1), if !self.ordered.is_empty() => {
+                    if !room {
+                        return Closed::Transport(io::ErrorKind::BrokenPipe);
+                    }
+                    if let Err(closed) = self.send_ordered() {
+                        return closed;
+                    }
+                }
+                Some(queued) = self.events_rx.recv() => self.take_event(queued),
             }
         }
     }
@@ -512,18 +639,18 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 }
                 Ok(())
             }
-            // Credit: binary streams (M2). Unsubscribe: subscriptions. Until those land there is
-            // nothing to credit or unsubscribe, so these are no-ops.
-            Kind::Credit | Kind::Unsubscribe => Ok(()),
-            Kind::Subscribe => {
-                if !self.claim_call_id(frame.call_id) {
+            Kind::Subscribe => self.on_subscribe(session, frame).await,
+            Kind::Unsubscribe => {
+                if frame.call_id == 0 {
                     return Err(self
-                        .violation(Code::InvalidArgument, "call id not increasing")
+                        .violation(Code::InvalidArgument, "Unsubscribe on call id 0")
                         .await);
                 }
-                let err = ErrorPayload::new(Code::Unimplemented, "subscriptions are not supported");
-                self.send_error(frame.call_id, err)
+                self.unsubscribe(frame.call_id);
+                Ok(())
             }
+            // Credit: binary streams (M2). Until they land there is nothing to credit.
+            Kind::Credit => Ok(()),
             Kind::Hello => Err(self
                 .violation(Code::FailedPrecondition, "duplicate Hello")
                 .await),
@@ -595,6 +722,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             limits: Limits {
                 max_frame_bytes: config.max_frame_bytes,
                 max_concurrent_calls: config.max_concurrent_calls,
+                cancel_grace_ms: Some(advertised_ms(config.cancel_grace)),
             },
             server_version: config.server_version.clone(),
         };
@@ -604,6 +732,38 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     }
 
     async fn on_call(&mut self, session: Arc<Session>, frame: Frame) -> Step {
+        let Some((call, scope)) = self.admit(&frame).await? else {
+            return Ok(());
+        };
+        let fut = self.inner.dispatch.call(session, call);
+        self.spawn(frame.call_id, scope, fut, false);
+        Ok(())
+    }
+
+    async fn on_subscribe(&mut self, session: Arc<Session>, frame: Frame) -> Step {
+        let Some((call, scope)) = self.admit(&frame).await? else {
+            return Ok(());
+        };
+        let config = &self.inner.config;
+        let events = Events::new(
+            frame.call_id,
+            scope.clone(),
+            self.events_tx.clone(),
+            config.subscription_buffer_events,
+            config.subscription_buffer_bytes,
+            config.max_frame_bytes,
+        );
+        let fut = self.inner.dispatch.subscribe(session, call, events);
+        // A normal end is a `Result` with payload `null`.
+        let fut = Box::pin(async move { fut.await.map(|()| Value::Null) });
+        self.subscriptions.insert(frame.call_id);
+        self.spawn(frame.call_id, scope, fut, true);
+        Ok(())
+    }
+
+    /// Admits a `Call` or `Subscribe`: claims its id, takes a concurrency slot and decodes the
+    /// payload. `Ok(None)` when the call was answered with an error and the connection stays.
+    async fn admit(&mut self, frame: &Frame) -> Result<Option<(Call, CallScope)>, Closed> {
         let call_id = frame.call_id;
         if !self.claim_call_id(call_id) {
             return Err(self
@@ -613,23 +773,40 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         if self.in_flight.len() >= self.inner.config.max_concurrent_calls as usize {
             let mut err = ErrorPayload::new(Code::ResourceExhausted, "too many concurrent calls");
             err.retryable = true;
-            return self.send_error(call_id, err);
+            self.send_error(call_id, err)?;
+            return Ok(None);
         }
         if frame.flags.is_binary() {
             let err = ErrorPayload::new(Code::InvalidArgument, "Call payload must be JSON");
-            return self.send_error(call_id, err);
+            self.send_error(call_id, err)?;
+            return Ok(None);
         }
         let call = match serde_json::from_slice::<Call>(&frame.payload) {
             Ok(call) => call,
             Err(_) => {
                 let err = ErrorPayload::new(Code::InvalidArgument, "malformed Call payload");
-                return self.send_error(call_id, err);
+                self.send_error(call_id, err)?;
+                return Ok(None);
             }
         };
         // The deadline runs from here; the dispatcher narrows it to the procedure's bounds.
-        let scope = CallScope::with_token(self.conn_token.child_token(), call.timeout());
-        let fut = self.inner.dispatch.call(session, call);
-        let correlation_id = self.correlation_id(call_id);
+        let scope = CallScope::with_token(
+            self.conn_token.child_token(),
+            call.timeout(),
+            self.correlation_id(call_id),
+        );
+        Ok(Some((call, scope)))
+    }
+
+    /// Runs a call or subscription task under `scope`; its terminal frame comes to `finish_call`.
+    fn spawn(
+        &mut self,
+        call_id: u32,
+        scope: CallScope,
+        fut: BoxFuture<'static, Result<Value, ErrorPayload>>,
+        subscription: bool,
+    ) {
+        let correlation_id = scope.correlation_id().to_owned();
         let config = &self.inner.config;
         let (max, grace) = (config.max_frame_bytes, config.cancel_grace);
         let task_scope = scope.clone();
@@ -637,32 +814,102 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             let result = run_call(fut, task_scope, grace).await;
             result_frame(call_id, result, correlation_id, max)
         });
-        self.tasks.insert(handle.id(), call_id);
+        self.tasks.insert(
+            handle.id(),
+            Task {
+                call_id,
+                subscription,
+            },
+        );
         self.in_flight.insert(call_id, scope);
-        Ok(())
     }
 
-    /// Sends the one terminal frame of a finished call task.
+    /// `Unsubscribe`: nothing more is sent for `call_id`, and the handler is cancelled. Its frames
+    /// still waiting here are dropped even when the handler already returned (its end frame may
+    /// be among them). Otherwise a call id that is not a subscription in flight (already ended,
+    /// or a call) is ignored: `ordered` only ever holds subscription frames.
+    fn unsubscribe(&mut self, call_id: u32) {
+        self.ordered.retain(|frame| frame.call_id() != call_id);
+        if !self.subscriptions.remove(&call_id) {
+            return;
+        }
+        if let Some(scope) = self.in_flight.get(&call_id) {
+            scope.cancel();
+        }
+    }
+
+    /// Moves the oldest subscription frame to the outbound queue. Only called once
+    /// [`has_room`] saw room, which only the writer changes (by taking frames), so it fits.
+    fn send_ordered(&mut self) -> Step {
+        let outbound = match self.ordered.pop_front() {
+            Some(Ordered::Event(queued)) => Outbound {
+                bytes: queued.bytes,
+                held: Some(queued.held),
+            },
+            Some(Ordered::End(frame)) => frame
+                .encode(self.inner.config.max_frame_bytes)
+                .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?
+                .into(),
+            None => return Ok(()),
+        };
+        self.out.try_send(outbound).map_err(|err| match err {
+            TrySendError::Full(_) => Closed::SlowConsumer,
+            TrySendError::Closed(_) => Closed::Transport(io::ErrorKind::BrokenPipe),
+        })
+    }
+
+    /// Queues an event for the transport, unless its subscription was unsubscribed.
+    fn take_event(&mut self, queued: Queued) {
+        if self.subscriptions.contains(&queued.call_id) {
+            self.ordered.push_back(Ordered::Event(queued));
+        }
+    }
+
+    /// Sends the one terminal frame of a finished call or subscription task.
     fn finish_call(
         &mut self,
         done: Result<(tokio::task::Id, Frame), tokio::task::JoinError>,
     ) -> Step {
-        match done {
-            Ok((task, frame)) => {
-                if let Some(call_id) = self.tasks.remove(&task) {
-                    self.in_flight.remove(&call_id);
-                }
-                self.send(&frame)
-            }
-            Err(err) => {
-                let call_id = self.tasks.remove(&err.id()).unwrap_or(0);
-                self.in_flight.remove(&call_id);
-                // A panicking handler must not take the connection down or leak its message.
-                let mut payload = ErrorPayload::new(Code::Internal, "internal error");
-                payload.correlation_id = self.correlation_id(call_id);
-                self.send_error(call_id, payload)
-            }
+        let (task, frame) = match done {
+            Ok((task, frame)) => (task, Ok(frame)),
+            Err(err) => (err.id(), Err(())),
+        };
+        let Task {
+            call_id,
+            subscription,
+        } = self.tasks.remove(&task).unwrap_or(Task {
+            call_id: 0,
+            subscription: false,
+        });
+        // A finished subscription is over: a sink clone the handler left behind (e.g. in a task
+        // it spawned) is refused from now on, and its `closed()` resolves.
+        if let Some(scope) = self.in_flight.remove(&call_id)
+            && subscription
+        {
+            scope.cancel();
         }
+        let frame = frame.unwrap_or_else(|()| {
+            // A panicking handler must not take the connection down or leak its message.
+            let mut payload = ErrorPayload::new(Code::Internal, "internal error");
+            payload.correlation_id = self.correlation_id(call_id);
+            let payload = serde_json::to_vec(&payload).expect("ErrorPayload serializes");
+            Frame::new(Kind::Error, call_id, payload)
+        });
+        if !subscription {
+            return self.send(&frame);
+        }
+        // After Unsubscribe nothing more goes out for this id, not even the end.
+        if !self.subscriptions.contains(&call_id) {
+            return Ok(());
+        }
+        // Every event the handler sent before it returned is already in the channel; they go
+        // first, then the end.
+        while let Ok(queued) = self.events_rx.try_recv() {
+            self.take_event(queued);
+        }
+        self.subscriptions.remove(&call_id);
+        self.ordered.push_back(Ordered::End(frame));
+        Ok(())
     }
 
     /// Accepts `call_id` for a new call if it is greater than every id used so far (so never 0).
@@ -709,7 +956,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             return;
         };
         let close_by = self.close_deadline();
-        let _ = tokio::time::timeout_at(close_by, self.out.send(bytes)).await;
+        let _ = tokio::time::timeout_at(close_by, self.out.send(bytes.into())).await;
     }
 
     fn send_error(&mut self, call_id: u32, mut err: ErrorPayload) -> Step {
@@ -731,11 +978,19 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         let bytes = frame
             .encode(self.inner.config.max_frame_bytes)
             .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?;
-        self.out.try_send(bytes).map_err(|err| match err {
+        self.out.try_send(bytes.into()).map_err(|err| match err {
             TrySendError::Full(_) => Closed::SlowConsumer,
             TrySendError::Closed(_) => Closed::Transport(io::ErrorKind::BrokenPipe),
         })
     }
+}
+
+/// `duration` in whole milliseconds for HelloAck, clamped so a JavaScript client reads it exactly
+/// (a `cancel_grace` of `Duration::MAX` means "never drop"; any value this large reads the same).
+fn advertised_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis())
+        .unwrap_or(u64::MAX)
+        .min(MAX_JSON_SAFE_INTEGER)
 }
 
 /// Builds the Result or Error frame for a finished call.

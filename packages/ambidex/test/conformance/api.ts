@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:9ff3ce4dd80a2d781ce366b8a8e9f6da349e454f24eee7f9b248b691589e5383";
+export const SCHEMA_HASH = "sha256:f1a35441eea15c98250ce1c83da0c1d335561100f5befab024268c8e4459e4dd";
 
 // ---- Types
 
@@ -25,6 +25,20 @@ export type ApprovalRequiredDetails = { approval_id: string, };
  * `e.code === "ApprovalRequired"`.
  */
 export type Code = "Cancelled" | "DeadlineExceeded" | "Unauthenticated" | "PermissionDenied" | "ApprovalRequired" | "InvalidArgument" | "NotFound" | "FailedPrecondition" | "ResourceExhausted" | "Unavailable" | "Unimplemented" | "VersionMismatch" | "Internal";
+
+/**
+ * What [`FixtureApi::counter`] does after its last event.
+ */
+export type CounterEnd = "finish" | "fail" | "wait" | "hang";
+
+/**
+ * Input of [`FixtureApi::counter`].
+ */
+export type CounterInput = { 
+/**
+ * Events sent: 0, 1, …, `count - 1`.
+ */
+count: number, then?: CounterEnd, };
 
 /**
  * Input of [`FixtureApi::fail`].
@@ -98,13 +112,15 @@ export interface Procedures {
   readonly "fixture.approval": ProcedureDef<"mutation", JsonValue, null, never>;
   readonly "fixture.big": ProcedureDef<"query", number, string, never>;
   readonly "fixture.capped": ProcedureDef<"query", JsonValue, string, never>;
-  readonly "fixture.counter": ProcedureDef<"subscription", JsonValue, number, never>;
+  readonly "fixture.counter": ProcedureDef<"subscription", CounterInput, number, FixtureError>;
   readonly "fixture.echo": ProcedureDef<"query", JsonValue, JsonValue, never>;
   readonly "fixture.escalate": ProcedureDef<"mutation", JsonValue, null, never>;
   readonly "fixture.fail": ProcedureDef<"query", FailInput, null, FixtureError>;
+  readonly "fixture.flood": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.leak": ProcedureDef<"query", JsonValue, null, JsonValue>;
   readonly "fixture.protected": ProcedureDef<"mutation", FailInput, null, never>;
   readonly "fixture.rows": ProcedureDef<"stream", JsonValue, number, never>;
+  readonly "fixture.secret": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.stubborn": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.wait": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.whoami": ProcedureDef<"query", JsonValue, JsonValue, never>;
@@ -120,9 +136,11 @@ export interface Api {
     readonly echo: Procedures["fixture.echo"];
     readonly escalate: Procedures["fixture.escalate"];
     readonly fail: Procedures["fixture.fail"];
+    readonly flood: Procedures["fixture.flood"];
     readonly leak: Procedures["fixture.leak"];
     readonly protected: Procedures["fixture.protected"];
     readonly rows: Procedures["fixture.rows"];
+    readonly secret: Procedures["fixture.secret"];
     readonly stubborn: Procedures["fixture.stubborn"];
     readonly wait: Procedures["fixture.wait"];
     readonly whoami: Procedures["fixture.whoami"];
@@ -202,6 +220,16 @@ export const procedures: Api = {
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
     },
+    flood: {
+      name: "fixture.flood",
+      kind: "subscription",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
     leak: {
       name: "fixture.leak",
       kind: "query",
@@ -226,6 +254,16 @@ export const procedures: Api = {
       name: "fixture.rows",
       kind: "stream",
       perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    secret: {
+      name: "fixture.secret",
+      kind: "subscription",
+      perm: "fixture.admin",
       risk: "Read",
       agent: "hidden",
       deprecated: false,

@@ -73,7 +73,7 @@ impl Kind {
         Ident::new(name, Span::call_site())
     }
 
-    fn has_handler(self) -> bool {
+    fn is_unary(self) -> bool {
         matches!(self, Kind::Query | Kind::Mutation)
     }
 }
@@ -92,8 +92,10 @@ struct Procedure {
     redact: Vec<LitStr>,
     deprecated: bool,
     input_ty: Type,
-    /// The return type as written, `Result<O, E>`.
+    /// The return type as written, `Result<O, E>` (`Result<(), E>` for a subscription).
     ret_ty: Type,
+    /// A subscription's event type, `V` in its `EventSink<V>` argument.
+    event_ty: Option<Type>,
 }
 
 fn expand_router(args: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
@@ -294,7 +296,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
         ));
     }
 
-    let (input_ty, ret_ty) = check_signature(method, kind)?;
+    let (input_ty, ret_ty, event_ty) = check_signature(method, kind)?;
     let method_name = name.map_or_else(|| method.sig.ident.unraw().to_string(), |lit| lit.value());
     Ok(Some(Procedure {
         kind,
@@ -310,6 +312,7 @@ fn take_procedure(method: &mut ImplItemFn, namespace: &str) -> syn::Result<Optio
         deprecated,
         input_ty,
         ret_ty,
+        event_ty,
     }))
 }
 
@@ -330,13 +333,16 @@ fn procedure_kind(path: &Path) -> Option<Kind> {
     }
 }
 
-/// Checks the method shape and returns its input type and its return type as written.
+/// Checks the method shape and returns its input type, its return type as written and, for a
+/// subscription, its event type.
 ///
-/// Queries and mutations are `(&self, ctx: Ctx, input: I) -> Result<O, E>`. Subscriptions and
-/// streams have no handler yet; they take `(&self, ctx: Ctx, input: I, ..)` and declare
-/// `-> Result<O, E>` with `O` the event (subscription) or final result (stream), so codegen can
-/// export their types.
-fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<(Type, Type)> {
+/// - Queries and mutations: `(&self, ctx: Ctx, input: I) -> Result<O, E>`.
+/// - Subscriptions: `(&self, ctx: Ctx, input: I, events: EventSink<V>) -> Result<(), E>`. The
+///   handler sends events through the sink, so cancellation, the deadline and the buffer bound
+///   stay with the engine; the `()` is checked by the generated code.
+/// - Streams have no handler until M2; they take `(&self, ctx: Ctx, input: I, ..)` and declare
+///   `-> Result<O, E>` with `O` the final result, so codegen can export their types.
+fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<(Type, Type, Option<Type>)> {
     let sig = &method.sig;
     if sig.asyncness.is_none() {
         return Err(syn::Error::new(
@@ -363,35 +369,72 @@ fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<(Type, Type)>
         }
     }
     let typed: Vec<_> = sig.inputs.iter().skip(1).collect();
-    let input = match (kind.has_handler(), typed.as_slice()) {
-        (true, [FnArg::Typed(_ctx), FnArg::Typed(input)]) => input,
-        (false, [FnArg::Typed(_ctx), FnArg::Typed(input), ..]) => input,
-        (true, _) => {
+    const SUBSCRIPTION_SHAPE: &str = "subscriptions have the shape `async fn name(&self, ctx: Ctx, \
+                                      input: I, events: EventSink<V>) -> Result<(), E>`";
+    let (input, event) = match (kind, typed.as_slice()) {
+        (Kind::Query | Kind::Mutation, [FnArg::Typed(_ctx), FnArg::Typed(input)]) => (input, None),
+        (
+            Kind::Subscription,
+            [
+                FnArg::Typed(_ctx),
+                FnArg::Typed(input),
+                FnArg::Typed(events),
+            ],
+        ) => {
+            let Some(event) = event_sink_item(&events.ty) else {
+                return Err(syn::Error::new(events.ty.span(), SUBSCRIPTION_SHAPE));
+            };
+            (input, Some(event))
+        }
+        (Kind::Stream, [FnArg::Typed(_ctx), FnArg::Typed(input), ..]) => (input, None),
+        (Kind::Query | Kind::Mutation, _) => {
             return Err(syn::Error::new(
                 sig.inputs.span(),
                 "queries and mutations have the shape `async fn name(&self, ctx: Ctx, input: I)`",
             ));
         }
-        (false, _) => {
+        (Kind::Subscription, _) => {
+            return Err(syn::Error::new(sig.inputs.span(), SUBSCRIPTION_SHAPE));
+        }
+        (Kind::Stream, _) => {
             return Err(syn::Error::new(
                 sig.inputs.span(),
-                "subscriptions and streams have the shape \
-                 `async fn name(&self, ctx: Ctx, input: I, ..)`",
+                "streams have the shape `async fn name(&self, ctx: Ctx, input: I, ..)`",
             ));
         }
     };
     let ReturnType::Type(_, ret) = &sig.output else {
         return Err(syn::Error::new(
             sig.ident.span(),
-            if kind.has_handler() {
-                "queries and mutations return `Result<O, E>`"
-            } else {
-                "subscriptions and streams declare `-> Result<O, E>` (O: the event of a \
-                 subscription, the final result of a stream) so their types can be exported"
+            match kind {
+                Kind::Query | Kind::Mutation => "queries and mutations return `Result<O, E>`",
+                Kind::Subscription => "subscriptions return `Result<(), E>`",
+                Kind::Stream => {
+                    "streams declare `-> Result<O, E>` (O: the final result) so their types can \
+                     be exported"
+                }
             },
         ));
     };
-    Ok(((*input.ty).clone(), (**ret).clone()))
+    Ok(((*input.ty).clone(), (**ret).clone(), event))
+}
+
+/// `V` in `EventSink<V>` (any path ending in that segment, e.g. `ambidex::EventSink<V>`).
+fn event_sink_item(ty: &Type) -> Option<Type> {
+    let Type::Path(path) = ty else {
+        return None;
+    };
+    let last = path.path.segments.last()?;
+    if last.ident != "EventSink" || path.qself.is_some() {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &last.arguments else {
+        return None;
+    };
+    match args.args.iter().collect::<Vec<_>>().as_slice() {
+        [syn::GenericArgument::Type(event)] => Some(event.clone()),
+        _ => None,
+    }
 }
 
 fn enum_variant(path: &Path, variants: &[&str], ty: &str) -> syn::Result<Ident> {
@@ -521,10 +564,33 @@ fn entry_expr(p: &Procedure) -> TokenStream2 {
     let method = &p.method;
     let input_ty = &p.input_ty;
     let ret_ty = &p.ret_ty;
+    if let Some(event_ty) = &p.event_ty {
+        return quote! {
+            ::ambidex::Procedure::subscription(
+                next(),
+                ::ambidex::router::__private::subscription_handler(
+                    &api,
+                    |api, ctx, input, events| {
+                        ::std::boxed::Box::pin(async move {
+                            let input: #input_ty =
+                                ::ambidex::router::__private::decode_input(input)?;
+                            let events = ::ambidex::EventSink::<#event_ty>::new(events);
+                            ::ambidex::router::__private::encode_end(
+                                api.#method(ctx, input, events).await,
+                            )
+                        })
+                    },
+                ),
+            )
+            .with_types(
+                ::ambidex::codegen::ProcedureTypes::subscription::<#input_ty, #event_ty, #ret_ty>(),
+            )
+        };
+    }
     let types = quote! {
         ::ambidex::codegen::ProcedureTypes::of::<#input_ty, #ret_ty>()
     };
-    if p.kind.has_handler() {
+    if p.kind.is_unary() {
         quote! {
             ::ambidex::Procedure::new(
                 next(),
@@ -542,7 +608,7 @@ fn entry_expr(p: &Procedure) -> TokenStream2 {
         }
     } else {
         quote! {{
-            // Declared only until the engine supports this call kind; keep the method "used".
+            // Streams are declared only until M2; keep the method "used".
             let _ = Self::#method;
             ::ambidex::Procedure::declared(next()).with_types(#types)
         }}

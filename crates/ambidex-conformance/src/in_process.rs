@@ -99,6 +99,11 @@ impl Harness for InProcess {
         Ok(())
     }
 
+    fn engine_on_case_runtime(&self) -> Result<(), Unsupported> {
+        // `Server::serve` spawns on the case's runtime.
+        Ok(())
+    }
+
     async fn shutdown(self) {
         let connections = std::mem::take(&mut *lock(&self.connections));
         for connection in connections {

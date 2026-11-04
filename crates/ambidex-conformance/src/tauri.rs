@@ -120,6 +120,16 @@ impl Harness for Tauri {
         Ok(())
     }
 
+    fn engine_on_case_runtime(&self) -> Result<(), Unsupported> {
+        Err(Unsupported(
+            "the plugin runs the engine on Tauri's multi-threaded runtime and a Channel never \
+             waits for the webview, so how many events are buffered at once depends on \
+             scheduling; the in-process and WebSocket harnesses and the engine's tests assert \
+             the exact bound, and the webview's runtime bounds its own buffer \
+             (maxBufferedEvents)",
+        ))
+    }
+
     async fn shutdown(self) {
         self.hub.end_all_sessions();
         self.app.cleanup_before_exit();

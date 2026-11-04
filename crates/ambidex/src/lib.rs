@@ -5,13 +5,14 @@
 //! - [`transport`]: the byte-pipe traits transports implement, plus an in-memory pair.
 //! - [`engine`]: the per-connection protocol engine.
 //! - [`cancel`]: per-call cancellation tokens and deadlines.
+//! - [`subscription`]: server-push events ([`EventSink`]) and their bounded buffer.
 //! - [`procedure`]: procedure metadata (permission, risk, agent exposure, timeouts, redaction).
 //! - [`router`]: the procedure registry; authorizes every call before dispatch.
 //! - [`error`]: the typed error model, `RpcError<E>`.
 //! - [`rpc`]: the `#[rpc::router]` and procedure attribute macros.
 //! - [`codegen`]: `api.ts` and `api.manifest.json` from a router, for a product's `rpc-gen`.
 //!
-//! Spec: Notion "Ambidex spec" (DOC-5), §2, §3, §7, §8, §10.
+//! Spec: Notion "Ambidex spec" (DOC-5), §2, §3, §5, §7, §8, §10.
 //!
 //! ```
 //! use ambidex::{Agent, Ctx, Risk, RpcError, rpc};
@@ -52,6 +53,57 @@
 //! }
 //! ```
 //!
+//! A subscription sends events through its [`EventSink`] and ends with `Ok(())`:
+//!
+//! ```
+//! use ambidex::{Ctx, EventSink, Risk, RpcError, rpc};
+//!
+//! pub struct JobsApi;
+//!
+//! #[rpc::router(namespace = "jobs")]
+//! impl JobsApi {
+//!     #[rpc::subscription(perm = "jobs.watch", risk = Risk::Read, timeout_default = "1h")]
+//!     async fn progress(&self, _ctx: Ctx, steps: u32, events: EventSink<u32>) -> Result<(), RpcError> {
+//!         for step in 0..steps {
+//!             events.send(&step).await?; // fails once the subscription is over
+//!         }
+//!         Ok(())
+//!     }
+//! }
+//! ```
+//!
+//! Its normal end carries no value, so a subscription that returns one does not compile:
+//!
+//! ```compile_fail
+//! use ambidex::{Ctx, EventSink, Risk, RpcError, rpc};
+//!
+//! pub struct JobsApi;
+//!
+//! #[rpc::router(namespace = "jobs")]
+//! impl JobsApi {
+//!     #[rpc::subscription(perm = "jobs.watch", risk = Risk::Read)]
+//!     async fn progress(&self, _ctx: Ctx, _steps: u32, _events: EventSink<u32>) -> Result<u32, RpcError> {
+//!         Ok(1)
+//!     }
+//! }
+//! ```
+//!
+//! Nor does one without its sink (the provisional shape of spec Open question 22b):
+//!
+//! ```compile_fail
+//! use ambidex::{Ctx, Risk, RpcError, rpc};
+//!
+//! pub struct JobsApi;
+//!
+//! #[rpc::router(namespace = "jobs")]
+//! impl JobsApi {
+//!     #[rpc::subscription(perm = "jobs.watch", risk = Risk::Read)]
+//!     async fn progress(&self, _ctx: Ctx, _steps: u32) -> Result<u32, RpcError> {
+//!         Ok(1)
+//!     }
+//! }
+//! ```
+//!
 //! Nor does a risk spelled with another type's path:
 //!
 //! ```compile_fail
@@ -76,6 +128,7 @@ pub mod frame;
 pub mod message;
 pub mod procedure;
 pub mod router;
+pub mod subscription;
 pub mod transport;
 
 /// Procedure declaration macros (spec §2).
@@ -96,13 +149,18 @@ pub mod transport;
 /// | `name = "other"` | no | Method part of the procedure name; default the Rust name |
 /// | `deprecated` | no | Marks the procedure deprecated (spec §10) |
 ///
-/// Queries and mutations are `async fn name(&self, ctx: Ctx, input: I) -> Result<O, E>` with
-/// `I: Deserialize`, `O: Serialize` and `E:` [`IntoErrorPayload`]. Subscriptions and streams are
-/// `async fn name(&self, ctx: Ctx, input: I, ..) -> Result<O, E>`, `O` being the event or the final
-/// result; they are registered and authorized, then answered with `Unimplemented` until their
-/// engine support lands.
+/// | Kind | Signature |
+/// | --- | --- |
+/// | query, mutation | `async fn name(&self, ctx: Ctx, input: I) -> Result<O, E>` |
+/// | subscription | `async fn name(&self, ctx: Ctx, input: I, events: EventSink<V>) -> Result<(), E>` |
+/// | stream | `async fn name(&self, ctx: Ctx, input: I, ..) -> Result<O, E>` (declared only) |
 ///
-/// `I` and `O` (and the details of `E`) also derive `ts_rs::TS` and `schemars::JsonSchema`, so
+/// `I: Deserialize`, `O: Serialize`, `V: Serialize` (one event) and `E:` [`IntoErrorPayload`]. A
+/// subscription sends its events with [`EventSink::send`] and ends with `Ok(())` (the client gets
+/// `Result`, payload `null`) or an error (see [`subscription`]). Streams are registered and
+/// authorized, then answered with `Unimplemented` until M2; `O` is their final result.
+///
+/// `I`, `O` and `V` (and the details of `E`) also derive `ts_rs::TS` and `schemars::JsonSchema`, so
 /// [`codegen`] can export them; [`IntoErrorPayload::Details`] is the type of `details`.
 pub mod rpc {
     pub use ambidex_macros::{mutation, query, router, stream, subscription};
@@ -115,11 +173,12 @@ pub use frame::{Flags, Frame, FrameDecoder, FrameError, Kind};
 pub use message::{Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits};
 pub use procedure::{Agent, ProcedureKind, ProcedureMeta};
 pub use router::{
-    Api, ApprovalRequired, Approvals, Ctx, Handler, Procedure, RegistryError, Rejected, Router,
-    input_digest,
+    Api, ApprovalRequired, Approvals, AuditError, AuditSink, Ctx, Handler, Procedure,
+    RegistryError, Rejected, Router, SubscriptionHandler, input_digest,
 };
 pub use schemars;
 pub use security_types;
 pub use security_types::{Risk, TargetRef};
+pub use subscription::{EventSink, Events, SubscriptionEnded};
 pub use tokio_util::sync::CancellationToken;
 pub use ts_rs;

@@ -8,8 +8,8 @@ use ambidex::codegen::agree::Checker;
 use ambidex::codegen::{self, ApiInfo, CodegenError, ProcedureTypes, Type};
 use ambidex::security_types::{Authorizer, AuthzRequest, Decision, Reason};
 use ambidex::{
-    Code, Ctx, DomainError, ErrorPayload, Procedure, ProcedureKind, ProcedureMeta, Risk, Router,
-    RpcError, rpc,
+    Code, Ctx, DomainError, ErrorPayload, EventSink, Procedure, ProcedureKind, ProcedureMeta, Risk,
+    Router, RpcError, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -184,8 +184,13 @@ impl ZooApi {
     }
 
     #[rpc::subscription(perm = "zoo.watch", risk = Risk::Read)]
-    async fn events(&self, _ctx: Ctx, _input: Option<String>) -> Result<Event, RpcError> {
-        Err(RpcError::new(Code::Unimplemented, "declared only"))
+    async fn events(
+        &self,
+        _ctx: Ctx,
+        _input: Option<String>,
+        _events: EventSink<Event>,
+    ) -> Result<(), RpcError> {
+        Ok(())
     }
 
     #[rpc::query(perm = "zoo.read", risk = Risk::Read)]

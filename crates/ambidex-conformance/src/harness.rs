@@ -30,6 +30,11 @@ pub trait Harness: Sized {
     /// (logout, app lock), or says why the transport cannot do that yet.
     fn revoke_sessions(&self) -> Result<(), Unsupported>;
 
+    /// Whether the server's engine runs on the case's current-thread runtime, so a handler that
+    /// never yields runs to completion before the connection forwards anything. Cases that
+    /// assert an exact buffer bound need it.
+    fn engine_on_case_runtime(&self) -> Result<(), Unsupported>;
+
     /// Stops the server and releases its sockets, tasks and app.
     fn shutdown(self) -> impl Future<Output = ()>;
 }
@@ -120,7 +125,21 @@ macro_rules! conformance_suite {
             client_goaway_closes_and_cancels_calls,
             session_revocation_sends_goaway_and_cancels_calls,
             connections_are_independent,
-            subscriptions_are_unimplemented_and_keep_connection,
+            subscription_events_arrive_in_order_then_result,
+            subscription_ends_with_server_error,
+            nothing_is_sent_after_unsubscribe,
+            unsubscribed_handler_gets_cancel_grace,
+            unsubscribe_for_unknown_or_ended_id_is_ignored,
+            unsubscribe_on_call_zero_is_fatal,
+            cancel_ends_subscription_and_reaches_handler,
+            stubborn_subscription_is_dropped_after_grace,
+            deadline_ends_subscription,
+            disconnect_cancels_subscriptions,
+            session_revocation_ends_subscriptions_with_goaway,
+            unauthorized_subscribe_is_denied_and_audited,
+            call_kind_must_match_frame_kind,
+            subscriptions_count_toward_concurrency_limit,
+            full_event_buffer_ends_subscription,
             streams_are_unimplemented_and_keep_connection,
         );
     };

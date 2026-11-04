@@ -46,7 +46,7 @@ same with a bare table. Procedure names are the wire names (spec Open question 2
 | ------------ | ----------------------------------------------- | ----------------------------------------------------------- |
 | query        | `Promise<Output>`                               | Rejects with `RpcError`                                     |
 | mutation     | `Promise<Output>`                               | Never resent by the runtime                                 |
-| subscription | `AsyncIterable<Event>` with `unsubscribe()`     | Server support pending (see below)                          |
+| subscription | `AsyncIterable<Event>` with `unsubscribe()`     | Ends with the server's `Result` or `Error` (see below)      |
 | stream       | `{ chunks(): AsyncIterable<Uint8Array>, result }` | M1 shape only: no credits, no Arrow decoding (M2)         |
 
 Control methods start with `$`, which no procedure name can: `$connect()` (open now, returns the
@@ -65,8 +65,22 @@ Control methods start with `$`, which no procedure name can: `$connect()` (open 
   `Cancelled` (spec Open question 21b); aborting before the call was sent sends nothing. A late
   answer for that id is dropped.
 - **Deadlines.** `timeoutMs` (a non-negative integer) travels as `timeout_ms`; the server enforces
-  `min(timeoutMs, timeoutMaxMs)` and answers `DeadlineExceeded`. The runtime only keeps a safety
-  timer at that deadline plus `timeoutSlackMs` (default 5 s) for a server that never answers.
+  `min(timeoutMs, timeoutMaxMs)` and answers `DeadlineExceeded`, for calls and subscriptions
+  alike. The runtime only keeps a safety timer, for a server that never answers, at that deadline
+  plus a slack: when the server's `HelloAck.limits.cancel_grace_ms` is present (how long it lets a
+  cancelled call run before dropping it), the slack is that grace plus `networkMarginMs` (default
+  1 s); otherwise it is `timeoutSlackMs` (default 5 s), spec Open question 23b. When the timer
+  fires, the call fails locally with `DeadlineExceeded` (`local: true`) and the runtime sends
+  `Cancel` (`Unsubscribe` for a subscription).
+- **Subscriptions** (spec Open question 23a). `Subscribe` carries the call payload
+  `{procedure, input, timeout_ms?}`; each `Event` frame is one event, in order. The server ends a
+  subscription with `Result` (the iteration ends normally; the payload is not an event) or `Error`
+  (the iteration rejects with that `RpcError`). Leaving a `for await` loop, `unsubscribe()` or
+  aborting the `signal` sends one `Unsubscribe`: the server never answers it and sends nothing
+  more for that id, and frames already in flight are dropped here. Abort rejects with a local
+  `Cancelled`. Events the consumer has not read yet are buffered up to `maxBufferedEvents`
+  (default 1024), then the subscription ends with `ResourceExhausted`; the server bounds its own
+  buffer the same way. Subscriptions count toward the server's `max_concurrent_calls`.
 - **Errors** are `RpcError` instances with the wire fields `code`, `message`, `details`,
   `retryable`, `correlation_id`, plus `procedure` and `local` (true when the runtime produced it).
   `isRpcError(e, procedure)` narrows to that procedure's generated error union, and only matches
@@ -76,7 +90,8 @@ Control methods start with `$`, which no procedure name can: `$connect()` (open 
   too-large call fails locally with `ResourceExhausted` before anything is sent. Malformed or
   unexpected server frames close the connection with `Goaway {InvalidArgument}`.
 - **Goaway** from the server (e.g. `Unauthenticated` "session revoked") fails every call and
-  subscription with that code and message.
+  subscription with that code and message. Revoking a session ends its subscriptions this way,
+  with no per-subscription `Error`.
 
 ## Transports
 
@@ -97,11 +112,10 @@ the shared runtime.
 
 ## Not in this package yet
 
-- **Subscriptions on the server**: the engine answers `Subscribe` with `Unimplemented`, which the
-  runtime surfaces through the iterator. The client side follows the Call shape for `Subscribe`
-  (`{procedure, input, timeout_ms?}`), `Event` per event, `Unsubscribe` with an empty payload;
-  how the server ends a subscription is spec Open question 23.
-- **Streams (M2)**: credit-based flow control, Worker-side Arrow decoding, the chunk API.
+- **Streams (M2)**: credit-based flow control, Worker-side Arrow decoding, the chunk API. The
+  engine answers stream calls with `Unimplemented`, which `result` and `chunks()` surface.
+- **Backpressure for subscriptions (M2)**: no credits; a consumer that falls behind ends the
+  subscription with `ResourceExhausted` (client or server side) instead of slowing the producer.
 
 ## Development
 

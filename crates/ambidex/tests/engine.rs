@@ -8,8 +8,8 @@ use ambidex::engine::BoxFuture;
 use ambidex::frame::{Frame, FrameDecoder, Header, Kind};
 use ambidex::transport::{MemoryRx, MemoryTx, TransportRx, TransportTx, memory};
 use ambidex::{
-    Authenticate, Call, Closed, Code, Connection, Dispatch, ErrorPayload, Flags, Goaway, Hello,
-    HelloAck, Server, ServerConfig, Session,
+    Authenticate, Call, Closed, Code, Connection, Dispatch, ErrorPayload, Events, Flags, Goaway,
+    Hello, HelloAck, Server, ServerConfig, Session,
 };
 use security_types::{Principal, PrincipalKind, SessionId, TenantId};
 use serde_json::{Value, json};
@@ -50,6 +50,8 @@ struct Fixture {
     gate: Arc<Notify>,
     started: Arc<Notify>,
     dropped: Arc<AtomicBool>,
+    /// What a sink clone left behind by the `orphan` handler saw: `send` after `closed()`.
+    orphan: Arc<std::sync::Mutex<Option<Result<(), Code>>>>,
 }
 
 struct DropFlag(Arc<AtomicBool>);
@@ -89,6 +91,81 @@ impl Dispatch for Fixture {
             }
         })
     }
+
+    /// Subscriptions: `ticks` (events 0..n, then a normal end), `fail` (events 0..n, then an
+    /// error), `hold` (events 0..n, then waits until the subscription is over and returns `Ok`),
+    /// `flood` (sends without ever yielding until the engine refuses), `huge` (one event over the
+    /// frame limit).
+    fn subscribe(
+        &self,
+        _session: Arc<Session>,
+        call: Call,
+        events: Events,
+    ) -> BoxFuture<'static, Result<(), ErrorPayload>> {
+        let started = Arc::clone(&self.started);
+        let dropped = Arc::clone(&self.dropped);
+        let orphan = Arc::clone(&self.orphan);
+        Box::pin(async move {
+            let n = call.input.as_u64().unwrap_or(0);
+            let send = |i: u64| {
+                events
+                    .send_json(i.to_string().into_bytes())
+                    .map_err(|ended| ErrorPayload::new(ended.code(), "ended"))
+            };
+            match call.procedure.as_str() {
+                "ticks" | "fail" | "hold" => {
+                    for i in 0..n {
+                        send(i)?;
+                    }
+                    match call.procedure.as_str() {
+                        "fail" => Err(ErrorPayload::new(Code::FailedPrecondition, "topic gone")),
+                        "hold" => {
+                            let _flag = DropFlag(dropped);
+                            started.notify_one();
+                            events.closed().await;
+                            Ok(())
+                        }
+                        _ => Ok(()),
+                    }
+                }
+                // Sends, yielding after each event so the engine can forward it, until refused.
+                "trickle" => {
+                    let mut i = 0;
+                    while send(i).is_ok() {
+                        i += 1;
+                        tokio::task::yield_now().await;
+                    }
+                    Ok(())
+                }
+                "flood" => {
+                    let mut i = 0;
+                    loop {
+                        if let Err(ended) = send(i) {
+                            // Whatever the handler answers, the engine's reason wins.
+                            assert_eq!(ended.code, Code::ResourceExhausted);
+                            return Ok(());
+                        }
+                        i += 1;
+                    }
+                }
+                "huge" => events
+                    .send_json(format!("\"{}\"", "x".repeat(2048)).into_bytes())
+                    .map_err(|ended| ErrorPayload::new(ended.code(), "ended")),
+                // Leaves a sink clone in a task of its own, then returns `Ok`.
+                "orphan" => {
+                    let left = events.clone();
+                    tokio::spawn(async move {
+                        left.closed().await;
+                        let sent = left.send_json(b"1".to_vec()).map_err(|e| e.code());
+                        *orphan.lock().unwrap() = Some(sent);
+                        started.notify_one();
+                    });
+                    Ok(())
+                }
+                _ => Err(ErrorPayload::new(Code::NotFound, "unknown procedure")),
+            }
+        })
+    }
 }
 
 fn config() -> ServerConfig {
@@ -97,6 +174,7 @@ fn config() -> ServerConfig {
     config.max_hello_bytes = 512;
     config.max_concurrent_calls = 4;
     config.cancel_grace = Duration::from_millis(50);
+    config.subscription_buffer_events = 8;
     config
 }
 
@@ -185,8 +263,16 @@ fn start_with(fixture: Fixture) -> (Client, Connection) {
 
 /// `capacity` is the number of chunks each transport direction holds before the sender waits.
 fn start_with_capacity(fixture: Fixture, capacity: usize) -> (Client, Connection) {
+    start_with_config(fixture, config(), capacity)
+}
+
+fn start_with_config(
+    fixture: Fixture,
+    config: ServerConfig,
+    capacity: usize,
+) -> (Client, Connection) {
     let ((client_rx, client_tx), (server_rx, server_tx)) = memory(capacity);
-    let server = Server::new(config(), TokenAuth, fixture);
+    let server = Server::new(config, TokenAuth, fixture);
     let conn = server.serve(server_rx, server_tx);
     let client = Client {
         rx: client_rx,
@@ -215,6 +301,27 @@ async fn handshake_returns_session_and_limits() {
     assert_eq!(ack.server_version, "9.9.9");
     assert_eq!(ack.limits.max_frame_bytes, 1024);
     assert_eq!(ack.limits.max_concurrent_calls, 4);
+    assert_eq!(ack.limits.cancel_grace_ms, Some(50));
+}
+
+#[tokio::test]
+async fn a_huge_cancel_grace_is_advertised_as_a_safe_integer() {
+    // Review finding [4]: Duration::MAX would be u64::MAX ms, which a JavaScript client cannot
+    // read exactly.
+    for (grace, advertised) in [
+        (Duration::MAX, (1u64 << 53) - 1),
+        (Duration::from_millis(1 << 60), (1 << 53) - 1),
+        (Duration::from_millis((1 << 53) - 1), (1 << 53) - 1),
+        (Duration::from_micros(1500), 1),
+    ] {
+        let mut config = config();
+        config.cancel_grace = grace;
+        let (mut client, _conn) = start_with_config(Fixture::default(), config, 16);
+        client.send_json(Kind::Hello, 0, hello_json()).await;
+        let frame = client.recv().await.unwrap();
+        let ack: HelloAck = serde_json::from_slice(&frame.payload).unwrap();
+        assert_eq!(ack.limits.cancel_grace_ms, Some(advertised), "{grace:?}");
+    }
 }
 
 #[tokio::test]
@@ -529,14 +636,395 @@ async fn disconnect_drops_in_flight_calls() {
     assert!(dropped.load(Ordering::SeqCst));
 }
 
+// ---- subscriptions ----------------------------------------------------------------------
+
+impl Client {
+    async fn subscribe(&mut self, call_id: u32, procedure: &str, input: Value) {
+        self.send_json(
+            Kind::Subscribe,
+            call_id,
+            json!({ "procedure": procedure, "input": input }),
+        )
+        .await;
+    }
+
+    async fn cancel(&mut self, call_id: u32) {
+        self.send(Frame::new(Kind::Cancel, call_id, Vec::new()))
+            .await;
+    }
+
+    async fn unsubscribe(&mut self, call_id: u32) {
+        self.send(Frame::new(Kind::Unsubscribe, call_id, Vec::new()))
+            .await;
+    }
+
+    /// The next frames must be the events `values` for `call_id`, in order.
+    async fn expect_events(&mut self, call_id: u32, values: std::ops::Range<u64>) {
+        for value in values {
+            let frame = self.recv().await.expect("Event, got close");
+            assert_eq!(
+                (frame.kind, frame.call_id),
+                (Kind::Event, call_id),
+                "{frame:?}"
+            );
+            assert!(!frame.flags.is_binary());
+            assert_eq!(frame.payload, value.to_string().into_bytes());
+        }
+    }
+
+    /// The next frame must be this Pong.
+    async fn expect_pong(&mut self, id: u32) {
+        self.send(Frame::new(Kind::Ping, id, Vec::new())).await;
+        let frame = self.recv().await.expect("Pong, got close");
+        assert_eq!((frame.kind, frame.call_id), (Kind::Pong, id), "{frame:?}");
+    }
+}
+
 #[tokio::test]
-async fn subscribe_is_unimplemented() {
+async fn subscription_sends_events_in_order_then_a_null_result() {
+    let (mut client, _conn) = connected().await;
+    client.subscribe(1, "ticks", json!(5)).await;
+    client.expect_events(1, 0..5).await;
+    assert_eq!(client.recv_result().await, (1, Value::Null));
+    client.expect_pong(0).await;
+}
+
+/// A dispatcher written before subscriptions existed: it only serves calls.
+struct CallsOnly;
+
+impl Dispatch for CallsOnly {
+    fn call(
+        &self,
+        _session: Arc<Session>,
+        _call: Call,
+    ) -> BoxFuture<'static, Result<Value, ErrorPayload>> {
+        Box::pin(async { Ok(json!("called")) })
+    }
+}
+
+#[tokio::test]
+async fn a_dispatcher_without_subscribe_answers_unimplemented() {
+    // Review finding [7]: `Dispatch::subscribe` has a default, as before this change.
+    let ((client_rx, client_tx), (server_rx, server_tx)) = memory(16);
+    let _conn = Server::new(config(), TokenAuth, CallsOnly).serve(server_rx, server_tx);
+    let mut client = Client {
+        rx: client_rx,
+        tx: client_tx,
+        decoder: FrameDecoder::new(u32::MAX),
+    };
+    handshake(&mut client).await;
+    client.subscribe(1, "anything", Value::Null).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::Unimplemented));
+    client.call(2, "anything", Value::Null).await;
+    assert_eq!(client.recv_result().await, (2, json!("called")));
+}
+
+#[tokio::test]
+async fn a_finished_subscription_closes_sinks_it_left_behind() {
+    // Review finding [1]: the scope fires when the handler returns, not only on cancel.
+    let fixture = Fixture::default();
+    let (started, orphan) = (Arc::clone(&fixture.started), Arc::clone(&fixture.orphan));
+    let (mut client, _conn) = start_with(fixture);
+    handshake(&mut client).await;
+    client.subscribe(1, "orphan", Value::Null).await;
+    assert_eq!(client.recv_result().await, (1, Value::Null));
+    tokio::time::timeout(Duration::from_secs(5), started.notified())
+        .await
+        .expect("the left-behind sink's closed() resolves");
+    assert_eq!(*orphan.lock().unwrap(), Some(Err(Code::Cancelled)));
+    // And nothing it tried to send went out.
+    client.expect_pong(0).await;
+}
+
+#[tokio::test]
+async fn subscription_error_follows_its_events() {
+    let (mut client, _conn) = connected().await;
+    client.subscribe(1, "fail", json!(2)).await;
+    client.expect_events(1, 0..2).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::FailedPrecondition));
+    assert!(!err.correlation_id.is_empty());
+}
+
+#[tokio::test]
+async fn subscribe_payload_is_checked_like_a_call() {
     let (mut client, _conn) = connected().await;
     client
         .send_json(Kind::Subscribe, 6, json!({ "topic": "x" }))
         .await;
     let (call_id, err) = client.recv_error().await;
-    assert_eq!((call_id, err.code), (6, Code::Unimplemented));
+    assert_eq!((call_id, err.code), (6, Code::InvalidArgument));
+    client
+        .send(Frame::binary(Kind::Subscribe, 7, b"{}".to_vec()))
+        .await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (7, Code::InvalidArgument));
+    client.expect_pong(0).await;
+}
+
+#[tokio::test]
+async fn subscriptions_share_the_concurrency_limit_with_calls() {
+    let fixture = Fixture::default();
+    let gate = Arc::clone(&fixture.gate);
+    let (mut client, _conn) = start_with(fixture);
+    handshake(&mut client).await;
+    for id in 1..=2 {
+        client.subscribe(id, "hold", json!(0)).await;
+    }
+    client.call(3, "wait", Value::Null).await;
+    client.subscribe(4, "hold", json!(0)).await;
+    // 4 in flight (the limit): the fifth, of either kind, is refused.
+    client.subscribe(5, "hold", json!(0)).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (5, Code::ResourceExhausted));
+    assert!(err.retryable);
+    gate.notify_one();
+    assert_eq!(client.recv_result().await, (3, json!("waited")));
+    client.call(6, "echo", json!(6)).await;
+    assert_eq!(client.recv_result().await.0, 6);
+}
+
+#[tokio::test(start_paused = true)]
+async fn unsubscribe_discards_queued_events_and_silences_the_end() {
+    let fixture = Fixture::default();
+    let (started, dropped) = (Arc::clone(&fixture.started), Arc::clone(&fixture.dropped));
+    // One chunk per transport direction and a 4-frame outbound queue (2 for subscription
+    // frames): most of the 8 events wait in the engine.
+    let mut config = config();
+    config.outbound_queue_frames = 4;
+    let (mut client, conn) = start_with_config(fixture, config, 1);
+    handshake(&mut client).await;
+    client.subscribe(1, "hold", json!(8)).await;
+    started.notified().await;
+    settle().await;
+    // Unsubscribe and Ping in one chunk: everything after the Pong is for other ids.
+    let mut bytes = Frame::new(Kind::Unsubscribe, 1, Vec::new())
+        .encode(u32::MAX)
+        .unwrap();
+    Frame::new(Kind::Ping, 9, Vec::new())
+        .encode_into(&mut bytes, u32::MAX)
+        .unwrap();
+    client.send_raw(bytes).await;
+    // Events already handed to the transport may still arrive, in order, before the Pong.
+    let mut next_event = 0;
+    loop {
+        let frame = client.recv().await.expect("Pong, got close");
+        if frame.kind == Kind::Pong {
+            assert_eq!(frame.call_id, 9);
+            break;
+        }
+        assert_eq!((frame.kind, frame.call_id), (Kind::Event, 1), "{frame:?}");
+        assert_eq!(frame.payload, next_event.to_string().into_bytes());
+        next_event += 1;
+    }
+    assert!(next_event < 8, "queued events were discarded");
+    // The handler saw the end and returned Ok, which is not sent.
+    settle().await;
+    assert!(dropped.load(Ordering::SeqCst));
+    client.expect_pong(10).await;
+    client.call(2, "echo", json!(2)).await;
+    assert_eq!(client.recv_result().await.0, 2);
+    drop(conn);
+}
+
+#[tokio::test(start_paused = true)]
+async fn unsubscribe_after_the_handler_returned_drops_its_waiting_frames() {
+    // Review finding [2]. One chunk per transport direction and a 4-frame outbound queue, and the
+    // peer reads nothing: the handler sends 8 events and returns, so most of them and its end
+    // frame are still waiting in the engine when the Unsubscribe arrives.
+    let mut config = config();
+    config.outbound_queue_frames = 4;
+    let (mut client, _conn) = start_with_config(Fixture::default(), config, 1);
+    handshake(&mut client).await;
+    client.subscribe(1, "ticks", json!(8)).await;
+    settle().await;
+    let mut bytes = Frame::new(Kind::Unsubscribe, 1, Vec::new())
+        .encode(u32::MAX)
+        .unwrap();
+    Frame::new(Kind::Ping, 9, Vec::new())
+        .encode_into(&mut bytes, u32::MAX)
+        .unwrap();
+    client.send_raw(bytes).await;
+    // Frames already handed to the outbound queue are in flight; the end is not among them.
+    let mut next_event = 0;
+    loop {
+        let frame = client.recv().await.expect("Pong, got close");
+        if frame.kind == Kind::Pong {
+            break;
+        }
+        assert_eq!((frame.kind, frame.call_id), (Kind::Event, 1), "{frame:?}");
+        assert_eq!(frame.payload, next_event.to_string().into_bytes());
+        next_event += 1;
+    }
+    assert!(next_event < 8, "waiting events were dropped");
+    // Nothing more for id 1: not the remaining events, not its Result.
+    client.expect_pong(10).await;
+    client.call(2, "echo", json!(2)).await;
+    assert_eq!(client.recv_result().await.0, 2);
+}
+
+#[tokio::test]
+async fn unsubscribe_rules() {
+    let (mut client, _conn) = connected().await;
+    // Unknown and finished ids are ignored: the subscription already ended.
+    client.unsubscribe(42).await;
+    client.subscribe(1, "ticks", json!(1)).await;
+    client.expect_events(1, 0..1).await;
+    client.recv_result().await;
+    client.unsubscribe(1).await;
+    // On a call it is ignored too; the call still answers.
+    client.call(2, "echo", json!(2)).await;
+    client.unsubscribe(2).await;
+    assert_eq!(client.recv_result().await.0, 2);
+    client.expect_pong(0).await;
+    // Call id 0 is a violation.
+    client.unsubscribe(0).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (0, Code::InvalidArgument));
+    client.expect_closed().await;
+}
+
+#[tokio::test]
+async fn cancel_ends_a_subscription_after_its_queued_events() {
+    let fixture = Fixture::default();
+    let started = Arc::clone(&fixture.started);
+    let (mut client, _conn) = start_with(fixture);
+    handshake(&mut client).await;
+    client.subscribe(1, "hold", json!(3)).await;
+    started.notified().await;
+    client.cancel(1).await;
+    client.expect_events(1, 0..3).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::Cancelled));
+}
+
+#[tokio::test(start_paused = true)]
+async fn events_in_the_outbound_queue_count_against_the_buffer() {
+    // Review finding [3]. The peer reads nothing and the transport holds one chunk; the 64-frame
+    // outbound queue would take 32 events. They count until the writer hands them over, so the
+    // subscription ends after the 8-event buffer plus the one event the transport took.
+    let (mut client, _conn) = start_with_capacity(Fixture::default(), 1);
+    handshake(&mut client).await;
+    client.subscribe(1, "trickle", Value::Null).await;
+    settle().await;
+    client.expect_events(1, 0..9).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::ResourceExhausted));
+    assert_eq!(err.message, "subscription event buffer is full");
+}
+
+#[tokio::test]
+async fn full_buffer_ends_the_subscription_with_resource_exhausted() {
+    let (mut client, _conn) = connected().await;
+    // The handler never yields, so nothing is forwarded while it sends: exactly the buffer
+    // (8 events) is accepted, the ninth ends the subscription.
+    client.subscribe(1, "flood", Value::Null).await;
+    client.expect_events(1, 0..8).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::ResourceExhausted));
+    assert_eq!(err.message, "subscription event buffer is full");
+    client.expect_pong(0).await;
+}
+
+#[tokio::test]
+async fn event_over_the_frame_limit_ends_the_subscription() {
+    let (mut client, _conn) = connected().await;
+    client.subscribe(1, "huge", Value::Null).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::ResourceExhausted));
+    assert_eq!(err.message, "event exceeds the frame size limit");
+    client.expect_pong(0).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn busy_subscription_leaves_room_for_call_answers() {
+    // An 8-frame outbound queue: subscription frames may use 4 of it.
+    let mut config = config();
+    config.outbound_queue_frames = 8;
+    config.max_concurrent_calls = 16;
+    config.subscription_buffer_events = 64;
+    let fixture = Fixture::default();
+    let started = Arc::clone(&fixture.started);
+    let (mut client, conn) = start_with_config(fixture, config, 1);
+    handshake(&mut client).await;
+    client.subscribe(1, "hold", json!(40)).await;
+    started.notified().await;
+    settle().await;
+    // The client reads nothing yet. Four answers fit in the room events left free.
+    for id in 2..=5 {
+        client.call(id, "echo", json!(id)).await;
+    }
+    settle().await;
+    let mut results = 0;
+    let mut events = 0;
+    while results < 4 {
+        let frame = client.recv().await.expect("connection stays open");
+        match frame.kind {
+            Kind::Result => results += 1,
+            Kind::Event => {
+                assert_eq!(frame.payload, events.to_string().into_bytes());
+                events += 1;
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    client.expect_events(1, events..40).await;
+    client.cancel(1).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::Cancelled));
+    drop(conn);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_one_frame_outbound_queue_still_leaves_room_for_answers() {
+    // Review finding [9a]: with one slot, an event could take it and the next call answer would
+    // close the connection as a slow consumer. The engine raises the queue to two slots.
+    let mut config = config();
+    config.outbound_queue_frames = 1;
+    let fixture = Fixture::default();
+    let started = Arc::clone(&fixture.started);
+    let (mut client, conn) = start_with_config(fixture, config, 1);
+    handshake(&mut client).await;
+    client.subscribe(1, "hold", json!(8)).await;
+    started.notified().await;
+    settle().await;
+    // The client reads nothing yet; the answer fits in the slot events left free.
+    client.call(2, "echo", json!(2)).await;
+    settle().await;
+    let mut events = 0;
+    loop {
+        let frame = client.recv().await.expect("connection stays open");
+        match frame.kind {
+            Kind::Result => {
+                assert_eq!(frame.call_id, 2);
+                break;
+            }
+            Kind::Event => {
+                assert_eq!(frame.payload, events.to_string().into_bytes());
+                events += 1;
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    client.expect_events(1, events..8).await;
+    client.cancel(1).await;
+    let (call_id, err) = client.recv_error().await;
+    assert_eq!((call_id, err.code), (1, Code::Cancelled));
+    drop(conn);
+}
+
+#[tokio::test]
+async fn disconnect_cancels_subscriptions() {
+    let fixture = Fixture::default();
+    let (started, dropped) = (Arc::clone(&fixture.started), Arc::clone(&fixture.dropped));
+    let (mut client, conn) = start_with(fixture);
+    handshake(&mut client).await;
+    client.subscribe(1, "hold", json!(0)).await;
+    started.notified().await;
+    client.tx.close().await.unwrap();
+    assert_eq!(conn.closed().await, Closed::PeerClosed);
+    assert!(dropped.load(Ordering::SeqCst));
 }
 
 #[tokio::test]

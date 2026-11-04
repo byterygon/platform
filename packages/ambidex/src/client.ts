@@ -18,8 +18,10 @@
 // and rejects the call at once with a local `Cancelled`, without waiting for the server's reply;
 // an abort before the call was sent sends nothing. The server owns the deadline: `timeoutMs`
 // travels as `timeout_ms` and the server answers `DeadlineExceeded`. The runtime only keeps a
-// safety timer at the procedure's effective deadline plus `timeoutSlackMs`, for a server that never
-// answers.
+// safety timer, for a server that never answers, at the procedure's effective deadline plus a
+// slack: the server's advertised `cancel_grace_ms` plus `networkMarginMs` when its HelloAck has
+// one (spec Open question 23b), otherwise `timeoutSlackMs`. Calls, subscriptions and streams all
+// get it.
 
 import type { CallOptions, Client, ProcedureKind, ProcedureLike } from "./contract.js";
 import { Connection, type HelloAck } from "./connection.js";
@@ -43,10 +45,16 @@ export interface ClientOptions {
   readonly helloTimeoutMs?: number;
   /**
    * How long after a call's effective deadline the runtime waits for the server's
-   * `DeadlineExceeded` before failing the call locally. Covers the server's cancel grace and
-   * latency. Default 5000 ms.
+   * `DeadlineExceeded` before failing the call locally, when the server does not advertise
+   * `HelloAck.limits.cancel_grace_ms`. Covers the server's cancel grace and latency. Default
+   * 5000 ms.
    */
   readonly timeoutSlackMs?: number;
+  /**
+   * When the server advertises `cancel_grace_ms`, the safety slack is that grace plus this margin
+   * for latency (spec Open question 23b). Default 1000 ms.
+   */
+  readonly networkMarginMs?: number;
   /**
    * Events (or chunks) buffered per subscription (or stream) the consumer has not read yet. When
    * exceeded the subscription ends with `ResourceExhausted`. Default 1024.
@@ -151,6 +159,7 @@ export function createClient(
     },
     helloTimeoutMs: options.helloTimeoutMs ?? 10_000,
     timeoutSlackMs: options.timeoutSlackMs ?? 5_000,
+    networkMarginMs: options.networkMarginMs ?? 1_000,
     maxBufferedEvents: options.maxBufferedEvents ?? 1024,
   });
   const client = build(procedures, runtime) as Record<string, unknown>;
@@ -206,6 +215,7 @@ interface RuntimeOptions {
   };
   readonly helloTimeoutMs: number;
   readonly timeoutSlackMs: number;
+  readonly networkMarginMs: number;
   readonly maxBufferedEvents: number;
 }
 
@@ -235,6 +245,31 @@ function validateTimeout(timeoutMs: number | undefined, procedure: string): RpcE
 
 function cancelled(procedure: string): RpcError {
   return localError("Cancelled", "call cancelled", { procedure });
+}
+
+/**
+ * How long past the deadline the runtime waits for the server's answer on `conn`: the server's
+ * cancel grace plus the network margin when advertised, else the fixed slack.
+ */
+function slackMs(conn: Connection, options: RuntimeOptions): number {
+  const grace = conn.ack.limits.cancel_grace_ms;
+  return grace !== undefined ? grace + options.networkMarginMs : options.timeoutSlackMs;
+}
+
+/**
+ * Calls `fire` at the effective deadline plus the slack, unless that is beyond what `setTimeout`
+ * can wait. Returns the timer, if any.
+ */
+function safetyTimer(
+  def: ProcedureLike,
+  timeoutMs: number | undefined,
+  slack: number,
+  fire: () => void,
+): ReturnType<typeof setTimeout> | undefined {
+  const deadline = deadlineMs(def, timeoutMs);
+  if (deadline === undefined) return undefined;
+  const delay = deadline + slack;
+  return delay <= MAX_TIMER_MS ? setTimeout(fire, delay) : undefined;
 }
 
 /** Reads the generated table's timeouts, if present (`ProcedureDef.timeoutDefaultMs/MaxMs`). */
@@ -414,23 +449,12 @@ class Runtime {
                 : localError("Internal", "send failed", { procedure: name });
             return finish(() => reject(err), "release");
           }
-          const deadline = deadlineMs(def, opts.timeoutMs);
-          if (deadline !== undefined) {
-            const delay = deadline + this.#options.timeoutSlackMs;
-            if (delay <= MAX_TIMER_MS) {
-              timer = setTimeout(
-                () =>
-                  finish(
-                    () =>
-                      reject(
-                        localError("DeadlineExceeded", "deadline exceeded", { procedure: name }),
-                      ),
-                    "cancel",
-                  ),
-                delay,
-              );
-            }
-          }
+          timer = safetyTimer(def, opts.timeoutMs, slackMs(c, this.#options), () =>
+            finish(
+              () => reject(localError("DeadlineExceeded", "deadline exceeded", { procedure: name })),
+              "cancel",
+            ),
+          );
         },
         (error: unknown) => {
           const err =
@@ -480,6 +504,7 @@ class Runtime {
 
     let conn: Connection | undefined;
     let id: number | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const end = (error: RpcError): void => sink.terminate(error);
     const onAbort = (): void => sink.terminate(cancelled(name));
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -488,6 +513,7 @@ class Runtime {
     // Runs exactly once, however the push call ends.
     sink.onEnd((how) => {
       signal?.removeEventListener("abort", onAbort);
+      if (timer !== undefined) clearTimeout(timer);
       this.#live.delete(end);
       if (conn === undefined || id === undefined) return;
       if (how === "server") conn.release(id);
@@ -522,7 +548,12 @@ class Runtime {
           c.release(callId);
           conn = undefined;
           sink.terminate(err);
+          return;
         }
+        // The server ends a push call at its deadline too; this only covers one that never does.
+        timer = safetyTimer(def, opts.timeoutMs, slackMs(c, this.#options), () =>
+          sink.terminate(localError("DeadlineExceeded", "deadline exceeded", { procedure: name })),
+        );
       },
       (error: unknown) => {
         sink.terminate(
@@ -689,8 +720,10 @@ abstract class PushHandle<T> implements PushSink {
  * A subscription (spec §5): server-push JSON events until `unsubscribe()`, abort, or the server
  * ends it. Iterate once with `for await`; leaving the loop unsubscribes.
  *
- * Termination (provisional, spec Open question 23): an `Error` frame ends the iteration with that
- * error, a `Result` frame ends it normally. After `unsubscribe()` nothing more is delivered.
+ * Termination (spec Open question 23a): the server ends a subscription with `Result` (a normal
+ * end; its payload, `null`, is not an event) or `Error` (the iteration rejects with it). The
+ * server never answers `Unsubscribe` and sends nothing more for the id after reading it; frames
+ * already in flight are dropped here.
  */
 export class SubscriptionHandle<E> extends PushHandle<E> implements AsyncIterable<E> {
   frame(frame: Frame): void {

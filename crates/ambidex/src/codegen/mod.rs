@@ -14,11 +14,12 @@
 //!
 //! | Kind | Signature | `output` is |
 //! | --- | --- | --- |
-//! | query, mutation | `async fn name(&self, ctx: Ctx, input: I) -> Result<O, E>` | the result |
-//! | subscription | `async fn name(&self, ctx: Ctx, input: I, ..) -> Result<O, E>` | one event |
-//! | stream | `async fn name(&self, ctx: Ctx, input: I, ..) -> Result<O, E>` | the final result |
+//! | query, mutation | `async fn name(&self, ctx: Ctx, input: I) -> Result<O, E>` | the result `O` |
+//! | subscription | `async fn name(&self, ctx: Ctx, input: I, events: EventSink<V>) -> Result<(), E>` | one event `V` |
+//! | stream | `async fn name(&self, ctx: Ctx, input: I, ..) -> Result<O, E>` | the final result `O` |
 //!
-//! `I` and `O` implement [`ts_rs::TS`] and [`schemars::JsonSchema`]. `E` is any handler error
+//! `I`, `O` and `V` implement [`ts_rs::TS`] and [`schemars::JsonSchema`]. A subscription's normal
+//! end carries no value (`Result` with payload `null`), so it has no type of its own. `E` is any handler error
 //! ([`RpcError<D>`](crate::RpcError), a [`DomainError`](crate::DomainError),
 //! [`Rejected`](crate::Rejected) or a raw [`ErrorPayload`](crate::ErrorPayload)); its
 //! [`IntoErrorPayload::Details`] is what TypeScript sees in `details`.
@@ -92,6 +93,19 @@ pub struct ProcedureTypes {
 }
 
 impl ProcedureTypes {
+    /// A subscription: `V` is one event, `R` the handler's return type as written,
+    /// `Result<(), E>`.
+    pub fn subscription<I: Type, V: Type, R: ProcedureResult<Output = ()>>() -> ProcedureTypes
+    where
+        <R::Error as IntoErrorPayload>::Details: Type,
+    {
+        ProcedureTypes {
+            input: TypeRef::of::<I>(),
+            output: TypeRef::of::<V>(),
+            error: TypeRef::of::<<R::Error as IntoErrorPayload>::Details>(),
+        }
+    }
+
     /// `R` is the handler's return type as written, `Result<O, E>`.
     pub fn of<I: Type, R: ProcedureResult>() -> ProcedureTypes
     where

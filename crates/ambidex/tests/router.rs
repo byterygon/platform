@@ -12,9 +12,9 @@ use ambidex::security_types::{
 };
 use ambidex::transport::{TransportRx, TransportTx, memory};
 use ambidex::{
-    Agent, Api, Approvals, Authenticate, Call, Code, Ctx, DomainError, ErrorPayload, Hello,
-    Procedure, ProcedureKind, ProcedureMeta, RegistryError, Rejected, Risk, Router, RpcError,
-    Server, ServerConfig, Session, TargetRef, input_digest, rpc,
+    Agent, Api, Approvals, Authenticate, Call, Code, Ctx, DomainError, ErrorPayload, EventSink,
+    Hello, Procedure, ProcedureKind, ProcedureMeta, RegistryError, Rejected, Risk, Router,
+    RpcError, Server, ServerConfig, Session, TargetRef, input_digest, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -137,8 +137,9 @@ impl DemoApi {
     }
 
     #[rpc::subscription(perm = "demo.watch", risk = Risk::Read)]
-    async fn watch(&self, _ctx: Ctx, _input: ()) -> Result<u64, RpcError> {
-        Err(RpcError::new(Code::Unimplemented, "declared only"))
+    async fn watch(&self, _ctx: Ctx, _input: (), events: EventSink<u64>) -> Result<(), RpcError> {
+        events.send(&1).await?;
+        Ok(())
     }
 
     /// Not a procedure: plain methods stay plain.
@@ -552,7 +553,7 @@ async fn agents_only_reach_exposed_procedures() {
 }
 
 #[tokio::test]
-async fn streams_and_subscriptions_are_authorized_then_unimplemented() {
+async fn streams_are_authorized_then_unimplemented() {
     let policy = Policy::default();
     let (router, _) = setup(&policy);
     let err = call(&router, human(), "demo.rows", json!(null))
@@ -562,10 +563,23 @@ async fn streams_and_subscriptions_are_authorized_then_unimplemented() {
 
     let policy = open_policy();
     let (router, _) = setup(&policy);
-    for name in ["demo.rows", "demo.watch"] {
-        let err = call(&router, human(), name, json!(null)).await.unwrap_err();
-        assert_eq!(err.code, Code::Unimplemented);
-    }
+    let err = call(&router, human(), "demo.rows", json!(null))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, Code::Unimplemented);
+}
+
+#[tokio::test]
+async fn a_call_to_a_subscription_is_refused_before_authorization() {
+    // Even under a policy that denies everything: the kind is public, like the name.
+    let policy = Policy::default();
+    let (router, _) = setup(&policy);
+    let err = call(&router, human(), "demo.watch", json!(null))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, Code::InvalidArgument);
+    assert_eq!(err.message, "subscriptions are started with Subscribe");
+    assert!(policy.seen().is_empty());
 }
 
 // ---- error model ---------------------------------------------------------------------------

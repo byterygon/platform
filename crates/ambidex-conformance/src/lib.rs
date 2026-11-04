@@ -2,8 +2,8 @@
 //! every transport.
 //!
 //! - [`fixture`]: the fixture API (echo, typed failures, slow and stubborn handlers, protected and
-//!   approval-gated procedures, declared subscription and stream), served through the production
-//!   router, authorizer hook and error model.
+//!   approval-gated procedures, the counter, flood and denied subscriptions, a declared stream),
+//!   served through the production router, authorizer hook, audit sink and error model.
 //! - [`client`]: a raw frame client over a transport's client end ([`client::Wire`]).
 //! - [`harness`]: the [`Harness`] trait and [`conformance_suite!`], which turns every case into
 //!   one `#[test]` per harness.
@@ -17,16 +17,25 @@
 //!
 //! # Coverage by transport
 //!
-//! Every case in [`cases`] runs on all three harnesses, with one exception:
+//! Every case in [`cases`] runs on all three harnesses, with these exceptions:
 //!
 //! | Case | In-process | WebSocket | Tauri |
 //! | --- | --- | --- | --- |
 //! | `session_revocation_sends_goaway_and_cancels_calls` | yes | **not applicable** | yes (app lock: `Hub::end_all_sessions`) |
+//! | `session_revocation_ends_subscriptions_with_goaway` | yes | **not applicable** | yes (app lock) |
+//! | `full_event_buffer_ends_subscription` | yes | yes | **not asserted** |
 //!
 //! WebSocket session revocation is M3: `PlaceholderSessions` has no expiry or revocation, and
-//! removing a session only refuses new upgrades (asserted in `tests/ws.rs`). The case reports the
-//! reason and still checks the call can be cancelled. When M3 lands, implement
-//! [`Harness::revoke_sessions`] for [`ws::Ws`] and the case runs as on the other transports.
+//! removing a session only refuses new upgrades (asserted in `tests/ws.rs`). The cases report the
+//! reason and still check the call or subscription can be cancelled. When M3 lands, implement
+//! [`Harness::revoke_sessions`] for [`ws::Ws`] and they run as on the other transports.
+//!
+//! The exact subscription buffer bound needs a handler that outruns the connection task, which is
+//! only deterministic when the engine shares the case's current-thread runtime
+//! ([`Harness::engine_on_case_runtime`]). The Tauri plugin runs the engine on Tauri's
+//! multi-threaded runtime, and its `Channel` never waits for the webview, so the case reports why
+//! and asserts nothing there. The engine's own tests pin the bound, the outbound headroom and the
+//! purge on `Unsubscribe` with exact numbers (`crates/ambidex/tests/engine.rs`).
 //!
 //! Transport-specific checks are not shared cases, because they have no counterpart elsewhere:
 //! Host, Origin and session-cookie rejection before the engine (WebSocket, `tests/ws.rs`), and
@@ -35,11 +44,10 @@
 //!
 //! # Not covered yet (no implementation to test)
 //!
-//! - **Subscriptions** (counter subscription, teardown on unsubscribe and revoke) and **streams**
-//!   (1M-row Arrow stream, credits bounding server memory, cancel mid-stream reaching the fixture
-//!   driver within 100 ms): the engine answers `Subscribe` and stream calls with `Unimplemented`
-//!   and ignores `Credit`/`Unsubscribe`. The suite pins exactly that, so the cases fail and must be
-//!   replaced when the call kinds land (subscriptions: M1; streams and credits: M2).
+//! - **Streams** (1M-row Arrow stream, credits bounding server memory, cancel mid-stream reaching
+//!   the fixture driver within 100 ms): the engine answers stream calls with `Unimplemented` and
+//!   ignores `Credit`. The suite pins exactly that, so the case fails and must be replaced when
+//!   streams and credits land (M2).
 //! - The slow-consumer disconnect (`Closed::SlowConsumer`) depends on how much a transport buffers
 //!   (kernel socket buffers for WebSocket; a Tauri `Channel` never blocks), so it stays in the
 //!   engine's own tests.
