@@ -201,8 +201,14 @@ impl<Z: Authorizer> DynAuthorizer for Z {
     }
 }
 
-/// Receives audit entries (spec §8). The entry format is shared with Plugin Host
-/// (`security_types::AuditEntry`), so both can write one hash-chained log.
+/// Receives audit entries (spec §8).
+///
+/// Entries use the record format shared with Plugin Host (`security_types::AuditEntry`), but this
+/// trait is Ambidex's own: it is not Plugin Host's `AuditSink`, so one sink serving both needs an
+/// implementation of each (or an adapter). `append` runs inline on the authorization path, so it
+/// must be quick; a durable sink should hand entries to a writer of its own. Sharing one trait,
+/// error type and clock in `security-types`, and an asynchronous sink, are spec Open question
+/// 24(g).
 pub trait AuditSink: Send + Sync + 'static {
     fn append(&self, entry: AuditEntry) -> Result<(), AuditError>;
 }
