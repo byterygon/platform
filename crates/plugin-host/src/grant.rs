@@ -32,6 +32,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex, Weak};
+use std::time::Duration;
 
 use rustls::RootCertStore;
 use rustls::pki_types::{CertificateDer, ServerName};
@@ -42,7 +43,10 @@ use security_types::{
 use sha2::{Digest as _, Sha256};
 use tokio::sync::watch;
 
-use crate::audit::{AuditSink, Clock};
+use crate::audit::{
+    AuditEntryKind, AuditError, AuditFailure, AuditFailureEffect, AuditQueue, AuditReporter,
+    AuditSink, Clock, RetryPolicy, StderrReporter,
+};
 use crate::manifest::{Capabilities, Manifest, PackageKind, Protocol, SecretScope, TlsRequirement};
 use crate::net::{AddressPolicy, IpNet, normalize_dns_name};
 use crate::{encode_digest, error_code};
@@ -505,8 +509,11 @@ pub enum GrantError {
     /// The target already has an active (unexpired, unrevoked) grant; revoke it first.
     TargetInUse,
     NotFound,
-    /// Auditing or id generation failed; nothing was changed.
+    /// Id generation failed, or there is no runtime for an expiring grant; nothing was changed.
     Internal,
+    /// The change could not be recorded in time (the audit sink failed or did not answer, or
+    /// another grant change held the store that long); nothing was changed. Retryable.
+    Unavailable,
 }
 
 impl fmt::Display for GrantError {
@@ -517,6 +524,7 @@ impl fmt::Display for GrantError {
             GrantError::TargetInUse => f.write_str("target already has an active grant"),
             GrantError::NotFound => f.write_str("grant not found"),
             GrantError::Internal => f.write_str("internal error"),
+            GrantError::Unavailable => f.write_str("audit log unavailable; nothing was changed"),
         }
     }
 }
@@ -531,6 +539,7 @@ impl GrantError {
             GrantError::TargetInUse => error_code::FAILED_PRECONDITION,
             GrantError::NotFound => error_code::NOT_FOUND,
             GrantError::Internal => error_code::INTERNAL,
+            GrantError::Unavailable => error_code::UNAVAILABLE,
         };
         Outcome::Error {
             code: code.to_owned(),
@@ -644,31 +653,133 @@ impl StoreInner {
     }
 }
 
+/// How long a grant change, or a broker operation, waits for its audit entry to be written
+/// (including, for a grant create, the wait for other creates) before failing closed. Provisional
+/// (Ambidex spec Open question 26).
+pub const DEFAULT_AUDIT_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// The grants of one host. In-memory; persistence belongs to the product's workspace/server store.
 ///
 /// Grants with an expiry need a Tokio runtime: `create` starts a task that ends the grant at
 /// `expires_at`, and fails with [`GrantError::Internal`] if it cannot.
+///
+/// Audit (Ambidex spec Open question 26h): a grant becomes usable only after its entry is written,
+/// so a create fails closed with [`GrantError::Unavailable`] when the sink fails or does not
+/// answer within the [audit timeout](GrantStore::with_audit_timeout). Creates are serialized, so
+/// that timeout also covers waiting for the create ahead. A revocation takes effect at once and
+/// never waits on the sink; its entry is written in the background with retries
+/// ([`GrantStore::flush_audit`] waits for it), and an entry that could not be written is reported
+/// to the [`AuditReporter`].
 pub struct GrantStore {
     clock: Arc<dyn Clock>,
     audit: Arc<dyn AuditSink>,
+    reporter: Arc<dyn AuditReporter>,
+    audit_timeout: Duration,
+    /// Held across the target check, the audit write and the insert of one create.
+    creating: tokio::sync::Mutex<()>,
+    /// Revocation entries.
+    queue: AuditQueue,
     inner: Arc<Mutex<StoreInner>>,
 }
 
 impl GrantStore {
+    /// A store reporting sink failures to stderr ([`StderrReporter`]) and waiting at most
+    /// [`DEFAULT_AUDIT_TIMEOUT`] for the sink.
     pub fn new(clock: Arc<dyn Clock>, audit: Arc<dyn AuditSink>) -> Self {
+        let reporter: Arc<dyn AuditReporter> = Arc::new(StderrReporter::new());
         Self {
+            queue: AuditQueue::new(
+                Arc::clone(&audit),
+                Arc::clone(&reporter),
+                RetryPolicy::default(),
+            ),
             clock,
             audit,
+            reporter,
+            audit_timeout: DEFAULT_AUDIT_TIMEOUT,
+            creating: tokio::sync::Mutex::new(()),
             inner: Arc::default(),
         }
+    }
+
+    /// Reports audit sink failures to `reporter` instead of stderr. Set it before using the store.
+    #[must_use]
+    pub fn with_audit_reporter(self, reporter: impl AuditReporter) -> Self {
+        self.with_audit_reporter_and_retry(Arc::new(reporter), RetryPolicy::default())
+    }
+
+    /// How long a grant change or broker operation waits for the sink before failing closed.
+    #[must_use]
+    pub fn with_audit_timeout(mut self, timeout: Duration) -> Self {
+        self.audit_timeout = timeout;
+        self
+    }
+
+    /// Like [`GrantStore::with_audit_reporter`], also choosing how revocation entries are retried.
+    #[must_use]
+    pub fn with_audit_reporter_and_retry(
+        mut self,
+        reporter: Arc<dyn AuditReporter>,
+        retry: RetryPolicy,
+    ) -> Self {
+        self.queue = AuditQueue::new(Arc::clone(&self.audit), Arc::clone(&reporter), retry);
+        self.reporter = reporter;
+        self
+    }
+
+    /// Completes once every revocation entry submitted so far is written, or given up after its
+    /// retries and reported. Call it before shutting down.
+    pub async fn flush_audit(&self) {
+        self.queue.flushed().await;
     }
 
     pub(crate) fn clock(&self) -> &dyn Clock {
         &*self.clock
     }
 
-    pub(crate) fn audit(&self) -> &dyn AuditSink {
-        &*self.audit
+    /// Writes `entry`, waiting at most the audit timeout. On failure the reporter hears about it
+    /// with `effect`, and the caller decides (fail closed, or only report).
+    pub(crate) async fn record(
+        &self,
+        entry: AuditEntry,
+        effect: AuditFailureEffect,
+    ) -> Result<(), ()> {
+        let deadline = tokio::time::Instant::now() + self.audit_timeout;
+        self.record_by(entry, effect, deadline).await
+    }
+
+    async fn record_by(
+        &self,
+        entry: AuditEntry,
+        effect: AuditFailureEffect,
+        deadline: tokio::time::Instant,
+    ) -> Result<(), ()> {
+        let action = entry.action.name.clone();
+        let correlation_id = entry.correlation_id.clone();
+        let error = match tokio::time::timeout_at(deadline, self.audit.append(entry)).await {
+            Ok(Ok(())) => return Ok(()),
+            Ok(Err(error)) => error,
+            Err(_) => AuditError("write timed out".into()),
+        };
+        self.report(effect, action, correlation_id, error);
+        Err(())
+    }
+
+    fn report(
+        &self,
+        effect: AuditFailureEffect,
+        action: String,
+        correlation_id: String,
+        error: AuditError,
+    ) {
+        self.reporter.report(&AuditFailure {
+            entry: AuditEntryKind::Operation,
+            effect,
+            action,
+            correlation_id,
+            error,
+            attempts: 1,
+        });
     }
 
     /// Approve a connection: bind `plugin`'s template to the concrete endpoint in `req`.
@@ -676,6 +787,10 @@ impl GrantStore {
     /// `approver` must be a human acting directly (the local user, or a tenant administrator) in
     /// the grant's tenant, and `authz` must allow [`GRANT_CREATE_PERM`]. A `NeedsApproval`
     /// decision is a denial: grant changes are not approval-gated here.
+    ///
+    /// The grant is usable only once its audit entry is written. If the sink fails, or the entry
+    /// is not written within the audit timeout (which also covers waiting for a create ahead of
+    /// this one), the create fails closed with [`GrantError::Unavailable`] and nothing is granted.
     pub async fn create<A: Authorizer>(
         &self,
         authz: &A,
@@ -687,22 +802,21 @@ impl GrantStore {
         let action = Action::new(GRANT_CREATE_ACTION, GRANT_CREATE_PERM);
         let target = TargetRef::connection(&req.target_id);
         let input_digest = grant_create_digest(plugin, &req);
-        let audit = |decision: AuditDecision, outcome: Outcome| {
-            self.audit.append(AuditEntry {
-                timestamp_unix_ms: self.clock.now_unix_ms(),
-                principal_chain: AuditPrincipal::chain_of(approver),
-                tenant: req.tenant.clone(),
-                action: action.clone(),
-                target: Some(target.clone()),
-                risk: Risk::Write,
-                decision,
-                approval_id: None,
-                outcome,
-                duration_ms: None,
-                correlation_id: correlation_id.to_owned(),
-                input_digest,
-                statement_digest: None,
-            })
+        let entry = |decision: AuditDecision, outcome: Outcome| AuditEntry {
+            timestamp_unix_ms: self.clock.now_unix_ms(),
+            principal_chain: AuditPrincipal::chain_of(approver),
+            tenant: req.tenant.clone(),
+            action: action.clone(),
+            target: Some(target.clone()),
+            risk: Risk::Write,
+            decision,
+            approval_id: None,
+            outcome,
+            duration_ms: None,
+            correlation_id: correlation_id.to_owned(),
+            input_digest,
+            statement_digest: None,
+            delivery: None,
         };
 
         if let Err(reason) = self
@@ -710,50 +824,102 @@ impl GrantStore {
             .await
         {
             let err = GrantError::Denied(reason.clone());
-            let _ = audit(AuditDecision::Deny { reason }, err.outcome());
+            // Refused whether or not the refusal is recorded.
+            let _ = self
+                .record(
+                    entry(AuditDecision::Deny { reason }, err.outcome()),
+                    AuditFailureEffect::EntryLost,
+                )
+                .await;
             return Err(err);
         }
 
-        let result = self.build(plugin, req.clone(), approver).and_then(|grant| {
-            // The expiry task needs a runtime; without one the grant could not end on time.
-            let runtime = match grant.expires_at_unix_ms {
-                Some(_) => {
-                    Some(tokio::runtime::Handle::try_current().map_err(|_| GrantError::Internal)?)
-                }
-                None => None,
-            };
-            let mut inner = lock(&self.inner);
-            let key = (grant.tenant.clone(), grant.target_id.clone());
-            if inner.active_entry(&key, self.clock.now_unix_ms()).is_some() {
-                return Err(GrantError::TargetInUse);
-            }
-            let grant = Arc::new(grant);
-            // Audit before the grant becomes usable; if auditing fails, nothing is granted.
-            audit(AuditDecision::Allow, Outcome::Success).map_err(|_| GrantError::Internal)?;
-            let entry = Arc::new(GrantEntry::new(grant.clone()));
-            inner.active.insert(key, grant.id.clone());
-            inner.by_id.insert(grant.id.clone(), entry.clone());
-            drop(inner);
-            if let (Some(runtime), Some(expires_at)) = (runtime, grant.expires_at_unix_ms) {
-                runtime.spawn(expire_at(
-                    self.clock.clone(),
-                    Arc::downgrade(&self.inner),
-                    Arc::downgrade(&entry),
-                    entry.state(),
-                    expires_at,
-                ));
-            }
-            Ok(grant)
-        });
+        let result = self
+            .create_authorized(plugin, req.clone(), approver, || {
+                entry(AuditDecision::Allow, Outcome::Success)
+            })
+            .await;
         if let Err(e) = &result
-            && *e != GrantError::Internal
+            && !matches!(e, GrantError::Internal | GrantError::Unavailable)
         {
-            let _ = audit(AuditDecision::Allow, e.outcome());
+            let _ = self
+                .record(
+                    entry(AuditDecision::Allow, e.outcome()),
+                    AuditFailureEffect::EntryLost,
+                )
+                .await;
         }
         result
     }
 
+    /// The part of `create` after authorization. `granted` builds the entry that is written
+    /// before the grant becomes usable.
+    async fn create_authorized(
+        &self,
+        plugin: &InstalledPlugin,
+        req: GrantRequest,
+        approver: &Principal,
+        granted: impl FnOnce() -> AuditEntry,
+    ) -> Result<Arc<ConnectionGrant>, GrantError> {
+        // One deadline for waiting on other creates and for the audit write, so a sink that
+        // hangs makes creates fail closed instead of hanging.
+        let deadline = tokio::time::Instant::now() + self.audit_timeout;
+        let grant = self.build(plugin, req, approver)?;
+        // The expiry task needs a runtime; without one the grant could not end on time.
+        let runtime = match grant.expires_at_unix_ms {
+            Some(_) => {
+                Some(tokio::runtime::Handle::try_current().map_err(|_| GrantError::Internal)?)
+            }
+            None => None,
+        };
+        // Creates run one at a time, so no other create can take the target between the check
+        // below and the insert, while the audit write is awaited in between.
+        let Ok(_creating) = tokio::time::timeout_at(deadline, self.creating.lock()).await else {
+            self.report(
+                AuditFailureEffect::Blocked,
+                GRANT_CREATE_ACTION.to_owned(),
+                granted().correlation_id,
+                AuditError("timed out waiting for another grant create".into()),
+            );
+            return Err(GrantError::Unavailable);
+        };
+        let key = (grant.tenant.clone(), grant.target_id.clone());
+        if lock(&self.inner)
+            .active_entry(&key, self.clock.now_unix_ms())
+            .is_some()
+        {
+            return Err(GrantError::TargetInUse);
+        }
+        // Audit before the grant becomes usable; if auditing fails, nothing is granted.
+        self.record_by(granted(), AuditFailureEffect::Blocked, deadline)
+            .await
+            .map_err(|()| GrantError::Unavailable)?;
+        let grant = Arc::new(grant);
+        let entry = Arc::new(GrantEntry::new(grant.clone()));
+        {
+            let mut inner = lock(&self.inner);
+            inner.active.insert(key, grant.id.clone());
+            inner.by_id.insert(grant.id.clone(), entry.clone());
+        }
+        if let (Some(runtime), Some(expires_at)) = (runtime, grant.expires_at_unix_ms) {
+            runtime.spawn(expire_at(
+                self.clock.clone(),
+                Arc::downgrade(&self.inner),
+                Arc::downgrade(&entry),
+                entry.state(),
+                expires_at,
+            ));
+        }
+        Ok(grant)
+    }
+
     /// Revoke a grant and close every handle opened under it.
+    ///
+    /// The revocation takes effect before anything is written and never waits on the audit sink.
+    /// Its entry (and a denied attempt's) is written right away when the sink answers at once,
+    /// otherwise in the background with retries; see [`GrantStore::flush_audit`]. An entry that
+    /// cannot be written is reported to the [`AuditReporter`], and `Ok` is still returned: the
+    /// grant is revoked.
     pub async fn revoke<A: Authorizer>(
         &self,
         authz: &A,
@@ -787,7 +953,7 @@ impl GrantStore {
             Err(reason) => Err(GrantError::Denied(reason.clone())),
             Ok(()) => Ok(()),
         };
-        let audited = self.audit.append(AuditEntry {
+        let audit_entry = AuditEntry {
             timestamp_unix_ms: self.clock.now_unix_ms(),
             principal_chain: AuditPrincipal::chain_of(approver),
             tenant: grant.tenant.clone(),
@@ -807,16 +973,16 @@ impl GrantStore {
             correlation_id: correlation_id.to_owned(),
             input_digest,
             statement_digest: None,
-        });
-        result?;
-        // Revocation removes access, so it happens even if the audit sink failed; the failure is
-        // still reported to the caller.
-        {
+            delivery: None,
+        };
+        if result.is_ok() {
+            // Revocation removes access, so it happens first and never waits on the sink.
             let mut inner = lock(&self.inner);
             inner.active.retain(|_, active_id| active_id != &grant.id);
             entry.end(EntryState::Revoked);
         }
-        audited.map_err(|_| GrantError::Internal)
+        self.queue.submit(audit_entry).await;
+        result
     }
 
     pub fn get(&self, id: &GrantId) -> Option<Arc<ConnectionGrant>> {

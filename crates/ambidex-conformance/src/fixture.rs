@@ -4,24 +4,25 @@
 //! so calls and subscriptions go through the production [`Router`], [`Authorizer`] hook, audit
 //! sink and error model. Handlers report what happened to them through a shared [`Probe`], which
 //! the cases read to check that cancellation reached the handler, that a denied call never ran,
-//! and so on; refusals land in the fixture's [`AuditLog`].
+//! and so on; audit entries land in the fixture's [`AuditLog`], which a case can make fail, and
+//! sink failures in its [`AuditReports`].
 //!
 //! Not in the fixture yet: the synthetic 1M-row Arrow stream (streams and credits are M2). It is
 //! declared, so the router authorizes it and answers `Unimplemented`; see the crate docs.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use ambidex::codegen::{self, ApiInfo};
 use ambidex::security_types::{
-    Action, ApprovalSpec, AuditEntry, Authorizer, AuthzRequest, Decision, Principal, Reason, Risk,
-    TargetRef,
+    Action, ApprovalSpec, AuditDecision, AuditEntry, AuditFailure, Authorizer, AuthzRequest,
+    Decision, Outcome, Principal, Reason, Risk, TargetRef,
 };
 use ambidex::{
-    Approvals, AuditError, AuditSink, Code, Ctx, DomainError, EventSink, Router, RpcError,
-    ServerConfig, engine::BoxFuture, rpc,
+    Approvals, AuditError, AuditReporter, AuditSink, Code, Ctx, DomainError, EventSink, Router,
+    RpcError, ServerConfig, engine::BoxFuture, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -165,12 +166,63 @@ impl Probe {
     }
 }
 
-/// The audit entries the router recorded, in order.
+/// The audit entries the router recorded, in order. [`AuditLog::fail`] makes every write fail
+/// from then on, as a broken audit store would.
 #[derive(Clone, Default)]
-pub struct AuditLog(Arc<std::sync::Mutex<Vec<AuditEntry>>>);
+pub struct AuditLog {
+    entries: Arc<std::sync::Mutex<Vec<AuditEntry>>>,
+    failing: Arc<AtomicBool>,
+}
 
 impl AuditLog {
     pub fn entries(&self) -> Vec<AuditEntry> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Entries for refusals (`Deny` or `NeedsApproval`), in order.
+    pub fn refusals(&self) -> Vec<AuditEntry> {
+        self.entries()
+            .into_iter()
+            .filter(|e| e.decision != AuditDecision::Allow)
+            .collect()
+    }
+
+    /// The admission (`Started`) and completion entries with `correlation_id`, in order.
+    pub fn call(&self, correlation_id: &str) -> Vec<AuditEntry> {
+        self.entries()
+            .into_iter()
+            .filter(|e| e.correlation_id == correlation_id && e.decision == AuditDecision::Allow)
+            .collect()
+    }
+
+    /// Whether writes fail from now on.
+    pub fn fail(&self, failing: bool) {
+        self.failing.store(failing, Ordering::SeqCst);
+    }
+}
+
+impl AuditSink for AuditLog {
+    fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
+        if self.failing.load(Ordering::SeqCst) {
+            return Box::pin(async { Err(AuditError("audit store unavailable".into())) });
+        }
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(entry);
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// The audit sink failures the router reported, in order.
+#[derive(Clone, Default)]
+pub struct AuditReports(Arc<std::sync::Mutex<Vec<AuditFailure>>>);
+
+impl AuditReports {
+    pub fn all(&self) -> Vec<AuditFailure> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -178,21 +230,31 @@ impl AuditLog {
     }
 }
 
-impl AuditSink for AuditLog {
-    fn append(&self, entry: AuditEntry) -> Result<(), AuditError> {
+impl AuditReporter for AuditReports {
+    fn report(&self, failure: &AuditFailure) {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(entry);
-        Ok(())
+            .push(failure.clone());
     }
 }
 
-/// One server's fixture: the probe its handlers report to and the audit log its router writes.
+/// Whether `entry` is a completion with this outcome (by its code; `None` for `Success`).
+pub fn completed_with(entry: &AuditEntry, code: Option<&str>) -> bool {
+    let outcome = match code {
+        None => Outcome::Success,
+        Some(code) => Outcome::Error { code: code.into() },
+    };
+    entry.outcome == outcome && entry.delivery.is_some() && entry.duration_ms.is_some()
+}
+
+/// One server's fixture: the probe its handlers report to, the audit log its router writes and
+/// the sink failures it reported.
 #[derive(Clone)]
 pub struct Fixture {
     pub probe: Arc<Probe>,
     pub audit: AuditLog,
+    pub reports: AuditReports,
 }
 
 impl Default for Fixture {
@@ -206,13 +268,15 @@ impl Fixture {
         Fixture {
             probe: Arc::new(Probe::new()),
             audit: AuditLog::default(),
+            reports: AuditReports::default(),
         }
     }
 
     /// The production router with the fixture API, authorizer, approval queue and audit log.
     pub fn router(&self) -> Router {
         let router = Router::with_approvals(FixtureAuthorizer, FixtureApprovals)
-            .with_audit(self.audit.clone());
+            .with_audit(self.audit.clone())
+            .with_audit_reporter(self.reports.clone());
         router
             .mount(FixtureApi {
                 probe: Arc::clone(&self.probe),
@@ -379,6 +443,14 @@ impl FixtureApi {
     async fn protected(&self, _ctx: Ctx, _input: FailInput) -> Result<(), RpcError> {
         let _guard = self.guard("protected");
         Ok(())
+    }
+
+    /// A Write the policy allows. Its admission must be recorded before it runs.
+    #[rpc::mutation(perm = "fixture.call", risk = Risk::Write)]
+    async fn write(&self, _ctx: Ctx, input: Value) -> Result<Value, RpcError> {
+        let mut guard = self.guard("write");
+        guard.armed = false;
+        Ok(input)
     }
 
     /// Requires a human approval before dispatch.

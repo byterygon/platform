@@ -9,6 +9,7 @@ use plugin_host::package::{
 use plugin_host::{AuditError, AuditSink, MemoryAuditLog, SystemClock};
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
+use security_types::BoxFuture;
 use security_types::{
     AuditEntry, Authorizer, AuthzRequest, Decision, Principal, PrincipalKind, SessionId, TenantId,
 };
@@ -550,16 +551,16 @@ impl Authorizer for NeedsApproval {
 }
 struct FailingAudit;
 impl AuditSink for FailingAudit {
-    fn append(&self, _: AuditEntry) -> Result<(), AuditError> {
-        Err(AuditError("failed".into()))
+    fn append(&self, _: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
+        Box::pin(async { Err(AuditError("failed".into())) })
     }
 }
 
 struct FailActivate(MemoryAuditLog);
 impl AuditSink for FailActivate {
-    fn append(&self, entry: AuditEntry) -> Result<(), AuditError> {
+    fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
         if entry.action.name == "plugin-host.packages.activate" {
-            Err(AuditError("failed".into()))
+            Box::pin(async { Err(AuditError("failed".into())) })
         } else {
             self.0.append(entry)
         }
@@ -582,7 +583,7 @@ async fn install_approve_and_rollback_offline() {
         audit: &log,
         clock: &SystemClock,
     };
-    let first = installer.stage(&good(&f), &human(), "c1").unwrap();
+    let first = installer.stage(&good(&f), &human(), "c1").await.unwrap();
     let digest = first.approval_view().package_digest;
     first
         .approve_and_activate(&Allow, &human(), digest)
@@ -594,7 +595,10 @@ async fn install_approve_and_rollback_offline() {
     second
         .files
         .insert("payload/demo.wasm".into(), b"second".to_vec());
-    let update = installer.stage(&good(&second), &human(), "c2").unwrap();
+    let update = installer
+        .stage(&good(&second), &human(), "c2")
+        .await
+        .unwrap();
     let next = update.approval_view().package_digest;
     update
         .approve_and_activate(&Allow, &human(), next)
@@ -627,7 +631,7 @@ async fn concurrent_approvals_retain_the_first_activated_update() {
         audit: &log,
         clock: &SystemClock,
     };
-    let first = installer.stage(&good(&f), &human(), "first").unwrap();
+    let first = installer.stage(&good(&f), &human(), "first").await.unwrap();
     let first_digest = first.approval_view().package_digest;
     first
         .approve_and_activate(&Allow, &human(), first_digest)
@@ -635,11 +639,14 @@ async fn concurrent_approvals_retain_the_first_activated_update() {
         .unwrap();
     f.files
         .insert("payload/demo.wasm".into(), b"update two".to_vec());
-    let second = installer.stage(&good(&f), &human(), "second").unwrap();
+    let second = installer
+        .stage(&good(&f), &human(), "second")
+        .await
+        .unwrap();
     let second_digest = second.approval_view().package_digest;
     f.files
         .insert("payload/demo.wasm".into(), b"update three".to_vec());
-    let third = installer.stage(&good(&f), &human(), "third").unwrap();
+    let third = installer.stage(&good(&f), &human(), "third").await.unwrap();
     let third_digest = third.approval_view().package_digest;
     let together = MeetAtAuthorization(tokio::sync::Barrier::new(2));
     let second_approver = human();
@@ -685,7 +692,7 @@ async fn rollback_and_activation_are_serialized() {
         audit: &log,
         clock: &SystemClock,
     };
-    let first = installer.stage(&good(&f), &human(), "first").unwrap();
+    let first = installer.stage(&good(&f), &human(), "first").await.unwrap();
     let d1 = first.approval_view().package_digest;
     first
         .approve_and_activate(&Allow, &human(), d1)
@@ -693,7 +700,10 @@ async fn rollback_and_activation_are_serialized() {
         .unwrap();
     f.files
         .insert("payload/demo.wasm".into(), b"second".to_vec());
-    let second = installer.stage(&good(&f), &human(), "second").unwrap();
+    let second = installer
+        .stage(&good(&f), &human(), "second")
+        .await
+        .unwrap();
     let d2 = second.approval_view().package_digest;
     second
         .approve_and_activate(&Allow, &human(), d2)
@@ -701,7 +711,7 @@ async fn rollback_and_activation_are_serialized() {
         .unwrap();
     f.files
         .insert("payload/demo.wasm".into(), b"third".to_vec());
-    let third = installer.stage(&good(&f), &human(), "third").unwrap();
+    let third = installer.stage(&good(&f), &human(), "third").await.unwrap();
     let d3 = third.approval_view().package_digest;
     let together = MeetAtAuthorization(tokio::sync::Barrier::new(2));
     let rollback_principal = human();
@@ -742,17 +752,17 @@ async fn nonhuman_and_wrong_digest_denied() {
     };
     let mut agent = human();
     agent.kind = PrincipalKind::Agent;
-    let stage = installer.stage(&good(&f), &human(), "c").unwrap();
+    let stage = installer.stage(&good(&f), &human(), "c").await.unwrap();
     assert!(matches!(
         stage.approve_and_activate(&Allow, &agent, [0; 32]).await,
         Err(InstallError::Denied)
     ));
-    let stage = installer.stage(&good(&f), &human(), "c").unwrap();
+    let stage = installer.stage(&good(&f), &human(), "c").await.unwrap();
     assert!(matches!(
         stage.approve_and_activate(&Allow, &human(), [0; 32]).await,
         Err(InstallError::DigestMismatch)
     ));
-    let stage = installer.stage(&good(&f), &human(), "c").unwrap();
+    let stage = installer.stage(&good(&f), &human(), "c").await.unwrap();
     let digest = stage.approval_view().package_digest;
     let mut delegated = human();
     delegated.on_behalf_of = Some(Box::new(human()));
@@ -760,7 +770,7 @@ async fn nonhuman_and_wrong_digest_denied() {
         stage.approve_and_activate(&Allow, &delegated, digest).await,
         Err(InstallError::Denied)
     ));
-    let stage = installer.stage(&good(&f), &human(), "c").unwrap();
+    let stage = installer.stage(&good(&f), &human(), "c").await.unwrap();
     let digest = stage.approval_view().package_digest;
     assert!(matches!(
         stage
@@ -787,7 +797,7 @@ async fn dropped_stage_keeps_previous_version() {
         audit: &log,
         clock: &SystemClock,
     };
-    let stage = installer.stage(&good(&f), &human(), "c1").unwrap();
+    let stage = installer.stage(&good(&f), &human(), "c1").await.unwrap();
     let first = stage.approval_view().package_digest;
     stage
         .approve_and_activate(&Allow, &human(), first)
@@ -795,7 +805,7 @@ async fn dropped_stage_keeps_previous_version() {
         .unwrap();
     f.files
         .insert("payload/demo.wasm".into(), b"changed".to_vec());
-    let stage = installer.stage(&good(&f), &human(), "c2").unwrap();
+    let stage = installer.stage(&good(&f), &human(), "c2").await.unwrap();
     let stage_path = std::fs::read_dir(&root)
         .unwrap()
         .filter_map(Result::ok)
@@ -808,8 +818,8 @@ async fn dropped_stage_keeps_previous_version() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-#[test]
-fn audit_failure_stops_before_stage() {
+#[tokio::test]
+async fn audit_failure_stops_before_stage() {
     let f = Fixture::new();
     let trust = f.trust();
     let policy = Fixture::policy();
@@ -823,7 +833,7 @@ fn audit_failure_stops_before_stage() {
         clock: &SystemClock,
     };
     assert!(matches!(
-        installer.stage(&good(&f), &human(), "c"),
+        installer.stage(&good(&f), &human(), "c").await,
         Err(InstallError::Audit(_))
     ));
     assert!(!root.exists());
@@ -847,7 +857,7 @@ async fn audit_failure_stops_activation_and_cleans_stage() {
         audit: &log,
         clock: &SystemClock,
     };
-    let stage = installer.stage(&good(&f), &human(), "c").unwrap();
+    let stage = installer.stage(&good(&f), &human(), "c").await.unwrap();
     let digest = stage.approval_view().package_digest;
     assert!(matches!(
         stage.approve_and_activate(&Allow, &human(), digest).await,

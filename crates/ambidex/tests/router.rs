@@ -13,8 +13,8 @@ use ambidex::security_types::{
 use ambidex::transport::{TransportRx, TransportTx, memory};
 use ambidex::{
     Agent, Api, Approvals, Authenticate, Call, Code, Ctx, DomainError, ErrorPayload, EventSink,
-    Hello, Procedure, ProcedureKind, ProcedureMeta, RegistryError, Rejected, Risk, Router,
-    RpcError, Server, ServerConfig, Session, TargetRef, input_digest, rpc,
+    Hello, MemoryAuditLog, Procedure, ProcedureKind, ProcedureMeta, RegistryError, Rejected, Risk,
+    Router, RpcError, Server, ServerConfig, Session, TargetRef, input_digest, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -276,7 +276,7 @@ fn session(principal: Principal) -> Arc<Session> {
 }
 
 fn setup(policy: &Policy) -> (Router, Arc<DemoApi>) {
-    let router = Router::new(policy.clone());
+    let router = Router::new(policy.clone()).with_audit(MemoryAuditLog::new());
     let api = Arc::new(DemoApi::default());
     router.mount(ArcApi(Arc::clone(&api))).unwrap();
     (router, api)
@@ -460,7 +460,8 @@ async fn approval_required_with_and_without_queue() {
     assert_eq!(err.details, None, "no queue, no approval id");
 
     let queue = Queue::default();
-    let router = Router::with_approvals(policy.clone(), queue.clone());
+    let router =
+        Router::with_approvals(policy.clone(), queue.clone()).with_audit(MemoryAuditLog::new());
     router.mount(DemoApi::default()).unwrap();
     let input = json!({"text": "x"});
     let err = call(&router, human(), "demo.echo", input.clone())
@@ -478,7 +479,8 @@ async fn approval_required_with_and_without_queue() {
 async fn handler_reauthorizes_with_target_and_escalated_risk() {
     let policy = open_policy();
     let queue = Queue::default();
-    let router = Router::with_approvals(policy.clone(), queue.clone());
+    let router =
+        Router::with_approvals(policy.clone(), queue.clone()).with_audit(MemoryAuditLog::new());
     let api = Arc::new(DemoApi::default());
     router.mount(ArcApi(Arc::clone(&api))).unwrap();
 
@@ -636,7 +638,8 @@ async fn internal_errors_are_scrubbed() {
 async fn approval_id_survives_question_mark_into_typed_error() {
     let policy = open_policy();
     let queue = Queue::default();
-    let router = Router::with_approvals(policy.clone(), queue.clone());
+    let router =
+        Router::with_approvals(policy.clone(), queue.clone()).with_audit(MemoryAuditLog::new());
     router.mount(DemoApi::default()).unwrap();
     let err = call(&router, human(), "demo.purge", json!(null))
         .await
@@ -661,7 +664,7 @@ async fn raw_identifier_names_are_unrawed() {
 
 #[test]
 fn mount_rejects_duplicates_atomically() {
-    let router = Router::new(open_policy());
+    let router = Router::new(open_policy()).with_audit(MemoryAuditLog::new());
     router.mount(DemoApi::default()).unwrap();
     let before = router.procedures().len();
     assert_eq!(
@@ -678,7 +681,7 @@ async fn dynamic_procedures_can_be_added_and_removed() {
         granted: vec!["plugin.pg.ping"],
         ..Policy::default()
     };
-    let router = Router::new(policy.clone());
+    let router = Router::new(policy.clone()).with_audit(MemoryAuditLog::new());
     let meta = ProcedureMeta::new(
         "plugin.pg.ping",
         ProcedureKind::Query,
@@ -756,7 +759,7 @@ async fn router_serves_calls_over_the_engine() {
         granted: vec!["demo.read"],
         ..Policy::default()
     };
-    let router = Router::new(policy.clone());
+    let router = Router::new(policy.clone()).with_audit(MemoryAuditLog::new());
     router.mount(DemoApi::default()).unwrap();
     let server = Server::new(ServerConfig::new("dbee", "h", "1"), OneUser, router);
     let ((mut rx, mut tx), (srx, stx)) = memory(16);

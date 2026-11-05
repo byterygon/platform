@@ -11,9 +11,15 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# `SystemClock`, which sleeps on the Tokio timer. Off by default so the crate needs no runtime.
+tokio = ["dep:tokio"]
+
 [dependencies]
+getrandom = "0.4.3"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.11"
+tokio = { version = "1.54.1", default-features = false, features = ["time"], optional = true }
 
 [dev-dependencies]
 serde_json = "1"
