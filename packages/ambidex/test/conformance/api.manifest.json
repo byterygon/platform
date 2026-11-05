@@ -32,7 +32,7 @@
       "type": "string"
     },
     "CounterEnd": {
-      "description": "What [`FixtureApi::counter`] does after its last event.",
+      "description": "What `FixtureApi::counter` does after its last event.",
       "oneOf": [
         {
           "const": "finish",
@@ -57,7 +57,7 @@
       ]
     },
     "CounterInput": {
-      "description": "Input of [`FixtureApi::counter`].",
+      "description": "Input of `FixtureApi::counter`.",
       "properties": {
         "count": {
           "description": "Events sent: 0, 1, …, `count - 1`.",
@@ -76,7 +76,7 @@
       "type": "object"
     },
     "FailInput": {
-      "description": "Input of [`FixtureApi::fail`].",
+      "description": "Input of `FixtureApi::fail`.",
       "properties": {
         "code": {
           "$ref": "#/$defs/Code"
@@ -92,7 +92,7 @@
       "type": "object"
     },
     "FixtureError": {
-      "description": "The typed domain error of [`FixtureApi::fail`].",
+      "description": "The typed domain error of `FixtureApi::fail`.",
       "oneOf": [
         {
           "properties": {

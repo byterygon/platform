@@ -2,7 +2,7 @@
 //!
 //! [`RpcError<E>`] is what handlers and clients see: a [`Code`], a display-safe message and the
 //! procedure's typed domain error in `details`. On the wire it travels as an
-//! [`ErrorPayload`](crate::ErrorPayload) with `details` as JSON.
+//! [`ErrorPayload`] with `details` as JSON.
 
 use std::fmt;
 

@@ -65,7 +65,7 @@ pub const MAX_CONCURRENT_CALLS: u32 = 4;
 /// How long a cancelled handler may keep running before its future is dropped.
 pub const CANCEL_GRACE: Duration = Duration::from_millis(100);
 
-/// `timeout_max` of [`FixtureApi::capped`].
+/// `timeout_max` of `FixtureApi::capped`.
 pub const CAPPED_TIMEOUT_MAX: Duration = Duration::from_millis(50);
 
 /// Id the fixture approval queue gives every request.
@@ -222,7 +222,7 @@ impl Fixture {
     }
 }
 
-/// The typed domain error of [`FixtureApi::fail`].
+/// The typed domain error of `FixtureApi::fail`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(tag = "kind")]
 pub enum FixtureError {
@@ -247,7 +247,7 @@ impl DomainError for FixtureError {
     }
 }
 
-/// Input of [`FixtureApi::fail`].
+/// Input of `FixtureApi::fail`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
 pub struct FailInput {
     pub code: Code,
@@ -256,7 +256,7 @@ pub struct FailInput {
     pub retryable: bool,
 }
 
-/// What [`FixtureApi::counter`] does after its last event.
+/// What `FixtureApi::counter` does after its last event.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CounterEnd {
@@ -272,7 +272,7 @@ pub enum CounterEnd {
     Hang,
 }
 
-/// Input of [`FixtureApi::counter`].
+/// Input of `FixtureApi::counter`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
 pub struct CounterInput {
     /// Events sent: 0, 1, …, `count - 1`.
