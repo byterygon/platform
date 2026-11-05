@@ -5,7 +5,7 @@
 //! are passed through unchanged: chunk boundaries need not match frame boundaries, and nothing
 //! here looks inside them.
 //!
-//! The inbound side is cut explicitly, not by dropping senders: dropping its [`Inbound`] revokes
+//! The inbound side is cut explicitly, not by dropping senders: dropping its `Inbound` revokes
 //! it. From then on pending and later `send`s fail, and the engine's next read fails without
 //! returning chunks still queued. The engine then closes the connection and cancels its calls.
 //! The outbound side carries whatever the engine still writes while closing (e.g. Goaway).

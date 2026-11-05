@@ -163,7 +163,7 @@ impl Default for BrokerLimits {
 #[derive(Debug, Clone)]
 pub struct BrokerConfig {
     pub limits: BrokerLimits,
-    /// CA certificates for grants with [`crate::TrustRoots::Deployment`]. Nothing is loaded
+    /// CA certificates for grants with [`crate::ServerTrust::DeploymentCas`]. Nothing is loaded
     /// implicitly: with no roots configured, those handshakes fail.
     pub deployment_roots: Arc<RootCertStore>,
 }

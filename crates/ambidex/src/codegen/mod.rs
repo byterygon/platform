@@ -43,7 +43,7 @@ use ts_rs::{Config, TS, TypeVisitor};
 use crate::error::{IntoErrorPayload, NoDetails};
 use crate::router::Router;
 
-/// File names [`write`] and [`check`] use inside the output directory.
+/// File names [`write()`] and [`check`] use inside the output directory.
 pub const API_TS: &str = "api.ts";
 pub const MANIFEST_JSON: &str = "api.manifest.json";
 

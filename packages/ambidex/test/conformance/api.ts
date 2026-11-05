@@ -27,12 +27,12 @@ export type ApprovalRequiredDetails = { approval_id: string, };
 export type Code = "Cancelled" | "DeadlineExceeded" | "Unauthenticated" | "PermissionDenied" | "ApprovalRequired" | "InvalidArgument" | "NotFound" | "FailedPrecondition" | "ResourceExhausted" | "Unavailable" | "Unimplemented" | "VersionMismatch" | "Internal";
 
 /**
- * What [`FixtureApi::counter`] does after its last event.
+ * What `FixtureApi::counter` does after its last event.
  */
 export type CounterEnd = "finish" | "fail" | "wait" | "hang";
 
 /**
- * Input of [`FixtureApi::counter`].
+ * Input of `FixtureApi::counter`.
  */
 export type CounterInput = { 
 /**
@@ -41,12 +41,12 @@ export type CounterInput = {
 count: number, then?: CounterEnd, };
 
 /**
- * Input of [`FixtureApi::fail`].
+ * Input of `FixtureApi::fail`.
  */
 export type FailInput = { code: Code, retryable?: boolean, };
 
 /**
- * The typed domain error of [`FixtureApi::fail`].
+ * The typed domain error of `FixtureApi::fail`.
  */
 export type FixtureError = { "kind": "Requested", code: Code, retryable: boolean, };
 
