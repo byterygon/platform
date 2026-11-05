@@ -30,8 +30,8 @@ use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signat
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{CertificateError, DigitallySignedStruct, RootCertStore, SignatureScheme};
 use security_types::{
-    Action, AuditDecision, AuditEntry, AuditPrincipal, Digest, Outcome, Principal, PrincipalKind,
-    Reason, Risk, TargetRef,
+    Action, AuditDecision, AuditEntry, AuditFailureEffect, AuditPrincipal, Digest, Outcome,
+    Principal, PrincipalKind, Reason, Risk, TargetRef,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -410,17 +410,19 @@ impl<R: Resolver> BrokerScope<R> {
             Some(Purpose::Cancel) => OPEN_CANCEL_ACTION,
             _ => OPEN_ACTION,
         };
-        let audited = self.audit(
-            action,
-            target_id,
-            encode_digest(
-                "byterygon.plugin-host.broker.open.v1",
-                &[target_id.as_bytes(), purpose.as_bytes()],
-            ),
-            decision,
-            outcome,
-            started,
-        );
+        let audited = self
+            .audit(
+                action,
+                target_id,
+                encode_digest(
+                    "byterygon.plugin-host.broker.open.v1",
+                    &[target_id.as_bytes(), purpose.as_bytes()],
+                ),
+                decision,
+                outcome,
+                started,
+            )
+            .await;
         match result {
             // A connection that cannot be audited is not handed out.
             Ok(transport) => audited.map(|()| transport),
@@ -660,17 +662,19 @@ impl<R: Resolver> BrokerScope<R> {
             ),
             Err(e) => (AuditDecision::Allow, error_outcome(e)),
         };
-        let audited = self.audit(
-            START_TLS_ACTION,
-            &io.entry.grant.target_id,
-            encode_digest(
-                "byterygon.plugin-host.broker.start-tls.v1",
-                &[io.entry.grant.target_id.as_bytes(), server_name.as_bytes()],
-            ),
-            decision,
-            outcome,
-            started,
-        );
+        let audited = self
+            .audit(
+                START_TLS_ACTION,
+                &io.entry.grant.target_id,
+                encode_digest(
+                    "byterygon.plugin-host.broker.start-tls.v1",
+                    &[io.entry.grant.target_id.as_bytes(), server_name.as_bytes()],
+                ),
+                decision,
+                outcome,
+                started,
+            )
+            .await;
         if result.is_ok() && audited.is_err() {
             close(io).await;
         }
@@ -734,7 +738,9 @@ impl<R: Resolver> BrokerScope<R> {
         self.broker.grants.clock().now_unix_ms()
     }
 
-    fn audit(
+    /// Records one broker operation, waiting at most the grant store's audit timeout. An error
+    /// means the entry was not written: a successful operation is then undone (fail closed).
+    async fn audit(
         &self,
         action: &str,
         target_id: &str,
@@ -744,25 +750,36 @@ impl<R: Resolver> BrokerScope<R> {
         started: Instant,
     ) -> Result<(), BrokerError> {
         let caller = &self.caller;
+        let effect = if decision == AuditDecision::Allow && outcome == Outcome::Success {
+            AuditFailureEffect::Blocked
+        } else {
+            AuditFailureEffect::EntryLost
+        };
         self.broker
             .grants
-            .audit()
-            .append(AuditEntry {
-                timestamp_unix_ms: self.now(),
-                principal_chain: caller.audit_chain(),
-                tenant: caller.principal.tenant.clone(),
-                action: Action::new(action, BROKER_PERM),
-                target: Some(TargetRef::connection(target_id)),
-                risk: Risk::Read,
-                decision,
-                approval_id: None,
-                outcome,
-                duration_ms: Some(u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)),
-                correlation_id: caller.correlation_id.clone(),
-                input_digest,
-                statement_digest: None,
-            })
-            .map_err(|_| BrokerError::Internal)
+            .record(
+                AuditEntry {
+                    timestamp_unix_ms: self.now(),
+                    principal_chain: caller.audit_chain(),
+                    tenant: caller.principal.tenant.clone(),
+                    action: Action::new(action, BROKER_PERM),
+                    target: Some(TargetRef::connection(target_id)),
+                    risk: Risk::Read,
+                    decision,
+                    approval_id: None,
+                    outcome,
+                    duration_ms: Some(
+                        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    ),
+                    correlation_id: caller.correlation_id.clone(),
+                    input_digest,
+                    statement_digest: None,
+                    delivery: None,
+                },
+                effect,
+            )
+            .await
+            .map_err(|()| BrokerError::Internal)
     }
 }
 

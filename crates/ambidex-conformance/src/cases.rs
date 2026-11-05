@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 
 use ambidex::frame::{Flags, Frame, HEADER_LEN, Kind};
-use ambidex::security_types::{AuditDecision, Outcome, Reason};
+use ambidex::security_types::{
+    AuditDecision, AuditEntry, AuditEntryKind, AuditFailureEffect, Delivery, Outcome, Reason, Risk,
+};
 use ambidex::{Code, Goaway, input_digest};
 use serde_json::{Value, json};
 
@@ -17,7 +19,7 @@ use crate::client::{
 };
 use crate::fixture::{
     APPROVAL_ID, CANCEL_GRACE, Event, MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES, SCHEMA_HASH,
-    SERVER_VERSION, SUBSCRIPTION_BUFFER_EVENTS,
+    SERVER_VERSION, SUBSCRIPTION_BUFFER_EVENTS, completed_with,
 };
 use crate::harness::Harness;
 
@@ -372,7 +374,7 @@ pub async fn permission_denied_never_runs_handler<H: Harness>(h: &H) {
     assert_eq!(err.details, None);
     assert_eq!(h.fixture().probe.runs(), 0);
     // Both refusals are audited, with the reason the client never saw.
-    let entries = h.fixture().audit.entries();
+    let entries = h.fixture().audit.refusals();
     assert_eq!(entries.len(), 2, "{entries:?}");
     assert!(entries.iter().all(|e| e.action.name == "fixture.protected"
         && matches!(e.decision, AuditDecision::Deny { .. })
@@ -836,6 +838,227 @@ pub async fn unauthorized_subscribe_is_denied_and_audited<H: Harness>(h: &H) {
     assert_eq!(entry.approval_id, None);
     assert_eq!(entry.correlation_id, err.correlation_id);
     assert_eq!(entry.input_digest, input_digest(&Value::Null));
+    client.expect_alive(0).await;
+}
+
+// ---- audit of calls that run (§8, Open question 26) -----------------------------------------
+
+/// The entries of `action`, in order.
+fn audited(h: &impl Harness, action: &str) -> Vec<AuditEntry> {
+    h.fixture()
+        .audit
+        .entries()
+        .into_iter()
+        .filter(|e| e.action.name == action)
+        .collect()
+}
+
+/// Checks that `entries` are one call's admission then completion, and returns the completion.
+fn admission_then_completion<'e>(
+    h: &impl Harness,
+    entries: &'e [AuditEntry],
+    risk: Risk,
+) -> &'e AuditEntry {
+    let [admission, completion] = entries else {
+        panic!("expected an admission and a completion, got {entries:?}");
+    };
+    assert_eq!(admission.outcome, Outcome::Started);
+    assert_eq!(admission.decision, AuditDecision::Allow);
+    assert_eq!((admission.delivery, admission.duration_ms), (None, None));
+    assert!(!admission.correlation_id.is_empty());
+    assert_eq!(completion.correlation_id, admission.correlation_id);
+    assert_eq!(completion.decision, AuditDecision::Allow);
+    for entry in [admission, completion] {
+        assert_eq!(entry.risk, risk);
+        assert_eq!(entry.principal_chain[0].id, h.principal_id());
+    }
+    completion
+}
+
+/// Waits until the log holds `count` entries for `action` (a completion written after the client
+/// stopped expecting frames, e.g. after `Unsubscribe`).
+async fn wait_for_entries(h: &impl Harness, action: &str, count: usize) -> Vec<AuditEntry> {
+    let deadline = tokio::time::Instant::now() + crate::client::RECV_TIMEOUT;
+    loop {
+        let entries = audited(h, action);
+        if entries.len() >= count || tokio::time::Instant::now() > deadline {
+            return entries;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}
+
+pub async fn calls_that_run_are_audited_twice<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.call(1, "fixture.echo", json!(1)).await;
+    client.expect_result(1).await;
+    client.call(2, "fixture.write", json!(2)).await;
+    client.expect_result(2).await;
+    client
+        .call(3, "fixture.fail", json!({ "code": "NotFound" }))
+        .await;
+    let err = client.expect_code(3, Code::NotFound).await;
+
+    // Both entries are written before the answer leaves, so they are already in the log.
+    let read = admission_then_completion(h, &audited(h, "fixture.echo"), Risk::Read).clone();
+    assert!(completed_with(&read, None));
+    assert_eq!(read.delivery, Some(Delivery::Delivered));
+    let write = admission_then_completion(h, &audited(h, "fixture.write"), Risk::Write).clone();
+    assert!(completed_with(&write, None));
+    assert_ne!(write.correlation_id, read.correlation_id);
+    // The handler's error is its outcome; the client got it as it was.
+    let failed = admission_then_completion(h, &audited(h, "fixture.fail"), Risk::Read).clone();
+    assert!(completed_with(&failed, Some("NotFound")));
+    assert_eq!(failed.delivery, Some(Delivery::Delivered));
+    assert_eq!(failed.correlation_id, err.correlation_id);
+    assert_eq!(
+        failed.input_digest,
+        input_digest(&json!({ "code": "NotFound" }))
+    );
+    assert!(h.fixture().reports.all().is_empty());
+}
+
+pub async fn admission_that_cannot_be_recorded_fails_closed<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    fixture.audit.fail(true);
+
+    // A Write does not run without its admission entry.
+    client.call(1, "fixture.write", json!(1)).await;
+    let blocked = client.expect_code(1, Code::Unavailable).await;
+    assert!(blocked.retryable, "nothing ran, so the client may retry");
+    assert_eq!(fixture.probe.runs(), 0, "the handler was never entered");
+    // A human Read runs, and the failure is reported.
+    client.call(2, "fixture.echo", json!("read")).await;
+    assert_eq!(client.expect_result(2).await, json!("read"));
+    // A refusal is still a refusal.
+    client
+        .call(3, "fixture.protected", json!({ "code": "NotFound" }))
+        .await;
+    client.expect_code(3, Code::PermissionDenied).await;
+
+    assert!(fixture.audit.entries().is_empty());
+    let reports: Vec<_> = fixture
+        .reports
+        .all()
+        .into_iter()
+        .map(|r| (r.entry, r.effect, r.action))
+        .collect();
+    assert_eq!(
+        reports,
+        [
+            (
+                AuditEntryKind::Admission,
+                AuditFailureEffect::Blocked,
+                "fixture.write".to_owned()
+            ),
+            (
+                AuditEntryKind::Admission,
+                AuditFailureEffect::RanUnrecorded,
+                "fixture.echo".to_owned()
+            ),
+            (
+                AuditEntryKind::Completion,
+                AuditFailureEffect::EntryLost,
+                "fixture.echo".to_owned()
+            ),
+            (
+                AuditEntryKind::Refusal,
+                AuditFailureEffect::EntryLost,
+                "fixture.protected".to_owned()
+            ),
+        ]
+    );
+    assert_eq!(
+        fixture.reports.all()[0].correlation_id,
+        blocked.correlation_id
+    );
+
+    // Once the sink works again, the same Write runs and is recorded.
+    fixture.audit.fail(false);
+    client.call(4, "fixture.write", json!(4)).await;
+    assert_eq!(client.expect_result(4).await, json!(4));
+    fixture.probe.expect(Event::Started("write")).await;
+    admission_then_completion(h, &audited(h, "fixture.write"), Risk::Write);
+    client.expect_alive(0).await;
+}
+
+pub async fn completion_records_handler_outcome_and_delivery<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    let completion = |correlation_id: &str| {
+        let entries = h.fixture().audit.call(correlation_id);
+        assert_eq!(entries.len(), 2, "{entries:?}");
+        entries[1].clone()
+    };
+
+    // Cancelled while running: the handler still returned a value, which was discarded.
+    client.call(1, "fixture.wait", json!(null)).await;
+    probe.expect(Event::Started("wait")).await;
+    client.cancel(1).await;
+    let err = client.expect_code(1, Code::Cancelled).await;
+    probe.expect(Event::Cancelled("wait")).await;
+    let entry = completion(&err.correlation_id);
+    assert!(completed_with(&entry, None), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::Cancelled));
+
+    // Out of time while running: likewise, with the deadline.
+    client
+        .call_with_timeout(2, "fixture.wait", json!(null), 300)
+        .await;
+    probe.expect(Event::Started("wait")).await;
+    let err = client.expect_code(2, Code::DeadlineExceeded).await;
+    probe.expect(Event::Cancelled("wait")).await;
+    let entry = completion(&err.correlation_id);
+    assert!(completed_with(&entry, None), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::DeadlineExceeded));
+
+    // Dropped after the grace period: it never returned, so its outcome is how it was stopped.
+    client.call(3, "fixture.stubborn", json!(null)).await;
+    probe.expect(Event::Started("stubborn")).await;
+    client.cancel(3).await;
+    let err = client.expect_code(3, Code::Cancelled).await;
+    probe.expect(Event::Dropped("stubborn")).await;
+    let entry = completion(&err.correlation_id);
+    assert!(completed_with(&entry, Some("Cancelled")), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::Cancelled));
+
+    // An answer too large for a frame: the handler succeeded, the client got ResourceExhausted.
+    client
+        .call(4, "fixture.big", json!(MAX_FRAME_BYTES as usize * 2))
+        .await;
+    let err = client.expect_code(4, Code::ResourceExhausted).await;
+    let entry = completion(&err.correlation_id);
+    assert!(completed_with(&entry, None), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::FrameTooLarge));
+    client.expect_alive(0).await;
+}
+
+pub async fn subscription_completion_records_how_it_ended<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(2, "finish"))
+        .await;
+    client.expect_event(1).await;
+    client.expect_event(1).await;
+    client.expect_result(1).await;
+    h.fixture().probe.expect(Event::Started("counter")).await;
+    let finished = audited(h, "fixture.counter");
+    let entry = admission_then_completion(h, &finished, Risk::Read);
+    assert!(completed_with(entry, None));
+    assert_eq!(entry.delivery, Some(Delivery::Delivered));
+
+    // After Unsubscribe the client gets nothing more; the completion says so.
+    client
+        .subscribe(2, "fixture.counter", counter(0, "wait"))
+        .await;
+    h.fixture().probe.expect(Event::Started("counter")).await;
+    client.unsubscribe(2).await;
+    h.fixture().probe.expect(Event::Cancelled("counter")).await;
+    let entries = wait_for_entries(h, "fixture.counter", 4).await;
+    let entry = admission_then_completion(h, &entries[2..], Risk::Read);
+    assert!(completed_with(entry, None), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::Cancelled));
     client.expect_alive(0).await;
 }
 

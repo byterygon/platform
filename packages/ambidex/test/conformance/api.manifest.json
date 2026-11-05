@@ -398,8 +398,23 @@
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "mutation",
+      "log_input": false,
+      "name": "fixture.write",
+      "output": true,
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:f1a35441eea15c98250ce1c83da0c1d335561100f5befab024268c8e4459e4dd"
+  "schema_hash": "sha256:60cca6a13ba12f71da52b69c8ce8e2001d40802e79039b0e2b07bd4919323fe5"
 }

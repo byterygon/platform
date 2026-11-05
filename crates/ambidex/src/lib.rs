@@ -120,6 +120,7 @@
 //! }
 //! ```
 
+pub mod audit;
 pub mod cancel;
 pub mod codegen;
 pub mod engine;
@@ -166,6 +167,7 @@ pub mod rpc {
     pub use ambidex_macros::{mutation, query, router, stream, subscription};
 }
 
+pub use audit::{AuditPolicy, HumanReads};
 pub use cancel::CallScope;
 pub use engine::{Authenticate, Closed, Connection, Dispatch, Server, ServerConfig, Session};
 pub use error::{DomainError, IntoErrorPayload, NoDetails, RpcError};
@@ -173,12 +175,14 @@ pub use frame::{Flags, Frame, FrameDecoder, FrameError, Kind};
 pub use message::{Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits};
 pub use procedure::{Agent, ProcedureKind, ProcedureMeta};
 pub use router::{
-    Api, ApprovalRequired, Approvals, AuditError, AuditSink, Ctx, Handler, Procedure,
-    RegistryError, Rejected, Router, SubscriptionHandler, input_digest,
+    Api, ApprovalRequired, Approvals, Ctx, Handler, Procedure, RegistryError, Rejected, Router,
+    SubscriptionHandler, input_digest,
 };
 pub use schemars;
 pub use security_types;
-pub use security_types::{Risk, TargetRef};
+pub use security_types::{
+    AuditError, AuditReporter, AuditSink, MemoryAuditLog, Risk, StderrReporter, TargetRef,
+};
 pub use subscription::{EventSink, Events, SubscriptionEnded};
 pub use tokio_util::sync::CancellationToken;
 pub use ts_rs;

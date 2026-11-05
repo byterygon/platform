@@ -39,6 +39,7 @@ use tokio::sync::Notify;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
+use crate::audit::Completion;
 use crate::message::{Code, ErrorPayload};
 use crate::procedure::{DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX};
 
@@ -57,8 +58,14 @@ struct Inner {
     /// Why the token fired, with the message the call answers. Unset when a parent (connection)
     /// token fired: that is `Cancelled`.
     reason: OnceLock<(Code, &'static str)>,
-    /// The id the call's errors carry; empty outside the engine.
+    /// The id the call's errors and audit entries carry: the engine's, or one from the shared
+    /// generator ([`security_types::new_correlation_id`]) outside the engine.
     correlation_id: String,
+    /// Whether the engine created this scope, and so records the call's audit completion once
+    /// it knows what the client received.
+    managed: bool,
+    /// The audit completion the router registered after the admission entry, until written.
+    completion: Mutex<Option<Completion>>,
     start: Instant,
     requested: Option<Duration>,
     deadline: Mutex<Instant>,
@@ -71,15 +78,27 @@ impl CallScope {
     ///
     /// The engine creates scopes itself; this is for running a dispatcher outside the engine
     /// (e.g. the MCP adapter calling [`Router::call`](crate::Router::call)), where the caller
-    /// enforces the deadline.
+    /// enforces the deadline. Its correlation id comes from the shared generator; it is empty
+    /// only if the OS had no randomness, and the router refuses such a call.
     pub fn new(requested: Option<Duration>) -> CallScope {
-        CallScope::with_token(CancellationToken::new(), requested, String::new())
+        let correlation_id = security_types::new_correlation_id().unwrap_or_default();
+        CallScope::build(CancellationToken::new(), requested, correlation_id, false)
     }
 
+    /// The engine's scope for one call.
     pub(crate) fn with_token(
         token: CancellationToken,
         requested: Option<Duration>,
         correlation_id: String,
+    ) -> CallScope {
+        CallScope::build(token, requested, correlation_id, true)
+    }
+
+    fn build(
+        token: CancellationToken,
+        requested: Option<Duration>,
+        correlation_id: String,
+        managed: bool,
     ) -> CallScope {
         let start = Instant::now();
         CallScope {
@@ -87,6 +106,8 @@ impl CallScope {
                 token,
                 reason: OnceLock::new(),
                 correlation_id,
+                managed,
+                completion: Mutex::new(None),
                 start,
                 requested,
                 deadline: Mutex::new(
@@ -111,9 +132,36 @@ impl CallScope {
         &self.inner.token
     }
 
-    /// The id the engine puts on this call's errors and audit entries (`""` outside the engine).
+    /// The id this call's errors and audit entries carry (see [`CallScope::new`]).
     pub fn correlation_id(&self) -> &str {
         &self.inner.correlation_id
+    }
+
+    /// When the call started: the engine read its frame, or [`CallScope::new`] ran.
+    pub(crate) fn start(&self) -> Instant {
+        self.inner.start
+    }
+
+    pub(crate) fn is_managed(&self) -> bool {
+        self.inner.managed
+    }
+
+    /// Keeps the call's pending audit completion until the call ends.
+    pub(crate) fn set_completion(&self, completion: Completion) {
+        *lock(&self.inner.completion) = Some(completion);
+    }
+
+    /// Updates the pending completion, if there is one.
+    pub(crate) fn update_completion(&self, f: impl FnOnce(&mut Completion)) {
+        if let Some(completion) = lock(&self.inner.completion).as_mut() {
+            f(completion);
+        }
+    }
+
+    /// The pending completion, to write it. A completion never taken is written when the last
+    /// clone of the scope is dropped (see [`Completion`]).
+    pub(crate) fn take_completion(&self) -> Option<Completion> {
+        lock(&self.inner.completion).take()
     }
 
     /// Resolves once the token fires.

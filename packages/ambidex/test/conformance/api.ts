@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:f1a35441eea15c98250ce1c83da0c1d335561100f5befab024268c8e4459e4dd";
+export const SCHEMA_HASH = "sha256:60cca6a13ba12f71da52b69c8ce8e2001d40802e79039b0e2b07bd4919323fe5";
 
 // ---- Types
 
@@ -124,6 +124,7 @@ export interface Procedures {
   readonly "fixture.stubborn": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.wait": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.whoami": ProcedureDef<"query", JsonValue, JsonValue, never>;
+  readonly "fixture.write": ProcedureDef<"mutation", JsonValue, JsonValue, never>;
 }
 
 /** The procedures nested by name segment, as the client exposes them. */
@@ -144,6 +145,7 @@ export interface Api {
     readonly stubborn: Procedures["fixture.stubborn"];
     readonly wait: Procedures["fixture.wait"];
     readonly whoami: Procedures["fixture.whoami"];
+    readonly write: Procedures["fixture.write"];
   };
 }
 
@@ -295,6 +297,16 @@ export const procedures: Api = {
       kind: "query",
       perm: "fixture.call",
       risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    write: {
+      name: "fixture.write",
+      kind: "mutation",
+      perm: "fixture.call",
+      risk: "Write",
       agent: "hidden",
       deprecated: false,
       timeoutDefaultMs: 30000,

@@ -35,6 +35,12 @@
 //!   already answered.
 //! - When the connection closes for any reason, every call's token fires; calls get the same
 //!   grace, their answers are discarded, and the rest are dropped.
+//! - Once a call's answer frame is chosen, its audit completion (registered by the router after
+//!   the admission entry, see [`crate::audit`]) is written with what the client gets: the
+//!   handler's answer, the cancellation reason, or `ResourceExhausted` for an answer too large
+//!   for a frame. The answer waits for that write, at most the router's audit write timeout.
+//!   Handshake rejections and protocol violations (call 0) carry a correlation id from the
+//!   shared generator.
 //! - `Subscribe` starts a subscription (see [`crate::subscription`]): admitted like a `Call` (same
 //!   payload, call id rule and `max_concurrent_calls` slot), run through
 //!   [`Dispatch::subscribe`] under its own [`CallScope`]. Its `Event` frames and its one terminal
@@ -65,8 +71,9 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use security_types::Principal;
+use security_types::{Delivery, Principal};
 
+use crate::audit::{code_name, delivery_for};
 use crate::cancel::CallScope;
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
@@ -388,11 +395,11 @@ async fn run_call(
     fut: impl Future<Output = Result<Value, ErrorPayload>>,
     scope: CallScope,
     grace: Duration,
-) -> Result<Value, ErrorPayload> {
+) -> Finished {
     // A call cancelled or out of time before its task first ran never starts: `fut` is dropped
     // unpolled, so the handler has no side effects.
-    if scope.check().is_some() {
-        return Err(scope.error());
+    if let Some(reason) = scope.check() {
+        return Finished::replaced(&scope, reason);
     }
     let mut fut = std::pin::pin!(scope.clone().enter(fut));
     let finished = loop {
@@ -417,15 +424,35 @@ async fn run_call(
             // first reason, so a Cancel that already fired still wins.
             // A handler that reacts to its token can finish in the poll that observed it; that
             // answer is discarded too, so a Cancel that reached the call always wins.
-            if scope.check().is_none() {
-                return result;
-            }
+            let Some(reason) = scope.check() else {
+                return Finished {
+                    result,
+                    replaced_by: None,
+                };
+            };
+            Finished::replaced(&scope, reason)
         }
         None => {
             let _ = tokio::time::timeout(grace, &mut fut).await;
+            Finished::replaced(&scope, scope.reason().unwrap_or(Code::Cancelled))
         }
     }
-    Err(scope.error())
+}
+
+/// How a call ended, as the engine answers it.
+struct Finished {
+    result: Result<Value, ErrorPayload>,
+    /// The reason the token fired, when it replaced the dispatcher's answer.
+    replaced_by: Option<Code>,
+}
+
+impl Finished {
+    fn replaced(scope: &CallScope, reason: Code) -> Finished {
+        Finished {
+            result: Err(scope.error()),
+            replaced_by: Some(reason),
+        }
+    }
 }
 
 /// Waits until `out` has at least `slots` free slots; `false` once the writer is gone. The
@@ -811,8 +838,16 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         let (max, grace) = (config.max_frame_bytes, config.cancel_grace);
         let task_scope = scope.clone();
         let handle = self.calls.spawn(async move {
-            let result = run_call(fut, task_scope, grace).await;
-            result_frame(call_id, result, correlation_id, max)
+            let finished = run_call(fut, task_scope.clone(), grace).await;
+            let replaced_by = finished.replaced_by;
+            let (frame, delivery) = result_frame(call_id, finished, correlation_id, max);
+            // The audit completion records what the client gets (spec Open question 26a).
+            if let Some(completion) = task_scope.take_completion() {
+                completion
+                    .finish(delivery, replaced_by.unwrap_or(Code::Cancelled))
+                    .await;
+            }
+            frame
         });
         self.tasks.insert(
             handle.id(),
@@ -881,9 +916,21 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             call_id: 0,
             subscription: false,
         });
+        let scope = self.in_flight.remove(&call_id);
+        // A panicking handler's audit completion: it ended with `Internal`, which the client
+        // gets below.
+        if frame.is_err()
+            && let Some(completion) = scope.as_ref().and_then(CallScope::take_completion)
+        {
+            let mut completion = completion;
+            completion.record_outcome(security_types::Outcome::Error {
+                code: code_name(Code::Internal),
+            });
+            tokio::spawn(completion.finish(Delivery::Delivered, Code::Internal));
+        }
         // A finished subscription is over: a sink clone the handler left behind (e.g. in a task
         // it spawned) is refused from now on, and its `closed()` resolves.
-        if let Some(scope) = self.in_flight.remove(&call_id)
+        if let Some(scope) = scope
             && subscription
         {
             scope.cancel();
@@ -934,14 +981,14 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
 
     /// Sends a handshake rejection on call 0. The caller closes the connection.
     async fn reject(&mut self, code: Code, message: &str) -> Closed {
-        self.send_final(Kind::Error, 0, &ErrorPayload::new(code, message))
+        self.send_final(Kind::Error, 0, &transport_refusal(code, message))
             .await;
         Closed::HandshakeRejected(code)
     }
 
     /// Reports a protocol violation on call 0. The caller closes the connection.
     async fn violation(&mut self, code: Code, message: impl Into<String>) -> Closed {
-        self.send_final(Kind::Error, 0, &ErrorPayload::new(code, message))
+        self.send_final(Kind::Error, 0, &transport_refusal(code, message))
             .await;
         Closed::ProtocolViolation(code)
     }
@@ -985,6 +1032,14 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     }
 }
 
+/// A refusal on call 0 (handshake rejection, protocol violation). It belongs to no call, so its
+/// correlation id comes from the shared generator (empty only without OS randomness).
+fn transport_refusal(code: Code, message: impl Into<String>) -> ErrorPayload {
+    let mut err = ErrorPayload::new(code, message);
+    err.correlation_id = security_types::new_correlation_id().unwrap_or_default();
+    err
+}
+
 /// `duration` in whole milliseconds for HelloAck, clamped so a JavaScript client reads it exactly
 /// (a `cancel_grace` of `Duration::MAX` means "never drop"; any value this large reads the same).
 fn advertised_ms(duration: Duration) -> u64 {
@@ -993,22 +1048,33 @@ fn advertised_ms(duration: Duration) -> u64 {
         .min(MAX_JSON_SAFE_INTEGER)
 }
 
-/// Builds the Result or Error frame for a finished call.
+/// Builds the Result or Error frame for a finished call, and says what the client gets.
 fn result_frame(
     call_id: u32,
-    result: Result<Value, ErrorPayload>,
+    finished: Finished,
     correlation_id: String,
     max_payload: u32,
-) -> Frame {
-    let error = match result.map(|value| serde_json::to_vec(&value)) {
+) -> (Frame, Delivery) {
+    // The token fired first: the client gets its reason, whatever the handler did.
+    let mut delivery = finished
+        .replaced_by
+        .map_or(Delivery::Delivered, delivery_for);
+    let error = match finished.result.map(|value| serde_json::to_vec(&value)) {
         Ok(Ok(payload)) if payload.len() <= max_payload as usize => {
-            return Frame::new(Kind::Result, call_id, payload);
+            return (Frame::new(Kind::Result, call_id, payload), delivery);
         }
-        Ok(Ok(_)) => ErrorPayload::new(
-            Code::ResourceExhausted,
-            "result exceeds the frame size limit",
-        ),
-        Ok(Err(_)) => ErrorPayload::new(Code::Internal, "internal error"),
+        Ok(Ok(_)) => {
+            delivery = Delivery::FrameTooLarge;
+            ErrorPayload::new(
+                Code::ResourceExhausted,
+                "result exceeds the frame size limit",
+            )
+        }
+        // Not reachable for a `Value`; the answer could not be put in a frame either way.
+        Ok(Err(_)) => {
+            delivery = Delivery::FrameTooLarge;
+            ErrorPayload::new(Code::Internal, "internal error")
+        }
         Err(err) => err,
     };
     let mut error = error;
@@ -1017,6 +1083,9 @@ fn result_frame(
     }
     let mut payload = serde_json::to_vec(&error).expect("ErrorPayload serializes");
     if payload.len() > max_payload as usize {
+        if delivery == Delivery::Delivered {
+            delivery = Delivery::FrameTooLarge;
+        }
         // A handler's details or message can exceed the limit too; drop them rather than fail.
         let fallback = ErrorPayload {
             code: error.code,
@@ -1027,5 +1096,5 @@ fn result_frame(
         };
         payload = serde_json::to_vec(&fallback).expect("ErrorPayload serializes");
     }
-    Frame::new(Kind::Error, call_id, payload)
+    (Frame::new(Kind::Error, call_id, payload), delivery)
 }
