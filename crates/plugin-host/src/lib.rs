@@ -11,6 +11,8 @@
 //! - [`contract`]: the broker behind the db-driver contract's `ConnectionBroker`, for native
 //!   drivers.
 //! - [`audit`]: audit sink and clock.
+//! - [`package`]: bounded offline `.bplugin` verification and pinned Ed25519 keys.
+//! - [`install`]: verified staging, direct human approval, atomic activation and rollback.
 //!
 //! Identity, authorization and the audit record come from `security-types`; Plugin Host does not
 //! depend on Ambidex.
@@ -65,8 +67,10 @@ pub mod audit;
 pub mod broker;
 pub mod contract;
 pub mod grant;
+pub mod install;
 pub mod manifest;
 pub mod net;
+pub mod package;
 
 pub use audit::{AuditError, AuditSink, Clock, MemoryAuditLog, SystemClock};
 pub use broker::{

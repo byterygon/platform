@@ -1,0 +1,7 @@
+path: payload/x
+content-utf8: abc
+canonical-hex: 627974657279676f6e2e706c7567696e2d686f73742e7061636b6167652e763100000000000000000100000000000000097061796c6f61642f780000000000000003ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad
+sha256: 5bebd98aa8ae8bdfedbdce7fc51b63f4f8c7d9397e824edaabb35003d6c0262b
+
+Independent cross-check: Node.js crypto constructed the bytes; `sha256sum` over those bytes
+returned the digest above.

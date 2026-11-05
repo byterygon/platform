@@ -25,6 +25,9 @@ pub struct Manifest {
     pub interface: String,
     pub host_api: String,
     pub publisher: String,
+    /// Exact host OS/architecture for a sidecar. WASM packages omit this.
+    #[serde(default)]
+    pub platform: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
@@ -221,7 +224,7 @@ impl Manifest {
 }
 
 /// Reverse-DNS style id: dot-separated labels of `[a-z0-9-]`, at least two labels.
-fn is_plugin_id(id: &str) -> bool {
+pub(crate) fn is_plugin_id(id: &str) -> bool {
     id.len() <= 128
         && id.split('.').count() >= 2
         && id.split('.').all(|label| {
