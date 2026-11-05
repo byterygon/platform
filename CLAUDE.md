@@ -24,7 +24,7 @@ summarises what a session needs when Notion is unavailable.
 
 | Path | What | License |
 | --- | --- | --- |
-| `crates/security-types` | Principal, authz request/decision, audit record | MIT OR Apache-2.0 |
+| `crates/security-types` | Principal, authz request/decision, audit record, async audit sink and failure reporter, clock (`SystemClock` behind feature `tokio`), correlation ids | MIT OR Apache-2.0 |
 | `crates/ambidex`, `crates/ambidex-macros` | Ambidex dual-transport RPC engine and macros | MIT OR Apache-2.0 |
 | `crates/ambidex-axum` | Ambidex WebSocket transport (`/rpc/ws`, rustls TLS, Host/Origin checks) | MIT OR Apache-2.0 |
 | `crates/ambidex-tauri` | Ambidex Tauri IPC transport and desktop session (Tauri plugin) | MIT OR Apache-2.0 |
