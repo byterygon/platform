@@ -159,6 +159,27 @@ fn write_file(path: &Path, bytes: &[u8]) -> Result<(), InstallError> {
         .map_err(|_| InstallError::Io)
 }
 
+/// Lock a plugin's state across installer instances and processes. The lock file is deliberately
+/// retained so a second process always locks the same inode. The install root is admin-owned.
+fn lock_plugin(base: &Path) -> Result<File, InstallError> {
+    fs::create_dir_all(base).map_err(|_| InstallError::Io)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(base.join(".mutation.lock"))
+        .map_err(|_| InstallError::Io)?;
+    file.lock().map_err(|_| InstallError::Io)?;
+    Ok(file)
+}
+
+async fn lock_plugin_async(base: PathBuf) -> Result<File, InstallError> {
+    tokio::task::spawn_blocking(move || lock_plugin(&base))
+        .await
+        .map_err(|_| InstallError::Io)?
+}
+
 #[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct InstallState {
@@ -190,21 +211,54 @@ fn read_state(base: &Path) -> Result<InstallState, InstallError> {
     Ok(state)
 }
 
-fn atomic_state(base: &Path, state: &InstallState) -> Result<(), InstallError> {
+#[derive(Debug)]
+struct StateCommitError {
+    /// The rename made the new state visible, even if the following directory sync failed.
+    published: bool,
+}
+
+fn atomic_state_with_sync(
+    base: &Path,
+    state: &InstallState,
+    sync_parent: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<(), StateCommitError> {
     let path = base.join("state.json");
-    let parent = path.parent().ok_or(InstallError::Io)?;
-    let tmp = private_dir(parent)?;
+    let parent = path.parent().ok_or(StateCommitError { published: false })?;
+    let tmp = private_dir(parent).map_err(|_| StateCommitError { published: false })?;
     let temp_file = tmp.join("state.json");
     let result = (|| {
-        let bytes = serde_json::to_vec(state).map_err(|_| InstallError::Io)?;
-        write_file(&temp_file, &bytes)?;
-        fs::rename(&temp_file, &path).map_err(|_| InstallError::Io)?;
-        File::open(parent)
-            .and_then(|f| f.sync_all())
-            .map_err(|_| InstallError::Io)
+        let bytes = serde_json::to_vec(state).map_err(|_| StateCommitError { published: false })?;
+        write_file(&temp_file, &bytes).map_err(|_| StateCommitError { published: false })?;
+        fs::rename(&temp_file, &path).map_err(|_| StateCommitError { published: false })?;
+        sync_parent(parent).map_err(|_| StateCommitError { published: true })
     })();
     let _ = fs::remove_dir_all(tmp);
     result
+}
+
+fn atomic_state(base: &Path, state: &InstallState) -> Result<(), StateCommitError> {
+    atomic_state_with_sync(base, state, |parent| {
+        File::open(parent).and_then(|f| f.sync_all())
+    })
+}
+
+fn commit_activation(
+    base: &Path,
+    version_path: &Path,
+    state: &InstallState,
+    sync_parent: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> Result<(), InstallError> {
+    match atomic_state_with_sync(base, state, sync_parent) {
+        Ok(()) => Ok(()),
+        Err(StateCommitError { published }) => {
+            if !published {
+                // The old state is still active, so this version is an unreferenced stage.
+                let _ = fs::remove_dir_all(version_path);
+            }
+            // After rename, state.json may already point here. Keep the version on disk.
+            Err(InstallError::Io)
+        }
+    }
 }
 
 impl<'a> Installer<'a> {
@@ -287,6 +341,7 @@ impl<'a> Installer<'a> {
             return Err(InstallError::Denied);
         }
         let base = self.root.join(plugin_id);
+        let _lock = lock_plugin_async(base.clone()).await?;
         let mut state = read_state(&base)?;
         let previous = state.previous.take().ok_or(InstallError::NoPrevious)?;
         let current = state
@@ -331,7 +386,7 @@ impl<'a> Installer<'a> {
             AuditDecision::Allow,
             Outcome::Success,
         )?;
-        atomic_state(&base, &state)
+        atomic_state(&base, &state).map_err(|_| InstallError::Io)
     }
 }
 
@@ -437,6 +492,7 @@ impl StagedInstall<'_> {
             Outcome::Success,
         )?;
         let base = self.installer.root.join(id);
+        let _lock = lock_plugin_async(base.clone()).await?;
         let versions = base.join("versions");
         fs::create_dir_all(&versions).map_err(|_| InstallError::Io)?;
         let digest = hex(&self.package.digest);
@@ -457,11 +513,9 @@ impl StagedInstall<'_> {
         )?;
         fs::rename(&self.stage, &version_path).map_err(|_| InstallError::Io)?;
         state.previous = state.active.replace(digest);
-        if let Err(e) = atomic_state(&base, &state) {
-            let _ = fs::remove_dir_all(&version_path);
-            return Err(e);
-        }
-        Ok(())
+        commit_activation(&base, &version_path, &state, |parent| {
+            File::open(parent).and_then(|f| f.sync_all())
+        })
     }
 
     pub fn reject(self, approver: &Principal) -> Result<(), InstallError> {
@@ -487,5 +541,72 @@ impl StagedInstall<'_> {
 impl Drop for StagedInstall<'_> {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.stage);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn sync_failure_after_publish_keeps_referenced_version() {
+        let root = private_dir(&std::env::temp_dir()).unwrap();
+        let base = root.join("org.example.demo");
+        let versions = base.join("versions");
+        fs::create_dir_all(&versions).unwrap();
+        let old = "11".repeat(32);
+        let new = "22".repeat(32);
+        fs::create_dir(versions.join(&old)).unwrap();
+        atomic_state(
+            &base,
+            &InstallState {
+                active: Some(old.clone()),
+                previous: None,
+            },
+        )
+        .unwrap();
+        let new_path = versions.join(&new);
+        fs::create_dir(&new_path).unwrap();
+        let result = commit_activation(
+            &base,
+            &new_path,
+            &InstallState {
+                active: Some(new.clone()),
+                previous: Some(old.clone()),
+            },
+            |_| Err(std::io::Error::other("injected directory sync failure")),
+        );
+        assert!(matches!(result, Err(InstallError::Io)));
+        assert_eq!(
+            read_state(&base).unwrap().active.as_deref(),
+            Some(new.as_str())
+        );
+        assert!(
+            new_path.is_dir(),
+            "published state must not point to a deleted version"
+        );
+        assert!(versions.join(old).is_dir());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn plugin_lock_serializes_independent_openers() {
+        let root = private_dir(&std::env::temp_dir()).unwrap();
+        let base = root.join("org.example.demo");
+        let first = lock_plugin(&base).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let second_base = base.clone();
+        let waiter = std::thread::spawn(move || {
+            let second = lock_plugin(&second_base).unwrap();
+            tx.send(()).unwrap();
+            drop(second);
+        });
+        assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
+        drop(first);
+        rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        waiter.join().unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 }

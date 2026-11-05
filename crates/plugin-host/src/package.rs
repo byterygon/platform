@@ -499,18 +499,19 @@ pub fn verify<R: Read + Seek>(
         .collect();
     let signed = canonical_bytes(&metadata);
     let signed_digest = sha(&signed);
-    let mut allowed_key = None;
+    let mut matching_keys = Vec::new();
     for key in keys {
         let raw = decode_hex::<32>(&key.public_key_hex).ok_or(PackageError::TrustStore)?;
         if UnparsedPublicKey::new(&signature::ED25519, raw)
             .verify(&signed, &sig)
             .is_ok()
         {
-            allowed_key = Some((raw, key));
-            break;
+            matching_keys.push((raw, key));
         }
     }
-    let (signer_key, key) = allowed_key.ok_or(PackageError::Signature)?;
+    if matching_keys.is_empty() {
+        return Err(PackageError::Signature);
+    }
     let checksums: ChecksumsFile =
         serde_json::from_slice(&files["checksums.json"]).map_err(|_| PackageError::Metadata)?;
     if checksums.version != 1 || checksums.files.len() + 1 != metadata.len() {
@@ -544,9 +545,11 @@ pub fn verify<R: Read + Seek>(
     if manifest.publisher != publisher {
         return Err(PackageError::Signature);
     }
-    if !key.plugin_ids.is_empty() && !key.plugin_ids.contains(&manifest.id) {
-        return Err(PackageError::KeyNotAllowed);
-    }
+    let signer_key = matching_keys
+        .into_iter()
+        .find(|(_, key)| key.plugin_ids.is_empty() || key.plugin_ids.contains(&manifest.id))
+        .map(|(raw, _)| raw)
+        .ok_or(PackageError::KeyNotAllowed)?;
     let req = VersionReq::parse(&manifest.host_api).map_err(|_| PackageError::HostApi)?;
     if !req.matches(&policy.host_api) || Version::parse(&manifest.version).is_err() {
         return Err(PackageError::HostApi);

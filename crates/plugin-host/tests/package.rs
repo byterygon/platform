@@ -461,6 +461,27 @@ fn key_plugin_restriction_rejected() {
 }
 
 #[test]
+fn repeated_matching_key_checks_all_plugin_scopes() {
+    let f = Fixture::new();
+    let mut trust = f.trust();
+    let first = &mut trust.publishers.get_mut("example").unwrap()[0];
+    first.plugin_ids.insert("org.example.other".into());
+    let mut second = first.clone();
+    second.plugin_ids.clear();
+    second.plugin_ids.insert("org.example.demo".into());
+    trust.publishers.get_mut("example").unwrap().push(second);
+    assert!(
+        verify_bytes(
+            &good(&f),
+            PackageLimits::default(),
+            &trust,
+            &Fixture::policy()
+        )
+        .is_ok()
+    );
+}
+
+#[test]
 fn different_canonical_bytes_rejected() {
     let f = Fixture::new();
     let mut files = f.signed_files();
@@ -503,6 +524,13 @@ fn human() -> Principal {
 struct Allow;
 impl Authorizer for Allow {
     async fn check(&self, _: &AuthzRequest<'_>) -> Decision {
+        Decision::Allow
+    }
+}
+struct MeetAtAuthorization(tokio::sync::Barrier);
+impl Authorizer for MeetAtAuthorization {
+    async fn check(&self, _: &AuthzRequest<'_>) -> Decision {
+        self.0.wait().await;
         Decision::Allow
     }
 }
@@ -578,6 +606,122 @@ async fn install_approve_and_rollback_offline() {
         .unwrap();
     assert_eq!(active_digest(&root), hex(&digest));
     assert!(log.records().len() >= 7);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn concurrent_approvals_retain_the_first_activated_update() {
+    let mut f = Fixture::new();
+    let trust = f.trust();
+    let policy = Fixture::policy();
+    let log = MemoryAuditLog::new();
+    let root = std::env::temp_dir().join(format!(
+        "byterygon-concurrent-test-{}",
+        hex(&sha(&good(&f)))
+    ));
+    let installer = Installer {
+        root: &root,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let first = installer.stage(&good(&f), &human(), "first").unwrap();
+    let first_digest = first.approval_view().package_digest;
+    first
+        .approve_and_activate(&Allow, &human(), first_digest)
+        .await
+        .unwrap();
+    f.files
+        .insert("payload/demo.wasm".into(), b"update two".to_vec());
+    let second = installer.stage(&good(&f), &human(), "second").unwrap();
+    let second_digest = second.approval_view().package_digest;
+    f.files
+        .insert("payload/demo.wasm".into(), b"update three".to_vec());
+    let third = installer.stage(&good(&f), &human(), "third").unwrap();
+    let third_digest = third.approval_view().package_digest;
+    let together = MeetAtAuthorization(tokio::sync::Barrier::new(2));
+    let second_approver = human();
+    let third_approver = human();
+    let (second_result, third_result) = tokio::join!(
+        second.approve_and_activate(&together, &second_approver, second_digest),
+        third.approve_and_activate(&together, &third_approver, third_digest)
+    );
+    second_result.unwrap();
+    third_result.unwrap();
+    let state: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("org.example.demo/state.json")).unwrap())
+            .unwrap();
+    let active = state["active"].as_str().unwrap();
+    let previous = state["previous"].as_str().unwrap();
+    let d2 = hex(&second_digest);
+    let d3 = hex(&third_digest);
+    assert!((active == d2 && previous == d3) || (active == d3 && previous == d2));
+    assert!(root.join("org.example.demo/versions").join(active).is_dir());
+    assert!(
+        root.join("org.example.demo/versions")
+            .join(previous)
+            .is_dir()
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rollback_and_activation_are_serialized() {
+    let mut f = Fixture::new();
+    let trust = f.trust();
+    let policy = Fixture::policy();
+    let log = MemoryAuditLog::new();
+    let root = std::env::temp_dir().join(format!(
+        "byterygon-rollback-race-test-{}",
+        hex(&sha(&good(&f)))
+    ));
+    let installer = Installer {
+        root: &root,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let first = installer.stage(&good(&f), &human(), "first").unwrap();
+    let d1 = first.approval_view().package_digest;
+    first
+        .approve_and_activate(&Allow, &human(), d1)
+        .await
+        .unwrap();
+    f.files
+        .insert("payload/demo.wasm".into(), b"second".to_vec());
+    let second = installer.stage(&good(&f), &human(), "second").unwrap();
+    let d2 = second.approval_view().package_digest;
+    second
+        .approve_and_activate(&Allow, &human(), d2)
+        .await
+        .unwrap();
+    f.files
+        .insert("payload/demo.wasm".into(), b"third".to_vec());
+    let third = installer.stage(&good(&f), &human(), "third").unwrap();
+    let d3 = third.approval_view().package_digest;
+    let together = MeetAtAuthorization(tokio::sync::Barrier::new(2));
+    let rollback_principal = human();
+    let activation_principal = human();
+    let (rolled_back, activated) = tokio::join!(
+        installer.rollback(
+            &together,
+            &rollback_principal,
+            "org.example.demo",
+            "rollback"
+        ),
+        third.approve_and_activate(&together, &activation_principal, d3)
+    );
+    rolled_back.unwrap();
+    activated.unwrap();
+    let state: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("org.example.demo/state.json")).unwrap())
+            .unwrap();
+    assert_eq!(state["active"], hex(&d3));
+    assert_eq!(state["previous"], hex(&d1));
     std::fs::remove_dir_all(root).unwrap();
 }
 
