@@ -141,6 +141,8 @@ macro_rules! conformance_suite {
             admission_that_cannot_be_recorded_fails_closed,
             completion_records_handler_outcome_and_delivery,
             subscription_completion_records_how_it_ended,
+            answer_does_not_wait_for_the_completion_write,
+            panic_after_unsubscribe_is_internal_and_cancelled,
             call_kind_must_match_frame_kind,
             subscriptions_count_toward_concurrency_limit,
             full_event_buffer_ends_subscription,

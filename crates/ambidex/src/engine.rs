@@ -35,10 +35,12 @@
 //!   already answered.
 //! - When the connection closes for any reason, every call's token fires; calls get the same
 //!   grace, their answers are discarded, and the rest are dropped.
-//! - Once a call's answer frame is chosen, its audit completion (registered by the router after
-//!   the admission entry, see [`crate::audit`]) is written with what the client gets: the
-//!   handler's answer, the cancellation reason, or `ResourceExhausted` for an answer too large
-//!   for a frame. The answer waits for that write, at most the router's audit write timeout.
+//! - A call's audit completion (registered by the router after the admission entry, see
+//!   [`crate::audit`]) travels with its answer frame: the handler's answer, the cancellation
+//!   reason, or `ResourceExhausted` for an answer too large for a frame. It is written in the
+//!   background once the transport accepted the frame, with what that frame stands for; a frame
+//!   dropped before that (Unsubscribe, close, a send error) records `Cancelled`. The answer
+//!   never waits for the write.
 //!   Handshake rejections and protocol violations (call 0) carry a correlation id from the
 //!   shared generator.
 //! - `Subscribe` starts a subscription (see [`crate::subscription`]): admitted like a `Call` (same
@@ -73,7 +75,7 @@ use tokio_util::sync::CancellationToken;
 
 use security_types::{Delivery, Principal};
 
-use crate::audit::{code_name, delivery_for};
+use crate::audit::{Armed, code_name, delivery_for};
 use crate::cancel::CallScope;
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
@@ -382,7 +384,7 @@ struct Writer {
 }
 
 /// Waits up to `grace` for cancelled calls to stop, then drops (aborts) the rest.
-async fn drain_calls(mut calls: JoinSet<Frame>, grace: Duration) {
+async fn drain_calls(mut calls: JoinSet<Answer>, grace: Duration) {
     let _ = tokio::time::timeout(grace, async { while calls.join_next().await.is_some() {} }).await;
 }
 
@@ -470,15 +472,22 @@ async fn revoked(token: Option<CancellationToken>) {
 }
 
 /// An encoded frame for the writer. An event frame carries its share of its subscription's
-/// buffer, so the event counts against the buffer until the transport has taken it.
+/// buffer, so the event counts against the buffer until the transport has taken it. A call's
+/// answer frame carries the call's audit completion, written once the transport has taken it;
+/// dropped anywhere before that, the completion records `Cancelled`.
 struct Outbound {
     bytes: Vec<u8>,
     held: Option<Held>,
+    completion: Option<Armed>,
 }
 
 impl From<Vec<u8>> for Outbound {
     fn from(bytes: Vec<u8>) -> Outbound {
-        Outbound { bytes, held: None }
+        Outbound {
+            bytes,
+            held: None,
+            completion: None,
+        }
     }
 }
 
@@ -486,11 +495,28 @@ async fn write_loop<T: TransportTx>(
     mut tx: T,
     mut queue: mpsc::Receiver<Outbound>,
 ) -> io::Result<()> {
-    while let Some(Outbound { bytes, held }) = queue.recv().await {
+    while let Some(Outbound {
+        bytes,
+        held,
+        completion,
+    }) = queue.recv().await
+    {
+        // On a send error the frame did not go out: `completion` drops here, as `Cancelled`.
         tx.send(bytes).await?;
         drop(held);
+        // Delivered means the transport accepted the frame (Open question 26 item 11b). The
+        // write runs on its own task, so this loop never waits on the sink.
+        if let Some(completion) = completion {
+            completion.sent();
+        }
     }
     tx.close().await
+}
+
+/// What a call task ends with: its terminal frame, and its audit completion if it was admitted.
+struct Answer {
+    frame: Frame,
+    completion: Option<Armed>,
 }
 
 /// A running call task, by task id.
@@ -502,15 +528,15 @@ struct Task {
 /// A subscription frame waiting for room in the outbound queue, in order.
 enum Ordered {
     Event(Queued),
-    /// The subscription's terminal Result or Error.
-    End(Frame),
+    /// The subscription's terminal Result or Error, with its audit completion.
+    End(Box<Answer>),
 }
 
 impl Ordered {
     fn call_id(&self) -> u32 {
         match self {
             Ordered::Event(queued) => queued.call_id,
-            Ordered::End(frame) => frame.call_id,
+            Ordered::End(end) => end.frame.call_id,
         }
     }
 }
@@ -524,7 +550,7 @@ struct ConnState<A, D> {
     decoder: FrameDecoder,
     hello_deadline: Instant,
     session: Option<Arc<Session>>,
-    calls: JoinSet<Frame>,
+    calls: JoinSet<Answer>,
     /// Call id of each running call or subscription task.
     tasks: HashMap<tokio::task::Id, Task>,
     /// Scope of each call and subscription in flight, by call id.
@@ -841,13 +867,12 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             let finished = run_call(fut, task_scope.clone(), grace).await;
             let replaced_by = finished.replaced_by;
             let (frame, delivery) = result_frame(call_id, finished, correlation_id, max);
-            // The audit completion records what the client gets (spec Open question 26a).
-            if let Some(completion) = task_scope.take_completion() {
-                completion
-                    .finish(delivery, replaced_by.unwrap_or(Code::Cancelled))
-                    .await;
-            }
-            frame
+            // The audit completion records what the client gets (Open question 26a, item 11):
+            // it travels with the frame and is written once the transport accepted it.
+            let completion = task_scope
+                .take_completion()
+                .map(|c| c.arm(delivery, replaced_by.unwrap_or(Code::Cancelled)));
+            Answer { frame, completion }
         });
         self.tasks.insert(
             handle.id(),
@@ -880,11 +905,16 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             Some(Ordered::Event(queued)) => Outbound {
                 bytes: queued.bytes,
                 held: Some(queued.held),
+                completion: None,
             },
-            Some(Ordered::End(frame)) => frame
-                .encode(self.inner.config.max_frame_bytes)
-                .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?
-                .into(),
+            Some(Ordered::End(end)) => Outbound {
+                bytes: end
+                    .frame
+                    .encode(self.inner.config.max_frame_bytes)
+                    .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?,
+                held: None,
+                completion: end.completion,
+            },
             None => return Ok(()),
         };
         self.out.try_send(outbound).map_err(|err| match err {
@@ -903,11 +933,11 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     /// Sends the one terminal frame of a finished call or subscription task.
     fn finish_call(
         &mut self,
-        done: Result<(tokio::task::Id, Frame), tokio::task::JoinError>,
+        done: Result<(tokio::task::Id, Answer), tokio::task::JoinError>,
     ) -> Step {
-        let (task, frame) = match done {
-            Ok((task, frame)) => (task, Ok(frame)),
-            Err(err) => (err.id(), Err(err.is_panic())),
+        let (task, frame, mut completion) = match done {
+            Ok((task, Answer { frame, completion })) => (task, Ok(frame), completion),
+            Err(err) => (err.id(), Err(err.is_panic()), None),
         };
         let Task {
             call_id,
@@ -918,17 +948,17 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         });
         let scope = self.in_flight.remove(&call_id);
         // A panicking handler's audit completion: it ended with `Internal`, which the client
-        // gets below. A task that was aborted instead keeps its completion, written from its
+        // gets below, and travels with that frame like any answer, so the frame's fate decides
+        // the delivery. A task that was aborted instead keeps its completion, written from its
         // drop guard as `Cancelled` once the last clone of its scope goes (below): the engine
         // never finished that call.
         if matches!(frame, Err(true))
-            && let Some(completion) = scope.as_ref().and_then(CallScope::take_completion)
+            && let Some(mut panicked) = scope.as_ref().and_then(CallScope::take_completion)
         {
-            let mut completion = completion;
-            completion.record_outcome(security_types::Outcome::Error {
+            panicked.record_outcome(security_types::Outcome::Error {
                 code: code_name(Code::Internal),
             });
-            tokio::spawn(completion.finish(Delivery::Delivered, Code::Internal));
+            completion = Some(panicked.arm(Delivery::Delivered, Code::Internal));
         }
         let frame = frame.unwrap_or_else(|panicked| {
             // A panicking handler must not take the connection down or leak its message. An
@@ -949,9 +979,10 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             scope.cancel();
         }
         if !subscription {
-            return self.send(&frame);
+            return self.send_answer(&frame, completion);
         }
-        // After Unsubscribe nothing more goes out for this id, not even the end.
+        // After Unsubscribe nothing more goes out for this id, not even the end: its completion
+        // drops here, as `Cancelled`.
         if !self.subscriptions.contains(&call_id) {
             return Ok(());
         }
@@ -961,7 +992,8 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             self.take_event(queued);
         }
         self.subscriptions.remove(&call_id);
-        self.ordered.push_back(Ordered::End(frame));
+        self.ordered
+            .push_back(Ordered::End(Box::new(Answer { frame, completion })));
         Ok(())
     }
 
@@ -1026,12 +1058,23 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
 
     /// Queues a frame for the writer without waiting. A full queue means the peer is not reading.
     fn send(&mut self, frame: &Frame) -> Step {
+        self.send_answer(frame, None)
+    }
+
+    /// [`ConnState::send`] for a call's answer frame, carrying its audit completion to the
+    /// writer. If the frame is not queued, the completion drops with it, as `Cancelled`.
+    fn send_answer(&mut self, frame: &Frame, completion: Option<Armed>) -> Step {
         // Frames built here are bounded by construction (result_frame checks the only
         // unbounded payload), so an encode error is a bug, not a peer fault.
         let bytes = frame
             .encode(self.inner.config.max_frame_bytes)
             .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?;
-        self.out.try_send(bytes.into()).map_err(|err| match err {
+        let outbound = Outbound {
+            bytes,
+            held: None,
+            completion,
+        };
+        self.out.try_send(outbound).map_err(|err| match err {
             TrySendError::Full(_) => Closed::SlowConsumer,
             TrySendError::Closed(_) => Closed::Transport(io::ErrorKind::BrokenPipe),
         })

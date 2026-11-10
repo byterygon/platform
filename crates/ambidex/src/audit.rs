@@ -24,17 +24,22 @@
 //! reported. Every failure goes to the router's [`AuditReporter`] (by default a rate-limited
 //! line on stderr).
 //!
-//! **Completion.** Inside the engine, the engine writes the completion once it has chosen the
-//! answer frame, so `delivery` is what went out: the handler's answer (`Delivered`), `Cancelled`
-//! or `DeadlineExceeded` when the token fired first (the answer is then discarded, or the
-//! handler was dropped after its grace), or `FrameTooLarge` when the answer did not fit a frame.
-//! A handler dropped before it returned has the code it was cancelled with as its outcome. The
-//! write runs in its own task, so it survives the call task being aborted, and the answer waits
-//! for it at most `write_timeout`. Outside the engine (the MCP adapter calling the router
-//! directly), and for a call a handler makes to another procedure (which runs under a scope of
-//! its own, with its own correlation id), the router writes it when the handler returns, as
-//! `Delivered`. A completion that
-//! cannot be written is reported and never changes the answer: the handler already ran. A
+//! **Completion.** Inside the engine, the completion travels with the call's answer frame (Open
+//! question 26 item 11). When the engine chooses the frame it fixes the outcome, the duration and
+//! the delivery that frame stands for: the handler's answer (`Delivered`), `Cancelled` or
+//! `DeadlineExceeded` when the token fired first (the answer is then discarded, or the handler
+//! was dropped after its grace), or `FrameTooLarge` when the answer did not fit a frame. The
+//! completion is written with that delivery only once the transport accepted the frame
+//! (`TransportTx::send` returned `Ok`), in the background, bounded by `write_timeout`; the
+//! answer never waits for it. A frame dropped before that (Unsubscribe, the connection closed,
+//! its queue discarded, a send error) completes as `Cancelled`, from the drop guard. Loss after
+//! the transport accepted the frame is not detected. A handler dropped before it returned has
+//! the code it was cancelled with as its outcome. Outside the engine (the MCP adapter calling the
+//! router directly), and for a call a handler makes to another procedure (which runs under a
+//! scope of its own, with its own correlation id and its caller's as
+//! `parent_correlation_id`), the router writes it when the handler returns, as `Delivered`. A
+//! completion that cannot be written is reported and never changes the answer: the handler
+//! already ran. A
 //! `Started` entry without a matching completion therefore means the outcome is unknown: the
 //! process crashed, or an admission write failed ambiguously and the client retried.
 
@@ -202,6 +207,7 @@ impl Recorder {
             recorder: Arc::clone(self),
             entry,
             start,
+            ended: None,
             outcome: None,
             risk: admission.risk,
             written: false,
@@ -291,14 +297,18 @@ pub(crate) fn delivery_for(reason: Code) -> Delivery {
 
 /// The completion entry of an admitted call, waiting for the call to end.
 ///
-/// Written exactly once: by [`Completion::finish`] when the call ends normally, or, if the call
-/// is dropped before that (the connection closed and its tasks were aborted, or a panic), from
+/// Written exactly once: by [`Completion::finish`] when a call outside the engine ends, by
+/// [`Armed::sent`] when the transport accepted an engine call's answer frame, or, if it is
+/// dropped before either (the call task was aborted, or its frame was dropped unsent), from
 /// `Drop` on a task of its own, as `Cancelled`.
 pub(crate) struct Completion {
     recorder: Arc<Recorder>,
     /// The admission entry it completes.
     entry: AuditEntry,
     start: Instant,
+    /// When the call ended, once [armed](Completion::arm): the duration ends here, not when the
+    /// frame went out.
+    ended: Option<Instant>,
     /// What the handler returned, once it did.
     outcome: Option<Outcome>,
     /// The highest risk the call was allowed at.
@@ -313,6 +323,22 @@ impl Completion {
 
     pub(crate) fn raise_risk(&mut self, risk: Risk) {
         self.risk = self.risk.max(risk);
+    }
+
+    /// The call ended and its answer frame stands for `delivery`: fixes the outcome (`reason`,
+    /// the code it was stopped with, if the handler never returned) and the duration, for a
+    /// completion written once the frame's fate is known.
+    pub(crate) fn arm(mut self, delivery: Delivery, reason: Code) -> Armed {
+        if self.outcome.is_none() {
+            self.outcome = Some(Outcome::Error {
+                code: code_name(reason),
+            });
+        }
+        self.ended = Some(Instant::now());
+        Armed {
+            completion: self,
+            delivery,
+        }
     }
 
     /// Writes the completion, for a call that ended with `delivery`. `reason` is the code the
@@ -336,7 +362,8 @@ impl Completion {
         let outcome = self.outcome.clone().unwrap_or_else(|| Outcome::Error {
             code: code_name(reason),
         });
-        let duration = Instant::now().saturating_duration_since(self.start);
+        let end = self.ended.unwrap_or_else(Instant::now);
+        let duration = end.saturating_duration_since(self.start);
         AuditEntry {
             timestamp_unix_ms: unix_now_ms(),
             target: None,
@@ -364,22 +391,49 @@ impl Drop for Completion {
         if self.written {
             return;
         }
-        // The call was dropped before it ended normally: the client got nothing, or an error
-        // the engine made up (a panic answers `Internal`).
+        // The call, or its answer frame, was dropped before the client got it.
         let entry = self.entry(Delivery::Cancelled, Code::Cancelled);
-        let recorder = Arc::clone(&self.recorder);
-        match tokio::runtime::Handle::try_current() {
-            Ok(runtime) => {
-                runtime.spawn(async move { recorder.complete(entry).await });
-            }
-            Err(_) => recorder.reporter.report(&AuditFailure {
-                entry: AuditEntryKind::Completion,
-                effect: AuditFailureEffect::EntryLost,
-                action: entry.action.name,
-                correlation_id: entry.correlation_id,
-                error: AuditError("no runtime to write the completion".into()),
-                attempts: 1,
-            }),
+        spawn_complete(&self.recorder, entry);
+    }
+}
+
+/// A completion travelling with its call's answer frame. Dropped unsent, it completes as
+/// `Cancelled` (the drop guard of [`Completion`]).
+pub(crate) struct Armed {
+    completion: Completion,
+    /// What the client gets once the frame is sent.
+    delivery: Delivery,
+}
+
+impl Armed {
+    /// The transport accepted the frame: writes the completion with its delivery, on a task of
+    /// its own, so the connection's writer never waits on the sink.
+    pub(crate) fn sent(self) {
+        let Armed {
+            mut completion,
+            delivery,
+        } = self;
+        completion.written = true;
+        let entry = completion.entry(delivery, Code::Cancelled);
+        spawn_complete(&completion.recorder, entry);
+    }
+}
+
+/// Writes `entry` on a task of its own (bounded by the write timeout), or reports it lost when
+/// there is no runtime to write it on.
+fn spawn_complete(recorder: &Arc<Recorder>, entry: AuditEntry) {
+    match tokio::runtime::Handle::try_current() {
+        Ok(runtime) => {
+            let recorder = Arc::clone(recorder);
+            runtime.spawn(async move { recorder.complete(entry).await });
         }
+        Err(_) => recorder.reporter.report(&AuditFailure {
+            entry: AuditEntryKind::Completion,
+            effect: AuditFailureEffect::EntryLost,
+            action: entry.action.name,
+            correlation_id: entry.correlation_id,
+            error: AuditError("no runtime to write the completion".into()),
+            attempts: 1,
+        }),
     }
 }

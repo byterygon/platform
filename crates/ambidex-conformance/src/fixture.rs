@@ -167,11 +167,14 @@ impl Probe {
 }
 
 /// The audit entries the router recorded, in order. [`AuditLog::fail`] makes every write fail
-/// from then on, as a broken audit store would.
+/// from then on, as a broken audit store would; [`AuditLog::hold_completions`] makes completion
+/// writes wait, as a slow one would.
 #[derive(Clone, Default)]
 pub struct AuditLog {
     entries: Arc<std::sync::Mutex<Vec<AuditEntry>>>,
     failing: Arc<AtomicBool>,
+    /// While set, completion writes wait for a permit.
+    held: Arc<std::sync::Mutex<Option<Arc<tokio::sync::Semaphore>>>>,
 }
 
 impl AuditLog {
@@ -202,12 +205,38 @@ impl AuditLog {
     pub fn fail(&self, failing: bool) {
         self.failing.store(failing, Ordering::SeqCst);
     }
+
+    /// Completion writes from now on wait until [`AuditLog::release_completions`].
+    pub fn hold_completions(&self) {
+        *lock(&self.held) = Some(Arc::new(tokio::sync::Semaphore::new(0)));
+    }
+
+    /// Lets every held and later completion write through.
+    pub fn release_completions(&self) {
+        if let Some(gate) = lock(&self.held).take() {
+            gate.add_permits(tokio::sync::Semaphore::MAX_PERMITS);
+        }
+    }
+}
+
+fn lock<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 impl AuditSink for AuditLog {
     fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
         if self.failing.load(Ordering::SeqCst) {
             return Box::pin(async { Err(AuditError("audit store unavailable".into())) });
+        }
+        if entry.is_completion()
+            && let Some(gate) = lock(&self.held).clone()
+        {
+            let entries = Arc::clone(&self.entries);
+            return Box::pin(async move {
+                let _permit = gate.acquire().await;
+                lock(&entries).push(entry);
+                Ok(())
+            });
         }
         self.entries
             .lock()
@@ -536,6 +565,21 @@ impl FixtureApi {
             }
         }
         Ok(())
+    }
+
+    /// Waits for its token (Unsubscribe, Cancel, …), records it, then panics.
+    #[rpc::subscription(perm = "fixture.call", risk = Risk::Read)]
+    async fn panic_on_cancel(
+        &self,
+        ctx: Ctx,
+        _input: Value,
+        _events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        let mut guard = self.guard("panic_on_cancel");
+        ctx.cancelled().await;
+        self.probe.record(Event::Cancelled("panic_on_cancel"));
+        guard.armed = false;
+        panic!("fixture handler panicked after its token fired");
     }
 
     /// Requires a permission the fixture policy does not grant (default-deny).

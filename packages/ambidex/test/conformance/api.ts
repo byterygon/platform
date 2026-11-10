@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:60cca6a13ba12f71da52b69c8ce8e2001d40802e79039b0e2b07bd4919323fe5";
+export const SCHEMA_HASH = "sha256:588b7e38d80d0b948e7d19f15f81c011756274f4e42d1e667df9773579977dc4";
 
 // ---- Types
 
@@ -118,6 +118,7 @@ export interface Procedures {
   readonly "fixture.fail": ProcedureDef<"query", FailInput, null, FixtureError>;
   readonly "fixture.flood": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.leak": ProcedureDef<"query", JsonValue, null, JsonValue>;
+  readonly "fixture.panic_on_cancel": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.protected": ProcedureDef<"mutation", FailInput, null, never>;
   readonly "fixture.rows": ProcedureDef<"stream", JsonValue, number, never>;
   readonly "fixture.secret": ProcedureDef<"subscription", JsonValue, number, never>;
@@ -139,6 +140,7 @@ export interface Api {
     readonly fail: Procedures["fixture.fail"];
     readonly flood: Procedures["fixture.flood"];
     readonly leak: Procedures["fixture.leak"];
+    readonly panic_on_cancel: Procedures["fixture.panic_on_cancel"];
     readonly protected: Procedures["fixture.protected"];
     readonly rows: Procedures["fixture.rows"];
     readonly secret: Procedures["fixture.secret"];
@@ -235,6 +237,16 @@ export const procedures: Api = {
     leak: {
       name: "fixture.leak",
       kind: "query",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    panic_on_cancel: {
+      name: "fixture.panic_on_cancel",
+      kind: "subscription",
       perm: "fixture.call",
       risk: "Read",
       agent: "hidden",

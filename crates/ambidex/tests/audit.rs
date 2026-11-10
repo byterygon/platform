@@ -17,8 +17,8 @@ use ambidex::security_types::{
 use ambidex::transport::{MemoryRx, MemoryTx, TransportRx, TransportTx, memory};
 use ambidex::{
     AuditError, AuditPolicy, AuditReporter, AuditSink, Authenticate, Call, Code, Ctx, ErrorPayload,
-    Hello, HumanReads, MemoryAuditLog, Risk, Router, RpcError, Server, ServerConfig, Session,
-    TargetRef, rpc,
+    EventSink, Hello, HumanReads, MemoryAuditLog, Risk, Router, RpcError, Server, ServerConfig,
+    Session, TargetRef, rpc,
 };
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
@@ -116,6 +116,20 @@ impl AuditApi {
             .call(session, Call::new("audit.escalate", input))
             .await
             .map_err(|err| RpcError::new(err.code, err.message))
+    }
+
+    /// Sends two events and returns at once, without waiting for its token.
+    #[rpc::subscription(perm = "audit.use", risk = Risk::Read, agent = Agent::Exposed)]
+    async fn burst(
+        &self,
+        _ctx: Ctx,
+        _input: Value,
+        events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        self.enter();
+        events.send(&0).await?;
+        events.send(&1).await?;
+        Ok(())
     }
 
     /// Requires a permission the policy does not grant.
@@ -342,6 +356,39 @@ impl Authenticate for As {
     }
 }
 
+/// Whether the server's transport takes frames. While closed, `send` waits: the frame is not
+/// accepted yet (Open question 26 item 11b), and the frames behind it stay queued.
+#[derive(Clone)]
+struct Gate(Arc<tokio::sync::watch::Sender<bool>>);
+
+impl Gate {
+    fn new() -> Gate {
+        Gate(Arc::new(tokio::sync::watch::channel(true).0))
+    }
+
+    fn set(&self, open: bool) {
+        self.0.send_replace(open);
+    }
+}
+
+/// The server's sending half, behind a [`Gate`].
+struct GatedTx {
+    inner: MemoryTx,
+    gate: Gate,
+}
+
+impl TransportTx for GatedTx {
+    async fn send(&mut self, bytes: Vec<u8>) -> std::io::Result<()> {
+        let mut open = self.gate.0.subscribe();
+        let _ = open.wait_for(|open| *open).await;
+        self.inner.send(bytes).await
+    }
+
+    async fn close(&mut self) -> std::io::Result<()> {
+        self.inner.close().await
+    }
+}
+
 struct Client {
     rx: MemoryRx,
     tx: MemoryTx,
@@ -351,7 +398,16 @@ struct Client {
 
 impl Client {
     async fn connect(server: &Server<As, Router>) -> Client {
+        Client::connect_gated(server, &Gate::new()).await
+    }
+
+    /// A client whose server writes go through `gate`.
+    async fn connect_gated(server: &Server<As, Router>, gate: &Gate) -> Client {
         let ((rx, tx), (server_rx, server_tx)) = memory(16);
+        let server_tx = GatedTx {
+            inner: server_tx,
+            gate: gate.clone(),
+        };
         let conn = server.serve(server_rx, server_tx);
         let mut client = Client {
             rx,
@@ -410,6 +466,20 @@ impl Client {
         );
         serde_json::from_slice(&frame.payload).unwrap()
     }
+}
+
+/// A server with the smallest outbound queue: while the transport holds one frame, one more
+/// fits the queue and any later subscription frame waits behind it.
+fn small_queue_server(setup: &Setup, principal: Principal) -> Server<As, Router> {
+    let mut config = ServerConfig::new("a", "h", "1");
+    config.outbound_queue_frames = ambidex::engine::MIN_OUTBOUND_QUEUE_FRAMES;
+    config.close_timeout = Duration::from_millis(100);
+    Server::new(config, As(principal), setup.router.clone())
+}
+
+/// Lets every task on this (current-thread) runtime run until it waits on something outside it.
+async fn settle() {
+    tokio::time::sleep(Duration::from_millis(20)).await;
 }
 
 fn server(setup: &Setup, principal: Principal) -> Server<As, Router> {
@@ -884,4 +954,95 @@ async fn a_recheck_inside_a_nested_call_names_the_calling_call() {
         );
     }
     assert_eq!(outer.parent_correlation_id, None);
+}
+
+/// Waits (bounded) for both entries of `action`'s one call, and returns its completion.
+async fn completion_of(s: &Setup, action: &str) -> AuditEntry {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let entries = s.sink.of(action);
+        if entries.len() >= 2 {
+            return pair(&entries, Risk::Read);
+        }
+        assert!(tokio::time::Instant::now() < deadline, "{entries:?}");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
+
+#[tokio::test]
+async fn an_end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled() {
+    let s = setup(Mode::Record);
+    let server = small_queue_server(&s, human());
+    let gate = Gate::new();
+    let mut client = Client::connect_gated(&server, &gate).await;
+    // The transport holds the first event, the second fills the queue, and the end frame waits
+    // behind them while the handler has already returned `Ok`.
+    gate.set(false);
+    let subscribe = json!({ "procedure": "audit.burst", "input": null });
+    client.send(Kind::Subscribe, 1, &subscribe).await;
+    settle().await;
+    assert_eq!(s.entered(), 1);
+    assert_eq!(
+        s.sink.of("audit.burst").len(),
+        1,
+        "nothing sent, nothing completed"
+    );
+    // Unsubscribe drops the waiting end frame: the client never gets it.
+    client.send(Kind::Unsubscribe, 1, &Value::Null).await;
+    settle().await;
+    gate.set(true);
+    let completion = completion_of(&s, "audit.burst").await;
+    assert_eq!(
+        completion.outcome,
+        Outcome::Success,
+        "the handler returned Ok"
+    );
+    assert_eq!(completion.delivery, Some(Delivery::Cancelled));
+    // The events already queued went out; the end frame did not.
+    let frames = [client.recv().await, client.recv().await];
+    assert!(frames.iter().all(|f| f.kind == Kind::Event), "{frames:?}");
+    client.call(2, "audit.read", json!(2)).await;
+    assert_eq!(client.result(2).await, json!(2));
+}
+
+#[tokio::test]
+async fn answers_still_queued_when_the_connection_closes_are_cancelled() {
+    let s = setup(Mode::Record);
+    let server = small_queue_server(&s, human());
+    let gate = Gate::new();
+    let mut client = Client::connect_gated(&server, &gate).await;
+    // The transport holds the first answer; the second waits in the queue.
+    gate.set(false);
+    client.call(1, "audit.read", json!(1)).await;
+    client.call(2, "audit.write", json!(2)).await;
+    settle().await;
+    assert_eq!(s.entered(), 2);
+    // The peer goes away; the transport never takes either frame, and after the close timeout
+    // the server drops them.
+    client.tx.close().await.unwrap();
+    let read = completion_of(&s, "audit.read").await;
+    assert_eq!(read.outcome, Outcome::Success);
+    assert_eq!(read.delivery, Some(Delivery::Cancelled));
+    let entries = s.sink.of("audit.write");
+    let write = pair(&entries, Risk::Write);
+    assert_eq!(write.outcome, Outcome::Success);
+    assert_eq!(write.delivery, Some(Delivery::Cancelled));
+    assert!(unfinished(&s.sink.entries()).is_empty());
+}
+
+#[tokio::test]
+async fn an_answer_is_delivered_once_the_transport_took_it() {
+    let s = setup(Mode::Record);
+    let server = server(&s, human());
+    let gate = Gate::new();
+    let mut client = Client::connect_gated(&server, &gate).await;
+    gate.set(false);
+    client.call(1, "audit.read", json!(1)).await;
+    settle().await;
+    // Chosen, but not taken by the transport: not completed yet.
+    assert_eq!(s.sink.of("audit.read").len(), 1);
+    gate.set(true);
+    assert_eq!(client.result(1).await, json!(1));
+    let completion = completion_of(&s, "audit.read").await;
+    assert_eq!(completion.delivery, Some(Delivery::Delivered));
 }
