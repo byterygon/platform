@@ -219,6 +219,7 @@ struct Check<'a> {
     risk: Risk,
     input_digest: Digest,
     correlation_id: &'a str,
+    parent_correlation_id: Option<&'a str>,
 }
 
 /// The admission entry records exactly what was checked.
@@ -231,6 +232,7 @@ impl<'a> From<&Check<'a>> for Admission<'a> {
             risk: check.risk,
             input_digest: check.input_digest,
             correlation_id: check.correlation_id,
+            parent_correlation_id: check.parent_correlation_id,
         }
     }
 }
@@ -295,6 +297,9 @@ impl Guard {
             input_digest: check.input_digest,
             statement_digest: None,
             delivery: None,
+            // Spec Open question 26 item 12 sets it on a nested call's admission, completion and
+            // re-checks; refusals are not listed (Open question 26 item 14).
+            parent_correlation_id: None,
         };
         // The call is refused whether or not the entry was recorded, so a failing sink cannot
         // let anything through; a failure is reported.
@@ -433,6 +438,7 @@ impl Ctx {
             risk,
             input_digest: self.input_digest,
             correlation_id: self.scope.correlation_id(),
+            parent_correlation_id: self.scope.parent_correlation_id(),
         };
         if let Err(rejected) = self.guard.enforce(&check).await {
             if let Some(id) = &rejected.approval_id {
@@ -777,6 +783,7 @@ async fn admit(
         risk: meta.risk,
         input_digest: digest,
         correlation_id: scope.correlation_id(),
+        parent_correlation_id: scope.parent_correlation_id(),
     };
     guard
         .enforce(&check)

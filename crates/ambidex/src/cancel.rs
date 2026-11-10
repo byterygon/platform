@@ -181,6 +181,12 @@ impl CallScope {
         &self.inner.correlation_id
     }
 
+    /// The correlation id of the call whose handler made this call, for a [child](CallScope::child)
+    /// scope; `None` for a top-level call.
+    pub fn parent_correlation_id(&self) -> Option<&str> {
+        self.inner.parent.as_ref().map(CallScope::correlation_id)
+    }
+
     /// When the call started: the engine read its frame, or [`CallScope::new`] ran.
     pub(crate) fn start(&self) -> Instant {
         self.inner.start

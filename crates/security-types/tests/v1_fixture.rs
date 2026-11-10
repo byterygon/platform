@@ -66,6 +66,7 @@ fn entries() -> Vec<AuditEntry> {
         input_digest: Digest([n; 32]),
         statement_digest: None,
         delivery: None,
+        parent_correlation_id: None,
     };
     let denied = |code: &str| Outcome::Error { code: code.into() };
 

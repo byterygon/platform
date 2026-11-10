@@ -130,6 +130,7 @@ async fn audit(
         input_digest: Digest(digest),
         statement_digest: None,
         delivery: None,
+        parent_correlation_id: None,
     };
     let deadline = tokio::time::Instant::now() + DEFAULT_AUDIT_TIMEOUT;
     append_within(installer.audit, entry, deadline)

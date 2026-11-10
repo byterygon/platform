@@ -26,7 +26,7 @@
 //! existing record's encoding, and so its hash, unchanged: a new enum variant takes a tag never
 //! used before ([`Outcome::Started`] is tag 2), and a new field is optional, encoded only when
 //! present, after every older field, as its extension number then its value ([`Delivery`] is
-//! extension 1). Both keep the encoding unambiguous: old records parse exactly as before, and
+//! extension 1, [`AuditEntry::parent_correlation_id`] extension 2, in that order). Both keep the encoding unambiguous: old records parse exactly as before, and
 //! bytes after the last v1 field can only be an extension.
 
 use std::fmt;
@@ -45,6 +45,8 @@ const DOMAIN: &[u8] = b"byterygon.audit.record.v1\0";
 
 /// Extension number of [`AuditEntry::delivery`] in the encoding.
 const EXT_DELIVERY: u8 = 1;
+/// Extension number of [`AuditEntry::parent_correlation_id`] in the encoding.
+const EXT_PARENT_CORRELATION_ID: u8 = 2;
 
 /// One principal in the acting chain, without its roles.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +146,11 @@ pub struct AuditEntry {
     /// What the client received; set on completion entries only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivery: Option<Delivery>,
+    /// The correlation id of the call whose handler made this call, for a call made from inside
+    /// another call's handler (Ambidex nested calls); `None` for a top-level call and for Plugin
+    /// Host entries. Set on both entries of such a call and on its re-checks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_correlation_id: Option<String>,
 }
 
 impl AuditEntry {
@@ -359,6 +366,7 @@ impl Encoder {
             input_digest,
             statement_digest,
             delivery,
+            parent_correlation_id,
         } = e;
         self.u64(*timestamp_unix_ms);
         self.u64(principal_chain.len() as u64);
@@ -401,6 +409,10 @@ impl Encoder {
                 Delivery::DeadlineExceeded => 2,
                 Delivery::FrameTooLarge => 3,
             });
+        }
+        if let Some(parent) = parent_correlation_id {
+            self.u8(EXT_PARENT_CORRELATION_ID);
+            self.str(parent);
         }
     }
 
@@ -485,6 +497,7 @@ mod tests {
             input_digest: Digest([7; 32]),
             statement_digest: Some(Digest([9; 32])),
             delivery: None,
+            parent_correlation_id: None,
         }
     }
 
@@ -538,6 +551,41 @@ mod tests {
             chain.append(completion).hash.to_string(),
             "47dc434cddaa06fb6089ae6b0ab379d67d32bab781538fff92cb10a8b75678aa"
         );
+    }
+
+    /// [`admission_and_completion`] of a call made from inside the handler of `corr-parent`.
+    fn nested_admission_and_completion() -> (AuditEntry, AuditEntry) {
+        let (mut admission, mut completion) = admission_and_completion();
+        admission.parent_correlation_id = Some("corr-parent".into());
+        completion.parent_correlation_id = Some("corr-parent".into());
+        (admission, completion)
+    }
+
+    #[test]
+    fn parent_correlation_id_hashes_are_stable() {
+        // Golden values, cross-checked with an independent implementation of the encoding
+        // (`parent_correlation_id` is extension 2, then the length-prefixed id, after `delivery`).
+        let (admission, completion) = nested_admission_and_completion();
+        let mut chain = AuditChain::new();
+        assert_eq!(
+            chain.append(admission).hash.to_string(),
+            "981258a3a837f12aaf2fca722d2eeaf256f2df7fbc3d4ebc5907e74f23728c9f"
+        );
+        assert_eq!(
+            chain.append(completion).hash.to_string(),
+            "35eb5f89d7d7c55e31412229e489748343f8859f8583d92e0f45779d39e85c1b"
+        );
+    }
+
+    #[test]
+    fn parent_correlation_id_is_omitted_from_json_when_absent() {
+        let (admission, _) = admission_and_completion();
+        let json = serde_json::to_value(&admission).unwrap();
+        assert!(json.get("parentCorrelationId").is_none());
+        let (nested, _) = nested_admission_and_completion();
+        let json = serde_json::to_value(&nested).unwrap();
+        assert_eq!(json["parentCorrelationId"], "corr-parent");
+        assert_eq!(serde_json::from_value::<AuditEntry>(json).unwrap(), nested);
     }
 
     #[test]
@@ -680,6 +728,7 @@ mod tests {
             |e| e.statement_digest = None,
             |e| e.outcome = Outcome::Started,
             |e| e.delivery = Some(Delivery::Delivered),
+            |e| e.parent_correlation_id = Some("corr-parent".into()),
         ];
         for (i, mutate) in mutations.into_iter().enumerate() {
             let mut r = base.clone();

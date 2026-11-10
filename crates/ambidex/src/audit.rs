@@ -98,6 +98,8 @@ pub(crate) struct Admission<'a> {
     pub risk: Risk,
     pub input_digest: Digest,
     pub correlation_id: &'a str,
+    /// The calling call's id, for a call made from inside another call's handler.
+    pub parent_correlation_id: Option<&'a str>,
 }
 
 impl Recorder {
@@ -239,6 +241,7 @@ fn started(admission: &Admission<'_>) -> AuditEntry {
         input_digest: admission.input_digest,
         statement_digest: None,
         delivery: None,
+        parent_correlation_id: admission.parent_correlation_id.map(str::to_owned),
     }
 }
 

@@ -106,6 +106,18 @@ impl AuditApi {
         Ok(json!({ "inner": inner }))
     }
 
+    /// Calls `audit.escalate` (which re-checks at Write on a target) through the router.
+    #[rpc::mutation(perm = "audit.use", risk = Risk::Write, agent = Agent::Exposed)]
+    async fn nested_escalate(&self, ctx: Ctx, input: Value) -> Result<Value, RpcError> {
+        self.enter();
+        let router = self.0.router.get().expect("the router is set").clone();
+        let session = Arc::new(ctx.session().clone());
+        router
+            .call(session, Call::new("audit.escalate", input))
+            .await
+            .map_err(|err| RpcError::new(err.code, err.message))
+    }
+
     /// Requires a permission the policy does not grant.
     #[rpc::mutation(perm = "audit.secret", risk = Risk::Write, agent = Agent::Exposed)]
     async fn secret(&self, _ctx: Ctx, _input: Value) -> Result<(), RpcError> {
@@ -816,6 +828,16 @@ fn assert_nested_pairs(s: &Setup) -> String {
     // Delivered to the calling handler.
     assert_eq!(inner.delivery, Some(Delivery::Delivered));
     assert_ne!(inner.correlation_id, outer.correlation_id);
+    // Both inner entries name the outer call; the outer call is top-level.
+    for e in s.sink.of("audit.read") {
+        assert_eq!(
+            e.parent_correlation_id.as_deref(),
+            Some(&*outer.correlation_id)
+        );
+    }
+    for e in s.sink.of("audit.nested") {
+        assert_eq!(e.parent_correlation_id, None);
+    }
     assert!(unfinished(&entries).is_empty());
     assert!(s.reports.all().is_empty(), "{:?}", s.reports.all());
     assert_eq!(s.entered(), 2);
@@ -839,4 +861,27 @@ async fn a_call_made_by_a_handler_gets_its_own_entries_outside_the_engine() {
     let result = call(&s.router, agent(), "audit.nested", json!(7)).await;
     assert_eq!(result, Ok(json!({ "inner": 7 })));
     assert_nested_pairs(&s);
+}
+
+#[tokio::test]
+async fn a_recheck_inside_a_nested_call_names_the_calling_call() {
+    let s = setup(Mode::Record);
+    let result = call(&s.router, human(), "audit.nested_escalate", Value::Null).await;
+    assert_eq!(result, Ok(Value::Null));
+    let outer = pair(&s.sink.of("audit.nested_escalate"), Risk::Write);
+    let inner = s.sink.of("audit.escalate");
+    // Admission, the re-check's `Started` entry (with its target), completion.
+    assert_eq!(inner.len(), 3, "{inner:?}");
+    let recheck = inner
+        .iter()
+        .find(|e| e.target.is_some())
+        .expect("re-check entry");
+    assert_eq!(recheck.outcome, Outcome::Started);
+    for e in &inner {
+        assert_eq!(
+            e.parent_correlation_id.as_deref(),
+            Some(&*outer.correlation_id)
+        );
+    }
+    assert_eq!(outer.parent_correlation_id, None);
 }

@@ -860,6 +860,7 @@ impl GrantStore {
             input_digest,
             statement_digest: None,
             delivery: None,
+            parent_correlation_id: None,
         };
 
         if let Err(reason) = self
@@ -1015,6 +1016,7 @@ impl GrantStore {
             input_digest,
             statement_digest: None,
             delivery: None,
+            parent_correlation_id: None,
         };
         if result.is_ok() {
             // Revocation removes access, so it happens first and never waits on the sink.
