@@ -2,7 +2,7 @@
 //! creates fail closed with `Unavailable` within the audit timeout, and revocation takes effect at
 //! once while its entry is retried in the background and a final failure is reported.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -40,12 +40,18 @@ enum Mode {
     Fail,
     /// Never answers.
     Hang,
+    /// Records after a while.
+    Slow(Duration),
+    /// Fails after a while.
+    SlowFail(Duration),
 }
 
 /// A sink whose behaviour a test switches; recorded entries go to an in-memory log.
 #[derive(Clone)]
 struct Switch {
     mode: Arc<Mutex<Mode>>,
+    /// Modes for the next entries, one each, before `mode`.
+    script: Arc<Mutex<VecDeque<Mode>>>,
     log: Arc<MemoryAuditLog>,
 }
 
@@ -53,12 +59,18 @@ impl Switch {
     fn new(mode: Mode) -> Self {
         Self {
             mode: Arc::new(Mutex::new(mode)),
+            script: Arc::default(),
             log: Arc::new(MemoryAuditLog::new()),
         }
     }
 
     fn set(&self, mode: Mode) {
         *self.mode.lock().unwrap() = mode;
+    }
+
+    /// The next entries get `modes`, one each.
+    fn script(&self, modes: &[Mode]) {
+        self.script.lock().unwrap().extend(modes);
     }
 
     fn actions(&self) -> Vec<(String, AuditDecision)> {
@@ -72,11 +84,23 @@ impl Switch {
 
 impl AuditSink for Switch {
     fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
-        let mode = *self.mode.lock().unwrap();
+        let scripted = self.script.lock().unwrap().pop_front();
+        let mode = scripted.unwrap_or_else(|| *self.mode.lock().unwrap());
         match mode {
             Mode::Record => self.log.append(entry),
             Mode::Fail => Box::pin(async { Err(AuditError("disk full".into())) }),
             Mode::Hang => Box::pin(std::future::pending()),
+            Mode::Slow(delay) => {
+                let log = Arc::clone(&self.log);
+                Box::pin(async move {
+                    tokio::time::sleep(delay).await;
+                    log.append(entry).await
+                })
+            }
+            Mode::SlowFail(delay) => Box::pin(async move {
+                tokio::time::sleep(delay).await;
+                Err(AuditError("disk full".into()))
+            }),
         }
     }
 }
@@ -181,8 +205,8 @@ async fn hung_sink_makes_grant_creation_time_out_and_fail_closed() {
     let reports = Reports::default();
     let store = store(&sink, &reports);
 
-    // Two creates at once: the first holds the create lock while its write hangs, the second
-    // waits for it. Both give up within the audit timeout instead of hanging.
+    // Two creates at once, of different targets: each write hangs, and each gives up within the
+    // audit timeout instead of hanging.
     let started = tokio::time::Instant::now();
     let (first, second) = tokio::join!(create(&store, "pg1"), create(&store, "pg2"));
     assert_eq!(first, Err(GrantError::Unavailable));
@@ -316,4 +340,126 @@ async fn a_slow_revocation_write_finishes_in_the_background() {
     eventually("the revoke entry", || sink.actions().len() == 2).await;
     store.flush_audit().await;
     assert!(reports.all().is_empty());
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_slow_sink_does_not_fail_creates_of_other_targets() {
+    // Each write takes most of the audit timeout. Six creates of different targets at once all
+    // succeed: they do not wait for each other.
+    let delay = AUDIT_TIMEOUT * 4 / 5;
+    let sink = Switch::new(Mode::Slow(delay));
+    let reports = Reports::default();
+    let store = store(&sink, &reports);
+    let started = tokio::time::Instant::now();
+    let (a, b, c, d, e, f) = tokio::join!(
+        create(&store, "pg1"),
+        create(&store, "pg2"),
+        create(&store, "pg3"),
+        create(&store, "pg4"),
+        create(&store, "pg5"),
+        create(&store, "pg6"),
+    );
+    let results = [a, b, c, d, e, f];
+    assert!(results.iter().all(Result::is_ok), "{results:?}");
+    assert_eq!(started.elapsed(), delay);
+    assert_eq!(sink.actions().len(), 6);
+    assert!(reports.all().is_empty(), "{:?}", reports.all());
+}
+
+#[tokio::test(start_paused = true)]
+async fn creates_of_one_target_wait_for_each_other_and_each_write_has_its_own_timeout() {
+    // The first create of pg1 holds the target while its write fails slowly; the second waits
+    // for it, then gets the whole audit timeout for its own slow write.
+    let delay = AUDIT_TIMEOUT * 4 / 5;
+    let sink = Switch::new(Mode::Record);
+    sink.script(&[Mode::SlowFail(delay), Mode::Slow(delay)]);
+    let reports = Reports::default();
+    let store = store(&sink, &reports);
+    let (first, second) = tokio::join!(create(&store, "pg1"), create(&store, "pg1"));
+    assert_eq!(first, Err(GrantError::Unavailable));
+    let id = second.expect("the second create had its own write timeout");
+    assert!(store.is_active(&id));
+    // A third create of the same target now finds it taken.
+    assert_eq!(create(&store, "pg1").await, Err(GrantError::TargetInUse));
+    let failures = reports.all();
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert_eq!(failures[0].error, AuditError("disk full".into()));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_create_waiting_too_long_for_the_same_target_fails_closed() {
+    let sink = Switch::new(Mode::Hang);
+    let reports = Reports::default();
+    let store = store(&sink, &reports);
+    let (first, second) = tokio::join!(create(&store, "pg1"), create(&store, "pg1"));
+    assert_eq!(first, Err(GrantError::Unavailable));
+    assert_eq!(second, Err(GrantError::Unavailable));
+    // Both time out at the same instant, so in either order.
+    let mut errors: Vec<_> = reports.all().into_iter().map(|f| f.error.0).collect();
+    errors.sort();
+    assert_eq!(
+        errors,
+        [
+            "timed out waiting for another create of this target",
+            "write timed out",
+        ]
+    );
+}
+
+#[test]
+fn entries_queued_when_the_writer_runtime_stops_are_reported_lost() {
+    let runtime = || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    };
+    let sink = Switch::new(Mode::Record);
+    let reports = Reports::default();
+    let store = store(&sink, &reports);
+
+    // The revoke entry is queued on the first runtime's writer, which then goes away.
+    let first = runtime();
+    let id = first.block_on(async {
+        let id = create(&store, "pg1").await.unwrap();
+        sink.set(Mode::Hang);
+        store
+            .revoke(&Allow, &admin(), &id, "corr-revoke")
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        id
+    });
+    drop(first);
+    assert!(store.is_revoked(&id));
+
+    // Nothing hangs and nothing disappears unreported: the entry is reported as lost, and a new
+    // writer serves the next runtime.
+    let second = runtime();
+    second.block_on(async {
+        tokio::time::timeout(Duration::from_secs(5), store.flush_audit())
+            .await
+            .expect("flush_audit returns");
+        let failures = reports.all();
+        assert_eq!(failures.len(), 1, "{failures:?}");
+        assert_eq!(failures[0].action, "plugin-host.grants.revoke");
+        assert_eq!(failures[0].correlation_id, "corr-revoke");
+        assert_eq!(failures[0].effect, AuditFailureEffect::EntryLost);
+
+        sink.set(Mode::Record);
+        let id = create(&store, "pg2").await.unwrap();
+        sink.set(Mode::Slow(Duration::from_millis(1)));
+        store
+            .revoke(&Allow, &admin(), &id, "corr-revoke-2")
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), store.flush_audit())
+            .await
+            .expect("flush_audit returns");
+        assert_eq!(reports.all().len(), 1, "{:?}", reports.all());
+        assert_eq!(
+            sink.log.entries().last().unwrap().correlation_id,
+            "corr-revoke-2"
+        );
+    });
 }

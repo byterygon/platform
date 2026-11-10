@@ -69,11 +69,15 @@
 //! - **Fail closed, bounded.** A broker `open`/`start_tls` and a grant create wait at most the
 //!   store's audit timeout ([`DEFAULT_AUDIT_TIMEOUT`]) for their entry; if it is not written, the
 //!   connection is not handed out ([`BrokerError::Internal`]) or nothing is granted
-//!   ([`GrantError::Unavailable`]). Grant creates are serialized, and the timeout covers waiting
-//!   for the create ahead.
+//!   ([`GrantError::Unavailable`]). Creates of one target are serialized: a create waits at most
+//!   the audit timeout for the one ahead of it, and then has the audit timeout for its own write.
+//!   Package install steps ([`install`]) wait at most [`DEFAULT_AUDIT_TIMEOUT`] for theirs and
+//!   fail closed with `InstallError::Audit`.
 //! - **Revocation never waits.** It takes effect first; its entry is written right away when the
 //!   sink answers at once, otherwise in the background with retries ([`RetryPolicy`]), and a final
 //!   failure goes to the [`AuditReporter`]. [`GrantStore::flush_audit`] waits for pending entries.
+//!   An entry the background writer could not finish because its runtime shut down is reported
+//!   as lost too.
 
 pub mod audit;
 pub mod broker;

@@ -12,8 +12,8 @@
 //! - [`clock`]: the [`Clock`] both libraries stamp entries with; `SystemClock` with feature `tokio`.
 //! - [`correlation`]: the shared correlation-id generator.
 //!
-//! Runtime-free by default: the only async runtime code (`SystemClock`'s timer) is behind the
-//! `tokio` feature.
+//! Runtime-free by default: the only async runtime code (`SystemClock`'s timer and the bounded
+//! writes `append_within`/`write_within`) is behind the `tokio` feature.
 
 pub mod audit;
 pub mod authz;
@@ -41,3 +41,5 @@ pub use permissions::{Permission, PermissionSet, RolePermissions, effective_perm
 pub use principal::{Principal, PrincipalKind, RoleId, SessionId, TenantId};
 pub use report::{AuditEntryKind, AuditFailure, AuditFailureEffect, AuditReporter, StderrReporter};
 pub use sink::{AuditError, AuditSink, BoxFuture, MemoryAuditLog};
+#[cfg(feature = "tokio")]
+pub use sink::{append_within, write_within};

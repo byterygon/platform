@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::task::Poll;
 use std::time::Duration;
 
-use security_types::{AuditEntry, BoxFuture};
+use security_types::{AuditEntry, BoxFuture, append_within, write_within};
 pub use security_types::{
     AuditEntryKind, AuditError, AuditFailure, AuditFailureEffect, AuditReporter, AuditSink,
     CLOCK_RECHECK, Clock, MemoryAuditLog, StderrReporter, SystemClock,
@@ -57,7 +57,9 @@ impl Default for RetryPolicy {
 /// order of the calls. A write still pending, or one that failed, goes to a background writer task
 /// (started on the current Tokio runtime at first use) that finishes it and retries with backoff.
 /// When every attempt failed, the failure goes to the reporter. Entries still queued when the
-/// owner is dropped are still written; [`AuditQueue::flushed`] waits until none are left.
+/// owner is dropped are still written; [`AuditQueue::flushed`] waits until none are left. If the
+/// writer task itself goes (its runtime shut down), every entry it had not written yet is
+/// reported as lost, and the next entry starts a new writer.
 pub(crate) struct AuditQueue {
     sink: Arc<dyn AuditSink>,
     reporter: Arc<dyn AuditReporter>,
@@ -66,6 +68,10 @@ pub(crate) struct AuditQueue {
     pending: Arc<Pending>,
 }
 
+/// One entry on its way to the sink. It counts as pending until [`Job::written`] or
+/// [`Job::lost`]; a job dropped before either (its writer task was dropped with the runtime,
+/// queued or mid-write) reports itself as lost, so no entry disappears unreported and
+/// [`AuditQueue::flushed`] still returns.
 struct Job {
     entry: AuditEntry,
     /// The first write, if it was still pending when `submit` returned.
@@ -73,6 +79,41 @@ struct Job {
     /// Attempts already made and failed.
     failed: u32,
     last_error: Option<AuditError>,
+    reporter: Arc<dyn AuditReporter>,
+    pending: Arc<Pending>,
+    settled: bool,
+}
+
+impl Job {
+    /// The entry is recorded.
+    fn written(mut self) {
+        self.settle();
+    }
+
+    /// The entry will not be recorded: reported, with `error`.
+    fn lost(mut self, error: AuditError) {
+        report_lost(&*self.reporter, &self.entry, error, self.failed);
+        self.settle();
+    }
+
+    fn settle(&mut self) {
+        self.settled = true;
+        self.pending.done();
+    }
+}
+
+impl Drop for Job {
+    fn drop(&mut self) {
+        if !self.settled {
+            report_lost(
+                &*self.reporter,
+                &self.entry,
+                AuditError("the audit writer stopped before writing the entry".into()),
+                self.failed,
+            );
+            self.pending.done();
+        }
+    }
 }
 
 /// Entries submitted and not yet written or given up.
@@ -116,22 +157,21 @@ impl AuditQueue {
         let mut first: BoxFuture<'static, Result<(), AuditError>> =
             Box::pin(async move { sink.append(first_entry).await });
         let polled = std::future::poll_fn(|cx| Poll::Ready(first.as_mut().poll(cx))).await;
-        let job = match polled {
+        let (in_flight, failed, last_error) = match polled {
             Poll::Ready(Ok(())) => return,
-            Poll::Ready(Err(error)) => Job {
-                entry,
-                in_flight: None,
-                failed: 1,
-                last_error: Some(error),
-            },
-            Poll::Pending => Job {
-                entry,
-                in_flight: Some(first),
-                failed: 0,
-                last_error: None,
-            },
+            Poll::Ready(Err(error)) => (None, 1, Some(error)),
+            Poll::Pending => (Some(first), 0, None),
         };
-        self.enqueue(job);
+        self.pending.add();
+        self.enqueue(Job {
+            entry,
+            in_flight,
+            failed,
+            last_error,
+            reporter: Arc::clone(&self.reporter),
+            pending: Arc::clone(&self.pending),
+            settled: false,
+        });
     }
 
     /// Completes once every entry submitted so far is written or given up (and reported).
@@ -148,7 +188,6 @@ impl AuditQueue {
     }
 
     fn enqueue(&self, job: Job) {
-        self.pending.add();
         let refused = match self.writer() {
             Some(writer) => writer.try_send(job).err().map(|err| {
                 let reason = match err {
@@ -160,13 +199,7 @@ impl AuditQueue {
             None => Some((job, "no Tokio runtime for the audit retry queue")),
         };
         if let Some((job, reason)) = refused {
-            report_lost(
-                &*self.reporter,
-                &job.entry,
-                AuditError(reason.into()),
-                job.failed,
-            );
-            self.pending.done();
+            job.lost(AuditError(reason.into()));
         }
     }
 
@@ -178,13 +211,7 @@ impl AuditQueue {
         }
         let runtime = tokio::runtime::Handle::try_current().ok()?;
         let (tx, rx) = mpsc::channel(self.retry.capacity.max(1));
-        runtime.spawn(write_loop(
-            rx,
-            Arc::clone(&self.sink),
-            Arc::clone(&self.reporter),
-            self.retry,
-            Arc::clone(&self.pending),
-        ));
+        runtime.spawn(write_loop(rx, Arc::clone(&self.sink), self.retry));
         *writer = Some(tx.clone());
         Some(tx)
     }
@@ -192,64 +219,40 @@ impl AuditQueue {
 
 /// One entry at a time, in submission order; exits once every sender is gone and the queue is
 /// drained.
-async fn write_loop(
-    mut rx: mpsc::Receiver<Job>,
-    sink: Arc<dyn AuditSink>,
-    reporter: Arc<dyn AuditReporter>,
-    retry: RetryPolicy,
-    pending: Arc<Pending>,
-) {
+async fn write_loop(mut rx: mpsc::Receiver<Job>, sink: Arc<dyn AuditSink>, retry: RetryPolicy) {
     while let Some(job) = rx.recv().await {
-        write_with_retry(job, &*sink, &*reporter, retry).await;
-        pending.done();
+        write_with_retry(job, &*sink, retry).await;
     }
 }
 
-async fn write_with_retry(
-    job: Job,
-    sink: &dyn AuditSink,
-    reporter: &dyn AuditReporter,
-    retry: RetryPolicy,
-) {
-    let Job {
-        entry,
-        in_flight,
-        mut failed,
-        mut last_error,
-    } = job;
-    if let Some(first) = in_flight {
-        match tokio::time::timeout(retry.attempt_timeout, first).await {
-            Ok(Ok(())) => return,
-            result => {
-                failed += 1;
-                last_error = Some(attempt_error(result));
+async fn write_with_retry(mut job: Job, sink: &dyn AuditSink, retry: RetryPolicy) {
+    let attempt_deadline = || tokio::time::Instant::now() + retry.attempt_timeout;
+    if let Some(first) = job.in_flight.take() {
+        match write_within(first, attempt_deadline()).await {
+            Ok(()) => return job.written(),
+            Err(error) => {
+                job.failed += 1;
+                job.last_error = Some(error);
             }
         }
     }
     let mut backoff = retry.first_backoff;
-    while failed < retry.attempts {
+    while job.failed < retry.attempts {
         tokio::time::sleep(backoff).await;
         backoff = (backoff * 2).min(retry.max_backoff);
-        match tokio::time::timeout(retry.attempt_timeout, sink.append(entry.clone())).await {
-            Ok(Ok(())) => return,
-            result => {
-                failed += 1;
-                last_error = Some(attempt_error(result));
+        match append_within(sink, job.entry.clone(), attempt_deadline()).await {
+            Ok(()) => return job.written(),
+            Err(error) => {
+                job.failed += 1;
+                job.last_error = Some(error);
             }
         }
     }
-    let error = last_error.unwrap_or_else(|| AuditError("not written".into()));
-    report_lost(reporter, &entry, error, failed);
-}
-
-/// Why one attempt failed: the sink's error, or that it did not answer in time.
-fn attempt_error(
-    result: Result<Result<(), AuditError>, tokio::time::error::Elapsed>,
-) -> AuditError {
-    match result {
-        Ok(Err(error)) => error,
-        _ => AuditError("write timed out".into()),
-    }
+    let error = job
+        .last_error
+        .take()
+        .unwrap_or_else(|| AuditError("not written".into()));
+    job.lost(error);
 }
 
 fn report_lost(reporter: &dyn AuditReporter, entry: &AuditEntry, error: AuditError, attempts: u32) {

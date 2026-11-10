@@ -30,6 +30,8 @@ use tokio::sync::Semaphore;
 struct Probe {
     entered: AtomicUsize,
     escalated: AtomicUsize,
+    /// The router `audit.nested` calls back into.
+    router: std::sync::OnceLock<Router>,
 }
 
 struct AuditApi(Arc<Probe>);
@@ -88,6 +90,20 @@ impl AuditApi {
     async fn boom(&self, _ctx: Ctx, _input: Value) -> Result<(), RpcError> {
         self.enter();
         panic!("handler panicked");
+    }
+
+    /// A Write that calls `audit.read` through the router, as a handler calling another
+    /// procedure does, and returns what it got.
+    #[rpc::mutation(perm = "audit.use", risk = Risk::Write, agent = Agent::Exposed)]
+    async fn nested(&self, ctx: Ctx, input: Value) -> Result<Value, RpcError> {
+        self.enter();
+        let router = self.0.router.get().expect("the router is set").clone();
+        let session = Arc::new(ctx.session().clone());
+        let inner = router
+            .call(session, Call::new("audit.read", input))
+            .await
+            .map_err(|err| RpcError::new(err.code, err.message))?;
+        Ok(json!({ "inner": inner }))
     }
 
     /// Requires a permission the policy does not grant.
@@ -228,6 +244,7 @@ fn setup_with(mode: Mode, policy: AuditPolicy) -> Setup {
         .with_audit_reporter(reports.clone())
         .with_audit_policy(policy);
     router.mount(AuditApi(Arc::clone(&probe))).unwrap();
+    let _ = probe.router.set(router.clone());
     Setup {
         router,
         sink,
@@ -772,4 +789,54 @@ async fn a_deadline_passed_during_the_admission_write_is_completed_without_runni
     // Outside the engine the router's answer is what its caller gets.
     assert_eq!(completion.delivery, Some(Delivery::Delivered));
     assert_eq!(completion.correlation_id, err.correlation_id);
+}
+
+/// Checks one handler calling another procedure: each call has its own two entries and its own
+/// correlation id, the inner pair sits inside the outer one, and nothing was recorded as
+/// cancelled. Returns the outer call's correlation id.
+fn assert_nested_pairs(s: &Setup) -> String {
+    let entries = s.sink.entries();
+    let names: Vec<_> = entries
+        .iter()
+        .map(|e| (e.action.name.as_str(), e.outcome.clone()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("audit.nested", Outcome::Started),
+            ("audit.read", Outcome::Started),
+            ("audit.read", Outcome::Success),
+            ("audit.nested", Outcome::Success),
+        ],
+        "{entries:?}"
+    );
+    let outer = pair(&s.sink.of("audit.nested"), Risk::Write);
+    let inner = pair(&s.sink.of("audit.read"), Risk::Read);
+    assert_eq!(outer.delivery, Some(Delivery::Delivered));
+    // Delivered to the calling handler.
+    assert_eq!(inner.delivery, Some(Delivery::Delivered));
+    assert_ne!(inner.correlation_id, outer.correlation_id);
+    assert!(unfinished(&entries).is_empty());
+    assert!(s.reports.all().is_empty(), "{:?}", s.reports.all());
+    assert_eq!(s.entered(), 2);
+    outer.correlation_id
+}
+
+#[tokio::test]
+async fn a_call_made_by_a_handler_gets_its_own_entries_in_the_engine() {
+    let s = setup(Mode::Record);
+    let server = server(&s, human());
+    let mut client = Client::connect(&server).await;
+    client.call(1, "audit.nested", json!(7)).await;
+    assert_eq!(client.result(1).await, json!({ "inner": 7 }));
+    let outer = assert_nested_pairs(&s);
+    assert!(outer.ends_with("-1"), "the engine's id for call 1: {outer}");
+}
+
+#[tokio::test]
+async fn a_call_made_by_a_handler_gets_its_own_entries_outside_the_engine() {
+    let s = setup(Mode::Record);
+    let result = call(&s.router, agent(), "audit.nested", json!(7)).await;
+    assert_eq!(result, Ok(json!({ "inner": 7 })));
+    assert_nested_pairs(&s);
 }

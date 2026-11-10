@@ -907,7 +907,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     ) -> Step {
         let (task, frame) = match done {
             Ok((task, frame)) => (task, Ok(frame)),
-            Err(err) => (err.id(), Err(())),
+            Err(err) => (err.id(), Err(err.is_panic())),
         };
         let Task {
             call_id,
@@ -918,8 +918,10 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         });
         let scope = self.in_flight.remove(&call_id);
         // A panicking handler's audit completion: it ended with `Internal`, which the client
-        // gets below.
-        if frame.is_err()
+        // gets below. A task that was aborted instead keeps its completion, written from its
+        // drop guard as `Cancelled` once the last clone of its scope goes (below): the engine
+        // never finished that call.
+        if matches!(frame, Err(true))
             && let Some(completion) = scope.as_ref().and_then(CallScope::take_completion)
         {
             let mut completion = completion;
@@ -928,6 +930,17 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             });
             tokio::spawn(completion.finish(Delivery::Delivered, Code::Internal));
         }
+        let frame = frame.unwrap_or_else(|panicked| {
+            // A panicking handler must not take the connection down or leak its message. An
+            // aborted call answers with the reason its token fired, `Cancelled` if none.
+            let mut payload = match &scope {
+                Some(scope) if !panicked => scope.error(),
+                _ => ErrorPayload::new(Code::Internal, "internal error"),
+            };
+            payload.correlation_id = self.correlation_id(call_id);
+            let payload = serde_json::to_vec(&payload).expect("ErrorPayload serializes");
+            Frame::new(Kind::Error, call_id, payload)
+        });
         // A finished subscription is over: a sink clone the handler left behind (e.g. in a task
         // it spawned) is refused from now on, and its `closed()` resolves.
         if let Some(scope) = scope
@@ -935,13 +948,6 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         {
             scope.cancel();
         }
-        let frame = frame.unwrap_or_else(|()| {
-            // A panicking handler must not take the connection down or leak its message.
-            let mut payload = ErrorPayload::new(Code::Internal, "internal error");
-            payload.correlation_id = self.correlation_id(call_id);
-            let payload = serde_json::to_vec(&payload).expect("ErrorPayload serializes");
-            Frame::new(Kind::Error, call_id, payload)
-        });
         if !subscription {
             return self.send(&frame);
         }

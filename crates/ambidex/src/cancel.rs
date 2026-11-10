@@ -32,6 +32,7 @@
 //! discarded.
 
 use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -64,6 +65,11 @@ struct Inner {
     /// Whether the engine created this scope, and so records the call's audit completion once
     /// it knows what the client received.
     managed: bool,
+    /// Whether a call already runs under this scope (see [`CallScope::for_call`]).
+    claimed: AtomicBool,
+    /// The scope of the handler that made this call, for a call made from inside a handler. Its
+    /// token is this token's parent, and its deadline bounds this one.
+    parent: Option<CallScope>,
     /// The audit completion the router registered after the admission entry, until written.
     completion: Mutex<Option<Completion>>,
     start: Instant,
@@ -82,7 +88,41 @@ impl CallScope {
     /// only if the OS had no randomness, and the router refuses such a call.
     pub fn new(requested: Option<Duration>) -> CallScope {
         let correlation_id = security_types::new_correlation_id().unwrap_or_default();
-        CallScope::build(CancellationToken::new(), requested, correlation_id, false)
+        CallScope::build(
+            CancellationToken::new(),
+            requested,
+            correlation_id,
+            false,
+            None,
+        )
+    }
+
+    /// The scope a dispatcher runs one call under: the engine's scope for it, the first time it
+    /// is asked for; a [child](CallScope::child) of the current scope when a call already runs
+    /// under it (a handler calling another procedure); a [new](CallScope::new) one outside any
+    /// scope. Each call so gets its own correlation id, deadline and audit completion.
+    pub(crate) fn for_call(requested: Option<Duration>) -> CallScope {
+        match CallScope::current() {
+            Some(scope) if !scope.inner.claimed.swap(true, Ordering::SeqCst) => scope,
+            Some(outer) => outer.child(requested),
+            None => CallScope::new(requested),
+        }
+    }
+
+    /// A scope for a call made from inside the call of this scope. Its token is a child of this
+    /// token, so it is cancelled with this call (and with the reason this call fired with), and
+    /// its deadline is never later than this one. Like [`CallScope::new`] its correlation id
+    /// comes from the shared generator, and the router writes its completion when its handler
+    /// returns: what it returns is delivered to the calling handler.
+    fn child(&self, requested: Option<Duration>) -> CallScope {
+        let correlation_id = security_types::new_correlation_id().unwrap_or_default();
+        CallScope::build(
+            self.inner.token.child_token(),
+            requested,
+            correlation_id,
+            false,
+            Some(self.clone()),
+        )
     }
 
     /// The engine's scope for one call.
@@ -91,7 +131,7 @@ impl CallScope {
         requested: Option<Duration>,
         correlation_id: String,
     ) -> CallScope {
-        CallScope::build(token, requested, correlation_id, true)
+        CallScope::build(token, requested, correlation_id, true, None)
     }
 
     fn build(
@@ -99,6 +139,7 @@ impl CallScope {
         requested: Option<Duration>,
         correlation_id: String,
         managed: bool,
+        parent: Option<CallScope>,
     ) -> CallScope {
         let start = Instant::now();
         CallScope {
@@ -107,6 +148,9 @@ impl CallScope {
                 reason: OnceLock::new(),
                 correlation_id,
                 managed,
+                // Only the engine's scope waits for the call that runs under it.
+                claimed: AtomicBool::new(!managed),
+                parent,
                 completion: Mutex::new(None),
                 start,
                 requested,
@@ -176,8 +220,15 @@ impl CallScope {
     /// Why the token fired (`Cancelled`, `DeadlineExceeded`, or `ResourceExhausted` for a
     /// subscription whose events could not be buffered), `None` before.
     pub fn reason(&self) -> Option<Code> {
-        self.is_cancelled()
-            .then(|| self.inner.reason.get().map_or(Code::Cancelled, |r| r.0))
+        self.is_cancelled().then(|| match self.inner.reason.get() {
+            Some(reason) => reason.0,
+            None => self
+                .inner
+                .parent
+                .as_ref()
+                .and_then(CallScope::reason)
+                .unwrap_or(Code::Cancelled),
+        })
     }
 
     /// Fires the token with `Cancelled`. No-op if it already fired.
@@ -213,8 +264,10 @@ impl CallScope {
 
     /// The `Error` a call answers once its token fired.
     pub(crate) fn error(&self) -> ErrorPayload {
-        match self.inner.reason.get() {
-            Some(&(code, message)) if self.is_cancelled() => ErrorPayload::new(code, message),
+        match (self.inner.reason.get(), &self.inner.parent) {
+            (Some(&(code, message)), _) if self.is_cancelled() => ErrorPayload::new(code, message),
+            // Fired by the calling handler's scope: its reason.
+            (None, Some(parent)) if self.is_cancelled() && parent.is_cancelled() => parent.error(),
             _ => ErrorPayload::new(Code::Cancelled, "call cancelled"),
         }
     }
@@ -225,7 +278,11 @@ impl CallScope {
     }
 
     pub fn deadline(&self) -> Instant {
-        *lock(&self.inner.deadline)
+        let own = *lock(&self.inner.deadline);
+        match &self.inner.parent {
+            Some(parent) => own.min(parent.deadline()),
+            None => own,
+        }
     }
 
     /// Sets the deadline from the procedure's bounds: `min(requested, max)`, or `default` (itself
@@ -331,5 +388,32 @@ mod tests {
         assert_eq!(scope.deadline(), start + Duration::from_secs(2));
         // The notification is stored until someone waits.
         scope.deadline_changed().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_call_inside_a_call_gets_a_child_scope() {
+        let outer = CallScope::with_token(CancellationToken::new(), None, "c-1".into());
+        outer.apply_timeouts(Duration::from_secs(10), Duration::from_secs(10));
+        outer
+            .clone()
+            .enter(async {
+                // The first call under the engine's scope is the engine's call.
+                let first = CallScope::for_call(None);
+                assert_eq!(first.correlation_id(), "c-1");
+                // A call its handler makes is a child, with its own id.
+                let inner = CallScope::for_call(Some(Duration::from_secs(60)));
+                assert_ne!(inner.correlation_id(), "c-1");
+                assert!(!inner.is_managed());
+                // Its own bounds do not move the outer deadline, and never pass it.
+                inner.apply_timeouts(Duration::from_secs(30), Duration::from_secs(300));
+                assert_eq!(inner.deadline(), outer.deadline());
+                inner.apply_timeouts(Duration::from_secs(1), Duration::from_secs(1));
+                assert!(inner.deadline() < outer.deadline());
+                // It is cancelled with the outer call, for the same reason.
+                outer.fire(Code::DeadlineExceeded);
+                assert_eq!(inner.reason(), Some(Code::DeadlineExceeded));
+                assert_eq!(inner.error().code, Code::DeadlineExceeded);
+            })
+            .await;
     }
 }

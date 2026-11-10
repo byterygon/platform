@@ -38,7 +38,7 @@ use rustls::RootCertStore;
 use rustls::pki_types::{CertificateDer, ServerName};
 use security_types::{
     Action, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest, Decision, Digest,
-    Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, TargetRef, TenantId,
+    Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, TargetRef, TenantId, append_within,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::sync::watch;
@@ -653,10 +653,61 @@ impl StoreInner {
     }
 }
 
-/// How long a grant change, or a broker operation, waits for its audit entry to be written
-/// (including, for a grant create, the wait for other creates) before failing closed. Provisional
-/// (Ambidex spec Open question 26).
+/// How long a grant change, a broker operation or a package install step waits for its audit
+/// entry to be written before failing closed, and how long a grant create waits for another
+/// create of the same target. Provisional (Ambidex spec Open question 26).
 pub const DEFAULT_AUDIT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Grant target (tenant, target id).
+type TargetKey = (TenantId, String);
+
+/// One async lock per grant target, kept only while a create holds or waits for it.
+#[derive(Default)]
+struct TargetLocks {
+    locks: Mutex<HashMap<TargetKey, Arc<tokio::sync::Mutex<()>>>>,
+}
+
+/// A held [`TargetLocks`] lock, or a wait for one that gave up. Dropping it releases the lock
+/// and forgets it when nobody else holds or waits for it.
+struct TargetLock<'a> {
+    locks: &'a TargetLocks,
+    key: TargetKey,
+    lock: Option<Arc<tokio::sync::Mutex<()>>>,
+    guard: Option<tokio::sync::OwnedMutexGuard<()>>,
+}
+
+impl TargetLocks {
+    /// Locks `key`, waiting at most `timeout`; `None` if another create held it that long.
+    async fn lock(&self, key: &TargetKey, timeout: Duration) -> Option<TargetLock<'_>> {
+        let lock = Arc::clone(lock(&self.locks).entry(key.clone()).or_default());
+        let mut held = TargetLock {
+            locks: self,
+            key: key.clone(),
+            lock: Some(Arc::clone(&lock)),
+            guard: None,
+        };
+        // On a timeout `held` is dropped without a guard, which forgets an unused lock.
+        held.guard = Some(
+            tokio::time::timeout(timeout, lock.lock_owned())
+                .await
+                .ok()?,
+        );
+        Some(held)
+    }
+}
+
+impl Drop for TargetLock<'_> {
+    fn drop(&mut self) {
+        self.guard.take();
+        let mut locks = lock(&self.locks.locks);
+        // The map's reference and ours: nobody else holds or waits for this lock.
+        if let Some(mine) = self.lock.take()
+            && Arc::strong_count(&mine) == 2
+        {
+            locks.remove(&self.key);
+        }
+    }
+}
 
 /// The grants of one host. In-memory; persistence belongs to the product's workspace/server store.
 ///
@@ -665,8 +716,10 @@ pub const DEFAULT_AUDIT_TIMEOUT: Duration = Duration::from_secs(5);
 ///
 /// Audit (Ambidex spec Open question 26h): a grant becomes usable only after its entry is written,
 /// so a create fails closed with [`GrantError::Unavailable`] when the sink fails or does not
-/// answer within the [audit timeout](GrantStore::with_audit_timeout). Creates are serialized, so
-/// that timeout also covers waiting for the create ahead. A revocation takes effect at once and
+/// answer within the [audit timeout](GrantStore::with_audit_timeout). Creates of one target are
+/// serialized; a create waits at most the audit timeout for the one ahead of it, then has the
+/// audit timeout again for its own write. Creates of different targets run in parallel. A
+/// revocation takes effect at once and
 /// never waits on the sink; its entry is written in the background with retries
 /// ([`GrantStore::flush_audit`] waits for it), and an entry that could not be written is reported
 /// to the [`AuditReporter`].
@@ -675,8 +728,8 @@ pub struct GrantStore {
     audit: Arc<dyn AuditSink>,
     reporter: Arc<dyn AuditReporter>,
     audit_timeout: Duration,
-    /// Held across the target check, the audit write and the insert of one create.
-    creating: tokio::sync::Mutex<()>,
+    /// Per target, held across the target check, the audit write and the insert of one create.
+    creating: TargetLocks,
     /// Revocation entries.
     queue: AuditQueue,
     inner: Arc<Mutex<StoreInner>>,
@@ -697,7 +750,7 @@ impl GrantStore {
             audit,
             reporter,
             audit_timeout: DEFAULT_AUDIT_TIMEOUT,
-            creating: tokio::sync::Mutex::new(()),
+            creating: TargetLocks::default(),
             inner: Arc::default(),
         }
     }
@@ -744,22 +797,11 @@ impl GrantStore {
         entry: AuditEntry,
         effect: AuditFailureEffect,
     ) -> Result<(), ()> {
-        let deadline = tokio::time::Instant::now() + self.audit_timeout;
-        self.record_by(entry, effect, deadline).await
-    }
-
-    async fn record_by(
-        &self,
-        entry: AuditEntry,
-        effect: AuditFailureEffect,
-        deadline: tokio::time::Instant,
-    ) -> Result<(), ()> {
         let action = entry.action.name.clone();
         let correlation_id = entry.correlation_id.clone();
-        let error = match tokio::time::timeout_at(deadline, self.audit.append(entry)).await {
-            Ok(Ok(())) => return Ok(()),
-            Ok(Err(error)) => error,
-            Err(_) => AuditError("write timed out".into()),
+        let deadline = tokio::time::Instant::now() + self.audit_timeout;
+        let Err(error) = append_within(&*self.audit, entry, deadline).await else {
+            return Ok(());
         };
         self.report(effect, action, correlation_id, error);
         Err(())
@@ -789,8 +831,9 @@ impl GrantStore {
     /// decision is a denial: grant changes are not approval-gated here.
     ///
     /// The grant is usable only once its audit entry is written. If the sink fails, or the entry
-    /// is not written within the audit timeout (which also covers waiting for a create ahead of
-    /// this one), the create fails closed with [`GrantError::Unavailable`] and nothing is granted.
+    /// is not written within the audit timeout, or a create of the same target ahead of this one
+    /// holds it longer than the audit timeout, the create fails closed with
+    /// [`GrantError::Unavailable`] and nothing is granted.
     pub async fn create<A: Authorizer>(
         &self,
         authz: &A,
@@ -861,9 +904,6 @@ impl GrantStore {
         approver: &Principal,
         granted: impl FnOnce() -> AuditEntry,
     ) -> Result<Arc<ConnectionGrant>, GrantError> {
-        // One deadline for waiting on other creates and for the audit write, so a sink that
-        // hangs makes creates fail closed instead of hanging.
-        let deadline = tokio::time::Instant::now() + self.audit_timeout;
         let grant = self.build(plugin, req, approver)?;
         // The expiry task needs a runtime; without one the grant could not end on time.
         let runtime = match grant.expires_at_unix_ms {
@@ -872,18 +912,19 @@ impl GrantStore {
             }
             None => None,
         };
-        // Creates run one at a time, so no other create can take the target between the check
-        // below and the insert, while the audit write is awaited in between.
-        let Ok(_creating) = tokio::time::timeout_at(deadline, self.creating.lock()).await else {
+        // Creates of one target run one at a time, so no other create can take it between the
+        // check below and the insert, while the audit write is awaited in between. The wait is
+        // bounded, so a create stuck on a hung sink makes the ones behind it fail closed too.
+        let key = (grant.tenant.clone(), grant.target_id.clone());
+        let Some(_creating) = self.creating.lock(&key, self.audit_timeout).await else {
             self.report(
                 AuditFailureEffect::Blocked,
                 GRANT_CREATE_ACTION.to_owned(),
                 granted().correlation_id,
-                AuditError("timed out waiting for another grant create".into()),
+                AuditError("timed out waiting for another create of this target".into()),
             );
             return Err(GrantError::Unavailable);
         };
-        let key = (grant.tenant.clone(), grant.target_id.clone());
         if lock(&self.inner)
             .active_entry(&key, self.clock.now_unix_ms())
             .is_some()
@@ -891,7 +932,7 @@ impl GrantStore {
             return Err(GrantError::TargetInUse);
         }
         // Audit before the grant becomes usable; if auditing fails, nothing is granted.
-        self.record_by(granted(), AuditFailureEffect::Blocked, deadline)
+        self.record(granted(), AuditFailureEffect::Blocked)
             .await
             .map_err(|()| GrantError::Unavailable)?;
         let grant = Arc::new(grant);

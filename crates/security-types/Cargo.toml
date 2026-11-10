@@ -12,7 +12,8 @@ publish = false
 workspace = true
 
 [features]
-# `SystemClock`, which sleeps on the Tokio timer. Off by default so the crate needs no runtime.
+# `SystemClock` and the bounded audit writes, which use the Tokio timer. Off by default so the
+# crate needs no runtime.
 tokio = ["dep:tokio"]
 
 [dependencies]

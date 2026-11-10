@@ -31,7 +31,9 @@
 //! A handler dropped before it returned has the code it was cancelled with as its outcome. The
 //! write runs in its own task, so it survives the call task being aborted, and the answer waits
 //! for it at most `write_timeout`. Outside the engine (the MCP adapter calling the router
-//! directly) the router writes it when the handler returns, as `Delivered`. A completion that
+//! directly), and for a call a handler makes to another procedure (which runs under a scope of
+//! its own, with its own correlation id), the router writes it when the handler returns, as
+//! `Delivered`. A completion that
 //! cannot be written is reported and never changes the answer: the handler already ran. A
 //! `Started` entry without a matching completion therefore means the outcome is unknown: the
 //! process crashed, or an admission write failed ambiguously and the client retried.
@@ -42,7 +44,7 @@ use std::time::Duration;
 use security_types::{
     Action, AuditDecision, AuditEntry, AuditEntryKind, AuditError, AuditFailure,
     AuditFailureEffect, AuditPrincipal, AuditReporter, AuditSink, Delivery, Digest, Outcome,
-    Principal, PrincipalKind, Risk, StderrReporter, TargetRef, unix_now_ms,
+    Principal, PrincipalKind, Risk, StderrReporter, TargetRef, append_within, unix_now_ms,
 };
 use serde_json::Value;
 use tokio::time::Instant;
@@ -81,6 +83,7 @@ impl Default for AuditPolicy {
 pub const DEFAULT_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The router's sink, reporter and policy.
+#[derive(Clone)]
 pub(crate) struct Recorder {
     sink: Option<Arc<dyn AuditSink>>,
     reporter: Arc<dyn AuditReporter>,
@@ -108,64 +111,62 @@ impl Recorder {
     }
 
     pub(crate) fn with_sink(&self, sink: Arc<dyn AuditSink>) -> Recorder {
-        Recorder {
-            sink: Some(sink),
-            reporter: Arc::clone(&self.reporter),
-            policy: self.policy,
-        }
+        let mut recorder = self.clone();
+        recorder.sink = Some(sink);
+        recorder
     }
 
     pub(crate) fn with_reporter(&self, reporter: Arc<dyn AuditReporter>) -> Recorder {
-        Recorder {
-            sink: self.sink.clone(),
-            reporter,
-            policy: self.policy,
-        }
+        let mut recorder = self.clone();
+        recorder.reporter = reporter;
+        recorder
     }
 
     pub(crate) fn with_policy(&self, policy: AuditPolicy) -> Recorder {
-        Recorder {
-            sink: self.sink.clone(),
-            reporter: Arc::clone(&self.reporter),
-            policy,
-        }
+        let mut recorder = self.clone();
+        recorder.policy = policy;
+        recorder
     }
 
-    /// Writes one entry, waiting at most the write timeout.
-    async fn write(&self, entry: AuditEntry) -> Result<(), AuditError> {
-        let Some(sink) = &self.sink else {
-            return Err(AuditError("no audit sink configured".into()));
-        };
-        write(&**sink, entry, self.policy.write_timeout).await
-    }
-
-    fn report(
+    /// Writes one entry, waiting at most the write timeout. On failure the reporter hears about
+    /// it as `kind` with `effect`; the caller decides what the failure means for the call.
+    async fn write(
         &self,
-        entry: AuditEntryKind,
-        effect: AuditFailureEffect,
-        of: &AuditEntry,
-        error: AuditError,
-    ) {
+        entry: AuditEntry,
+        kind: AuditEntryKind,
+        effect: impl FnOnce() -> AuditFailureEffect,
+    ) -> Result<(), ()> {
+        // Kept for the report: the entry itself moves into the sink.
+        let action = entry.action.name.clone();
+        let correlation_id = entry.correlation_id.clone();
+        let result = match &self.sink {
+            Some(sink) => {
+                let deadline = Instant::now() + self.policy.write_timeout;
+                append_within(&**sink, entry, deadline).await
+            }
+            None => Err(AuditError("no audit sink configured".into())),
+        };
+        let Err(error) = result else {
+            return Ok(());
+        };
         self.reporter.report(&AuditFailure {
-            entry,
-            effect,
-            action: of.action.name.clone(),
-            correlation_id: of.correlation_id.clone(),
+            entry: kind,
+            effect: effect(),
+            action,
+            correlation_id,
             error,
             attempts: 1,
         });
+        Err(())
     }
 
     /// Records a refusal. The call is refused whatever happens here.
     pub(crate) async fn refusal(&self, entry: AuditEntry) {
-        if let Err(error) = self.write(entry.clone()).await {
-            self.report(
-                AuditEntryKind::Refusal,
-                AuditFailureEffect::EntryLost,
-                &entry,
-                error,
-            );
-        }
+        let _ = self
+            .write(entry, AuditEntryKind::Refusal, || {
+                AuditFailureEffect::EntryLost
+            })
+            .await;
     }
 
     /// Whether a call or re-check that cannot be recorded must not run: Write and Destructive
@@ -176,51 +177,48 @@ impl Recorder {
             || self.policy.human_reads == HumanReads::FailClosed
     }
 
-    /// Writes a `Started` entry for an allowed call or re-check. `Err` means it must not run;
-    /// `Ok(true)` that the entry is recorded, `Ok(false)` that it runs unrecorded.
-    pub(crate) async fn admit(&self, admission: &Admission<'_>) -> Result<bool, ()> {
-        let entry = started(admission);
-        let Err(error) = self.write(entry.clone()).await else {
-            return Ok(true);
-        };
-        let blocked = self.fails_closed(admission.principal, admission.risk);
-        let effect = if blocked {
-            AuditFailureEffect::Blocked
-        } else {
-            AuditFailureEffect::RanUnrecorded
-        };
-        self.report(AuditEntryKind::Admission, effect, &entry, error);
-        if blocked { Err(()) } else { Ok(false) }
+    /// Writes a `Started` entry for an allowed re-check. `Err` means the work it guards must not
+    /// run (see [`Recorder::fails_closed`]).
+    pub(crate) async fn recheck(&self, admission: &Admission<'_>) -> Result<(), ()> {
+        self.write_started(started(admission), admission).await
     }
 
-    /// The completion of an admitted call, to fill in and write when it ends. `None` without a
-    /// sink: there is nowhere to write it, and the admission failure was already reported.
-    pub(crate) fn completion(
+    /// Writes the admission entry of a call that started at `start`. `Err` means it must not run.
+    /// Otherwise its completion, to fill in and write when the call ends; `None` without a sink:
+    /// there is nowhere to write it, and the admission failure was already reported.
+    pub(crate) async fn admit(
         self: &Arc<Self>,
         admission: &Admission<'_>,
         start: Instant,
-    ) -> Option<Completion> {
-        self.sink.as_ref()?;
-        Some(Completion {
+    ) -> Result<Option<Completion>, ()> {
+        let entry = started(admission);
+        // The completion repeats the admission entry; built only once the call may run, so a
+        // blocked call leaves no completion behind.
+        let base = self.sink.is_some().then(|| entry.clone());
+        self.write_started(entry, admission).await?;
+        Ok(base.map(|entry| Completion {
             recorder: Arc::clone(self),
-            entry: started(admission),
+            entry,
             start,
             outcome: None,
             risk: admission.risk,
             written: false,
-        })
+        }))
     }
-}
 
-/// `entry`, waiting at most `timeout`.
-async fn write(
-    sink: &dyn AuditSink,
-    entry: AuditEntry,
-    timeout: Duration,
-) -> Result<(), AuditError> {
-    match tokio::time::timeout(timeout, sink.append(entry)).await {
-        Ok(result) => result,
-        Err(_) => Err(AuditError("write timed out".into())),
+    async fn write_started(&self, entry: AuditEntry, admission: &Admission<'_>) -> Result<(), ()> {
+        let blocked = self.fails_closed(admission.principal, admission.risk);
+        let effect = || {
+            if blocked {
+                AuditFailureEffect::Blocked
+            } else {
+                AuditFailureEffect::RanUnrecorded
+            }
+        };
+        match self.write(entry, AuditEntryKind::Admission, effect).await {
+            Err(()) if blocked => Err(()),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -350,14 +348,11 @@ impl Completion {
 
 impl Recorder {
     async fn complete(&self, entry: AuditEntry) {
-        if let Err(error) = self.write(entry.clone()).await {
-            self.report(
-                AuditEntryKind::Completion,
-                AuditFailureEffect::EntryLost,
-                &entry,
-                error,
-            );
-        }
+        let _ = self
+            .write(entry, AuditEntryKind::Completion, || {
+                AuditFailureEffect::EntryLost
+            })
+            .await;
     }
 }
 
@@ -374,12 +369,14 @@ impl Drop for Completion {
             Ok(runtime) => {
                 runtime.spawn(async move { recorder.complete(entry).await });
             }
-            Err(_) => recorder.report(
-                AuditEntryKind::Completion,
-                AuditFailureEffect::EntryLost,
-                &entry,
-                AuditError("no runtime to write the completion".into()),
-            ),
+            Err(_) => recorder.reporter.report(&AuditFailure {
+                entry: AuditEntryKind::Completion,
+                effect: AuditFailureEffect::EntryLost,
+                action: entry.action.name,
+                correlation_id: entry.correlation_id,
+                error: AuditError("no runtime to write the completion".into()),
+                attempts: 1,
+            }),
         }
     }
 }

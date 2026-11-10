@@ -10,12 +10,13 @@ use std::path::{Path, PathBuf};
 use ring::rand::{SecureRandom, SystemRandom};
 use security_types::{
     Action, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest, Decision, Digest,
-    Outcome, Principal, PrincipalKind, Reason, Risk, TargetRef,
+    Outcome, Principal, PrincipalKind, Reason, Risk, TargetRef, append_within,
 };
 use serde::{Deserialize, Serialize};
 use sha2::Digest as _;
 
 use crate::audit::{AuditError, AuditSink, Clock};
+use crate::grant::DEFAULT_AUDIT_TIMEOUT;
 use crate::package::{
     PackageError, PackageLimits, PackagePolicy, TrustStore, VerifiedPackage, verify_bytes,
 };
@@ -100,7 +101,9 @@ fn parse_digest(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
-/// Records one package entry; the caller stops (fails closed) if it is not written.
+/// Records one package entry; the caller stops (fails closed) if it is not written within
+/// [`DEFAULT_AUDIT_TIMEOUT`], so a sink that hangs fails the step instead of holding it (and,
+/// for an approval, the plugin's install lock) forever.
 #[allow(clippy::too_many_arguments)] // Keep all package audit entries behind this one helper.
 async fn audit(
     installer: &Installer<'_>,
@@ -112,24 +115,24 @@ async fn audit(
     decision: AuditDecision,
     outcome: Outcome,
 ) -> Result<(), InstallError> {
-    installer
-        .audit
-        .append(AuditEntry {
-            timestamp_unix_ms: installer.clock.now_unix_ms(),
-            principal_chain: AuditPrincipal::chain_of(principal),
-            tenant: principal.tenant.clone(),
-            action: Action::new(action, PERMISSION),
-            target: Some(TargetRef::plugin(target)),
-            risk: Risk::Write,
-            decision,
-            approval_id: None,
-            outcome,
-            duration_ms: None,
-            correlation_id: correlation.to_owned(),
-            input_digest: Digest(digest),
-            statement_digest: None,
-            delivery: None,
-        })
+    let entry = AuditEntry {
+        timestamp_unix_ms: installer.clock.now_unix_ms(),
+        principal_chain: AuditPrincipal::chain_of(principal),
+        tenant: principal.tenant.clone(),
+        action: Action::new(action, PERMISSION),
+        target: Some(TargetRef::plugin(target)),
+        risk: Risk::Write,
+        decision,
+        approval_id: None,
+        outcome,
+        duration_ms: None,
+        correlation_id: correlation.to_owned(),
+        input_digest: Digest(digest),
+        statement_digest: None,
+        delivery: None,
+    };
+    let deadline = tokio::time::Instant::now() + DEFAULT_AUDIT_TIMEOUT;
+    append_within(installer.audit, entry, deadline)
         .await
         .map_err(InstallError::Audit)
 }

@@ -221,6 +221,20 @@ struct Check<'a> {
     correlation_id: &'a str,
 }
 
+/// The admission entry records exactly what was checked.
+impl<'a> From<&Check<'a>> for Admission<'a> {
+    fn from(check: &Check<'a>) -> Admission<'a> {
+        Admission {
+            principal: check.principal,
+            action: check.meta.action(),
+            target: check.target,
+            risk: check.risk,
+            input_digest: check.input_digest,
+            correlation_id: check.correlation_id,
+        }
+    }
+}
+
 impl Guard {
     /// Asks the authorizer and maps anything but `Allow` to the error the caller sees. A refusal
     /// is audited (and refused whether or not its entry is written).
@@ -287,19 +301,10 @@ impl Guard {
         self.audit.refusal(entry).await;
     }
 
-    /// Records an allowed check as `Started` before the call goes on. `Err` when it must not
-    /// go on because the entry could not be written (see [`crate::audit`]).
-    async fn admit(&self, check: &Check<'_>) -> Result<bool, ()> {
-        self.audit
-            .admit(&Admission {
-                principal: check.principal,
-                action: check.meta.action(),
-                target: check.target,
-                risk: check.risk,
-                input_digest: check.input_digest,
-                correlation_id: check.correlation_id,
-            })
-            .await
+    /// Records an allowed re-check as `Started` before the handler goes on. `Err` when it must
+    /// not go on because the entry could not be written (see [`crate::audit`]).
+    async fn recheck(&self, check: &Check<'_>) -> Result<(), ()> {
+        self.audit.recheck(&Admission::from(check)).await
     }
 }
 
@@ -435,7 +440,7 @@ impl Ctx {
             }
             return Err(rejected);
         }
-        if self.guard.admit(&check).await.is_err() {
+        if self.guard.recheck(&check).await.is_err() {
             return Err(Rejected {
                 code: Code::Unavailable,
                 approval_id: None,
@@ -584,9 +589,11 @@ impl Router {
     /// Whatever a handler returns, an `Internal` error leaves without its message and details, and
     /// an `ApprovalRequired` error without details gets the id recorded by [`Ctx::authorize`].
     ///
-    /// The call uses [`CallScope::current`] (set by the engine), or a fresh scope from the call's
-    /// `timeout_ms` when called outside the engine, with a correlation id from the shared
-    /// generator. Either way a call whose deadline has passed or whose token fired is refused
+    /// The call uses the scope the engine set for it ([`CallScope::current`]), or a scope of its
+    /// own from the call's `timeout_ms`, with a correlation id from the shared generator: outside
+    /// the engine, and for a call a handler makes to another procedure (a child of the calling
+    /// handler's scope: cancelled with it, and its deadline is never later than the caller's). Each call therefore
+    /// has its own audit entries. Either way a call whose deadline has passed or whose token fired is refused
     /// before authorization and again before the handler runs; outside the engine, interrupting
     /// a running handler is the caller's job, and the router writes the call's audit completion
     /// itself when the handler returns.
@@ -598,22 +605,26 @@ impl Router {
         let procedure = self.read().get(&call.procedure).cloned();
         let guard = Arc::clone(&self.guard);
         async move {
-            let scope = CallScope::current().unwrap_or_else(|| CallScope::new(call.timeout()));
-            let result = async {
-                let (run, ctx) = admit(guard, procedure, session, &call, false, &scope).await?;
-                match run {
-                    Run::Unary(handler) => {
-                        let approval_id = Arc::clone(&ctx.approval_id);
-                        let result = handler(ctx, call.input).await;
-                        result.map_err(|err| scrub(err, &approval_id))
+            let scope = CallScope::for_call(call.timeout());
+            // Entered, so a call the handler makes in turn gets a scope of its own (see
+            // `CallScope::for_call`).
+            let result = scope
+                .clone()
+                .enter(async {
+                    let (run, ctx) = admit(guard, procedure, session, &call, false, &scope).await?;
+                    match run {
+                        Run::Unary(handler) => {
+                            let approval_id = Arc::clone(&ctx.approval_id);
+                            let result = handler(ctx, call.input).await;
+                            result.map_err(|err| scrub(err, &approval_id))
+                        }
+                        _ => Err(ErrorPayload::new(
+                            Code::Unimplemented,
+                            "this call kind is not supported yet",
+                        )),
                     }
-                    _ => Err(ErrorPayload::new(
-                        Code::Unimplemented,
-                        "this call kind is not supported yet",
-                    )),
-                }
-            }
-            .await;
+                })
+                .await;
             ended(&scope, &result).await;
             with_correlation_id(&scope, result)
         }
@@ -630,22 +641,26 @@ impl Router {
         let procedure = self.read().get(&call.procedure).cloned();
         let guard = Arc::clone(&self.guard);
         async move {
-            let scope = CallScope::current().unwrap_or_else(|| CallScope::new(call.timeout()));
-            let result = async {
-                let (run, ctx) = admit(guard, procedure, session, &call, true, &scope).await?;
-                match run {
-                    Run::Subscription(handler) => {
-                        let approval_id = Arc::clone(&ctx.approval_id);
-                        let result = handler(ctx, call.input, events).await;
-                        result.map_err(|err| scrub(err, &approval_id))
+            let scope = CallScope::for_call(call.timeout());
+            // Entered, so a call the handler makes in turn gets a scope of its own (see
+            // `CallScope::for_call`).
+            let result = scope
+                .clone()
+                .enter(async {
+                    let (run, ctx) = admit(guard, procedure, session, &call, true, &scope).await?;
+                    match run {
+                        Run::Subscription(handler) => {
+                            let approval_id = Arc::clone(&ctx.approval_id);
+                            let result = handler(ctx, call.input, events).await;
+                            result.map_err(|err| scrub(err, &approval_id))
+                        }
+                        _ => Err(ErrorPayload::new(
+                            Code::Unimplemented,
+                            "this call kind is not supported yet",
+                        )),
                     }
-                    _ => Err(ErrorPayload::new(
-                        Code::Unimplemented,
-                        "this call kind is not supported yet",
-                    )),
-                }
-            }
-            .await;
+                })
+                .await;
             ended(&scope, &result).await;
             with_correlation_id(&scope, result)
         }
@@ -772,20 +787,12 @@ async fn admit(
     }
     // The admission entry is written before anything runs; a call that must be recorded and was
     // not does not run.
-    let admission = Admission {
-        principal: &session.principal,
-        action: meta.action(),
-        target: None,
-        risk: meta.risk,
-        input_digest: digest,
-        correlation_id: scope.correlation_id(),
-    };
-    guard
+    let completion = guard
         .audit
-        .admit(&admission)
+        .admit(&Admission::from(&check), scope.start())
         .await
         .map_err(|()| unavailable())?;
-    if let Some(completion) = guard.audit.completion(&admission, scope.start()) {
+    if let Some(completion) = completion {
         scope.set_completion(completion);
     }
     // The write may have taken until the deadline. The completion then records this error.

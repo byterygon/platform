@@ -47,6 +47,36 @@ impl fmt::Display for AuditError {
 
 impl std::error::Error for AuditError {}
 
+impl AuditError {
+    /// The error of a write that did not finish in time.
+    pub fn timed_out() -> AuditError {
+        AuditError("write timed out".into())
+    }
+}
+
+/// Appends `entry` to `sink`, giving up at `deadline` with [`AuditError::timed_out`]. Every
+/// caller that bounds a write uses this, so a hung sink fails the same way everywhere.
+#[cfg(feature = "tokio")]
+pub async fn append_within(
+    sink: &dyn AuditSink,
+    entry: AuditEntry,
+    deadline: tokio::time::Instant,
+) -> Result<(), AuditError> {
+    write_within(sink.append(entry), deadline).await
+}
+
+/// Awaits a write already started (an [`AuditSink::append`] future), giving up at `deadline`
+/// with [`AuditError::timed_out`].
+#[cfg(feature = "tokio")]
+pub async fn write_within(
+    write: impl Future<Output = Result<(), AuditError>>,
+    deadline: tokio::time::Instant,
+) -> Result<(), AuditError> {
+    tokio::time::timeout_at(deadline, write)
+        .await
+        .unwrap_or_else(|_| Err(AuditError::timed_out()))
+}
+
 /// An in-memory, hash-chained audit log. Durable storage is the audit store's job (M3); this is
 /// the reference sink and the one tests use.
 ///

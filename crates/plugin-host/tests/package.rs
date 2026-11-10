@@ -818,6 +818,104 @@ async fn dropped_stage_keeps_previous_version() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
+/// Never answers for the actions in `hang`; records everything else.
+struct HangOn {
+    hang: std::sync::Mutex<Vec<&'static str>>,
+    log: MemoryAuditLog,
+}
+
+impl HangOn {
+    fn new(hang: &[&'static str]) -> Self {
+        HangOn {
+            hang: std::sync::Mutex::new(hang.to_vec()),
+            log: MemoryAuditLog::new(),
+        }
+    }
+}
+
+impl AuditSink for HangOn {
+    fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
+        if self
+            .hang
+            .lock()
+            .unwrap()
+            .contains(&entry.action.name.as_str())
+        {
+            Box::pin(std::future::pending())
+        } else {
+            self.log.append(entry)
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn hung_audit_sink_fails_stage_closed_within_the_audit_timeout() {
+    let f = Fixture::new();
+    let trust = f.trust();
+    let policy = Fixture::policy();
+    let root = std::env::temp_dir().join("byterygon-audit-hang-stage-test");
+    let sink = HangOn::new(&["plugin-host.packages.install"]);
+    let installer = Installer {
+        root: &root,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &sink,
+        clock: &SystemClock,
+    };
+    let started = tokio::time::Instant::now();
+    let staged = installer.stage(&good(&f), &human(), "c").await;
+    assert!(
+        matches!(&staged, Err(InstallError::Audit(e)) if *e == AuditError::timed_out()),
+        "{:?}",
+        staged.err()
+    );
+    assert_eq!(started.elapsed(), plugin_host::DEFAULT_AUDIT_TIMEOUT);
+    assert!(!root.exists());
+}
+
+#[tokio::test(start_paused = true)]
+async fn hung_audit_sink_releases_the_plugin_lock_after_the_audit_timeout() {
+    let f = Fixture::new();
+    let trust = f.trust();
+    let policy = Fixture::policy();
+    let root = std::env::temp_dir().join(format!(
+        "byterygon-audit-hang-approve-test-{}",
+        hex(&sha(&good(&f)))
+    ));
+    let sink = HangOn::new(&[]);
+    let installer = Installer {
+        root: &root,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &sink,
+        clock: &SystemClock,
+    };
+    // The activation entry is written while the plugin's install lock is held.
+    let first = installer.stage(&good(&f), &human(), "c1").await.unwrap();
+    let digest = first.approval_view().package_digest;
+    *sink.hang.lock().unwrap() = vec!["plugin-host.packages.activate"];
+    let approved = first.approve_and_activate(&Allow, &human(), digest).await;
+    assert!(
+        matches!(&approved, Err(InstallError::Audit(e)) if *e == AuditError::timed_out()),
+        "{approved:?}"
+    );
+    // The lock was released: the next install of the plugin is not blocked.
+    sink.hang.lock().unwrap().clear();
+    let second = installer.stage(&good(&f), &human(), "c2").await.unwrap();
+    let digest = second.approval_view().package_digest;
+    tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        second.approve_and_activate(&Allow, &human(), digest),
+    )
+    .await
+    .expect("the plugin lock is free")
+    .unwrap();
+    assert_eq!(active_digest(&root), hex(&digest));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 #[tokio::test]
 async fn audit_failure_stops_before_stage() {
     let f = Fixture::new();
