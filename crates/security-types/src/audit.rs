@@ -148,7 +148,8 @@ pub struct AuditEntry {
     pub delivery: Option<Delivery>,
     /// The correlation id of the call whose handler made this call, for a call made from inside
     /// another call's handler (Ambidex nested calls); `None` for a top-level call and for Plugin
-    /// Host entries. Set on both entries of such a call and on its re-checks.
+    /// Host entries. Set on both entries of such a call, on its re-checks, and on its refusal
+    /// entries (at dispatch or in a re-check).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_correlation_id: Option<String>,
 }

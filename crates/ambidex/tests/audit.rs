@@ -132,6 +132,27 @@ impl AuditApi {
         Ok(())
     }
 
+    /// Re-checks on a target the policy denies.
+    #[rpc::query(perm = "audit.use", risk = Risk::Read, agent = Agent::Exposed)]
+    async fn denied_target(&self, ctx: Ctx, _input: Value) -> Result<(), RpcError> {
+        self.enter();
+        ctx.authorize(Some(&TargetRef::connection("c-denied")), Risk::Read)
+            .await?;
+        Ok(())
+    }
+
+    /// Calls the procedure named by its input through the router and returns its error code.
+    #[rpc::mutation(perm = "audit.use", risk = Risk::Write, agent = Agent::Exposed)]
+    async fn nested_to(&self, ctx: Ctx, procedure: String) -> Result<Value, RpcError> {
+        self.enter();
+        let router = self.0.router.get().expect("the router is set").clone();
+        let session = Arc::new(ctx.session().clone());
+        let result = router
+            .call(session, Call::new(&procedure, Value::Null))
+            .await;
+        Ok(json!(result.err().map(|err| err.code)))
+    }
+
     /// Requires a permission the policy does not grant.
     #[rpc::mutation(perm = "audit.secret", risk = Risk::Write, agent = Agent::Exposed)]
     async fn secret(&self, _ctx: Ctx, _input: Value) -> Result<(), RpcError> {
@@ -140,12 +161,18 @@ impl AuditApi {
     }
 }
 
-/// Grants `audit.use` at every risk; denies everything else.
+/// Grants `audit.use` at every risk, except on target `c-denied`; denies everything else.
 struct Policy;
 
 impl Authorizer for Policy {
     async fn check(&self, req: &AuthzRequest<'_>) -> Decision {
-        if req.action.perm.as_str() == "audit.use" {
+        if req.target.is_some_and(|t| t.id == "c-denied") {
+            Decision::Deny {
+                reason: Reason::Policy {
+                    message: "target denied".into(),
+                },
+            }
+        } else if req.action.perm.as_str() == "audit.use" {
             Decision::Allow
         } else {
             Decision::Deny {
@@ -1045,4 +1072,53 @@ async fn an_answer_is_delivered_once_the_transport_took_it() {
     assert_eq!(client.result(1).await, json!(1));
     let completion = completion_of(&s, "audit.read").await;
     assert_eq!(completion.delivery, Some(Delivery::Delivered));
+}
+
+#[tokio::test]
+async fn refusals_inside_a_nested_call_name_the_calling_call() {
+    let s = setup(Mode::Record);
+    // Refused at dispatch: the handler calls a procedure the policy does not grant.
+    let refused = call(&s.router, human(), "audit.nested_to", json!("audit.secret")).await;
+    assert_eq!(refused, Ok(json!(Code::PermissionDenied)));
+    // Refused in a re-check: the inner handler asks for a target the policy denies.
+    let rechecked = call(
+        &s.router,
+        human(),
+        "audit.nested_to",
+        json!("audit.denied_target"),
+    )
+    .await;
+    assert_eq!(rechecked, Ok(json!(Code::PermissionDenied)));
+
+    let outer: Vec<_> = s
+        .sink
+        .of("audit.nested_to")
+        .into_iter()
+        .filter(|e| e.outcome == Outcome::Started)
+        .map(|e| e.correlation_id)
+        .collect();
+    assert_eq!(outer.len(), 2, "{outer:?}");
+    let [secret] = &s.sink.of("audit.secret")[..] else {
+        panic!("one refusal entry for audit.secret");
+    };
+    assert!(matches!(secret.decision, AuditDecision::Deny { .. }));
+    assert_eq!(secret.parent_correlation_id.as_deref(), Some(&*outer[0]));
+    let denied: Vec<_> = s
+        .sink
+        .of("audit.denied_target")
+        .into_iter()
+        .filter(|e| matches!(e.decision, AuditDecision::Deny { .. }))
+        .collect();
+    assert_eq!(denied.len(), 1, "{denied:?}");
+    assert_eq!(denied[0].parent_correlation_id.as_deref(), Some(&*outer[1]));
+    // Every entry of the inner call names the same caller.
+    for e in s.sink.of("audit.denied_target") {
+        assert_eq!(e.parent_correlation_id.as_deref(), Some(&*outer[1]));
+    }
+
+    // A top-level refusal names no caller.
+    let top = call(&s.router, human(), "audit.secret", Value::Null).await;
+    assert_eq!(top.unwrap_err().code, Code::PermissionDenied);
+    let top = s.sink.of("audit.secret").pop().unwrap();
+    assert_eq!(top.parent_correlation_id, None);
 }
