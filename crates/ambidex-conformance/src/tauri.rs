@@ -29,7 +29,7 @@ use tauri::{App, Manager, WebviewWindow, WebviewWindowBuilder};
 use tokio::sync::mpsc;
 
 use crate::client::{Client, LocalBoxFuture, Wire};
-use crate::fixture::{Fixture, server_config};
+use crate::fixture::Fixture;
 use crate::harness::{Harness, Unsupported};
 
 /// URL of bundled content, which the capability grants the plugin to.
@@ -181,7 +181,7 @@ fn app(fixture: &Fixture, channels: Channels) -> App<MockRuntime> {
             true
         })
         .plugin(
-            Builder::new(identity, server_config(), fixture.router())
+            Builder::new(identity, fixture.server_config(), fixture.router())
                 .hub_config(HubConfig::default())
                 .build(),
         )

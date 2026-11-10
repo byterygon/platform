@@ -16,13 +16,14 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use ambidex::codegen::{self, ApiInfo};
+use ambidex::engine::WriterGate;
 use ambidex::security_types::{
     Action, ApprovalSpec, AuditDecision, AuditEntry, AuditFailure, Authorizer, AuthzRequest,
     Decision, Outcome, Principal, Reason, Risk, TargetRef,
 };
 use ambidex::{
-    Approvals, AuditError, AuditReporter, AuditSink, Code, Ctx, DomainError, EventSink, Router,
-    RpcError, ServerConfig, engine::BoxFuture, rpc,
+    Approvals, AuditError, AuditPolicy, AuditReporter, AuditSink, Code, Ctx, DomainError,
+    EventSink, Router, RpcError, ServerConfig, engine::BoxFuture, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -76,7 +77,12 @@ pub const APPROVAL_ID: &str = "approval-1";
 /// reach.
 pub const SUBSCRIPTION_BUFFER_EVENTS: usize = 8;
 
-/// The engine configuration every harness uses.
+/// How long the fixture router waits for one audit entry. Short, so a case with a hung sink
+/// sees its writes give up quickly; long enough that a working sink always answers in time.
+pub const AUDIT_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// The engine configuration every harness uses, without a writer gate (see
+/// [`Fixture::server_config`]).
 pub fn server_config() -> ServerConfig {
     let mut config = ServerConfig::new(API, SCHEMA_HASH.as_str(), SERVER_VERSION);
     config.max_frame_bytes = MAX_FRAME_BYTES;
@@ -96,6 +102,8 @@ pub enum Event {
     Cancelled(&'static str),
     /// The handler's future was dropped before it finished (after the cancel grace).
     Dropped(&'static str),
+    /// The handler is about to return normally.
+    Returned(&'static str),
 }
 
 /// What the fixture handlers did. Shared between the server (any runtime, any thread) and the
@@ -175,6 +183,9 @@ pub struct AuditLog {
     failing: Arc<AtomicBool>,
     /// While set, completion writes wait for a permit.
     held: Arc<std::sync::Mutex<Option<Arc<tokio::sync::Semaphore>>>>,
+    /// Completion writes waiting now, and the most that ever waited at once.
+    waiting: Arc<AtomicUsize>,
+    most_waiting: Arc<AtomicUsize>,
 }
 
 impl AuditLog {
@@ -211,11 +222,30 @@ impl AuditLog {
         *lock(&self.held) = Some(Arc::new(tokio::sync::Semaphore::new(0)));
     }
 
+    /// Completion writes held right now.
+    pub fn held_now(&self) -> usize {
+        self.waiting.load(Ordering::SeqCst)
+    }
+
+    /// The most completion writes that were held at once.
+    pub fn most_held(&self) -> usize {
+        self.most_waiting.load(Ordering::SeqCst)
+    }
+
     /// Lets every held and later completion write through.
     pub fn release_completions(&self) {
         if let Some(gate) = lock(&self.held).take() {
             gate.add_permits(tokio::sync::Semaphore::MAX_PERMITS);
         }
+    }
+}
+
+/// One held completion write, counted in [`AuditLog::held_now`] while it lives.
+struct Counted(Arc<AtomicUsize>);
+
+impl Drop for Counted {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -232,7 +262,13 @@ impl AuditSink for AuditLog {
             && let Some(gate) = lock(&self.held).clone()
         {
             let entries = Arc::clone(&self.entries);
+            let (waiting, most) = (Arc::clone(&self.waiting), Arc::clone(&self.most_waiting));
+            let now = waiting.fetch_add(1, Ordering::SeqCst) + 1;
+            most.fetch_max(now, Ordering::SeqCst);
+            // Counted until it is written, or until the router gives up on it.
+            let counted = Counted(waiting);
             return Box::pin(async move {
+                let _counted = counted;
                 let _permit = gate.acquire().await;
                 lock(&entries).push(entry);
                 Ok(())
@@ -277,13 +313,14 @@ pub fn completed_with(entry: &AuditEntry, code: Option<&str>) -> bool {
     entry.outcome == outcome && entry.delivery.is_some() && entry.duration_ms.is_some()
 }
 
-/// One server's fixture: the probe its handlers report to, the audit log its router writes and
-/// the sink failures it reported.
+/// One server's fixture: the probe its handlers report to, the audit log its router writes, the
+/// sink failures it reported, and the gate its connections' writers pass before each send.
 #[derive(Clone)]
 pub struct Fixture {
     pub probe: Arc<Probe>,
     pub audit: AuditLog,
     pub reports: AuditReports,
+    pub writer_gate: WriterGate,
 }
 
 impl Default for Fixture {
@@ -298,14 +335,26 @@ impl Fixture {
             probe: Arc::new(Probe::new()),
             audit: AuditLog::default(),
             reports: AuditReports::default(),
+            writer_gate: WriterGate::new(),
         }
+    }
+
+    /// [`server_config`] with this fixture's writer gate (open unless a case closes it).
+    pub fn server_config(&self) -> ServerConfig {
+        let mut config = server_config();
+        config.writer_gate = Some(self.writer_gate.clone());
+        config
     }
 
     /// The production router with the fixture API, authorizer, approval queue and audit log.
     pub fn router(&self) -> Router {
         let router = Router::with_approvals(FixtureAuthorizer, FixtureApprovals)
             .with_audit(self.audit.clone())
-            .with_audit_reporter(self.reports.clone());
+            .with_audit_reporter(self.reports.clone())
+            .with_audit_policy(AuditPolicy {
+                write_timeout: AUDIT_WRITE_TIMEOUT,
+                ..AuditPolicy::default()
+            });
         router
             .mount(FixtureApi {
                 probe: Arc::clone(&self.probe),
@@ -564,6 +613,22 @@ impl FixtureApi {
                 break;
             }
         }
+        Ok(())
+    }
+
+    /// Sends two events and returns `Ok` at once, without waiting for its token.
+    #[rpc::subscription(perm = "fixture.call", risk = Risk::Read)]
+    async fn burst(
+        &self,
+        _ctx: Ctx,
+        _input: Value,
+        events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        let mut guard = self.guard("burst");
+        events.send(&0).await?;
+        events.send(&1).await?;
+        guard.armed = false;
+        self.probe.record(Event::Returned("burst"));
         Ok(())
     }
 

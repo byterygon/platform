@@ -40,7 +40,11 @@
 //!   reason, or `ResourceExhausted` for an answer too large for a frame. It is written in the
 //!   background once the transport accepted the frame, with what that frame stands for; a frame
 //!   dropped before that (Unsubscribe, close, a send error) records `Cancelled`. The answer
-//!   never waits for the write.
+//!   never waits for the write. The writes are tracked per connection, at most
+//!   `max_concurrent_calls` owed or running at once: when none is free the connection takes no
+//!   further client frame until a completion is written, and [`Connection::closed`] resolves
+//!   only once every write ended, waiting at most the write timeout (see
+//!   [`crate::audit`]).
 //!   Handshake rejections and protocol violations (call 0) carry a correlation id from the
 //!   shared generator.
 //! - `Subscribe` starts a subscription (see [`crate::subscription`]): admitted like a `Call` (same
@@ -75,7 +79,7 @@ use tokio_util::sync::CancellationToken;
 
 use security_types::{Delivery, Principal};
 
-use crate::audit::{Armed, code_name, delivery_for};
+use crate::audit::{Armed, Completions, Room, code_name, delivery_for};
 use crate::cancel::CallScope;
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
@@ -128,6 +132,9 @@ pub struct ServerConfig {
     /// `subscription_buffer_events`. An event that does not fit ends the subscription with
     /// `ResourceExhausted`; one event up to `max_frame_bytes` always fits an empty buffer.
     pub subscription_buffer_bytes: usize,
+    /// Holds the writer before each send (tests only).
+    #[cfg(feature = "test-hooks")]
+    pub writer_gate: Option<WriterGate>,
 }
 
 impl ServerConfig {
@@ -151,6 +158,8 @@ impl ServerConfig {
             cancel_grace: Duration::from_secs(1),
             subscription_buffer_events: 64,
             subscription_buffer_bytes: 1024 * 1024,
+            #[cfg(feature = "test-hooks")]
+            writer_gate: None,
         }
     }
 
@@ -328,9 +337,10 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
     let (out, out_rx) = mpsc::channel(config.outbound_frames());
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut writer = Writer {
-        handle: tokio::spawn(write_loop(tx, out_rx)),
+        handle: tokio::spawn(write_loop(tx, out_rx, WriterHook::of(config))),
         finished: false,
     };
+    let completions = Completions::bounded(config.max_concurrent_calls as usize);
     let mut conn = ConnState {
         decoder: FrameDecoder::new(config.max_hello_bytes.min(config.max_frame_bytes)),
         hello_deadline: Instant::now() + config.hello_timeout,
@@ -349,6 +359,9 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         revoked: None,
         last_call_id: 0,
         close_by: None,
+        completions: completions.clone(),
+        room: None,
+        stalled: None,
     };
     let closed = conn.run_loop(&mut rx, &mut control, &mut writer).await;
     let close_by = conn.close_deadline();
@@ -359,23 +372,32 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
     // Dropping the state drops the queue's only sender, so the writer delivers what is queued,
     // closes the transport and exits.
     drop(conn);
-    if writer.finished {
+    let closed = if writer.finished {
         drained.await;
-        return closed;
-    }
-    let (written, ()) = tokio::join!(
-        tokio::time::timeout_at(close_by, &mut writer.handle),
-        drained
-    );
-    match written {
-        Ok(Ok(Err(err))) if matches!(closed, Closed::Transport(_)) => Closed::Transport(err.kind()),
-        Ok(_) => closed,
-        Err(_) => {
-            // The peer is not reading; dropping the sending half closes the transport.
-            writer.handle.abort();
-            closed
+        closed
+    } else {
+        let (written, ()) = tokio::join!(
+            tokio::time::timeout_at(close_by, &mut writer.handle),
+            drained
+        );
+        match written {
+            Ok(Ok(Err(err))) if matches!(closed, Closed::Transport(_)) => {
+                Closed::Transport(err.kind())
+            }
+            Ok(_) => closed,
+            Err(_) => {
+                // The peer is not reading; dropping the sending half closes the transport. Its
+                // queued answers are dropped with it, and complete as `Cancelled`.
+                writer.handle.abort();
+                let _ = (&mut writer.handle).await;
+                closed
+            }
         }
-    }
+    };
+    // Every completion of this connection is written, or reported lost, before it counts as
+    // closed: at most the write timeout after the last one started.
+    completions.close().await;
+    closed
 }
 
 struct Writer {
@@ -494,6 +516,7 @@ impl From<Vec<u8>> for Outbound {
 async fn write_loop<T: TransportTx>(
     mut tx: T,
     mut queue: mpsc::Receiver<Outbound>,
+    hook: WriterHook,
 ) -> io::Result<()> {
     while let Some(Outbound {
         bytes,
@@ -501,6 +524,7 @@ async fn write_loop<T: TransportTx>(
         completion,
     }) = queue.recv().await
     {
+        hook.before_send().await;
         // On a send error the frame did not go out: `completion` drops here, as `Cancelled`.
         tx.send(bytes).await?;
         drop(held);
@@ -511,6 +535,85 @@ async fn write_loop<T: TransportTx>(
         }
     }
     tx.close().await
+}
+
+/// What the writer does before each send: nothing, unless a test holds it
+/// ([`ServerConfig::writer_gate`], feature `test-hooks`).
+struct WriterHook {
+    #[cfg(feature = "test-hooks")]
+    gate: Option<WriterGate>,
+}
+
+impl WriterHook {
+    #[cfg_attr(not(feature = "test-hooks"), allow(unused_variables))]
+    fn of(config: &ServerConfig) -> WriterHook {
+        WriterHook {
+            #[cfg(feature = "test-hooks")]
+            gate: config.writer_gate.clone(),
+        }
+    }
+
+    async fn before_send(&self) {
+        #[cfg(feature = "test-hooks")]
+        if let Some(gate) = &self.gate {
+            gate.pass().await;
+        }
+    }
+}
+
+/// Holds a connection's writer before each send, as a transport that does not accept frames
+/// would: the frame is not handed to the transport until the gate opens, and the frames behind it
+/// stay queued. For conformance tests of what the audit records about frames that were chosen
+/// but not sent (spec Open question 26 item 11); production servers never set it.
+#[cfg(feature = "test-hooks")]
+#[derive(Debug, Clone)]
+pub struct WriterGate {
+    open: Arc<tokio::sync::watch::Sender<bool>>,
+    waiting: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[cfg(feature = "test-hooks")]
+impl Default for WriterGate {
+    fn default() -> WriterGate {
+        WriterGate {
+            open: Arc::new(tokio::sync::watch::channel(true).0),
+            waiting: Arc::default(),
+        }
+    }
+}
+
+#[cfg(feature = "test-hooks")]
+impl WriterGate {
+    /// An open gate.
+    pub fn new() -> WriterGate {
+        WriterGate::default()
+    }
+
+    /// Holds every later send until [`WriterGate::open`].
+    pub fn close(&self) {
+        self.open.send_replace(false);
+    }
+
+    pub fn open(&self) {
+        self.open.send_replace(true);
+    }
+
+    /// Writers holding a frame at the gate right now.
+    pub fn waiting(&self) -> usize {
+        self.waiting.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    async fn pass(&self) {
+        let mut open = self.open.subscribe();
+        if *open.borrow_and_update() {
+            return;
+        }
+        self.waiting
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let _ = open.wait_for(|open| *open).await;
+        self.waiting
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 /// What a call task ends with: its terminal frame, and its audit completion if it was admitted.
@@ -570,6 +673,13 @@ struct ConnState<A, D> {
     last_call_id: u32,
     /// Set when the connection starts closing; bounds delivery of the final frames.
     close_by: Option<Instant>,
+    /// The connection's audit completion writes (Open question 26 item 11), with room for
+    /// `max_concurrent_calls` completions owed or being written.
+    completions: Completions,
+    /// Room taken for the next call frame.
+    room: Option<Room>,
+    /// A call frame waiting for room in `completions`; no further client frame is read meanwhile.
+    stalled: Option<Frame>,
 }
 
 /// Control flow out of frame handling.
@@ -585,6 +695,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         // Subscription frames leave only while this many outbound slots stay free, so call
         // answers (sent without waiting) always find room while the peer reads.
         let headroom = self.inner.config.outbound_frames() / 2;
+        let completions = self.completions.clone();
         loop {
             if let Err(closed) = self.drain_frames().await {
                 return closed;
@@ -619,9 +730,19 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                         return closed;
                     }
                 }
+                // A call frame waits for room in the completion queue, and the client's frames
+                // behind it wait with it.
+                room = completions.room(), if self.stalled.is_some() => {
+                    self.room = room;
+                    if let Some(frame) = self.stalled.take()
+                        && let Err(closed) = self.on_frame(frame).await
+                    {
+                        return closed;
+                    }
+                }
                 // Client frames come before more subscription output, so a busy subscription
                 // cannot delay its own Cancel or Unsubscribe.
-                chunk = rx.recv() => match chunk {
+                chunk = rx.recv(), if self.stalled.is_none() => match chunk {
                     Ok(Some(bytes)) => self.decoder.push(&bytes),
                     Ok(None) => return Closed::PeerClosed,
                     Err(err) => return Closed::Transport(err.kind()),
@@ -641,7 +762,19 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
 
     async fn drain_frames(&mut self) -> Step {
         loop {
+            if self.stalled.is_some() {
+                return Ok(());
+            }
             match self.decoder.next_frame() {
+                Ok(Some(frame)) if self.needs_room(&frame) => match self.completions.try_room() {
+                    Some(room) => {
+                        self.room = room;
+                        self.on_frame(frame).await?;
+                    }
+                    // Backpressure: nothing more is taken from the client until a completion
+                    // is written (see `run_loop`).
+                    None => self.stalled = Some(frame),
+                },
                 Ok(Some(frame)) => self.on_frame(frame).await?,
                 Ok(None) => return Ok(()),
                 Err(err) => {
@@ -656,6 +789,15 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 }
             }
         }
+    }
+
+    /// Whether `frame` starts a call that will owe an audit completion, and so needs room in the
+    /// connection's queue first. A call over `max_concurrent_calls` is refused without one.
+    fn needs_room(&self, frame: &Frame) -> bool {
+        self.session.is_some()
+            && matches!(frame.kind, Kind::Call | Kind::Subscribe)
+            && self.room.is_none()
+            && self.in_flight.len() < self.inner.config.max_concurrent_calls as usize
     }
 
     async fn on_frame(&mut self, frame: Frame) -> Step {
@@ -847,6 +989,8 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             self.conn_token.child_token(),
             call.timeout(),
             self.correlation_id(call_id),
+            self.completions.clone(),
+            self.room.take(),
         );
         Ok(Some((call, scope)))
     }

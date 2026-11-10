@@ -32,7 +32,11 @@
 //! completion is written with that delivery only once the transport accepted the frame
 //! (`TransportTx::send` returned `Ok`), in the background, bounded by `write_timeout`; the
 //! answer never waits for it. A frame dropped before that (Unsubscribe, the connection closed,
-//! its queue discarded, a send error) completes as `Cancelled`, from the drop guard. Loss after
+//! its queue discarded, a send error) completes as `Cancelled`, from the drop guard. The writes
+//! of one connection are tracked and bounded (`Completions`): at most `max_concurrent_calls` are
+//! owed or running, the connection takes no further call frame while none is free, and closing
+//! waits for them at most the write timeout. One that is never written (stopped at close, or
+//! dropped with its runtime) is reported as `EntryLost`, like one the sink refused. Loss after
 //! the transport accepted the frame is not detected. A handler dropped before it returned has
 //! the code it was cancelled with as its outcome. Outside the engine (the MCP adapter calling the
 //! router directly), and for a call a handler makes to another procedure (which runs under a
@@ -54,6 +58,7 @@ use security_types::{
 use serde_json::Value;
 use tokio::time::Instant;
 
+use crate::cancel::CallScope;
 use crate::message::{Code, ErrorPayload};
 
 /// What the router does with a human Read call whose admission entry cannot be written.
@@ -196,7 +201,7 @@ impl Recorder {
     pub(crate) async fn admit(
         self: &Arc<Self>,
         admission: &Admission<'_>,
-        start: Instant,
+        scope: &CallScope,
     ) -> Result<Option<Completion>, ()> {
         let entry = started(admission);
         // The completion repeats the admission entry; built only once the call may run, so a
@@ -205,8 +210,10 @@ impl Recorder {
         self.write_started(entry, admission).await?;
         Ok(base.map(|entry| Completion {
             recorder: Arc::clone(self),
+            completions: scope.completions().clone(),
+            room: scope.take_room(),
             entry,
-            start,
+            start: scope.start(),
             ended: None,
             outcome: None,
             risk: admission.risk,
@@ -297,18 +304,23 @@ pub(crate) fn delivery_for(reason: Code) -> Delivery {
 
 /// The completion entry of an admitted call, waiting for the call to end.
 ///
-/// Written exactly once: by [`Completion::finish`] when a call outside the engine ends, by
-/// [`Armed::sent`] when the transport accepted an engine call's answer frame, or, if it is
-/// dropped before either (the call task was aborted, or its frame was dropped unsent), from
-/// `Drop` on a task of its own, as `Cancelled`.
+/// Written exactly once, through its [`Completions`] queue: by [`Completion::finish`] when a
+/// call outside the engine ends, by [`Armed::sent`] when the transport accepted an engine call's
+/// answer frame, or, if it is dropped before either (the call task was aborted, or its frame was
+/// dropped unsent), from `Drop`, as `Cancelled`. It holds the call's [`Room`] in the queue until
+/// its write ends.
 pub(crate) struct Completion {
     recorder: Arc<Recorder>,
+    /// Where its write runs.
+    completions: Completions,
+    room: Option<Room>,
     /// The admission entry it completes.
     entry: AuditEntry,
     start: Instant,
-    /// When the call ended, once [armed](Completion::arm): the duration ends here, not when the
-    /// frame went out.
-    ended: Option<Instant>,
+    /// When the call ended, once [armed](Completion::arm), on the monotonic clock (for the
+    /// duration) and the wall clock (for the timestamp): the entry records when the call ended,
+    /// not when its frame went out.
+    ended: Option<(Instant, u64)>,
     /// What the handler returned, once it did.
     outcome: Option<Outcome>,
     /// The highest risk the call was allowed at.
@@ -326,46 +338,51 @@ impl Completion {
     }
 
     /// The call ended and its answer frame stands for `delivery`: fixes the outcome (`reason`,
-    /// the code it was stopped with, if the handler never returned) and the duration, for a
-    /// completion written once the frame's fate is known.
+    /// the code it was stopped with, if the handler never returned), the duration and the
+    /// timestamp, for a completion written once the frame's fate is known.
     pub(crate) fn arm(mut self, delivery: Delivery, reason: Code) -> Armed {
         if self.outcome.is_none() {
             self.outcome = Some(Outcome::Error {
                 code: code_name(reason),
             });
         }
-        self.ended = Some(Instant::now());
+        self.ended = Some((Instant::now(), unix_now_ms()));
         Armed {
             completion: self,
             delivery,
         }
     }
 
-    /// Writes the completion, for a call that ended with `delivery`. `reason` is the code the
-    /// call was cancelled with, used as the outcome if the handler never returned.
-    pub(crate) async fn finish(mut self, delivery: Delivery, reason: Code) {
-        self.written = true;
-        let entry = self.entry(delivery, reason);
-        let recorder = Arc::clone(&self.recorder);
-        let task = async move { recorder.complete(entry).await };
-        // Its own task, so the write survives the call task being aborted (a connection that
-        // closes drops its calls after the grace period). It is bounded by the write timeout.
-        match tokio::runtime::Handle::try_current() {
-            Ok(runtime) => {
-                let _ = runtime.spawn(task).await;
-            }
-            Err(_) => task.await,
+    /// Writes the completion of a call outside the engine, which ended with `delivery`, and
+    /// waits for the write. `reason` is the code the call was stopped with, the outcome if the
+    /// handler never returned.
+    pub(crate) async fn finish(self, delivery: Delivery, reason: Code) {
+        if let Some(write) = self.arm(delivery, reason).sent() {
+            // The write is its own tracked task, so it survives this future being dropped.
+            let _ = write.await;
         }
     }
 
-    fn entry(&self, delivery: Delivery, reason: Code) -> AuditEntry {
+    /// Hands the entry to the queue, with the delivery the client got.
+    fn write(&mut self, delivery: Delivery) -> Option<tokio::task::JoinHandle<()>> {
+        self.written = true;
+        let entry = self.entry(delivery);
+        self.completions
+            .spawn(&self.recorder, entry, self.room.take())
+    }
+
+    fn entry(&self, delivery: Delivery) -> AuditEntry {
+        // Only a completion dropped before it was armed has no outcome: its call never ended
+        // normally.
         let outcome = self.outcome.clone().unwrap_or_else(|| Outcome::Error {
-            code: code_name(reason),
+            code: code_name(Code::Cancelled),
         });
-        let end = self.ended.unwrap_or_else(Instant::now);
+        let (end, timestamp) = self
+            .ended
+            .unwrap_or_else(|| (Instant::now(), unix_now_ms()));
         let duration = end.saturating_duration_since(self.start);
         AuditEntry {
-            timestamp_unix_ms: unix_now_ms(),
+            timestamp_unix_ms: timestamp,
             target: None,
             risk: self.risk,
             outcome,
@@ -384,16 +401,25 @@ impl Recorder {
             })
             .await;
     }
+
+    fn report_lost(&self, action: String, correlation_id: String, why: &str) {
+        self.reporter.report(&AuditFailure {
+            entry: AuditEntryKind::Completion,
+            effect: AuditFailureEffect::EntryLost,
+            action,
+            correlation_id,
+            error: AuditError(why.into()),
+            attempts: 1,
+        });
+    }
 }
 
 impl Drop for Completion {
     fn drop(&mut self) {
-        if self.written {
-            return;
+        if !self.written {
+            // The call, or its answer frame, was dropped before the client got it.
+            let _ = self.write(Delivery::Cancelled);
         }
-        // The call, or its answer frame, was dropped before the client got it.
-        let entry = self.entry(Delivery::Cancelled, Code::Cancelled);
-        spawn_complete(&self.recorder, entry);
     }
 }
 
@@ -406,34 +432,236 @@ pub(crate) struct Armed {
 }
 
 impl Armed {
-    /// The transport accepted the frame: writes the completion with its delivery, on a task of
-    /// its own, so the connection's writer never waits on the sink.
-    pub(crate) fn sent(self) {
+    /// The transport accepted the frame: writes the completion with its delivery, on a tracked
+    /// task, so the connection's writer never waits on the sink. The handle is for a caller that
+    /// does wait ([`Completion::finish`]); `None` when there was no runtime to write it on (it
+    /// was reported lost).
+    pub(crate) fn sent(self) -> Option<tokio::task::JoinHandle<()>> {
         let Armed {
             mut completion,
             delivery,
         } = self;
-        completion.written = true;
-        let entry = completion.entry(delivery, Code::Cancelled);
-        spawn_complete(&completion.recorder, entry);
+        completion.write(delivery)
     }
 }
 
-/// Writes `entry` on a task of its own (bounded by the write timeout), or reports it lost when
-/// there is no runtime to write it on.
-fn spawn_complete(recorder: &Arc<Recorder>, entry: AuditEntry) {
-    match tokio::runtime::Handle::try_current() {
-        Ok(runtime) => {
-            let recorder = Arc::clone(recorder);
-            runtime.spawn(async move { recorder.complete(entry).await });
-        }
-        Err(_) => recorder.reporter.report(&AuditFailure {
-            entry: AuditEntryKind::Completion,
-            effect: AuditFailureEffect::EntryLost,
-            action: entry.action.name,
-            correlation_id: entry.correlation_id,
-            error: AuditError("no runtime to write the completion".into()),
-            attempts: 1,
-        }),
+/// A call's place in its connection's [`Completions`]: taken by the engine before it takes the
+/// call's frame, held by the call's completion until that is written.
+pub(crate) struct Room(#[allow(dead_code)] tokio::sync::OwnedSemaphorePermit);
+
+/// The completion writes of one connection, or of calls outside the engine (Open question 26
+/// item 11).
+///
+/// - **Tracked.** Every write runs on a task the queue knows about. [`Completions::close`]
+///   waits for them, at most the longest write timeout, then aborts the rest. A write that ends
+///   without being written (aborted, or dropped with its runtime) is reported as `EntryLost`,
+///   and one that fails is reported by the recorder, so no completion disappears unreported.
+/// - **Bounded** (the engine's queue). A call takes a [`Room`] before the engine takes its
+///   frame and keeps it until its completion is written, so at most `bound` completions are
+///   owed or being written. When none is free the engine stops taking call frames: a slow sink
+///   slows down new calls, not the answers already chosen.
+#[derive(Clone)]
+pub(crate) struct Completions {
+    inner: Arc<CompletionsInner>,
+}
+
+struct CompletionsInner {
+    /// `None` outside the engine: those calls are bounded by their callers.
+    rooms: Option<Arc<tokio::sync::Semaphore>>,
+    tracked: std::sync::Mutex<Tracked>,
+    idle: tokio::sync::Notify,
+}
+
+#[derive(Default)]
+struct Tracked {
+    next: u64,
+    /// Running writes, by id; the handle is set right after the task is spawned.
+    running: std::collections::HashMap<u64, Option<tokio::task::AbortHandle>>,
+    /// When the last write started so far must have ended (its start plus its write timeout).
+    latest: Option<Instant>,
+}
+
+impl Completions {
+    /// A queue with room for `bound` completions at a time (at least one).
+    pub(crate) fn bounded(bound: usize) -> Completions {
+        Completions::build(Some(Arc::new(tokio::sync::Semaphore::new(bound.max(1)))))
     }
+
+    /// A queue without a bound, for calls outside the engine.
+    pub(crate) fn unbounded() -> Completions {
+        Completions::build(None)
+    }
+
+    fn build(rooms: Option<Arc<tokio::sync::Semaphore>>) -> Completions {
+        Completions {
+            inner: Arc::new(CompletionsInner {
+                rooms,
+                tracked: std::sync::Mutex::new(Tracked::default()),
+                idle: tokio::sync::Notify::new(),
+            }),
+        }
+    }
+
+    /// Room for one more call, if there is some now (always, without a bound).
+    pub(crate) fn try_room(&self) -> Option<Option<Room>> {
+        match &self.inner.rooms {
+            None => Some(None),
+            Some(rooms) => Arc::clone(rooms)
+                .try_acquire_owned()
+                .ok()
+                .map(|permit| Some(Room(permit))),
+        }
+    }
+
+    /// Waits for room for one more call.
+    pub(crate) async fn room(&self) -> Option<Room> {
+        let rooms = Arc::clone(self.inner.rooms.as_ref()?);
+        // The semaphore is never closed.
+        rooms.acquire_owned().await.ok().map(Room)
+    }
+
+    /// Writes `entry` on a tracked task, which holds `room` until it ends. Without a runtime the
+    /// entry is reported lost.
+    fn spawn(
+        &self,
+        recorder: &Arc<Recorder>,
+        entry: AuditEntry,
+        room: Option<Room>,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            recorder.report_lost(
+                entry.action.name,
+                entry.correlation_id,
+                "no runtime to write the completion",
+            );
+            return None;
+        };
+        let id = {
+            let mut tracked = lock(&self.inner.tracked);
+            let id = tracked.next;
+            tracked.next += 1;
+            tracked.running.insert(id, None);
+            let ends = Instant::now() + recorder.policy.write_timeout;
+            tracked.latest = Some(tracked.latest.map_or(ends, |latest| latest.max(ends)));
+            id
+        };
+        let mut write = Write {
+            completions: self.clone(),
+            id,
+            recorder: Arc::clone(recorder),
+            action: entry.action.name.clone(),
+            correlation_id: entry.correlation_id.clone(),
+            done: false,
+            _room: room,
+        };
+        let handle = runtime.spawn(async move {
+            write.recorder.complete(entry).await;
+            write.finished();
+        });
+        if let Some(slot) = lock(&self.inner.tracked).running.get_mut(&id) {
+            *slot = Some(handle.abort_handle());
+        }
+        Some(handle)
+    }
+
+    /// Writes running now.
+    pub(crate) fn outstanding(&self) -> usize {
+        lock(&self.inner.tracked).running.len()
+    }
+
+    /// Waits until every write has ended, at most until the last one's write timeout has
+    /// passed; then aborts the rest, which reports them lost.
+    pub(crate) async fn close(&self) {
+        let deadline = lock(&self.inner.tracked).latest;
+        let all_ended = async {
+            loop {
+                let idle = self.inner.idle.notified();
+                let mut idle = std::pin::pin!(idle);
+                idle.as_mut().enable();
+                if self.outstanding() == 0 {
+                    return;
+                }
+                idle.await;
+            }
+        };
+        let mut all_ended = std::pin::pin!(all_ended);
+        let mut deadline = deadline;
+        // A write started while waiting (a drop guard) moves the deadline on.
+        loop {
+            let Some(until) = deadline else {
+                return;
+            };
+            if tokio::time::timeout_at(until, all_ended.as_mut())
+                .await
+                .is_ok()
+            {
+                return;
+            }
+            let latest = lock(&self.inner.tracked).latest;
+            if latest == deadline {
+                break;
+            }
+            deadline = latest;
+        }
+        let stuck: Vec<_> = lock(&self.inner.tracked)
+            .running
+            .values()
+            .flatten()
+            .cloned()
+            .collect();
+        for task in stuck {
+            task.abort();
+        }
+        // Aborted tasks end at their next poll; their guards report them.
+        let _ = tokio::time::timeout(ABORT_GRACE, async {
+            while self.outstanding() > 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
+    }
+}
+
+/// How long [`Completions::close`] lets aborted writes take to stop and report.
+const ABORT_GRACE: Duration = Duration::from_millis(100);
+
+/// One completion write in flight. Dropped before it was done (aborted, or with its runtime), it
+/// reports the entry lost.
+struct Write {
+    completions: Completions,
+    id: u64,
+    recorder: Arc<Recorder>,
+    action: String,
+    correlation_id: String,
+    done: bool,
+    _room: Option<Room>,
+}
+
+impl Write {
+    /// The recorder wrote the entry, or reported why it could not.
+    fn finished(&mut self) {
+        self.done = true;
+    }
+}
+
+impl Drop for Write {
+    fn drop(&mut self) {
+        if !self.done {
+            self.recorder.report_lost(
+                std::mem::take(&mut self.action),
+                std::mem::take(&mut self.correlation_id),
+                "the completion write was stopped before it finished",
+            );
+        }
+        let inner = &self.completions.inner;
+        let mut tracked = lock(&inner.tracked);
+        tracked.running.remove(&self.id);
+        if tracked.running.is_empty() {
+            inner.idle.notify_waiters();
+        }
+    }
+}
+
+fn lock<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }

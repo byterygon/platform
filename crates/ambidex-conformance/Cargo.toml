@@ -41,7 +41,7 @@ path = "src/bin/conformance-server.rs"
 required-features = ["ws"]
 
 [dependencies]
-ambidex = { path = "../ambidex" }
+ambidex = { path = "../ambidex", features = ["test-hooks"] }
 schemars = { version = "1.2.3", default-features = false, features = ["derive"] }
 security-types = { path = "../security-types" }
 serde = { version = "1.0.229", features = ["derive"] }

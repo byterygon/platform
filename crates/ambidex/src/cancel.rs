@@ -40,7 +40,7 @@ use tokio::sync::Notify;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::audit::Completion;
+use crate::audit::{Completion, Completions, Room};
 use crate::message::{Code, ErrorPayload};
 use crate::procedure::{DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX};
 
@@ -72,6 +72,12 @@ struct Inner {
     parent: Option<CallScope>,
     /// The audit completion the router registered after the admission entry, until written.
     completion: Mutex<Option<Completion>>,
+    /// Where the call's completion is written: the connection's queue in the engine (shared by
+    /// a call a handler makes), a queue of its own outside it.
+    completions: Completions,
+    /// The call's room in the engine's queue, until its completion takes it (see
+    /// [`Completions`]).
+    room: Mutex<Option<Room>>,
     start: Instant,
     requested: Option<Duration>,
     deadline: Mutex<Instant>,
@@ -94,6 +100,7 @@ impl CallScope {
             correlation_id,
             false,
             None,
+            (Completions::unbounded(), None),
         )
     }
 
@@ -122,16 +129,29 @@ impl CallScope {
             correlation_id,
             false,
             Some(self.clone()),
+            // Its completion is written on the connection's queue, so the connection waits for
+            // it too; the calling handler awaits it, so it takes no room of its own.
+            (self.inner.completions.clone(), None),
         )
     }
 
-    /// The engine's scope for one call.
+    /// The engine's scope for one call, with the connection's completion queue and the call's
+    /// room in it.
     pub(crate) fn with_token(
         token: CancellationToken,
         requested: Option<Duration>,
         correlation_id: String,
+        completions: Completions,
+        room: Option<Room>,
     ) -> CallScope {
-        CallScope::build(token, requested, correlation_id, true, None)
+        CallScope::build(
+            token,
+            requested,
+            correlation_id,
+            true,
+            None,
+            (completions, room),
+        )
     }
 
     fn build(
@@ -140,6 +160,7 @@ impl CallScope {
         correlation_id: String,
         managed: bool,
         parent: Option<CallScope>,
+        (completions, room): (Completions, Option<Room>),
     ) -> CallScope {
         let start = Instant::now();
         CallScope {
@@ -152,6 +173,8 @@ impl CallScope {
                 claimed: AtomicBool::new(!managed),
                 parent,
                 completion: Mutex::new(None),
+                completions,
+                room: Mutex::new(room),
                 start,
                 requested,
                 deadline: Mutex::new(
@@ -190,6 +213,15 @@ impl CallScope {
     /// When the call started: the engine read its frame, or [`CallScope::new`] ran.
     pub(crate) fn start(&self) -> Instant {
         self.inner.start
+    }
+
+    pub(crate) fn completions(&self) -> &Completions {
+        &self.inner.completions
+    }
+
+    /// The call's room in the engine's completion queue, for its completion to hold.
+    pub(crate) fn take_room(&self) -> Option<Room> {
+        lock(&self.inner.room).take()
     }
 
     pub(crate) fn is_managed(&self) -> bool {
@@ -381,7 +413,13 @@ mod tests {
     #[test]
     fn parent_cancel_reads_as_cancelled() {
         let parent = CancellationToken::new();
-        let scope = CallScope::with_token(parent.child_token(), None, String::new());
+        let scope = CallScope::with_token(
+            parent.child_token(),
+            None,
+            String::new(),
+            Completions::unbounded(),
+            None,
+        );
         parent.cancel();
         assert_eq!(scope.reason(), Some(Code::Cancelled));
     }
@@ -398,7 +436,13 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_call_inside_a_call_gets_a_child_scope() {
-        let outer = CallScope::with_token(CancellationToken::new(), None, "c-1".into());
+        let outer = CallScope::with_token(
+            CancellationToken::new(),
+            None,
+            "c-1".into(),
+            Completions::unbounded(),
+            None,
+        );
         outer.apply_timeouts(Duration::from_secs(10), Duration::from_secs(10));
         outer
             .clone()

@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:588b7e38d80d0b948e7d19f15f81c011756274f4e42d1e667df9773579977dc4";
+export const SCHEMA_HASH = "sha256:1baf57831b31b59cb7bcb819806b4f12b5e90707a97d9532009ea9098496421d";
 
 // ---- Types
 
@@ -111,6 +111,7 @@ export interface ProcedureDef<
 export interface Procedures {
   readonly "fixture.approval": ProcedureDef<"mutation", JsonValue, null, never>;
   readonly "fixture.big": ProcedureDef<"query", number, string, never>;
+  readonly "fixture.burst": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.capped": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.counter": ProcedureDef<"subscription", CounterInput, number, FixtureError>;
   readonly "fixture.echo": ProcedureDef<"query", JsonValue, JsonValue, never>;
@@ -133,6 +134,7 @@ export interface Api {
   readonly fixture: {
     readonly approval: Procedures["fixture.approval"];
     readonly big: Procedures["fixture.big"];
+    readonly burst: Procedures["fixture.burst"];
     readonly capped: Procedures["fixture.capped"];
     readonly counter: Procedures["fixture.counter"];
     readonly echo: Procedures["fixture.echo"];
@@ -167,6 +169,16 @@ export const procedures: Api = {
     big: {
       name: "fixture.big",
       kind: "query",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    burst: {
+      name: "fixture.burst",
+      kind: "subscription",
       perm: "fixture.call",
       risk: "Read",
       agent: "hidden",

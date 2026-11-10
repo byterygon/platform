@@ -11,6 +11,11 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# `ServerConfig::writer_gate`, which conformance tests use to hold a connection's writer. Never
+# enabled by products.
+test-hooks = []
+
 [dependencies]
 ambidex-macros = { path = "../ambidex-macros" }
 getrandom = "0.4.3"

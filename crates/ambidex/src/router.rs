@@ -796,7 +796,7 @@ async fn admit(
     // not does not run.
     let completion = guard
         .audit
-        .admit(&Admission::from(&check), scope.start())
+        .admit(&Admission::from(&check), scope)
         .await
         .map_err(|()| unavailable())?;
     if let Some(completion) = completion {
