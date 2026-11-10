@@ -98,11 +98,16 @@ pub use broker::{
 pub use contract::ContractBroker;
 pub use grant::{
     ConnectionGrant, DEFAULT_AUDIT_TIMEOUT, DriverKind, Eligibility, GRANT_CREATE_DIGEST_DOMAIN,
-    GrantError, GrantId, GrantRequest, GrantStore, Host, InstalledPlugin, PluginBinding,
-    SecretBinding, ServerTrust, TlsMode, TlsPolicy, TlsSettings, grant_create_digest,
+    GrantError, GrantId, GrantRequest, GrantStore, GrantSwitch, Host, InstalledPlugin,
+    PluginBinding, SecretBinding, ServerTrust, TlsMode, TlsPolicy, TlsSettings,
+    grant_create_digest,
 };
-pub use manifest::{Manifest, ManifestError, NetworkTemplate, TlsRequirement};
+pub use manifest::{
+    CapabilityKind, Manifest, ManifestError, NetworkTemplate, PermissionDelta, PermissionDiff,
+    TlsRequirement,
+};
 pub use net::{AddressPolicy, IpNet, Resolver, SystemResolver};
+pub use package::{LimitField, LimitsError, PackageLimits, PackageLimitsConfig};
 
 use security_types::Digest;
 use sha2::{Digest as _, Sha256};

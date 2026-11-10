@@ -17,8 +17,55 @@ use crate::manifest::{Manifest, ManifestError, PackageKind};
 /// Versioned domain. The terminating NUL separates it from the following field.
 pub const PACKAGE_DOMAIN: &[u8] = b"byterygon.plugin-host.package.v1\0";
 
-/// Conservative, provisional archive limits (Plugin Host spec, question 37).
-#[derive(Debug, Clone, Copy)]
+const KIB: u64 = 1024;
+const MIB: u64 = 1024 * KIB;
+
+/// `.bplugin` archive limits (Plugin Host spec, question 37, decided 2026-11-05).
+///
+/// [`PackageLimits::DEFAULT`] holds the fail-closed defaults. An administrator may raise any
+/// limit through host configuration ([`PackageLimitsConfig`]), but never above
+/// [`PackageLimits::HARD_CEILING`], which is compiled in; configuration below
+/// [`PackageLimits::MINIMUM`] is rejected as well.
+///
+/// All byte limits are enforced on the bytes actually streamed out of the decompressor, not on
+/// the sizes the ZIP headers claim. [`verify`] also clamps every field to the hard ceiling, so a
+/// value built directly in code (bypassing [`PackageLimitsConfig::load`]) cannot exceed it.
+///
+/// # Hard ceilings
+///
+/// | Limit | Default | Ceiling | Minimum |
+/// | --- | --- | --- | --- |
+/// | archive (`max_archive_bytes`) | 72 MiB | 1 GiB | 64 KiB |
+/// | entries (`max_entries`) | 256 | 4096 | 5 |
+/// | payload entry (`max_entry_bytes`) | 32 MiB | 512 MiB | 4 KiB |
+/// | total uncompressed (`max_total_bytes`) | 64 MiB | 1 GiB | 64 KiB |
+/// | metadata entry (`max_metadata_bytes`) | 1 MiB | 16 MiB | 4 KiB |
+/// | `plugin.toml` (`max_manifest_bytes`) | 64 KiB | 256 KiB | 1 KiB |
+/// | compression ratio (`max_compression_ratio`) | 100:1 | 1000:1 | 2:1 |
+///
+/// Reasoning:
+///
+/// - **Payload entry, 512 MiB.** The ceiling exists for sidecars, whose single native binary is
+///   the largest file a package carries. Self-contained database tools (static Rust or Go
+///   binaries, native images with an embedded runtime) are typically 30–300 MiB; 512 MiB leaves
+///   room above that while staying far below the 4 GiB that a non-ZIP64 entry can describe.
+/// - **Total and archive, 1 GiB.** Room for a ceiling-sized binary plus its shared libraries and
+///   resources. Verification keeps the archive and the decompressed files in memory until
+///   approval, so the worst case at the ceilings is about 2 GiB of host memory; that is why the
+///   ceiling is not higher. The ZIP reader does not accept ZIP64, which caps archives at 4 GiB
+///   anyway.
+/// - **Entries, 4096.** A sidecar with bundled libraries and data files can need more than 256
+///   files; the count bounds the ZIP name index and per-entry work.
+/// - **Metadata, 16 MiB; manifest, 256 KiB.** An SPDX SBOM of a sidecar with many dependencies
+///   can reach several MiB. `plugin.toml` is a short, hand-written file and needs little room.
+/// - **Compression ratio, 1000:1.** The total limit already bounds a decompression bomb; the
+///   ratio only stops it early. Text resources can compress beyond 100:1.
+/// - **Minimums.** The smallest values for which a well-formed package (four metadata files and
+///   one payload entry) can still be admitted; anything lower is a configuration mistake.
+///
+/// Consistency is checked too: a payload entry, a metadata entry and the manifest must each fit
+/// in the total, and the manifest in a metadata entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PackageLimits {
     /// Maximum bytes in the ZIP archive itself.
     pub max_archive_bytes: u64,
@@ -30,22 +77,280 @@ pub struct PackageLimits {
     pub max_total_bytes: u64,
     /// Maximum decompressed bytes in a metadata file.
     pub max_metadata_bytes: u64,
+    /// Maximum decompressed bytes in `plugin.toml` (also bounded by `max_metadata_bytes`).
+    pub max_manifest_bytes: u64,
     /// Maximum uncompressed to compressed ratio (zero-byte entries excepted).
     pub max_compression_ratio: u64,
 }
 
-impl Default for PackageLimits {
-    fn default() -> Self {
+impl PackageLimits {
+    /// The defaults decided for question 37.
+    pub const DEFAULT: Self = Self {
+        max_archive_bytes: 72 * MIB,
+        max_entries: 256,
+        max_entry_bytes: 32 * MIB,
+        max_total_bytes: 64 * MIB,
+        max_metadata_bytes: MIB,
+        max_manifest_bytes: crate::manifest::MAX_MANIFEST_BYTES as u64,
+        max_compression_ratio: 100,
+    };
+
+    /// Compiled-in upper bounds. Configuration can never exceed them.
+    pub const HARD_CEILING: Self = Self {
+        max_archive_bytes: 1024 * MIB,
+        max_entries: 4096,
+        max_entry_bytes: 512 * MIB,
+        max_total_bytes: 1024 * MIB,
+        max_metadata_bytes: 16 * MIB,
+        max_manifest_bytes: 256 * KIB,
+        max_compression_ratio: 1000,
+    };
+
+    /// Lower bounds for configured values.
+    pub const MINIMUM: Self = Self {
+        max_archive_bytes: 64 * KIB,
+        max_entries: 5,
+        max_entry_bytes: 4 * KIB,
+        max_total_bytes: 64 * KIB,
+        max_metadata_bytes: 4 * KIB,
+        max_manifest_bytes: KIB,
+        max_compression_ratio: 2,
+    };
+
+    /// Check every field against [`MINIMUM`](Self::MINIMUM), [`HARD_CEILING`](Self::HARD_CEILING)
+    /// and the consistency rules.
+    pub fn validate(&self) -> Result<(), LimitsError> {
+        let (min, max) = (Self::MINIMUM, Self::HARD_CEILING);
+        let fields = [
+            (
+                LimitField::ArchiveBytes,
+                self.max_archive_bytes,
+                min.max_archive_bytes,
+                max.max_archive_bytes,
+            ),
+            (
+                LimitField::Entries,
+                self.max_entries as u64,
+                min.max_entries as u64,
+                max.max_entries as u64,
+            ),
+            (
+                LimitField::EntryBytes,
+                self.max_entry_bytes,
+                min.max_entry_bytes,
+                max.max_entry_bytes,
+            ),
+            (
+                LimitField::TotalBytes,
+                self.max_total_bytes,
+                min.max_total_bytes,
+                max.max_total_bytes,
+            ),
+            (
+                LimitField::MetadataBytes,
+                self.max_metadata_bytes,
+                min.max_metadata_bytes,
+                max.max_metadata_bytes,
+            ),
+            (
+                LimitField::ManifestBytes,
+                self.max_manifest_bytes,
+                min.max_manifest_bytes,
+                max.max_manifest_bytes,
+            ),
+            (
+                LimitField::CompressionRatio,
+                self.max_compression_ratio,
+                min.max_compression_ratio,
+                max.max_compression_ratio,
+            ),
+        ];
+        for (field, value, minimum, ceiling) in fields {
+            if value > ceiling {
+                return Err(LimitsError::AboveCeiling {
+                    field,
+                    value,
+                    ceiling,
+                });
+            }
+            if value < minimum {
+                return Err(LimitsError::BelowMinimum {
+                    field,
+                    value,
+                    minimum,
+                });
+            }
+        }
+        for (field, value, within, bound) in [
+            (
+                LimitField::EntryBytes,
+                self.max_entry_bytes,
+                LimitField::TotalBytes,
+                self.max_total_bytes,
+            ),
+            (
+                LimitField::MetadataBytes,
+                self.max_metadata_bytes,
+                LimitField::TotalBytes,
+                self.max_total_bytes,
+            ),
+            (
+                LimitField::ManifestBytes,
+                self.max_manifest_bytes,
+                LimitField::MetadataBytes,
+                self.max_metadata_bytes,
+            ),
+        ] {
+            if value > bound {
+                return Err(LimitsError::Inconsistent { field, within });
+            }
+        }
+        Ok(())
+    }
+
+    /// Each field clamped to the hard ceiling. Lower values (including ones below
+    /// [`MINIMUM`](Self::MINIMUM), which only configuration rejects) are kept.
+    fn clamped(self) -> Self {
+        let c = Self::HARD_CEILING;
         Self {
-            max_archive_bytes: 72 * 1024 * 1024,
-            max_entries: 256,
-            max_entry_bytes: 32 * 1024 * 1024,
-            max_total_bytes: 64 * 1024 * 1024,
-            max_metadata_bytes: 1024 * 1024,
-            max_compression_ratio: 100,
+            max_archive_bytes: self.max_archive_bytes.min(c.max_archive_bytes),
+            max_entries: self.max_entries.min(c.max_entries),
+            max_entry_bytes: self.max_entry_bytes.min(c.max_entry_bytes),
+            max_total_bytes: self.max_total_bytes.min(c.max_total_bytes),
+            max_metadata_bytes: self.max_metadata_bytes.min(c.max_metadata_bytes),
+            max_manifest_bytes: self.max_manifest_bytes.min(c.max_manifest_bytes),
+            max_compression_ratio: self.max_compression_ratio.min(c.max_compression_ratio),
         }
     }
 }
+
+impl Default for PackageLimits {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// The package limits section of the host configuration. Every field is optional; an omitted
+/// field keeps its [`PackageLimits::DEFAULT`]. Unknown fields are rejected.
+///
+/// ```toml
+/// [packages.limits]
+/// max_entry_bytes = 268435456  # 256 MiB sidecar binary
+/// max_total_bytes = 402653184
+/// max_archive_bytes = 402653184
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PackageLimitsConfig {
+    pub max_archive_bytes: Option<u64>,
+    pub max_entries: Option<usize>,
+    pub max_entry_bytes: Option<u64>,
+    pub max_total_bytes: Option<u64>,
+    pub max_metadata_bytes: Option<u64>,
+    pub max_manifest_bytes: Option<u64>,
+    pub max_compression_ratio: Option<u64>,
+}
+
+impl PackageLimitsConfig {
+    /// Resolve the configuration into limits, rejecting any value above the hard ceiling, below
+    /// the minimum, or inconsistent with the others. Call this when the host configuration is
+    /// loaded, so a bad value stops startup instead of surfacing at the first install.
+    pub fn load(self) -> Result<PackageLimits, LimitsError> {
+        let d = PackageLimits::DEFAULT;
+        let limits = PackageLimits {
+            max_archive_bytes: self.max_archive_bytes.unwrap_or(d.max_archive_bytes),
+            max_entries: self.max_entries.unwrap_or(d.max_entries),
+            max_entry_bytes: self.max_entry_bytes.unwrap_or(d.max_entry_bytes),
+            max_total_bytes: self.max_total_bytes.unwrap_or(d.max_total_bytes),
+            max_metadata_bytes: self.max_metadata_bytes.unwrap_or(d.max_metadata_bytes),
+            max_manifest_bytes: self.max_manifest_bytes.unwrap_or(d.max_manifest_bytes),
+            max_compression_ratio: self
+                .max_compression_ratio
+                .unwrap_or(d.max_compression_ratio),
+        };
+        limits.validate()?;
+        Ok(limits)
+    }
+}
+
+/// A [`PackageLimits`] field, as named in [`PackageLimitsConfig`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LimitField {
+    ArchiveBytes,
+    Entries,
+    EntryBytes,
+    TotalBytes,
+    MetadataBytes,
+    ManifestBytes,
+    CompressionRatio,
+}
+
+impl LimitField {
+    pub fn config_key(self) -> &'static str {
+        match self {
+            LimitField::ArchiveBytes => "max_archive_bytes",
+            LimitField::Entries => "max_entries",
+            LimitField::EntryBytes => "max_entry_bytes",
+            LimitField::TotalBytes => "max_total_bytes",
+            LimitField::MetadataBytes => "max_metadata_bytes",
+            LimitField::ManifestBytes => "max_manifest_bytes",
+            LimitField::CompressionRatio => "max_compression_ratio",
+        }
+    }
+}
+
+/// Why configured package limits were rejected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LimitsError {
+    AboveCeiling {
+        field: LimitField,
+        value: u64,
+        ceiling: u64,
+    },
+    BelowMinimum {
+        field: LimitField,
+        value: u64,
+        minimum: u64,
+    },
+    /// `field` is larger than `within`, which must contain it.
+    Inconsistent {
+        field: LimitField,
+        within: LimitField,
+    },
+}
+
+impl fmt::Display for LimitsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LimitsError::AboveCeiling {
+                field,
+                value,
+                ceiling,
+            } => write!(
+                f,
+                "package limit {} = {value} exceeds the hard ceiling {ceiling}",
+                field.config_key()
+            ),
+            LimitsError::BelowMinimum {
+                field,
+                value,
+                minimum,
+            } => write!(
+                f,
+                "package limit {} = {value} is below the minimum {minimum}",
+                field.config_key()
+            ),
+            LimitsError::Inconsistent { field, within } => write!(
+                f,
+                "package limit {} must not exceed {}",
+                field.config_key(),
+                within.config_key()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LimitsError {}
 
 /// A public key pinned locally by an administrator. Package bytes never supply a key.
 #[derive(Debug, Clone, Deserialize)]
@@ -384,7 +689,7 @@ fn read_archive<R: Read + Seek>(
             limits.max_entry_bytes
         } else {
             limits.max_metadata_bytes.min(if name == "plugin.toml" {
-                crate::manifest::MAX_MANIFEST_BYTES as u64
+                limits.max_manifest_bytes
             } else {
                 u64::MAX
             })
@@ -457,6 +762,7 @@ pub fn verify<R: Read + Seek>(
     trust: &TrustStore,
     policy: &PackagePolicy,
 ) -> Result<VerifiedPackage, PackageError> {
+    let limits = limits.clamped();
     let len = reader
         .seek(SeekFrom::End(0))
         .map_err(|_| PackageError::Archive)?;
@@ -540,8 +846,11 @@ pub fn verify<R: Read + Seek>(
     }
     let manifest_text =
         std::str::from_utf8(&files["plugin.toml"]).map_err(|_| PackageError::Manifest)?;
-    let manifest =
-        Manifest::from_toml(manifest_text).map_err(|_e: ManifestError| PackageError::Manifest)?;
+    let manifest = Manifest::from_toml_limited(
+        manifest_text,
+        usize::try_from(limits.max_manifest_bytes).unwrap_or(usize::MAX),
+    )
+    .map_err(|_e: ManifestError| PackageError::Manifest)?;
     if manifest.publisher != publisher {
         return Err(PackageError::Signature);
     }

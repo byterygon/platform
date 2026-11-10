@@ -11,7 +11,8 @@ use std::fmt;
 
 use serde::Deserialize;
 
-/// Manifests larger than this are rejected before parsing.
+/// Manifests larger than this are rejected before parsing, unless the host configured a larger
+/// `max_manifest_bytes` package limit (see [`crate::package::PackageLimits`]).
 pub const MAX_MANIFEST_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -36,7 +37,7 @@ pub struct Manifest {
 
 /// How a packaged plugin runs. First-party native drivers are compiled into the core and never
 /// loaded from a package, so `native` is not a valid package kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PackageKind {
     Wasm,
@@ -128,6 +129,169 @@ pub enum FileScope {
     UserSelected,
 }
 
+/// The kind of a requested capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CapabilityKind {
+    Network,
+    Secret,
+    File,
+}
+
+/// One difference between the permissions two plugin versions request.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PermissionDelta {
+    /// The package kind changed (for example WASM to sidecar, which has weaker isolation).
+    Kind { from: PackageKind, to: PackageKind },
+    /// A capability id the old version did not request.
+    Added { kind: CapabilityKind, id: String },
+    /// A capability the old version requested is no longer requested.
+    Removed { kind: CapabilityKind, id: String },
+    /// A capability is still requested, but `field` now allows more than before.
+    Widened {
+        kind: CapabilityKind,
+        id: String,
+        field: &'static str,
+    },
+    /// A capability is still requested, but `field` now allows less than before.
+    Narrowed {
+        kind: CapabilityKind,
+        id: String,
+        field: &'static str,
+    },
+}
+
+/// How the permissions requested by a new plugin version compare with the active version's
+/// (Plugin Host spec, question 39). Both lists are sorted, so equal changes compare equal.
+///
+/// Rules: a capability is identified by its kind and id; a renamed id is a removal plus an
+/// addition. Network: `tls` `optional` is wider than `required`, and enabling
+/// `allow_in_protocol_tls_upgrade` or `allow_cancel_connection` widens; a changed `protocol` is a
+/// removal plus an addition. Secret: a changed `purpose` or `scope` is a removal plus an addition,
+/// and enabling `needs_credential` widens. File: `write` is wider than `read`; a changed `scope` is
+/// a removal plus an addition. `default_port` and `description` are hints for forms and are not
+/// permissions. A changed package kind always widens.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PermissionDiff {
+    /// Kind changes, additions and widenings. Non-empty means activation needs fresh approval.
+    pub widened: Vec<PermissionDelta>,
+    /// Removals and narrowings. Existing grants lose these on carry-over.
+    pub narrowed: Vec<PermissionDelta>,
+}
+
+impl PermissionDiff {
+    /// Compare what `new` requests with what `old` requests.
+    pub fn between(old: &Manifest, new: &Manifest) -> Self {
+        let mut diff = Self::default();
+        if old.kind != new.kind {
+            diff.widened.push(PermissionDelta::Kind {
+                from: old.kind,
+                to: new.kind,
+            });
+        }
+        let (o, n) = (&old.capabilities, &new.capabilities);
+        diff.compare(
+            CapabilityKind::Network,
+            &o.network,
+            &n.network,
+            |t| (t.id.clone(), t.protocol),
+            |old, new| {
+                [
+                    (
+                        "tls",
+                        old.tls == TlsRequirement::Required,
+                        new.tls == TlsRequirement::Required,
+                    ),
+                    (
+                        "allow_in_protocol_tls_upgrade",
+                        !old.allow_in_protocol_tls_upgrade,
+                        !new.allow_in_protocol_tls_upgrade,
+                    ),
+                    (
+                        "allow_cancel_connection",
+                        !old.allow_cancel_connection,
+                        !new.allow_cancel_connection,
+                    ),
+                ]
+            },
+        );
+        diff.compare(
+            CapabilityKind::Secret,
+            &o.secrets,
+            &n.secrets,
+            |t| (t.id.clone(), (t.purpose.clone(), t.scope)),
+            |old, new| {
+                [(
+                    "needs_credential",
+                    !old.needs_credential,
+                    !new.needs_credential,
+                )]
+            },
+        );
+        diff.compare(
+            CapabilityKind::File,
+            &o.files,
+            &n.files,
+            |t| (t.id.clone(), t.scope),
+            |old, new| {
+                [(
+                    "mode",
+                    old.mode == FileMode::Read,
+                    new.mode == FileMode::Read,
+                )]
+            },
+        );
+        diff.widened.sort();
+        diff.narrowed.sort();
+        diff
+    }
+
+    pub fn is_widened(&self) -> bool {
+        !self.widened.is_empty()
+    }
+
+    /// `identity` gives the id and the fields that must be equal for two templates to be the same
+    /// capability. `restrictions` lists `(field, old is restricted, new is restricted)`.
+    fn compare<T, K: PartialEq, const N: usize>(
+        &mut self,
+        kind: CapabilityKind,
+        old: &[T],
+        new: &[T],
+        identity: impl Fn(&T) -> (String, K),
+        restrictions: impl Fn(&T, &T) -> [(&'static str, bool, bool); N],
+    ) {
+        let old: Vec<_> = old.iter().map(|t| (identity(t), t)).collect();
+        let new: Vec<_> = new.iter().map(|t| (identity(t), t)).collect();
+        for (key, template) in &new {
+            match old.iter().find(|(k, _)| k == key) {
+                None => self.widened.push(PermissionDelta::Added {
+                    kind,
+                    id: key.0.clone(),
+                }),
+                Some((_, previous)) => {
+                    for (field, was, is) in restrictions(previous, template) {
+                        let id = key.0.clone();
+                        if was && !is {
+                            self.widened
+                                .push(PermissionDelta::Widened { kind, id, field });
+                        } else if !was && is {
+                            self.narrowed
+                                .push(PermissionDelta::Narrowed { kind, id, field });
+                        }
+                    }
+                }
+            }
+        }
+        for (key, _) in &old {
+            if !new.iter().any(|(k, _)| k == key) {
+                self.narrowed.push(PermissionDelta::Removed {
+                    kind,
+                    id: key.0.clone(),
+                });
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManifestError {
     TooLarge,
@@ -141,7 +305,7 @@ pub enum ManifestError {
 impl fmt::Display for ManifestError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ManifestError::TooLarge => write!(f, "manifest exceeds {MAX_MANIFEST_BYTES} bytes"),
+            ManifestError::TooLarge => f.write_str("manifest exceeds the size limit"),
             ManifestError::Syntax(msg) => write!(f, "invalid manifest: {msg}"),
             ManifestError::UnsupportedVersion(v) => {
                 write!(f, "unsupported manifest_version {v}")
@@ -159,7 +323,13 @@ impl std::error::Error for ManifestError {}
 impl Manifest {
     /// Parse and validate a `plugin.toml`.
     pub fn from_toml(text: &str) -> Result<Self, ManifestError> {
-        if text.len() > MAX_MANIFEST_BYTES {
+        Self::from_toml_limited(text, MAX_MANIFEST_BYTES)
+    }
+
+    /// [`from_toml`](Self::from_toml) with a configured size limit instead of
+    /// [`MAX_MANIFEST_BYTES`].
+    pub fn from_toml_limited(text: &str, max_bytes: usize) -> Result<Self, ManifestError> {
+        if text.len() > max_bytes {
             return Err(ManifestError::TooLarge);
         }
         let manifest: Manifest =

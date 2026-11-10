@@ -1,6 +1,32 @@
 //! Local package installation: verify, stage, approve, then switch the active version.
 //! The active version is a small digest pointer replaced by same-directory rename. Version
 //! directories are immutable, so an interrupted activation leaves the previous pointer valid.
+//!
+//! # Upgrades (Plugin Host spec, question 39)
+//!
+//! Installing a package creates no runtime grant. When a new version of an installed plugin is
+//! activated, its requested permissions are compared with the active version's
+//! ([`PermissionDiff`]), under the per-plugin lock:
+//!
+//! - equal or narrower: activation proceeds with the usual approval;
+//! - wider (an added capability, a widened field, or a changed package kind): activation is
+//!   refused with [`InstallError::PermissionsWidened`] unless the approval
+//!   ([`Approval::widened_permissions`]) names exactly the widening computed at activation, so a
+//!   direct human approval covers the new permission set.
+//!
+//! With a [`GrantStore`] in [`HostHooks`], activation carries the old version's connection grants
+//! over to the new version (dropping what it no longer requests) and rollback restores the
+//! previous version's grant set; see [`GrantStore`] for the rules. The grant switch happens after
+//! the state file is committed, under the same per-plugin lock.
+//!
+//! # Audit failures (Plugin Host spec, question 41)
+//!
+//! Install, approve, reject and activate fail closed: if an audit entry cannot be written, the
+//! step is not performed. Rollback is the exception, so an administrator can always return to the
+//! known-good version: when the primary audit sink fails, the same entry is appended to the local
+//! fallback file [`FALLBACK_AUDIT_FILE`] under the install root, an [`InstallAlert`] is raised on
+//! [`HostHooks::alerts`], and the rollback returns an [`AuditWarning`]. If the fallback write
+//! fails too, the rollback still proceeds and the warning says both sinks failed.
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -16,10 +42,100 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest as _;
 
 use crate::audit::{AuditError, AuditSink, Clock};
-use crate::grant::DEFAULT_AUDIT_TIMEOUT;
+use crate::grant::{DEFAULT_AUDIT_TIMEOUT, GrantStore, GrantSwitch, InstalledPlugin};
+use crate::manifest::{Manifest, PermissionDelta, PermissionDiff};
 use crate::package::{
     PackageError, PackageLimits, PackagePolicy, TrustStore, VerifiedPackage, verify_bytes,
 };
+
+/// The local, append-only fallback audit file under the install root, used only when the
+/// primary sink fails during a rollback. One JSON-encoded [`AuditEntry`] per line, not hash
+/// chained; an administrator imports it into the audit store once the primary sink is back.
+pub const FALLBACK_AUDIT_FILE: &str = ".audit-fallback.jsonl";
+
+/// Receives alerts the installer raises. Implementations must not block and must not perform
+/// network I/O on the caller's thread.
+pub trait AlertSink: Send + Sync {
+    fn alert(&self, alert: &InstallAlert);
+}
+
+/// An event the host should surface to an administrator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallAlert {
+    /// A rollback audit entry could not be written to the primary audit sink.
+    RollbackAuditFallback {
+        plugin_id: String,
+        correlation_id: String,
+        warning: AuditWarning,
+    },
+}
+
+/// Why a rollback's audit entry did not reach the primary audit sink.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuditWarning {
+    /// The primary sink failed; the entry was appended to the fallback file at `fallback`.
+    PrimaryFailed {
+        primary: AuditError,
+        fallback: PathBuf,
+    },
+    /// The primary sink and the fallback file both failed; the entry was not recorded.
+    BothFailed {
+        primary: AuditError,
+        fallback: String,
+    },
+}
+
+/// Host services used when the active version changes. Both are optional: without a grant store
+/// no grant is carried over or restored, and without an alert sink the rollback warning is only
+/// returned to the caller.
+#[derive(Clone, Copy, Default)]
+pub struct HostHooks<'h> {
+    pub grants: Option<&'h GrantStore>,
+    pub alerts: Option<&'h dyn AlertSink>,
+}
+
+/// What the approver approves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Approval {
+    /// The [`ApprovalView::package_digest`] that was shown.
+    pub package_digest: [u8; 32],
+    /// The widening the approver was shown ([`UpgradeView::permissions`]`.widened`). Required,
+    /// and must match exactly, when the package requests more than the active version; ignored
+    /// otherwise.
+    pub widened_permissions: Vec<PermissionDelta>,
+}
+
+impl Approval {
+    /// Approval of a package that does not widen the active version's permissions.
+    pub fn package(package_digest: [u8; 32]) -> Self {
+        Self {
+            package_digest,
+            widened_permissions: Vec::new(),
+        }
+    }
+}
+
+/// The result of an activation.
+#[derive(Debug, Clone)]
+pub struct Activation {
+    /// The now-active version, as the grant store and broker identify it.
+    pub plugin: InstalledPlugin,
+    /// The version it replaced and how the permissions changed, for an upgrade.
+    pub upgrade: Option<UpgradeView>,
+    /// What happened to connection grants, when a grant store was given.
+    pub grants: Option<GrantSwitch>,
+}
+
+/// The result of a rollback.
+#[derive(Debug, Clone)]
+pub struct Rollback {
+    /// Package digest of the version that is active again.
+    pub active_digest: [u8; 32],
+    /// What happened to connection grants, when a grant store was given.
+    pub grants: Option<GrantSwitch>,
+    /// Set when an audit entry of this rollback missed the primary audit sink.
+    pub audit_warning: Option<AuditWarning>,
+}
 
 // NOTE: Provisional names until the Plugin Host permission catalogue is fixed (spec question 25).
 const INSTALL: &str = "plugin-host.packages.install";
@@ -38,6 +154,9 @@ pub enum InstallError {
     Denied,
     DigestMismatch,
     NoPrevious,
+    /// The package requests permissions beyond the active version's, and the approval does not
+    /// cover exactly this widening.
+    PermissionsWidened(PermissionDiff),
 }
 
 impl fmt::Display for InstallError {
@@ -60,6 +179,17 @@ pub struct ApprovalView {
     /// SHA-256 of the canonical v1 file encoding restricted to `payload/` entries.
     pub payload_digest: [u8; 32],
     pub package_digest: [u8; 32],
+    /// Set when another version of the plugin was active at staging time. Activation compares
+    /// again under the plugin lock, against whatever is active then.
+    pub upgrade: Option<UpgradeView>,
+}
+
+/// An upgrade of an installed plugin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpgradeView {
+    /// Package digest of the version being replaced.
+    pub from_digest: [u8; 32],
+    pub permissions: PermissionDiff,
 }
 
 /// A local installer. The caller must provide an administrator-controlled install root and
@@ -80,6 +210,7 @@ pub struct StagedInstall<'a> {
     package: VerifiedPackage,
     principal: Principal,
     correlation_id: String,
+    upgrade: Option<UpgradeView>,
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -101,9 +232,20 @@ fn parse_digest(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
+/// What [`audit`] does when the primary sink fails.
+#[derive(Clone, Copy)]
+enum OnAuditFailure<'h> {
+    /// Return [`InstallError::Audit`]; the caller does not perform the step.
+    FailClosed,
+    /// Rollback only (question 41): append to the fallback file, raise an alert, and return a
+    /// warning instead of an error.
+    Fallback(Option<&'h dyn AlertSink>),
+}
+
 /// Records one package entry; the caller stops (fails closed) if it is not written within
 /// [`DEFAULT_AUDIT_TIMEOUT`], so a sink that hangs fails the step instead of holding it (and,
-/// for an approval, the plugin's install lock) forever.
+/// for an approval, the plugin's install lock) forever. For a rollback the failure is handled
+/// by the fallback instead (see [`OnAuditFailure`]).
 #[allow(clippy::too_many_arguments)] // Keep all package audit entries behind this one helper.
 async fn audit(
     installer: &Installer<'_>,
@@ -114,7 +256,8 @@ async fn audit(
     digest: [u8; 32],
     decision: AuditDecision,
     outcome: Outcome,
-) -> Result<(), InstallError> {
+    on_failure: OnAuditFailure<'_>,
+) -> Result<Option<AuditWarning>, InstallError> {
     let entry = AuditEntry {
         timestamp_unix_ms: installer.clock.now_unix_ms(),
         principal_chain: AuditPrincipal::chain_of(principal),
@@ -133,9 +276,73 @@ async fn audit(
         parent_correlation_id: None,
     };
     let deadline = tokio::time::Instant::now() + DEFAULT_AUDIT_TIMEOUT;
-    append_within(installer.audit, entry, deadline)
-        .await
-        .map_err(InstallError::Audit)
+    let alerts = match on_failure {
+        OnAuditFailure::FailClosed => {
+            return append_within(installer.audit, entry, deadline)
+                .await
+                .map(|()| None)
+                .map_err(InstallError::Audit);
+        }
+        OnAuditFailure::Fallback(alerts) => alerts,
+    };
+    let Err(primary) = append_within(installer.audit, entry.clone(), deadline).await else {
+        return Ok(None);
+    };
+    let warning = match append_fallback(installer.root, &entry) {
+        Ok(fallback) => AuditWarning::PrimaryFailed { primary, fallback },
+        Err(fallback) => AuditWarning::BothFailed { primary, fallback },
+    };
+    if let Some(alerts) = alerts {
+        alerts.alert(&InstallAlert::RollbackAuditFallback {
+            plugin_id: target.to_owned(),
+            correlation_id: correlation.to_owned(),
+            warning: warning.clone(),
+        });
+    }
+    Ok(Some(warning))
+}
+
+/// Append one entry to [`FALLBACK_AUDIT_FILE`] with a single write, then sync it.
+fn append_fallback(root: &Path, entry: &AuditEntry) -> Result<PathBuf, String> {
+    let path = root.join(FALLBACK_AUDIT_FILE);
+    let mut line = serde_json::to_vec(entry).map_err(|e| e.to_string())?;
+    line.push(b'\n');
+    let mut options = OpenOptions::new();
+    options.append(true).create(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(&path).map_err(|e| e.to_string())?;
+    file.write_all(&line)
+        .and_then(|()| file.sync_data())
+        .map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+/// The manifest of an installed version, read back from its immutable version directory.
+fn installed_manifest(base: &Path, digest_hex: &str) -> Result<Manifest, InstallError> {
+    let max = PackageLimits::HARD_CEILING.max_manifest_bytes;
+    let path = base.join("versions").join(digest_hex).join("plugin.toml");
+    let file = File::open(path).map_err(|_| InstallError::Io)?;
+    let mut text = String::new();
+    std::io::Read::read_to_string(&mut std::io::Read::take(file, max + 1), &mut text)
+        .map_err(|_| InstallError::Io)?;
+    Manifest::from_toml_limited(&text, max as usize).map_err(|_| InstallError::Io)
+}
+
+/// The upgrade from the version active in `state`, if any.
+fn upgrade_from(
+    base: &Path,
+    state: &InstallState,
+    new: &Manifest,
+) -> Result<Option<UpgradeView>, InstallError> {
+    let Some(active) = state.active.as_deref() else {
+        return Ok(None);
+    };
+    let old = installed_manifest(base, active)?;
+    Ok(Some(UpgradeView {
+        from_digest: parse_digest(active).ok_or(InstallError::Io)?,
+        permissions: PermissionDiff::between(&old, new),
+    }))
 }
 
 fn private_dir(root: &Path) -> Result<PathBuf, InstallError> {
@@ -286,6 +493,7 @@ impl<'a> Installer<'a> {
             archive_digest,
             AuditDecision::Allow,
             Outcome::Success,
+            OnAuditFailure::FailClosed,
         )
         .await?;
         let package = match verify_bytes(archive, self.limits, self.trust, self.policy) {
@@ -306,11 +514,15 @@ impl<'a> Installer<'a> {
                     Outcome::Error {
                         code: format!("{e:?}"),
                     },
+                    OnAuditFailure::FailClosed,
                 )
                 .await?;
                 return Err(InstallError::Package(e));
             }
         };
+        // Informational for the approval view; activation compares again under the lock.
+        let base = self.root.join(&package.manifest.id);
+        let upgrade = upgrade_from(&base, &read_state(&base)?, &package.manifest)?;
         let stage = private_dir(self.root)?;
         let write_result = (|| {
             for (path, bytes) in package.files() {
@@ -332,17 +544,43 @@ impl<'a> Installer<'a> {
             package,
             principal: principal.clone(),
             correlation_id: correlation_id.to_owned(),
+            upgrade,
         })
     }
 
-    /// Restore the previous known-good version by atomically changing the state file.
+    /// Restore the previous known-good version by atomically changing the state file, without
+    /// grant or alert hooks. See [`rollback_with`](Self::rollback_with).
     pub async fn rollback<A: Authorizer>(
         &self,
         authorizer: &A,
         principal: &Principal,
         plugin_id: &str,
         correlation_id: &str,
-    ) -> Result<(), InstallError> {
+    ) -> Result<Rollback, InstallError> {
+        self.rollback_with(
+            authorizer,
+            principal,
+            plugin_id,
+            correlation_id,
+            HostHooks::default(),
+        )
+        .await
+    }
+
+    /// Restore the previous known-good version by atomically changing the state file, then (with
+    /// a grant store) restore that version's grant set.
+    ///
+    /// Audit failures do not stop a rollback (question 41): see the [module docs](self). The
+    /// authorization check and the direct-human requirement still apply.
+    pub async fn rollback_with<A: Authorizer>(
+        &self,
+        authorizer: &A,
+        principal: &Principal,
+        plugin_id: &str,
+        correlation_id: &str,
+        hooks: HostHooks<'_>,
+    ) -> Result<Rollback, InstallError> {
+        let on_failure = OnAuditFailure::Fallback(hooks.alerts);
         if principal.kind != PrincipalKind::Human
             || principal.on_behalf_of.is_some()
             || !crate::manifest::is_plugin_id(plugin_id)
@@ -382,11 +620,12 @@ impl<'a> Installer<'a> {
                 Outcome::Error {
                     code: "PermissionDenied".into(),
                 },
+                on_failure,
             )
             .await?;
             return Err(InstallError::Denied);
         }
-        audit(
+        let audit_warning = audit(
             self,
             principal,
             correlation_id,
@@ -395,9 +634,31 @@ impl<'a> Installer<'a> {
             bytes,
             AuditDecision::Allow,
             Outcome::Success,
+            on_failure,
         )
         .await?;
-        atomic_state(&base, &state).map_err(|_| InstallError::Io)
+        let from = state
+            .previous
+            .as_deref()
+            .and_then(parse_digest)
+            .ok_or(InstallError::Io)?;
+        let committed = atomic_state(&base, &state);
+        // If the rename happened, the previous version is active even when the directory sync
+        // failed, so the grants must follow it.
+        let published =
+            committed.is_ok() || read_state(&base).is_ok_and(|s| s.active == state.active);
+        let grants = match hooks.grants {
+            Some(store) if published => {
+                Some(store.roll_back(plugin_id, Digest(from), Digest(bytes)))
+            }
+            _ => None,
+        };
+        committed.map_err(|_| InstallError::Io)?;
+        Ok(Rollback {
+            active_digest: bytes,
+            grants,
+            audit_warning,
+        })
     }
 }
 
@@ -413,17 +674,40 @@ impl StagedInstall<'_> {
             capabilities: p.manifest.capabilities.clone(),
             payload_digest: p.payload_digest,
             package_digest: p.digest,
+            upgrade: self.upgrade.clone(),
         }
     }
 
     /// The caller presents `approval_view` and returns the exact digest it approved. Only a
-    /// directly acting human can approve; `NeedsApproval` is a denial.
+    /// directly acting human can approve; `NeedsApproval` is a denial. Equivalent to
+    /// [`activate`](Self::activate) with [`Approval::package`] and no hooks, so an upgrade that
+    /// widens permissions is refused.
     pub async fn approve_and_activate<A: Authorizer>(
         self,
         authorizer: &A,
         approver: &Principal,
         approved_digest: [u8; 32],
-    ) -> Result<(), InstallError> {
+    ) -> Result<Activation, InstallError> {
+        self.activate(
+            authorizer,
+            approver,
+            Approval::package(approved_digest),
+            HostHooks::default(),
+        )
+        .await
+    }
+
+    /// Approve and activate. On an upgrade that widens permissions, `approval` must name exactly
+    /// the widening (see the [module docs](self)). With a grant store in `hooks`, the old
+    /// version's grants are carried over after the state file is committed.
+    pub async fn activate<A: Authorizer>(
+        self,
+        authorizer: &A,
+        approver: &Principal,
+        approval: Approval,
+        hooks: HostHooks<'_>,
+    ) -> Result<Activation, InstallError> {
+        let approved_digest = approval.package_digest;
         let id = &self.package.manifest.id;
         if approver.kind != PrincipalKind::Human
             || approver.on_behalf_of.is_some()
@@ -444,6 +728,7 @@ impl StagedInstall<'_> {
                 Outcome::Error {
                     code: "PermissionDenied".into(),
                 },
+                OnAuditFailure::FailClosed,
             )
             .await?;
             return Err(InstallError::Denied);
@@ -464,10 +749,14 @@ impl StagedInstall<'_> {
                 Outcome::Error {
                     code: "DigestMismatch".into(),
                 },
+                OnAuditFailure::FailClosed,
             )
             .await?;
             return Err(InstallError::DigestMismatch);
         }
+        // Refuse early when the widening seen at staging is not approved; checked again below.
+        self.check_widening(approver, self.upgrade.as_ref(), &approval)
+            .await?;
         let action = Action::new(APPROVE, PERMISSION);
         let target = TargetRef::plugin(id);
         let decision = authorizer
@@ -491,6 +780,7 @@ impl StagedInstall<'_> {
                 Outcome::Error {
                     code: "PermissionDenied".into(),
                 },
+                OnAuditFailure::FailClosed,
             )
             .await?;
             return Err(InstallError::Denied);
@@ -504,6 +794,7 @@ impl StagedInstall<'_> {
             self.package.digest,
             AuditDecision::Allow,
             Outcome::Success,
+            OnAuditFailure::FailClosed,
         )
         .await?;
         let base = self.installer.root.join(id);
@@ -516,6 +807,10 @@ impl StagedInstall<'_> {
             return Err(InstallError::Io);
         }
         let mut state = read_state(&base)?;
+        // The version active now, under the lock, is the one the permissions are compared with.
+        let upgrade = upgrade_from(&base, &state, &self.package.manifest)?;
+        self.check_widening(approver, upgrade.as_ref(), &approval)
+            .await?;
         audit(
             self.installer,
             approver,
@@ -525,13 +820,69 @@ impl StagedInstall<'_> {
             self.package.digest,
             AuditDecision::Allow,
             Outcome::Success,
+            OnAuditFailure::FailClosed,
         )
         .await?;
         fs::rename(&self.stage, &version_path).map_err(|_| InstallError::Io)?;
         state.previous = state.active.replace(digest);
-        commit_activation(&base, &version_path, &state, |parent| {
+        let committed = commit_activation(&base, &version_path, &state, |parent| {
             File::open(parent).and_then(|f| f.sync_all())
+        });
+        let plugin =
+            InstalledPlugin::from_manifest(&self.package.manifest, Digest(self.package.digest));
+        // If the rename happened, the new version is active even when the directory sync failed,
+        // so the grants must follow it.
+        let published =
+            committed.is_ok() || read_state(&base).is_ok_and(|s| s.active == state.active);
+        let grants = match (hooks.grants, &upgrade) {
+            (Some(store), Some(upgrade)) if published => {
+                Some(store.upgrade(Digest(upgrade.from_digest), &plugin))
+            }
+            (Some(_), None) if published => Some(GrantSwitch::default()),
+            _ => None,
+        };
+        committed?;
+        Ok(Activation {
+            plugin,
+            upgrade,
+            grants,
         })
+    }
+
+    /// Refuse activation when `upgrade` widens the permissions and `approval` does not name
+    /// exactly that widening.
+    async fn check_widening(
+        &self,
+        approver: &Principal,
+        upgrade: Option<&UpgradeView>,
+        approval: &Approval,
+    ) -> Result<(), InstallError> {
+        let Some(upgrade) = upgrade else {
+            return Ok(());
+        };
+        let diff = &upgrade.permissions;
+        if !diff.is_widened() || diff.widened == approval.widened_permissions {
+            return Ok(());
+        }
+        audit(
+            self.installer,
+            approver,
+            &self.correlation_id,
+            REJECT,
+            &self.package.manifest.id,
+            self.package.digest,
+            AuditDecision::Deny {
+                reason: Reason::Policy {
+                    message: "requested permissions widen; approval does not cover them".into(),
+                },
+            },
+            Outcome::Error {
+                code: "PermissionsWidened".into(),
+            },
+            OnAuditFailure::FailClosed,
+        )
+        .await?;
+        Err(InstallError::PermissionsWidened(diff.clone()))
     }
 
     pub async fn reject(self, approver: &Principal) -> Result<(), InstallError> {
@@ -550,8 +901,10 @@ impl StagedInstall<'_> {
             Outcome::Error {
                 code: "Rejected".into(),
             },
+            OnAuditFailure::FailClosed,
         )
         .await
+        .map(|_| ())
     }
 }
 

@@ -558,6 +558,10 @@ pub(crate) enum EntryState {
     Active,
     Revoked,
     Expired,
+    /// The plugin version the grant is bound to was replaced by an upgrade or a rollback. The
+    /// store keeps the grant value for a later rollback (see [`GrantStore`]), but this entry
+    /// never becomes active again; a restored grant gets a new entry.
+    Superseded,
 }
 
 pub(crate) struct GrantEntry {
@@ -609,7 +613,11 @@ impl GrantEntry {
             self.state.send_if_modified(|s| {
                 let change = matches!(
                     (*s, to),
-                    (EntryState::Active, _) | (EntryState::Expired, EntryState::Revoked)
+                    (EntryState::Active, _)
+                        | (
+                            EntryState::Expired | EntryState::Superseded,
+                            EntryState::Revoked
+                        )
                 );
                 if change {
                     *s = to;
@@ -633,6 +641,14 @@ struct StoreInner {
     by_id: HashMap<GrantId, Arc<GrantEntry>>,
     /// Active grant per target. Revoked and expired grants are removed.
     active: HashMap<(TenantId, String), GrantId>,
+    /// Per plugin id: the grant set of the retained previous version, for rollback.
+    parked: HashMap<String, Parked>,
+}
+
+/// The grants a plugin version held when it stopped being the active version.
+struct Parked {
+    digest: Digest,
+    grants: Vec<Arc<ConnectionGrant>>,
 }
 
 impl StoreInner {
@@ -651,6 +667,95 @@ impl StoreInner {
         self.active.retain(|_, id| id != &entry.grant.id);
         entry.end(EntryState::Expired);
     }
+
+    /// End every active grant bound to `plugin_id` at `digest` as superseded and return them.
+    fn supersede(
+        &mut self,
+        plugin_id: &str,
+        digest: Digest,
+        now: u64,
+    ) -> Vec<Arc<ConnectionGrant>> {
+        let keys: Vec<_> = self.active.keys().cloned().collect();
+        let mut ended = Vec::new();
+        for key in keys {
+            let Some(entry) = self.active_entry(&key, now) else {
+                continue;
+            };
+            let binding = &entry.grant.plugin;
+            if binding.plugin_id != plugin_id || binding.digest != digest {
+                continue;
+            }
+            self.active.remove(&key);
+            entry.end(EntryState::Superseded);
+            ended.push(entry.grant.clone());
+        }
+        ended.sort_by(|a, b| a.id.cmp(&b.id));
+        ended
+    }
+}
+
+/// What a plugin version switch did to the plugin's connection grants. Produced by the installer
+/// under the per-plugin lock (see [`crate::install`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GrantSwitch {
+    /// Grants of the version that was left. They are kept, inactive, for a rollback.
+    pub parked: Vec<GrantId>,
+    /// `(old, new)`: an old-version grant and the new-version grant that carries it over.
+    pub carried: Vec<(GrantId, GrantId)>,
+    /// New-version grants (also in `carried`) that lost a permission the new version no longer
+    /// requests: the cancel connection or the secret binding.
+    pub narrowed: Vec<GrantId>,
+    /// Old-version grants the new version cannot use (template removed or now incompatible).
+    /// They stay parked, so a rollback restores them.
+    pub dropped: Vec<GrantId>,
+    /// Grants of the version returned to by a rollback, active again under their own ids.
+    pub restored: Vec<GrantId>,
+    /// Parked grants a rollback did not restore: expired, or their target now has another
+    /// active grant.
+    pub not_restored: Vec<GrantId>,
+}
+
+/// `grant` rebound to `to`, if `to` still requests what it uses. Returns the carried grant and
+/// whether it was narrowed. A grant whose network template is gone, has another protocol, or no
+/// longer allows its TLS policy cannot be narrowed and is dropped.
+fn carry(grant: &ConnectionGrant, to: &InstalledPlugin) -> Option<(ConnectionGrant, bool)> {
+    let template = to
+        .capabilities
+        .network
+        .iter()
+        .find(|t| t.id == grant.template_id && t.protocol == grant.protocol)?;
+    match &grant.tls {
+        TlsPolicy::Disabled if template.tls == TlsRequirement::Required => return None,
+        TlsPolicy::Enabled(tls)
+            if tls.mode == TlsMode::InProtocolUpgrade
+                && !template.allow_in_protocol_tls_upgrade =>
+        {
+            return None;
+        }
+        _ => {}
+    }
+    let mut carried = grant.clone();
+    carried.plugin = PluginBinding {
+        plugin_id: to.id.clone(),
+        digest: to.digest,
+        driver_kind: to.driver_kind,
+    };
+    let mut narrowed = false;
+    if carried.allow_cancel_connection && !template.allow_cancel_connection {
+        carried.allow_cancel_connection = false;
+        narrowed = true;
+    }
+    if let Some(secret) = &carried.secret
+        && !to
+            .capabilities
+            .secrets
+            .iter()
+            .any(|t| t.id == secret.template_id && t.scope == SecretScope::Connection)
+    {
+        carried.secret = None;
+        narrowed = true;
+    }
+    Some((carried, narrowed))
 }
 
 /// How long a grant change, a broker operation or a package install step waits for its audit
@@ -723,6 +828,24 @@ impl Drop for TargetLock<'_> {
 /// never waits on the sink; its entry is written in the background with retries
 /// ([`GrantStore::flush_audit`] waits for it), and an entry that could not be written is reported
 /// to the [`AuditReporter`].
+///
+/// # Plugin upgrades and rollback (Plugin Host spec, question 39)
+///
+/// A grant is bound to one plugin version (its package digest). When the installer activates a
+/// new version, the grants of the old version are *parked* and each one the new version can
+/// still use is *carried over*: a new grant with a new id, bound to the new version, with the
+/// same destination, TLS policy, address policy, eligibility, approver and expiry. A carried
+/// grant drops what the new version no longer requests (cancel connection, secret binding); a
+/// grant whose network template is gone or no longer admits its TLS policy is not carried.
+/// Rollback parks the current version's grants and restores the parked grants of the version it
+/// returns to, under their original ids. Only one parked set (the retained previous version) is
+/// kept per plugin, matching the installer's retention. Only the installer switches versions,
+/// under its per-plugin lock.
+///
+/// Revocation wins over rollback: revoking a grant also discards every parked grant of the same
+/// plugin for the same tenant and target, so a rollback never brings back a destination an
+/// administrator revoked. Parked sets live in memory only; after a restart a rollback restores
+/// nothing.
 pub struct GrantStore {
     clock: Arc<dyn Clock>,
     audit: Arc<dyn AuditSink>,
@@ -1023,6 +1146,11 @@ impl GrantStore {
             let mut inner = lock(&self.inner);
             inner.active.retain(|_, active_id| active_id != &grant.id);
             entry.end(EntryState::Revoked);
+            if let Some(parked) = inner.parked.get_mut(&grant.plugin.plugin_id) {
+                parked.grants.retain(|g| {
+                    g.id != grant.id && (g.tenant != grant.tenant || g.target_id != grant.target_id)
+                });
+            }
         }
         self.queue.submit(audit_entry).await;
         result
@@ -1052,6 +1180,114 @@ impl GrantStore {
     pub(crate) fn lookup(&self, tenant: &TenantId, target_id: &str) -> Option<Arc<GrantEntry>> {
         let now = self.clock.now_unix_ms();
         lock(&self.inner).active_entry(&(tenant.clone(), target_id.to_owned()), now)
+    }
+
+    /// Make `grant` the active grant of its target, with an expiry task if it expires. Returns
+    /// `false` (and changes nothing) if the grant has expired, the target already has an active
+    /// grant, or the grant expires and no Tokio runtime is available to end it on time.
+    fn activate_entry(
+        &self,
+        inner: &mut StoreInner,
+        grant: Arc<ConnectionGrant>,
+        now: u64,
+    ) -> bool {
+        let key = (grant.tenant.clone(), grant.target_id.clone());
+        if grant.is_expired(now) || inner.active_entry(&key, now).is_some() {
+            return false;
+        }
+        let runtime = match grant.expires_at_unix_ms {
+            Some(_) => match tokio::runtime::Handle::try_current() {
+                Ok(runtime) => Some(runtime),
+                Err(_) => return false,
+            },
+            None => None,
+        };
+        let entry = Arc::new(GrantEntry::new(grant.clone()));
+        inner.active.insert(key, grant.id.clone());
+        inner.by_id.insert(grant.id.clone(), entry.clone());
+        if let (Some(runtime), Some(expires_at)) = (runtime, grant.expires_at_unix_ms) {
+            runtime.spawn(expire_at(
+                self.clock.clone(),
+                Arc::downgrade(&self.inner),
+                Arc::downgrade(&entry),
+                entry.state(),
+                expires_at,
+            ));
+        }
+        true
+    }
+
+    /// Upgrade: park the grants of version `from` of `to.id` and carry over the ones `to` can
+    /// use. The caller holds the plugin's install lock and has already made `to` active.
+    pub(crate) fn upgrade(&self, from: Digest, to: &InstalledPlugin) -> GrantSwitch {
+        let now = self.clock.now_unix_ms();
+        let mut inner = lock(&self.inner);
+        let old = inner.supersede(&to.id, from, now);
+        let mut out = GrantSwitch {
+            parked: old.iter().map(|g| g.id.clone()).collect(),
+            ..GrantSwitch::default()
+        };
+        for grant in &old {
+            let carried = carry(grant, to).and_then(|(mut carried, narrowed)| {
+                carried.id = GrantId::random().ok()?;
+                Some((carried, narrowed))
+            });
+            let Some((carried, narrowed)) = carried else {
+                out.dropped.push(grant.id.clone());
+                continue;
+            };
+            let id = carried.id.clone();
+            if self.activate_entry(&mut inner, Arc::new(carried), now) {
+                if narrowed {
+                    out.narrowed.push(id.clone());
+                }
+                out.carried.push((grant.id.clone(), id));
+            } else {
+                out.dropped.push(grant.id.clone());
+            }
+        }
+        // One previous version is retained, so this replaces any older parked set.
+        inner.parked.insert(
+            to.id.clone(),
+            Parked {
+                digest: from,
+                grants: old,
+            },
+        );
+        out
+    }
+
+    /// Rollback of `plugin_id` from version `from` to version `to`: park the grants of `from`
+    /// and restore the parked grants of `to`. The caller holds the plugin's install lock and has
+    /// already made `to` the active version.
+    pub(crate) fn roll_back(&self, plugin_id: &str, from: Digest, to: Digest) -> GrantSwitch {
+        let now = self.clock.now_unix_ms();
+        let mut inner = lock(&self.inner);
+        let current = inner.supersede(plugin_id, from, now);
+        let mut out = GrantSwitch {
+            parked: current.iter().map(|g| g.id.clone()).collect(),
+            ..GrantSwitch::default()
+        };
+        if let Some(parked) = inner.parked.remove(plugin_id)
+            && parked.digest == to
+        {
+            for grant in parked.grants {
+                let id = grant.id.clone();
+                if self.activate_entry(&mut inner, grant, now) {
+                    out.restored.push(id);
+                } else {
+                    out.not_restored.push(id);
+                }
+            }
+        }
+        inner.parked.insert(
+            plugin_id.to_owned(),
+            Parked {
+                digest: from,
+                grants: current,
+            },
+        );
+        out
     }
 
     async fn authorize<A: Authorizer>(
