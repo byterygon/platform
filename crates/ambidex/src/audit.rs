@@ -154,14 +154,24 @@ impl Recorder {
         kind: AuditEntryKind,
         effect: impl FnOnce() -> AuditFailureEffect,
     ) -> Result<(), ()> {
+        let deadline = Instant::now() + self.policy.write_timeout;
+        self.write_by(entry, kind, effect, deadline).await
+    }
+
+    /// [`Recorder::write`] with the deadline given: a write queued earlier keeps the deadline
+    /// it was given when queued, whenever its task first runs.
+    async fn write_by(
+        &self,
+        entry: AuditEntry,
+        kind: AuditEntryKind,
+        effect: impl FnOnce() -> AuditFailureEffect,
+        deadline: Instant,
+    ) -> Result<(), ()> {
         // Kept for the report: the entry itself moves into the sink.
         let action = entry.action.name.clone();
         let correlation_id = entry.correlation_id.clone();
         let result = match &self.sink {
-            Some(sink) => {
-                let deadline = Instant::now() + self.policy.write_timeout;
-                append_within(&**sink, entry, deadline).await
-            }
+            Some(sink) => append_within(&**sink, entry, deadline).await,
             None => Err(AuditError("no audit sink configured".into())),
         };
         let Err(error) = result else {
@@ -400,11 +410,15 @@ impl Completion {
 }
 
 impl Recorder {
-    async fn complete(&self, entry: AuditEntry) {
+    /// Writes a completion, giving up at `deadline`.
+    async fn complete(&self, entry: AuditEntry, deadline: Instant) {
         let _ = self
-            .write(entry, AuditEntryKind::Completion, || {
-                AuditFailureEffect::EntryLost
-            })
+            .write_by(
+                entry,
+                AuditEntryKind::Completion,
+                || AuditFailureEffect::EntryLost,
+                deadline,
+            )
             .await;
     }
 
@@ -537,12 +551,14 @@ impl Completions {
         let mut tracked = lock(&self.inner);
         // Forget the writes that already ended.
         while tracked.tasks.try_join_next().is_some() {}
+        // The write's own deadline, fixed now: `close` waits for it from the same instant, so it
+        // never aborts a write before that write's own timeout, however late its task runs.
         let ends = Instant::now() + recorder.policy.write_timeout;
         tracked.latest = Some(tracked.latest.map_or(ends, |latest| latest.max(ends)));
         // Spawned under the lock, so `close` can always abort it.
         tracked.tasks.spawn_on(
             async move {
-                write.recorder.complete(entry).await;
+                write.recorder.complete(entry, ends).await;
                 write.finished();
                 let _ = ended.send(());
             },
@@ -613,4 +629,121 @@ impl Drop for Write {
 
 fn lock<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use security_types::{Action, AuditDecision, AuditPrincipal, Digest, Outcome, Risk, TenantId};
+
+    use super::*;
+
+    /// Records entries after `delay`, or never answers (`None`).
+    struct Slow {
+        delay: Option<Duration>,
+        entries: Arc<Mutex<Vec<AuditEntry>>>,
+    }
+
+    impl AuditSink for Slow {
+        fn append(
+            &self,
+            entry: AuditEntry,
+        ) -> security_types::BoxFuture<'_, Result<(), AuditError>> {
+            let (delay, entries) = (self.delay, Arc::clone(&self.entries));
+            Box::pin(async move {
+                match delay {
+                    Some(delay) => tokio::time::sleep(delay).await,
+                    None => std::future::pending().await,
+                }
+                entries.lock().unwrap().push(entry);
+                Ok(())
+            })
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct Reports(Arc<Mutex<Vec<AuditFailure>>>);
+
+    impl AuditReporter for Reports {
+        fn report(&self, failure: &AuditFailure) {
+            self.0.lock().unwrap().push(failure.clone());
+        }
+    }
+
+    impl Reports {
+        fn errors(&self) -> Vec<String> {
+            self.0
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|f| f.error.0.clone())
+                .collect()
+        }
+    }
+
+    const WRITE_TIMEOUT: Duration = Duration::from_millis(300);
+
+    fn setup(delay: Option<Duration>) -> (Arc<Recorder>, Arc<Mutex<Vec<AuditEntry>>>, Reports) {
+        let entries = Arc::default();
+        let reports = Reports::default();
+        let recorder = Recorder::new()
+            .with_sink(Arc::new(Slow {
+                delay,
+                entries: Arc::clone(&entries),
+            }))
+            .with_reporter(Arc::new(reports.clone()))
+            .with_policy(AuditPolicy {
+                write_timeout: WRITE_TIMEOUT,
+                ..AuditPolicy::default()
+            });
+        (Arc::new(recorder), entries, reports)
+    }
+
+    fn completion() -> AuditEntry {
+        AuditEntry {
+            timestamp_unix_ms: 0,
+            principal_chain: Vec::<AuditPrincipal>::new(),
+            tenant: TenantId::new("t"),
+            action: Action::new("test.call", "test.use"),
+            target: None,
+            risk: Risk::Read,
+            decision: AuditDecision::Allow,
+            approval_id: None,
+            outcome: Outcome::Success,
+            duration_ms: Some(1),
+            correlation_id: "c-1".into(),
+            input_digest: Digest([0; 32]),
+            statement_digest: None,
+            delivery: Some(Delivery::Delivered),
+            parent_correlation_id: None,
+        }
+    }
+
+    /// Blocks the (current-thread) runtime, so a task spawned before runs only after `late`.
+    fn first_poll_after(late: Duration) {
+        std::thread::sleep(late);
+    }
+
+    #[tokio::test]
+    async fn a_write_first_polled_late_still_ends_by_its_own_timeout() {
+        let late = ABORT_GRACE + Duration::from_millis(50);
+        // The sink answers within the write timeout of the moment the write was queued.
+        let (recorder, entries, reports) = setup(Some(Duration::from_millis(50)));
+        let completions = Completions::new();
+        completions.spawn(&recorder, completion(), None);
+        first_poll_after(late);
+        completions.close().await;
+        assert_eq!(entries.lock().unwrap().len(), 1, "written");
+        assert!(reports.errors().is_empty(), "{:?}", reports.errors());
+
+        // A sink that never answers: the write gives up through its own timeout, counted from
+        // when it was queued, before `close` would abort it.
+        let (recorder, _, reports) = setup(None);
+        let completions = Completions::new();
+        completions.spawn(&recorder, completion(), None);
+        first_poll_after(late);
+        completions.close().await;
+        assert_eq!(reports.errors(), ["write timed out"]);
+    }
 }
