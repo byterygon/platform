@@ -643,6 +643,8 @@ struct StoreInner {
     active: HashMap<(TenantId, String), GrantId>,
     /// Per plugin id: the grant set of the retained previous version, for rollback.
     parked: HashMap<String, Parked>,
+    /// A carried grant and the grant it was carried from, so revoking an ancestor revokes it.
+    lineage: HashMap<GrantId, GrantId>,
 }
 
 /// The grants a plugin version held when it stopped being the active version.
@@ -661,6 +663,20 @@ impl StoreInner {
         }
         self.expire(&entry);
         None
+    }
+
+    /// Whether `id` was carried (directly or through several upgrades) from `ancestor`.
+    fn descends_from(&self, id: &GrantId, ancestor: &GrantId) -> bool {
+        let mut current = id;
+        // A chain has one link per upgrade; the bound only guards against a corrupted map.
+        for _ in 0..self.lineage.len() {
+            match self.lineage.get(current) {
+                Some(source) if source == ancestor => return true,
+                Some(source) => current = source,
+                None => return false,
+            }
+        }
+        false
     }
 
     fn expire(&mut self, entry: &GrantEntry) {
@@ -713,12 +729,38 @@ pub struct GrantSwitch {
     /// Parked grants a rollback did not restore: expired, or their target now has another
     /// active grant.
     pub not_restored: Vec<GrantId>,
+    /// For a rollback: whether the version's parked grant set was found.
+    pub restore: RestoreOutcome,
+}
+
+/// Whether a rollback found the parked grant set of the version it returned to.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RestoreOutcome {
+    /// Not a rollback.
+    #[default]
+    NotARollback,
+    /// The parked set was found; `restored` and `not_restored` list what happened to it. An
+    /// empty set means that version had no grants.
+    Restored,
+    /// No parked set exists for that version: the in-memory state was lost (a restart, or the
+    /// store was replaced), or the versions were not switched through this store. Nothing was
+    /// restored; the caller must have the approver create the grants again.
+    NoParkedState,
 }
 
 /// `grant` rebound to `to`, if `to` still requests what it uses. Returns the carried grant and
-/// whether it was narrowed. A grant whose network template is gone, has another protocol, or no
-/// longer allows its TLS policy cannot be narrowed and is dropped.
-fn carry(grant: &ConnectionGrant, to: &InstalledPlugin) -> Option<(ConnectionGrant, bool)> {
+/// whether it was narrowed. `from` is what the version the grant came from requested.
+///
+/// A grant is not carried (it stays parked for a rollback, and needs a new approval) when its
+/// network template is gone, has another protocol, or no longer allows its TLS policy, and when
+/// the secret template it uses changed `purpose` or `scope`, or began to need a credential: the
+/// approver chose that secret for the old purpose. A secret template that is gone, or no longer
+/// needs a credential, is a narrowing: the grant is carried without its secret binding.
+fn carry(
+    grant: &ConnectionGrant,
+    from: &Capabilities,
+    to: &InstalledPlugin,
+) -> Option<(ConnectionGrant, bool)> {
     let template = to
         .capabilities
         .network
@@ -745,15 +787,32 @@ fn carry(grant: &ConnectionGrant, to: &InstalledPlugin) -> Option<(ConnectionGra
         carried.allow_cancel_connection = false;
         narrowed = true;
     }
-    if let Some(secret) = &carried.secret
-        && !to
+    if let Some(secret) = &carried.secret {
+        let old = from.secrets.iter().find(|t| t.id == secret.template_id)?;
+        let new = to
             .capabilities
             .secrets
             .iter()
-            .any(|t| t.id == secret.template_id && t.scope == SecretScope::Connection)
-    {
-        carried.secret = None;
-        narrowed = true;
+            .find(|t| t.id == secret.template_id);
+        match new {
+            None => {
+                carried.secret = None;
+                narrowed = true;
+            }
+            Some(new) => {
+                if new.purpose != old.purpose
+                    || new.scope != old.scope
+                    || new.scope != SecretScope::Connection
+                    || (new.needs_credential && !old.needs_credential)
+                {
+                    return None;
+                }
+                if old.needs_credential && !new.needs_credential {
+                    carried.secret = None;
+                    narrowed = true;
+                }
+            }
+        }
     }
     Some((carried, narrowed))
 }
@@ -836,16 +895,18 @@ impl Drop for TargetLock<'_> {
 /// still use is *carried over*: a new grant with a new id, bound to the new version, with the
 /// same destination, TLS policy, address policy, eligibility, approver and expiry. A carried
 /// grant drops what the new version no longer requests (cancel connection, secret binding); a
-/// grant whose network template is gone or no longer admits its TLS policy is not carried.
+/// grant whose network template is gone or no longer admits its TLS policy, or whose secret
+/// template changed purpose or scope, is not carried (see `carry`).
 /// Rollback parks the current version's grants and restores the parked grants of the version it
 /// returns to, under their original ids. Only one parked set (the retained previous version) is
 /// kept per plugin, matching the installer's retention. Only the installer switches versions,
 /// under its per-plugin lock.
 ///
-/// Revocation wins over rollback: revoking a grant also discards every parked grant of the same
-/// plugin for the same tenant and target, so a rollback never brings back a destination an
-/// administrator revoked. Parked sets live in memory only; after a restart a rollback restores
-/// nothing.
+/// Revocation wins over upgrades and rollback: revoking a grant by any id it had (the original,
+/// or a carried copy) revokes every active grant carried from it and discards every parked grant
+/// of the same plugin for the same tenant and target, so neither the new version nor a rollback
+/// brings back a destination an administrator revoked. Parked sets live in memory only; after a
+/// restart a rollback restores nothing and reports [`RestoreOutcome::NoParkedState`].
 pub struct GrantStore {
     clock: Arc<dyn Clock>,
     audit: Arc<dyn AuditSink>,
@@ -1063,6 +1124,11 @@ impl GrantStore {
         let entry = Arc::new(GrantEntry::new(grant.clone()));
         {
             let mut inner = lock(&self.inner);
+            // A plugin upgrade or rollback switches grants without this target lock, so the
+            // target may have been taken while the audit entry was written.
+            if inner.active_entry(&key, self.clock.now_unix_ms()).is_some() {
+                return Err(GrantError::TargetInUse);
+            }
             inner.active.insert(key, grant.id.clone());
             inner.by_id.insert(grant.id.clone(), entry.clone());
         }
@@ -1146,6 +1212,19 @@ impl GrantStore {
             let mut inner = lock(&self.inner);
             inner.active.retain(|_, active_id| active_id != &grant.id);
             entry.end(EntryState::Revoked);
+            // Grants carried from this one (through any number of upgrades) are revoked too.
+            let descendants: Vec<_> = inner
+                .active
+                .values()
+                .filter(|id| inner.descends_from(id, &grant.id))
+                .cloned()
+                .collect();
+            for id in descendants {
+                inner.active.retain(|_, active_id| active_id != &id);
+                if let Some(carried) = inner.by_id.get(&id) {
+                    carried.end(EntryState::Revoked);
+                }
+            }
             if let Some(parked) = inner.parked.get_mut(&grant.plugin.plugin_id) {
                 parked.grants.retain(|g| {
                     g.id != grant.id && (g.tenant != grant.tenant || g.target_id != grant.target_id)
@@ -1219,7 +1298,15 @@ impl GrantStore {
 
     /// Upgrade: park the grants of version `from` of `to.id` and carry over the ones `to` can
     /// use. The caller holds the plugin's install lock and has already made `to` active.
-    pub(crate) fn upgrade(&self, from: Digest, to: &InstalledPlugin) -> GrantSwitch {
+    ///
+    /// `from_capabilities` is what the old version requested; `None` (its manifest could not be
+    /// read) carries nothing, so every old grant stays parked and needs a new approval.
+    pub(crate) fn upgrade(
+        &self,
+        from: Digest,
+        from_capabilities: Option<&Capabilities>,
+        to: &InstalledPlugin,
+    ) -> GrantSwitch {
         let now = self.clock.now_unix_ms();
         let mut inner = lock(&self.inner);
         let old = inner.supersede(&to.id, from, now);
@@ -1228,16 +1315,19 @@ impl GrantStore {
             ..GrantSwitch::default()
         };
         for grant in &old {
-            let carried = carry(grant, to).and_then(|(mut carried, narrowed)| {
-                carried.id = GrantId::random().ok()?;
-                Some((carried, narrowed))
-            });
+            let carried = from_capabilities
+                .and_then(|from| carry(grant, from, to))
+                .and_then(|(mut carried, narrowed)| {
+                    carried.id = GrantId::random().ok()?;
+                    Some((carried, narrowed))
+                });
             let Some((carried, narrowed)) = carried else {
                 out.dropped.push(grant.id.clone());
                 continue;
             };
             let id = carried.id.clone();
             if self.activate_entry(&mut inner, Arc::new(carried), now) {
+                inner.lineage.insert(id.clone(), grant.id.clone());
                 if narrowed {
                     out.narrowed.push(id.clone());
                 }
@@ -1268,9 +1358,13 @@ impl GrantStore {
             parked: current.iter().map(|g| g.id.clone()).collect(),
             ..GrantSwitch::default()
         };
-        if let Some(parked) = inner.parked.remove(plugin_id)
-            && parked.digest == to
-        {
+        let parked = inner.parked.remove(plugin_id).filter(|p| p.digest == to);
+        out.restore = if parked.is_some() {
+            RestoreOutcome::Restored
+        } else {
+            RestoreOutcome::NoParkedState
+        };
+        if let Some(parked) = parked {
             for grant in parked.grants {
                 let id = grant.id.clone();
                 if self.activate_entry(&mut inner, grant, now) {

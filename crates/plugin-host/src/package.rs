@@ -50,10 +50,12 @@ const MIB: u64 = 1024 * KIB;
 ///   binaries, native images with an embedded runtime) are typically 30–300 MiB; 512 MiB leaves
 ///   room above that while staying far below the 4 GiB that a non-ZIP64 entry can describe.
 /// - **Total and archive, 1 GiB.** Room for a ceiling-sized binary plus its shared libraries and
-///   resources. Verification keeps the archive and the decompressed files in memory until
-///   approval, so the worst case at the ceilings is about 2 GiB of host memory; that is why the
-///   ceiling is not higher. The ZIP reader does not accept ZIP64, which caps archives at 4 GiB
-///   anyway.
+///   resources. Verification keeps the archive (held by the caller) and the decompressed files
+///   in memory until approval, so the worst case at the ceilings is about 2 GiB of host memory
+///   plus small read buffers; that is why the ceiling is not higher. Each entry's buffer is
+///   reserved once, at the size already checked against the limits and the compression ratio,
+///   so growth by doubling does not add to that peak. The ZIP reader does not accept ZIP64,
+///   which caps archives at 4 GiB anyway.
 /// - **Entries, 4096.** A sidecar with bundled libraries and data files can need more than 256
 ///   files; the count bounds the ZIP name index and per-entry work.
 /// - **Metadata, 16 MiB; manifest, 256 KiB.** An SPDX SBOM of a sidecar with many dependencies
@@ -704,7 +706,14 @@ fn read_archive<R: Read + Seek>(
             return Err(PackageError::Compression);
         }
         let compressed_size = entry.compressed_size();
+        // The declared size is already checked against the entry, total and ratio limits. Reserve
+        // exactly that, so a large entry is not rebuilt by doubling (which can briefly hold
+        // twice the entry and leaves up to half of the last allocation unused). A shortfall
+        // here is a refusal, not an abort.
         let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(usize::try_from(entry.size()).map_err(|_| PackageError::Limits)?)
+            .map_err(|_| PackageError::Limits)?;
         let mut chunk = [0u8; 8192];
         loop {
             let n = entry.read(&mut chunk).map_err(|_| PackageError::Archive)?;

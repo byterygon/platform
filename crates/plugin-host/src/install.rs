@@ -19,6 +19,19 @@
 //! previous version's grant set; see [`GrantStore`] for the rules. The grant switch happens after
 //! the state file is committed, under the same per-plugin lock.
 //!
+//! The two steps are not one atomic change, and the gap between them fails closed: the broker
+//! lets a caller use a grant only when the grant's plugin digest equals the caller's digest. After
+//! the commit and before the switch, a caller of the new version finds only grants bound to the
+//! old digest and is denied; a caller of the old version that is still running keeps the grants
+//! it had until the switch supersedes them (it never gains one). Switching the grants first would
+//! be worse: a commit that then failed would leave grants moved to a version that never became
+//! active. If the process stops between the two, the state file is ahead and the in-memory grant
+//! set is gone anyway (see [`GrantStore`]), so the new version starts without grants.
+//!
+//! A directory sync that fails after the state file was renamed does not undo the switch: the
+//! new version is active, so the grants follow it and the result carries
+//! [`SwitchWarning::DirectorySyncFailed`] instead of an error.
+//!
 //! # Audit failures (Plugin Host spec, question 41)
 //!
 //! Install, approve, reject and activate fail closed: if an audit entry cannot be written, the
@@ -43,7 +56,7 @@ use sha2::Digest as _;
 
 use crate::audit::{AuditError, AuditSink, Clock};
 use crate::grant::{DEFAULT_AUDIT_TIMEOUT, GrantStore, GrantSwitch, InstalledPlugin};
-use crate::manifest::{Manifest, PermissionDelta, PermissionDiff};
+use crate::manifest::{Capabilities, Manifest, PermissionDelta, PermissionDiff};
 use crate::package::{
     PackageError, PackageLimits, PackagePolicy, TrustStore, VerifiedPackage, verify_bytes,
 };
@@ -92,6 +105,22 @@ pub enum AuditWarning {
 pub struct HostHooks<'h> {
     pub grants: Option<&'h GrantStore>,
     pub alerts: Option<&'h dyn AlertSink>,
+    /// Replaces the directory `fsync` after the state file is renamed. For tests that inject a
+    /// failure; leave it `None`.
+    #[doc(hidden)]
+    pub directory_sync: Option<fn(&Path) -> std::io::Result<()>>,
+}
+
+/// Something an administrator should know about a version switch that succeeded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwitchWarning {
+    /// The manifest of the version that was active could not be read, so its permissions could
+    /// not be compared with the new version's and no grant was carried over: the old grants stay
+    /// parked, and every connection needs a new approval.
+    PreviousManifestUnreadable,
+    /// The state file was renamed (the new version is active) but syncing the directory failed,
+    /// so the switch may not survive a power loss.
+    DirectorySyncFailed,
 }
 
 /// What the approver approves.
@@ -124,6 +153,7 @@ pub struct Activation {
     pub upgrade: Option<UpgradeView>,
     /// What happened to connection grants, when a grant store was given.
     pub grants: Option<GrantSwitch>,
+    pub warnings: Vec<SwitchWarning>,
 }
 
 /// The result of a rollback.
@@ -135,6 +165,7 @@ pub struct Rollback {
     pub grants: Option<GrantSwitch>,
     /// Set when an audit entry of this rollback missed the primary audit sink.
     pub audit_warning: Option<AuditWarning>,
+    pub warnings: Vec<SwitchWarning>,
 }
 
 // NOTE: Provisional names until the Plugin Host permission catalogue is fixed (spec question 25).
@@ -329,20 +360,44 @@ fn installed_manifest(base: &Path, digest_hex: &str) -> Result<Manifest, Install
     Manifest::from_toml_limited(&text, max as usize).map_err(|_| InstallError::Io)
 }
 
-/// The upgrade from the version active in `state`, if any.
-fn upgrade_from(
-    base: &Path,
-    state: &InstallState,
-    new: &Manifest,
-) -> Result<Option<UpgradeView>, InstallError> {
+/// What activation knows about the version that is active, read under the plugin lock.
+#[derive(Default)]
+struct Basis {
+    from_digest: Option<[u8; 32]>,
+    capabilities: Option<Capabilities>,
+    view: Option<UpgradeView>,
+    /// A version is active but its manifest could not be read.
+    unreadable: bool,
+}
+
+/// The upgrade from the version active in `state`, if any. An unreadable manifest of the active
+/// version does not fail: the new version can still be installed, as if nothing were active
+/// (no permission comparison, no grants carried), and the caller is warned.
+fn upgrade_from(base: &Path, state: &InstallState, new: &Manifest) -> Result<Basis, InstallError> {
     let Some(active) = state.active.as_deref() else {
-        return Ok(None);
+        return Ok(Basis::default());
     };
-    let old = installed_manifest(base, active)?;
-    Ok(Some(UpgradeView {
-        from_digest: parse_digest(active).ok_or(InstallError::Io)?,
-        permissions: PermissionDiff::between(&old, new),
-    }))
+    let from_digest = parse_digest(active).ok_or(InstallError::Io)?;
+    Ok(match installed_manifest(base, active) {
+        Ok(old) => Basis {
+            from_digest: Some(from_digest),
+            view: Some(UpgradeView {
+                from_digest,
+                permissions: PermissionDiff::between(&old, new),
+            }),
+            capabilities: Some(old.capabilities),
+            unreadable: false,
+        },
+        Err(_) => Basis {
+            from_digest: Some(from_digest),
+            unreadable: true,
+            ..Basis::default()
+        },
+    })
+}
+
+fn default_directory_sync(parent: &Path) -> std::io::Result<()> {
+    File::open(parent).and_then(|f| f.sync_all())
 }
 
 fn private_dir(root: &Path) -> Result<PathBuf, InstallError> {
@@ -450,6 +505,7 @@ fn atomic_state_with_sync(
     result
 }
 
+#[cfg(test)]
 fn atomic_state(base: &Path, state: &InstallState) -> Result<(), StateCommitError> {
     atomic_state_with_sync(base, state, |parent| {
         File::open(parent).and_then(|f| f.sync_all())
@@ -461,18 +517,26 @@ fn commit_activation(
     version_path: &Path,
     state: &InstallState,
     sync_parent: impl FnOnce(&Path) -> std::io::Result<()>,
-) -> Result<(), InstallError> {
+) -> Result<CommitOutcome, InstallError> {
     match atomic_state_with_sync(base, state, sync_parent) {
-        Ok(()) => Ok(()),
-        Err(StateCommitError { published }) => {
-            if !published {
-                // The old state is still active, so this version is an unreferenced stage.
-                let _ = fs::remove_dir_all(version_path);
-            }
-            // After rename, state.json may already point here. Keep the version on disk.
+        Ok(()) => Ok(CommitOutcome::Synced),
+        // After the rename state.json points here, so the version stays on disk and the switch
+        // stands; only the durability of the directory entry is in doubt.
+        Err(StateCommitError { published: true }) => Ok(CommitOutcome::SyncFailed),
+        Err(StateCommitError { published: false }) => {
+            // The old state is still active, so this version is an unreferenced stage.
+            let _ = fs::remove_dir_all(version_path);
             Err(InstallError::Io)
         }
     }
+}
+
+/// A state commit that took effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommitOutcome {
+    Synced,
+    /// The rename happened but syncing the directory failed.
+    SyncFailed,
 }
 
 impl<'a> Installer<'a> {
@@ -522,7 +586,7 @@ impl<'a> Installer<'a> {
         };
         // Informational for the approval view; activation compares again under the lock.
         let base = self.root.join(&package.manifest.id);
-        let upgrade = upgrade_from(&base, &read_state(&base)?, &package.manifest)?;
+        let upgrade = upgrade_from(&base, &read_state(&base)?, &package.manifest)?.view;
         let stage = private_dir(self.root)?;
         let write_result = (|| {
             for (path, bytes) in package.files() {
@@ -620,7 +684,8 @@ impl<'a> Installer<'a> {
                 Outcome::Error {
                     code: "PermissionDenied".into(),
                 },
-                on_failure,
+                // The exception of question 41 is for a rollback that is performed.
+                OnAuditFailure::FailClosed,
             )
             .await?;
             return Err(InstallError::Denied);
@@ -642,22 +707,25 @@ impl<'a> Installer<'a> {
             .as_deref()
             .and_then(parse_digest)
             .ok_or(InstallError::Io)?;
-        let committed = atomic_state(&base, &state);
+        let sync = hooks.directory_sync.unwrap_or(default_directory_sync);
+        let mut warnings = Vec::new();
         // If the rename happened, the previous version is active even when the directory sync
-        // failed, so the grants must follow it.
-        let published =
-            committed.is_ok() || read_state(&base).is_ok_and(|s| s.active == state.active);
-        let grants = match hooks.grants {
-            Some(store) if published => {
-                Some(store.roll_back(plugin_id, Digest(from), Digest(bytes)))
+        // failed, so the grants follow it and the caller is warned.
+        match atomic_state_with_sync(&base, &state, sync) {
+            Ok(()) => {}
+            Err(StateCommitError { published: true }) => {
+                warnings.push(SwitchWarning::DirectorySyncFailed);
             }
-            _ => None,
-        };
-        committed.map_err(|_| InstallError::Io)?;
+            Err(StateCommitError { published: false }) => return Err(InstallError::Io),
+        }
+        let grants = hooks
+            .grants
+            .map(|store| store.roll_back(plugin_id, Digest(from), Digest(bytes)));
         Ok(Rollback {
             active_digest: bytes,
             grants,
             audit_warning,
+            warnings,
         })
     }
 }
@@ -785,6 +853,15 @@ impl StagedInstall<'_> {
             .await?;
             return Err(InstallError::Denied);
         }
+        let base = self.installer.root.join(id);
+        let _lock = lock_plugin_async(base.clone()).await?;
+        let mut state = read_state(&base)?;
+        // The version active now, under the lock, is the one the permissions are compared with.
+        // This is checked before the approval is recorded, so a refusal never leaves an
+        // `approve` entry that says the package was approved.
+        let basis = upgrade_from(&base, &state, &self.package.manifest)?;
+        self.check_widening(approver, basis.view.as_ref(), &approval)
+            .await?;
         audit(
             self.installer,
             approver,
@@ -797,8 +874,6 @@ impl StagedInstall<'_> {
             OnAuditFailure::FailClosed,
         )
         .await?;
-        let base = self.installer.root.join(id);
-        let _lock = lock_plugin_async(base.clone()).await?;
         let versions = base.join("versions");
         fs::create_dir_all(&versions).map_err(|_| InstallError::Io)?;
         let digest = hex(&self.package.digest);
@@ -806,11 +881,6 @@ impl StagedInstall<'_> {
         if version_path.exists() {
             return Err(InstallError::Io);
         }
-        let mut state = read_state(&base)?;
-        // The version active now, under the lock, is the one the permissions are compared with.
-        let upgrade = upgrade_from(&base, &state, &self.package.manifest)?;
-        self.check_widening(approver, upgrade.as_ref(), &approval)
-            .await?;
         audit(
             self.installer,
             approver,
@@ -825,27 +895,31 @@ impl StagedInstall<'_> {
         .await?;
         fs::rename(&self.stage, &version_path).map_err(|_| InstallError::Io)?;
         state.previous = state.active.replace(digest);
-        let committed = commit_activation(&base, &version_path, &state, |parent| {
-            File::open(parent).and_then(|f| f.sync_all())
-        });
+        let sync = hooks.directory_sync.unwrap_or(default_directory_sync);
+        // If the rename happened, the new version is active even when the directory sync failed,
+        // so the grants follow it and the caller is warned instead of getting an error.
+        let committed = commit_activation(&base, &version_path, &state, sync)?;
         let plugin =
             InstalledPlugin::from_manifest(&self.package.manifest, Digest(self.package.digest));
-        // If the rename happened, the new version is active even when the directory sync failed,
-        // so the grants must follow it.
-        let published =
-            committed.is_ok() || read_state(&base).is_ok_and(|s| s.active == state.active);
-        let grants = match (hooks.grants, &upgrade) {
-            (Some(store), Some(upgrade)) if published => {
-                Some(store.upgrade(Digest(upgrade.from_digest), &plugin))
+        let grants = match (hooks.grants, basis.from_digest) {
+            (Some(store), Some(from)) => {
+                Some(store.upgrade(Digest(from), basis.capabilities.as_ref(), &plugin))
             }
-            (Some(_), None) if published => Some(GrantSwitch::default()),
+            (Some(_), None) => Some(GrantSwitch::default()),
             _ => None,
         };
-        committed?;
+        let mut warnings = Vec::new();
+        if basis.unreadable {
+            warnings.push(SwitchWarning::PreviousManifestUnreadable);
+        }
+        if committed == CommitOutcome::SyncFailed {
+            warnings.push(SwitchWarning::DirectorySyncFailed);
+        }
         Ok(Activation {
             plugin,
-            upgrade,
+            upgrade: basis.view,
             grants,
+            warnings,
         })
     }
 
@@ -948,7 +1022,7 @@ mod tests {
             },
             |_| Err(std::io::Error::other("injected directory sync failure")),
         );
-        assert!(matches!(result, Err(InstallError::Io)));
+        assert_eq!(result.unwrap(), CommitOutcome::SyncFailed);
         assert_eq!(
             read_state(&base).unwrap().active.as_deref(),
             Some(new.as_str())

@@ -4,12 +4,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use plugin_host::grant::RestoreOutcome;
 use plugin_host::grant::address_policy;
 use plugin_host::install::{
     AlertSink, Approval, AuditWarning, FALLBACK_AUDIT_FILE, HostHooks, InstallAlert, InstallError,
-    Installer,
+    Installer, SwitchWarning,
 };
 use plugin_host::package::{LimitField, LimitsError, verify_bytes};
 use plugin_host::package::{PackageError, PackagePolicy, PinnedKey, TrustStore, canonical_bytes};
@@ -21,8 +23,8 @@ use plugin_host::{
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use security_types::{
-    AuditEntry, Authorizer, AuthzRequest, BoxFuture, Decision, Principal, PrincipalKind, SessionId,
-    TenantId,
+    AuditEntry, Authorizer, AuthzRequest, BoxFuture, Decision, Outcome, Principal, PrincipalKind,
+    Reason, SessionId, TenantId,
 };
 use semver::Version;
 use sha2::{Digest as _, Sha256};
@@ -110,10 +112,20 @@ impl Publisher {
 
     /// A signed package of `version` requesting `capabilities`, with `extra` payload files.
     fn package(&self, version: &str, capabilities: &str, extra: usize) -> Vec<u8> {
+        self.package_with(version, capabilities, extra, version.as_bytes().to_vec())
+    }
+
+    fn package_with(
+        &self,
+        version: &str,
+        capabilities: &str,
+        extra: usize,
+        payload: Vec<u8>,
+    ) -> Vec<u8> {
         let manifest = format!("{HEADER}version = \"{version}\"\n{capabilities}");
         let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::from([
             ("plugin.toml".into(), manifest.into_bytes()),
-            ("payload/demo.wasm".into(), version.as_bytes().to_vec()),
+            ("payload/demo.wasm".into(), payload),
             ("sbom.spdx.json".into(), b"{}".to_vec()),
         ]);
         for i in 0..extra {
@@ -202,6 +214,42 @@ impl AuditSink for FailAction {
             self.1.append(entry)
         }
     }
+}
+
+struct Deny;
+impl Authorizer for Deny {
+    async fn check(&self, _: &AuthzRequest<'_>) -> Decision {
+        Decision::Deny {
+            reason: Reason::Policy {
+                message: "no".into(),
+            },
+        }
+    }
+}
+
+/// Holds a grant-create audit entry until released, while armed, so another operation can run
+/// between the target check of that create and its insert.
+struct GateCreate {
+    log: MemoryAuditLog,
+    armed: AtomicBool,
+    entered: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+impl AuditSink for GateCreate {
+    fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
+        Box::pin(async move {
+            if entry.action.name == "plugin-host.grants.create" && self.armed.load(Ordering::SeqCst)
+            {
+                self.entered.notify_one();
+                self.release.notified().await;
+            }
+            self.log.append(entry).await
+        })
+    }
+}
+
+fn failing_sync(_: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::other("injected directory sync failure"))
 }
 
 #[derive(Default)]
@@ -472,6 +520,7 @@ async fn narrower_upgrade_carries_grants_and_rollback_restores_them() {
     let hooks = HostHooks {
         grants: Some(&store),
         alerts: None,
+        ..HostHooks::default()
     };
 
     let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
@@ -563,6 +612,7 @@ async fn revoked_grants_are_not_restored_by_rollback() {
     let hooks = HostHooks {
         grants: Some(&store),
         alerts: None,
+        ..HostHooks::default()
     };
     let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
         .await
@@ -602,6 +652,7 @@ async fn widened_upgrade_is_blocked_until_the_widening_is_approved() {
     let hooks = HostHooks {
         grants: Some(&store),
         alerts: None,
+        ..HostHooks::default()
     };
     let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
         .await
@@ -704,6 +755,7 @@ async fn concurrent_upgrade_and_rollback_keep_grants_consistent() {
     let hooks = HostHooks {
         grants: Some(&store),
         alerts: None,
+        ..HostHooks::default()
     };
     let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
         .await
@@ -771,6 +823,7 @@ async fn activation_is_still_refused_when_audit_fails() {
     let hooks = HostHooks {
         grants: None,
         alerts: Some(&alerts),
+        ..HostHooks::default()
     };
     let result = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks).await;
     assert!(matches!(result, Err(InstallError::Audit(_))), "{result:?}");
@@ -819,6 +872,7 @@ async fn rollback_proceeds_with_fallback_audit_when_the_primary_sink_fails() {
     let hooks = HostHooks {
         grants: None,
         alerts: Some(&alerts),
+        ..HostHooks::default()
     };
     let rolled = installer
         .rollback_with(&Allow, &human(), PLUGIN, "rb-1", hooks)
@@ -901,6 +955,7 @@ async fn rollback_proceeds_when_both_audit_sinks_fail() {
     let hooks = HostHooks {
         grants: None,
         alerts: Some(&alerts),
+        ..HostHooks::default()
     };
     let rolled = installer
         .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
@@ -941,6 +996,7 @@ async fn rollback_without_audit_failure_has_no_warning_and_no_fallback_file() {
     let hooks = HostHooks {
         grants: None,
         alerts: Some(&alerts),
+        ..HostHooks::default()
     };
     let rolled = installer
         .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
@@ -954,4 +1010,590 @@ async fn rollback_without_audit_failure_has_no_warning_and_no_fallback_file() {
             .iter()
             .any(|r| r.entry.action.name == ROLLBACK)
     );
+}
+
+// ---- Review of PR #21 ----
+
+/// Stage `archive` and activate it with the widening it shows approved, as a human would.
+async fn upgrade_approved(
+    installer: &Installer<'_>,
+    archive: &[u8],
+    hooks: HostHooks<'_>,
+) -> Result<plugin_host::install::Activation, InstallError> {
+    let stage = installer.stage(archive, &human(), "upgrade").await?;
+    let view = stage.approval_view();
+    let widened = view
+        .upgrade
+        .map(|u| u.permissions.widened)
+        .unwrap_or_default();
+    let approval = Approval {
+        package_digest: view.package_digest,
+        widened_permissions: widened,
+    };
+    stage.activate(&Allow, &human(), approval, hooks).await
+}
+
+fn with_needs_credential(capabilities: &str) -> String {
+    capabilities.replace(
+        "scope = \"connection\"",
+        "scope = \"connection\"\nneeds_credential = true",
+    )
+}
+
+#[tokio::test]
+async fn secret_is_not_carried_when_its_purpose_changes() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("secret-purpose");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let main = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    let replica = grant(&store, &v1.plugin, "pg2", "replica").await;
+    let repurposed = FULL.replace("database-auth", "backup-auth");
+    let v2 = upgrade_approved(
+        &installer,
+        &publisher.package("2.0.0", &repurposed, 0),
+        hooks,
+    )
+    .await
+    .unwrap();
+    assert!(v2.upgrade.as_ref().unwrap().permissions.is_widened());
+    let switch = v2.grants.unwrap();
+    // The approver chose the secret for the old purpose, so that grant is not carried and needs
+    // a new approval; a grant without a secret is carried as before.
+    assert_eq!(switch.dropped, vec![main.id.clone()]);
+    assert_eq!(switch.carried.len(), 1);
+    assert_eq!(switch.carried[0].0, replica.id);
+    assert!(!store.is_active(&main.id));
+    // The target is free: the approver can create the grant again, with a secret chosen for the
+    // new purpose.
+    store
+        .create(
+            &Allow,
+            &human(),
+            &v2.plugin,
+            request("pg1", "db-transport"),
+            "new",
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn credential_requirement_changes_decide_whether_the_secret_is_carried() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("secret-needs");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    // The old version needs a credential, the new one no longer does: narrower, so the grant is
+    // carried, without the secret binding.
+    let needs = with_needs_credential(FULL);
+    let v1 = install(&installer, &publisher.package("1.0.0", &needs, 0), hooks)
+        .await
+        .unwrap();
+    let main = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    let v2 = upgrade_approved(&installer, &publisher.package("2.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    assert!(!v2.upgrade.as_ref().unwrap().permissions.is_widened());
+    let switch = v2.grants.unwrap();
+    let [(old, new)] = switch.carried.as_slice() else {
+        panic!("{switch:?}");
+    };
+    assert_eq!(old, &main.id);
+    assert_eq!(store.get(new).unwrap().secret, None);
+    assert_eq!(switch.narrowed, vec![new.clone()]);
+}
+
+#[tokio::test]
+async fn secret_is_not_carried_when_the_new_version_starts_to_need_a_credential() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("secret-starts-needing");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let main = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    assert!(main.secret.is_some());
+    // Wider: the secret was chosen when no credential was needed, so the grant needs a new
+    // approval with a secret chosen for the new requirement.
+    let needs = with_needs_credential(FULL);
+    let v2 = upgrade_approved(&installer, &publisher.package("2.0.0", &needs, 0), hooks)
+        .await
+        .unwrap();
+    assert!(v2.upgrade.as_ref().unwrap().permissions.is_widened());
+    let switch = v2.grants.unwrap();
+    assert_eq!(switch.carried, vec![]);
+    assert_eq!(switch.dropped, vec![main.id.clone()]);
+    assert!(!store.is_active(&main.id));
+}
+
+#[tokio::test]
+async fn denied_rollback_is_audited_fail_closed() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = FailAction(ROLLBACK, MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let root = Root::new("rollback-denied");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let (_, d2) = two_versions(&installer, &publisher).await;
+    let hooks = HostHooks {
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    // The refusal cannot be recorded, so it is reported as an audit failure; nothing changes and
+    // the fallback is not used for a rollback that is not performed.
+    let result = installer
+        .rollback_with(&Deny, &human(), PLUGIN, "rb", hooks)
+        .await;
+    assert!(matches!(result, Err(InstallError::Audit(_))), "{result:?}");
+    assert_eq!(active_digest(&root.0), hex(&d2));
+    assert!(!root.0.join(FALLBACK_AUDIT_FILE).exists());
+    assert!(alerts.0.lock().unwrap().is_empty());
+    // With a working sink the same refusal is a plain denial, and it is audited.
+    let healthy = MemoryAuditLog::new();
+    let installer = Installer {
+        audit: &healthy,
+        ..installer
+    };
+    let result = installer
+        .rollback_with(&Deny, &human(), PLUGIN, "rb", hooks)
+        .await;
+    assert!(matches!(result, Err(InstallError::Denied)), "{result:?}");
+    assert!(healthy.records().iter().any(|r| {
+        r.entry.action.name == ROLLBACK && matches!(r.entry.outcome, Outcome::Error { .. })
+    }));
+}
+
+#[tokio::test]
+async fn revoking_an_earlier_id_revokes_the_grant_carried_from_it() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("revoke-lineage");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let g1 = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    let o1 = grant(&store, &v1.plugin, "pg2", "replica").await;
+    let carried = |switch: &plugin_host::GrantSwitch, from: &GrantId| {
+        switch
+            .carried
+            .iter()
+            .find(|(old, _)| old == from)
+            .map(|(_, new)| new.clone())
+            .unwrap()
+    };
+    let v2 = install(&installer, &publisher.package("2.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let switch2 = v2.grants.unwrap();
+    let (g2, o2) = (carried(&switch2, &g1.id), carried(&switch2, &o1.id));
+    let v3 = install(&installer, &publisher.package("3.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let switch3 = v3.grants.unwrap();
+    let (g3, o3) = (carried(&switch3, &g2), carried(&switch3, &o2));
+    assert!(store.is_active(&g3) && store.is_active(&o3));
+    assert!(!store.is_active(&g1.id));
+    // Revoking the id the approver first knew revokes the grant now in use, two upgrades later.
+    store
+        .revoke(&Allow, &human(), &g1.id, "revoke")
+        .await
+        .unwrap();
+    store.flush_audit().await;
+    assert!(!store.is_active(&g3) && store.is_revoked(&g3));
+    // A grant of another target is untouched.
+    assert!(store.is_active(&o3));
+    // And a rollback does not bring the revoked destination back, only the other one.
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+        .await
+        .unwrap();
+    assert_eq!(rolled.grants.unwrap().restored, vec![o2.clone()]);
+    assert!(!store.is_active(&g2) && !store.is_active(&g1.id));
+}
+
+#[tokio::test]
+async fn unreadable_active_manifest_does_not_block_a_fixed_version() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("broken-manifest");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let g1 = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    // Damage the installed copy of the running version's manifest.
+    let manifest = root
+        .0
+        .join(PLUGIN)
+        .join("versions")
+        .join(hex(&v1.plugin.digest.0))
+        .join("plugin.toml");
+    std::fs::write(&manifest, b"\0 not a manifest").unwrap();
+    // Staging and activating the patched version still work.
+    let stage = installer
+        .stage(&publisher.package("1.0.1", FULL, 0), &human(), "patch")
+        .await
+        .unwrap();
+    let view = stage.approval_view();
+    assert!(view.upgrade.is_none());
+    let v2 = stage
+        .activate(
+            &Allow,
+            &human(),
+            Approval::package(view.package_digest),
+            hooks,
+        )
+        .await
+        .unwrap();
+    assert_eq!(active_digest(&root.0), hex(&v2.plugin.digest.0));
+    assert_eq!(v2.warnings, vec![SwitchWarning::PreviousManifestUnreadable]);
+    // Nothing is carried without a comparison; the old grant stays parked.
+    let switch = v2.grants.unwrap();
+    assert_eq!(switch.carried, vec![]);
+    assert_eq!(switch.dropped, vec![g1.id.clone()]);
+    assert!(!store.is_active(&g1.id));
+    // A rollback restores it.
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+        .await
+        .unwrap();
+    assert_eq!(rolled.grants.unwrap().restored, vec![g1.id.clone()]);
+    assert!(store.is_active(&g1.id));
+}
+
+#[tokio::test]
+async fn directory_sync_failure_after_the_rename_still_returns_the_result() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("sync-failure");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let failing = HostHooks {
+        directory_sync: Some(failing_sync),
+        ..hooks
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let g1 = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    // The state file is renamed before the failing sync, so the new version is active and the
+    // grants follow it; the caller gets the result and a warning, not an error.
+    let v2 = install(&installer, &publisher.package("2.0.0", FULL, 0), failing)
+        .await
+        .unwrap();
+    assert_eq!(v2.warnings, vec![SwitchWarning::DirectorySyncFailed]);
+    assert_eq!(active_digest(&root.0), hex(&v2.plugin.digest.0));
+    let switch = v2.grants.unwrap();
+    let [(old, new)] = switch.carried.as_slice() else {
+        panic!("{switch:?}");
+    };
+    assert_eq!(old, &g1.id);
+    assert!(store.is_active(new) && !store.is_active(&g1.id));
+    // The same for a rollback.
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", failing)
+        .await
+        .unwrap();
+    assert_eq!(rolled.warnings, vec![SwitchWarning::DirectorySyncFailed]);
+    assert_eq!(active_digest(&root.0), hex(&v1.plugin.digest.0));
+    assert_eq!(rolled.grants.unwrap().restored, vec![g1.id.clone()]);
+    assert!(store.is_active(&g1.id) && !store.is_active(new));
+}
+
+#[tokio::test]
+async fn refused_widening_leaves_no_approval_entry_and_no_stage() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("widen-audit");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let wide = format!("{FULL}{WIDE_EXTRA}");
+    install(
+        &installer,
+        &publisher.package("1.0.0", FULL, 0),
+        HostHooks::default(),
+    )
+    .await
+    .unwrap();
+    upgrade_approved(
+        &installer,
+        &publisher.package("2.0.0", &wide, 0),
+        HostHooks::default(),
+    )
+    .await
+    .unwrap();
+    // Staged while the wide version is active, so at staging it does not widen anything.
+    let stage = installer
+        .stage(&publisher.package("3.0.0", &wide, 0), &human(), "late")
+        .await
+        .unwrap();
+    let view = stage.approval_view();
+    assert!(!view.upgrade.as_ref().unwrap().permissions.is_widened());
+    // Then the plugin is rolled back to the narrow version, so activating it now widens.
+    installer
+        .rollback(&Allow, &human(), PLUGIN, "rb")
+        .await
+        .unwrap();
+    let refused = stage
+        .activate(
+            &Allow,
+            &human(),
+            Approval::package(view.package_digest),
+            HostHooks::default(),
+        )
+        .await;
+    assert!(
+        matches!(refused, Err(InstallError::PermissionsWidened(_))),
+        "{refused:?}"
+    );
+    let records = log.records();
+    let for_package = |action: &str| {
+        records
+            .iter()
+            .filter(|r| {
+                r.entry.action.name == action && r.entry.input_digest.0 == view.package_digest
+            })
+            .count()
+    };
+    assert_eq!(for_package("plugin-host.packages.approve"), 0);
+    assert_eq!(for_package(ACTIVATE), 0);
+    assert!(records.iter().any(|r| {
+        r.entry.input_digest.0 == view.package_digest
+            && matches!(&r.entry.outcome, Outcome::Error { code } if code == "PermissionsWidened")
+    }));
+    // The stage directory is removed with the refused install.
+    assert!(
+        !std::fs::read_dir(&root.0)
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|e| e.file_name().to_string_lossy().starts_with(".stage-"))
+    );
+}
+
+#[tokio::test]
+async fn rollback_reports_whether_the_parked_grants_were_found() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("restore-outcome");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    let v2 = install(&installer, &publisher.package("2.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    assert_eq!(v2.grants.unwrap().restore, RestoreOutcome::NotARollback);
+    // After a restart the in-memory grant state is gone: a new store has nothing parked, and the
+    // rollback says so instead of returning an empty result that looks like "nothing to restore".
+    let restarted = grant_store();
+    let after_restart = HostHooks {
+        grants: Some(&restarted),
+        ..HostHooks::default()
+    };
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", after_restart)
+        .await
+        .unwrap();
+    let switch = rolled.grants.unwrap();
+    assert_eq!(switch.restore, RestoreOutcome::NoParkedState);
+    assert!(switch.restored.is_empty());
+    // A version that simply had no grants is found, with an empty set.
+    let fresh = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&fresh),
+        ..HostHooks::default()
+    };
+    install(&installer, &publisher.package("3.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    install(&installer, &publisher.package("4.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb2", hooks)
+        .await
+        .unwrap();
+    let switch = rolled.grants.unwrap();
+    assert_eq!(switch.restore, RestoreOutcome::Restored);
+    assert!(switch.restored.is_empty());
+}
+
+#[tokio::test]
+async fn create_racing_a_rollback_does_not_take_a_target_twice() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("create-race");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let gate = Arc::new(GateCreate {
+        log: MemoryAuditLog::new(),
+        armed: AtomicBool::new(false),
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+    });
+    let store = GrantStore::new(Arc::new(SystemClock), gate.clone());
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let g1 = grant(&store, &v1.plugin, "pgR", "replica").await;
+    // The narrow version drops the `replica` template, so g1 is parked and its target is free.
+    let v2 = install(&installer, &publisher.package("2.0.0", NARROW, 0), hooks)
+        .await
+        .unwrap();
+    assert!(!store.is_active(&g1.id));
+    gate.armed.store(true, Ordering::SeqCst);
+    let mut req = request("pgR", "db-transport");
+    req.secret = None;
+    req.allow_cancel_connection = false;
+    let approver = human();
+    let create = store.create(&Allow, &approver, &v2.plugin, req, "create");
+    let rollback = async {
+        // The create has passed its target check and waits for the sink.
+        gate.entered.notified().await;
+        let rolled = installer
+            .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+            .await;
+        gate.armed.store(false, Ordering::SeqCst);
+        gate.release.notify_one();
+        rolled
+    };
+    let (created, rolled) = tokio::join!(create, rollback);
+    // The rollback took the free target first; the create then finds it taken.
+    assert_eq!(
+        rolled.unwrap().grants.unwrap().restored,
+        vec![g1.id.clone()]
+    );
+    assert_eq!(created.unwrap_err(), plugin_host::GrantError::TargetInUse);
+    assert!(store.is_active(&g1.id));
+}
+
+#[test]
+fn entry_buffers_are_reserved_at_their_checked_size() {
+    let publisher = Publisher::new();
+    // 3,000,000 bytes is not a power of two, so growth by doubling would leave spare capacity.
+    let payload: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
+    let archive = publisher.package_with("1.0.0", "", 0, payload);
+    let package = verify_bytes(
+        &archive,
+        PackageLimits::default(),
+        &publisher.trust(),
+        &policy(),
+    )
+    .unwrap();
+    for (name, bytes) in package.files() {
+        assert_eq!(bytes.capacity(), bytes.len(), "{name}");
+    }
 }
