@@ -1440,8 +1440,15 @@ pub async fn a_call_waiting_for_room_does_not_hold_other_frames<H: Harness>(h: &
     client.call(dropped, "fixture.echo", json!(dropped)).await;
     client.cancel(dropped).await;
     client.expect_code(dropped, Code::Cancelled).await;
-    assert!(
-        fixture.audit.held_now() >= bound - 1,
+    // The cancelled call's own completion is held too: every room is still taken, and no held
+    // write has ended.
+    wait_until("the cancelled call's completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    assert_eq!(
+        fixture.audit.held_now(),
+        bound,
         "handled before any held write ended"
     );
     assert!(
