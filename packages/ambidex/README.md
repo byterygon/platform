@@ -65,13 +65,20 @@ Control methods start with `$`, which no procedure name can: `$connect()` (open 
   `Cancelled` (spec Open question 21b); aborting before the call was sent sends nothing. A late
   answer for that id is dropped.
 - **Deadlines.** `timeoutMs` (a non-negative integer) travels as `timeout_ms`; the server enforces
-  `min(timeoutMs, timeoutMaxMs)` and answers `DeadlineExceeded`, for calls and subscriptions
-  alike. The runtime only keeps a safety timer, for a server that never answers, at that deadline
-  plus a slack: when the server's `HelloAck.limits.cancel_grace_ms` is present (how long it lets a
-  cancelled call run before dropping it), the slack is that grace plus `networkMarginMs` (default
-  1 s); otherwise it is `timeoutSlackMs` (default 5 s), spec Open question 23b. When the timer
-  fires, the call fails locally with `DeadlineExceeded` (`local: true`) and the runtime sends
-  `Cancel` (`Unsubscribe` for a subscription).
+  it, capped by the procedure's `timeoutMaxMs`, and answers `DeadlineExceeded`. Without
+  `timeoutMs`, a call (query, mutation, stream) gets its `timeoutDefaultMs` (30 s unless the
+  procedure declares another; the cap defaults to 5 min). A **subscription has no default
+  deadline** (spec Open question 24f; `timeoutDefaultMs` is `null`): it runs until the server ends
+  it, `unsubscribe()`, the `signal`, session revocation or disconnect, unless `timeoutMs` is given
+  or the procedure declares a maximum (`timeoutMaxMs`, otherwise `null`), which also bounds a
+  subscription that sends no `timeoutMs`. The runtime only keeps a safety timer, for a server that
+  never answers, at that deadline plus a slack: when the server's `HelloAck.limits.cancel_grace_ms`
+  is present (how long it lets a cancelled call run before dropping it), the slack is that grace
+  plus `networkMarginMs` (default 1 s); otherwise it is `timeoutSlackMs` (default 5 s), spec Open
+  question 23b. A subscription without a deadline gets no safety timer. When the timer fires, the
+  call fails locally with `DeadlineExceeded` (`local: true`) and the runtime sends `Cancel`
+  (`Unsubscribe` for a subscription). Authorization is checked once, at `Subscribe`: a role change
+  does not end a running subscription; revoking the session does.
 - **Subscriptions** (spec Open question 23a). `Subscribe` carries the call payload
   `{procedure, input, timeout_ms?}`; each `Event` frame is one event, in order. The server ends a
   subscription with `Result` (the iteration ends normally; the payload is not an event) or `Error`

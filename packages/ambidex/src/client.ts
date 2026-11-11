@@ -21,12 +21,14 @@
 // safety timer, for a server that never answers, at the procedure's effective deadline plus a
 // slack: the server's advertised `cancel_grace_ms` plus `networkMarginMs` when its HelloAck has
 // one (spec Open question 23b), otherwise `timeoutSlackMs`. Calls, subscriptions and streams all
-// get it. The effective deadline is `timeoutMs`, else the procedure's generated
-// `timeoutDefaultMs`, capped by its `timeoutMaxMs`, so a subscription the server ends without a
-// frame (one dropped while it waited for room when its deadline passed, spec Open question 26
-// item 11) still ends here with a local `DeadlineExceeded`. Only a procedure definition without
-// those timeouts, called without `timeoutMs`, has no safety timer (and none past what
-// `setTimeout` can wait).
+// get it when they have a deadline. The effective deadline is `timeoutMs`, else the procedure's
+// generated `timeoutDefaultMs`, capped by its `timeoutMaxMs`, so a subscription the server ends
+// without a frame (one dropped while it waited for room when its deadline passed, spec Open
+// question 26 item 11) still ends here with a local `DeadlineExceeded`. A subscription has no
+// default deadline (spec Open question 24f): without `timeoutMs` and without a declared maximum
+// (`timeoutMaxMs: null`) it has none, so the server never drops it that way, and it has no safety
+// timer either. Neither has a procedure definition without those timeouts called without
+// `timeoutMs`, nor a deadline past what `setTimeout` can wait.
 
 import type { CallOptions, Client, ProcedureKind, ProcedureLike } from "./contract.js";
 import { Connection, type HelloAck } from "./connection.js";
@@ -262,8 +264,8 @@ function slackMs(conn: Connection, options: RuntimeOptions): number {
 }
 
 /**
- * Calls `fire` at the effective deadline plus the slack, unless that is beyond what `setTimeout`
- * can wait. Returns the timer, if any.
+ * Calls `fire` at the effective deadline plus the slack, unless there is no deadline or it is
+ * beyond what `setTimeout` can wait. Returns the timer, if any.
  */
 function safetyTimer(
   def: ProcedureLike,
@@ -277,7 +279,12 @@ function safetyTimer(
   return delay <= MAX_TIMER_MS ? setTimeout(fire, delay) : undefined;
 }
 
-/** Reads the generated table's timeouts, if present (`ProcedureDef.timeoutDefaultMs/MaxMs`). */
+/**
+ * The effective deadline as the server computes it, from the generated table's timeouts
+ * (`ProcedureDef.timeoutDefaultMs/MaxMs`): `timeoutMs`, or the default without it, capped by the
+ * maximum. A bound that is `null` (or absent) is no bound, so a subscription (no default) without
+ * `timeoutMs` and without a declared maximum has no deadline: `undefined`.
+ */
 function deadlineMs(def: ProcedureLike, timeoutMs: number | undefined): number | undefined {
   const d = def as { timeoutDefaultMs?: unknown; timeoutMaxMs?: unknown };
   const max = typeof d.timeoutMaxMs === "number" ? d.timeoutMaxMs : undefined;

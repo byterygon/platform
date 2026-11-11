@@ -304,9 +304,20 @@ fn api_ts_exports_types_and_a_typed_procedure_table() {
         "export type ListInput = Record<symbol, never>;",
         "readonly \"zoo.settings\": ProcedureDef<\"mutation\", Settings, Settings, never>;",
         "export const procedures: Api = {",
+        "readonly timeoutDefaultMs: number | null;",
+        "readonly timeoutMaxMs: number | null;",
+        // zoo.execute declares 5m / 1h; the subscription zoo.events has neither bound.
+        "timeoutDefaultMs: 300000,\n      timeoutMaxMs: 3600000,",
+        "name: \"zoo.events\",\n      kind: \"subscription\",",
     ] {
         assert!(ts.contains(expected), "api.ts lacks {expected:?}:\n{ts}");
     }
+    let events = &ts[ts.find("name: \"zoo.events\"").unwrap()..];
+    let events = &events[..events.find('}').unwrap()];
+    assert!(
+        events.contains("timeoutDefaultMs: null,") && events.contains("timeoutMaxMs: null,"),
+        "{events}"
+    );
     // 64-bit integers are numbers, as serde_json writes them, and the header says where that ends.
     assert!(!ts.contains("bigint"), "{ts}");
     assert!(ts.contains("exact only up to 2^53"), "{ts}");
@@ -336,10 +347,9 @@ fn manifest_reflects_the_registry() {
         assert_eq!(p["deprecated"], meta.deprecated);
         assert_eq!(p["log_input"], meta.log_input);
         assert_eq!(p["redact"], json!(meta.redact));
-        assert_eq!(
-            p["timeout_max_ms"],
-            u64::try_from(meta.timeout_max.as_millis()).unwrap()
-        );
+        let ms = |d: Option<std::time::Duration>| d.map(|d| u64::try_from(d.as_millis()).unwrap());
+        assert_eq!(p["timeout_default_ms"], json!(ms(meta.timeout_default)));
+        assert_eq!(p["timeout_max_ms"], json!(ms(meta.timeout_max)));
     }
     let execute = &procs[metas.iter().position(|m| m.name == "zoo.execute").unwrap()];
     assert_eq!(execute["kind"], "stream");
@@ -350,6 +360,9 @@ fn manifest_reflects_the_registry() {
     // A procedure without typed details: `details` never present.
     let events = &procs[metas.iter().position(|m| m.name == "zoo.events").unwrap()];
     assert_eq!(events["error"], json!(false));
+    // A subscription has no default deadline and, without a declared maximum, no cap.
+    assert_eq!(events["timeout_default_ms"], Value::Null);
+    assert_eq!(events["timeout_max_ms"], Value::Null);
     // Named schemas live at the root, so `#/$defs/...` resolves against the manifest itself.
     let defs = m["$defs"].as_object().unwrap();
     for name in [

@@ -49,9 +49,11 @@
 //!   shared generator.
 //! - `Subscribe` starts a subscription (see [`crate::subscription`]): admitted like a `Call` (same
 //!   payload, call id rule and `max_concurrent_calls` slot), run through
-//!   [`Dispatch::subscribe`] under its own [`CallScope`]. Its `Event` frames and its one terminal
-//!   frame leave in order through a per-connection queue that may use at most half of the
-//!   outbound queue, so a busy subscription cannot crowd out call answers and get a reading
+//!   [`Dispatch::subscribe`] under its own [`CallScope`], which has no default deadline: only the
+//!   client's `timeout_ms` and the procedure's declared maximum bound it (spec Open question
+//!   24f). Its `Event` frames and its one terminal frame leave in order through a
+//!   per-connection queue that may use at most half of the outbound queue, so a busy
+//!   subscription cannot crowd out call answers and get a reading
 //!   client disconnected as a slow consumer. Events count against their subscription's buffer
 //!   until the writer hands them to the transport. `Unsubscribe` gets no reply: the frames still
 //!   waiting in the engine (events, and the end if the handler already returned) are discarded,
@@ -80,14 +82,14 @@ use tokio_util::sync::CancellationToken;
 use security_types::{Delivery, Principal};
 
 use crate::audit::{Armed, Completions, Room, Rooms, code_name, delivery_for};
-use crate::cancel::{CallScope, effective_timeout};
+use crate::cancel::{CallScope, DeadlineClock, Start, TokioClock, deadline_at};
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
 use crate::message::{
     Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits, MAX_JSON_SAFE_INTEGER,
 };
-use crate::procedure::{DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX};
+use crate::procedure::ProcedureKind;
 use crate::subscription::{Events, Held, Queued};
 use crate::transport::{TransportRx, TransportTx};
 
@@ -133,6 +135,11 @@ pub struct ServerConfig {
     /// `subscription_buffer_events`. An event that does not fit ends the subscription with
     /// `ResourceExhausted`; one event up to `max_frame_bytes` always fits an empty buffer.
     pub subscription_buffer_bytes: usize,
+    /// The clock call and subscription deadlines are measured on (see [`crate::cancel`]).
+    /// Default [`TokioClock`]; tests may supply one they move by hand. Grace periods, audit
+    /// durations and write timeouts, and the handshake and close timeouts always use Tokio's
+    /// timer.
+    pub deadline_clock: Arc<dyn DeadlineClock>,
     /// Holds the writer before each send (tests only).
     #[cfg(feature = "test-hooks")]
     pub writer_gate: Option<WriterGate>,
@@ -159,6 +166,7 @@ impl ServerConfig {
             cancel_grace: Duration::from_secs(1),
             subscription_buffer_events: 64,
             subscription_buffer_bytes: 1024 * 1024,
+            deadline_clock: Arc::new(TokioClock),
             #[cfg(feature = "test-hooks")]
             writer_gate: None,
         }
@@ -413,9 +421,10 @@ async fn drain_calls(mut calls: JoinSet<Answer>, grace: Duration) {
 
 /// Runs one call under its scope: the answer, or the cancellation reason once the token fires.
 ///
-/// The deadline is re-read whenever the dispatcher moves it. Once the token has fired the answer
-/// is the reason, whatever the call returns: it gets `grace` to finish cooperatively, and if it
-/// has not finished by then its future is dropped.
+/// The deadline is re-read whenever the dispatcher moves it; without one (a subscription with no
+/// client timeout and no declared maximum) only the token ends the call. Once the token has fired
+/// the answer is the reason, whatever the call returns: it gets `grace` to finish cooperatively,
+/// and if it has not finished by then its future is dropped.
 async fn run_call(
     fut: impl Future<Output = Result<Value, ErrorPayload>>,
     scope: CallScope,
@@ -433,8 +442,13 @@ async fn run_call(
             biased;
             result = &mut fut => break Some(result),
             () = scope.cancelled() => break None,
-            () = tokio::time::sleep_until(deadline) => {
-                if scope.deadline() <= deadline {
+            () = scope.reached(deadline) => {
+                // It passed, unless the dispatcher moved it later (or removed it) meanwhile.
+                if scope
+                    .deadline()
+                    .zip(deadline)
+                    .is_some_and(|(current, reached)| current <= reached)
+                {
                     scope.fire(Code::DeadlineExceeded);
                     break None;
                 }
@@ -691,10 +705,33 @@ struct Received {
     call: Call,
     session: Arc<Session>,
     /// When the frame was read: the call's deadline and duration run from here (spec §7).
-    at: Instant,
-    /// When it ends if it is still waiting: the deadline its scope would start with (the
-    /// engine's default bounds; the procedure's own apply once it starts).
-    deadline: Instant,
+    at: Start,
+    /// When it ends if it is still waiting, on the deadline clock: the deadline its scope would
+    /// start with (the engine's default bounds for its kind; the procedure's own apply once it
+    /// starts). `None` for a subscription without a client timeout (spec Open question 24f).
+    ///
+    /// The procedure's own `timeout_default`/`timeout_max` are not known here and do not bound
+    /// the wait (spec Open question 26 item 11, confirmed 2026-11-11: acceptable as implemented).
+    /// They apply when the call starts, still measured from frame receipt: a call that waited
+    /// longer than its procedure's `timeout_max` then gets `DeadlineExceeded` from the router's
+    /// check before authorization, so its handler never runs and it has no audit entry. For a
+    /// subscription that declares a maximum and sent no timeout (or a longer one) that is the
+    /// only end: it is never dropped while it waits. Conformance cases
+    /// `a_subscription_that_waited_past_its_declared_maximum_ends_when_it_starts` and
+    /// `a_waiting_subscription_deadline_runs_from_frame_receipt` pin this.
+    deadline: Option<Instant>,
+}
+
+impl Received {
+    /// The kind whose default bounds the call starts with: any call kind for `Call` (they share
+    /// them), or a subscription.
+    fn kind(&self) -> ProcedureKind {
+        if self.subscribe {
+            ProcedureKind::Subscription
+        } else {
+            ProcedureKind::Query
+        }
+    }
 }
 
 /// Control flow out of frame handling.
@@ -715,13 +752,16 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             if let Err(closed) = self.drain_frames().await {
                 return closed;
             }
-            // The earliest deadline of a call waiting for room (unused while none waits).
-            let expiry = self
-                .waiting
-                .iter()
-                .map(|w| w.deadline)
-                .min()
-                .unwrap_or_else(Instant::now);
+            // The earliest deadline of a call waiting for room, on the deadline clock. None
+            // while none waits, or while every waiting one is a subscription without deadline.
+            let expiry = self.waiting.iter().filter_map(|w| w.deadline).min();
+            let clock = Arc::clone(&self.inner.config.deadline_clock);
+            let expired = async move {
+                match expiry {
+                    Some(at) => clock.sleep_until(at).await,
+                    None => std::future::pending().await,
+                }
+            };
             tokio::select! {
                 biased;
                 Some(goaway) = control.recv() => {
@@ -753,7 +793,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                     }
                 }
                 // A waiting call whose deadline passed ends without running.
-                () = tokio::time::sleep_until(expiry), if !self.waiting.is_empty() => {
+                () = expired, if expiry.is_some() => {
                     if let Err(closed) = self.expire_waiting() {
                         return closed;
                     }
@@ -970,7 +1010,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         frame: &Frame,
         subscribe: bool,
     ) -> Result<Option<Received>, Closed> {
-        let at = Instant::now();
+        let at = Start::now(Arc::clone(&self.inner.config.deadline_clock));
         let call_id = frame.call_id;
         if !self.claim_call_id(call_id) {
             return Err(self
@@ -997,25 +1037,28 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 return Ok(None);
             }
         };
-        let deadline = at + effective_timeout(call.timeout(), DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX);
-        Ok(Some(Received {
+        let mut received = Received {
             call_id,
             subscribe,
             call,
             session,
             at,
-            deadline,
-        }))
+            deadline: None,
+        };
+        let (default, max) = received.kind().default_timeouts();
+        received.deadline =
+            deadline_at(received.at.clock_at, received.call.timeout(), default, max);
+        Ok(Some(received))
     }
 
     /// Ends every waiting call whose deadline has passed, as the Cancel of a waiting call does:
     /// it never runs and has no audit entry. A call answers `DeadlineExceeded` at once; a
     /// subscription is dropped and nothing is sent for it (spec Open question 26 item 11).
     fn expire_waiting(&mut self) -> Step {
-        let now = Instant::now();
+        let now = self.inner.config.deadline_clock.now();
         let mut expired = Vec::new();
         self.waiting.retain(|w| {
-            let over = w.deadline <= now;
+            let over = w.deadline.is_some_and(|deadline| deadline <= now);
             if over && !w.subscribe {
                 expired.push(w.call_id);
             }
@@ -1030,6 +1073,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
 
     /// Starts an accepted call with its room in the completion queue.
     fn start(&mut self, received: Received, room: Room) {
+        let kind = received.kind();
         let Received {
             call_id,
             subscribe,
@@ -1038,8 +1082,8 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             at,
             deadline: _,
         } = received;
-        // The deadline runs from frame receipt; the dispatcher narrows it to the procedure's
-        // bounds.
+        // The deadline runs from frame receipt, with the default bounds of its kind; the
+        // dispatcher narrows it to the procedure's bounds.
         let scope = CallScope::with_token(
             self.conn_token.child_token(),
             call.timeout(),
@@ -1047,6 +1091,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             at,
             self.completions.clone(),
             Some(room),
+            kind,
         );
         if !subscribe {
             let fut = self.inner.dispatch.call(session, call);
