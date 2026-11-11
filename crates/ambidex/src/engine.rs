@@ -709,6 +709,16 @@ struct Received {
     /// When it ends if it is still waiting, on the deadline clock: the deadline its scope would
     /// start with (the engine's default bounds for its kind; the procedure's own apply once it
     /// starts). `None` for a subscription without a client timeout (spec Open question 24f).
+    ///
+    /// The procedure's own `timeout_default`/`timeout_max` are not known here and do not bound
+    /// the wait (spec Open question 26 item 11, confirmed 2026-11-11: acceptable as implemented).
+    /// They apply when the call starts, still measured from frame receipt: a call that waited
+    /// longer than its procedure's `timeout_max` then gets `DeadlineExceeded` from the router's
+    /// check before authorization, so its handler never runs and it has no audit entry. For a
+    /// subscription that declares a maximum and sent no timeout (or a longer one) that is the
+    /// only end: it is never dropped while it waits. Conformance cases
+    /// `a_subscription_that_waited_past_its_declared_maximum_ends_when_it_starts` and
+    /// `a_waiting_subscription_deadline_runs_from_frame_receipt` pin this.
     deadline: Option<Instant>,
 }
 

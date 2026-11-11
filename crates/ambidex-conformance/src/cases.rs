@@ -1828,6 +1828,93 @@ pub async fn a_call_waiting_for_room_ends_at_its_deadline<H: Harness>(h: &H) {
     assert_eq!(fixture.probe.runs(), 0);
 }
 
+/// Takes every room with a call whose completion write is held, so the next `Call` or
+/// `Subscribe` waits for room until the case releases the writes. Returns the room count.
+async fn take_every_room<H: Harness>(h: &H, client: &mut Client) -> usize {
+    let audit = &h.fixture().audit;
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    audit.hold_completions();
+    for id in 1..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every completion write", || audit.held_now() == bound).await;
+    bound
+}
+
+/// Open question 26 item 11 (confirmed 2026-11-11, "the procedure's own bounds while a call
+/// waits"): while a subscription waits for room the engine does not know the procedure, so it is
+/// bounded by the engine's defaults for a subscription, none (24f), and the client's `timeout_ms`.
+/// Its deadline still runs from frame receipt (§7). One that declares `timeout_max` = 10 min and
+/// waited 11 min is not dropped while it waits. When it starts, the router applies the declared
+/// maximum, finds the deadline already passed, and answers `DeadlineExceeded` before
+/// authorization: the handler never runs and there is no audit entry.
+pub async fn a_subscription_that_waited_past_its_declared_maximum_ends_when_it_starts<
+    H: Harness,
+>(
+    h: &H,
+) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    take_every_room(h, &mut client).await;
+    let max = millis(TICKS_CAPPED_TIMEOUT_MAX);
+    // Without a client timeout, and with one longer than the declared maximum.
+    let (none, hour) = (MAX_CONCURRENT_CALLS + 1, MAX_CONCURRENT_CALLS + 2);
+    client
+        .subscribe(none, "fixture.ticks_capped", json!(null))
+        .await;
+    client
+        .subscribe_with_timeout(hour, "fixture.ticks_capped", json!(null), HOUR_MS)
+        .await;
+    // Both frames were read: their deadlines run from here.
+    client.expect_alive(1000).await;
+    advance(h, max + 60_000);
+    // Neither was dropped while waiting: no deadline (`none`), or one an hour away (`hour`).
+    client.expect_alive(1001).await;
+    assert_eq!(fixture.probe.runs(), 0);
+    fixture.audit.release_completions();
+    for (id, frame) in terminal_frames(&mut client, &[none, hour]).await {
+        assert_eq!(
+            error_code(&frame),
+            Code::DeadlineExceeded,
+            "subscription {id}"
+        );
+    }
+    client.expect_alive(1002).await;
+    assert_eq!(fixture.probe.runs(), 0, "no handler ran late");
+    assert!(
+        audited(h, "fixture.ticks_capped").is_empty(),
+        "refused before authorization: no audit entry"
+    );
+}
+
+/// The same rule when the wait is shorter than the declared maximum: the subscription runs, and
+/// its deadline is 10 min after its frame was read, not after it started.
+pub async fn a_waiting_subscription_deadline_runs_from_frame_receipt<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    take_every_room(h, &mut client).await;
+    let max = millis(TICKS_CAPPED_TIMEOUT_MAX);
+    let id = MAX_CONCURRENT_CALLS + 1;
+    client
+        .subscribe_with_timeout(id, "fixture.ticks_capped", json!(null), HOUR_MS)
+        .await;
+    client.expect_alive(1000).await;
+    let waited = max - 60_000;
+    advance(h, waited);
+    client.expect_alive(1001).await;
+    fixture.audit.release_completions();
+    fixture.probe.expect(Event::Started("ticks_capped")).await;
+    // `fixture.ticks_capped` counts from its own start: alive 1 ms before 10 min from receipt.
+    advance(h, max - waited - 1);
+    assert_eq!(client.expect_event(id).await, json!(max - waited - 1));
+    advance(h, 1);
+    let err = client.expect_code(id, Code::DeadlineExceeded).await;
+    let entry = wait_for_completion(h, &err.correlation_id).await;
+    assert_eq!(entry.delivery, Some(Delivery::DeadlineExceeded));
+    client.expect_alive(1002).await;
+}
+
 pub async fn call_kind_must_match_frame_kind<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     // Refused before authorization: kinds are public in the manifest, like names.
