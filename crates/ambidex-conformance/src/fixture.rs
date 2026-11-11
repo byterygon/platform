@@ -16,6 +16,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use ambidex::codegen::{self, ApiInfo};
+#[cfg(feature = "writer-gate")]
 use ambidex::engine::WriterGate;
 use ambidex::security_types::{
     Action, ApprovalSpec, AuditDecision, AuditEntry, AuditFailure, Authorizer, AuthzRequest,
@@ -320,6 +321,7 @@ pub struct Fixture {
     pub probe: Arc<Probe>,
     pub audit: AuditLog,
     pub reports: AuditReports,
+    #[cfg(feature = "writer-gate")]
     pub writer_gate: WriterGate,
 }
 
@@ -335,14 +337,20 @@ impl Fixture {
             probe: Arc::new(Probe::new()),
             audit: AuditLog::default(),
             reports: AuditReports::default(),
+            #[cfg(feature = "writer-gate")]
             writer_gate: WriterGate::new(),
         }
     }
 
-    /// [`server_config`] with this fixture's writer gate (open unless a case closes it).
+    /// [`server_config`] with this fixture's writer gate (open unless a case closes it), when
+    /// the crate is built with `writer-gate`.
     pub fn server_config(&self) -> ServerConfig {
+        #[cfg_attr(not(feature = "writer-gate"), allow(unused_mut))]
         let mut config = server_config();
-        config.writer_gate = Some(self.writer_gate.clone());
+        #[cfg(feature = "writer-gate")]
+        {
+            config.writer_gate = Some(self.writer_gate.clone());
+        }
         config
     }
 

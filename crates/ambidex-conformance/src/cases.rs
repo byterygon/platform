@@ -1152,6 +1152,7 @@ const HOLD: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// Open question 26 item 11b: `Delivered` once the transport accepted the frame, and the
 /// completion records when the call ended, not when its frame went out.
+#[cfg(feature = "writer-gate")]
 pub async fn delivered_once_the_transport_accepted_the_frame<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     let gate = &h.fixture().writer_gate;
@@ -1180,10 +1181,12 @@ pub async fn delivered_once_the_transport_accepted_the_frame<H: Harness>(h: &H) 
 
 /// Pongs queued behind the writer: enough that a subscription's frames wait for room behind
 /// them (subscription frames leave only while half the outbound queue is free).
+#[cfg(feature = "writer-gate")]
 const QUEUED_PONGS: u32 = 40;
 
 /// Open question 26 item 11a: a subscription returned `Ok`, but its end frame was still waiting
 /// when `Unsubscribe` dropped it, so the client never got it: `Cancelled`.
+#[cfg(feature = "writer-gate")]
 pub async fn end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled<
     H: Harness,
 >(
@@ -1220,6 +1223,7 @@ pub async fn end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_canc
 
 /// Open question 26 item 11a: answers chosen but still queued when the connection closes never
 /// reach the client: `Cancelled`.
+#[cfg(feature = "writer-gate")]
 pub async fn answers_still_queued_at_close_are_cancelled<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     let fixture = h.fixture();

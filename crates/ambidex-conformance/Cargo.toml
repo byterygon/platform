@@ -26,6 +26,10 @@ ws = [
 ]
 # Tauri harness: the real plugin through Tauri's IPC and ACL layer on the mock runtime.
 tauri = ["dep:ambidex-tauri", "dep:tauri"]
+# The fixture's writer gate (`ambidex/test-hooks`) and the cases that hold frames with it. Not a
+# default: only this crate's own tests enable it (the dev-dependency below), so a normal build of
+# the workspace never has `ServerConfig::writer_gate`.
+writer-gate = ["ambidex/test-hooks"]
 
 # `rpc-gen` writes the fixture API's `api.ts` and `api.manifest.json` for the TypeScript client's
 # conformance scenarios (Ambidex spec §2, §12). It needs no transport.
@@ -41,7 +45,7 @@ path = "src/bin/conformance-server.rs"
 required-features = ["ws"]
 
 [dependencies]
-ambidex = { path = "../ambidex", features = ["test-hooks"] }
+ambidex = { path = "../ambidex" }
 schemars = { version = "1.2.3", default-features = false, features = ["derive"] }
 security-types = { path = "../security-types" }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -59,3 +63,7 @@ tokio-tungstenite = { version = "0.29.0", default-features = false, features = [
 
 ambidex-tauri = { path = "../ambidex-tauri", optional = true }
 tauri = { version = "2.12.5", default-features = false, features = ["test"], optional = true }
+
+[dev-dependencies]
+# The suite's tests run every case, the writer-gate ones included.
+ambidex-conformance = { path = ".", features = ["writer-gate"] }

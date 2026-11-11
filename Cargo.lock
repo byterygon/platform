@@ -73,6 +73,7 @@ version = "0.0.0"
 dependencies = [
  "ambidex",
  "ambidex-axum",
+ "ambidex-conformance",
  "ambidex-tauri",
  "axum",
  "futures-util",

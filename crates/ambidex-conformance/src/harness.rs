@@ -143,9 +143,6 @@ macro_rules! conformance_suite {
             subscription_completion_records_how_it_ended,
             answer_does_not_wait_for_the_completion_write,
             panic_after_unsubscribe_is_internal_and_cancelled,
-            delivered_once_the_transport_accepted_the_frame,
-            end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled,
-            answers_still_queued_at_close_are_cancelled,
             completions_a_hung_sink_never_takes_are_reported_lost,
             a_slow_sink_limits_outstanding_completions,
             a_call_waiting_for_room_does_not_hold_other_frames,
@@ -154,6 +151,22 @@ macro_rules! conformance_suite {
             full_event_buffer_ends_subscription,
             streams_are_unimplemented_and_keep_connection,
         );
+        $crate::conformance_suite!(@gated $harness);
+    };
+    (@gated $harness:ty) => {
+        // Cases that hold frames at the writer gate (feature `writer-gate`, which the suite's
+        // own tests enable).
+        #[cfg(feature = "writer-gate")]
+        mod writer_gate {
+            // The harness type, as the test file names it.
+            #[allow(unused_imports)]
+            use super::*;
+            $crate::conformance_suite!(@cases $harness;
+                delivered_once_the_transport_accepted_the_frame,
+                end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled,
+                answers_still_queued_at_close_are_cancelled,
+            );
+        }
     };
     (@cases $harness:ty; $($case:ident),* $(,)?) => {
         $(
