@@ -1148,6 +1148,7 @@ async fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
 }
 
 /// How long a case keeps an answer at the writer, so a timestamp taken at send time would show.
+#[cfg(feature = "writer-gate")]
 const HOLD: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// Open question 26 item 11b: `Delivered` once the transport accepted the frame, and the
@@ -1310,13 +1311,30 @@ pub async fn a_slow_sink_limits_outstanding_completions<H: Harness>(h: &H) {
         fixture.audit.held_now() == bound
     })
     .await;
-    // No room: these calls wait, unanswered, instead of adding completions.
+    // No room: these calls wait, unanswered and unstarted, instead of adding completions.
     let (late, later) = (MAX_CONCURRENT_CALLS + 1, MAX_CONCURRENT_CALLS + 2);
     client.call(late, "fixture.echo", json!(late)).await;
     client.call(later, "fixture.echo", json!(later)).await;
-    tokio::time::sleep(HOLD).await;
+    // The connection read both and still answers a Ping, and nothing was sent before its Pong:
+    // no Result for either late call.
+    client.expect_alive(1000).await;
+    // Exactly the first calls' 2 * bound entries: their admissions in the log and their
+    // completions held by the sink. None for the late calls.
     assert_eq!(fixture.audit.held_now(), bound);
-    assert!(audited(h, "fixture.echo").len() < 2 * (bound + 2));
+    let entries = audited(h, "fixture.echo");
+    assert_eq!(
+        entries.len(),
+        bound,
+        "only the first admissions: {entries:?}"
+    );
+    assert!(entries.iter().all(|e| e.outcome == Outcome::Started));
+    let late_digests = [input_digest(&json!(late)), input_digest(&json!(later))];
+    assert!(
+        entries
+            .iter()
+            .all(|e| !late_digests.contains(&e.input_digest)),
+        "the late calls have not started: {entries:?}"
+    );
     fixture.audit.release_completions();
     // Both run once there is room again, concurrently, so their answers come in either order.
     let mut answered = BTreeMap::new();
