@@ -1632,6 +1632,19 @@ pub async fn a_call_waiting_for_room_ends_at_its_deadline<H: Harness>(h: &H) {
     // The call's answer is its deadline, on time; nothing came for the subscription before it.
     client.expect_code(call, Code::DeadlineExceeded).await;
     let waited = sent.elapsed();
+    // The subscription's deadline passed before the call's, so whatever the server would send
+    // for it is already queued. A Ping now must be answered by its Pong, with nothing before it:
+    // no Error or end frame for the expired subscription.
+    assert!(sub_timeout < call_timeout);
+    client
+        .send(&[Frame::new(Kind::Ping, 1000, b"after-expiry".to_vec())])
+        .await;
+    let next = client.recv().await.expect("Pong, got close");
+    assert_eq!(
+        (next.kind, next.call_id, next.payload.as_slice()),
+        (Kind::Pong, 1000, b"after-expiry".as_slice()),
+        "nothing may be sent for the expired subscription {subscription}: {next:?}"
+    );
     assert!(
         waited >= std::time::Duration::from_millis(call_timeout),
         "not before its deadline: {waited:?}"
@@ -1650,7 +1663,6 @@ pub async fn a_call_waiting_for_room_ends_at_its_deadline<H: Harness>(h: &H) {
         "{:?}",
         fixture.reports.all()
     );
-    client.expect_alive(1000).await;
     // Once there is room, neither starts.
     fixture.audit.release_completions();
     let entries = wait_for_entries(h, "fixture.echo", 2 * bound).await;
