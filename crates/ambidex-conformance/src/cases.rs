@@ -1160,15 +1160,30 @@ macro_rules! not_built_with_writer_gate {
         $(
             #[cfg(not(feature = "writer-gate"))]
             pub async fn $case<H: Harness>(_h: &H) {
-                eprintln!(
-                    "{}: {}: not run: ambidex-conformance was built without its `writer-gate` \
-                     feature",
+                writer_gate_case_not_run(
                     H::NAME,
-                    stringify!($case)
+                    stringify!($case),
+                    std::env::var_os(REQUIRE_WRITER_GATE).is_some(),
                 );
             }
         )*
     };
+}
+
+/// When set (CI sets it to `1`), a writer-gate case that cannot run fails instead of reporting
+/// that it did not run, like `BYTERYGON_REQUIRE_POSTGRES` for the PostgreSQL driver tests.
+pub const REQUIRE_WRITER_GATE: &str = "BYTERYGON_REQUIRE_WRITER_GATE";
+
+/// What a writer-gate case does in a build without the feature: fails when the case is
+/// `required` ([`REQUIRE_WRITER_GATE`]), else says it did not run.
+#[cfg_attr(feature = "writer-gate", allow(dead_code))]
+fn writer_gate_case_not_run(harness: &str, case: &str, required: bool) {
+    let why = "ambidex-conformance was built without its `writer-gate` feature";
+    assert!(
+        !required,
+        "{harness}: {case}: required ({REQUIRE_WRITER_GATE}) but not run: {why}"
+    );
+    eprintln!("{harness}: {case}: not run: {why}");
 }
 
 not_built_with_writer_gate!(
@@ -1741,4 +1756,20 @@ pub async fn streams_are_unimplemented_and_keep_connection<H: Harness>(h: &H) {
         .send(&[json_frame(Kind::Credit, 1, &json!({ "chunks": 4 }))])
         .await;
     client.expect_alive(0).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::writer_gate_case_not_run;
+
+    #[test]
+    #[should_panic(expected = "required (BYTERYGON_REQUIRE_WRITER_GATE) but not run")]
+    fn a_required_writer_gate_case_that_cannot_run_fails() {
+        writer_gate_case_not_run("harness", "case", true);
+    }
+
+    #[test]
+    fn a_writer_gate_case_that_cannot_run_only_reports_unless_required() {
+        writer_gate_case_not_run("harness", "case", false);
+    }
 }

@@ -58,7 +58,8 @@
 //! Three cases hold frames before the transport takes them, with `ServerConfig::writer_gate`
 //! (ambidex's `test-hooks` feature). They run when this crate is built with its `writer-gate`
 //! feature, which its own tests enable through a dev-dependency on itself; built without it,
-//! they print that they did not run. [`cases::WRITER_GATE`] says which. Cargo unifies features
+//! they print that they did not run, or fail when `BYTERYGON_REQUIRE_WRITER_GATE` is set (CI sets
+//! it, so a CI run that cannot exercise them fails). [`cases::WRITER_GATE`] says which. Cargo unifies features
 //! per build, so in a `cargo test` of the whole workspace every crate's tests link the same
 //! `ambidex` with `test-hooks`; a `cargo build` (no dev-dependencies) never has it.
 //!
