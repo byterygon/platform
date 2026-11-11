@@ -1147,6 +1147,36 @@ async fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
     }
 }
 
+/// Whether this crate was built with its `writer-gate` feature, so the cases that hold frames at
+/// the engine's writer gate run. Decided here, in ambidex-conformance, whatever crate expands
+/// [`conformance_suite!`](crate::conformance_suite); without it those cases print that they did
+/// not run.
+pub const WRITER_GATE: bool = cfg!(feature = "writer-gate");
+
+/// The writer-gate cases without the feature: same names, so every suite lists them, and a run
+/// says plainly that they were not exercised.
+macro_rules! not_built_with_writer_gate {
+    ($($case:ident),* $(,)?) => {
+        $(
+            #[cfg(not(feature = "writer-gate"))]
+            pub async fn $case<H: Harness>(_h: &H) {
+                eprintln!(
+                    "{}: {}: not run: ambidex-conformance was built without its `writer-gate` \
+                     feature",
+                    H::NAME,
+                    stringify!($case)
+                );
+            }
+        )*
+    };
+}
+
+not_built_with_writer_gate!(
+    delivered_once_the_transport_accepted_the_frame,
+    end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled,
+    answers_still_queued_at_close_are_cancelled,
+);
+
 /// How long a case keeps an answer at the writer, so a timestamp taken at send time would show.
 #[cfg(feature = "writer-gate")]
 const HOLD: std::time::Duration = std::time::Duration::from_millis(200);

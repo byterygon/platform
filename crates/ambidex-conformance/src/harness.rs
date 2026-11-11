@@ -148,27 +148,17 @@ macro_rules! conformance_suite {
             a_call_waiting_for_room_does_not_hold_other_frames,
             refused_call_frames_take_no_room,
             calls_waiting_for_room_count_toward_the_call_limit,
+            // Hold frames at the writer gate. Whether they run is decided by this crate's own
+            // `writer-gate` feature (see `cases::WRITER_GATE`), never by the crate calling the
+            // macro; without it they report that they did not run.
+            delivered_once_the_transport_accepted_the_frame,
+            end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled,
+            answers_still_queued_at_close_are_cancelled,
             call_kind_must_match_frame_kind,
             subscriptions_count_toward_concurrency_limit,
             full_event_buffer_ends_subscription,
             streams_are_unimplemented_and_keep_connection,
         );
-        $crate::conformance_suite!(@gated $harness);
-    };
-    (@gated $harness:ty) => {
-        // Cases that hold frames at the writer gate (feature `writer-gate`, which the suite's
-        // own tests enable).
-        #[cfg(feature = "writer-gate")]
-        mod writer_gate {
-            // The harness type, as the test file names it.
-            #[allow(unused_imports)]
-            use super::*;
-            $crate::conformance_suite!(@cases $harness;
-                delivered_once_the_transport_accepted_the_frame,
-                end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled,
-                answers_still_queued_at_close_are_cancelled,
-            );
-        }
     };
     (@cases $harness:ty; $($case:ident),* $(,)?) => {
         $(
