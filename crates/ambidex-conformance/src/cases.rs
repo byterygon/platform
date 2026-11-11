@@ -1410,6 +1410,62 @@ pub async fn a_call_waiting_for_room_does_not_hold_other_frames<H: Harness>(h: &
     assert!(!echoed.contains(&input_digest(&json!(dropped))));
 }
 
+/// Open question 26 item 11 (third review): a call refused while it is checked (binary payload,
+/// malformed Call) takes no room in the completion queue. It is refused at once even when no room
+/// is free, and afterwards all `max_concurrent_calls` places are still there.
+pub async fn refused_call_frames_take_no_room<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    for id in 1..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    // No room is free, yet both are refused at once.
+    let (binary, malformed) = (MAX_CONCURRENT_CALLS + 1, MAX_CONCURRENT_CALLS + 2);
+    let call = call_frame(binary, "fixture.echo", json!(binary), None);
+    client
+        .send(&[
+            Frame::binary(Kind::Call, binary, call.payload),
+            json_frame(Kind::Call, malformed, &json!({ "not": "a call" })),
+        ])
+        .await;
+    client.expect_code(binary, Code::InvalidArgument).await;
+    client.expect_code(malformed, Code::InvalidArgument).await;
+    assert_eq!(
+        fixture.audit.held_now(),
+        bound,
+        "refused before any write ended"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    fixture.audit.release_completions();
+    wait_for_entries(h, "fixture.echo", 2 * bound).await;
+    wait_until("the held writes", || fixture.audit.held_now() == 0).await;
+    // Every place is free again: `bound` more completions can be held at once.
+    fixture.audit.hold_completions();
+    let first = malformed + 1;
+    for id in first..first + MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("a full set of completion writes", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    fixture.audit.release_completions();
+    wait_for_entries(h, "fixture.echo", 4 * bound).await;
+    client.expect_alive(0).await;
+}
+
 pub async fn call_kind_must_match_frame_kind<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     // Refused before authorization: kinds are public in the manifest, like names.
