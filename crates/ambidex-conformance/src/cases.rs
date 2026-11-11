@@ -1341,6 +1341,71 @@ pub async fn a_slow_sink_limits_outstanding_completions<H: Harness>(h: &H) {
     client.expect_alive(0).await;
 }
 
+/// Open question 26 item 11 (third review): while a call frame waits for room in the completion
+/// queue, the connection still reads and handles the client's other frames.
+pub async fn a_call_waiting_for_room_does_not_hold_other_frames<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    // One call keeps running, and the completions of the others are held: no room is left.
+    client.call(1, "fixture.wait", json!(null)).await;
+    fixture.probe.expect(Event::Started("wait")).await;
+    for id in 2..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every other completion write", || {
+        fixture.audit.held_now() == bound - 1
+    })
+    .await;
+    // This call waits for room.
+    let stalled = MAX_CONCURRENT_CALLS + 1;
+    client.call(stalled, "fixture.echo", json!(stalled)).await;
+    // A Cancel for the running call and a Ping are handled meanwhile, while every write is still
+    // held.
+    client.cancel(1).await;
+    client
+        .send(&[Frame::new(Kind::Ping, 7, b"while-stalled".to_vec())])
+        .await;
+    let mut seen = BTreeMap::new();
+    for _ in 0..2 {
+        let frame = client.recv().await.expect("a frame, got close");
+        seen.insert(frame.kind as u8, frame);
+    }
+    let cancelled = &seen[&(Kind::Error as u8)];
+    assert_eq!(cancelled.call_id, 1, "{cancelled:?}");
+    let pong = &seen[&(Kind::Pong as u8)];
+    assert_eq!(
+        (pong.call_id, pong.payload.as_slice()),
+        (7, b"while-stalled".as_slice())
+    );
+    fixture.probe.expect(Event::Cancelled("wait")).await;
+    // A Cancel for a call that is itself still waiting answers at once; that call never runs.
+    let dropped = stalled + 1;
+    client.call(dropped, "fixture.echo", json!(dropped)).await;
+    client.cancel(dropped).await;
+    client.expect_code(dropped, Code::Cancelled).await;
+    assert!(
+        fixture.audit.held_now() >= bound - 1,
+        "handled before any held write ended"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    // Once the sink answers, the waiting call runs; the cancelled one never did.
+    fixture.audit.release_completions();
+    assert_eq!(client.expect_result(stalled).await, json!(stalled));
+    client.expect_alive(0).await;
+    let echoed: Vec<_> = audited(h, "fixture.echo")
+        .into_iter()
+        .map(|e| e.input_digest)
+        .collect();
+    assert!(!echoed.contains(&input_digest(&json!(dropped))));
+}
+
 pub async fn call_kind_must_match_frame_kind<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     // Refused before authorization: kinds are public in the manifest, like names.

@@ -97,7 +97,7 @@ impl CallScope {
         CallScope::build(
             CancellationToken::new(),
             requested,
-            correlation_id,
+            (correlation_id, Instant::now()),
             false,
             None,
             (Completions::unbounded(), None),
@@ -126,7 +126,7 @@ impl CallScope {
         CallScope::build(
             self.inner.token.child_token(),
             requested,
-            correlation_id,
+            (correlation_id, Instant::now()),
             false,
             Some(self.clone()),
             // Its completion is written on the connection's queue, so the connection waits for
@@ -135,19 +135,21 @@ impl CallScope {
         )
     }
 
-    /// The engine's scope for one call, with the connection's completion queue and the call's
+    /// The engine's scope for one call, which started when its frame was `received` (the call
+    /// may have waited for room since), with the connection's completion queue and the call's
     /// room in it.
     pub(crate) fn with_token(
         token: CancellationToken,
         requested: Option<Duration>,
         correlation_id: String,
+        received: Instant,
         completions: Completions,
         room: Option<Room>,
     ) -> CallScope {
         CallScope::build(
             token,
             requested,
-            correlation_id,
+            (correlation_id, received),
             true,
             None,
             (completions, room),
@@ -157,12 +159,11 @@ impl CallScope {
     fn build(
         token: CancellationToken,
         requested: Option<Duration>,
-        correlation_id: String,
+        (correlation_id, start): (String, Instant),
         managed: bool,
         parent: Option<CallScope>,
         (completions, room): (Completions, Option<Room>),
     ) -> CallScope {
-        let start = Instant::now();
         CallScope {
             inner: Arc::new(Inner {
                 token,
@@ -417,6 +418,7 @@ mod tests {
             parent.child_token(),
             None,
             String::new(),
+            Instant::now(),
             Completions::unbounded(),
             None,
         );
@@ -440,6 +442,7 @@ mod tests {
             CancellationToken::new(),
             None,
             "c-1".into(),
+            Instant::now(),
             Completions::unbounded(),
             None,
         );

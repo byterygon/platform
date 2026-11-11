@@ -360,8 +360,7 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         last_call_id: 0,
         close_by: None,
         completions: completions.clone(),
-        room: None,
-        stalled: None,
+        waiting: VecDeque::new(),
     };
     let closed = conn.run_loop(&mut rx, &mut control, &mut writer).await;
     let close_by = conn.close_deadline();
@@ -676,10 +675,20 @@ struct ConnState<A, D> {
     /// The connection's audit completion writes (Open question 26 item 11), with room for
     /// `max_concurrent_calls` completions owed or being written.
     completions: Completions,
-    /// Room taken for the next call frame.
-    room: Option<Room>,
-    /// A call frame waiting for room in `completions`; no further client frame is read meanwhile.
-    stalled: Option<Frame>,
+    /// Calls received and checked, waiting in order for room (see [`ConnState::on_call_frame`]).
+    /// Other client frames are still read and handled meanwhile.
+    waiting: VecDeque<Received>,
+}
+
+/// A `Call` or `Subscribe` the connection accepted (id claimed, payload decoded) and has not
+/// started yet.
+struct Received {
+    call_id: u32,
+    subscribe: bool,
+    call: Call,
+    session: Arc<Session>,
+    /// When the frame was read: the call's deadline and duration run from here (spec §7).
+    at: Instant,
 }
 
 /// Control flow out of frame handling.
@@ -730,19 +739,15 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                         return closed;
                     }
                 }
-                // A call frame waits for room in the completion queue, and the client's frames
-                // behind it wait with it.
-                room = completions.room(), if self.stalled.is_some() => {
-                    self.room = room;
-                    if let Some(frame) = self.stalled.take()
-                        && let Err(closed) = self.on_frame(frame).await
-                    {
-                        return closed;
+                // The oldest call waiting for room starts once a completion was written.
+                room = completions.room(), if !self.waiting.is_empty() => {
+                    if let Some(received) = self.waiting.pop_front() {
+                        self.start(received, room);
                     }
                 }
                 // Client frames come before more subscription output, so a busy subscription
                 // cannot delay its own Cancel or Unsubscribe.
-                chunk = rx.recv(), if self.stalled.is_none() => match chunk {
+                chunk = rx.recv() => match chunk {
                     Ok(Some(bytes)) => self.decoder.push(&bytes),
                     Ok(None) => return Closed::PeerClosed,
                     Err(err) => return Closed::Transport(err.kind()),
@@ -762,19 +767,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
 
     async fn drain_frames(&mut self) -> Step {
         loop {
-            if self.stalled.is_some() {
-                return Ok(());
-            }
             match self.decoder.next_frame() {
-                Ok(Some(frame)) if self.needs_room(&frame) => match self.completions.try_room() {
-                    Some(room) => {
-                        self.room = room;
-                        self.on_frame(frame).await?;
-                    }
-                    // Backpressure: nothing more is taken from the client until a completion
-                    // is written (see `run_loop`).
-                    None => self.stalled = Some(frame),
-                },
                 Ok(Some(frame)) => self.on_frame(frame).await?,
                 Ok(None) => return Ok(()),
                 Err(err) => {
@@ -791,21 +784,12 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         }
     }
 
-    /// Whether `frame` starts a call that will owe an audit completion, and so needs room in the
-    /// connection's queue first. A call over `max_concurrent_calls` is refused without one.
-    fn needs_room(&self, frame: &Frame) -> bool {
-        self.session.is_some()
-            && matches!(frame.kind, Kind::Call | Kind::Subscribe)
-            && self.room.is_none()
-            && self.in_flight.len() < self.inner.config.max_concurrent_calls as usize
-    }
-
     async fn on_frame(&mut self, frame: Frame) -> Step {
         let Some(session) = self.session.clone() else {
             return self.on_hello(frame).await;
         };
         match frame.kind {
-            Kind::Call => self.on_call(session, frame).await,
+            Kind::Call => self.on_call_frame(session, frame, false).await,
             Kind::Ping => {
                 let pong = Frame {
                     kind: Kind::Pong,
@@ -831,10 +815,18 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 // A call that is no longer in flight already answered; its Cancel lost the race.
                 if let Some(scope) = self.in_flight.get(&frame.call_id) {
                     scope.cancel();
+                    return Ok(());
+                }
+                // A call still waiting for room never starts: it answers `Cancelled` at once,
+                // as a call cancelled before its handler ran does.
+                if let Some(at) = self.waiting.iter().position(|w| w.call_id == frame.call_id) {
+                    self.waiting.remove(at);
+                    let err = ErrorPayload::new(Code::Cancelled, "call cancelled");
+                    return self.send_error(frame.call_id, err);
                 }
                 Ok(())
             }
-            Kind::Subscribe => self.on_subscribe(session, frame).await,
+            Kind::Subscribe => self.on_call_frame(session, frame, true).await,
             Kind::Unsubscribe => {
                 if frame.call_id == 0 {
                     return Err(self
@@ -926,46 +918,48 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         self.send_json(Kind::HelloAck, 0, &ack)
     }
 
-    async fn on_call(&mut self, session: Arc<Session>, frame: Frame) -> Step {
-        let Some((call, scope)) = self.admit(&frame).await? else {
+    /// A `Call` or `Subscribe` frame: checked and accepted at once (see [`ConnState::accept`]),
+    /// then started when there is room for its audit completion. Without room it waits, in
+    /// order, while the connection keeps reading and handling the client's other frames, so a
+    /// slow audit sink delays new calls but never a `Cancel`, an `Unsubscribe`, a `Ping` or a
+    /// close.
+    async fn on_call_frame(
+        &mut self,
+        session: Arc<Session>,
+        frame: Frame,
+        subscribe: bool,
+    ) -> Step {
+        let Some(received) = self.accept(session, &frame, subscribe).await? else {
             return Ok(());
         };
-        let fut = self.inner.dispatch.call(session, call);
-        self.spawn(frame.call_id, scope, fut, false);
+        if self.waiting.is_empty()
+            && let Some(room) = self.completions.try_room()
+        {
+            self.start(received, room);
+        } else {
+            self.waiting.push_back(received);
+        }
         Ok(())
     }
 
-    async fn on_subscribe(&mut self, session: Arc<Session>, frame: Frame) -> Step {
-        let Some((call, scope)) = self.admit(&frame).await? else {
-            return Ok(());
-        };
-        let config = &self.inner.config;
-        let events = Events::new(
-            frame.call_id,
-            scope.clone(),
-            self.events_tx.clone(),
-            config.subscription_buffer_events,
-            config.subscription_buffer_bytes,
-            config.max_frame_bytes,
-        );
-        let fut = self.inner.dispatch.subscribe(session, call, events);
-        // A normal end is a `Result` with payload `null`.
-        let fut = Box::pin(async move { fut.await.map(|()| Value::Null) });
-        self.subscriptions.insert(frame.call_id);
-        self.spawn(frame.call_id, scope, fut, true);
-        Ok(())
-    }
-
-    /// Admits a `Call` or `Subscribe`: claims its id, takes a concurrency slot and decodes the
-    /// payload. `Ok(None)` when the call was answered with an error and the connection stays.
-    async fn admit(&mut self, frame: &Frame) -> Result<Option<(Call, CallScope)>, Closed> {
+    /// Claims the call's id, checks the concurrency limit (a call waiting for room counts: the
+    /// client is waiting for its answer) and decodes the payload. `Ok(None)` when the call was
+    /// answered with an error and the connection stays; no room is taken for such a call.
+    async fn accept(
+        &mut self,
+        session: Arc<Session>,
+        frame: &Frame,
+        subscribe: bool,
+    ) -> Result<Option<Received>, Closed> {
+        let at = Instant::now();
         let call_id = frame.call_id;
         if !self.claim_call_id(call_id) {
             return Err(self
                 .violation(Code::InvalidArgument, "call id not increasing")
                 .await);
         }
-        if self.in_flight.len() >= self.inner.config.max_concurrent_calls as usize {
+        let calls = self.in_flight.len() + self.waiting.len();
+        if calls >= self.inner.config.max_concurrent_calls as usize {
             let mut err = ErrorPayload::new(Code::ResourceExhausted, "too many concurrent calls");
             err.retryable = true;
             self.send_error(call_id, err)?;
@@ -984,15 +978,53 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 return Ok(None);
             }
         };
-        // The deadline runs from here; the dispatcher narrows it to the procedure's bounds.
+        Ok(Some(Received {
+            call_id,
+            subscribe,
+            call,
+            session,
+            at,
+        }))
+    }
+
+    /// Starts an accepted call with its room in the completion queue.
+    fn start(&mut self, received: Received, room: Option<Room>) {
+        let Received {
+            call_id,
+            subscribe,
+            call,
+            session,
+            at,
+        } = received;
+        // The deadline runs from frame receipt; the dispatcher narrows it to the procedure's
+        // bounds.
         let scope = CallScope::with_token(
             self.conn_token.child_token(),
             call.timeout(),
             self.correlation_id(call_id),
+            at,
             self.completions.clone(),
-            self.room.take(),
+            room,
         );
-        Ok(Some((call, scope)))
+        if !subscribe {
+            let fut = self.inner.dispatch.call(session, call);
+            self.spawn(call_id, scope, fut, false);
+            return;
+        }
+        let config = &self.inner.config;
+        let events = Events::new(
+            call_id,
+            scope.clone(),
+            self.events_tx.clone(),
+            config.subscription_buffer_events,
+            config.subscription_buffer_bytes,
+            config.max_frame_bytes,
+        );
+        let fut = self.inner.dispatch.subscribe(session, call, events);
+        // A normal end is a `Result` with payload `null`.
+        let fut = Box::pin(async move { fut.await.map(|()| Value::Null) });
+        self.subscriptions.insert(call_id);
+        self.spawn(call_id, scope, fut, true);
     }
 
     /// Runs a call or subscription task under `scope`; its terminal frame comes to `finish_call`.
@@ -1033,6 +1065,9 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     /// be among them). Otherwise a call id that is not a subscription in flight (already ended,
     /// or a call) is ignored: `ordered` only ever holds subscription frames.
     fn unsubscribe(&mut self, call_id: u32) {
+        // A subscription still waiting for room never starts, and nothing is sent for it.
+        self.waiting
+            .retain(|w| !(w.subscribe && w.call_id == call_id));
         self.ordered.retain(|frame| frame.call_id() != call_id);
         if !self.subscriptions.remove(&call_id) {
             return;

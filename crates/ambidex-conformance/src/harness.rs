@@ -148,6 +148,7 @@ macro_rules! conformance_suite {
             answers_still_queued_at_close_are_cancelled,
             completions_a_hung_sink_never_takes_are_reported_lost,
             a_slow_sink_limits_outstanding_completions,
+            a_call_waiting_for_room_does_not_hold_other_frames,
             call_kind_must_match_frame_kind,
             subscriptions_count_toward_concurrency_limit,
             full_event_buffer_ends_subscription,
