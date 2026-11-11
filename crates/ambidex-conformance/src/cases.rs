@@ -1327,7 +1327,9 @@ pub async fn completions_a_hung_sink_never_takes_are_reported_lost<H: Harness>(h
 }
 
 /// Open question 26 item 11 (review): a slow sink limits a connection's outstanding completions
-/// to `max_concurrent_calls`; the engine takes no further call frame until one is written.
+/// to `max_concurrent_calls`. A call that finds no room waits in the connection's queue,
+/// unstarted and unanswered, until a completion is written; the connection keeps reading and
+/// handling the client's other frames meanwhile.
 pub async fn a_slow_sink_limits_outstanding_completions<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     let fixture = h.fixture();
