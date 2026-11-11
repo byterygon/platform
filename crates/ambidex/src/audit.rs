@@ -511,9 +511,22 @@ pub(crate) struct Completions {
 
 #[derive(Default)]
 struct Tracked {
-    tasks: tokio::task::JoinSet<()>,
+    tasks: Detached,
     /// When the last write started so far must have ended by its own timeout.
     latest: Option<Instant>,
+}
+
+/// A set of writes that are not aborted when it is dropped: dropping the queue, or cancelling
+/// [`Completions::close`] (a server shutting down drops the connection task), lets them run to
+/// their own timeout, as detached tasks. Only [`Completions::close`] aborts, past the deadline.
+/// A write that never finishes (its runtime is dropped) is still reported by its guard.
+#[derive(Default)]
+struct Detached(tokio::task::JoinSet<()>);
+
+impl Drop for Detached {
+    fn drop(&mut self) {
+        self.0.detach_all();
+    }
 }
 
 impl Completions {
@@ -550,13 +563,13 @@ impl Completions {
         };
         let mut tracked = lock(&self.inner);
         // Forget the writes that already ended.
-        while tracked.tasks.try_join_next().is_some() {}
+        while tracked.tasks.0.try_join_next().is_some() {}
         // The write's own deadline, fixed now: `close` waits for it from the same instant, so it
         // never aborts a write before that write's own timeout, however late its task runs.
         let ends = Instant::now() + recorder.policy.write_timeout;
         tracked.latest = Some(tracked.latest.map_or(ends, |latest| latest.max(ends)));
         // Spawned under the lock, so `close` can always abort it.
-        tracked.tasks.spawn_on(
+        tracked.tasks.0.spawn_on(
             async move {
                 write.recorder.complete(entry, ends).await;
                 write.finished();
@@ -568,7 +581,8 @@ impl Completions {
     }
 
     /// Waits until every write has ended; aborts any still running [`ABORT_GRACE`] after the
-    /// last one's write timeout, which reports them lost.
+    /// last one's write timeout, which reports them lost. Cancelling this future aborts nothing:
+    /// the writes it was waiting for keep running.
     pub(crate) async fn close(&self) {
         // Writes started meanwhile (drop guards) go to a fresh set, taken on the next round.
         loop {
@@ -576,14 +590,15 @@ impl Completions {
                 let mut tracked = lock(&self.inner);
                 (std::mem::take(&mut tracked.tasks), tracked.latest)
             };
-            let Some(latest) = latest.filter(|_| !tasks.is_empty()) else {
+            let Some(latest) = latest.filter(|_| !tasks.0.is_empty()) else {
                 return;
             };
-            let ended = tokio::time::timeout_at(latest + ABORT_GRACE, join_all(&mut tasks)).await;
+            // If this future is dropped here, `tasks` detaches the writes: they keep running.
+            let ended = tokio::time::timeout_at(latest + ABORT_GRACE, join_all(&mut tasks.0)).await;
             if ended.is_err() {
-                tasks.abort_all();
+                tasks.0.abort_all();
                 // Each aborted write's guard reports it as it is dropped.
-                join_all(&mut tasks).await;
+                join_all(&mut tasks.0).await;
             }
         }
     }
@@ -745,5 +760,36 @@ mod tests {
         first_poll_after(late);
         completions.close().await;
         assert_eq!(reports.errors(), ["write timed out"]);
+    }
+
+    /// Waits (bounded) until `entries` holds one entry.
+    async fn written(entries: &Mutex<Vec<AuditEntry>>) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while entries.lock().unwrap().is_empty() {
+            assert!(Instant::now() < deadline, "the write never finished");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn cancelling_close_does_not_abort_running_writes() {
+        let (recorder, entries, reports) = setup(Some(Duration::from_millis(100)));
+        let completions = Completions::new();
+        completions.spawn(&recorder, completion(), None);
+        // `close` is cancelled while it waits (a shutdown dropping the connection task).
+        let cancelled = tokio::time::timeout(Duration::from_millis(10), completions.close()).await;
+        assert!(cancelled.is_err(), "close was still waiting");
+        written(&entries).await;
+        assert!(reports.errors().is_empty(), "{:?}", reports.errors());
+    }
+
+    #[tokio::test]
+    async fn dropping_the_queue_does_not_abort_running_writes() {
+        let (recorder, entries, reports) = setup(Some(Duration::from_millis(50)));
+        let completions = Completions::new();
+        completions.spawn(&recorder, completion(), None);
+        drop(completions);
+        written(&entries).await;
+        assert!(reports.errors().is_empty(), "{:?}", reports.errors());
     }
 }
