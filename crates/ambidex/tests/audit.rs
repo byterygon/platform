@@ -252,6 +252,16 @@ fn failed() -> BoxFuture<'static, Result<(), AuditError>> {
 struct Reports(Arc<Mutex<Vec<AuditFailure>>>);
 
 impl Reports {
+    /// The sink's message of every report, in order.
+    fn errors(&self) -> Vec<String> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|f| f.error.0.clone())
+            .collect()
+    }
+
     fn all(&self) -> Vec<(AuditEntryKind, AuditFailureEffect, String)> {
         self.0
             .lock()
@@ -1006,6 +1016,8 @@ async fn a_closed_connection_waits_for_its_completions_at_most_the_write_timeout
     let mut lost = lost_completions(&s);
     lost.sort();
     assert_eq!(lost, ["audit.read", "audit.write"], "{:?}", s.reports.all());
+    // Each write gave up through its own timeout; closing did not cut it short first.
+    assert_eq!(s.reports.errors(), ["write timed out", "write timed out"]);
     assert!(
         started.elapsed() < write_timeout * 4,
         "{:?}",

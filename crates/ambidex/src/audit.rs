@@ -33,10 +33,11 @@
 //! (`TransportTx::send` returned `Ok`), in the background, bounded by `write_timeout`; the
 //! answer never waits for it. A frame dropped before that (Unsubscribe, the connection closed,
 //! its queue discarded, a send error) completes as `Cancelled`, from the drop guard. The writes
-//! of one connection are tracked and bounded (`Completions`): at most `max_concurrent_calls` are
-//! owed or running, the connection takes no further call frame while none is free, and closing
-//! waits for them at most the write timeout. One that is never written (stopped at close, or
-//! dropped with its runtime) is reported as `EntryLost`, like one the sink refused. Loss after
+//! of one connection are tracked (`Completions`) and bounded (`Rooms`): at most
+//! `max_concurrent_calls` are owed or running, a call frame waits for room while the connection
+//! keeps reading the client's other frames, and closing waits for the writes, each of which ends
+//! by its own write timeout. One that is never written (stopped at close, or dropped with its
+//! runtime) is reported as `EntryLost`, like one the sink refused. Loss after
 //! the transport accepted the frame is not detected. A handler dropped before it returned has
 //! the code it was cancelled with as its outcome. Outside the engine (the MCP adapter calling the
 //! router directly), and for a call a handler makes to another procedure (which runs under a
@@ -98,6 +99,10 @@ pub(crate) struct Recorder {
     sink: Option<Arc<dyn AuditSink>>,
     reporter: Arc<dyn AuditReporter>,
     policy: AuditPolicy,
+    /// Completion writes of calls outside the engine (the MCP adapter calling the router, and
+    /// calls their handlers make), shared by every such call of this router. Nothing closes it:
+    /// those callers await their completion, and a write dropped with its runtime is reported.
+    outside: Completions,
 }
 
 /// What one admission (or re-check) is about.
@@ -119,6 +124,7 @@ impl Recorder {
             sink: None,
             reporter: Arc::new(StderrReporter::new()),
             policy: AuditPolicy::default(),
+            outside: Completions::new(),
         }
     }
 
@@ -210,7 +216,7 @@ impl Recorder {
         self.write_started(entry, admission).await?;
         Ok(base.map(|entry| Completion {
             recorder: Arc::clone(self),
-            completions: scope.completions().clone(),
+            completions: scope.completions().unwrap_or(&self.outside).clone(),
             room: scope.take_room(),
             entry,
             start: scope.start(),
@@ -364,7 +370,7 @@ impl Completion {
     }
 
     /// Hands the entry to the queue, with the delivery the client got.
-    fn write(&mut self, delivery: Delivery) -> Option<tokio::task::JoinHandle<()>> {
+    fn write(&mut self, delivery: Delivery) -> Option<tokio::sync::oneshot::Receiver<()>> {
         self.written = true;
         let entry = self.entry(delivery);
         self.completions
@@ -436,7 +442,7 @@ impl Armed {
     /// task, so the connection's writer never waits on the sink. The handle is for a caller that
     /// does wait ([`Completion::finish`]); `None` when there was no runtime to write it on (it
     /// was reported lost).
-    pub(crate) fn sent(self) -> Option<tokio::task::JoinHandle<()>> {
+    pub(crate) fn sent(self) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let Armed {
             mut completion,
             delivery,
@@ -445,89 +451,73 @@ impl Armed {
     }
 }
 
-/// A call's place in its connection's [`Completions`]: taken by the engine before it takes the
-/// call's frame, held by the call's completion until that is written.
+/// A call's place in its connection's [`Rooms`]: taken by the engine before it starts the call,
+/// held by the call's completion until that is written.
 pub(crate) struct Room(#[allow(dead_code)] tokio::sync::OwnedSemaphorePermit);
 
-/// The completion writes of one connection, or of calls outside the engine (Open question 26
-/// item 11).
-///
-/// - **Tracked.** Every write runs on a task the queue knows about. [`Completions::close`]
-///   waits for them, at most the longest write timeout, then aborts the rest. A write that ends
-///   without being written (aborted, or dropped with its runtime) is reported as `EntryLost`,
-///   and one that fails is reported by the recorder, so no completion disappears unreported.
-/// - **Bounded** (the engine's queue). A call takes a [`Room`] before the engine takes its
-///   frame and keeps it until its completion is written, so at most `bound` completions are
-///   owed or being written. When none is free the engine stops taking call frames: a slow sink
-///   slows down new calls, not the answers already chosen.
+/// Room for a connection's audit completions (Open question 26 item 11): at most `bound` calls
+/// at a time have a completion owed or being written. When none is free the engine starts no new
+/// call until a completion is written, so a slow sink slows down new calls, not the answers
+/// already chosen.
 #[derive(Clone)]
-pub(crate) struct Completions {
-    inner: Arc<CompletionsInner>,
+pub(crate) struct Rooms(Arc<tokio::sync::Semaphore>);
+
+impl Rooms {
+    /// Room for `bound` calls (at least one).
+    pub(crate) fn new(bound: usize) -> Rooms {
+        Rooms(Arc::new(tokio::sync::Semaphore::new(bound.max(1))))
+    }
+
+    /// A place, if one is free now.
+    pub(crate) fn try_take(&self) -> Option<Room> {
+        Arc::clone(&self.0).try_acquire_owned().ok().map(Room)
+    }
+
+    /// Waits for a place.
+    pub(crate) async fn take(&self) -> Room {
+        let permit = Arc::clone(&self.0).acquire_owned().await;
+        // The semaphore is never closed.
+        Room(permit.expect("rooms are never closed"))
+    }
 }
 
-struct CompletionsInner {
-    /// `None` outside the engine: those calls are bounded by their callers.
-    rooms: Option<Arc<tokio::sync::Semaphore>>,
-    tracked: std::sync::Mutex<Tracked>,
-    idle: tokio::sync::Notify,
+/// Completion writes, each on a task tracked in a [`JoinSet`](tokio::task::JoinSet) (Open
+/// question 26 item 11): one queue per connection, and one per router for calls outside the
+/// engine.
+///
+/// [`Completions::close`] waits for the writes. Each ends by itself within its write timeout
+/// (the recorder reports a write that failed or timed out); only one still running
+/// [`ABORT_GRACE`] after the last write's timeout is aborted. A write that ends without being
+/// written, aborted or dropped with its runtime, is reported as `EntryLost`, so no completion
+/// disappears unreported.
+#[derive(Clone)]
+pub(crate) struct Completions {
+    inner: Arc<std::sync::Mutex<Tracked>>,
 }
 
 #[derive(Default)]
 struct Tracked {
-    next: u64,
-    /// Running writes, by id; the handle is set right after the task is spawned.
-    running: std::collections::HashMap<u64, Option<tokio::task::AbortHandle>>,
-    /// When the last write started so far must have ended (its start plus its write timeout).
+    tasks: tokio::task::JoinSet<()>,
+    /// When the last write started so far must have ended by its own timeout.
     latest: Option<Instant>,
 }
 
 impl Completions {
-    /// A queue with room for `bound` completions at a time (at least one).
-    pub(crate) fn bounded(bound: usize) -> Completions {
-        Completions::build(Some(Arc::new(tokio::sync::Semaphore::new(bound.max(1)))))
-    }
-
-    /// A queue without a bound, for calls outside the engine.
-    pub(crate) fn unbounded() -> Completions {
-        Completions::build(None)
-    }
-
-    fn build(rooms: Option<Arc<tokio::sync::Semaphore>>) -> Completions {
+    pub(crate) fn new() -> Completions {
         Completions {
-            inner: Arc::new(CompletionsInner {
-                rooms,
-                tracked: std::sync::Mutex::new(Tracked::default()),
-                idle: tokio::sync::Notify::new(),
-            }),
+            inner: Arc::default(),
         }
     }
 
-    /// Room for one more call, if there is some now (always, without a bound).
-    pub(crate) fn try_room(&self) -> Option<Option<Room>> {
-        match &self.inner.rooms {
-            None => Some(None),
-            Some(rooms) => Arc::clone(rooms)
-                .try_acquire_owned()
-                .ok()
-                .map(|permit| Some(Room(permit))),
-        }
-    }
-
-    /// Waits for room for one more call.
-    pub(crate) async fn room(&self) -> Option<Room> {
-        let rooms = Arc::clone(self.inner.rooms.as_ref()?);
-        // The semaphore is never closed.
-        rooms.acquire_owned().await.ok().map(Room)
-    }
-
-    /// Writes `entry` on a tracked task, which holds `room` until it ends. Without a runtime the
-    /// entry is reported lost.
+    /// Writes `entry` on a tracked task, which holds `room` until it ends. The receiver
+    /// resolves once the write ended, for a caller that waits ([`Completion::finish`]); `None`
+    /// when there was no runtime to write it on (it was reported lost).
     fn spawn(
         &self,
         recorder: &Arc<Recorder>,
         entry: AuditEntry,
         room: Option<Room>,
-    ) -> Option<tokio::task::JoinHandle<()>> {
+    ) -> Option<tokio::sync::oneshot::Receiver<()>> {
         let Ok(runtime) = tokio::runtime::Handle::try_current() else {
             recorder.report_lost(
                 entry.action.name,
@@ -536,100 +526,65 @@ impl Completions {
             );
             return None;
         };
-        let id = {
-            let mut tracked = lock(&self.inner.tracked);
-            let id = tracked.next;
-            tracked.next += 1;
-            tracked.running.insert(id, None);
-            let ends = Instant::now() + recorder.policy.write_timeout;
-            tracked.latest = Some(tracked.latest.map_or(ends, |latest| latest.max(ends)));
-            id
-        };
+        let (ended, wait) = tokio::sync::oneshot::channel();
         let mut write = Write {
-            completions: self.clone(),
-            id,
             recorder: Arc::clone(recorder),
             action: entry.action.name.clone(),
             correlation_id: entry.correlation_id.clone(),
             done: false,
             _room: room,
         };
-        let handle = runtime.spawn(async move {
-            write.recorder.complete(entry).await;
-            write.finished();
-        });
-        if let Some(slot) = lock(&self.inner.tracked).running.get_mut(&id) {
-            *slot = Some(handle.abort_handle());
-        }
-        Some(handle)
+        let mut tracked = lock(&self.inner);
+        // Forget the writes that already ended.
+        while tracked.tasks.try_join_next().is_some() {}
+        let ends = Instant::now() + recorder.policy.write_timeout;
+        tracked.latest = Some(tracked.latest.map_or(ends, |latest| latest.max(ends)));
+        // Spawned under the lock, so `close` can always abort it.
+        tracked.tasks.spawn_on(
+            async move {
+                write.recorder.complete(entry).await;
+                write.finished();
+                let _ = ended.send(());
+            },
+            &runtime,
+        );
+        Some(wait)
     }
 
-    /// Writes running now.
-    pub(crate) fn outstanding(&self) -> usize {
-        lock(&self.inner.tracked).running.len()
-    }
-
-    /// Waits until every write has ended, at most until the last one's write timeout has
-    /// passed; then aborts the rest, which reports them lost.
+    /// Waits until every write has ended; aborts any still running [`ABORT_GRACE`] after the
+    /// last one's write timeout, which reports them lost.
     pub(crate) async fn close(&self) {
-        let deadline = lock(&self.inner.tracked).latest;
-        let all_ended = async {
-            loop {
-                let idle = self.inner.idle.notified();
-                let mut idle = std::pin::pin!(idle);
-                idle.as_mut().enable();
-                if self.outstanding() == 0 {
-                    return;
-                }
-                idle.await;
-            }
-        };
-        let mut all_ended = std::pin::pin!(all_ended);
-        let mut deadline = deadline;
-        // A write started while waiting (a drop guard) moves the deadline on.
+        // Writes started meanwhile (drop guards) go to a fresh set, taken on the next round.
         loop {
-            let Some(until) = deadline else {
+            let (mut tasks, latest) = {
+                let mut tracked = lock(&self.inner);
+                (std::mem::take(&mut tracked.tasks), tracked.latest)
+            };
+            let Some(latest) = latest.filter(|_| !tasks.is_empty()) else {
                 return;
             };
-            if tokio::time::timeout_at(until, all_ended.as_mut())
-                .await
-                .is_ok()
-            {
-                return;
+            let ended = tokio::time::timeout_at(latest + ABORT_GRACE, join_all(&mut tasks)).await;
+            if ended.is_err() {
+                tasks.abort_all();
+                // Each aborted write's guard reports it as it is dropped.
+                join_all(&mut tasks).await;
             }
-            let latest = lock(&self.inner.tracked).latest;
-            if latest == deadline {
-                break;
-            }
-            deadline = latest;
         }
-        let stuck: Vec<_> = lock(&self.inner.tracked)
-            .running
-            .values()
-            .flatten()
-            .cloned()
-            .collect();
-        for task in stuck {
-            task.abort();
-        }
-        // Aborted tasks end at their next poll; their guards report them.
-        let _ = tokio::time::timeout(ABORT_GRACE, async {
-            while self.outstanding() > 0 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await;
     }
 }
 
-/// How long [`Completions::close`] lets aborted writes take to stop and report.
+async fn join_all(tasks: &mut tokio::task::JoinSet<()>) {
+    while tasks.join_next().await.is_some() {}
+}
+
+/// How long after the last write's own timeout [`Completions::close`] waits before aborting
+/// what still runs: a write gives up through its own timeout first, and the recorder reports
+/// what happened to it.
 const ABORT_GRACE: Duration = Duration::from_millis(100);
 
 /// One completion write in flight. Dropped before it was done (aborted, or with its runtime), it
 /// reports the entry lost.
 struct Write {
-    completions: Completions,
-    id: u64,
     recorder: Arc<Recorder>,
     action: String,
     correlation_id: String,
@@ -652,12 +607,6 @@ impl Drop for Write {
                 std::mem::take(&mut self.correlation_id),
                 "the completion write was stopped before it finished",
             );
-        }
-        let inner = &self.completions.inner;
-        let mut tracked = lock(&inner.tracked);
-        tracked.running.remove(&self.id);
-        if tracked.running.is_empty() {
-            inner.idle.notify_waiters();
         }
     }
 }

@@ -41,10 +41,10 @@
 //!   background once the transport accepted the frame, with what that frame stands for; a frame
 //!   dropped before that (Unsubscribe, close, a send error) records `Cancelled`. The answer
 //!   never waits for the write. The writes are tracked per connection, at most
-//!   `max_concurrent_calls` owed or running at once: when none is free the connection takes no
-//!   further client frame until a completion is written, and [`Connection::closed`] resolves
-//!   only once every write ended, waiting at most the write timeout (see
-//!   [`crate::audit`]).
+//!   `max_concurrent_calls` owed or running at once: when none is free a new call waits for
+//!   room (still counted against `max_concurrent_calls`) while the connection keeps reading and
+//!   handling the client's other frames, and [`Connection::closed`] resolves only once every
+//!   write ended, each by its own write timeout (see [`crate::audit`]).
 //!   Handshake rejections and protocol violations (call 0) carry a correlation id from the
 //!   shared generator.
 //! - `Subscribe` starts a subscription (see [`crate::subscription`]): admitted like a `Call` (same
@@ -79,7 +79,7 @@ use tokio_util::sync::CancellationToken;
 
 use security_types::{Delivery, Principal};
 
-use crate::audit::{Armed, Completions, Room, code_name, delivery_for};
+use crate::audit::{Armed, Completions, Room, Rooms, code_name, delivery_for};
 use crate::cancel::CallScope;
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
@@ -340,7 +340,7 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         handle: tokio::spawn(write_loop(tx, out_rx, WriterHook::of(config))),
         finished: false,
     };
-    let completions = Completions::bounded(config.max_concurrent_calls as usize);
+    let completions = Completions::new();
     let mut conn = ConnState {
         decoder: FrameDecoder::new(config.max_hello_bytes.min(config.max_frame_bytes)),
         hello_deadline: Instant::now() + config.hello_timeout,
@@ -360,6 +360,7 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         last_call_id: 0,
         close_by: None,
         completions: completions.clone(),
+        rooms: Rooms::new(config.max_concurrent_calls as usize),
         waiting: VecDeque::new(),
     };
     let closed = conn.run_loop(&mut rx, &mut control, &mut writer).await;
@@ -672,9 +673,10 @@ struct ConnState<A, D> {
     last_call_id: u32,
     /// Set when the connection starts closing; bounds delivery of the final frames.
     close_by: Option<Instant>,
-    /// The connection's audit completion writes (Open question 26 item 11), with room for
-    /// `max_concurrent_calls` completions owed or being written.
+    /// The connection's audit completion writes (Open question 26 item 11).
     completions: Completions,
+    /// Room for `max_concurrent_calls` completions owed or being written on this connection.
+    rooms: Rooms,
     /// Calls received and checked, waiting in order for room (see [`ConnState::on_call_frame`]).
     /// Other client frames are still read and handled meanwhile.
     waiting: VecDeque<Received>,
@@ -704,7 +706,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         // Subscription frames leave only while this many outbound slots stay free, so call
         // answers (sent without waiting) always find room while the peer reads.
         let headroom = self.inner.config.outbound_frames() / 2;
-        let completions = self.completions.clone();
+        let rooms = self.rooms.clone();
         loop {
             if let Err(closed) = self.drain_frames().await {
                 return closed;
@@ -740,7 +742,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                     }
                 }
                 // The oldest call waiting for room starts once a completion was written.
-                room = completions.room(), if !self.waiting.is_empty() => {
+                room = rooms.take(), if !self.waiting.is_empty() => {
                     if let Some(received) = self.waiting.pop_front() {
                         self.start(received, room);
                     }
@@ -933,7 +935,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             return Ok(());
         };
         if self.waiting.is_empty()
-            && let Some(room) = self.completions.try_room()
+            && let Some(room) = self.rooms.try_take()
         {
             self.start(received, room);
         } else {
@@ -988,7 +990,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     }
 
     /// Starts an accepted call with its room in the completion queue.
-    fn start(&mut self, received: Received, room: Option<Room>) {
+    fn start(&mut self, received: Received, room: Room) {
         let Received {
             call_id,
             subscribe,
@@ -1004,7 +1006,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             self.correlation_id(call_id),
             at,
             self.completions.clone(),
-            room,
+            Some(room),
         );
         if !subscribe {
             let fut = self.inner.dispatch.call(session, call);

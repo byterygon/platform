@@ -73,10 +73,9 @@ struct Inner {
     /// The audit completion the router registered after the admission entry, until written.
     completion: Mutex<Option<Completion>>,
     /// Where the call's completion is written: the connection's queue in the engine (shared by
-    /// a call a handler makes), a queue of its own outside it.
-    completions: Completions,
-    /// The call's room in the engine's queue, until its completion takes it (see
-    /// [`Completions`]).
+    /// a call a handler makes); `None` outside it, where the router's own queue is used.
+    completions: Option<Completions>,
+    /// The call's place in its connection's `Rooms`, until its completion takes it.
     room: Mutex<Option<Room>>,
     start: Instant,
     requested: Option<Duration>,
@@ -100,7 +99,7 @@ impl CallScope {
             (correlation_id, Instant::now()),
             false,
             None,
-            (Completions::unbounded(), None),
+            (None, None),
         )
     }
 
@@ -152,7 +151,7 @@ impl CallScope {
             (correlation_id, received),
             true,
             None,
-            (completions, room),
+            (Some(completions), room),
         )
     }
 
@@ -162,7 +161,7 @@ impl CallScope {
         (correlation_id, start): (String, Instant),
         managed: bool,
         parent: Option<CallScope>,
-        (completions, room): (Completions, Option<Room>),
+        (completions, room): (Option<Completions>, Option<Room>),
     ) -> CallScope {
         CallScope {
             inner: Arc::new(Inner {
@@ -216,11 +215,12 @@ impl CallScope {
         self.inner.start
     }
 
-    pub(crate) fn completions(&self) -> &Completions {
-        &self.inner.completions
+    /// The connection's completion queue, for a call inside the engine.
+    pub(crate) fn completions(&self) -> Option<&Completions> {
+        self.inner.completions.as_ref()
     }
 
-    /// The call's room in the engine's completion queue, for its completion to hold.
+    /// The call's place in its connection's `Rooms`, for its completion to hold.
     pub(crate) fn take_room(&self) -> Option<Room> {
         lock(&self.inner.room).take()
     }
@@ -419,7 +419,7 @@ mod tests {
             None,
             String::new(),
             Instant::now(),
-            Completions::unbounded(),
+            Completions::new(),
             None,
         );
         parent.cancel();
@@ -443,7 +443,7 @@ mod tests {
             None,
             "c-1".into(),
             Instant::now(),
-            Completions::unbounded(),
+            Completions::new(),
             None,
         );
         outer.apply_timeouts(Duration::from_secs(10), Duration::from_secs(10));
