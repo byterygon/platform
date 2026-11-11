@@ -1574,6 +1574,76 @@ pub async fn calls_waiting_for_room_count_toward_the_call_limit<H: Harness>(h: &
     client.expect_alive(1001).await;
 }
 
+/// Open question 26 item 11 (confirmed 2026-11-11): a call still waiting for room when its
+/// deadline (from frame receipt) passes answers `DeadlineExceeded` at that moment, and a waiting
+/// subscription is dropped without a frame. Neither runs nor has an audit entry.
+pub async fn a_call_waiting_for_room_ends_at_its_deadline<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    for id in 1..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    // Both wait for room; the subscription's deadline comes first.
+    let (subscription, call) = (MAX_CONCURRENT_CALLS + 1, MAX_CONCURRENT_CALLS + 2);
+    let (sub_timeout, call_timeout) = (150, 300);
+    let sent = tokio::time::Instant::now();
+    client
+        .subscribe_with_timeout(
+            subscription,
+            "fixture.counter",
+            counter(1, "finish"),
+            sub_timeout,
+        )
+        .await;
+    client
+        .call_with_timeout(call, "fixture.echo", json!(call), call_timeout)
+        .await;
+    // The call's answer is its deadline, on time; nothing came for the subscription before it.
+    client.expect_code(call, Code::DeadlineExceeded).await;
+    let waited = sent.elapsed();
+    assert!(
+        waited >= std::time::Duration::from_millis(call_timeout),
+        "not before its deadline: {waited:?}"
+    );
+    assert!(
+        waited < AUDIT_WRITE_TIMEOUT,
+        "at its deadline, not once a write ended: {waited:?}"
+    );
+    assert_eq!(
+        fixture.audit.held_now(),
+        bound,
+        "while every write was held"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    client.expect_alive(1000).await;
+    // Once there is room, neither starts.
+    fixture.audit.release_completions();
+    let entries = wait_for_entries(h, "fixture.echo", 2 * bound).await;
+    assert_eq!(entries.len(), 2 * bound, "{entries:?}");
+    assert!(
+        entries
+            .iter()
+            .all(|e| e.input_digest != input_digest(&json!(call)))
+    );
+    client.expect_alive(1001).await;
+    assert!(
+        audited(h, "fixture.counter").is_empty(),
+        "the subscription never ran"
+    );
+    assert_eq!(fixture.probe.runs(), 0);
+}
+
 pub async fn call_kind_must_match_frame_kind<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     // Refused before authorization: kinds are public in the manifest, like names.

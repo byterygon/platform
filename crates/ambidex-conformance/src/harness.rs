@@ -148,6 +148,7 @@ macro_rules! conformance_suite {
             a_call_waiting_for_room_does_not_hold_other_frames,
             refused_call_frames_take_no_room,
             calls_waiting_for_room_count_toward_the_call_limit,
+            a_call_waiting_for_room_ends_at_its_deadline,
             // Hold frames at the writer gate. Whether they run is decided by this crate's own
             // `writer-gate` feature (see `cases::WRITER_GATE`), never by the crate calling the
             // macro; without it they report that they did not run.

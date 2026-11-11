@@ -80,13 +80,14 @@ use tokio_util::sync::CancellationToken;
 use security_types::{Delivery, Principal};
 
 use crate::audit::{Armed, Completions, Room, Rooms, code_name, delivery_for};
-use crate::cancel::CallScope;
+use crate::cancel::{CallScope, effective_timeout};
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
 use crate::message::{
     Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits, MAX_JSON_SAFE_INTEGER,
 };
+use crate::procedure::{DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX};
 use crate::subscription::{Events, Held, Queued};
 use crate::transport::{TransportRx, TransportTx};
 
@@ -691,6 +692,9 @@ struct Received {
     session: Arc<Session>,
     /// When the frame was read: the call's deadline and duration run from here (spec §7).
     at: Instant,
+    /// When it ends if it is still waiting: the deadline its scope would start with (the
+    /// engine's default bounds; the procedure's own apply once it starts).
+    deadline: Instant,
 }
 
 /// Control flow out of frame handling.
@@ -711,6 +715,13 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             if let Err(closed) = self.drain_frames().await {
                 return closed;
             }
+            // The earliest deadline of a call waiting for room (unused while none waits).
+            let expiry = self
+                .waiting
+                .iter()
+                .map(|w| w.deadline)
+                .min()
+                .unwrap_or_else(Instant::now);
             tokio::select! {
                 biased;
                 Some(goaway) = control.recv() => {
@@ -738,6 +749,12 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 }
                 Some(done) = self.calls.join_next_with_id(), if !self.calls.is_empty() => {
                     if let Err(closed) = self.finish_call(done) {
+                        return closed;
+                    }
+                }
+                // A waiting call whose deadline passed ends without running.
+                () = tokio::time::sleep_until(expiry), if !self.waiting.is_empty() => {
+                    if let Err(closed) = self.expire_waiting() {
                         return closed;
                     }
                 }
@@ -980,13 +997,35 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 return Ok(None);
             }
         };
+        let deadline = at + effective_timeout(call.timeout(), DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX);
         Ok(Some(Received {
             call_id,
             subscribe,
             call,
             session,
             at,
+            deadline,
         }))
+    }
+
+    /// Ends every waiting call whose deadline has passed, as the Cancel of a waiting call does:
+    /// it never runs and has no audit entry. A call answers `DeadlineExceeded` at once; a
+    /// subscription is dropped and nothing is sent for it (spec Open question 26 item 11).
+    fn expire_waiting(&mut self) -> Step {
+        let now = Instant::now();
+        let mut expired = Vec::new();
+        self.waiting.retain(|w| {
+            let over = w.deadline <= now;
+            if over && !w.subscribe {
+                expired.push(w.call_id);
+            }
+            !over
+        });
+        for call_id in expired {
+            let err = ErrorPayload::new(Code::DeadlineExceeded, "deadline exceeded");
+            self.send_error(call_id, err)?;
+        }
+        Ok(())
     }
 
     /// Starts an accepted call with its room in the completion queue.
@@ -997,6 +1036,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             call,
             session,
             at,
+            deadline: _,
         } = received;
         // The deadline runs from frame receipt; the dispatcher narrows it to the procedure's
         // bounds.
