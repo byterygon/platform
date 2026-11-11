@@ -9,6 +9,25 @@
 //! The chain detects edits, insertions, deletions and reordering inside a sequence of records.
 //! It does not on its own detect truncation of the newest records or a full rewrite by someone who
 //! can write the log; that needs an external anchor (audit store, M3).
+//!
+//! # Calls that run: two entries
+//!
+//! An operation that runs is recorded twice under one `correlation_id` (Ambidex spec §8, Open
+//! question 26): an admission entry with [`Outcome::Started`], written before it runs, and a
+//! completion entry with the result ([`Outcome::Success`] or [`Outcome::Error`]), the
+//! [`Delivery`] and the duration. A `Started` entry without a matching completion means the
+//! outcome is unknown: the process crashed, or an admission write that failed ambiguously was
+//! followed by a retry. Refusals and Plugin Host operations are one entry each.
+//!
+//! # Format version
+//!
+//! The hash domain is `byterygon.audit.record.v1`. v1 is frozen once the first durable log ships;
+//! any later format change requires v2. Until then v1 may only grow in ways that leave every
+//! existing record's encoding, and so its hash, unchanged: a new enum variant takes a tag never
+//! used before ([`Outcome::Started`] is tag 2), and a new field is optional, encoded only when
+//! present, after every older field, as its extension number then its value ([`Delivery`] is
+//! extension 1, [`AuditEntry::parent_correlation_id`] extension 2, in that order). Both keep the encoding unambiguous: old records parse exactly as before, and
+//! bytes after the last v1 field can only be an extension.
 
 use std::fmt;
 
@@ -20,8 +39,14 @@ use crate::{
     TenantId,
 };
 
-/// Domain separator for record hashes. Bump the version whenever the encoding changes.
+/// Domain separator for record hashes. Frozen once the first durable log ships; see the module
+/// docs for the only changes v1 still allows.
 const DOMAIN: &[u8] = b"byterygon.audit.record.v1\0";
+
+/// Extension number of [`AuditEntry::delivery`] in the encoding.
+const EXT_DELIVERY: u8 = 1;
+/// Extension number of [`AuditEntry::parent_correlation_id`] in the encoding.
+const EXT_PARENT_CORRELATION_ID: u8 = 2;
 
 /// One principal in the acting chain, without its roles.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,6 +103,25 @@ pub enum Outcome {
     Error {
         code: String,
     },
+    /// An admission entry: the decision was `Allow` and the operation is about to run. Its
+    /// result is in the completion entry with the same `correlation_id`.
+    Started,
+}
+
+/// What the client actually received when a call ended, recorded in completion entries next to
+/// the handler's own result ([`AuditEntry::outcome`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Delivery {
+    /// The handler's answer (its value or its error) went out.
+    Delivered,
+    /// The client got `Cancelled` instead (`Cancel`, `Unsubscribe`, disconnect, revocation), or
+    /// nothing, after `Unsubscribe` or once the connection closed.
+    Cancelled,
+    /// The client got `DeadlineExceeded` instead.
+    DeadlineExceeded,
+    /// The answer did not fit a frame and the client got `ResourceExhausted` instead (also used
+    /// when a subscription ended because an event did not fit its buffer).
+    FrameTooLarge,
 }
 
 /// What happened. Argument values are never part of the entry; only `input_digest` is.
@@ -99,6 +143,38 @@ pub struct AuditEntry {
     /// Keyed digest (HMAC with a server-held key) of the SQL statement, when there is one. The
     /// encrypted statement text is added with the M3 encryption scheme.
     pub statement_digest: Option<Digest>,
+    /// What the client received; set on completion entries only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<Delivery>,
+    /// The correlation id of the call whose handler made this call, for a call made from inside
+    /// another call's handler (Ambidex nested calls); `None` for a top-level call and for Plugin
+    /// Host entries. Set on both entries of such a call, on its re-checks, and on its refusal
+    /// entries (at dispatch or in a re-check).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_correlation_id: Option<String>,
+}
+
+impl AuditEntry {
+    /// Whether this is a completion entry (it records what the client received).
+    pub fn is_completion(&self) -> bool {
+        self.delivery.is_some()
+    }
+}
+
+/// The admission entries (`Started`) of `entries` with no completion under the same correlation
+/// id: calls whose outcome is unknown (the process crashed, or an admission write failed
+/// ambiguously and was retried). Entries are matched within the slice given, so pass a span of the
+/// log that contains the completions too.
+pub fn unfinished(entries: &[AuditEntry]) -> Vec<&AuditEntry> {
+    let completed: std::collections::HashSet<&str> = entries
+        .iter()
+        .filter(|e| e.is_completion())
+        .map(|e| e.correlation_id.as_str())
+        .collect();
+    entries
+        .iter()
+        .filter(|e| e.outcome == Outcome::Started && !completed.contains(e.correlation_id.as_str()))
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -290,6 +366,8 @@ impl Encoder {
             correlation_id,
             input_digest,
             statement_digest,
+            delivery,
+            parent_correlation_id,
         } = e;
         self.u64(*timestamp_unix_ms);
         self.u64(principal_chain.len() as u64);
@@ -316,11 +394,27 @@ impl Encoder {
                 self.u8(1);
                 self.str(code);
             }
+            Outcome::Started => self.u8(2),
         }
         self.opt(*duration_ms, Self::u64);
         self.str(correlation_id);
         self.digest(input_digest);
         self.opt(statement_digest.as_ref(), Self::digest);
+        // Extensions (see the module docs): encoded only when present, so records without them
+        // hash as before.
+        if let Some(delivery) = delivery {
+            self.u8(EXT_DELIVERY);
+            self.u8(match delivery {
+                Delivery::Delivered => 0,
+                Delivery::Cancelled => 1,
+                Delivery::DeadlineExceeded => 2,
+                Delivery::FrameTooLarge => 3,
+            });
+        }
+        if let Some(parent) = parent_correlation_id {
+            self.u8(EXT_PARENT_CORRELATION_ID);
+            self.str(parent);
+        }
     }
 
     fn principal(&mut self, p: &AuditPrincipal) {
@@ -403,6 +497,8 @@ mod tests {
             correlation_id: format!("corr-{n}"),
             input_digest: Digest([7; 32]),
             statement_digest: Some(Digest([9; 32])),
+            delivery: None,
+            parent_correlation_id: None,
         }
     }
 
@@ -428,6 +524,137 @@ mod tests {
         assert_eq!(
             log(1)[0].hash.to_string(),
             "d3df538708e2625a8002ce2b328095fa21c0032a6588f6bd71a04311de9563a4"
+        );
+    }
+
+    /// An admission and its completion, as the Ambidex router writes them.
+    fn admission_and_completion() -> (AuditEntry, AuditEntry) {
+        let mut admission = entry(0);
+        admission.outcome = Outcome::Started;
+        admission.duration_ms = None;
+        let mut completion = entry(1);
+        completion.correlation_id = admission.correlation_id.clone();
+        completion.delivery = Some(Delivery::DeadlineExceeded);
+        (admission, completion)
+    }
+
+    #[test]
+    fn started_and_delivery_hashes_are_stable() {
+        // Golden values, cross-checked with an independent implementation of the encoding
+        // (`Started` is outcome tag 2; `delivery` is extension 1, then its tag).
+        let (admission, completion) = admission_and_completion();
+        let mut chain = AuditChain::new();
+        assert_eq!(
+            chain.append(admission).hash.to_string(),
+            "05917c354f43144fe34f506de9a05899ae3ff97de1301583a095340f3a6f363f"
+        );
+        assert_eq!(
+            chain.append(completion).hash.to_string(),
+            "47dc434cddaa06fb6089ae6b0ab379d67d32bab781538fff92cb10a8b75678aa"
+        );
+    }
+
+    /// [`admission_and_completion`] of a call made from inside the handler of `corr-parent`.
+    fn nested_admission_and_completion() -> (AuditEntry, AuditEntry) {
+        let (mut admission, mut completion) = admission_and_completion();
+        admission.parent_correlation_id = Some("corr-parent".into());
+        completion.parent_correlation_id = Some("corr-parent".into());
+        (admission, completion)
+    }
+
+    #[test]
+    fn parent_correlation_id_hashes_are_stable() {
+        // Golden values, cross-checked with an independent implementation of the encoding
+        // (`parent_correlation_id` is extension 2, then the length-prefixed id, after `delivery`).
+        let (admission, completion) = nested_admission_and_completion();
+        let mut chain = AuditChain::new();
+        assert_eq!(
+            chain.append(admission).hash.to_string(),
+            "981258a3a837f12aaf2fca722d2eeaf256f2df7fbc3d4ebc5907e74f23728c9f"
+        );
+        assert_eq!(
+            chain.append(completion).hash.to_string(),
+            "35eb5f89d7d7c55e31412229e489748343f8859f8583d92e0f45779d39e85c1b"
+        );
+    }
+
+    #[test]
+    fn parent_correlation_id_is_omitted_from_json_when_absent() {
+        let (admission, _) = admission_and_completion();
+        let json = serde_json::to_value(&admission).unwrap();
+        assert!(json.get("parentCorrelationId").is_none());
+        let (nested, _) = nested_admission_and_completion();
+        let json = serde_json::to_value(&nested).unwrap();
+        assert_eq!(json["parentCorrelationId"], "corr-parent");
+        assert_eq!(serde_json::from_value::<AuditEntry>(json).unwrap(), nested);
+    }
+
+    #[test]
+    fn records_without_extensions_hash_as_before() {
+        // `delivery: None` adds nothing to the encoding, so a record from before the field
+        // existed keeps its hash; any `Some` changes it, and each variant differently.
+        let base = log(1).remove(0);
+        let mut hashes = vec![base.hash];
+        for delivery in [
+            Delivery::Delivered,
+            Delivery::Cancelled,
+            Delivery::DeadlineExceeded,
+            Delivery::FrameTooLarge,
+        ] {
+            let mut r = base.clone();
+            r.entry.delivery = Some(delivery);
+            hashes.push(r.compute_hash());
+        }
+        let unique: std::collections::HashSet<_> = hashes.iter().collect();
+        assert_eq!(unique.len(), hashes.len());
+    }
+
+    #[test]
+    fn started_differs_from_every_other_outcome() {
+        let base = log(1).remove(0);
+        let outcomes = [
+            Outcome::Success,
+            Outcome::Error {
+                code: String::new(),
+            },
+            Outcome::Started,
+        ];
+        let hashes: std::collections::HashSet<_> = outcomes
+            .into_iter()
+            .map(|outcome| {
+                let mut r = base.clone();
+                r.entry.outcome = outcome;
+                r.compute_hash()
+            })
+            .collect();
+        assert_eq!(hashes.len(), 3);
+    }
+
+    #[test]
+    fn a_started_entry_without_completion_is_unfinished() {
+        let (admission, completion) = admission_and_completion();
+        let mut crashed = admission.clone();
+        crashed.correlation_id = "corr-crashed".into();
+        let refusal = entry(2);
+        let entries = vec![admission, crashed.clone(), refusal, completion];
+        assert_eq!(unfinished(&entries), [&crashed]);
+        assert!(entries[3].is_completion() && !entries[0].is_completion());
+    }
+
+    #[test]
+    fn delivery_is_omitted_from_json_when_absent() {
+        let (admission, completion) = admission_and_completion();
+        let admission = serde_json::to_value(&admission).unwrap();
+        assert!(admission.get("delivery").is_none());
+        assert_eq!(
+            admission["outcome"],
+            serde_json::json!({ "kind": "Started" })
+        );
+        let completion = serde_json::to_value(&completion).unwrap();
+        assert_eq!(completion["delivery"], "DeadlineExceeded");
+        assert_eq!(
+            serde_json::from_value::<AuditEntry>(completion.clone()).unwrap(),
+            admission_and_completion().1
         );
     }
 
@@ -500,6 +727,9 @@ mod tests {
             |e| e.correlation_id.push('x'),
             |e| e.input_digest = Digest([8; 32]),
             |e| e.statement_digest = None,
+            |e| e.outcome = Outcome::Started,
+            |e| e.delivery = Some(Delivery::Delivered),
+            |e| e.parent_correlation_id = Some("corr-parent".into()),
         ];
         for (i, mutate) in mutations.into_iter().enumerate() {
             let mut r = base.clone();

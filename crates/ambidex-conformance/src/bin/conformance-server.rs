@@ -99,6 +99,7 @@ async fn main() {
                         Event::Started(name) => format!("Started:{name}"),
                         Event::Cancelled(name) => format!("Cancelled:{name}"),
                         Event::Dropped(name) => format!("Dropped:{name}"),
+                        Event::Returned(name) => format!("Returned:{name}"),
                     })
                     .collect();
                 print_line(&json!({ "events": events }));

@@ -35,6 +35,18 @@
 //!   already answered.
 //! - When the connection closes for any reason, every call's token fires; calls get the same
 //!   grace, their answers are discarded, and the rest are dropped.
+//! - A call's audit completion (registered by the router after the admission entry, see
+//!   [`crate::audit`]) travels with its answer frame: the handler's answer, the cancellation
+//!   reason, or `ResourceExhausted` for an answer too large for a frame. It is written in the
+//!   background once the transport accepted the frame, with what that frame stands for; a frame
+//!   dropped before that (Unsubscribe, close, a send error) records `Cancelled`. The answer
+//!   never waits for the write. The writes are tracked per connection, at most
+//!   `max_concurrent_calls` owed or running at once: when none is free a new call waits for
+//!   room (still counted against `max_concurrent_calls`) while the connection keeps reading and
+//!   handling the client's other frames, and [`Connection::closed`] resolves only once every
+//!   write ended, each by its own write timeout (see [`crate::audit`]).
+//!   Handshake rejections and protocol violations (call 0) carry a correlation id from the
+//!   shared generator.
 //! - `Subscribe` starts a subscription (see [`crate::subscription`]): admitted like a `Call` (same
 //!   payload, call id rule and `max_concurrent_calls` slot), run through
 //!   [`Dispatch::subscribe`] under its own [`CallScope`]. Its `Event` frames and its one terminal
@@ -65,15 +77,17 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use security_types::Principal;
+use security_types::{Delivery, Principal};
 
-use crate::cancel::CallScope;
+use crate::audit::{Armed, Completions, Room, Rooms, code_name, delivery_for};
+use crate::cancel::{CallScope, effective_timeout};
 use crate::frame::{
     DEFAULT_MAX_FRAME_BYTES, Frame, FrameDecoder, FrameError, Kind, PROTOCOL_VERSION,
 };
 use crate::message::{
     Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits, MAX_JSON_SAFE_INTEGER,
 };
+use crate::procedure::{DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX};
 use crate::subscription::{Events, Held, Queued};
 use crate::transport::{TransportRx, TransportTx};
 
@@ -119,6 +133,9 @@ pub struct ServerConfig {
     /// `subscription_buffer_events`. An event that does not fit ends the subscription with
     /// `ResourceExhausted`; one event up to `max_frame_bytes` always fits an empty buffer.
     pub subscription_buffer_bytes: usize,
+    /// Holds the writer before each send (tests only).
+    #[cfg(feature = "test-hooks")]
+    pub writer_gate: Option<WriterGate>,
 }
 
 impl ServerConfig {
@@ -142,6 +159,8 @@ impl ServerConfig {
             cancel_grace: Duration::from_secs(1),
             subscription_buffer_events: 64,
             subscription_buffer_bytes: 1024 * 1024,
+            #[cfg(feature = "test-hooks")]
+            writer_gate: None,
         }
     }
 
@@ -319,9 +338,10 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
     let (out, out_rx) = mpsc::channel(config.outbound_frames());
     let (events_tx, events_rx) = mpsc::unbounded_channel();
     let mut writer = Writer {
-        handle: tokio::spawn(write_loop(tx, out_rx)),
+        handle: tokio::spawn(write_loop(tx, out_rx, WriterHook::of(config))),
         finished: false,
     };
+    let completions = Completions::new();
     let mut conn = ConnState {
         decoder: FrameDecoder::new(config.max_hello_bytes.min(config.max_frame_bytes)),
         hello_deadline: Instant::now() + config.hello_timeout,
@@ -340,6 +360,9 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         revoked: None,
         last_call_id: 0,
         close_by: None,
+        completions: completions.clone(),
+        rooms: Rooms::new(config.max_concurrent_calls as usize),
+        waiting: VecDeque::new(),
     };
     let closed = conn.run_loop(&mut rx, &mut control, &mut writer).await;
     let close_by = conn.close_deadline();
@@ -350,23 +373,32 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
     // Dropping the state drops the queue's only sender, so the writer delivers what is queued,
     // closes the transport and exits.
     drop(conn);
-    if writer.finished {
+    let closed = if writer.finished {
         drained.await;
-        return closed;
-    }
-    let (written, ()) = tokio::join!(
-        tokio::time::timeout_at(close_by, &mut writer.handle),
-        drained
-    );
-    match written {
-        Ok(Ok(Err(err))) if matches!(closed, Closed::Transport(_)) => Closed::Transport(err.kind()),
-        Ok(_) => closed,
-        Err(_) => {
-            // The peer is not reading; dropping the sending half closes the transport.
-            writer.handle.abort();
-            closed
+        closed
+    } else {
+        let (written, ()) = tokio::join!(
+            tokio::time::timeout_at(close_by, &mut writer.handle),
+            drained
+        );
+        match written {
+            Ok(Ok(Err(err))) if matches!(closed, Closed::Transport(_)) => {
+                Closed::Transport(err.kind())
+            }
+            Ok(_) => closed,
+            Err(_) => {
+                // The peer is not reading; dropping the sending half closes the transport. Its
+                // queued answers are dropped with it, and complete as `Cancelled`.
+                writer.handle.abort();
+                let _ = (&mut writer.handle).await;
+                closed
+            }
         }
-    }
+    };
+    // Every completion of this connection is written, or reported lost, before it counts as
+    // closed: at most the write timeout after the last one started.
+    completions.close().await;
+    closed
 }
 
 struct Writer {
@@ -375,7 +407,7 @@ struct Writer {
 }
 
 /// Waits up to `grace` for cancelled calls to stop, then drops (aborts) the rest.
-async fn drain_calls(mut calls: JoinSet<Frame>, grace: Duration) {
+async fn drain_calls(mut calls: JoinSet<Answer>, grace: Duration) {
     let _ = tokio::time::timeout(grace, async { while calls.join_next().await.is_some() {} }).await;
 }
 
@@ -388,11 +420,11 @@ async fn run_call(
     fut: impl Future<Output = Result<Value, ErrorPayload>>,
     scope: CallScope,
     grace: Duration,
-) -> Result<Value, ErrorPayload> {
+) -> Finished {
     // A call cancelled or out of time before its task first ran never starts: `fut` is dropped
     // unpolled, so the handler has no side effects.
-    if scope.check().is_some() {
-        return Err(scope.error());
+    if let Some(reason) = scope.check() {
+        return Finished::replaced(&scope, reason);
     }
     let mut fut = std::pin::pin!(scope.clone().enter(fut));
     let finished = loop {
@@ -417,15 +449,35 @@ async fn run_call(
             // first reason, so a Cancel that already fired still wins.
             // A handler that reacts to its token can finish in the poll that observed it; that
             // answer is discarded too, so a Cancel that reached the call always wins.
-            if scope.check().is_none() {
-                return result;
-            }
+            let Some(reason) = scope.check() else {
+                return Finished {
+                    result,
+                    replaced_by: None,
+                };
+            };
+            Finished::replaced(&scope, reason)
         }
         None => {
             let _ = tokio::time::timeout(grace, &mut fut).await;
+            Finished::replaced(&scope, scope.reason().unwrap_or(Code::Cancelled))
         }
     }
-    Err(scope.error())
+}
+
+/// How a call ended, as the engine answers it.
+struct Finished {
+    result: Result<Value, ErrorPayload>,
+    /// The reason the token fired, when it replaced the dispatcher's answer.
+    replaced_by: Option<Code>,
+}
+
+impl Finished {
+    fn replaced(scope: &CallScope, reason: Code) -> Finished {
+        Finished {
+            result: Err(scope.error()),
+            replaced_by: Some(reason),
+        }
+    }
 }
 
 /// Waits until `out` has at least `slots` free slots; `false` once the writer is gone. The
@@ -443,27 +495,132 @@ async fn revoked(token: Option<CancellationToken>) {
 }
 
 /// An encoded frame for the writer. An event frame carries its share of its subscription's
-/// buffer, so the event counts against the buffer until the transport has taken it.
+/// buffer, so the event counts against the buffer until the transport has taken it. A call's
+/// answer frame carries the call's audit completion, written once the transport has taken it;
+/// dropped anywhere before that, the completion records `Cancelled`.
 struct Outbound {
     bytes: Vec<u8>,
     held: Option<Held>,
+    completion: Option<Armed>,
 }
 
 impl From<Vec<u8>> for Outbound {
     fn from(bytes: Vec<u8>) -> Outbound {
-        Outbound { bytes, held: None }
+        Outbound {
+            bytes,
+            held: None,
+            completion: None,
+        }
     }
 }
 
 async fn write_loop<T: TransportTx>(
     mut tx: T,
     mut queue: mpsc::Receiver<Outbound>,
+    hook: WriterHook,
 ) -> io::Result<()> {
-    while let Some(Outbound { bytes, held }) = queue.recv().await {
+    while let Some(Outbound {
+        bytes,
+        held,
+        completion,
+    }) = queue.recv().await
+    {
+        hook.before_send().await;
+        // On a send error the frame did not go out: `completion` drops here, as `Cancelled`.
         tx.send(bytes).await?;
         drop(held);
+        // Delivered means the transport accepted the frame (Open question 26 item 11b). The
+        // write runs on its own task, so this loop never waits on the sink.
+        if let Some(completion) = completion {
+            completion.sent();
+        }
     }
     tx.close().await
+}
+
+/// What the writer does before each send: nothing, unless a test holds it
+/// ([`ServerConfig::writer_gate`], feature `test-hooks`).
+struct WriterHook {
+    #[cfg(feature = "test-hooks")]
+    gate: Option<WriterGate>,
+}
+
+impl WriterHook {
+    #[cfg_attr(not(feature = "test-hooks"), allow(unused_variables))]
+    fn of(config: &ServerConfig) -> WriterHook {
+        WriterHook {
+            #[cfg(feature = "test-hooks")]
+            gate: config.writer_gate.clone(),
+        }
+    }
+
+    async fn before_send(&self) {
+        #[cfg(feature = "test-hooks")]
+        if let Some(gate) = &self.gate {
+            gate.pass().await;
+        }
+    }
+}
+
+/// Holds a connection's writer before each send, as a transport that does not accept frames
+/// would: the frame is not handed to the transport until the gate opens, and the frames behind it
+/// stay queued. For conformance tests of what the audit records about frames that were chosen
+/// but not sent (spec Open question 26 item 11); production servers never set it.
+#[cfg(feature = "test-hooks")]
+#[derive(Debug, Clone)]
+pub struct WriterGate {
+    open: Arc<tokio::sync::watch::Sender<bool>>,
+    waiting: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[cfg(feature = "test-hooks")]
+impl Default for WriterGate {
+    fn default() -> WriterGate {
+        WriterGate {
+            open: Arc::new(tokio::sync::watch::channel(true).0),
+            waiting: Arc::default(),
+        }
+    }
+}
+
+#[cfg(feature = "test-hooks")]
+impl WriterGate {
+    /// An open gate.
+    pub fn new() -> WriterGate {
+        WriterGate::default()
+    }
+
+    /// Holds every later send until [`WriterGate::open`].
+    pub fn close(&self) {
+        self.open.send_replace(false);
+    }
+
+    pub fn open(&self) {
+        self.open.send_replace(true);
+    }
+
+    /// Writers holding a frame at the gate right now.
+    pub fn waiting(&self) -> usize {
+        self.waiting.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    async fn pass(&self) {
+        let mut open = self.open.subscribe();
+        if *open.borrow_and_update() {
+            return;
+        }
+        self.waiting
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let _ = open.wait_for(|open| *open).await;
+        self.waiting
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// What a call task ends with: its terminal frame, and its audit completion if it was admitted.
+struct Answer {
+    frame: Frame,
+    completion: Option<Armed>,
 }
 
 /// A running call task, by task id.
@@ -475,15 +632,15 @@ struct Task {
 /// A subscription frame waiting for room in the outbound queue, in order.
 enum Ordered {
     Event(Queued),
-    /// The subscription's terminal Result or Error.
-    End(Frame),
+    /// The subscription's terminal Result or Error, with its audit completion.
+    End(Box<Answer>),
 }
 
 impl Ordered {
     fn call_id(&self) -> u32 {
         match self {
             Ordered::Event(queued) => queued.call_id,
-            Ordered::End(frame) => frame.call_id,
+            Ordered::End(end) => end.frame.call_id,
         }
     }
 }
@@ -497,7 +654,7 @@ struct ConnState<A, D> {
     decoder: FrameDecoder,
     hello_deadline: Instant,
     session: Option<Arc<Session>>,
-    calls: JoinSet<Frame>,
+    calls: JoinSet<Answer>,
     /// Call id of each running call or subscription task.
     tasks: HashMap<tokio::task::Id, Task>,
     /// Scope of each call and subscription in flight, by call id.
@@ -517,6 +674,27 @@ struct ConnState<A, D> {
     last_call_id: u32,
     /// Set when the connection starts closing; bounds delivery of the final frames.
     close_by: Option<Instant>,
+    /// The connection's audit completion writes (Open question 26 item 11).
+    completions: Completions,
+    /// Room for `max_concurrent_calls` completions owed or being written on this connection.
+    rooms: Rooms,
+    /// Calls received and checked, waiting in order for room (see [`ConnState::on_call_frame`]).
+    /// Other client frames are still read and handled meanwhile.
+    waiting: VecDeque<Received>,
+}
+
+/// A `Call` or `Subscribe` the connection accepted (id claimed, payload decoded) and has not
+/// started yet.
+struct Received {
+    call_id: u32,
+    subscribe: bool,
+    call: Call,
+    session: Arc<Session>,
+    /// When the frame was read: the call's deadline and duration run from here (spec §7).
+    at: Instant,
+    /// When it ends if it is still waiting: the deadline its scope would start with (the
+    /// engine's default bounds; the procedure's own apply once it starts).
+    deadline: Instant,
 }
 
 /// Control flow out of frame handling.
@@ -532,10 +710,18 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         // Subscription frames leave only while this many outbound slots stay free, so call
         // answers (sent without waiting) always find room while the peer reads.
         let headroom = self.inner.config.outbound_frames() / 2;
+        let rooms = self.rooms.clone();
         loop {
             if let Err(closed) = self.drain_frames().await {
                 return closed;
             }
+            // The earliest deadline of a call waiting for room (unused while none waits).
+            let expiry = self
+                .waiting
+                .iter()
+                .map(|w| w.deadline)
+                .min()
+                .unwrap_or_else(Instant::now);
             tokio::select! {
                 biased;
                 Some(goaway) = control.recv() => {
@@ -564,6 +750,18 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 Some(done) = self.calls.join_next_with_id(), if !self.calls.is_empty() => {
                     if let Err(closed) = self.finish_call(done) {
                         return closed;
+                    }
+                }
+                // A waiting call whose deadline passed ends without running.
+                () = tokio::time::sleep_until(expiry), if !self.waiting.is_empty() => {
+                    if let Err(closed) = self.expire_waiting() {
+                        return closed;
+                    }
+                }
+                // The oldest call waiting for room starts once a completion was written.
+                room = rooms.take(), if !self.waiting.is_empty() => {
+                    if let Some(received) = self.waiting.pop_front() {
+                        self.start(received, room);
                     }
                 }
                 // Client frames come before more subscription output, so a busy subscription
@@ -610,7 +808,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             return self.on_hello(frame).await;
         };
         match frame.kind {
-            Kind::Call => self.on_call(session, frame).await,
+            Kind::Call => self.on_call_frame(session, frame, false).await,
             Kind::Ping => {
                 let pong = Frame {
                     kind: Kind::Pong,
@@ -636,10 +834,18 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 // A call that is no longer in flight already answered; its Cancel lost the race.
                 if let Some(scope) = self.in_flight.get(&frame.call_id) {
                     scope.cancel();
+                    return Ok(());
+                }
+                // A call still waiting for room never starts: it answers `Cancelled` at once,
+                // as a call cancelled before its handler ran does.
+                if let Some(at) = self.waiting.iter().position(|w| w.call_id == frame.call_id) {
+                    self.waiting.remove(at);
+                    let err = ErrorPayload::new(Code::Cancelled, "call cancelled");
+                    return self.send_error(frame.call_id, err);
                 }
                 Ok(())
             }
-            Kind::Subscribe => self.on_subscribe(session, frame).await,
+            Kind::Subscribe => self.on_call_frame(session, frame, true).await,
             Kind::Unsubscribe => {
                 if frame.call_id == 0 {
                     return Err(self
@@ -731,46 +937,48 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         self.send_json(Kind::HelloAck, 0, &ack)
     }
 
-    async fn on_call(&mut self, session: Arc<Session>, frame: Frame) -> Step {
-        let Some((call, scope)) = self.admit(&frame).await? else {
+    /// A `Call` or `Subscribe` frame: checked and accepted at once (see [`ConnState::accept`]),
+    /// then started when there is room for its audit completion. Without room it waits, in
+    /// order, while the connection keeps reading and handling the client's other frames, so a
+    /// slow audit sink delays new calls but never a `Cancel`, an `Unsubscribe`, a `Ping` or a
+    /// close.
+    async fn on_call_frame(
+        &mut self,
+        session: Arc<Session>,
+        frame: Frame,
+        subscribe: bool,
+    ) -> Step {
+        let Some(received) = self.accept(session, &frame, subscribe).await? else {
             return Ok(());
         };
-        let fut = self.inner.dispatch.call(session, call);
-        self.spawn(frame.call_id, scope, fut, false);
+        if self.waiting.is_empty()
+            && let Some(room) = self.rooms.try_take()
+        {
+            self.start(received, room);
+        } else {
+            self.waiting.push_back(received);
+        }
         Ok(())
     }
 
-    async fn on_subscribe(&mut self, session: Arc<Session>, frame: Frame) -> Step {
-        let Some((call, scope)) = self.admit(&frame).await? else {
-            return Ok(());
-        };
-        let config = &self.inner.config;
-        let events = Events::new(
-            frame.call_id,
-            scope.clone(),
-            self.events_tx.clone(),
-            config.subscription_buffer_events,
-            config.subscription_buffer_bytes,
-            config.max_frame_bytes,
-        );
-        let fut = self.inner.dispatch.subscribe(session, call, events);
-        // A normal end is a `Result` with payload `null`.
-        let fut = Box::pin(async move { fut.await.map(|()| Value::Null) });
-        self.subscriptions.insert(frame.call_id);
-        self.spawn(frame.call_id, scope, fut, true);
-        Ok(())
-    }
-
-    /// Admits a `Call` or `Subscribe`: claims its id, takes a concurrency slot and decodes the
-    /// payload. `Ok(None)` when the call was answered with an error and the connection stays.
-    async fn admit(&mut self, frame: &Frame) -> Result<Option<(Call, CallScope)>, Closed> {
+    /// Claims the call's id, checks the concurrency limit (a call waiting for room counts: the
+    /// client is waiting for its answer) and decodes the payload. `Ok(None)` when the call was
+    /// answered with an error and the connection stays; no room is taken for such a call.
+    async fn accept(
+        &mut self,
+        session: Arc<Session>,
+        frame: &Frame,
+        subscribe: bool,
+    ) -> Result<Option<Received>, Closed> {
+        let at = Instant::now();
         let call_id = frame.call_id;
         if !self.claim_call_id(call_id) {
             return Err(self
                 .violation(Code::InvalidArgument, "call id not increasing")
                 .await);
         }
-        if self.in_flight.len() >= self.inner.config.max_concurrent_calls as usize {
+        let calls = self.in_flight.len() + self.waiting.len();
+        if calls >= self.inner.config.max_concurrent_calls as usize {
             let mut err = ErrorPayload::new(Code::ResourceExhausted, "too many concurrent calls");
             err.retryable = true;
             self.send_error(call_id, err)?;
@@ -789,13 +997,76 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 return Ok(None);
             }
         };
-        // The deadline runs from here; the dispatcher narrows it to the procedure's bounds.
+        let deadline = at + effective_timeout(call.timeout(), DEFAULT_TIMEOUT, DEFAULT_TIMEOUT_MAX);
+        Ok(Some(Received {
+            call_id,
+            subscribe,
+            call,
+            session,
+            at,
+            deadline,
+        }))
+    }
+
+    /// Ends every waiting call whose deadline has passed, as the Cancel of a waiting call does:
+    /// it never runs and has no audit entry. A call answers `DeadlineExceeded` at once; a
+    /// subscription is dropped and nothing is sent for it (spec Open question 26 item 11).
+    fn expire_waiting(&mut self) -> Step {
+        let now = Instant::now();
+        let mut expired = Vec::new();
+        self.waiting.retain(|w| {
+            let over = w.deadline <= now;
+            if over && !w.subscribe {
+                expired.push(w.call_id);
+            }
+            !over
+        });
+        for call_id in expired {
+            let err = ErrorPayload::new(Code::DeadlineExceeded, "deadline exceeded");
+            self.send_error(call_id, err)?;
+        }
+        Ok(())
+    }
+
+    /// Starts an accepted call with its room in the completion queue.
+    fn start(&mut self, received: Received, room: Room) {
+        let Received {
+            call_id,
+            subscribe,
+            call,
+            session,
+            at,
+            deadline: _,
+        } = received;
+        // The deadline runs from frame receipt; the dispatcher narrows it to the procedure's
+        // bounds.
         let scope = CallScope::with_token(
             self.conn_token.child_token(),
             call.timeout(),
             self.correlation_id(call_id),
+            at,
+            self.completions.clone(),
+            Some(room),
         );
-        Ok(Some((call, scope)))
+        if !subscribe {
+            let fut = self.inner.dispatch.call(session, call);
+            self.spawn(call_id, scope, fut, false);
+            return;
+        }
+        let config = &self.inner.config;
+        let events = Events::new(
+            call_id,
+            scope.clone(),
+            self.events_tx.clone(),
+            config.subscription_buffer_events,
+            config.subscription_buffer_bytes,
+            config.max_frame_bytes,
+        );
+        let fut = self.inner.dispatch.subscribe(session, call, events);
+        // A normal end is a `Result` with payload `null`.
+        let fut = Box::pin(async move { fut.await.map(|()| Value::Null) });
+        self.subscriptions.insert(call_id);
+        self.spawn(call_id, scope, fut, true);
     }
 
     /// Runs a call or subscription task under `scope`; its terminal frame comes to `finish_call`.
@@ -811,8 +1082,15 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         let (max, grace) = (config.max_frame_bytes, config.cancel_grace);
         let task_scope = scope.clone();
         let handle = self.calls.spawn(async move {
-            let result = run_call(fut, task_scope, grace).await;
-            result_frame(call_id, result, correlation_id, max)
+            let finished = run_call(fut, task_scope.clone(), grace).await;
+            let replaced_by = finished.replaced_by;
+            let (frame, delivery) = result_frame(call_id, finished, correlation_id, max);
+            // The audit completion records what the client gets (Open question 26a, item 11):
+            // it travels with the frame and is written once the transport accepted it.
+            let completion = task_scope
+                .take_completion()
+                .map(|c| c.arm(delivery, replaced_by.unwrap_or(Code::Cancelled)));
+            Answer { frame, completion }
         });
         self.tasks.insert(
             handle.id(),
@@ -829,6 +1107,9 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     /// be among them). Otherwise a call id that is not a subscription in flight (already ended,
     /// or a call) is ignored: `ordered` only ever holds subscription frames.
     fn unsubscribe(&mut self, call_id: u32) {
+        // A subscription still waiting for room never starts, and nothing is sent for it.
+        self.waiting
+            .retain(|w| !(w.subscribe && w.call_id == call_id));
         self.ordered.retain(|frame| frame.call_id() != call_id);
         if !self.subscriptions.remove(&call_id) {
             return;
@@ -845,11 +1126,16 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             Some(Ordered::Event(queued)) => Outbound {
                 bytes: queued.bytes,
                 held: Some(queued.held),
+                completion: None,
             },
-            Some(Ordered::End(frame)) => frame
-                .encode(self.inner.config.max_frame_bytes)
-                .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?
-                .into(),
+            Some(Ordered::End(end)) => Outbound {
+                bytes: end
+                    .frame
+                    .encode(self.inner.config.max_frame_bytes)
+                    .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?,
+                held: None,
+                completion: end.completion,
+            },
             None => return Ok(()),
         };
         self.out.try_send(outbound).map_err(|err| match err {
@@ -868,11 +1154,11 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     /// Sends the one terminal frame of a finished call or subscription task.
     fn finish_call(
         &mut self,
-        done: Result<(tokio::task::Id, Frame), tokio::task::JoinError>,
+        done: Result<(tokio::task::Id, Answer), tokio::task::JoinError>,
     ) -> Step {
-        let (task, frame) = match done {
-            Ok((task, frame)) => (task, Ok(frame)),
-            Err(err) => (err.id(), Err(())),
+        let (task, frame, mut completion) = match done {
+            Ok((task, Answer { frame, completion })) => (task, Ok(frame), completion),
+            Err(err) => (err.id(), Err(err.is_panic()), None),
         };
         let Task {
             call_id,
@@ -881,24 +1167,43 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             call_id: 0,
             subscription: false,
         });
-        // A finished subscription is over: a sink clone the handler left behind (e.g. in a task
-        // it spawned) is refused from now on, and its `closed()` resolves.
-        if let Some(scope) = self.in_flight.remove(&call_id)
-            && subscription
+        let scope = self.in_flight.remove(&call_id);
+        // A panicking handler's audit completion: it ended with `Internal`, which the client
+        // gets below, and travels with that frame like any answer, so the frame's fate decides
+        // the delivery. A task that was aborted instead keeps its completion, written from its
+        // drop guard as `Cancelled` once the last clone of its scope goes (below): the engine
+        // never finished that call.
+        if matches!(frame, Err(true))
+            && let Some(mut panicked) = scope.as_ref().and_then(CallScope::take_completion)
         {
-            scope.cancel();
+            panicked.record_outcome(security_types::Outcome::Error {
+                code: code_name(Code::Internal),
+            });
+            completion = Some(panicked.arm(Delivery::Delivered, Code::Internal));
         }
-        let frame = frame.unwrap_or_else(|()| {
-            // A panicking handler must not take the connection down or leak its message.
-            let mut payload = ErrorPayload::new(Code::Internal, "internal error");
+        let frame = frame.unwrap_or_else(|panicked| {
+            // A panicking handler must not take the connection down or leak its message. An
+            // aborted call answers with the reason its token fired, `Cancelled` if none.
+            let mut payload = match &scope {
+                Some(scope) if !panicked => scope.error(),
+                _ => ErrorPayload::new(Code::Internal, "internal error"),
+            };
             payload.correlation_id = self.correlation_id(call_id);
             let payload = serde_json::to_vec(&payload).expect("ErrorPayload serializes");
             Frame::new(Kind::Error, call_id, payload)
         });
-        if !subscription {
-            return self.send(&frame);
+        // A finished subscription is over: a sink clone the handler left behind (e.g. in a task
+        // it spawned) is refused from now on, and its `closed()` resolves.
+        if let Some(scope) = scope
+            && subscription
+        {
+            scope.cancel();
         }
-        // After Unsubscribe nothing more goes out for this id, not even the end.
+        if !subscription {
+            return self.send_answer(&frame, completion);
+        }
+        // After Unsubscribe nothing more goes out for this id, not even the end: its completion
+        // drops here, as `Cancelled`.
         if !self.subscriptions.contains(&call_id) {
             return Ok(());
         }
@@ -908,7 +1213,8 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             self.take_event(queued);
         }
         self.subscriptions.remove(&call_id);
-        self.ordered.push_back(Ordered::End(frame));
+        self.ordered
+            .push_back(Ordered::End(Box::new(Answer { frame, completion })));
         Ok(())
     }
 
@@ -934,14 +1240,14 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
 
     /// Sends a handshake rejection on call 0. The caller closes the connection.
     async fn reject(&mut self, code: Code, message: &str) -> Closed {
-        self.send_final(Kind::Error, 0, &ErrorPayload::new(code, message))
+        self.send_final(Kind::Error, 0, &transport_refusal(code, message))
             .await;
         Closed::HandshakeRejected(code)
     }
 
     /// Reports a protocol violation on call 0. The caller closes the connection.
     async fn violation(&mut self, code: Code, message: impl Into<String>) -> Closed {
-        self.send_final(Kind::Error, 0, &ErrorPayload::new(code, message))
+        self.send_final(Kind::Error, 0, &transport_refusal(code, message))
             .await;
         Closed::ProtocolViolation(code)
     }
@@ -973,16 +1279,35 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
 
     /// Queues a frame for the writer without waiting. A full queue means the peer is not reading.
     fn send(&mut self, frame: &Frame) -> Step {
+        self.send_answer(frame, None)
+    }
+
+    /// [`ConnState::send`] for a call's answer frame, carrying its audit completion to the
+    /// writer. If the frame is not queued, the completion drops with it, as `Cancelled`.
+    fn send_answer(&mut self, frame: &Frame, completion: Option<Armed>) -> Step {
         // Frames built here are bounded by construction (result_frame checks the only
         // unbounded payload), so an encode error is a bug, not a peer fault.
         let bytes = frame
             .encode(self.inner.config.max_frame_bytes)
             .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?;
-        self.out.try_send(bytes.into()).map_err(|err| match err {
+        let outbound = Outbound {
+            bytes,
+            held: None,
+            completion,
+        };
+        self.out.try_send(outbound).map_err(|err| match err {
             TrySendError::Full(_) => Closed::SlowConsumer,
             TrySendError::Closed(_) => Closed::Transport(io::ErrorKind::BrokenPipe),
         })
     }
+}
+
+/// A refusal on call 0 (handshake rejection, protocol violation). It belongs to no call, so its
+/// correlation id comes from the shared generator (empty only without OS randomness).
+fn transport_refusal(code: Code, message: impl Into<String>) -> ErrorPayload {
+    let mut err = ErrorPayload::new(code, message);
+    err.correlation_id = security_types::new_correlation_id().unwrap_or_default();
+    err
 }
 
 /// `duration` in whole milliseconds for HelloAck, clamped so a JavaScript client reads it exactly
@@ -993,22 +1318,33 @@ fn advertised_ms(duration: Duration) -> u64 {
         .min(MAX_JSON_SAFE_INTEGER)
 }
 
-/// Builds the Result or Error frame for a finished call.
+/// Builds the Result or Error frame for a finished call, and says what the client gets.
 fn result_frame(
     call_id: u32,
-    result: Result<Value, ErrorPayload>,
+    finished: Finished,
     correlation_id: String,
     max_payload: u32,
-) -> Frame {
-    let error = match result.map(|value| serde_json::to_vec(&value)) {
+) -> (Frame, Delivery) {
+    // The token fired first: the client gets its reason, whatever the handler did.
+    let mut delivery = finished
+        .replaced_by
+        .map_or(Delivery::Delivered, delivery_for);
+    let error = match finished.result.map(|value| serde_json::to_vec(&value)) {
         Ok(Ok(payload)) if payload.len() <= max_payload as usize => {
-            return Frame::new(Kind::Result, call_id, payload);
+            return (Frame::new(Kind::Result, call_id, payload), delivery);
         }
-        Ok(Ok(_)) => ErrorPayload::new(
-            Code::ResourceExhausted,
-            "result exceeds the frame size limit",
-        ),
-        Ok(Err(_)) => ErrorPayload::new(Code::Internal, "internal error"),
+        Ok(Ok(_)) => {
+            delivery = Delivery::FrameTooLarge;
+            ErrorPayload::new(
+                Code::ResourceExhausted,
+                "result exceeds the frame size limit",
+            )
+        }
+        // Not reachable for a `Value`; the answer could not be put in a frame either way.
+        Ok(Err(_)) => {
+            delivery = Delivery::FrameTooLarge;
+            ErrorPayload::new(Code::Internal, "internal error")
+        }
         Err(err) => err,
     };
     let mut error = error;
@@ -1017,6 +1353,9 @@ fn result_frame(
     }
     let mut payload = serde_json::to_vec(&error).expect("ErrorPayload serializes");
     if payload.len() > max_payload as usize {
+        if delivery == Delivery::Delivered {
+            delivery = Delivery::FrameTooLarge;
+        }
         // A handler's details or message can exceed the limit too; drop them rather than fail.
         let fallback = ErrorPayload {
             code: error.code,
@@ -1027,5 +1366,5 @@ fn result_frame(
         };
         payload = serde_json::to_vec(&fallback).expect("ErrorPayload serializes");
     }
-    Frame::new(Kind::Error, call_id, payload)
+    (Frame::new(Kind::Error, call_id, payload), delivery)
 }

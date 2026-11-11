@@ -10,12 +10,13 @@ use std::path::{Path, PathBuf};
 use ring::rand::{SecureRandom, SystemRandom};
 use security_types::{
     Action, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest, Decision, Digest,
-    Outcome, Principal, PrincipalKind, Reason, Risk, TargetRef,
+    Outcome, Principal, PrincipalKind, Reason, Risk, TargetRef, append_within,
 };
 use serde::{Deserialize, Serialize};
 use sha2::Digest as _;
 
 use crate::audit::{AuditError, AuditSink, Clock};
+use crate::grant::DEFAULT_AUDIT_TIMEOUT;
 use crate::package::{
     PackageError, PackageLimits, PackagePolicy, TrustStore, VerifiedPackage, verify_bytes,
 };
@@ -100,8 +101,11 @@ fn parse_digest(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
+/// Records one package entry; the caller stops (fails closed) if it is not written within
+/// [`DEFAULT_AUDIT_TIMEOUT`], so a sink that hangs fails the step instead of holding it (and,
+/// for an approval, the plugin's install lock) forever.
 #[allow(clippy::too_many_arguments)] // Keep all package audit entries behind this one helper.
-fn audit(
+async fn audit(
     installer: &Installer<'_>,
     principal: &Principal,
     correlation: &str,
@@ -111,23 +115,26 @@ fn audit(
     decision: AuditDecision,
     outcome: Outcome,
 ) -> Result<(), InstallError> {
-    installer
-        .audit
-        .append(AuditEntry {
-            timestamp_unix_ms: installer.clock.now_unix_ms(),
-            principal_chain: AuditPrincipal::chain_of(principal),
-            tenant: principal.tenant.clone(),
-            action: Action::new(action, PERMISSION),
-            target: Some(TargetRef::plugin(target)),
-            risk: Risk::Write,
-            decision,
-            approval_id: None,
-            outcome,
-            duration_ms: None,
-            correlation_id: correlation.to_owned(),
-            input_digest: Digest(digest),
-            statement_digest: None,
-        })
+    let entry = AuditEntry {
+        timestamp_unix_ms: installer.clock.now_unix_ms(),
+        principal_chain: AuditPrincipal::chain_of(principal),
+        tenant: principal.tenant.clone(),
+        action: Action::new(action, PERMISSION),
+        target: Some(TargetRef::plugin(target)),
+        risk: Risk::Write,
+        decision,
+        approval_id: None,
+        outcome,
+        duration_ms: None,
+        correlation_id: correlation.to_owned(),
+        input_digest: Digest(digest),
+        statement_digest: None,
+        delivery: None,
+        parent_correlation_id: None,
+    };
+    let deadline = tokio::time::Instant::now() + DEFAULT_AUDIT_TIMEOUT;
+    append_within(installer.audit, entry, deadline)
+        .await
         .map_err(InstallError::Audit)
 }
 
@@ -263,7 +270,7 @@ fn commit_activation(
 
 impl<'a> Installer<'a> {
     /// Audit the request, verify the package, then write only verified files to a private stage.
-    pub fn stage(
+    pub async fn stage(
         &'a self,
         archive: &[u8],
         principal: &Principal,
@@ -279,7 +286,8 @@ impl<'a> Installer<'a> {
             archive_digest,
             AuditDecision::Allow,
             Outcome::Success,
-        )?;
+        )
+        .await?;
         let package = match verify_bytes(archive, self.limits, self.trust, self.policy) {
             Ok(p) => p,
             Err(e) => {
@@ -298,7 +306,8 @@ impl<'a> Installer<'a> {
                     Outcome::Error {
                         code: format!("{e:?}"),
                     },
-                )?;
+                )
+                .await?;
                 return Err(InstallError::Package(e));
             }
         };
@@ -373,7 +382,8 @@ impl<'a> Installer<'a> {
                 Outcome::Error {
                     code: "PermissionDenied".into(),
                 },
-            )?;
+            )
+            .await?;
             return Err(InstallError::Denied);
         }
         audit(
@@ -385,7 +395,8 @@ impl<'a> Installer<'a> {
             bytes,
             AuditDecision::Allow,
             Outcome::Success,
-        )?;
+        )
+        .await?;
         atomic_state(&base, &state).map_err(|_| InstallError::Io)
     }
 }
@@ -433,7 +444,8 @@ impl StagedInstall<'_> {
                 Outcome::Error {
                     code: "PermissionDenied".into(),
                 },
-            )?;
+            )
+            .await?;
             return Err(InstallError::Denied);
         }
         if approved_digest != self.package.digest {
@@ -452,7 +464,8 @@ impl StagedInstall<'_> {
                 Outcome::Error {
                     code: "DigestMismatch".into(),
                 },
-            )?;
+            )
+            .await?;
             return Err(InstallError::DigestMismatch);
         }
         let action = Action::new(APPROVE, PERMISSION);
@@ -478,7 +491,8 @@ impl StagedInstall<'_> {
                 Outcome::Error {
                     code: "PermissionDenied".into(),
                 },
-            )?;
+            )
+            .await?;
             return Err(InstallError::Denied);
         }
         audit(
@@ -490,7 +504,8 @@ impl StagedInstall<'_> {
             self.package.digest,
             AuditDecision::Allow,
             Outcome::Success,
-        )?;
+        )
+        .await?;
         let base = self.installer.root.join(id);
         let _lock = lock_plugin_async(base.clone()).await?;
         let versions = base.join("versions");
@@ -510,7 +525,8 @@ impl StagedInstall<'_> {
             self.package.digest,
             AuditDecision::Allow,
             Outcome::Success,
-        )?;
+        )
+        .await?;
         fs::rename(&self.stage, &version_path).map_err(|_| InstallError::Io)?;
         state.previous = state.active.replace(digest);
         commit_activation(&base, &version_path, &state, |parent| {
@@ -518,7 +534,7 @@ impl StagedInstall<'_> {
         })
     }
 
-    pub fn reject(self, approver: &Principal) -> Result<(), InstallError> {
+    pub async fn reject(self, approver: &Principal) -> Result<(), InstallError> {
         audit(
             self.installer,
             approver,
@@ -535,6 +551,7 @@ impl StagedInstall<'_> {
                 code: "Rejected".into(),
             },
         )
+        .await
     }
 }
 

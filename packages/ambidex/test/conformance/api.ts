@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:f1a35441eea15c98250ce1c83da0c1d335561100f5befab024268c8e4459e4dd";
+export const SCHEMA_HASH = "sha256:1baf57831b31b59cb7bcb819806b4f12b5e90707a97d9532009ea9098496421d";
 
 // ---- Types
 
@@ -111,6 +111,7 @@ export interface ProcedureDef<
 export interface Procedures {
   readonly "fixture.approval": ProcedureDef<"mutation", JsonValue, null, never>;
   readonly "fixture.big": ProcedureDef<"query", number, string, never>;
+  readonly "fixture.burst": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.capped": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.counter": ProcedureDef<"subscription", CounterInput, number, FixtureError>;
   readonly "fixture.echo": ProcedureDef<"query", JsonValue, JsonValue, never>;
@@ -118,12 +119,14 @@ export interface Procedures {
   readonly "fixture.fail": ProcedureDef<"query", FailInput, null, FixtureError>;
   readonly "fixture.flood": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.leak": ProcedureDef<"query", JsonValue, null, JsonValue>;
+  readonly "fixture.panic_on_cancel": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.protected": ProcedureDef<"mutation", FailInput, null, never>;
   readonly "fixture.rows": ProcedureDef<"stream", JsonValue, number, never>;
   readonly "fixture.secret": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.stubborn": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.wait": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.whoami": ProcedureDef<"query", JsonValue, JsonValue, never>;
+  readonly "fixture.write": ProcedureDef<"mutation", JsonValue, JsonValue, never>;
 }
 
 /** The procedures nested by name segment, as the client exposes them. */
@@ -131,6 +134,7 @@ export interface Api {
   readonly fixture: {
     readonly approval: Procedures["fixture.approval"];
     readonly big: Procedures["fixture.big"];
+    readonly burst: Procedures["fixture.burst"];
     readonly capped: Procedures["fixture.capped"];
     readonly counter: Procedures["fixture.counter"];
     readonly echo: Procedures["fixture.echo"];
@@ -138,12 +142,14 @@ export interface Api {
     readonly fail: Procedures["fixture.fail"];
     readonly flood: Procedures["fixture.flood"];
     readonly leak: Procedures["fixture.leak"];
+    readonly panic_on_cancel: Procedures["fixture.panic_on_cancel"];
     readonly protected: Procedures["fixture.protected"];
     readonly rows: Procedures["fixture.rows"];
     readonly secret: Procedures["fixture.secret"];
     readonly stubborn: Procedures["fixture.stubborn"];
     readonly wait: Procedures["fixture.wait"];
     readonly whoami: Procedures["fixture.whoami"];
+    readonly write: Procedures["fixture.write"];
   };
 }
 
@@ -163,6 +169,16 @@ export const procedures: Api = {
     big: {
       name: "fixture.big",
       kind: "query",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    burst: {
+      name: "fixture.burst",
+      kind: "subscription",
       perm: "fixture.call",
       risk: "Read",
       agent: "hidden",
@@ -240,6 +256,16 @@ export const procedures: Api = {
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
     },
+    panic_on_cancel: {
+      name: "fixture.panic_on_cancel",
+      kind: "subscription",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
     protected: {
       name: "fixture.protected",
       kind: "mutation",
@@ -295,6 +321,16 @@ export const procedures: Api = {
       kind: "query",
       perm: "fixture.call",
       risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    write: {
+      name: "fixture.write",
+      kind: "mutation",
+      perm: "fixture.call",
+      risk: "Write",
       agent: "hidden",
       deprecated: false,
       timeoutDefaultMs: 30000,

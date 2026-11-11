@@ -7,7 +7,7 @@ use std::time::Duration;
 use ambidex::engine::BoxFuture;
 use ambidex::frame::{Frame, FrameDecoder, Kind};
 use ambidex::security_types::{
-    ApprovalSpec, AuditDecision, AuditEntry, Authorizer, AuthzRequest, Decision, Outcome,
+    ApprovalSpec, AuditDecision, AuditEntry, Authorizer, AuthzRequest, Decision, Delivery, Outcome,
     Principal, PrincipalKind, Reason, SessionId, TenantId,
 };
 use ambidex::transport::{MemoryRx, MemoryTx, TransportRx, TransportTx, memory};
@@ -151,12 +151,12 @@ impl Log {
 }
 
 impl AuditSink for Log {
-    fn append(&self, entry: AuditEntry) -> Result<(), AuditError> {
+    fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
         if self.broken {
-            return Err(AuditError("disk full".into()));
+            return Box::pin(async { Err(AuditError("disk full".into())) });
         }
         self.entries.lock().unwrap().push(entry);
-        Ok(())
+        Box::pin(async { Ok(()) })
     }
 }
 
@@ -336,9 +336,11 @@ async fn escalation_inside_a_subscription_is_refused_and_audited() {
     let err = client.error(1).await;
     assert_eq!(err.code, Code::ApprovalRequired);
     assert_eq!(err.details, Some(json!({ "approval_id": "apr-7" })));
+    // The admission, the refused re-check, then the completion: the subscription ran.
     let entries = log.entries();
-    assert_eq!(entries.len(), 1, "{entries:?}");
-    let entry = &entries[0];
+    assert_eq!(entries.len(), 3, "{entries:?}");
+    assert_eq!(entries[0].outcome, Outcome::Started);
+    let entry = &entries[1];
     assert_eq!(entry.target, Some(TargetRef::connection("c-9")));
     assert_eq!(entry.risk, Risk::Destructive);
     let chain: Vec<_> = entry
@@ -347,7 +349,18 @@ async fn escalation_inside_a_subscription_is_refused_and_audited() {
         .map(|p| p.id.as_str())
         .collect();
     assert_eq!(chain, ["agent:token:bot", "human:local:alice"]);
-    assert_eq!(entry.correlation_id, err.correlation_id);
+    assert_eq!(
+        entries[2].outcome,
+        Outcome::Error {
+            code: "ApprovalRequired".into()
+        }
+    );
+    assert_eq!(entries[2].delivery, Some(Delivery::Delivered));
+    assert!(
+        entries
+            .iter()
+            .all(|e| e.correlation_id == err.correlation_id)
+    );
 }
 
 #[tokio::test]

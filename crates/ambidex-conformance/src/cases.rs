@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 
 use ambidex::frame::{Flags, Frame, HEADER_LEN, Kind};
-use ambidex::security_types::{AuditDecision, Outcome, Reason};
+use ambidex::security_types::{
+    AuditDecision, AuditEntry, AuditEntryKind, AuditFailureEffect, Delivery, Outcome, Reason, Risk,
+};
 use ambidex::{Code, Goaway, input_digest};
 use serde_json::{Value, json};
 
@@ -16,8 +18,8 @@ use crate::client::{
     Client, call_frame, cancel_frame, encode, json_frame, subscribe_frame, unsubscribe_frame,
 };
 use crate::fixture::{
-    APPROVAL_ID, CANCEL_GRACE, Event, MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES, SCHEMA_HASH,
-    SERVER_VERSION, SUBSCRIPTION_BUFFER_EVENTS,
+    APPROVAL_ID, AUDIT_WRITE_TIMEOUT, CANCEL_GRACE, Event, MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES,
+    SCHEMA_HASH, SERVER_VERSION, SUBSCRIPTION_BUFFER_EVENTS, completed_with,
 };
 use crate::harness::Harness;
 
@@ -372,7 +374,7 @@ pub async fn permission_denied_never_runs_handler<H: Harness>(h: &H) {
     assert_eq!(err.details, None);
     assert_eq!(h.fixture().probe.runs(), 0);
     // Both refusals are audited, with the reason the client never saw.
-    let entries = h.fixture().audit.entries();
+    let entries = h.fixture().audit.refusals();
     assert_eq!(entries.len(), 2, "{entries:?}");
     assert!(entries.iter().all(|e| e.action.name == "fixture.protected"
         && matches!(e.decision, AuditDecision::Deny { .. })
@@ -839,6 +841,845 @@ pub async fn unauthorized_subscribe_is_denied_and_audited<H: Harness>(h: &H) {
     client.expect_alive(0).await;
 }
 
+// ---- audit of calls that run (§8, Open question 26) -----------------------------------------
+
+/// The entries of `action`, in order.
+fn audited(h: &impl Harness, action: &str) -> Vec<AuditEntry> {
+    h.fixture()
+        .audit
+        .entries()
+        .into_iter()
+        .filter(|e| e.action.name == action)
+        .collect()
+}
+
+/// Checks that `entries` are one call's admission then completion, and returns the completion.
+fn admission_then_completion<'e>(
+    h: &impl Harness,
+    entries: &'e [AuditEntry],
+    risk: Risk,
+) -> &'e AuditEntry {
+    let [admission, completion] = entries else {
+        panic!("expected an admission and a completion, got {entries:?}");
+    };
+    assert_eq!(admission.outcome, Outcome::Started);
+    assert_eq!(admission.decision, AuditDecision::Allow);
+    assert_eq!((admission.delivery, admission.duration_ms), (None, None));
+    assert!(!admission.correlation_id.is_empty());
+    assert_eq!(completion.correlation_id, admission.correlation_id);
+    assert_eq!(completion.decision, AuditDecision::Allow);
+    for entry in [admission, completion] {
+        assert_eq!(entry.risk, risk);
+        assert_eq!(entry.principal_chain[0].id, h.principal_id());
+    }
+    completion
+}
+
+/// Waits (bounded) until `found` returns at least `count` items, and returns them. A completion
+/// is written in the background once its answer frame went out (Open question 26 item 11), so it
+/// may land after the client read the answer.
+async fn wait_for<T>(count: usize, mut found: impl FnMut() -> Vec<T>) -> Vec<T> {
+    let deadline = tokio::time::Instant::now() + crate::client::RECV_TIMEOUT;
+    loop {
+        let items = found();
+        if items.len() >= count || tokio::time::Instant::now() > deadline {
+            return items;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}
+
+/// Waits until the log holds `count` entries for `action`.
+async fn wait_for_entries(h: &impl Harness, action: &str, count: usize) -> Vec<AuditEntry> {
+    wait_for(count, || audited(h, action)).await
+}
+
+/// Waits for both entries of the call with `correlation_id`, and returns its completion.
+async fn wait_for_completion(h: &impl Harness, correlation_id: &str) -> AuditEntry {
+    let entries = wait_for(2, || h.fixture().audit.call(correlation_id)).await;
+    assert_eq!(entries.len(), 2, "{entries:?}");
+    entries[1].clone()
+}
+
+pub async fn calls_that_run_are_audited_twice<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.call(1, "fixture.echo", json!(1)).await;
+    client.expect_result(1).await;
+    client.call(2, "fixture.write", json!(2)).await;
+    client.expect_result(2).await;
+    client
+        .call(3, "fixture.fail", json!({ "code": "NotFound" }))
+        .await;
+    let err = client.expect_code(3, Code::NotFound).await;
+
+    // The admission is written before the handler runs; the completion once the answer went
+    // out, in the background.
+    let entries = wait_for_entries(h, "fixture.echo", 2).await;
+    let read = admission_then_completion(h, &entries, Risk::Read).clone();
+    assert!(completed_with(&read, None));
+    assert_eq!(read.delivery, Some(Delivery::Delivered));
+    let entries = wait_for_entries(h, "fixture.write", 2).await;
+    let write = admission_then_completion(h, &entries, Risk::Write).clone();
+    assert!(completed_with(&write, None));
+    assert_ne!(write.correlation_id, read.correlation_id);
+    // The handler's error is its outcome; the client got it as it was.
+    let entries = wait_for_entries(h, "fixture.fail", 2).await;
+    let failed = admission_then_completion(h, &entries, Risk::Read).clone();
+    assert!(completed_with(&failed, Some("NotFound")));
+    assert_eq!(failed.delivery, Some(Delivery::Delivered));
+    assert_eq!(failed.correlation_id, err.correlation_id);
+    assert_eq!(
+        failed.input_digest,
+        input_digest(&json!({ "code": "NotFound" }))
+    );
+    assert!(h.fixture().reports.all().is_empty());
+}
+
+pub async fn admission_that_cannot_be_recorded_fails_closed<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    fixture.audit.fail(true);
+
+    // A Write does not run without its admission entry.
+    client.call(1, "fixture.write", json!(1)).await;
+    let blocked = client.expect_code(1, Code::Unavailable).await;
+    assert!(blocked.retryable, "nothing ran, so the client may retry");
+    assert_eq!(fixture.probe.runs(), 0, "the handler was never entered");
+    // A human Read runs, and the failure is reported.
+    client.call(2, "fixture.echo", json!("read")).await;
+    assert_eq!(client.expect_result(2).await, json!("read"));
+    // A refusal is still a refusal.
+    client
+        .call(3, "fixture.protected", json!({ "code": "NotFound" }))
+        .await;
+    client.expect_code(3, Code::PermissionDenied).await;
+
+    assert!(fixture.audit.entries().is_empty());
+    let mut reports: Vec<_> = wait_for(4, || fixture.reports.all())
+        .await
+        .into_iter()
+        .map(|r| (r.entry, r.effect, r.action))
+        .collect();
+    // Admissions are reported in call order, before the answers. The read's completion is
+    // written in the background after its answer went out, so it may come after the refusal.
+    let later = reports.split_off(2);
+    assert_eq!(
+        reports,
+        [
+            (
+                AuditEntryKind::Admission,
+                AuditFailureEffect::Blocked,
+                "fixture.write".to_owned()
+            ),
+            (
+                AuditEntryKind::Admission,
+                AuditFailureEffect::RanUnrecorded,
+                "fixture.echo".to_owned()
+            ),
+        ]
+    );
+    let completion_lost = (
+        AuditEntryKind::Completion,
+        AuditFailureEffect::EntryLost,
+        "fixture.echo".to_owned(),
+    );
+    let refusal_lost = (
+        AuditEntryKind::Refusal,
+        AuditFailureEffect::EntryLost,
+        "fixture.protected".to_owned(),
+    );
+    assert_eq!(later.len(), 2, "{later:?}");
+    assert!(
+        later.contains(&completion_lost) && later.contains(&refusal_lost),
+        "{later:?}"
+    );
+    assert_eq!(
+        fixture.reports.all()[0].correlation_id,
+        blocked.correlation_id
+    );
+
+    // Once the sink works again, the same Write runs and is recorded.
+    fixture.audit.fail(false);
+    client.call(4, "fixture.write", json!(4)).await;
+    assert_eq!(client.expect_result(4).await, json!(4));
+    fixture.probe.expect(Event::Started("write")).await;
+    let entries = wait_for_entries(h, "fixture.write", 2).await;
+    admission_then_completion(h, &entries, Risk::Write);
+    client.expect_alive(0).await;
+}
+
+pub async fn completion_records_handler_outcome_and_delivery<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+
+    // Cancelled while running: the handler still returned a value, which was discarded.
+    client.call(1, "fixture.wait", json!(null)).await;
+    probe.expect(Event::Started("wait")).await;
+    client.cancel(1).await;
+    let err = client.expect_code(1, Code::Cancelled).await;
+    probe.expect(Event::Cancelled("wait")).await;
+    let entry = wait_for_completion(h, &err.correlation_id).await;
+    assert!(completed_with(&entry, None), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::Cancelled));
+
+    // Out of time while running: likewise, with the deadline.
+    client
+        .call_with_timeout(2, "fixture.wait", json!(null), 300)
+        .await;
+    probe.expect(Event::Started("wait")).await;
+    let err = client.expect_code(2, Code::DeadlineExceeded).await;
+    probe.expect(Event::Cancelled("wait")).await;
+    let entry = wait_for_completion(h, &err.correlation_id).await;
+    assert!(completed_with(&entry, None), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::DeadlineExceeded));
+
+    // Dropped after the grace period: it never returned, so its outcome is how it was stopped.
+    client.call(3, "fixture.stubborn", json!(null)).await;
+    probe.expect(Event::Started("stubborn")).await;
+    client.cancel(3).await;
+    let err = client.expect_code(3, Code::Cancelled).await;
+    probe.expect(Event::Dropped("stubborn")).await;
+    let entry = wait_for_completion(h, &err.correlation_id).await;
+    assert!(completed_with(&entry, Some("Cancelled")), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::Cancelled));
+
+    // An answer too large for a frame: the handler succeeded, the client got ResourceExhausted.
+    client
+        .call(4, "fixture.big", json!(MAX_FRAME_BYTES as usize * 2))
+        .await;
+    let err = client.expect_code(4, Code::ResourceExhausted).await;
+    let entry = wait_for_completion(h, &err.correlation_id).await;
+    assert!(completed_with(&entry, None), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::FrameTooLarge));
+    client.expect_alive(0).await;
+}
+
+pub async fn subscription_completion_records_how_it_ended<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client
+        .subscribe(1, "fixture.counter", counter(2, "finish"))
+        .await;
+    client.expect_event(1).await;
+    client.expect_event(1).await;
+    client.expect_result(1).await;
+    h.fixture().probe.expect(Event::Started("counter")).await;
+    let finished = wait_for_entries(h, "fixture.counter", 2).await;
+    let entry = admission_then_completion(h, &finished, Risk::Read);
+    assert!(completed_with(entry, None));
+    assert_eq!(entry.delivery, Some(Delivery::Delivered));
+
+    // After Unsubscribe the client gets nothing more; the completion says so.
+    client
+        .subscribe(2, "fixture.counter", counter(0, "wait"))
+        .await;
+    h.fixture().probe.expect(Event::Started("counter")).await;
+    client.unsubscribe(2).await;
+    h.fixture().probe.expect(Event::Cancelled("counter")).await;
+    let entries = wait_for_entries(h, "fixture.counter", 4).await;
+    let entry = admission_then_completion(h, &entries[2..], Risk::Read);
+    assert!(completed_with(entry, None), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::Cancelled));
+    client.expect_alive(0).await;
+}
+
+/// Open question 26 item 11c: the answer never waits for the completion write.
+pub async fn answer_does_not_wait_for_the_completion_write<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let audit = &h.fixture().audit;
+    audit.hold_completions();
+    // The sink holds the completion longer than the call takes: the answer comes first.
+    client.call(1, "fixture.echo", json!("first")).await;
+    assert_eq!(client.expect_result(1).await, json!("first"));
+    client
+        .subscribe(2, "fixture.counter", counter(1, "finish"))
+        .await;
+    client.expect_event(2).await;
+    client.expect_result(2).await;
+    for action in ["fixture.echo", "fixture.counter"] {
+        let entries = audited(h, action);
+        assert_eq!(entries.len(), 1, "only the admission so far: {entries:?}");
+        assert_eq!(entries[0].outcome, Outcome::Started);
+    }
+    // Once the sink answers, both completions arrive, as delivered.
+    audit.release_completions();
+    for (action, risk) in [
+        ("fixture.echo", Risk::Read),
+        ("fixture.counter", Risk::Read),
+    ] {
+        let entries = wait_for_entries(h, action, 2).await;
+        let entry = admission_then_completion(h, &entries, risk);
+        assert!(completed_with(entry, None), "{entry:?}");
+        assert_eq!(entry.delivery, Some(Delivery::Delivered));
+    }
+    assert!(h.fixture().reports.all().is_empty());
+    client.expect_alive(0).await;
+}
+
+/// Open question 26 item 11: a panic's `Internal` answer travels like any other, so the
+/// completion of a subscription that was already unsubscribed (its end frame is never sent)
+/// records `Internal`, `Cancelled`.
+pub async fn panic_after_unsubscribe_is_internal_and_cancelled<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    client
+        .subscribe(1, "fixture.panic_on_cancel", json!(null))
+        .await;
+    probe.expect(Event::Started("panic_on_cancel")).await;
+    client.unsubscribe(1).await;
+    probe.expect(Event::Cancelled("panic_on_cancel")).await;
+    let entries = wait_for_entries(h, "fixture.panic_on_cancel", 2).await;
+    let entry = admission_then_completion(h, &entries, Risk::Read);
+    assert!(completed_with(entry, Some("Internal")), "{entry:?}");
+    assert_eq!(entry.delivery, Some(Delivery::Cancelled));
+    // Nothing is sent for it, and the connection stays up.
+    client.expect_alive(0).await;
+}
+
+/// Waits (bounded) until `done` holds.
+async fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+    let deadline = tokio::time::Instant::now() + crate::client::RECV_TIMEOUT;
+    while !done() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+}
+
+/// Whether this crate was built with its `writer-gate` feature, so the cases that hold frames at
+/// the engine's writer gate run. Decided here, in ambidex-conformance, whatever crate expands
+/// [`conformance_suite!`](crate::conformance_suite); without it those cases print that they did
+/// not run.
+pub const WRITER_GATE: bool = cfg!(feature = "writer-gate");
+
+/// The writer-gate cases without the feature: same names, so every suite lists them, and a run
+/// says plainly that they were not exercised.
+macro_rules! not_built_with_writer_gate {
+    ($($case:ident),* $(,)?) => {
+        $(
+            #[cfg(not(feature = "writer-gate"))]
+            pub async fn $case<H: Harness>(_h: &H) {
+                writer_gate_case_not_run(
+                    H::NAME,
+                    stringify!($case),
+                    std::env::var_os(REQUIRE_WRITER_GATE).is_some(),
+                );
+            }
+        )*
+    };
+}
+
+/// When set (CI sets it to `1`), a writer-gate case that cannot run fails instead of reporting
+/// that it did not run, like `BYTERYGON_REQUIRE_POSTGRES` for the PostgreSQL driver tests.
+pub const REQUIRE_WRITER_GATE: &str = "BYTERYGON_REQUIRE_WRITER_GATE";
+
+/// What a writer-gate case does in a build without the feature: fails when the case is
+/// `required` ([`REQUIRE_WRITER_GATE`]), else says it did not run.
+#[cfg_attr(feature = "writer-gate", allow(dead_code))]
+fn writer_gate_case_not_run(harness: &str, case: &str, required: bool) {
+    let why = "ambidex-conformance was built without its `writer-gate` feature";
+    assert!(
+        !required,
+        "{harness}: {case}: required ({REQUIRE_WRITER_GATE}) but not run: {why}"
+    );
+    eprintln!("{harness}: {case}: not run: {why}");
+}
+
+not_built_with_writer_gate!(
+    delivered_once_the_transport_accepted_the_frame,
+    end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled,
+    answers_still_queued_at_close_are_cancelled,
+);
+
+/// How long a case keeps an answer at the writer, so a timestamp taken at send time would show.
+#[cfg(feature = "writer-gate")]
+const HOLD: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Open question 26 item 11b: `Delivered` once the transport accepted the frame, and the
+/// completion records when the call ended, not when its frame went out.
+#[cfg(feature = "writer-gate")]
+pub async fn delivered_once_the_transport_accepted_the_frame<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let gate = &h.fixture().writer_gate;
+    gate.close();
+    client.call(1, "fixture.echo", json!("held")).await;
+    wait_until("the answer at the writer", || gate.waiting() == 1).await;
+    let ended_by = ambidex::security_types::unix_now_ms();
+    // Chosen, not accepted by the transport: nothing is completed yet.
+    let entries = audited(h, "fixture.echo");
+    assert_eq!(entries.len(), 1, "only the admission: {entries:?}");
+    tokio::time::sleep(HOLD).await;
+    gate.open();
+    assert_eq!(client.expect_result(1).await, json!("held"));
+    let entries = wait_for_entries(h, "fixture.echo", 2).await;
+    let completion = admission_then_completion(h, &entries, Risk::Read);
+    assert!(completed_with(completion, None), "{completion:?}");
+    assert_eq!(completion.delivery, Some(Delivery::Delivered));
+    assert!(
+        (entries[0].timestamp_unix_ms..=ended_by).contains(&completion.timestamp_unix_ms),
+        "the completion is stamped when the call ended ({} ..= {ended_by}), got {}",
+        entries[0].timestamp_unix_ms,
+        completion.timestamp_unix_ms
+    );
+    client.expect_alive(0).await;
+}
+
+/// Pongs queued behind the writer: enough that a subscription's frames wait for room behind
+/// them (subscription frames leave only while half the outbound queue is free).
+#[cfg(feature = "writer-gate")]
+const QUEUED_PONGS: u32 = 40;
+
+/// Open question 26 item 11a: a subscription returned `Ok`, but its end frame was still waiting
+/// when `Unsubscribe` dropped it, so the client never got it: `Cancelled`.
+#[cfg(feature = "writer-gate")]
+pub async fn end_frame_dropped_by_unsubscribe_after_the_handler_returned_is_cancelled<
+    H: Harness,
+>(
+    h: &H,
+) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let gate = &fixture.writer_gate;
+    gate.close();
+    let pings: Vec<_> = (1..=QUEUED_PONGS)
+        .map(|id| Frame::new(Kind::Ping, id, Vec::new()))
+        .collect();
+    client.send(&pings).await;
+    wait_until("a pong at the writer", || gate.waiting() == 1).await;
+    client.subscribe(1, "fixture.burst", json!(null)).await;
+    fixture.probe.expect(Event::Started("burst")).await;
+    fixture.probe.expect(Event::Returned("burst")).await;
+    client.unsubscribe(1).await;
+    let entries = wait_for_entries(h, "fixture.burst", 2).await;
+    let completion = admission_then_completion(h, &entries, Risk::Read);
+    assert!(
+        completed_with(completion, None),
+        "the handler returned Ok: {completion:?}"
+    );
+    assert_eq!(completion.delivery, Some(Delivery::Cancelled));
+    // The pongs go out; nothing of the subscription does.
+    gate.open();
+    for id in 1..=QUEUED_PONGS {
+        let frame = client.recv().await.expect("Pong, got close");
+        assert_eq!((frame.kind, frame.call_id), (Kind::Pong, id), "{frame:?}");
+    }
+    client.expect_alive(0).await;
+}
+
+/// Open question 26 item 11a: answers chosen but still queued when the connection closes never
+/// reach the client: `Cancelled`.
+#[cfg(feature = "writer-gate")]
+pub async fn answers_still_queued_at_close_are_cancelled<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let gate = &fixture.writer_gate;
+    gate.close();
+    client.call(1, "fixture.write", json!(1)).await;
+    client.call(2, "fixture.write", json!(2)).await;
+    fixture
+        .probe
+        .expect_all(&[Event::Started("write"), Event::Started("write")])
+        .await;
+    wait_until("an answer at the writer", || gate.waiting() == 1).await;
+    // The client goes away; the writer never hands either answer to the transport, and the
+    // server drops them when it gives up delivering (its close timeout).
+    client.disconnect().await;
+    let entries = wait_for_entries(h, "fixture.write", 4).await;
+    assert_eq!(entries.len(), 4, "{entries:?}");
+    for correlation_id in entries.iter().map(|e| e.correlation_id.clone()) {
+        let completion = wait_for_completion(h, &correlation_id).await;
+        assert!(completed_with(&completion, None), "{completion:?}");
+        assert_eq!(completion.delivery, Some(Delivery::Cancelled));
+    }
+    gate.open();
+}
+
+/// Open question 26 item 11 (review): a completion the sink never takes is reported lost, within
+/// about the write timeout of the connection closing.
+pub async fn completions_a_hung_sink_never_takes_are_reported_lost<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    fixture.audit.hold_completions();
+    client.call(1, "fixture.echo", json!(1)).await;
+    client.expect_result(1).await;
+    client.call(2, "fixture.echo", json!(2)).await;
+    client.expect_result(2).await;
+    wait_until("both completion writes", || fixture.audit.held_now() == 2).await;
+    let closed_at = tokio::time::Instant::now();
+    client.disconnect().await;
+    let lost = wait_for(2, || {
+        fixture
+            .reports
+            .all()
+            .into_iter()
+            .filter(|r| {
+                r.entry == AuditEntryKind::Completion && r.effect == AuditFailureEffect::EntryLost
+            })
+            .collect()
+    })
+    .await;
+    assert!(
+        closed_at.elapsed() < AUDIT_WRITE_TIMEOUT + std::time::Duration::from_secs(2),
+        "{:?}",
+        closed_at.elapsed()
+    );
+    let mut lost: Vec<_> = lost
+        .into_iter()
+        .map(|r| (r.action, r.correlation_id))
+        .collect();
+    lost.sort();
+    let mut started: Vec<_> = audited(h, "fixture.echo")
+        .into_iter()
+        .map(|e| (e.action.name, e.correlation_id))
+        .collect();
+    started.sort();
+    assert_eq!(
+        lost, started,
+        "one report per completion, with its action and id"
+    );
+    fixture.audit.release_completions();
+}
+
+/// Open question 26 item 11 (review): a slow sink limits a connection's outstanding completions
+/// to `max_concurrent_calls`. A call that finds no room waits in the connection's queue,
+/// unstarted and unanswered, until a completion is written; the connection keeps reading and
+/// handling the client's other frames meanwhile.
+pub async fn a_slow_sink_limits_outstanding_completions<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    for id in 1..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    // No room: these calls wait, unanswered and unstarted, instead of adding completions.
+    let (late, later) = (MAX_CONCURRENT_CALLS + 1, MAX_CONCURRENT_CALLS + 2);
+    client.call(late, "fixture.echo", json!(late)).await;
+    client.call(later, "fixture.echo", json!(later)).await;
+    // The connection read both and still answers a Ping, and nothing was sent before its Pong:
+    // no Result for either late call.
+    client.expect_alive(1000).await;
+    // Exactly the first calls' 2 * bound entries: their admissions in the log and their
+    // completions held by the sink. None for the late calls.
+    assert_eq!(fixture.audit.held_now(), bound);
+    let entries = audited(h, "fixture.echo");
+    assert_eq!(
+        entries.len(),
+        bound,
+        "only the first admissions: {entries:?}"
+    );
+    assert!(entries.iter().all(|e| e.outcome == Outcome::Started));
+    let late_digests = [input_digest(&json!(late)), input_digest(&json!(later))];
+    assert!(
+        entries
+            .iter()
+            .all(|e| !late_digests.contains(&e.input_digest)),
+        "the late calls have not started: {entries:?}"
+    );
+    fixture.audit.release_completions();
+    // Both run once there is room again, concurrently, so their answers come in either order.
+    let mut answered = BTreeMap::new();
+    for _ in 0..2 {
+        let frame = client.recv().await.expect("Result, got close");
+        assert_eq!(frame.kind, Kind::Result, "{frame:?}");
+        let value: Value = serde_json::from_slice(&frame.payload).expect("Result payload");
+        answered.insert(frame.call_id, value);
+    }
+    assert_eq!(
+        answered,
+        BTreeMap::from([(late, json!(late)), (later, json!(later))])
+    );
+    let entries = wait_for_entries(h, "fixture.echo", 2 * (bound + 2)).await;
+    assert_eq!(entries.len(), 2 * (bound + 2));
+    assert_eq!(
+        fixture.audit.most_held(),
+        bound,
+        "never more than the bound"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    client.expect_alive(0).await;
+}
+
+/// Open question 26 item 11 (third review): while a call frame waits for room in the completion
+/// queue, the connection still reads and handles the client's other frames.
+pub async fn a_call_waiting_for_room_does_not_hold_other_frames<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    // One call keeps running, and the completions of the others are held: no room is left.
+    client.call(1, "fixture.wait", json!(null)).await;
+    fixture.probe.expect(Event::Started("wait")).await;
+    for id in 2..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every other completion write", || {
+        fixture.audit.held_now() == bound - 1
+    })
+    .await;
+    // This call waits for room.
+    let stalled = MAX_CONCURRENT_CALLS + 1;
+    client.call(stalled, "fixture.echo", json!(stalled)).await;
+    // A Cancel for the running call and a Ping are handled meanwhile, while every write is still
+    // held.
+    client.cancel(1).await;
+    client
+        .send(&[Frame::new(Kind::Ping, 7, b"while-stalled".to_vec())])
+        .await;
+    let mut seen = BTreeMap::new();
+    for _ in 0..2 {
+        let frame = client.recv().await.expect("a frame, got close");
+        seen.insert(frame.kind as u8, frame);
+    }
+    let cancelled = &seen[&(Kind::Error as u8)];
+    assert_eq!(cancelled.call_id, 1, "{cancelled:?}");
+    let pong = &seen[&(Kind::Pong as u8)];
+    assert_eq!(
+        (pong.call_id, pong.payload.as_slice()),
+        (7, b"while-stalled".as_slice())
+    );
+    fixture.probe.expect(Event::Cancelled("wait")).await;
+    // A Cancel for a call that is itself still waiting answers at once; that call never runs.
+    let dropped = stalled + 1;
+    client.call(dropped, "fixture.echo", json!(dropped)).await;
+    client.cancel(dropped).await;
+    client.expect_code(dropped, Code::Cancelled).await;
+    // The cancelled call's own completion is held too: every room is still taken, and no held
+    // write has ended.
+    wait_until("the cancelled call's completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    assert_eq!(
+        fixture.audit.held_now(),
+        bound,
+        "handled before any held write ended"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    // Once the sink answers, the waiting call runs; the cancelled one never did.
+    fixture.audit.release_completions();
+    assert_eq!(client.expect_result(stalled).await, json!(stalled));
+    client.expect_alive(0).await;
+    let echoed: Vec<_> = audited(h, "fixture.echo")
+        .into_iter()
+        .map(|e| e.input_digest)
+        .collect();
+    assert!(!echoed.contains(&input_digest(&json!(dropped))));
+}
+
+/// Open question 26 item 11 (third review): a call refused while it is checked (binary payload,
+/// malformed Call) takes no room in the completion queue. It is refused at once even when no room
+/// is free, and afterwards all `max_concurrent_calls` places are still there.
+pub async fn refused_call_frames_take_no_room<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    for id in 1..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    // No room is free, yet both are refused at once.
+    let (binary, malformed) = (MAX_CONCURRENT_CALLS + 1, MAX_CONCURRENT_CALLS + 2);
+    let call = call_frame(binary, "fixture.echo", json!(binary), None);
+    client
+        .send(&[
+            Frame::binary(Kind::Call, binary, call.payload),
+            json_frame(Kind::Call, malformed, &json!({ "not": "a call" })),
+        ])
+        .await;
+    client.expect_code(binary, Code::InvalidArgument).await;
+    client.expect_code(malformed, Code::InvalidArgument).await;
+    assert_eq!(
+        fixture.audit.held_now(),
+        bound,
+        "refused before any write ended"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    fixture.audit.release_completions();
+    wait_for_entries(h, "fixture.echo", 2 * bound).await;
+    wait_until("the held writes", || fixture.audit.held_now() == 0).await;
+    // Every place is free again: `bound` more completions can be held at once.
+    fixture.audit.hold_completions();
+    let first = malformed + 1;
+    for id in first..first + MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("a full set of completion writes", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    fixture.audit.release_completions();
+    wait_for_entries(h, "fixture.echo", 4 * bound).await;
+    client.expect_alive(0).await;
+}
+
+/// Open question 26 item 11 (third review, provisional): a call waiting for room counts against
+/// `max_concurrent_calls`. One more call is refused with `ResourceExhausted` (retryable) at once,
+/// while every write is still held, and it never runs.
+pub async fn calls_waiting_for_room_count_toward_the_call_limit<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    // Every room is held by a completion write.
+    for id in 1..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    // These all wait for room, until waiting calls reach the limit.
+    let waiting: Vec<u32> = (MAX_CONCURRENT_CALLS + 1..=2 * MAX_CONCURRENT_CALLS).collect();
+    for &id in &waiting {
+        client.call(id, "fixture.echo", json!(id)).await;
+    }
+    // The connection read them all, and nothing was sent for them before this Pong.
+    client.expect_alive(1000).await;
+    // One more is refused at once.
+    let extra = 2 * MAX_CONCURRENT_CALLS + 1;
+    client.call(extra, "fixture.echo", json!(extra)).await;
+    let err = client.expect_code(extra, Code::ResourceExhausted).await;
+    assert!(err.retryable, "{err:?}");
+    assert_eq!(
+        fixture.audit.held_now(),
+        bound,
+        "refused while every write was held"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    // Once the sink answers, the waiting calls run; the refused one never does.
+    fixture.audit.release_completions();
+    let mut answered = BTreeMap::new();
+    for _ in 0..waiting.len() {
+        let frame = client.recv().await.expect("Result, got close");
+        assert_eq!(frame.kind, Kind::Result, "{frame:?}");
+        let value: Value = serde_json::from_slice(&frame.payload).expect("Result payload");
+        answered.insert(frame.call_id, value);
+    }
+    let expected: BTreeMap<_, _> = waiting.iter().map(|&id| (id, json!(id))).collect();
+    assert_eq!(answered, expected);
+    let entries = wait_for_entries(h, "fixture.echo", 4 * bound).await;
+    assert_eq!(entries.len(), 4 * bound, "{entries:?}");
+    let refused = input_digest(&json!(extra));
+    assert!(
+        entries.iter().all(|e| e.input_digest != refused),
+        "no audit entry for the refused call"
+    );
+    client.expect_alive(1001).await;
+}
+
+/// Open question 26 item 11 (confirmed 2026-11-11): a call still waiting for room when its
+/// deadline (from frame receipt) passes answers `DeadlineExceeded` at that moment, and a waiting
+/// subscription is dropped without a frame. Neither runs nor has an audit entry.
+pub async fn a_call_waiting_for_room_ends_at_its_deadline<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    for id in 1..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    // Both wait for room; the subscription's deadline comes first.
+    let (subscription, call) = (MAX_CONCURRENT_CALLS + 1, MAX_CONCURRENT_CALLS + 2);
+    let (sub_timeout, call_timeout) = (150, 300);
+    let sent = tokio::time::Instant::now();
+    client
+        .subscribe_with_timeout(
+            subscription,
+            "fixture.counter",
+            counter(1, "finish"),
+            sub_timeout,
+        )
+        .await;
+    client
+        .call_with_timeout(call, "fixture.echo", json!(call), call_timeout)
+        .await;
+    // The call's answer is its deadline, on time; nothing came for the subscription before it.
+    client.expect_code(call, Code::DeadlineExceeded).await;
+    let waited = sent.elapsed();
+    // The subscription's deadline passed before the call's, so whatever the server would send
+    // for it is already queued. A Ping now must be answered by its Pong, with nothing before it:
+    // no Error or end frame for the expired subscription.
+    assert!(sub_timeout < call_timeout);
+    client
+        .send(&[Frame::new(Kind::Ping, 1000, b"after-expiry".to_vec())])
+        .await;
+    let next = client.recv().await.expect("Pong, got close");
+    assert_eq!(
+        (next.kind, next.call_id, next.payload.as_slice()),
+        (Kind::Pong, 1000, b"after-expiry".as_slice()),
+        "nothing may be sent for the expired subscription {subscription}: {next:?}"
+    );
+    assert!(
+        waited >= std::time::Duration::from_millis(call_timeout),
+        "not before its deadline: {waited:?}"
+    );
+    assert!(
+        waited < AUDIT_WRITE_TIMEOUT,
+        "at its deadline, not once a write ended: {waited:?}"
+    );
+    assert_eq!(
+        fixture.audit.held_now(),
+        bound,
+        "while every write was held"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    // Once there is room, neither starts.
+    fixture.audit.release_completions();
+    let entries = wait_for_entries(h, "fixture.echo", 2 * bound).await;
+    assert_eq!(entries.len(), 2 * bound, "{entries:?}");
+    assert!(
+        entries
+            .iter()
+            .all(|e| e.input_digest != input_digest(&json!(call)))
+    );
+    client.expect_alive(1001).await;
+    assert!(
+        audited(h, "fixture.counter").is_empty(),
+        "the subscription never ran"
+    );
+    assert_eq!(fixture.probe.runs(), 0);
+}
+
 pub async fn call_kind_must_match_frame_kind<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     // Refused before authorization: kinds are public in the manifest, like names.
@@ -927,4 +1768,20 @@ pub async fn streams_are_unimplemented_and_keep_connection<H: Harness>(h: &H) {
         .send(&[json_frame(Kind::Credit, 1, &json!({ "chunks": 4 }))])
         .await;
     client.expect_alive(0).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::writer_gate_case_not_run;
+
+    #[test]
+    #[should_panic(expected = "required (BYTERYGON_REQUIRE_WRITER_GATE) but not run")]
+    fn a_required_writer_gate_case_that_cannot_run_fails() {
+        writer_gate_case_not_run("harness", "case", true);
+    }
+
+    #[test]
+    fn a_writer_gate_case_that_cannot_run_only_reports_unless_required() {
+        writer_gate_case_not_run("harness", "case", false);
+    }
 }

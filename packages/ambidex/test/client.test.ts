@@ -497,6 +497,35 @@ describe("deadlines", () => {
     client.$close();
   });
 
+  it("ends a subscription the server never answers at its default deadline plus slack", async (t) => {
+    // A Subscribe without timeoutMs that the server drops while it waits for room, with no frame
+    // (Ambidex spec Open question 26 item 11): the generated timeoutDefaultMs still bounds it.
+    const { transport, client } = setup({ networkMarginMs: 0 }, ackWithGrace(100));
+    await client.$connect();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const sub = client.fixture.counter({ count: 1, then: "finish" });
+    const outcome: { r?: Awaited<ReturnType<typeof settle>> } = {};
+    void settle(sub[Symbol.asyncIterator]().next()).then((r) => {
+      outcome.r = r;
+    });
+    const current = () => outcome.r;
+    const peer = await transport.peer();
+    const s = await peer.nextOf(Kind.Subscribe);
+    assert.equal(json(s).timeout_ms, undefined, "no client timeout was sent");
+    // fixture.counter: timeoutDefaultMs 30 000, plus cancel_grace_ms 100.
+    t.mock.timers.tick(30_099);
+    await drain();
+    assert.equal(current(), undefined, "still waiting before the deadline plus slack");
+    t.mock.timers.tick(1);
+    await drain();
+    const r = current();
+    assert.ok(r !== undefined && !r.ok);
+    assert.equal(r.error.code, "DeadlineExceeded");
+    assert.equal(r.error.local, true, "the client's safety timer");
+    assert.equal((await peer.nextOf(Kind.Unsubscribe)).callId, s.callId);
+    client.$close();
+  });
+
   it("lets the server's answer win inside the slack window", async () => {
     const { transport, client } = setup({ timeoutSlackMs: 500 });
     const r = client.fixture.capped(null);

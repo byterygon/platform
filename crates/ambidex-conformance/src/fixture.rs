@@ -4,24 +4,27 @@
 //! so calls and subscriptions go through the production [`Router`], [`Authorizer`] hook, audit
 //! sink and error model. Handlers report what happened to them through a shared [`Probe`], which
 //! the cases read to check that cancellation reached the handler, that a denied call never ran,
-//! and so on; refusals land in the fixture's [`AuditLog`].
+//! and so on; audit entries land in the fixture's [`AuditLog`], which a case can make fail, and
+//! sink failures in its [`AuditReports`].
 //!
 //! Not in the fixture yet: the synthetic 1M-row Arrow stream (streams and credits are M2). It is
 //! declared, so the router authorizes it and answers `Unimplemented`; see the crate docs.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use ambidex::codegen::{self, ApiInfo};
+#[cfg(feature = "writer-gate")]
+use ambidex::engine::WriterGate;
 use ambidex::security_types::{
-    Action, ApprovalSpec, AuditEntry, Authorizer, AuthzRequest, Decision, Principal, Reason, Risk,
-    TargetRef,
+    Action, ApprovalSpec, AuditDecision, AuditEntry, AuditFailure, Authorizer, AuthzRequest,
+    Decision, Outcome, Principal, Reason, Risk, TargetRef,
 };
 use ambidex::{
-    Approvals, AuditError, AuditSink, Code, Ctx, DomainError, EventSink, Router, RpcError,
-    ServerConfig, engine::BoxFuture, rpc,
+    Approvals, AuditError, AuditPolicy, AuditReporter, AuditSink, Code, Ctx, DomainError,
+    EventSink, Router, RpcError, ServerConfig, engine::BoxFuture, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -75,7 +78,12 @@ pub const APPROVAL_ID: &str = "approval-1";
 /// reach.
 pub const SUBSCRIPTION_BUFFER_EVENTS: usize = 8;
 
-/// The engine configuration every harness uses.
+/// How long the fixture router waits for one audit entry. Short, so a case with a hung sink
+/// sees its writes give up quickly; long enough that a working sink always answers in time.
+pub const AUDIT_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// The engine configuration every harness uses, without a writer gate (see
+/// [`Fixture::server_config`]).
 pub fn server_config() -> ServerConfig {
     let mut config = ServerConfig::new(API, SCHEMA_HASH.as_str(), SERVER_VERSION);
     config.max_frame_bytes = MAX_FRAME_BYTES;
@@ -95,6 +103,8 @@ pub enum Event {
     Cancelled(&'static str),
     /// The handler's future was dropped before it finished (after the cancel grace).
     Dropped(&'static str),
+    /// The handler is about to return normally.
+    Returned(&'static str),
 }
 
 /// What the fixture handlers did. Shared between the server (any runtime, any thread) and the
@@ -165,12 +175,120 @@ impl Probe {
     }
 }
 
-/// The audit entries the router recorded, in order.
+/// The audit entries the router recorded, in order. [`AuditLog::fail`] makes every write fail
+/// from then on, as a broken audit store would; [`AuditLog::hold_completions`] makes completion
+/// writes wait, as a slow one would.
 #[derive(Clone, Default)]
-pub struct AuditLog(Arc<std::sync::Mutex<Vec<AuditEntry>>>);
+pub struct AuditLog {
+    entries: Arc<std::sync::Mutex<Vec<AuditEntry>>>,
+    failing: Arc<AtomicBool>,
+    /// While set, completion writes wait for a permit.
+    held: Arc<std::sync::Mutex<Option<Arc<tokio::sync::Semaphore>>>>,
+    /// Completion writes waiting now, and the most that ever waited at once.
+    waiting: Arc<AtomicUsize>,
+    most_waiting: Arc<AtomicUsize>,
+}
 
 impl AuditLog {
     pub fn entries(&self) -> Vec<AuditEntry> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Entries for refusals (`Deny` or `NeedsApproval`), in order.
+    pub fn refusals(&self) -> Vec<AuditEntry> {
+        self.entries()
+            .into_iter()
+            .filter(|e| e.decision != AuditDecision::Allow)
+            .collect()
+    }
+
+    /// The admission (`Started`) and completion entries with `correlation_id`, in order.
+    pub fn call(&self, correlation_id: &str) -> Vec<AuditEntry> {
+        self.entries()
+            .into_iter()
+            .filter(|e| e.correlation_id == correlation_id && e.decision == AuditDecision::Allow)
+            .collect()
+    }
+
+    /// Whether writes fail from now on.
+    pub fn fail(&self, failing: bool) {
+        self.failing.store(failing, Ordering::SeqCst);
+    }
+
+    /// Completion writes from now on wait until [`AuditLog::release_completions`].
+    pub fn hold_completions(&self) {
+        *lock(&self.held) = Some(Arc::new(tokio::sync::Semaphore::new(0)));
+    }
+
+    /// Completion writes held right now.
+    pub fn held_now(&self) -> usize {
+        self.waiting.load(Ordering::SeqCst)
+    }
+
+    /// The most completion writes that were held at once.
+    pub fn most_held(&self) -> usize {
+        self.most_waiting.load(Ordering::SeqCst)
+    }
+
+    /// Lets every held and later completion write through.
+    pub fn release_completions(&self) {
+        if let Some(gate) = lock(&self.held).take() {
+            gate.add_permits(tokio::sync::Semaphore::MAX_PERMITS);
+        }
+    }
+}
+
+/// One held completion write, counted in [`AuditLog::held_now`] while it lives.
+struct Counted(Arc<AtomicUsize>);
+
+impl Drop for Counted {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+fn lock<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+impl AuditSink for AuditLog {
+    fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
+        if self.failing.load(Ordering::SeqCst) {
+            return Box::pin(async { Err(AuditError("audit store unavailable".into())) });
+        }
+        if entry.is_completion()
+            && let Some(gate) = lock(&self.held).clone()
+        {
+            let entries = Arc::clone(&self.entries);
+            let (waiting, most) = (Arc::clone(&self.waiting), Arc::clone(&self.most_waiting));
+            let now = waiting.fetch_add(1, Ordering::SeqCst) + 1;
+            most.fetch_max(now, Ordering::SeqCst);
+            // Counted until it is written, or until the router gives up on it.
+            let counted = Counted(waiting);
+            return Box::pin(async move {
+                let _counted = counted;
+                let _permit = gate.acquire().await;
+                lock(&entries).push(entry);
+                Ok(())
+            });
+        }
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(entry);
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// The audit sink failures the router reported, in order.
+#[derive(Clone, Default)]
+pub struct AuditReports(Arc<std::sync::Mutex<Vec<AuditFailure>>>);
+
+impl AuditReports {
+    pub fn all(&self) -> Vec<AuditFailure> {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -178,21 +296,33 @@ impl AuditLog {
     }
 }
 
-impl AuditSink for AuditLog {
-    fn append(&self, entry: AuditEntry) -> Result<(), AuditError> {
+impl AuditReporter for AuditReports {
+    fn report(&self, failure: &AuditFailure) {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .push(entry);
-        Ok(())
+            .push(failure.clone());
     }
 }
 
-/// One server's fixture: the probe its handlers report to and the audit log its router writes.
+/// Whether `entry` is a completion with this outcome (by its code; `None` for `Success`).
+pub fn completed_with(entry: &AuditEntry, code: Option<&str>) -> bool {
+    let outcome = match code {
+        None => Outcome::Success,
+        Some(code) => Outcome::Error { code: code.into() },
+    };
+    entry.outcome == outcome && entry.delivery.is_some() && entry.duration_ms.is_some()
+}
+
+/// One server's fixture: the probe its handlers report to, the audit log its router writes, the
+/// sink failures it reported, and the gate its connections' writers pass before each send.
 #[derive(Clone)]
 pub struct Fixture {
     pub probe: Arc<Probe>,
     pub audit: AuditLog,
+    pub reports: AuditReports,
+    #[cfg(feature = "writer-gate")]
+    pub writer_gate: WriterGate,
 }
 
 impl Default for Fixture {
@@ -206,13 +336,33 @@ impl Fixture {
         Fixture {
             probe: Arc::new(Probe::new()),
             audit: AuditLog::default(),
+            reports: AuditReports::default(),
+            #[cfg(feature = "writer-gate")]
+            writer_gate: WriterGate::new(),
         }
+    }
+
+    /// [`server_config`] with this fixture's writer gate (open unless a case closes it), when
+    /// the crate is built with `writer-gate`.
+    pub fn server_config(&self) -> ServerConfig {
+        #[cfg_attr(not(feature = "writer-gate"), allow(unused_mut))]
+        let mut config = server_config();
+        #[cfg(feature = "writer-gate")]
+        {
+            config.writer_gate = Some(self.writer_gate.clone());
+        }
+        config
     }
 
     /// The production router with the fixture API, authorizer, approval queue and audit log.
     pub fn router(&self) -> Router {
         let router = Router::with_approvals(FixtureAuthorizer, FixtureApprovals)
-            .with_audit(self.audit.clone());
+            .with_audit(self.audit.clone())
+            .with_audit_reporter(self.reports.clone())
+            .with_audit_policy(AuditPolicy {
+                write_timeout: AUDIT_WRITE_TIMEOUT,
+                ..AuditPolicy::default()
+            });
         router
             .mount(FixtureApi {
                 probe: Arc::clone(&self.probe),
@@ -381,6 +531,14 @@ impl FixtureApi {
         Ok(())
     }
 
+    /// A Write the policy allows. Its admission must be recorded before it runs.
+    #[rpc::mutation(perm = "fixture.call", risk = Risk::Write)]
+    async fn write(&self, _ctx: Ctx, input: Value) -> Result<Value, RpcError> {
+        let mut guard = self.guard("write");
+        guard.armed = false;
+        Ok(input)
+    }
+
     /// Requires a human approval before dispatch.
     #[rpc::mutation(perm = "fixture.approve", risk = Risk::Write)]
     async fn approval(&self, _ctx: Ctx, _input: Value) -> Result<(), RpcError> {
@@ -464,6 +622,37 @@ impl FixtureApi {
             }
         }
         Ok(())
+    }
+
+    /// Sends two events and returns `Ok` at once, without waiting for its token.
+    #[rpc::subscription(perm = "fixture.call", risk = Risk::Read)]
+    async fn burst(
+        &self,
+        _ctx: Ctx,
+        _input: Value,
+        events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        let mut guard = self.guard("burst");
+        events.send(&0).await?;
+        events.send(&1).await?;
+        guard.armed = false;
+        self.probe.record(Event::Returned("burst"));
+        Ok(())
+    }
+
+    /// Waits for its token (Unsubscribe, Cancel, …), records it, then panics.
+    #[rpc::subscription(perm = "fixture.call", risk = Risk::Read)]
+    async fn panic_on_cancel(
+        &self,
+        ctx: Ctx,
+        _input: Value,
+        _events: EventSink<u64>,
+    ) -> Result<(), RpcError> {
+        let mut guard = self.guard("panic_on_cancel");
+        ctx.cancelled().await;
+        self.probe.record(Event::Cancelled("panic_on_cancel"));
+        guard.armed = false;
+        panic!("fixture handler panicked after its token fired");
     }
 
     /// Requires a permission the fixture policy does not grant (default-deny).

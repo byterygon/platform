@@ -11,11 +11,16 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# `ServerConfig::writer_gate`, which conformance tests use to hold a connection's writer. Never
+# enabled by products.
+test-hooks = []
+
 [dependencies]
 ambidex-macros = { path = "../ambidex-macros" }
 getrandom = "0.4.3"
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
-security-types = { path = "../security-types" }
+security-types = { path = "../security-types", features = ["tokio"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11"

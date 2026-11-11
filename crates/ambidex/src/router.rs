@@ -23,13 +23,13 @@
 //!
 //! Handlers re-check targets and escalated risk with [`Ctx::authorize`].
 //!
-//! **Audit** (spec §8, provisional, spec Open question 24): with an [`AuditSink`]
-//! ([`Router::with_audit`]), every refusal by the authorizer, at dispatch or in
-//! [`Ctx::authorize`], of any call kind, is recorded as one [`AuditEntry`]: principal chain,
-//! tenant, action, target, risk, decision (with the deny reason), approval id, outcome
-//! (`PermissionDenied` or `ApprovalRequired`), correlation id and input digest. A sink failure
-//! cannot let a refused call through. Entries for calls that run (Write/Destructive, agent
-//! calls) are not written yet.
+//! **Audit** (spec §8, Open questions 24g and 26; see [`crate::audit`]): with an [`AuditSink`]
+//! ([`Router::with_audit`]), every refusal by the authorizer is one entry, and every call that
+//! runs, of any kind, gets an admission entry (`Started`) written before its handler and a
+//! completion entry with its outcome, delivery and duration. Between authorization and the
+//! handler, step 4 above also writes the admission: if it cannot be written, Write/Destructive
+//! calls and agent calls end with `Unavailable` and their handler never runs. A router without a
+//! sink records nothing, so it runs only human Read calls.
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -38,8 +38,8 @@ use std::future::Future;
 use std::sync::{Arc, Mutex, RwLock};
 
 use security_types::{
-    Action, ApprovalSpec, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest,
-    Decision, Digest, Outcome, Principal, PrincipalKind, Risk, TargetRef,
+    Action, ApprovalSpec, AuditDecision, AuditEntry, AuditPrincipal, AuditReporter, AuditSink,
+    Authorizer, AuthzRequest, Decision, Digest, Outcome, Principal, Risk, TargetRef, unix_now_ms,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -49,6 +49,9 @@ use sha2::Digest as _;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
+use crate::audit::{
+    Admission, AuditPolicy, Recorder, acts_as_agent, code_name, outcome_of, unavailable,
+};
 use crate::cancel::CallScope;
 use crate::codegen::ProcedureTypes;
 use crate::engine::{BoxFuture, Dispatch, Session};
@@ -201,35 +204,11 @@ impl<Z: Authorizer> DynAuthorizer for Z {
     }
 }
 
-/// Receives audit entries (spec §8).
-///
-/// Entries use the record format shared with Plugin Host (`security_types::AuditEntry`), but this
-/// trait is Ambidex's own: it is not Plugin Host's `AuditSink`, so one sink serving both needs an
-/// implementation of each (or an adapter). `append` runs inline on the authorization path, so it
-/// must be quick; a durable sink should hand entries to a writer of its own. Sharing one trait,
-/// error type and clock in `security-types`, and an asynchronous sink, are spec Open question
-/// 24(g).
-pub trait AuditSink: Send + Sync + 'static {
-    fn append(&self, entry: AuditEntry) -> Result<(), AuditError>;
-}
-
-/// An [`AuditSink`] could not record an entry.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AuditError(pub String);
-
-impl fmt::Display for AuditError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "audit sink failed: {}", self.0)
-    }
-}
-
-impl std::error::Error for AuditError {}
-
-/// Authorizer, approval queue and audit sink, shared by the router and every [`Ctx`].
+/// Authorizer, approval queue and audit, shared by the router and every [`Ctx`].
 struct Guard {
     authorizer: Arc<dyn DynAuthorizer>,
     approvals: Option<Arc<dyn Approvals>>,
-    audit: Option<Arc<dyn AuditSink>>,
+    audit: Arc<Recorder>,
 }
 
 /// What a check is about, for the authorizer and the audit entry.
@@ -240,12 +219,28 @@ struct Check<'a> {
     risk: Risk,
     input_digest: Digest,
     correlation_id: &'a str,
+    parent_correlation_id: Option<&'a str>,
+}
+
+/// The admission entry records exactly what was checked.
+impl<'a> From<&Check<'a>> for Admission<'a> {
+    fn from(check: &Check<'a>) -> Admission<'a> {
+        Admission {
+            principal: check.principal,
+            action: check.meta.action(),
+            target: check.target,
+            risk: check.risk,
+            input_digest: check.input_digest,
+            correlation_id: check.correlation_id,
+            parent_correlation_id: check.parent_correlation_id,
+        }
+    }
 }
 
 impl Guard {
     /// Asks the authorizer and maps anything but `Allow` to the error the caller sees. A refusal
-    /// is audited.
-    async fn enforce(&self, check: Check<'_>) -> Result<(), Rejected> {
+    /// is audited (and refused whether or not its entry is written).
+    async fn enforce(&self, check: &Check<'_>) -> Result<(), Rejected> {
         let action = check.meta.action();
         let req = AuthzRequest {
             principal: check.principal,
@@ -273,22 +268,20 @@ impl Guard {
                 }
             }
         };
-        self.audit_refusal(&check, action, &decision, &rejected);
+        self.audit_refusal(check, action, &decision, &rejected)
+            .await;
         Err(rejected)
     }
 
-    fn audit_refusal(
+    async fn audit_refusal(
         &self,
         check: &Check<'_>,
         action: Action,
         decision: &Decision,
         rejected: &Rejected,
     ) {
-        let Some(audit) = &self.audit else {
-            return;
-        };
         let entry = AuditEntry {
-            timestamp_unix_ms: now_unix_ms(),
+            timestamp_unix_ms: unix_now_ms(),
             principal_chain: AuditPrincipal::chain_of(check.principal),
             tenant: check.principal.tenant.clone(),
             action,
@@ -303,25 +296,21 @@ impl Guard {
             correlation_id: check.correlation_id.to_owned(),
             input_digest: check.input_digest,
             statement_digest: None,
+            delivery: None,
+            // A refused nested call (at dispatch or in a re-check) names its caller too (spec Open
+            // question 26 item 14).
+            parent_correlation_id: check.parent_correlation_id.map(str::to_owned),
         };
         // The call is refused whether or not the entry was recorded, so a failing sink cannot
-        // let anything through. Reporting sink failures is the audit store's job (M3).
-        let _ = audit.append(entry);
+        // let anything through; a failure is reported.
+        self.audit.refusal(entry).await;
     }
-}
 
-/// The wire name of `code`, e.g. `"PermissionDenied"`.
-fn code_name(code: Code) -> String {
-    match serde_json::to_value(code) {
-        Ok(Value::String(name)) => name,
-        _ => format!("{code:?}"),
+    /// Records an allowed re-check as `Started` before the handler goes on. `Err` when it must
+    /// not go on because the entry could not be written (see [`crate::audit`]).
+    async fn recheck(&self, check: &Check<'_>) -> Result<(), ()> {
+        self.audit.recheck(&Admission::from(check)).await
     }
-}
-
-fn now_unix_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
 /// `details` of an `ApprovalRequired` error raised by the authorizer: the id of the recorded
@@ -336,7 +325,8 @@ pub struct ApprovalRequired {
 }
 
 /// A call refused by the authorizer: `PermissionDenied`, or `ApprovalRequired` with the id of the
-/// recorded approval request when there is an approval queue.
+/// recorded approval request when there is an approval queue. [`Ctx::authorize`] also returns
+/// `Unavailable` when an allowed re-check that must be recorded could not be.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rejected {
     pub code: Code,
@@ -347,6 +337,7 @@ impl fmt::Display for Rejected {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.code {
             Code::ApprovalRequired => f.write_str("approval required"),
+            Code::Unavailable => f.write_str("audit log unavailable"),
             _ => f.write_str("permission denied"),
         }
     }
@@ -433,27 +424,36 @@ impl Ctx {
 
     /// Authorizes this call again for a concrete `target` and the risk the handler determined at
     /// runtime (e.g. SQL classified as DDL). Risk only escalates from the procedure's baseline.
+    ///
+    /// An allowed re-check is recorded as a `Started` entry with its target and risk before this
+    /// returns `Ok`. If that entry cannot be written, a Write/Destructive re-check, or any
+    /// re-check of an agent call, returns `Unavailable` so the handler stops before the work it
+    /// was about to do.
     pub async fn authorize(&self, target: Option<&TargetRef>, risk: Risk) -> Result<(), Rejected> {
         let risk = self.meta.risk.escalate(risk);
-        let result = self
-            .guard
-            .enforce(Check {
-                principal: self.principal(),
-                meta: &self.meta,
-                target,
-                risk,
-                input_digest: self.input_digest,
-                correlation_id: self.scope.correlation_id(),
-            })
-            .await;
-        if let Err(Rejected {
-            approval_id: Some(id),
-            ..
-        }) = &result
-        {
-            *lock(&self.approval_id) = Some(id.clone());
+        let check = Check {
+            principal: self.principal(),
+            meta: &self.meta,
+            target,
+            risk,
+            input_digest: self.input_digest,
+            correlation_id: self.scope.correlation_id(),
+            parent_correlation_id: self.scope.parent_correlation_id(),
+        };
+        if let Err(rejected) = self.guard.enforce(&check).await {
+            if let Some(id) = &rejected.approval_id {
+                *lock(&self.approval_id) = Some(id.clone());
+            }
+            return Err(rejected);
         }
-        result
+        if self.guard.recheck(&check).await.is_err() {
+            return Err(Rejected {
+                code: Code::Unavailable,
+                approval_id: None,
+            });
+        }
+        self.scope.update_completion(|c| c.raise_risk(risk));
+        Ok(())
     }
 }
 
@@ -490,21 +490,41 @@ impl Router {
             guard: Arc::new(Guard {
                 authorizer: Arc::from(authorizer),
                 approvals: approvals.map(Arc::from),
-                audit: None,
+                audit: Arc::new(Recorder::new()),
             }),
             procedures: Arc::default(),
         }
     }
 
-    /// This router (same registry, authorizer and approvals) recording refusals in `audit`.
-    /// Clones made before keep their own sink.
+    /// This router (same registry, authorizer and approvals) auditing to `audit` (see
+    /// [`crate::audit`]). Clones made before keep their own audit settings, as for the other
+    /// `with_` methods.
     #[must_use]
     pub fn with_audit(self, audit: impl AuditSink) -> Router {
+        let recorder = self.guard.audit.with_sink(Arc::new(audit));
+        self.with_recorder(recorder)
+    }
+
+    /// This router reporting audit sink failures to `reporter` instead of stderr.
+    #[must_use]
+    pub fn with_audit_reporter(self, reporter: impl AuditReporter) -> Router {
+        let recorder = self.guard.audit.with_reporter(Arc::new(reporter));
+        self.with_recorder(recorder)
+    }
+
+    /// This router auditing under `policy` (human Read calls, write timeout).
+    #[must_use]
+    pub fn with_audit_policy(self, policy: AuditPolicy) -> Router {
+        let recorder = self.guard.audit.with_policy(policy);
+        self.with_recorder(recorder)
+    }
+
+    fn with_recorder(self, recorder: Recorder) -> Router {
         Router {
             guard: Arc::new(Guard {
                 authorizer: Arc::clone(&self.guard.authorizer),
                 approvals: self.guard.approvals.clone(),
-                audit: Some(Arc::new(audit)),
+                audit: Arc::new(recorder),
             }),
             procedures: self.procedures,
         }
@@ -575,10 +595,14 @@ impl Router {
     /// Whatever a handler returns, an `Internal` error leaves without its message and details, and
     /// an `ApprovalRequired` error without details gets the id recorded by [`Ctx::authorize`].
     ///
-    /// The call uses [`CallScope::current`] (set by the engine), or a fresh scope from the call's
-    /// `timeout_ms` when called outside the engine. Either way a call whose deadline has passed or
-    /// whose token fired is refused before authorization and again before the handler runs;
-    /// outside the engine, interrupting a running handler is the caller's job.
+    /// The call uses the scope the engine set for it ([`CallScope::current`]), or a scope of its
+    /// own from the call's `timeout_ms`, with a correlation id from the shared generator: outside
+    /// the engine, and for a call a handler makes to another procedure (a child of the calling
+    /// handler's scope: cancelled with it, and its deadline is never later than the caller's). Each call therefore
+    /// has its own audit entries. Either way a call whose deadline has passed or whose token fired is refused
+    /// before authorization and again before the handler runs; outside the engine, interrupting
+    /// a running handler is the caller's job, and the router writes the call's audit completion
+    /// itself when the handler returns.
     pub fn call(
         &self,
         session: Arc<Session>,
@@ -587,16 +611,28 @@ impl Router {
         let procedure = self.read().get(&call.procedure).cloned();
         let guard = Arc::clone(&self.guard);
         async move {
-            let (run, ctx) = admit(guard, procedure, session, &call, false).await?;
-            let Run::Unary(handler) = run else {
-                return Err(ErrorPayload::new(
-                    Code::Unimplemented,
-                    "this call kind is not supported yet",
-                ));
-            };
-            let approval_id = Arc::clone(&ctx.approval_id);
-            let result = handler(ctx, call.input).await;
-            result.map_err(|err| scrub(err, &approval_id))
+            let scope = CallScope::for_call(call.timeout());
+            // Entered, so a call the handler makes in turn gets a scope of its own (see
+            // `CallScope::for_call`).
+            let result = scope
+                .clone()
+                .enter(async {
+                    let (run, ctx) = admit(guard, procedure, session, &call, false, &scope).await?;
+                    match run {
+                        Run::Unary(handler) => {
+                            let approval_id = Arc::clone(&ctx.approval_id);
+                            let result = handler(ctx, call.input).await;
+                            result.map_err(|err| scrub(err, &approval_id))
+                        }
+                        _ => Err(ErrorPayload::new(
+                            Code::Unimplemented,
+                            "this call kind is not supported yet",
+                        )),
+                    }
+                })
+                .await;
+            ended(&scope, &result).await;
+            with_correlation_id(&scope, result)
         }
     }
 
@@ -611,16 +647,28 @@ impl Router {
         let procedure = self.read().get(&call.procedure).cloned();
         let guard = Arc::clone(&self.guard);
         async move {
-            let (run, ctx) = admit(guard, procedure, session, &call, true).await?;
-            let Run::Subscription(handler) = run else {
-                return Err(ErrorPayload::new(
-                    Code::Unimplemented,
-                    "this call kind is not supported yet",
-                ));
-            };
-            let approval_id = Arc::clone(&ctx.approval_id);
-            let result = handler(ctx, call.input, events).await;
-            result.map_err(|err| scrub(err, &approval_id))
+            let scope = CallScope::for_call(call.timeout());
+            // Entered, so a call the handler makes in turn gets a scope of its own (see
+            // `CallScope::for_call`).
+            let result = scope
+                .clone()
+                .enter(async {
+                    let (run, ctx) = admit(guard, procedure, session, &call, true, &scope).await?;
+                    match run {
+                        Run::Subscription(handler) => {
+                            let approval_id = Arc::clone(&ctx.approval_id);
+                            let result = handler(ctx, call.input, events).await;
+                            result.map_err(|err| scrub(err, &approval_id))
+                        }
+                        _ => Err(ErrorPayload::new(
+                            Code::Unimplemented,
+                            "this call kind is not supported yet",
+                        )),
+                    }
+                })
+                .await;
+            ended(&scope, &result).await;
+            with_correlation_id(&scope, result)
         }
     }
 
@@ -663,17 +711,49 @@ impl Dispatch for Router {
     }
 }
 
+/// Every error the router returns carries the call's correlation id, so a caller outside the
+/// engine (which fills ids in itself) can find the call's audit entries.
+fn with_correlation_id<T>(
+    scope: &CallScope,
+    mut result: Result<T, ErrorPayload>,
+) -> Result<T, ErrorPayload> {
+    if let Err(err) = &mut result
+        && err.correlation_id.is_empty()
+    {
+        err.correlation_id = scope.correlation_id().to_owned();
+    }
+    result
+}
+
+/// Records what the call returned (the handler's result, or the error it ended with before its
+/// handler ran) in its audit completion, if it was admitted. Outside the engine the router then
+/// writes the completion, as delivered; inside, the engine writes it once it chose the answer.
+async fn ended<T>(scope: &CallScope, result: &Result<T, ErrorPayload>) {
+    scope.update_completion(|c| c.record_outcome(outcome_of(result)));
+    if !scope.is_managed()
+        && let Some(completion) = scope.take_completion()
+    {
+        completion
+            .finish(security_types::Delivery::Delivered, Code::Cancelled)
+            .await;
+    }
+}
+
 /// Every step before a handler runs, shared by calls and subscriptions: lookup and agent
-/// exposure, call kind, the procedure's timeouts, authorization. Returns what to run and its
-/// context.
+/// exposure, call kind, the procedure's timeouts, authorization, the audit admission. Returns
+/// what to run and its context.
 async fn admit(
     guard: Arc<Guard>,
     procedure: Option<Procedure>,
     session: Arc<Session>,
     call: &Call,
     subscribe: bool,
+    scope: &CallScope,
 ) -> Result<(Run, Ctx), ErrorPayload> {
-    let scope = CallScope::current().unwrap_or_else(|| CallScope::new(call.timeout()));
+    // Outside the engine without OS randomness: no correlation id, so nothing could be audited.
+    if scope.correlation_id().is_empty() {
+        return Err(ErrorPayload::new(Code::Internal, "internal error"));
+    }
     // To an agent, a hidden procedure is indistinguishable from a missing one.
     let procedure =
         procedure.filter(|p| p.meta.agent == Agent::Exposed || !acts_as_agent(&session.principal));
@@ -696,17 +776,33 @@ async fn admit(
         return Err(scope.error());
     }
     let digest = input_digest(&call.input);
+    let check = Check {
+        principal: &session.principal,
+        meta: &meta,
+        target: None,
+        risk: meta.risk,
+        input_digest: digest,
+        correlation_id: scope.correlation_id(),
+        parent_correlation_id: scope.parent_correlation_id(),
+    };
     guard
-        .enforce(Check {
-            principal: &session.principal,
-            meta: &meta,
-            target: None,
-            risk: meta.risk,
-            input_digest: digest,
-            correlation_id: scope.correlation_id(),
-        })
+        .enforce(&check)
         .await
         .map_err(Rejected::into_error_payload)?;
+    if scope.check().is_some() {
+        return Err(scope.error());
+    }
+    // The admission entry is written before anything runs; a call that must be recorded and was
+    // not does not run.
+    let completion = guard
+        .audit
+        .admit(&Admission::from(&check), scope)
+        .await
+        .map_err(|()| unavailable())?;
+    if let Some(completion) = completion {
+        scope.set_completion(completion);
+    }
+    // The write may have taken until the deadline. The completion then records this error.
     if scope.check().is_some() {
         return Err(scope.error());
     }
@@ -715,7 +811,7 @@ async fn admit(
         meta,
         guard,
         input_digest: digest,
-        scope,
+        scope: scope.clone(),
         approval_id: Arc::new(Mutex::new(None)),
     };
     Ok((procedure.run, ctx))
@@ -777,11 +873,6 @@ fn validate_run(procedure: &Procedure) -> Result<(), RegistryError> {
     } else {
         Err(RegistryError::KindMismatch(procedure.meta.name.clone()))
     }
-}
-
-/// Whether an agent is anywhere in the principal's `on_behalf_of` chain.
-fn acts_as_agent(principal: &Principal) -> bool {
-    principal.chain().any(|p| p.kind == PrincipalKind::Agent)
 }
 
 /// SHA-256 over the canonical JSON encoding of `input`: object keys sorted by byte order, no

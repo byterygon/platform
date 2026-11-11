@@ -10,12 +10,13 @@
 //! - [`net`]: address policy and host-side resolution.
 //! - [`contract`]: the broker behind the db-driver contract's `ConnectionBroker`, for native
 //!   drivers.
-//! - [`audit`]: audit sink and clock.
+//! - [`audit`]: the audit sink, clock and failure reporter (shared with Ambidex in
+//!   `security-types`), and the retry queue revocation entries go through.
 //! - [`package`]: bounded offline `.bplugin` verification and pinned Ed25519 keys.
 //! - [`install`]: verified staging, direct human approval, atomic activation and rollback.
 //!
-//! Identity, authorization and the audit record come from `security-types`; Plugin Host does not
-//! depend on Ambidex.
+//! Identity, authorization, the audit record and the audit sink come from `security-types`;
+//! Plugin Host does not depend on Ambidex.
 //!
 //! # Security decisions
 //!
@@ -62,6 +63,21 @@
 //!   or `grant revoked`.
 //! - **Connect deadline.** [`BrokerLimits::connect_timeout`] bounds the TCP connect of one
 //!   `open` across all permitted addresses together.
+//!
+//! Shared asynchronous audit (TSK-25, Ambidex spec Open question 26h):
+//!
+//! - **Fail closed, bounded.** A broker `open`/`start_tls` and a grant create wait at most the
+//!   store's audit timeout ([`DEFAULT_AUDIT_TIMEOUT`]) for their entry; if it is not written, the
+//!   connection is not handed out ([`BrokerError::Internal`]) or nothing is granted
+//!   ([`GrantError::Unavailable`]). Creates of one target are serialized: a create waits at most
+//!   the audit timeout for the one ahead of it, and then has the audit timeout for its own write.
+//!   Package install steps ([`install`]) wait at most [`DEFAULT_AUDIT_TIMEOUT`] for theirs and
+//!   fail closed with `InstallError::Audit`.
+//! - **Revocation never waits.** It takes effect first; its entry is written right away when the
+//!   sink answers at once, otherwise in the background with retries ([`RetryPolicy`]), and a final
+//!   failure goes to the [`AuditReporter`]. [`GrantStore::flush_audit`] waits for pending entries.
+//!   An entry the background writer could not finish because its runtime shut down is reported
+//!   as lost too.
 
 pub mod audit;
 pub mod broker;
@@ -72,15 +88,18 @@ pub mod manifest;
 pub mod net;
 pub mod package;
 
-pub use audit::{AuditError, AuditSink, Clock, MemoryAuditLog, SystemClock};
+pub use audit::{
+    AuditEntryKind, AuditError, AuditFailure, AuditFailureEffect, AuditReporter, AuditSink, Clock,
+    MemoryAuditLog, RetryPolicy, StderrReporter, SystemClock,
+};
 pub use broker::{
     BrokerConfig, BrokerError, BrokerLimits, BrokerScope, Caller, NativeBroker, Purpose, Transport,
 };
 pub use contract::ContractBroker;
 pub use grant::{
-    ConnectionGrant, DriverKind, Eligibility, GRANT_CREATE_DIGEST_DOMAIN, GrantError, GrantId,
-    GrantRequest, GrantStore, Host, InstalledPlugin, PluginBinding, SecretBinding, ServerTrust,
-    TlsMode, TlsPolicy, TlsSettings, grant_create_digest,
+    ConnectionGrant, DEFAULT_AUDIT_TIMEOUT, DriverKind, Eligibility, GRANT_CREATE_DIGEST_DOMAIN,
+    GrantError, GrantId, GrantRequest, GrantStore, Host, InstalledPlugin, PluginBinding,
+    SecretBinding, ServerTrust, TlsMode, TlsPolicy, TlsSettings, grant_create_digest,
 };
 pub use manifest::{Manifest, ManifestError, NetworkTemplate, TlsRequirement};
 pub use net::{AddressPolicy, IpNet, Resolver, SystemResolver};
@@ -101,6 +120,7 @@ pub mod error_code {
     pub const FAILED_PRECONDITION: &str = "FailedPrecondition";
     pub const NOT_FOUND: &str = "NotFound";
     pub const INTERNAL: &str = "Internal";
+    pub const UNAVAILABLE: &str = "Unavailable";
 }
 
 /// SHA-256 over a domain separator and length-prefixed parts, for audit `input_digest`s.

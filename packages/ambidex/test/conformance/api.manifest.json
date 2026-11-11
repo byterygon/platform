@@ -169,6 +169,25 @@
       "deprecated": false,
       "error": false,
       "input": true,
+      "kind": "subscription",
+      "log_input": false,
+      "name": "fixture.burst",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
       "kind": "query",
       "log_input": false,
       "name": "fixture.capped",
@@ -297,6 +316,25 @@
       "agent": "hidden",
       "deprecated": false,
       "error": false,
+      "input": true,
+      "kind": "subscription",
+      "log_input": false,
+      "name": "fixture.panic_on_cancel",
+      "output": {
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
       "input": {
         "$ref": "#/$defs/FailInput"
       },
@@ -398,8 +436,23 @@
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": true,
+      "kind": "mutation",
+      "log_input": false,
+      "name": "fixture.write",
+      "output": true,
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:f1a35441eea15c98250ce1c83da0c1d335561100f5befab024268c8e4459e4dd"
+  "schema_hash": "sha256:1baf57831b31b59cb7bcb819806b4f12b5e90707a97d9532009ea9098496421d"
 }
