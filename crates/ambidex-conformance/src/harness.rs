@@ -147,6 +147,7 @@ macro_rules! conformance_suite {
             a_slow_sink_limits_outstanding_completions,
             a_call_waiting_for_room_does_not_hold_other_frames,
             refused_call_frames_take_no_room,
+            calls_waiting_for_room_count_toward_the_call_limit,
             call_kind_must_match_frame_kind,
             subscriptions_count_toward_concurrency_limit,
             full_event_buffer_ends_subscription,

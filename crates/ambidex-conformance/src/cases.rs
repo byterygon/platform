@@ -1484,6 +1484,66 @@ pub async fn refused_call_frames_take_no_room<H: Harness>(h: &H) {
     client.expect_alive(0).await;
 }
 
+/// Open question 26 item 11 (third review, provisional): a call waiting for room counts against
+/// `max_concurrent_calls`. One more call is refused with `ResourceExhausted` (retryable) at once,
+/// while every write is still held, and it never runs.
+pub async fn calls_waiting_for_room_count_toward_the_call_limit<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let fixture = h.fixture();
+    let bound = MAX_CONCURRENT_CALLS as usize;
+    fixture.audit.hold_completions();
+    // Every room is held by a completion write.
+    for id in 1..=MAX_CONCURRENT_CALLS {
+        client.call(id, "fixture.echo", json!(id)).await;
+        assert_eq!(client.expect_result(id).await, json!(id));
+    }
+    wait_until("every completion write", || {
+        fixture.audit.held_now() == bound
+    })
+    .await;
+    // These all wait for room, until waiting calls reach the limit.
+    let waiting: Vec<u32> = (MAX_CONCURRENT_CALLS + 1..=2 * MAX_CONCURRENT_CALLS).collect();
+    for &id in &waiting {
+        client.call(id, "fixture.echo", json!(id)).await;
+    }
+    // The connection read them all, and nothing was sent for them before this Pong.
+    client.expect_alive(1000).await;
+    // One more is refused at once.
+    let extra = 2 * MAX_CONCURRENT_CALLS + 1;
+    client.call(extra, "fixture.echo", json!(extra)).await;
+    let err = client.expect_code(extra, Code::ResourceExhausted).await;
+    assert!(err.retryable, "{err:?}");
+    assert_eq!(
+        fixture.audit.held_now(),
+        bound,
+        "refused while every write was held"
+    );
+    assert!(
+        fixture.reports.all().is_empty(),
+        "{:?}",
+        fixture.reports.all()
+    );
+    // Once the sink answers, the waiting calls run; the refused one never does.
+    fixture.audit.release_completions();
+    let mut answered = BTreeMap::new();
+    for _ in 0..waiting.len() {
+        let frame = client.recv().await.expect("Result, got close");
+        assert_eq!(frame.kind, Kind::Result, "{frame:?}");
+        let value: Value = serde_json::from_slice(&frame.payload).expect("Result payload");
+        answered.insert(frame.call_id, value);
+    }
+    let expected: BTreeMap<_, _> = waiting.iter().map(|&id| (id, json!(id))).collect();
+    assert_eq!(answered, expected);
+    let entries = wait_for_entries(h, "fixture.echo", 4 * bound).await;
+    assert_eq!(entries.len(), 4 * bound, "{entries:?}");
+    let refused = input_digest(&json!(extra));
+    assert!(
+        entries.iter().all(|e| e.input_digest != refused),
+        "no audit entry for the refused call"
+    );
+    client.expect_alive(1001).await;
+}
+
 pub async fn call_kind_must_match_frame_kind<H: Harness>(h: &H) {
     let mut client = ready(h).await;
     // Refused before authorization: kinds are public in the manifest, like names.
