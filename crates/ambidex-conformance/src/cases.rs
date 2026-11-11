@@ -7,7 +7,7 @@
 //! and checked.
 //!
 //! Deadlines are measured on the fixture's [`ManualClock`](crate::ManualClock), which only moves
-//! when a case calls [`advance`]. A case therefore waits until the handler started before moving
+//! when a case calls `advance`. A case therefore waits until the handler started before moving
 //! it, and can check a call one millisecond before and exactly at its deadline, minutes or hours
 //! after it started, without waiting.
 

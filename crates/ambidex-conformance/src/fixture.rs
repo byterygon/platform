@@ -74,7 +74,7 @@ pub const CANCEL_GRACE: Duration = Duration::from_millis(100);
 /// `timeout_max` of `FixtureApi::capped`.
 pub const CAPPED_TIMEOUT_MAX: Duration = Duration::from_millis(50);
 
-/// `timeout_max` of [`FixtureApi::ticks_capped`]: above the 5 min cap of calls, which does not
+/// `timeout_max` of `FixtureApi::ticks_capped`: above the 5 min cap of calls, which does not
 /// apply to subscriptions.
 pub const TICKS_CAPPED_TIMEOUT_MAX: Duration = Duration::from_secs(10 * 60);
 
