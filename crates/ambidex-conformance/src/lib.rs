@@ -46,9 +46,11 @@
 //!
 //! # Not covered yet (no implementation to test)
 //!
-//! - **Arrow streams** (the 1M-row Arrow stream, cancel mid-stream reaching the fixture driver
-//!   within 100 ms): the stream engine and credits are covered with a synthetic byte stream
-//!   (`fixture.bytes`); `fixture.rows` fails with `Unimplemented` until the Arrow sink exists.
+//! - **A real driver behind a stream** (cancel mid-stream reaching the database within 100 ms):
+//!   the stream engine, credits and Arrow IPC are covered with synthetic streams
+//!   (`fixture.bytes`, `fixture.arrow_rows` with 1M rows); the driver path belongs to the
+//!   benchmark with the PostgreSQL driver. `fixture.rows` still fails with `Unimplemented`,
+//!   which the TypeScript runtime's tests pin until it supports streams.
 //! - The slow-consumer disconnect (`Closed::SlowConsumer`) depends on how much a transport buffers
 //!   (kernel socket buffers for WebSocket; a Tauri `Channel` never blocks), so it stays in the
 //!   engine's own tests.

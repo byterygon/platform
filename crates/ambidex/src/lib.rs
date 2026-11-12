@@ -138,6 +138,8 @@
 //! }
 //! ```
 
+#[cfg(feature = "arrow")]
+pub mod arrow;
 pub mod audit;
 pub mod cancel;
 pub mod codegen;

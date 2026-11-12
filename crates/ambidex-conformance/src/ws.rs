@@ -140,6 +140,8 @@ impl Ws {
         let tcp = TcpStream::connect(("127.0.0.1", self.port))
             .await
             .expect("connect");
+        // As a browser's WebSocket does; without it credit frames wait on delayed ACKs.
+        tcp.set_nodelay(true).expect("TCP_NODELAY");
         TlsConnector::from(Arc::new(config))
             .connect(ServerName::try_from(TLS_NAME).expect("name"), tcp)
             .await

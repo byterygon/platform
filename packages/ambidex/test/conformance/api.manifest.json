@@ -12,6 +12,47 @@
       ],
       "type": "object"
     },
+    "ArrowRowsInput": {
+      "description": "Input of `FixtureApi::arrow_rows`.",
+      "properties": {
+        "batch_rows": {
+          "description": "Rows per record batch the handler produces (at least 1).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "pre_encoded": {
+          "default": false,
+          "description": "Produce Arrow IPC chunks as a database driver would and forward them without decoding,\npulling the source only when a credit is available. Each batch must then fit one frame.",
+          "type": "boolean"
+        },
+        "rows": {
+          "description": "Rows in the result: ids 0, 1, …, `rows - 1`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "batch_rows"
+      ],
+      "type": "object"
+    },
+    "ArrowRowsSummary": {
+      "description": "Final result of `FixtureApi::arrow_rows`.",
+      "properties": {
+        "rows": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "type": "object"
+    },
     "BytesInput": {
       "description": "Input of `FixtureApi::bytes`.",
       "properties": {
@@ -185,6 +226,25 @@
       "perm": "fixture.approve",
       "redact": [],
       "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/ArrowRowsInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "fixture.arrow_rows",
+      "output": {
+        "$ref": "#/$defs/ArrowRowsSummary"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
     },
@@ -600,5 +660,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:134e4d6197ac77d13e6d3c6c0056f1388e566044d6e3899000647e937e56e8d6"
+  "schema_hash": "sha256:a6496736a85ae0978de244e05ff8f0aa611daf3cbbabbbe1760137cfd2bc0310"
 }
