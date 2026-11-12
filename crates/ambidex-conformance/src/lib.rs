@@ -2,7 +2,7 @@
 //! every transport.
 //!
 //! - [`fixture`]: the fixture API (echo, typed failures, slow and stubborn handlers, protected and
-//!   approval-gated procedures, the counter, flood and denied subscriptions, a declared stream),
+//!   approval-gated procedures, the counter, flood and denied subscriptions, the byte stream),
 //!   served through the production router, authorizer hook, audit sink and error model.
 //! - [`client`]: a raw frame client over a transport's client end ([`client::Wire`]).
 //! - [`clock`]: the [`ManualClock`] every harness measures deadlines on; cases move it, so
@@ -46,10 +46,9 @@
 //!
 //! # Not covered yet (no implementation to test)
 //!
-//! - **Streams** (1M-row Arrow stream, credits bounding server memory, cancel mid-stream reaching
-//!   the fixture driver within 100 ms): the engine answers stream calls with `Unimplemented` and
-//!   ignores `Credit`. The suite pins exactly that, so the case fails and must be replaced when
-//!   streams and credits land (M2).
+//! - **Arrow streams** (the 1M-row Arrow stream, cancel mid-stream reaching the fixture driver
+//!   within 100 ms): the stream engine and credits are covered with a synthetic byte stream
+//!   (`fixture.bytes`); `fixture.rows` fails with `Unimplemented` until the Arrow sink exists.
 //! - The slow-consumer disconnect (`Closed::SlowConsumer`) depends on how much a transport buffers
 //!   (kernel socket buffers for WebSocket; a Tauri `Channel` never blocks), so it stays in the
 //!   engine's own tests.

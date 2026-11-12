@@ -27,8 +27,8 @@ use crate::client::{
 };
 use crate::fixture::{
     APPROVAL_ID, AUDIT_WRITE_TIMEOUT, CANCEL_GRACE, CAPPED_TIMEOUT_MAX, Event,
-    MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES, SCHEMA_HASH, SERVER_VERSION, SUBSCRIPTION_BUFFER_EVENTS,
-    TICKS_CAPPED_TIMEOUT_MAX, completed_with,
+    MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES, SCHEMA_HASH, SERVER_VERSION, STREAM_MAX_CREDITS,
+    SUBSCRIPTION_BUFFER_EVENTS, TICKS_CAPPED_TIMEOUT_MAX, completed_with,
 };
 use crate::harness::Harness;
 
@@ -1992,17 +1992,241 @@ pub async fn full_event_buffer_ends_subscription<H: Harness>(h: &H) {
     client.expect_alive(0).await;
 }
 
-// ---- call kinds without engine support yet (§5) --------------------------------------------
+// ---- streams and credits (§5, §6) -----------------------------------------------------------
 
-pub async fn streams_are_unimplemented_and_keep_connection<H: Harness>(h: &H) {
+/// The credits every stream starts with (spec §6).
+const INITIAL_CREDITS: u32 = 4;
+
+fn bytes(chunks: u32, size: u32, then: &str) -> Value {
+    json!({ "chunks": chunks, "size": size, "then": then })
+}
+
+/// The next frames must be chunks `from..to` of `fixture.bytes` stream `call_id`, in order.
+async fn expect_chunks(client: &mut Client, call_id: u32, from: u32, to: u32, size: usize) {
+    for n in from..to {
+        assert_eq!(
+            client.expect_chunk(call_id).await,
+            vec![n as u8; size],
+            "chunk {n}"
+        );
+    }
+}
+
+pub async fn stream_chunks_arrive_in_order_then_stream_end<H: Harness>(h: &H) {
     let mut client = ready(h).await;
-    client.call(1, "fixture.rows", json!(null)).await;
-    client.expect_code(1, Code::Unimplemented).await;
-    // Credits have nothing to credit until streams land (M2).
-    client
-        .send(&[json_frame(Kind::Credit, 1, &json!({ "chunks": 4 }))])
-        .await;
+    client.call(1, "fixture.bytes", bytes(3, 5, "finish")).await;
+    expect_chunks(&mut client, 1, 0, 3, 5).await;
+    // The typed final result, exactly once, after every chunk.
+    assert_eq!(
+        client.expect_stream_end(1).await,
+        json!({ "chunks": 3, "bytes": 15 })
+    );
+    // A stream without chunks still ends with StreamEnd, and an empty chunk is a chunk.
+    client.call(2, "fixture.bytes", bytes(0, 5, "finish")).await;
+    assert_eq!(
+        client.expect_stream_end(2).await,
+        json!({ "chunks": 0, "bytes": 0 })
+    );
+    client.call(3, "fixture.bytes", bytes(1, 0, "finish")).await;
+    assert_eq!(client.expect_chunk(3).await, Vec::<u8>::new());
+    client.expect_stream_end(3).await;
+    // Queries on the same connection still answer with Result.
+    client.call(4, "fixture.echo", json!("after")).await;
+    assert_eq!(client.expect_result(4).await, json!("after"));
     client.expect_alive(0).await;
+}
+
+pub async fn stream_sender_waits_for_credits<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    client
+        .call(1, "fixture.bytes", bytes(10, 8, "finish"))
+        .await;
+    // The initial window, and not one chunk more: the Pong is the next frame.
+    expect_chunks(&mut client, 1, 0, INITIAL_CREDITS, 8).await;
+    client.expect_alive(1001).await;
+    assert_eq!(probe.chunks_sent(), INITIAL_CREDITS as usize);
+    // One credit, one chunk.
+    client.credit(1, 1).await;
+    expect_chunks(&mut client, 1, INITIAL_CREDITS, INITIAL_CREDITS + 1, 8).await;
+    client.expect_alive(1002).await;
+    assert_eq!(probe.chunks_sent(), INITIAL_CREDITS as usize + 1);
+    // The rest. The end needs no credit of its own.
+    client.credit(1, 5).await;
+    expect_chunks(&mut client, 1, INITIAL_CREDITS + 1, 10, 8).await;
+    let end = client.expect_stream_end(1).await;
+    assert_eq!(end, json!({ "chunks": 10, "bytes": 80 }));
+    client.expect_alive(1003).await;
+}
+
+pub async fn stream_ends_with_server_error<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.call(1, "fixture.bytes", bytes(2, 3, "fail")).await;
+    expect_chunks(&mut client, 1, 0, 2, 3).await;
+    // The handler's typed error after its chunks, instead of StreamEnd.
+    let err = client.expect_code(1, Code::FailedPrecondition).await;
+    assert_eq!(
+        err.details,
+        Some(json!({ "kind": "Requested", "code": "FailedPrecondition", "retryable": false }))
+    );
+    // A stream that fails before any chunk answers with Error alone.
+    client.call(2, "fixture.rows", json!(null)).await;
+    client.expect_code(2, Code::Unimplemented).await;
+    client.expect_alive(0).await;
+}
+
+pub async fn stream_completion_is_audited_like_a_call<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.call(1, "fixture.bytes", bytes(2, 3, "finish")).await;
+    expect_chunks(&mut client, 1, 0, 2, 3).await;
+    client.expect_stream_end(1).await;
+    client.call(2, "fixture.bytes", bytes(1, 3, "fail")).await;
+    expect_chunks(&mut client, 2, 0, 1, 3).await;
+    let err = client.expect_code(2, Code::FailedPrecondition).await;
+    // Admission before the handler, completion with what the client got; chunks are not audited.
+    let failed = wait_for_completion(h, &err.correlation_id).await;
+    assert!(completed_with(&failed, Some("FailedPrecondition")));
+    assert_eq!(failed.delivery, Some(Delivery::Delivered));
+    let entries = wait_for(4, || h.fixture().audit.entries()).await;
+    assert_eq!(entries.len(), 4, "{entries:?}");
+    assert_eq!(entries[0].outcome, Outcome::Started);
+    assert_eq!(entries[0].action.name, "fixture.bytes");
+    assert!(completed_with(&entries[1], None));
+    assert_eq!(entries[1].delivery, Some(Delivery::Delivered));
+}
+
+pub async fn cancel_ends_stream_waiting_for_credit<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    client
+        .call(1, "fixture.bytes", bytes(10, 8, "finish"))
+        .await;
+    probe.expect(Event::Started("bytes")).await;
+    expect_chunks(&mut client, 1, 0, INITIAL_CREDITS, 8).await;
+    // The handler is waiting for a credit; Cancel reaches it there.
+    client.cancel(1).await;
+    let err = client.expect_code(1, Code::Cancelled).await;
+    probe.expect(Event::Cancelled("bytes")).await;
+    let entry = wait_for_completion(h, &err.correlation_id).await;
+    assert_eq!(entry.delivery, Some(Delivery::Cancelled));
+    assert_eq!(probe.chunks_sent(), INITIAL_CREDITS as usize);
+    // A credit that lost the race with the end is ignored, and nothing more is sent.
+    client.credit(1, 4).await;
+    client.expect_alive(0).await;
+}
+
+pub async fn deadline_ends_stream_waiting_for_credit<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    client
+        .call_with_timeout(1, "fixture.bytes", bytes(10, 8, "finish"), 200)
+        .await;
+    probe.expect(Event::Started("bytes")).await;
+    expect_chunks(&mut client, 1, 0, INITIAL_CREDITS, 8).await;
+    advance(h, 200);
+    client.expect_code(1, Code::DeadlineExceeded).await;
+    probe.expect(Event::Cancelled("bytes")).await;
+    client.expect_alive(0).await;
+}
+
+pub async fn disconnect_cancels_streams<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    client
+        .call(1, "fixture.bytes", bytes(10, 8, "finish"))
+        .await;
+    probe.expect(Event::Started("bytes")).await;
+    expect_chunks(&mut client, 1, 0, INITIAL_CREDITS, 8).await;
+    client.disconnect().await;
+    probe.expect(Event::Cancelled("bytes")).await;
+}
+
+pub async fn oversize_chunk_ends_stream<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    // The first chunk fits exactly; nothing larger than the frame limit is ever sent.
+    client
+        .call(1, "fixture.bytes", bytes(1, MAX_FRAME_BYTES, "finish"))
+        .await;
+    assert_eq!(client.expect_chunk(1).await.len(), MAX_FRAME_BYTES as usize);
+    client.expect_stream_end(1).await;
+    client
+        .call(2, "fixture.bytes", bytes(1, MAX_FRAME_BYTES + 1, "finish"))
+        .await;
+    let err = client.expect_code(2, Code::ResourceExhausted).await;
+    assert_eq!(err.message, "chunk exceeds the frame size limit");
+    client.expect_alive(0).await;
+}
+
+pub async fn unauthorized_stream_is_denied_before_any_chunk<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.call(1, "fixture.secret_bytes", json!(null)).await;
+    let err = client.expect_code(1, Code::PermissionDenied).await;
+    assert_eq!(err.details, None);
+    assert_eq!(h.fixture().probe.runs(), 0, "the handler never ran");
+    let refusals = h.fixture().audit.refusals();
+    assert_eq!(refusals.len(), 1, "{refusals:?}");
+    assert_eq!(refusals[0].action.name, "fixture.secret_bytes");
+    client.expect_alive(0).await;
+}
+
+pub async fn unsubscribe_does_not_touch_a_stream<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.call(1, "fixture.bytes", bytes(6, 8, "finish")).await;
+    expect_chunks(&mut client, 1, 0, INITIAL_CREDITS, 8).await;
+    // Unsubscribe is for subscriptions: for a stream's id it is ignored (Cancel ends a stream).
+    client.unsubscribe(1).await;
+    client.credit(1, 2).await;
+    expect_chunks(&mut client, 1, INITIAL_CREDITS, 6, 8).await;
+    client.expect_stream_end(1).await;
+    client.expect_alive(0).await;
+}
+
+pub async fn credit_for_a_call_not_in_flight_is_ignored<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    // Never started, and finished.
+    client.credit(99, 4).await;
+    client
+        .call(100, "fixture.bytes", bytes(1, 1, "finish"))
+        .await;
+    expect_chunks(&mut client, 100, 0, 1, 1).await;
+    client.expect_stream_end(100).await;
+    client.credit(100, u64::MAX).await;
+    client.expect_alive(0).await;
+}
+
+pub async fn credit_on_call_zero_is_fatal<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    client.credit(0, 1).await;
+    client.expect_fatal(Code::InvalidArgument).await;
+}
+
+pub async fn malformed_credit_is_fatal<H: Harness>(h: &H) {
+    for payload in [
+        json!({ "chunks": 0 }),
+        json!({}),
+        json!({ "chunks": -1 }),
+        json!(4),
+    ] {
+        let mut client = ready(h).await;
+        client.send(&[json_frame(Kind::Credit, 1, &payload)]).await;
+        client.expect_fatal(Code::InvalidArgument).await;
+    }
+}
+
+pub async fn credit_beyond_the_window_is_fatal<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    // A stream that sends nothing keeps its initial credits; the window may fill up exactly.
+    client.call(1, "fixture.bytes", bytes(0, 1, "wait")).await;
+    probe.expect(Event::Started("bytes")).await;
+    client
+        .credit(1, u64::from(STREAM_MAX_CREDITS - INITIAL_CREDITS))
+        .await;
+    client.expect_alive(1001).await;
+    // One more unused credit than the server allows a stream to hold.
+    client.credit(1, 1).await;
+    client.expect_fatal(Code::ResourceExhausted).await;
+    probe.expect(Event::Cancelled("bytes")).await;
 }
 
 #[cfg(test)]

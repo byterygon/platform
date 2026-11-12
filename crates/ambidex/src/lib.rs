@@ -147,6 +147,7 @@ pub mod frame;
 pub mod message;
 pub mod procedure;
 pub mod router;
+pub mod stream;
 pub mod subscription;
 pub mod transport;
 
@@ -172,12 +173,13 @@ pub mod transport;
 /// | --- | --- |
 /// | query, mutation | `async fn name(&self, ctx: Ctx, input: I) -> Result<O, E>` |
 /// | subscription | `async fn name(&self, ctx: Ctx, input: I, events: EventSink<V>) -> Result<(), E>` |
-/// | stream | `async fn name(&self, ctx: Ctx, input: I, ..) -> Result<O, E>` (declared only) |
+/// | stream | `async fn name(&self, ctx: Ctx, input: I, sink: BinarySink) -> Result<O, E>` |
 ///
 /// `I: Deserialize`, `O: Serialize`, `V: Serialize` (one event) and `E:` [`IntoErrorPayload`]. A
 /// subscription sends its events with [`EventSink::send`] and ends with `Ok(())` (the client gets
-/// `Result`, payload `null`) or an error (see [`subscription`]). Streams are registered and
-/// authorized, then answered with `Unimplemented` until M2; `O` is their final result.
+/// `Result`, payload `null`) or an error (see [`subscription`]). A stream writes binary chunks with
+/// [`BinarySink::send`], which waits for the client's credits, and ends with its final result `O`
+/// (the client gets `StreamEnd`) or an error (see [`stream`]).
 ///
 /// `I`, `O` and `V` (and the details of `E`) also derive `ts_rs::TS` and `schemars::JsonSchema`, so
 /// [`codegen`] can export them; [`IntoErrorPayload::Details`] is the type of `details`.
@@ -194,13 +196,14 @@ pub use message::{Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits};
 pub use procedure::{Agent, ProcedureKind, ProcedureMeta};
 pub use router::{
     Api, ApprovalRequired, Approvals, Ctx, Handler, Procedure, RegistryError, Rejected, Router,
-    SubscriptionHandler, input_digest,
+    StreamHandler, SubscriptionHandler, input_digest,
 };
 pub use schemars;
 pub use security_types;
 pub use security_types::{
     AuditError, AuditReporter, AuditSink, MemoryAuditLog, Risk, StderrReporter, TargetRef,
 };
+pub use stream::{BinarySink, Chunks, StreamEnded};
 pub use subscription::{EventSink, Events, SubscriptionEnded};
 pub use tokio_util::sync::CancellationToken;
 pub use ts_rs;

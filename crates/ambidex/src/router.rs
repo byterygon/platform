@@ -61,6 +61,7 @@ use crate::engine::{BoxFuture, Dispatch, Session};
 use crate::error::{IntoErrorPayload, RpcError};
 use crate::message::{Call, Code, ErrorPayload};
 use crate::procedure::{Agent, ProcedureKind, ProcedureMeta, is_valid_perm};
+use crate::stream::Chunks;
 use crate::subscription::Events;
 
 /// Type-erased handler: decoded call context and JSON input in, JSON result or wire error out.
@@ -72,13 +73,20 @@ pub type Handler =
 pub type SubscriptionHandler =
     Arc<dyn Fn(Ctx, Value, Events) -> BoxFuture<'static, Result<(), ErrorPayload>> + Send + Sync>;
 
+/// Type-erased stream handler: context, JSON input and the stream's chunks in; the JSON final
+/// result or the wire error it ends with.
+pub type StreamHandler = Arc<
+    dyn Fn(Ctx, Value, Chunks) -> BoxFuture<'static, Result<Value, ErrorPayload>> + Send + Sync,
+>;
+
 /// What runs when a procedure is called.
 #[derive(Clone)]
 enum Run {
     /// A query or mutation.
     Unary(Handler),
     Subscription(SubscriptionHandler),
-    /// Listed and authorized, then answered with `Unimplemented` (streams until M2).
+    Stream(StreamHandler),
+    /// Listed and authorized, then answered with `Unimplemented`.
     Declared,
 }
 
@@ -101,8 +109,13 @@ impl Procedure {
         Procedure::with_run(meta, Run::Subscription(handler))
     }
 
-    /// A procedure whose call kind the engine cannot run yet (streams, until M2). It is listed
-    /// and authorized like any other, then answered with `Unimplemented`.
+    /// A stream with its handler.
+    pub fn stream(meta: ProcedureMeta, handler: StreamHandler) -> Procedure {
+        Procedure::with_run(meta, Run::Stream(handler))
+    }
+
+    /// A procedure without a handler. It is listed and authorized like any other, then answered
+    /// with `Unimplemented`.
     pub fn declared(meta: ProcedureMeta) -> Procedure {
         Procedure::with_run(meta, Run::Declared)
     }
@@ -137,6 +150,7 @@ impl fmt::Debug for Procedure {
         let run = match self.run {
             Run::Unary(_) => "unary",
             Run::Subscription(_) => "subscription",
+            Run::Stream(_) => "stream",
             Run::Declared => "declared",
         };
         f.debug_struct("Procedure")
@@ -618,10 +632,34 @@ impl Router {
     /// before authorization and again before the handler runs; outside the engine, interrupting
     /// a running handler is the caller's job, and the router writes the call's audit completion
     /// itself when the handler returns.
+    ///
+    /// A stream procedure needs a connection for its chunks: here it is authorized and then
+    /// answered with `Unimplemented` (see [`Router::call_stream`]).
     pub fn call(
         &self,
         session: Arc<Session>,
         call: Call,
+    ) -> impl Future<Output = Result<Value, ErrorPayload>> + Send + 'static {
+        self.run_call(session, call, None)
+    }
+
+    /// Runs one call for `session` that may be a stream, writing its chunks to `chunks`. This is
+    /// [`Dispatch::call_stream`]; a query or mutation runs exactly as in [`Router::call`] and
+    /// leaves `chunks` unused.
+    pub fn call_stream(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        chunks: Chunks,
+    ) -> impl Future<Output = Result<Value, ErrorPayload>> + Send + 'static {
+        self.run_call(session, call, Some(chunks))
+    }
+
+    fn run_call(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        chunks: Option<Chunks>,
     ) -> impl Future<Output = Result<Value, ErrorPayload>> + Send + 'static {
         let procedure = self.read().get(&call.procedure).cloned();
         let guard = Arc::clone(&self.guard);
@@ -633,10 +671,17 @@ impl Router {
                 .clone()
                 .enter(async {
                     let (run, ctx) = admit(guard, procedure, session, &call, false, &scope).await?;
-                    match run {
-                        Run::Unary(handler) => {
+                    match (run, chunks) {
+                        (Run::Unary(handler), _) => {
                             let approval_id = Arc::clone(&ctx.approval_id);
                             let result = handler(ctx, call.input).await;
+                            result.map_err(|err| scrub(err, &approval_id))
+                        }
+                        (Run::Stream(handler), Some(chunks)) => {
+                            // From here on the call is a stream: it ends with `StreamEnd`.
+                            chunks.open();
+                            let approval_id = Arc::clone(&ctx.approval_id);
+                            let result = handler(ctx, call.input, chunks).await;
                             result.map_err(|err| scrub(err, &approval_id))
                         }
                         _ => Err(ErrorPayload::new(
@@ -714,6 +759,15 @@ impl Dispatch for Router {
         call: Call,
     ) -> BoxFuture<'static, Result<Value, ErrorPayload>> {
         Box::pin(Router::call(self, session, call))
+    }
+
+    fn call_stream(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        chunks: Chunks,
+    ) -> BoxFuture<'static, Result<Value, ErrorPayload>> {
+        Box::pin(Router::call_stream(self, session, call, chunks))
     }
 
     fn subscribe(
@@ -886,12 +940,14 @@ fn validate(meta: &ProcedureMeta) -> Result<(), RegistryError> {
     Ok(())
 }
 
-/// A unary handler serves a query or mutation, a subscription handler a subscription.
+/// A unary handler serves a query or mutation, a subscription handler a subscription, a stream
+/// handler a stream.
 fn validate_run(procedure: &Procedure) -> Result<(), RegistryError> {
     let kind = procedure.meta.kind;
     let ok = match procedure.run {
         Run::Unary(_) => matches!(kind, ProcedureKind::Query | ProcedureKind::Mutation),
         Run::Subscription(_) => kind == ProcedureKind::Subscription,
+        Run::Stream(_) => kind == ProcedureKind::Stream,
         Run::Declared => true,
     };
     if ok {
@@ -974,6 +1030,18 @@ pub mod __private {
     {
         let api = Arc::clone(api);
         Arc::new(move |ctx, input| f(Arc::clone(&api), ctx, input))
+    }
+
+    pub fn stream_handler<A, F>(api: &Arc<A>, f: F) -> StreamHandler
+    where
+        A: Send + Sync + 'static,
+        F: Fn(Arc<A>, Ctx, Value, Chunks) -> BoxFuture<'static, Result<Value, ErrorPayload>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        let api = Arc::clone(api);
+        Arc::new(move |ctx, input, chunks| f(Arc::clone(&api), ctx, input, chunks))
     }
 
     /// The normal end (`Ok(())`) or the error a subscription handler ended with.

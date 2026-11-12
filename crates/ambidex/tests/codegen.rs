@@ -8,8 +8,8 @@ use ambidex::codegen::agree::Checker;
 use ambidex::codegen::{self, ApiInfo, CodegenError, ProcedureTypes, Type};
 use ambidex::security_types::{Authorizer, AuthzRequest, Decision, Reason};
 use ambidex::{
-    Code, Ctx, DomainError, ErrorPayload, EventSink, Procedure, ProcedureKind, ProcedureMeta, Risk,
-    Router, RpcError, rpc,
+    BinarySink, Code, Ctx, DomainError, ErrorPayload, EventSink, Procedure, ProcedureKind,
+    ProcedureMeta, Risk, Router, RpcError, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -179,7 +179,12 @@ pub struct ZooApi;
 impl ZooApi {
     #[rpc::stream(perm = "zoo.query", risk = Risk::Read, agent = Agent::Exposed,
                   timeout_default = "5m", timeout_max = "1h")]
-    async fn execute(&self, _ctx: Ctx, _input: ExecuteInput) -> Result<ExecuteSummary, QueryError> {
+    async fn execute(
+        &self,
+        _ctx: Ctx,
+        _input: ExecuteInput,
+        _sink: BinarySink,
+    ) -> Result<ExecuteSummary, QueryError> {
         Err(QueryError::Cancelled)
     }
 

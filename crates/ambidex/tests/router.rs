@@ -12,9 +12,9 @@ use ambidex::security_types::{
 };
 use ambidex::transport::{TransportRx, TransportTx, memory};
 use ambidex::{
-    Agent, Api, Approvals, Authenticate, Call, Code, Ctx, DomainError, ErrorPayload, EventSink,
-    Hello, MemoryAuditLog, Procedure, ProcedureKind, ProcedureMeta, RegistryError, Rejected, Risk,
-    Router, RpcError, Server, ServerConfig, Session, TargetRef, input_digest, rpc,
+    Agent, Api, Approvals, Authenticate, BinarySink, Call, Code, Ctx, DomainError, ErrorPayload,
+    EventSink, Hello, MemoryAuditLog, Procedure, ProcedureKind, ProcedureMeta, RegistryError,
+    Rejected, Risk, Router, RpcError, Server, ServerConfig, Session, TargetRef, input_digest, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -132,7 +132,7 @@ impl DemoApi {
     }
 
     #[rpc::stream(perm = "demo.stream", risk = Risk::Read, timeout_default = "2h")]
-    async fn rows(&self, _ctx: Ctx, _input: ()) -> Result<u64, RpcError> {
+    async fn rows(&self, _ctx: Ctx, _input: (), _sink: BinarySink) -> Result<u64, RpcError> {
         Err(RpcError::new(Code::Unimplemented, "declared only"))
     }
 

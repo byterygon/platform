@@ -79,7 +79,10 @@ struct EventsInner {
 pub(crate) struct Queued {
     pub(crate) call_id: u32,
     pub(crate) bytes: Vec<u8>,
-    pub(crate) held: Held,
+    /// `None` for a stream's chunk: credits bound those (see [`crate::stream`]).
+    pub(crate) held: Option<Held>,
+    /// A stream's chunk rather than a subscription's event.
+    pub(crate) stream: bool,
 }
 
 /// The per-subscription buffer budget: events and payload bytes not yet taken by the transport.
@@ -170,7 +173,8 @@ impl Events {
         let queued = Queued {
             call_id: inner.call_id,
             bytes,
-            held,
+            held: Some(held),
+            stream: false,
         };
         // The receiver lives as long as the connection; once it is gone the token has fired.
         inner.queue.send(queued).map_err(|_| SubscriptionEnded {
