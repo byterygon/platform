@@ -127,6 +127,11 @@ impl Client {
         self.send(&[unsubscribe_frame(call_id)]).await;
     }
 
+    /// Grants `chunks` more credits to stream `call_id`.
+    pub async fn credit(&mut self, call_id: u32, chunks: u64) {
+        self.send(&[credit_frame(call_id, chunks)]).await;
+    }
+
     /// Next frame from the server, or `None` once it closed the connection.
     ///
     /// # Panics
@@ -167,6 +172,28 @@ impl Client {
             "{frame:?}"
         );
         serde_json::from_slice(&frame.payload).expect("Event payload")
+    }
+
+    /// The next frame must be a binary Chunk for `call_id`; returns its bytes.
+    pub async fn expect_chunk(&mut self, call_id: u32) -> Vec<u8> {
+        let frame = self.recv().await.expect("Chunk, got close");
+        assert_eq!(
+            (frame.kind, frame.call_id, frame.flags.is_binary()),
+            (Kind::Chunk, call_id, true),
+            "{frame:?}"
+        );
+        frame.payload
+    }
+
+    /// The next frame must be a JSON StreamEnd for `call_id`; returns its value.
+    pub async fn expect_stream_end(&mut self, call_id: u32) -> Value {
+        let frame = self.recv().await.expect("StreamEnd, got close");
+        assert_eq!(
+            (frame.kind, frame.call_id, frame.flags.is_binary()),
+            (Kind::StreamEnd, call_id, false),
+            "{frame:?}"
+        );
+        serde_json::from_slice(&frame.payload).expect("StreamEnd payload")
     }
 
     /// The next frame must be an Error for `call_id`; returns its payload.
@@ -274,6 +301,14 @@ pub fn subscribe_frame(
 /// `Unsubscribe` has an empty payload and gets no reply.
 pub fn unsubscribe_frame(call_id: u32) -> Frame {
     Frame::new(Kind::Unsubscribe, call_id, Vec::new())
+}
+
+pub fn credit_frame(call_id: u32, chunks: u64) -> Frame {
+    json_frame(
+        Kind::Credit,
+        call_id,
+        &serde_json::json!({ "chunks": chunks }),
+    )
 }
 
 pub fn json_frame(kind: Kind, call_id: u32, value: &impl serde::Serialize) -> Frame {

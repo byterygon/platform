@@ -12,6 +12,51 @@
       ],
       "type": "object"
     },
+    "BytesInput": {
+      "description": "Input of `FixtureApi::bytes`.",
+      "properties": {
+        "chunks": {
+          "description": "Chunks sent: chunk `n` is `size` bytes, each `n` modulo 256.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "size": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "then": {
+          "$ref": "#/$defs/CounterEnd",
+          "default": "finish"
+        }
+      },
+      "required": [
+        "chunks",
+        "size"
+      ],
+      "type": "object"
+    },
+    "BytesSummary": {
+      "description": "Final result of `FixtureApi::bytes`.",
+      "properties": {
+        "bytes": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "chunks",
+        "bytes"
+      ],
+      "type": "object"
+    },
     "Code": {
       "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
       "enum": [
@@ -182,6 +227,27 @@
       "risk": "Read",
       "timeout_default_ms": null,
       "timeout_max_ms": null
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/FixtureError"
+      },
+      "input": {
+        "$ref": "#/$defs/BytesInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "fixture.bytes",
+      "output": {
+        "$ref": "#/$defs/BytesSummary"
+      },
+      "perm": "fixture.call",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
     },
     {
       "agent": "hidden",
@@ -392,6 +458,25 @@
       "agent": "hidden",
       "deprecated": false,
       "error": false,
+      "input": true,
+      "kind": "stream",
+      "log_input": false,
+      "name": "fixture.secret_bytes",
+      "output": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "perm": "fixture.admin",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
       "input": {
         "format": "uint64",
         "minimum": 0,
@@ -515,5 +600,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:f65976186e6b5c7f0a6a93c2db1c1011a7bbc6e1da78c57d30bf72852e145af7"
+  "schema_hash": "sha256:134e4d6197ac77d13e6d3c6c0056f1388e566044d6e3899000647e937e56e8d6"
 }

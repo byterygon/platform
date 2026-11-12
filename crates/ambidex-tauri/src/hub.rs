@@ -14,8 +14,8 @@ use std::time::Instant;
 
 use ambidex::engine::BoxFuture;
 use ambidex::{
-    Call, CancellationToken, Connection, Dispatch, ErrorPayload, Events, Server, ServerConfig,
-    Session,
+    Call, CancellationToken, Chunks, Connection, Dispatch, ErrorPayload, Events, Server,
+    ServerConfig, Session,
 };
 use serde_json::Value;
 
@@ -328,6 +328,15 @@ impl<D: Dispatch> Dispatch for Shared<D> {
         call: Call,
     ) -> BoxFuture<'static, Result<Value, ErrorPayload>> {
         self.0.call(session, call)
+    }
+
+    fn call_stream(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        chunks: Chunks,
+    ) -> BoxFuture<'static, Result<Value, ErrorPayload>> {
+        self.0.call_stream(session, call, chunks)
     }
 
     fn subscribe(

@@ -8,8 +8,9 @@
 //! sink failures in its [`AuditReports`]. Deadlines are measured on the fixture's
 //! [`ManualClock`], which cases move (see [`crate::clock`]).
 //!
-//! Not in the fixture yet: the synthetic 1M-row Arrow stream (streams and credits are M2). It is
-//! declared, so the router authorizes it and answers `Unimplemented`; see the crate docs.
+//! Streams: `bytes` sends synthetic binary chunks under credit flow control. Not in the fixture
+//! yet: the synthetic 1M-row Arrow stream (`rows`), which waits for the Arrow sink and fails with
+//! `Unimplemented`; see the crate docs.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -24,8 +25,8 @@ use ambidex::security_types::{
     Decision, Outcome, Principal, Reason, Risk, TargetRef,
 };
 use ambidex::{
-    Approvals, AuditError, AuditPolicy, AuditReporter, AuditSink, Code, Ctx, DomainError,
-    EventSink, Router, RpcError, ServerConfig, engine::BoxFuture, rpc,
+    Approvals, AuditError, AuditPolicy, AuditReporter, AuditSink, BinarySink, Code, Ctx,
+    DomainError, EventSink, Router, RpcError, ServerConfig, engine::BoxFuture, rpc,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -85,6 +86,9 @@ pub const APPROVAL_ID: &str = "approval-1";
 /// reach.
 pub const SUBSCRIPTION_BUFFER_EVENTS: usize = 8;
 
+/// Unused credits one stream may hold. Small, so the bound is cheap to reach.
+pub const STREAM_MAX_CREDITS: u32 = 8;
+
 /// How long the fixture router waits for one audit entry. Short, so a case with a hung sink
 /// sees its writes give up quickly; long enough that a working sink always answers in time.
 pub const AUDIT_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -99,6 +103,7 @@ pub fn server_config() -> ServerConfig {
     config.max_concurrent_calls = MAX_CONCURRENT_CALLS;
     config.cancel_grace = CANCEL_GRACE;
     config.subscription_buffer_events = SUBSCRIPTION_BUFFER_EVENTS;
+    config.stream_max_credits = STREAM_MAX_CREDITS;
     config
 }
 
@@ -121,6 +126,7 @@ pub struct Probe {
     events_tx: mpsc::UnboundedSender<Event>,
     events: Mutex<mpsc::UnboundedReceiver<Event>>,
     runs: AtomicUsize,
+    chunks_sent: AtomicUsize,
 }
 
 impl Probe {
@@ -130,6 +136,7 @@ impl Probe {
             events_tx,
             events: Mutex::new(events),
             runs: AtomicUsize::new(0),
+            chunks_sent: AtomicUsize::new(0),
         }
     }
 
@@ -138,6 +145,11 @@ impl Probe {
             self.runs.fetch_add(1, Ordering::SeqCst);
         }
         let _ = self.events_tx.send(event);
+    }
+
+    /// Chunks the `bytes` stream handlers were allowed to send so far (their `send` returned).
+    pub fn chunks_sent(&self) -> usize {
+        self.chunks_sent.load(Ordering::SeqCst)
     }
 
     /// Handlers that started so far.
@@ -443,6 +455,24 @@ pub struct CounterInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub then: CounterEnd,
+}
+
+/// Input of `FixtureApi::bytes`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
+pub struct BytesInput {
+    /// Chunks sent: chunk `n` is `size` bytes, each `n` modulo 256.
+    pub chunks: u32,
+    pub size: u32,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub then: CounterEnd,
+}
+
+/// Final result of `FixtureApi::bytes`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct BytesSummary {
+    pub chunks: u32,
+    pub bytes: u32,
 }
 
 /// Counts a handler future dropped before it finished.
@@ -752,10 +782,69 @@ impl FixtureApi {
         Ok(())
     }
 
-    /// Synthetic Arrow row stream (spec §12). Declared only: streams and credits are M2.
+    /// Synthetic Arrow row stream (spec §12). Not implemented until the Arrow sink exists: it
+    /// fails at once, before any chunk.
     #[rpc::stream(perm = "fixture.call", risk = Risk::Read)]
-    async fn rows(&self, _ctx: Ctx, _input: Value) -> Result<u64, RpcError> {
+    async fn rows(&self, _ctx: Ctx, _input: Value, _sink: BinarySink) -> Result<u64, RpcError> {
         Err(RpcError::new(Code::Unimplemented, "declared only"))
+    }
+
+    /// Byte stream: `chunks` chunks of `size` bytes (chunk `n` filled with `n` modulo 256), each
+    /// sent against a credit, then what `then` says.
+    #[rpc::stream(perm = "fixture.call", risk = Risk::Read)]
+    async fn bytes(
+        &self,
+        ctx: Ctx,
+        input: BytesInput,
+        sink: BinarySink,
+    ) -> Result<BytesSummary, RpcError<FixtureError>> {
+        let mut guard = self.guard("bytes");
+        let result = async {
+            for n in 0..input.chunks {
+                if let Err(ended) = sink.send(vec![n as u8; input.size as usize]).await {
+                    self.probe.record(Event::Cancelled("bytes"));
+                    return Err(ended.into());
+                }
+                self.probe.chunks_sent.fetch_add(1, Ordering::SeqCst);
+            }
+            let summary = BytesSummary {
+                chunks: input.chunks,
+                bytes: input.chunks.saturating_mul(input.size),
+            };
+            match input.then {
+                CounterEnd::Finish => Ok(summary),
+                CounterEnd::Fail => {
+                    let code = Code::FailedPrecondition;
+                    let details = FixtureError::Requested {
+                        code,
+                        retryable: false,
+                    };
+                    Err(RpcError::new(code, details.message()).with_details(details))
+                }
+                CounterEnd::Wait => {
+                    ctx.cancelled().await;
+                    self.probe.record(Event::Cancelled("bytes"));
+                    Ok(summary)
+                }
+                CounterEnd::Hang => std::future::pending().await,
+            }
+        }
+        .await;
+        guard.armed = false;
+        result
+    }
+
+    /// A stream the fixture authorizer denies (unknown permission).
+    #[rpc::stream(perm = "fixture.admin", risk = Risk::Read)]
+    async fn secret_bytes(
+        &self,
+        _ctx: Ctx,
+        _input: Value,
+        sink: BinarySink,
+    ) -> Result<u32, RpcError> {
+        let _guard = self.guard("secret_bytes");
+        sink.send(b"secret".to_vec()).await?;
+        Ok(0)
     }
 }
 

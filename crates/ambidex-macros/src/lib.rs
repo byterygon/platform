@@ -351,8 +351,8 @@ fn procedure_kind(path: &Path) -> Option<Kind> {
 /// - Subscriptions: `(&self, ctx: Ctx, input: I, events: EventSink<V>) -> Result<(), E>`. The
 ///   handler sends events through the sink, so cancellation, the deadline and the buffer bound
 ///   stay with the engine; the `()` is checked by the generated code.
-/// - Streams have no handler until M2; they take `(&self, ctx: Ctx, input: I, ..)` and declare
-///   `-> Result<O, E>` with `O` the final result, so codegen can export their types.
+/// - Streams: `(&self, ctx: Ctx, input: I, sink: BinarySink) -> Result<O, E>`, with `O` the final
+///   result. The sink type is checked by the generated code.
 fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<(Type, Type, Option<Type>)> {
     let sig = &method.sig;
     if sig.asyncness.is_none() {
@@ -397,7 +397,9 @@ fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<(Type, Type, 
             };
             (input, Some(event))
         }
-        (Kind::Stream, [FnArg::Typed(_ctx), FnArg::Typed(input), ..]) => (input, None),
+        (Kind::Stream, [FnArg::Typed(_ctx), FnArg::Typed(input), FnArg::Typed(_sink)]) => {
+            (input, None)
+        }
         (Kind::Query | Kind::Mutation, _) => {
             return Err(syn::Error::new(
                 sig.inputs.span(),
@@ -410,7 +412,8 @@ fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<(Type, Type, 
         (Kind::Stream, _) => {
             return Err(syn::Error::new(
                 sig.inputs.span(),
-                "streams have the shape `async fn name(&self, ctx: Ctx, input: I, ..)`",
+                "streams have the shape `async fn name(&self, ctx: Ctx, input: I, sink: \
+                 BinarySink) -> Result<O, E>`",
             ));
         }
     };
@@ -420,10 +423,7 @@ fn check_signature(method: &ImplItemFn, kind: Kind) -> syn::Result<(Type, Type, 
             match kind {
                 Kind::Query | Kind::Mutation => "queries and mutations return `Result<O, E>`",
                 Kind::Subscription => "subscriptions return `Result<(), E>`",
-                Kind::Stream => {
-                    "streams declare `-> Result<O, E>` (O: the final result) so their types can \
-                     be exported"
-                }
+                Kind::Stream => "streams return `Result<O, E>` (O: the final result)",
             },
         ));
     };
@@ -627,10 +627,21 @@ fn entry_expr(p: &Procedure) -> TokenStream2 {
             .with_types(#types)
         }
     } else {
-        quote! {{
-            // Streams are declared only until M2; keep the method "used".
-            let _ = Self::#method;
-            ::ambidex::Procedure::declared(next()).with_types(#types)
-        }}
+        quote! {
+            ::ambidex::Procedure::stream(
+                next(),
+                ::ambidex::router::__private::stream_handler(&api, |api, ctx, input, chunks| {
+                    ::std::boxed::Box::pin(async move {
+                        let input: #input_ty =
+                            ::ambidex::router::__private::decode_input(input)?;
+                        let sink: ::ambidex::BinarySink = ::ambidex::BinarySink::new(chunks);
+                        ::ambidex::router::__private::encode_output(
+                            api.#method(ctx, input, sink).await,
+                        )
+                    })
+                }),
+            )
+            .with_types(#types)
+        }
     }
 }

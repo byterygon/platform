@@ -61,8 +61,14 @@
 //!   Frames already in the outbound queue are in flight; the client drops them. `Unsubscribe` on call 0 is a violation; for an id that is no
 //!   subscription in flight it is ignored.
 //!
-//! Streams and credits are M2: a stream procedure called with `Call` is authorized, then answered
-//! with `Unimplemented`, and `Credit` frames are ignored.
+//! - A `Call` may turn out to be a stream (see [`crate::stream`]): the dispatcher gets a
+//!   [`Chunks`] with every call ([`Dispatch::call_stream`]) and opens it for a stream procedure.
+//!   Its `Chunk` frames and its one terminal frame (`StreamEnd`, or `Error`) leave in order
+//!   through the same per-connection queue as subscription frames. A chunk is only sent against
+//!   a credit: each call starts with [`ServerConfig::stream_initial_credits`] and the client
+//!   adds more with `Credit` frames, never beyond [`ServerConfig::stream_max_credits`] unused
+//!   ones (a violation). `Credit` on call 0 or with a malformed payload is a violation; for a
+//!   call that is not in flight it is ignored.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
@@ -90,6 +96,7 @@ use crate::message::{
     Call, Code, ErrorPayload, Goaway, Hello, HelloAck, Limits, MAX_JSON_SAFE_INTEGER,
 };
 use crate::procedure::ProcedureKind;
+use crate::stream::{Chunks, Credits};
 use crate::subscription::{Events, Held, Queued};
 use crate::transport::{TransportRx, TransportTx};
 
@@ -135,6 +142,11 @@ pub struct ServerConfig {
     /// `subscription_buffer_events`. An event that does not fit ends the subscription with
     /// `ResourceExhausted`; one event up to `max_frame_bytes` always fits an empty buffer.
     pub subscription_buffer_bytes: usize,
+    /// Chunks a stream may send before the client grants more with `Credit` (spec §6: 4).
+    pub stream_initial_credits: u32,
+    /// Unused credits one stream may hold: the most chunks it can make the server buffer. A
+    /// `Credit` that would exceed it is a protocol violation. Provisional (spec Open question 9).
+    pub stream_max_credits: u32,
     /// The clock call and subscription deadlines are measured on (see [`crate::cancel`]).
     /// Default [`TokioClock`]; tests may supply one they move by hand. Grace periods, audit
     /// durations and write timeouts, and the handshake and close timeouts always use Tokio's
@@ -166,6 +178,8 @@ impl ServerConfig {
             cancel_grace: Duration::from_secs(1),
             subscription_buffer_events: 64,
             subscription_buffer_bytes: 1024 * 1024,
+            stream_initial_credits: 4,
+            stream_max_credits: 64,
             deadline_clock: Arc::new(TokioClock),
             #[cfg(feature = "test-hooks")]
             writer_gate: None,
@@ -207,13 +221,14 @@ pub trait Authenticate: Send + Sync + 'static {
     }
 }
 
-/// Executes calls and subscriptions. [`Router`](crate::Router) implements this.
+/// Executes calls, streams and subscriptions. [`Router`](crate::Router) implements this.
 ///
 /// The returned futures run with the call's [`CallScope`] as [`CallScope::current`]; a dispatcher
 /// should apply the procedure's timeouts to it ([`CallScope::apply_timeouts`]) and hand its token
-/// to the handler. A wrapper must forward both methods: `subscribe` has a default (answering
-/// `Unimplemented`, as before subscriptions existed) so dispatchers that only serve calls keep
-/// compiling, which also means a wrapper that forgets it silently turns subscriptions off.
+/// to the handler. A wrapper must forward every method: `subscribe` and `call_stream` have
+/// defaults (answering `Unimplemented`, and running the call without a chunk sink) so
+/// dispatchers that only serve calls keep compiling, which also means a wrapper that forgets one
+/// silently turns subscriptions or streams off.
 pub trait Dispatch: Send + Sync + 'static {
     /// A `Call`: the result, or the error, of a query, mutation or stream.
     fn call(
@@ -221,6 +236,20 @@ pub trait Dispatch: Send + Sync + 'static {
         session: Arc<Session>,
         call: Call,
     ) -> BoxFuture<'static, Result<Value, ErrorPayload>>;
+
+    /// A `Call` with somewhere to write chunks, which is how the engine runs every `Call`: the
+    /// procedure may be a stream. A dispatcher that runs it as one calls [`Chunks::open`] before
+    /// the handler; the result is then sent as `StreamEnd` after the chunks. The default ignores
+    /// `chunks` and runs [`Dispatch::call`]; [`Router`](crate::Router) overrides it.
+    fn call_stream(
+        &self,
+        session: Arc<Session>,
+        call: Call,
+        chunks: Chunks,
+    ) -> BoxFuture<'static, Result<Value, ErrorPayload>> {
+        let _ = chunks;
+        self.call(session, call)
+    }
 
     /// A `Subscribe` (payload as for a `Call`): sends events to `events` until it ends. `Ok(())`
     /// ends the subscription with `Result` (payload `null`), an error with `Error`. The default
@@ -361,6 +390,7 @@ async fn run<A: Authenticate, D: Dispatch, R: TransportRx, T: TransportTx>(
         tasks: HashMap::new(),
         in_flight: HashMap::new(),
         subscriptions: HashSet::new(),
+        streams: HashMap::new(),
         events_tx,
         events_rx,
         ordered: VecDeque::new(),
@@ -509,7 +539,7 @@ async fn revoked(token: Option<CancellationToken>) {
 }
 
 /// An encoded frame for the writer. An event frame carries its share of its subscription's
-/// buffer, so the event counts against the buffer until the transport has taken it. A call's
+/// buffer (a stream's chunk carries none: credits bound those), so the event counts against the buffer until the transport has taken it. A call's
 /// answer frame carries the call's audit completion, written once the transport has taken it;
 /// dropped anywhere before that, the completion records `Cancelled`.
 struct Outbound {
@@ -637,24 +667,41 @@ struct Answer {
     completion: Option<Armed>,
 }
 
+/// The payload of a `Credit` frame.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Credit {
+    chunks: u64,
+}
+
 /// A running call task, by task id.
 struct Task {
     call_id: u32,
     subscription: bool,
 }
 
-/// A subscription frame waiting for room in the outbound queue, in order.
+/// A subscription or stream frame waiting for room in the outbound queue, in order.
 enum Ordered {
+    /// A subscription's event or a stream's chunk.
     Event(Queued),
-    /// The subscription's terminal Result or Error, with its audit completion.
-    End(Box<Answer>),
+    /// The terminal frame (a subscription's Result or Error, a stream's StreamEnd or Error), with
+    /// its audit completion.
+    End { answer: Box<Answer>, stream: bool },
 }
 
 impl Ordered {
     fn call_id(&self) -> u32 {
         match self {
             Ordered::Event(queued) => queued.call_id,
-            Ordered::End(end) => end.frame.call_id,
+            Ordered::End { answer, .. } => answer.frame.call_id,
+        }
+    }
+
+    /// Whether the frame belongs to a stream (which `Unsubscribe` does not touch).
+    fn is_stream(&self) -> bool {
+        match self {
+            Ordered::Event(queued) => queued.stream,
+            Ordered::End { stream, .. } => *stream,
         }
     }
 }
@@ -675,10 +722,14 @@ struct ConnState<A, D> {
     in_flight: HashMap<u32, CallScope>,
     /// Subscriptions whose frames are still sent: in flight and not unsubscribed.
     subscriptions: HashSet<u32>,
-    /// Handed to every subscription's [`Events`]; events arrive on `events_rx`.
+    /// The credit window of every `Call` in flight (any of them may be a stream), by call id.
+    streams: HashMap<u32, Arc<Credits>>,
+    /// Handed to every subscription's [`Events`] and every call's [`Chunks`]; events and chunks
+    /// arrive on `events_rx`.
     events_tx: mpsc::UnboundedSender<Queued>,
     events_rx: mpsc::UnboundedReceiver<Queued>,
-    /// Subscription frames (events, then their terminal frame) waiting for outbound room.
+    /// Subscription and stream frames (events or chunks, then their terminal frame) waiting for
+    /// outbound room.
     ordered: VecDeque<Ordered>,
     /// Parent of every call token; fires when the connection closes.
     conn_token: CancellationToken,
@@ -895,8 +946,7 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
                 self.unsubscribe(frame.call_id);
                 Ok(())
             }
-            // Credit: binary streams (M2). Until they land there is nothing to credit.
-            Kind::Credit => Ok(()),
+            Kind::Credit => self.on_credit(&frame).await,
             Kind::Hello => Err(self
                 .violation(Code::FailedPrecondition, "duplicate Hello")
                 .await),
@@ -975,6 +1025,34 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         self.decoder.set_max_payload(config.max_frame_bytes);
         self.session = Some(Arc::new(session));
         self.send_json(Kind::HelloAck, 0, &ack)
+    }
+
+    /// A `Credit` frame: more chunks the client is ready to take for one stream.
+    async fn on_credit(&mut self, frame: &Frame) -> Step {
+        if frame.call_id == 0 {
+            return Err(self
+                .violation(Code::InvalidArgument, "Credit on call id 0")
+                .await);
+        }
+        let credit = (!frame.flags.is_binary())
+            .then(|| serde_json::from_slice::<Credit>(&frame.payload).ok())
+            .flatten()
+            .filter(|credit| credit.chunks >= 1);
+        let Some(credit) = credit else {
+            return Err(self
+                .violation(Code::InvalidArgument, "malformed Credit")
+                .await);
+        };
+        // A call that is not in flight already ended; its credit lost the race.
+        let Some(credits) = self.streams.get(&frame.call_id) else {
+            return Ok(());
+        };
+        if !credits.grant(credit.chunks) {
+            return Err(self
+                .violation(Code::ResourceExhausted, "credit window exceeded")
+                .await);
+        }
+        Ok(())
     }
 
     /// A `Call` or `Subscribe` frame: checked and accepted at once (see [`ConnState::accept`]),
@@ -1093,12 +1171,22 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             Some(room),
             kind,
         );
+        let config = &self.inner.config;
         if !subscribe {
-            let fut = self.inner.dispatch.call(session, call);
-            self.spawn(call_id, scope, fut, false);
+            // Any call may be a stream; only the dispatcher knows.
+            let credits = Credits::new(config.stream_initial_credits, config.stream_max_credits);
+            let chunks = Chunks::new(
+                call_id,
+                scope.clone(),
+                self.events_tx.clone(),
+                Arc::clone(&credits),
+                config.max_frame_bytes,
+            );
+            let fut = self.inner.dispatch.call_stream(session, call, chunks);
+            self.streams.insert(call_id, Arc::clone(&credits));
+            self.spawn(call_id, scope, fut, Some(credits));
             return;
         }
-        let config = &self.inner.config;
         let events = Events::new(
             call_id,
             scope.clone(),
@@ -1111,17 +1199,19 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         // A normal end is a `Result` with payload `null`.
         let fut = Box::pin(async move { fut.await.map(|()| Value::Null) });
         self.subscriptions.insert(call_id);
-        self.spawn(call_id, scope, fut, true);
+        self.spawn(call_id, scope, fut, None);
     }
 
     /// Runs a call or subscription task under `scope`; its terminal frame comes to `finish_call`.
+    /// `credits` is the call's credit window, `None` for a subscription.
     fn spawn(
         &mut self,
         call_id: u32,
         scope: CallScope,
         fut: BoxFuture<'static, Result<Value, ErrorPayload>>,
-        subscription: bool,
+        credits: Option<Arc<Credits>>,
     ) {
+        let subscription = credits.is_none();
         let correlation_id = scope.correlation_id().to_owned();
         let config = &self.inner.config;
         let (max, grace) = (config.max_frame_bytes, config.cancel_grace);
@@ -1129,7 +1219,12 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         let handle = self.calls.spawn(async move {
             let finished = run_call(fut, task_scope.clone(), grace).await;
             let replaced_by = finished.replaced_by;
-            let (frame, delivery) = result_frame(call_id, finished, correlation_id, max);
+            // A call the dispatcher ran as a stream ends with `StreamEnd`.
+            let end = match credits {
+                Some(credits) if credits.is_open() => Kind::StreamEnd,
+                _ => Kind::Result,
+            };
+            let (frame, delivery) = result_frame(call_id, end, finished, correlation_id, max);
             // The audit completion records what the client gets (Open question 26a, item 11):
             // it travels with the frame and is written once the transport accepted it.
             let completion = task_scope
@@ -1150,12 +1245,13 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
     /// `Unsubscribe`: nothing more is sent for `call_id`, and the handler is cancelled. Its frames
     /// still waiting here are dropped even when the handler already returned (its end frame may
     /// be among them). Otherwise a call id that is not a subscription in flight (already ended,
-    /// or a call) is ignored: `ordered` only ever holds subscription frames.
+    /// or a call) is ignored; a stream's frames are never touched.
     fn unsubscribe(&mut self, call_id: u32) {
         // A subscription still waiting for room never starts, and nothing is sent for it.
         self.waiting
             .retain(|w| !(w.subscribe && w.call_id == call_id));
-        self.ordered.retain(|frame| frame.call_id() != call_id);
+        self.ordered
+            .retain(|frame| frame.is_stream() || frame.call_id() != call_id);
         if !self.subscriptions.remove(&call_id) {
             return;
         }
@@ -1164,22 +1260,22 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         }
     }
 
-    /// Moves the oldest subscription frame to the outbound queue. Only called once
+    /// Moves the oldest subscription or stream frame to the outbound queue. Only called once
     /// [`has_room`] saw room, which only the writer changes (by taking frames), so it fits.
     fn send_ordered(&mut self) -> Step {
         let outbound = match self.ordered.pop_front() {
             Some(Ordered::Event(queued)) => Outbound {
                 bytes: queued.bytes,
-                held: Some(queued.held),
+                held: queued.held,
                 completion: None,
             },
-            Some(Ordered::End(end)) => Outbound {
-                bytes: end
+            Some(Ordered::End { answer, .. }) => Outbound {
+                bytes: answer
                     .frame
                     .encode(self.inner.config.max_frame_bytes)
                     .map_err(|_| Closed::Transport(io::ErrorKind::InvalidData))?,
                 held: None,
-                completion: end.completion,
+                completion: answer.completion,
             },
             None => return Ok(()),
         };
@@ -1189,9 +1285,15 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
         })
     }
 
-    /// Queues an event for the transport, unless its subscription was unsubscribed.
+    /// Queues an event or chunk for the transport, unless its subscription was unsubscribed (or
+    /// its call is no longer in flight).
     fn take_event(&mut self, queued: Queued) {
-        if self.subscriptions.contains(&queued.call_id) {
+        let wanted = if queued.stream {
+            self.streams.contains_key(&queued.call_id)
+        } else {
+            self.subscriptions.contains(&queued.call_id)
+        };
+        if wanted {
             self.ordered.push_back(Ordered::Event(queued));
         }
     }
@@ -1237,15 +1339,34 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             let payload = serde_json::to_vec(&payload).expect("ErrorPayload serializes");
             Frame::new(Kind::Error, call_id, payload)
         });
-        // A finished subscription is over: a sink clone the handler left behind (e.g. in a task
-        // it spawned) is refused from now on, and its `closed()` resolves.
+        let stream = !subscription
+            && self
+                .streams
+                .get(&call_id)
+                .is_some_and(|credits| credits.is_open());
+        // A finished subscription or stream is over: a sink clone the handler left behind (e.g.
+        // in a task it spawned) is refused from now on, and its `closed()` resolves.
         if let Some(scope) = scope
-            && subscription
+            && (subscription || stream)
         {
             scope.cancel();
         }
         if !subscription {
-            return self.send_answer(&frame, completion);
+            if !stream {
+                self.streams.remove(&call_id);
+                return self.send_answer(&frame, completion);
+            }
+            // Every chunk the handler sent before it returned is already in the channel; they
+            // go first, then the end.
+            while let Ok(queued) = self.events_rx.try_recv() {
+                self.take_event(queued);
+            }
+            self.streams.remove(&call_id);
+            self.ordered.push_back(Ordered::End {
+                answer: Box::new(Answer { frame, completion }),
+                stream: true,
+            });
+            return Ok(());
         }
         // After Unsubscribe nothing more goes out for this id, not even the end: its completion
         // drops here, as `Cancelled`.
@@ -1258,8 +1379,10 @@ impl<A: Authenticate, D: Dispatch> ConnState<A, D> {
             self.take_event(queued);
         }
         self.subscriptions.remove(&call_id);
-        self.ordered
-            .push_back(Ordered::End(Box::new(Answer { frame, completion })));
+        self.ordered.push_back(Ordered::End {
+            answer: Box::new(Answer { frame, completion }),
+            stream: false,
+        });
         Ok(())
     }
 
@@ -1366,6 +1489,7 @@ fn advertised_ms(duration: Duration) -> u64 {
 /// Builds the Result or Error frame for a finished call, and says what the client gets.
 fn result_frame(
     call_id: u32,
+    end: Kind,
     finished: Finished,
     correlation_id: String,
     max_payload: u32,
@@ -1376,7 +1500,7 @@ fn result_frame(
         .map_or(Delivery::Delivered, delivery_for);
     let error = match finished.result.map(|value| serde_json::to_vec(&value)) {
         Ok(Ok(payload)) if payload.len() <= max_payload as usize => {
-            return (Frame::new(Kind::Result, call_id, payload), delivery);
+            return (Frame::new(end, call_id, payload), delivery);
         }
         Ok(Ok(_)) => {
             delivery = Delivery::FrameTooLarge;

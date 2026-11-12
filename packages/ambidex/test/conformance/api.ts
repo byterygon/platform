@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:f65976186e6b5c7f0a6a93c2db1c1011a7bbc6e1da78c57d30bf72852e145af7";
+export const SCHEMA_HASH = "sha256:134e4d6197ac77d13e6d3c6c0056f1388e566044d6e3899000647e937e56e8d6";
 
 // ---- Types
 
@@ -19,6 +19,20 @@ export const SCHEMA_HASH = "sha256:f65976186e6b5c7f0a6a93c2db1c1011a7bbc6e1da78c
  * approval request.
  */
 export type ApprovalRequiredDetails = { approval_id: string, };
+
+/**
+ * Input of `FixtureApi::bytes`.
+ */
+export type BytesInput = { 
+/**
+ * Chunks sent: chunk `n` is `size` bytes, each `n` modulo 256.
+ */
+chunks: number, size: number, then?: CounterEnd, };
+
+/**
+ * Final result of `FixtureApi::bytes`.
+ */
+export type BytesSummary = { chunks: number, bytes: number, };
 
 /**
  * Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on
@@ -114,6 +128,7 @@ export interface Procedures {
   readonly "fixture.approval": ProcedureDef<"mutation", JsonValue, null, never>;
   readonly "fixture.big": ProcedureDef<"query", number, string, never>;
   readonly "fixture.burst": ProcedureDef<"subscription", JsonValue, number, never>;
+  readonly "fixture.bytes": ProcedureDef<"stream", BytesInput, BytesSummary, FixtureError>;
   readonly "fixture.capped": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.counter": ProcedureDef<"subscription", CounterInput, number, FixtureError>;
   readonly "fixture.echo": ProcedureDef<"query", JsonValue, JsonValue, never>;
@@ -125,6 +140,7 @@ export interface Procedures {
   readonly "fixture.protected": ProcedureDef<"mutation", FailInput, null, never>;
   readonly "fixture.rows": ProcedureDef<"stream", JsonValue, number, never>;
   readonly "fixture.secret": ProcedureDef<"subscription", JsonValue, number, never>;
+  readonly "fixture.secret_bytes": ProcedureDef<"stream", JsonValue, number, never>;
   readonly "fixture.sleep": ProcedureDef<"query", number, number, never>;
   readonly "fixture.stubborn": ProcedureDef<"query", JsonValue, string, never>;
   readonly "fixture.ticks": ProcedureDef<"subscription", JsonValue, number, never>;
@@ -140,6 +156,7 @@ export interface Api {
     readonly approval: Procedures["fixture.approval"];
     readonly big: Procedures["fixture.big"];
     readonly burst: Procedures["fixture.burst"];
+    readonly bytes: Procedures["fixture.bytes"];
     readonly capped: Procedures["fixture.capped"];
     readonly counter: Procedures["fixture.counter"];
     readonly echo: Procedures["fixture.echo"];
@@ -151,6 +168,7 @@ export interface Api {
     readonly protected: Procedures["fixture.protected"];
     readonly rows: Procedures["fixture.rows"];
     readonly secret: Procedures["fixture.secret"];
+    readonly secret_bytes: Procedures["fixture.secret_bytes"];
     readonly sleep: Procedures["fixture.sleep"];
     readonly stubborn: Procedures["fixture.stubborn"];
     readonly ticks: Procedures["fixture.ticks"];
@@ -193,6 +211,16 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: null,
       timeoutMaxMs: null,
+    },
+    bytes: {
+      name: "fixture.bytes",
+      kind: "stream",
+      perm: "fixture.call",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
     capped: {
       name: "fixture.capped",
@@ -303,6 +331,16 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: null,
       timeoutMaxMs: null,
+    },
+    secret_bytes: {
+      name: "fixture.secret_bytes",
+      kind: "stream",
+      perm: "fixture.admin",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
     sleep: {
       name: "fixture.sleep",

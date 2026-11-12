@@ -168,7 +168,20 @@ macro_rules! conformance_suite {
             call_kind_must_match_frame_kind,
             subscriptions_count_toward_concurrency_limit,
             full_event_buffer_ends_subscription,
-            streams_are_unimplemented_and_keep_connection,
+            stream_chunks_arrive_in_order_then_stream_end,
+            stream_sender_waits_for_credits,
+            stream_ends_with_server_error,
+            stream_completion_is_audited_like_a_call,
+            cancel_ends_stream_waiting_for_credit,
+            deadline_ends_stream_waiting_for_credit,
+            disconnect_cancels_streams,
+            oversize_chunk_ends_stream,
+            unauthorized_stream_is_denied_before_any_chunk,
+            unsubscribe_does_not_touch_a_stream,
+            credit_for_a_call_not_in_flight_is_ignored,
+            credit_on_call_zero_is_fatal,
+            malformed_credit_is_fatal,
+            credit_beyond_the_window_is_fatal,
         );
     };
     (@cases $harness:ty; $($case:ident),* $(,)?) => {
