@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0-conformance";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:134e4d6197ac77d13e6d3c6c0056f1388e566044d6e3899000647e937e56e8d6";
+export const SCHEMA_HASH = "sha256:a6496736a85ae0978de244e05ff8f0aa611daf3cbbabbbe1760137cfd2bc0310";
 
 // ---- Types
 
@@ -19,6 +19,29 @@ export const SCHEMA_HASH = "sha256:134e4d6197ac77d13e6d3c6c0056f1388e566044d6e38
  * approval request.
  */
 export type ApprovalRequiredDetails = { approval_id: string, };
+
+/**
+ * Input of `FixtureApi::arrow_rows`.
+ */
+export type ArrowRowsInput = { 
+/**
+ * Rows in the result: ids 0, 1, …, `rows - 1`.
+ */
+rows: number, 
+/**
+ * Rows per record batch the handler produces (at least 1).
+ */
+batch_rows: number, 
+/**
+ * Produce Arrow IPC chunks as a database driver would and forward them without decoding,
+ * pulling the source only when a credit is available. Each batch must then fit one frame.
+ */
+pre_encoded?: boolean, };
+
+/**
+ * Final result of `FixtureApi::arrow_rows`.
+ */
+export type ArrowRowsSummary = { rows: number, };
 
 /**
  * Input of `FixtureApi::bytes`.
@@ -126,6 +149,7 @@ export interface ProcedureDef<
 /** Every procedure by full name. */
 export interface Procedures {
   readonly "fixture.approval": ProcedureDef<"mutation", JsonValue, null, never>;
+  readonly "fixture.arrow_rows": ProcedureDef<"stream", ArrowRowsInput, ArrowRowsSummary, never>;
   readonly "fixture.big": ProcedureDef<"query", number, string, never>;
   readonly "fixture.burst": ProcedureDef<"subscription", JsonValue, number, never>;
   readonly "fixture.bytes": ProcedureDef<"stream", BytesInput, BytesSummary, FixtureError>;
@@ -154,6 +178,7 @@ export interface Procedures {
 export interface Api {
   readonly fixture: {
     readonly approval: Procedures["fixture.approval"];
+    readonly arrow_rows: Procedures["fixture.arrow_rows"];
     readonly big: Procedures["fixture.big"];
     readonly burst: Procedures["fixture.burst"];
     readonly bytes: Procedures["fixture.bytes"];
@@ -187,6 +212,16 @@ export const procedures: Api = {
       kind: "mutation",
       perm: "fixture.approve",
       risk: "Write",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    arrow_rows: {
+      name: "fixture.arrow_rows",
+      kind: "stream",
+      perm: "fixture.call",
+      risk: "Read",
       agent: "hidden",
       deprecated: false,
       timeoutDefaultMs: 30000,

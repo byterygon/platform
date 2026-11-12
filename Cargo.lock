@@ -35,7 +35,12 @@ dependencies = [
 name = "ambidex"
 version = "0.0.0"
 dependencies = [
+ "ambidex",
  "ambidex-macros",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-ipc",
+ "arrow-schema",
  "getrandom 0.4.3",
  "proptest",
  "schemars 1.2.3",
@@ -75,6 +80,10 @@ dependencies = [
  "ambidex-axum",
  "ambidex-conformance",
  "ambidex-tauri",
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-ipc",
+ "arrow-schema",
  "axum",
  "futures-util",
  "rcgen",

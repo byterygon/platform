@@ -182,6 +182,28 @@ impl Chunks {
         })
     }
 
+    /// Waits until a credit is available, without spending it, so a handler can pull its source
+    /// only when the next chunk can go out. Fails once the stream is over, like [`Chunks::send`].
+    /// With one sender, the next `send` then does not wait.
+    pub async fn ready(&self) -> Result<(), StreamEnded> {
+        let inner = &*self.inner;
+        tokio::select! {
+            biased;
+            () = inner.scope.cancelled() => {}
+            // Dropping the permit gives the credit back.
+            _ = inner.credits.available.acquire() => {}
+        }
+        match inner.scope.check() {
+            Some(code) => Err(StreamEnded { code }),
+            None => Ok(()),
+        }
+    }
+
+    /// The largest chunk the connection can carry (its frame payload limit).
+    pub fn max_chunk_bytes(&self) -> usize {
+        self.inner.max_frame_bytes as usize
+    }
+
     /// Whether the stream is over (its token fired); later chunks are refused.
     pub fn is_closed(&self) -> bool {
         self.inner.scope.is_cancelled()
@@ -190,6 +212,12 @@ impl Chunks {
     /// Resolves once the stream is over.
     pub async fn closed(&self) {
         self.inner.scope.cancelled().await
+    }
+
+    /// Ends the stream with `code` (the first reason wins) and reports why it is over. For a
+    /// layer on top of the sink that cannot go on, e.g. an encoder that failed.
+    pub fn end(&self, code: Code, message: &'static str) -> StreamEnded {
+        self.fail(code, message)
     }
 
     /// Ends the stream with `code` (the first reason wins) and reports why it is over.
@@ -231,7 +259,8 @@ impl fmt::Debug for Chunks {
 /// [`StreamEnded`] into `RpcError<E>`; a handler with another error type maps it (any value will
 /// do, it is never sent).
 ///
-/// Chunks are opaque bytes here. Arrow IPC encoding is layered on top of this sink.
+/// Chunks are opaque bytes here. With the `arrow` feature, `ambidex::arrow::ArrowSink` layers
+/// Arrow IPC on top of this sink.
 #[derive(Clone)]
 pub struct BinarySink {
     chunks: Chunks,
@@ -245,6 +274,23 @@ impl BinarySink {
     /// Sends one chunk as one `Chunk` frame, waiting for a credit first.
     pub async fn send(&self, chunk: impl Into<Vec<u8>>) -> Result<(), StreamEnded> {
         self.chunks.send(chunk.into()).await
+    }
+
+    /// Waits until the client has room for a chunk, without sending one: a handler that pulls
+    /// from a source (a database driver's stream) calls it before each pull, so it never holds
+    /// a chunk it cannot send yet. Fails once the stream is over.
+    pub async fn ready(&self) -> Result<(), StreamEnded> {
+        self.chunks.ready().await
+    }
+
+    /// The largest chunk the connection can carry.
+    pub fn max_chunk_bytes(&self) -> usize {
+        self.chunks.max_chunk_bytes()
+    }
+
+    /// The untyped sink underneath, for a layer built on this one.
+    pub fn chunks(&self) -> &Chunks {
+        &self.chunks
     }
 
     /// Whether the stream is over; later chunks are refused.
@@ -338,6 +384,21 @@ mod tests {
         assert_eq!((frame.kind, frame.call_id), (Kind::Chunk, 7));
         assert!(frame.flags.is_binary());
         assert_eq!(frame.payload, b"c");
+    }
+
+    #[tokio::test]
+    async fn ready_waits_for_a_credit_without_spending_it() {
+        let (chunks, credits, mut rx) = chunks(1, 8);
+        chunks.ready().await.unwrap();
+        chunks.send(b"a".to_vec()).await.unwrap();
+        let ready = chunks.ready();
+        tokio::pin!(ready);
+        assert!(futures_now(&mut ready).await.is_none());
+        assert!(credits.grant(1));
+        ready.await.unwrap();
+        // The credit is still there for the send.
+        chunks.send(b"b".to_vec()).await.unwrap();
+        assert!(rx.try_recv().is_ok() && rx.try_recv().is_ok());
     }
 
     #[tokio::test]

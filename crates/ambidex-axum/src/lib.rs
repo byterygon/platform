@@ -205,6 +205,10 @@ impl<S: WebSessions, D: Dispatch> WsTransport<S, D> {
                     Err(_) => continue,
                 },
             };
+            // Every write is a whole frame, so Nagle's algorithm only adds delay: with it, a
+            // stream's chunk can wait for the ACK of the frame before it (tens of milliseconds
+            // with delayed ACKs) on every credit round trip.
+            let _ = tcp.set_nodelay(true);
             let acceptor = acceptor.clone();
             let app = app.clone();
             tokio::spawn(async move {

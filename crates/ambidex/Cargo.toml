@@ -15,9 +15,15 @@ workspace = true
 # `ServerConfig::writer_gate`, which conformance tests use to hold a connection's writer. Never
 # enabled by products.
 test-hooks = []
+# `ambidex::arrow`: Arrow IPC on top of stream sinks (spec §6). Off by default, so an API that
+# streams no Arrow data does not build arrow.
+arrow = ["dep:arrow-array", "dep:arrow-ipc", "dep:arrow-schema"]
 
 [dependencies]
 ambidex-macros = { path = "../ambidex-macros" }
+arrow-array = { version = "60.1.0", default-features = false, optional = true }
+arrow-ipc = { version = "60.1.0", default-features = false, optional = true }
+arrow-schema = { version = "60.1.0", default-features = false, optional = true }
 getrandom = "0.4.3"
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
 security-types = { path = "../security-types", features = ["tokio"] }
@@ -29,5 +35,8 @@ tokio-util = { version = "0.7.20", default-features = false }
 ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
 
 [dev-dependencies]
+# The crate's own tests cover the optional Arrow sink.
+ambidex = { path = ".", features = ["arrow"] }
+arrow-buffer = { version = "60.1.0", default-features = false }
 proptest = "1.12.0"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "test-util"] }

@@ -20,6 +20,9 @@ use ambidex::security_types::{
     AuditDecision, AuditEntry, AuditEntryKind, AuditFailureEffect, Delivery, Outcome, Reason, Risk,
 };
 use ambidex::{Code, Goaway, input_digest};
+use arrow_array::RecordBatch;
+use arrow_buffer::Buffer;
+use arrow_ipc::reader::StreamDecoder;
 use serde_json::{Value, json};
 
 use crate::client::{
@@ -28,7 +31,8 @@ use crate::client::{
 use crate::fixture::{
     APPROVAL_ID, AUDIT_WRITE_TIMEOUT, CANCEL_GRACE, CAPPED_TIMEOUT_MAX, Event,
     MAX_CONCURRENT_CALLS, MAX_FRAME_BYTES, SCHEMA_HASH, SERVER_VERSION, STREAM_MAX_CREDITS,
-    SUBSCRIPTION_BUFFER_EVENTS, TICKS_CAPPED_TIMEOUT_MAX, completed_with,
+    SUBSCRIPTION_BUFFER_EVENTS, TICKS_CAPPED_TIMEOUT_MAX, arrow_batch, arrow_schema,
+    completed_with,
 };
 use crate::harness::Harness;
 
@@ -2191,6 +2195,166 @@ pub async fn credit_for_a_call_not_in_flight_is_ignored<H: Harness>(h: &H) {
     expect_chunks(&mut client, 100, 0, 1, 1).await;
     client.expect_stream_end(100).await;
     client.credit(100, u64::MAX).await;
+    client.expect_alive(0).await;
+}
+
+// ---- Arrow streams (§6, §12) ----------------------------------------------------------------
+
+fn arrow_rows(rows: u32, batch_rows: u32, pre_encoded: bool) -> Value {
+    json!({ "rows": rows, "batch_rows": batch_rows, "pre_encoded": pre_encoded })
+}
+
+/// What a client rebuilds from an Arrow stream's chunks.
+struct ArrowRead {
+    decoder: StreamDecoder,
+    chunks: usize,
+    /// Rows decoded and checked so far.
+    rows: u32,
+}
+
+impl ArrowRead {
+    fn new() -> ArrowRead {
+        ArrowRead {
+            decoder: StreamDecoder::new(),
+            chunks: 0,
+            rows: 0,
+        }
+    }
+
+    /// Feeds one chunk, which must hold whole IPC messages, and checks every batch in it
+    /// against the rows the fixture generates: values, nulls and order.
+    fn chunk(&mut self, bytes: Vec<u8>) {
+        self.chunks += 1;
+        let mut buffer = Buffer::from(bytes);
+        while !buffer.is_empty() {
+            let decoded: Option<RecordBatch> =
+                self.decoder.decode(&mut buffer).expect("Arrow IPC chunk");
+            if let Some(batch) = decoded {
+                let rows = u32::try_from(batch.num_rows()).expect("fits");
+                assert_eq!(
+                    batch,
+                    arrow_batch(self.rows, rows),
+                    "rows from {}",
+                    self.rows
+                );
+                self.rows += rows;
+            }
+        }
+    }
+
+    /// Reads stream `call_id` to its `StreamEnd`, granting a new window of credits each time
+    /// one is used up, as a consuming client does.
+    async fn read_to_end(&mut self, client: &mut Client, call_id: u32) -> Value {
+        loop {
+            let frame = client.recv().await.expect("stream frame, got close");
+            assert_eq!(frame.call_id, call_id, "{frame:?}");
+            match frame.kind {
+                Kind::Chunk => {
+                    assert!(frame.flags.is_binary());
+                    assert!(frame.payload.len() <= MAX_FRAME_BYTES as usize);
+                    self.chunk(frame.payload);
+                    if self.chunks.is_multiple_of(INITIAL_CREDITS as usize) {
+                        client.credit(call_id, u64::from(INITIAL_CREDITS)).await;
+                    }
+                }
+                Kind::StreamEnd => {
+                    // The source's end-of-stream marker arrived, and the schema with it.
+                    self.decoder.finish().expect("complete IPC stream");
+                    assert_eq!(self.decoder.schema(), Some(arrow_schema()));
+                    return serde_json::from_slice(&frame.payload).expect("StreamEnd payload");
+                }
+                _ => panic!("unexpected frame {frame:?}"),
+            }
+        }
+    }
+}
+
+pub async fn arrow_stream_reassembles_schema_nulls_and_rows<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    // Batches of 128 rows do not fit the fixture's small frames, so the sink splits them.
+    client
+        .call(1, "fixture.arrow_rows", arrow_rows(1000, 128, false))
+        .await;
+    let mut read = ArrowRead::new();
+    assert_eq!(
+        read.read_to_end(&mut client, 1).await,
+        json!({ "rows": 1000 })
+    );
+    assert_eq!(read.rows, 1000);
+    assert!(read.chunks > 1000 / 128 + 2, "{} chunks", read.chunks);
+    // An empty result still carries its schema.
+    client
+        .call(2, "fixture.arrow_rows", arrow_rows(0, 128, false))
+        .await;
+    let mut empty = ArrowRead::new();
+    assert_eq!(
+        empty.read_to_end(&mut client, 2).await,
+        json!({ "rows": 0 })
+    );
+    assert_eq!((empty.rows, empty.chunks), (0, 2));
+    client.expect_alive(0).await;
+}
+
+pub async fn arrow_stream_of_one_million_rows_arrives_under_backpressure<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    const ROWS: u32 = 1_000_000;
+    client
+        .call_with_timeout(
+            1,
+            "fixture.arrow_rows",
+            arrow_rows(ROWS, 8192, false),
+            240_000,
+        )
+        .await;
+    let mut read = ArrowRead::new();
+    assert_eq!(
+        read.read_to_end(&mut client, 1).await,
+        json!({ "rows": ROWS })
+    );
+    assert_eq!(read.rows, ROWS);
+    client.expect_alive(0).await;
+}
+
+pub async fn pre_encoded_arrow_chunks_are_pulled_only_with_credit<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    client
+        .call(1, "fixture.arrow_rows", arrow_rows(500, 40, true))
+        .await;
+    // The initial window: the schema and three batches. The handler pulled exactly those from
+    // its source, and waits for a credit before it pulls the next.
+    let mut read = ArrowRead::new();
+    for _ in 0..INITIAL_CREDITS {
+        read.chunk(client.expect_chunk(1).await);
+    }
+    client.expect_alive(1001).await;
+    assert_eq!(probe.pulled(), INITIAL_CREDITS as usize);
+    assert_eq!(read.rows, 3 * 40);
+    client.credit(1, u64::from(INITIAL_CREDITS)).await;
+    assert_eq!(
+        read.read_to_end(&mut client, 1).await,
+        json!({ "rows": 500 })
+    );
+    assert_eq!(read.rows, 500);
+    // Schema, 13 batches, end of stream: forwarded one to one.
+    assert_eq!(read.chunks, 15);
+    assert_eq!(probe.chunks_sent(), 15);
+    client.expect_alive(1002).await;
+}
+
+pub async fn cancel_ends_an_arrow_stream<H: Harness>(h: &H) {
+    let mut client = ready(h).await;
+    let probe = &h.fixture().probe;
+    client
+        .call(1, "fixture.arrow_rows", arrow_rows(100_000, 64, false))
+        .await;
+    probe.expect(Event::Started("arrow_rows")).await;
+    for _ in 0..INITIAL_CREDITS {
+        client.expect_chunk(1).await;
+    }
+    client.cancel(1).await;
+    client.expect_code(1, Code::Cancelled).await;
+    probe.expect(Event::Cancelled("arrow_rows")).await;
     client.expect_alive(0).await;
 }
 

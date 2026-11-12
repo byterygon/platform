@@ -8,15 +8,17 @@
 //! sink failures in its [`AuditReports`]. Deadlines are measured on the fixture's
 //! [`ManualClock`], which cases move (see [`crate::clock`]).
 //!
-//! Streams: `bytes` sends synthetic binary chunks under credit flow control. Not in the fixture
-//! yet: the synthetic 1M-row Arrow stream (`rows`), which waits for the Arrow sink and fails with
-//! `Unimplemented`; see the crate docs.
+//! Streams: `bytes` sends synthetic binary chunks under credit flow control, and `arrow_rows` a
+//! synthetic Arrow IPC stream of any length (spec §12), encoded by the sink or forwarded
+//! pre-encoded as a driver would produce it. `rows` still fails with `Unimplemented`: the
+//! TypeScript runtime's tests pin that until it supports streams.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
+use ambidex::arrow::ArrowSink;
 use ambidex::codegen::{self, ApiInfo};
 #[cfg(feature = "writer-gate")]
 use ambidex::engine::WriterGate;
@@ -28,6 +30,9 @@ use ambidex::{
     Approvals, AuditError, AuditPolicy, AuditReporter, AuditSink, BinarySink, Code, Ctx,
     DomainError, EventSink, Router, RpcError, ServerConfig, engine::BoxFuture, rpc,
 };
+use arrow_array::{BinaryArray, Float64Array, Int32Array, Int64Array, RecordBatch, StringArray};
+use arrow_ipc::writer::StreamWriter;
+use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -127,6 +132,7 @@ pub struct Probe {
     events: Mutex<mpsc::UnboundedReceiver<Event>>,
     runs: AtomicUsize,
     chunks_sent: AtomicUsize,
+    pulled: AtomicUsize,
 }
 
 impl Probe {
@@ -137,6 +143,7 @@ impl Probe {
             events: Mutex::new(events),
             runs: AtomicUsize::new(0),
             chunks_sent: AtomicUsize::new(0),
+            pulled: AtomicUsize::new(0),
         }
     }
 
@@ -150,6 +157,11 @@ impl Probe {
     /// Chunks the `bytes` stream handlers were allowed to send so far (their `send` returned).
     pub fn chunks_sent(&self) -> usize {
         self.chunks_sent.load(Ordering::SeqCst)
+    }
+
+    /// Chunks the pre-encoded `arrow_rows` handlers pulled from their source so far.
+    pub fn pulled(&self) -> usize {
+        self.pulled.load(Ordering::SeqCst)
     }
 
     /// Handlers that started so far.
@@ -475,6 +487,68 @@ pub struct BytesSummary {
     pub bytes: u32,
 }
 
+/// Input of `FixtureApi::arrow_rows`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ArrowRowsInput {
+    /// Rows in the result: ids 0, 1, …, `rows - 1`.
+    pub rows: u32,
+    /// Rows per record batch the handler produces (at least 1).
+    pub batch_rows: u32,
+    /// Produce Arrow IPC chunks as a database driver would and forward them without decoding,
+    /// pulling the source only when a credit is available. Each batch must then fit one frame.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub pre_encoded: bool,
+}
+
+/// Final result of `FixtureApi::arrow_rows`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+pub struct ArrowRowsSummary {
+    pub rows: u32,
+}
+
+/// Schema of the synthetic rows: mixed types, two nullable columns.
+pub fn arrow_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int64, false),
+        Field::new("n", DataType::Int32, true),
+        Field::new("f", DataType::Float64, false),
+        Field::new("s", DataType::Utf8, false),
+        Field::new("b", DataType::Binary, true),
+    ]))
+}
+
+/// Rows `from..from + rows` of the synthetic result. Row `id`: `n` is null when `id` is a
+/// multiple of 7, `b` when it is a multiple of 5; every value follows from the id, so a case
+/// can rebuild what it must have received.
+pub fn arrow_batch(from: u32, rows: u32) -> RecordBatch {
+    let ids = from..from + rows;
+    let id = Int64Array::from_iter_values(ids.clone().map(i64::from));
+    let n: Int32Array = ids
+        .clone()
+        .map(|i| (i % 7 != 0).then_some((i % 1000) as i32 - 500))
+        .collect();
+    let f = Float64Array::from_iter_values(ids.clone().map(|i| f64::from(i) * 0.5));
+    let s = StringArray::from_iter_values(ids.clone().map(|i| format!("row-{}", i % 1000)));
+    let b: BinaryArray = ids
+        .map(|i| (i % 5 != 0).then(|| (i as u16).to_le_bytes()))
+        .collect::<Vec<_>>()
+        .iter()
+        .map(|v| v.as_ref().map(|bytes| bytes.as_slice()))
+        .collect();
+    RecordBatch::try_new(
+        arrow_schema(),
+        vec![
+            Arc::new(id),
+            Arc::new(n),
+            Arc::new(f),
+            Arc::new(s),
+            Arc::new(b),
+        ],
+    )
+    .expect("columns match the schema")
+}
+
 /// Counts a handler future dropped before it finished.
 struct DropGuard {
     probe: Arc<Probe>,
@@ -502,6 +576,47 @@ impl FixtureApi {
             probe: Arc::clone(&self.probe),
             name,
             armed: true,
+        }
+    }
+
+    async fn send_arrow_rows(
+        &self,
+        input: &ArrowRowsInput,
+        mut sink: ArrowSink,
+    ) -> Result<(), RpcError> {
+        let step = input.batch_rows.max(1);
+        let batches = (0..input.rows)
+            .step_by(step as usize)
+            .map(|from| arrow_batch(from, step.min(input.rows - from)));
+        if !input.pre_encoded {
+            sink.start(&arrow_schema()).await?;
+            for batch in batches {
+                sink.send(&batch).await?;
+            }
+            return Ok(sink.finish().await?);
+        }
+        // A driver-like source: its own IPC stream, one chunk per message, pulled only when the
+        // client has room for the chunk.
+        let internal = |_| RpcError::new(Code::Internal, "fixture encoder failed");
+        let mut source = StreamWriter::try_new(Vec::new(), &arrow_schema()).map_err(internal)?;
+        let mut batches = batches.fuse();
+        let mut ended = false;
+        loop {
+            sink.ready().await?;
+            self.probe.pulled.fetch_add(1, Ordering::SeqCst);
+            // The schema message is already in the buffer for the first pull.
+            if source.get_ref().is_empty() {
+                match batches.next() {
+                    Some(batch) => source.write(&batch).map_err(internal)?,
+                    None if !ended => {
+                        ended = true;
+                        source.finish().map_err(internal)?;
+                    }
+                    None => return Ok(sink.finish().await?),
+                }
+            }
+            sink.send_ipc(std::mem::take(source.get_mut())).await?;
+            self.probe.chunks_sent.fetch_add(1, Ordering::SeqCst);
         }
     }
 
@@ -832,6 +947,24 @@ impl FixtureApi {
         .await;
         guard.armed = false;
         result
+    }
+
+    /// Synthetic Arrow row stream (spec §12): `rows` rows in batches of `batch_rows`, as an Arrow
+    /// IPC stream, then the row count.
+    #[rpc::stream(perm = "fixture.call", risk = Risk::Read)]
+    async fn arrow_rows(
+        &self,
+        _ctx: Ctx,
+        input: ArrowRowsInput,
+        sink: BinarySink,
+    ) -> Result<ArrowRowsSummary, RpcError> {
+        let mut guard = self.guard("arrow_rows");
+        let result = self.send_arrow_rows(&input, ArrowSink::new(sink)).await;
+        if result.is_err() {
+            self.probe.record(Event::Cancelled("arrow_rows"));
+        }
+        guard.armed = false;
+        result.map(|()| ArrowRowsSummary { rows: input.rows })
     }
 
     /// A stream the fixture authorizer denies (unknown permission).
