@@ -7,11 +7,14 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use plugin_host::grant::RestoreOutcome;
 use plugin_host::grant::address_policy;
+use plugin_host::grant::{
+    GRANT_CARRY_DIGEST_DOMAIN, GRANT_RESTORE_DIGEST_DOMAIN, GrantSwitchRecord, RestoreOutcome,
+    grant_switch_digest,
+};
 use plugin_host::install::{
-    AlertSink, Approval, AuditWarning, FALLBACK_AUDIT_FILE, HostHooks, InstallAlert, InstallError,
-    Installer, SwitchWarning,
+    AlertSink, Approval, AuditWarning, CARRY_GRANT_ACTION, FALLBACK_AUDIT_FILE, HostHooks,
+    InstallAlert, InstallError, Installer, RESTORE_GRANT_ACTION, SwitchWarning,
 };
 use plugin_host::package::{LimitField, LimitsError, verify_bytes};
 use plugin_host::package::{PackageError, PackagePolicy, PinnedKey, TrustStore, canonical_bytes};
@@ -24,7 +27,7 @@ use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use security_types::{
     AuditEntry, Authorizer, AuthzRequest, BoxFuture, Decision, Outcome, Principal, PrincipalKind,
-    Reason, SessionId, TenantId,
+    Reason, SessionId, TargetRef, TenantId,
 };
 use semver::Version;
 use sha2::{Digest as _, Sha256};
@@ -230,6 +233,8 @@ impl Authorizer for Deny {
 /// Holds a grant-create audit entry until released, while armed, so another operation can run
 /// between the target check of that create and its insert.
 struct GateCreate {
+    /// The action whose entry is held.
+    action: &'static str,
     log: MemoryAuditLog,
     armed: AtomicBool,
     entered: tokio::sync::Notify,
@@ -238,8 +243,7 @@ struct GateCreate {
 impl AuditSink for GateCreate {
     fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
         Box::pin(async move {
-            if entry.action.name == "plugin-host.grants.create" && self.armed.load(Ordering::SeqCst)
-            {
+            if entry.action.name == self.action && self.armed.load(Ordering::SeqCst) {
                 self.entered.notify_one();
                 self.release.notified().await;
             }
@@ -1348,8 +1352,10 @@ async fn directory_sync_failure_after_the_rename_still_returns_the_result() {
         clock: &SystemClock,
     };
     let store = grant_store();
+    let alerts = Alerts::default();
     let hooks = HostHooks {
         grants: Some(&store),
+        alerts: Some(&alerts),
         ..HostHooks::default()
     };
     let failing = HostHooks {
@@ -1366,6 +1372,14 @@ async fn directory_sync_failure_after_the_rename_still_returns_the_result() {
         .await
         .unwrap();
     assert_eq!(v2.warnings, vec![SwitchWarning::DirectorySyncFailed]);
+    // The warning is also observable by the host, even if the caller ignores the result.
+    assert_eq!(
+        *alerts.0.lock().unwrap(),
+        vec![InstallAlert::SwitchSyncFailed {
+            plugin_id: PLUGIN.into(),
+            correlation_id: "install".into(),
+        }]
+    );
     assert_eq!(active_digest(&root.0), hex(&v2.plugin.digest.0));
     let switch = v2.grants.unwrap();
     let [(old, new)] = switch.carried.as_slice() else {
@@ -1379,6 +1393,7 @@ async fn directory_sync_failure_after_the_rename_still_returns_the_result() {
         .await
         .unwrap();
     assert_eq!(rolled.warnings, vec![SwitchWarning::DirectorySyncFailed]);
+    assert_eq!(alerts.0.lock().unwrap().len(), 2);
     assert_eq!(active_digest(&root.0), hex(&v1.plugin.digest.0));
     assert_eq!(rolled.grants.unwrap().restored, vec![g1.id.clone()]);
     assert!(store.is_active(&g1.id) && !store.is_active(new));
@@ -1535,6 +1550,7 @@ async fn create_racing_a_rollback_does_not_take_a_target_twice() {
         clock: &SystemClock,
     };
     let gate = Arc::new(GateCreate {
+        action: "plugin-host.grants.create",
         log: MemoryAuditLog::new(),
         armed: AtomicBool::new(false),
         entered: tokio::sync::Notify::new(),
@@ -1560,24 +1576,29 @@ async fn create_racing_a_rollback_does_not_take_a_target_twice() {
     req.allow_cancel_connection = false;
     let approver = human();
     let create = store.create(&Allow, &approver, &v2.plugin, req, "create");
-    let rollback = async {
-        // The create has passed its target check and waits for the sink.
+    // The create has passed its target check and waits for the sink while holding the target.
+    // The rollback wants the same target for the restored grant, so it waits for the create's
+    // lock; the sink is released shortly after.
+    let orchestrate = async {
         gate.entered.notified().await;
-        let rolled = installer
-            .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
-            .await;
-        gate.armed.store(false, Ordering::SeqCst);
-        gate.release.notify_one();
+        let actor = human();
+        let rollback = installer.rollback_with(&Allow, &actor, PLUGIN, "rb", hooks);
+        let release = async {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            gate.armed.store(false, Ordering::SeqCst);
+            gate.release.notify_one();
+        };
+        let (rolled, ()) = tokio::join!(rollback, release);
         rolled
     };
-    let (created, rolled) = tokio::join!(create, rollback);
-    // The rollback took the free target first; the create then finds it taken.
-    assert_eq!(
-        rolled.unwrap().grants.unwrap().restored,
-        vec![g1.id.clone()]
-    );
-    assert_eq!(created.unwrap_err(), plugin_host::GrantError::TargetInUse);
-    assert!(store.is_active(&g1.id));
+    let (created, rolled) = tokio::join!(create, orchestrate);
+    // One of them got the target, and only one: the create finished first, so the restored
+    // grant finds the target taken and is reported as not restored.
+    let created = created.unwrap();
+    let switch = rolled.unwrap().grants.unwrap();
+    assert_eq!(switch.restored, vec![]);
+    assert_eq!(switch.not_restored, vec![g1.id.clone()]);
+    assert!(store.is_active(&created.id) && !store.is_active(&g1.id));
 }
 
 #[test]
@@ -1596,4 +1617,440 @@ fn entry_buffers_are_reserved_at_their_checked_size() {
     for (name, bytes) in package.files() {
         assert_eq!(bytes.capacity(), bytes.len(), "{name}");
     }
+}
+
+// ---- Question 42: audit of grant carry-over and restore ----
+
+fn entries_of(log: &MemoryAuditLog, action: &str) -> Vec<AuditEntry> {
+    log.records()
+        .into_iter()
+        .map(|r| r.entry)
+        .filter(|e| e.action.name == action)
+        .collect()
+}
+
+const FAR_FUTURE_MS: u64 = 4_102_444_800_000; // 2100-01-01
+
+/// A grant on `target` that expires in the year 2100, so the expiry is part of what is recorded.
+async fn expiring_grant(
+    store: &GrantStore,
+    plugin: &InstalledPlugin,
+    target: &str,
+    template: &str,
+) -> Arc<ConnectionGrant> {
+    let mut req = request(target, template);
+    req.expires_at_unix_ms = Some(FAR_FUTURE_MS);
+    store
+        .create(&Allow, &human(), plugin, req, "grant")
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn carry_over_writes_one_audit_entry_per_grant() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("carry-audit");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let main = expiring_grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    let replica = grant(&store, &v1.plugin, "pg2", "replica").await;
+    let v2 = install(&installer, &publisher.package("2.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let switch = v2.grants.unwrap();
+    assert_eq!(switch.carried.len(), 2);
+    assert!(switch.audit_failed.is_empty() && v2.warnings.is_empty());
+
+    let entries = entries_of(&log, CARRY_GRANT_ACTION);
+    assert_eq!(entries.len(), 2, "one entry per carried grant");
+    let mut digests = Vec::new();
+    for (old_id, new_id) in &switch.carried {
+        let (old, new) = (store.get(old_id).unwrap(), store.get(new_id).unwrap());
+        let entry = entries
+            .iter()
+            .find(|e| e.approval_id.as_deref() == Some(&format!("{old_id}>{new_id}")))
+            .unwrap_or_else(|| panic!("no entry for {old_id} -> {new_id}"));
+        // What the entry shows: who, on what, under which action.
+        assert_eq!(entry.action.perm.as_str(), "admin.plugins.install");
+        assert_eq!(entry.target, Some(TargetRef::connection(&new.target_id)));
+        assert_eq!(entry.tenant, new.tenant);
+        assert_eq!(entry.decision, security_types::AuditDecision::Allow);
+        assert_eq!(entry.outcome, Outcome::Success);
+        assert_eq!(entry.correlation_id, "install");
+        assert_eq!(
+            entry.principal_chain[0].id,
+            format!("plugin:{PLUGIN}#sha256:{}", v2.plugin.digest)
+        );
+        assert_eq!(entry.principal_chain[0].kind, PrincipalKind::Plugin);
+        assert_eq!(entry.principal_chain[1].id, human().id);
+        // What it commits to: versions, both grant ids, the original approver and the expiry.
+        let record = GrantSwitchRecord {
+            plugin_id: PLUGIN,
+            from_digest: v1.plugin.digest,
+            from_version: "1.0.0",
+            to_digest: v2.plugin.digest,
+            to_version: "2.0.0",
+            old: &old,
+            new: &new,
+        };
+        let expected = grant_switch_digest(GRANT_CARRY_DIGEST_DOMAIN, &record);
+        assert_eq!(entry.input_digest, expected);
+        assert_ne!(
+            grant_switch_digest(GRANT_RESTORE_DIGEST_DOMAIN, &record),
+            expected,
+            "the domains differ"
+        );
+        for changed in [
+            GrantSwitchRecord {
+                to_version: "2.0.1",
+                ..record
+            },
+            GrantSwitchRecord {
+                from_digest: v2.plugin.digest,
+                ..record
+            },
+            GrantSwitchRecord {
+                old: &new,
+                ..record
+            },
+        ] {
+            assert_ne!(
+                grant_switch_digest(GRANT_CARRY_DIGEST_DOMAIN, &changed),
+                expected
+            );
+        }
+        digests.push(entry.input_digest.0);
+    }
+    assert_ne!(digests[0], digests[1]);
+    // A carried grant keeps its approver and its expiry, which the digest commits to.
+    let carried_main = store
+        .get(
+            &switch
+                .carried
+                .iter()
+                .find(|(o, _)| *o == main.id)
+                .unwrap()
+                .1,
+        )
+        .unwrap();
+    assert_eq!(carried_main.expires_at_unix_ms, Some(FAR_FUTURE_MS));
+    assert_eq!(carried_main.approver, main.approver);
+    assert_ne!(main.id, replica.id);
+}
+
+#[tokio::test]
+async fn restore_writes_one_audit_entry_per_grant() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("restore-audit");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let main = expiring_grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    let replica = grant(&store, &v1.plugin, "pg2", "replica").await;
+    let v2 = install(&installer, &publisher.package("2.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    assert!(entries_of(&log, RESTORE_GRANT_ACTION).is_empty());
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+        .await
+        .unwrap();
+    assert_eq!(rolled.audit_warning, None);
+    assert!(rolled.restore_audit_warnings.is_empty());
+    let switch = rolled.grants.unwrap();
+    assert_eq!(switch.restored.len(), 2);
+
+    let entries = entries_of(&log, RESTORE_GRANT_ACTION);
+    assert_eq!(entries.len(), 2, "one entry per restored grant");
+    for grant in [&main, &replica] {
+        let entry = entries
+            .iter()
+            .find(|e| e.approval_id.as_deref() == Some(grant.id.as_str()))
+            .unwrap_or_else(|| panic!("no entry for {}", grant.id));
+        assert_eq!(entry.target, Some(TargetRef::connection(&grant.target_id)));
+        assert_eq!(entry.correlation_id, "rb");
+        assert_eq!(entry.outcome, Outcome::Success);
+        // The plugin shown is the version that is active again.
+        assert_eq!(
+            entry.principal_chain[0].id,
+            format!("plugin:{PLUGIN}#sha256:{}", v1.plugin.digest)
+        );
+        assert_eq!(
+            entry.input_digest,
+            grant_switch_digest(
+                GRANT_RESTORE_DIGEST_DOMAIN,
+                &GrantSwitchRecord {
+                    plugin_id: PLUGIN,
+                    from_digest: v2.plugin.digest,
+                    from_version: "2.0.0",
+                    to_digest: v1.plugin.digest,
+                    to_version: "1.0.0",
+                    old: grant,
+                    new: grant,
+                },
+            )
+        );
+    }
+    // The restored grants are the originals, with their approver and expiry.
+    assert_eq!(
+        store.get(&main.id).unwrap().expires_at_unix_ms,
+        Some(FAR_FUTURE_MS)
+    );
+    assert!(store.is_active(&main.id) && store.is_active(&replica.id));
+}
+
+#[tokio::test]
+async fn carry_over_fails_closed_when_its_audit_entry_cannot_be_written() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = FailAction(CARRY_GRANT_ACTION, MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let root = Root::new("carry-fail-closed");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let main = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    let v2 = install(&installer, &publisher.package("2.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    // The version switch itself, already audited, stands; the grant does not take effect.
+    assert_eq!(active_digest(&root.0), hex(&v2.plugin.digest.0));
+    let switch = v2.grants.unwrap();
+    assert_eq!(switch.carried, vec![]);
+    assert_eq!(
+        switch.audit_failed,
+        vec![(main.id.clone(), AuditError("primary sink down".into()))]
+    );
+    assert!(
+        v2.warnings
+            .contains(&SwitchWarning::GrantsNotCarriedAuditFailed)
+    );
+    assert!(!store.is_active(&main.id) && !store.is_revoked(&main.id));
+    // Fail closed means no fallback entry and no alert for a carry-over (that is for rollback).
+    assert!(entries_of(&log.1, CARRY_GRANT_ACTION).is_empty());
+    assert!(!root.0.join(FALLBACK_AUDIT_FILE).exists());
+    assert!(alerts.0.lock().unwrap().is_empty());
+    // Nothing is lost: the grant stays parked and a rollback restores it.
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+        .await
+        .unwrap();
+    assert_eq!(rolled.grants.unwrap().restored, vec![main.id.clone()]);
+    assert!(store.is_active(&main.id));
+}
+
+#[tokio::test]
+async fn restore_proceeds_with_fallback_audit_when_the_primary_sink_fails() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = FailAction(RESTORE_GRANT_ACTION, MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let root = Root::new("restore-fallback");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let main = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    install(&installer, &publisher.package("2.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+        .await
+        .unwrap();
+    // The rollback and the restore go ahead.
+    assert_eq!(active_digest(&root.0), hex(&v1.plugin.digest.0));
+    assert_eq!(rolled.grants.unwrap().restored, vec![main.id.clone()]);
+    assert!(store.is_active(&main.id));
+    // The rollback's own entry reached the primary sink; the restore's went to the fallback.
+    assert_eq!(rolled.audit_warning, None);
+    let fallback = root.0.join(FALLBACK_AUDIT_FILE);
+    let warning = AuditWarning::PrimaryFailed {
+        primary: AuditError("primary sink down".into()),
+        fallback: fallback.clone(),
+    };
+    assert_eq!(rolled.restore_audit_warnings, vec![warning.clone()]);
+    assert_eq!(
+        *alerts.0.lock().unwrap(),
+        vec![InstallAlert::RollbackAuditFallback {
+            plugin_id: PLUGIN.into(),
+            correlation_id: "rb".into(),
+            warning,
+        }]
+    );
+    let written: Vec<AuditEntry> = std::fs::read_to_string(&fallback)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(written.len(), 1);
+    assert_eq!(written[0].action.name, RESTORE_GRANT_ACTION);
+    assert_eq!(written[0].approval_id.as_deref(), Some(main.id.as_str()));
+    assert_eq!(written[0].target, Some(TargetRef::connection("pg1")));
+    assert!(entries_of(&log.1, RESTORE_GRANT_ACTION).is_empty());
+    assert_eq!(entries_of(&log.1, ROLLBACK).len(), 1);
+}
+
+#[tokio::test]
+async fn restore_proceeds_when_both_audit_sinks_fail() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = FailAction(RESTORE_GRANT_ACTION, MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let root = Root::new("restore-both");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let main = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    install(&installer, &publisher.package("2.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    // A directory where the fallback file should be makes the fallback write fail too.
+    std::fs::create_dir(root.0.join(FALLBACK_AUDIT_FILE)).unwrap();
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+        .await
+        .unwrap();
+    assert_eq!(rolled.grants.unwrap().restored, vec![main.id.clone()]);
+    assert!(store.is_active(&main.id));
+    let [warning] = rolled.restore_audit_warnings.as_slice() else {
+        panic!("{:?}", rolled.restore_audit_warnings);
+    };
+    assert!(
+        matches!(warning, AuditWarning::BothFailed { primary, .. }
+            if *primary == AuditError("primary sink down".into())),
+        "{warning:?}"
+    );
+    assert_eq!(alerts.0.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn revoking_while_the_entry_is_written_keeps_the_grant_inactive() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let gate = Arc::new(GateCreate {
+        action: CARRY_GRANT_ACTION,
+        log: MemoryAuditLog::new(),
+        armed: AtomicBool::new(false),
+        entered: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+    });
+    let root = Root::new("revoke-pending");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &*gate,
+        clock: &SystemClock,
+    };
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        ..HostHooks::default()
+    };
+    let v1 = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    let main = grant(&store, &v1.plugin, "pg1", "db-transport").await;
+    gate.armed.store(true, Ordering::SeqCst);
+    let archive = publisher.package("2.0.0", FULL, 0);
+    let upgrade = install(&installer, &archive, hooks);
+    let revoke = async {
+        // The carry-over's entry is being written; the administrator revokes the original grant.
+        gate.entered.notified().await;
+        store
+            .revoke(&Allow, &human(), &main.id, "revoke")
+            .await
+            .unwrap();
+        gate.armed.store(false, Ordering::SeqCst);
+        gate.release.notify_one();
+    };
+    let (activated, ()) = tokio::join!(upgrade, revoke);
+    let switch = activated.unwrap().grants.unwrap();
+    // The revocation wins: the carried grant never becomes active.
+    assert_eq!(switch.carried, vec![]);
+    assert_eq!(switch.dropped, vec![main.id.clone()]);
+    assert!(store.is_revoked(&main.id));
+    let mut req = request("pg1", "db-transport");
+    req.secret = None;
+    let v2_plugin = InstalledPlugin::from_manifest(
+        &plugin_host::Manifest::from_toml(&format!("{HEADER}version = \"2.0.0\"\n{FULL}")).unwrap(),
+        v1.plugin.digest,
+    );
+    // The target is free again.
+    store
+        .create(&Allow, &human(), &v2_plugin, req, "again")
+        .await
+        .unwrap();
 }

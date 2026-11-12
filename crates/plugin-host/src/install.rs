@@ -30,7 +30,26 @@
 //!
 //! A directory sync that fails after the state file was renamed does not undo the switch: the
 //! new version is active, so the grants follow it and the result carries
-//! [`SwitchWarning::DirectorySyncFailed`] instead of an error.
+//! [`SwitchWarning::DirectorySyncFailed`] instead of an error, and an
+//! [`InstallAlert::SwitchSyncFailed`] is raised on [`HostHooks::alerts`], so the failure is
+//! visible even to a caller that ignores the warnings.
+//!
+//! # Audit of grant carry-over and restore (Plugin Host spec, question 42)
+//!
+//! Every grant carried over by an upgrade is recorded with the action [`CARRY_GRANT_ACTION`], and
+//! every grant restored by a rollback with [`RESTORE_GRANT_ACTION`], one entry per grant. The
+//! entry shows the action, the connection target, the plugin with its new digest
+//! (`plugin:<id>#sha256:<digest>`, as in broker entries) acting for the person who switched
+//! versions, and in `approval_id` the grant relied on (`<old id>><new id>` for a carry-over, the
+//! grant id for a restore). The source and destination version, both grant ids, the connection,
+//! the original approver and the expiry are committed in `input_digest`
+//! ([`grant_switch_digest`]), as for grant creation.
+//!
+//! The entry and the grant take effect together: the grant becomes active only after its entry
+//! was written, under the lock of its target (see [`GrantStore`]). A carry-over follows the rule
+//! of activation: if its entry cannot be written, the grant is not carried
+//! ([`GrantSwitch::audit_failed`]; it stays parked, so a rollback restores it), while the
+//! version switch itself, already audited, stands. A restore follows the rule of rollback below.
 //!
 //! # Audit failures (Plugin Host spec, question 41)
 //!
@@ -39,7 +58,10 @@
 //! known-good version: when the primary audit sink fails, the same entry is appended to the local
 //! fallback file [`FALLBACK_AUDIT_FILE`] under the install root, an [`InstallAlert`] is raised on
 //! [`HostHooks::alerts`], and the rollback returns an [`AuditWarning`]. If the fallback write
-//! fails too, the rollback still proceeds and the warning says both sinks failed.
+//! fails too, the rollback still proceeds and the warning says both sinks failed. The same holds
+//! for the entry of each restored grant ([`Rollback::restore_audit_warnings`]): a rollback
+//! restores the grants of the known-good version even when the audit sink is down. A rollback
+//! that is refused is not performed, so its entry is fail-closed.
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -55,7 +77,11 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest as _;
 
 use crate::audit::{AuditError, AuditSink, Clock};
-use crate::grant::{DEFAULT_AUDIT_TIMEOUT, GrantStore, GrantSwitch, InstalledPlugin};
+use crate::grant::{
+    ActivateOutcome, Candidate, DEFAULT_AUDIT_TIMEOUT, GRANT_CARRY_DIGEST_DOMAIN,
+    GRANT_RESTORE_DIGEST_DOMAIN, GrantStore, GrantSwitch, GrantSwitchRecord, InstalledPlugin,
+    grant_switch_digest,
+};
 use crate::manifest::{Capabilities, Manifest, PermissionDelta, PermissionDiff};
 use crate::package::{
     PackageError, PackageLimits, PackagePolicy, TrustStore, VerifiedPackage, verify_bytes,
@@ -80,6 +106,12 @@ pub enum InstallAlert {
         plugin_id: String,
         correlation_id: String,
         warning: AuditWarning,
+    },
+    /// The state file was renamed but syncing the install directory failed (see
+    /// [`SwitchWarning::DirectorySyncFailed`]).
+    SwitchSyncFailed {
+        plugin_id: String,
+        correlation_id: String,
     },
 }
 
@@ -121,6 +153,9 @@ pub enum SwitchWarning {
     /// The state file was renamed (the new version is active) but syncing the directory failed,
     /// so the switch may not survive a power loss.
     DirectorySyncFailed,
+    /// Some grants were not carried over because their audit entry could not be written (see
+    /// [`GrantSwitch::audit_failed`]).
+    GrantsNotCarriedAuditFailed,
 }
 
 /// What the approver approves.
@@ -165,6 +200,9 @@ pub struct Rollback {
     pub grants: Option<GrantSwitch>,
     /// Set when an audit entry of this rollback missed the primary audit sink.
     pub audit_warning: Option<AuditWarning>,
+    /// One per restored grant whose audit entry missed the primary sink (question 41 applies to
+    /// them too: the grant was restored regardless).
+    pub restore_audit_warnings: Vec<AuditWarning>,
     pub warnings: Vec<SwitchWarning>,
 }
 
@@ -175,6 +213,10 @@ const APPROVE: &str = "plugin-host.packages.approve";
 const REJECT: &str = "plugin-host.packages.reject";
 const ACTIVATE: &str = "plugin-host.packages.activate";
 const ROLLBACK: &str = "plugin-host.packages.rollback";
+/// Action of the entry written for each grant an upgrade carries over (spec question 42).
+pub const CARRY_GRANT_ACTION: &str = "plugin-host.packages.carry-grant";
+/// Action of the entry written for each grant a rollback restores (spec question 42).
+pub const RESTORE_GRANT_ACTION: &str = "plugin-host.packages.restore-grant";
 const PERMISSION: &str = "admin.plugins.install";
 
 #[derive(Debug)]
@@ -306,6 +348,16 @@ async fn audit(
         delivery: None,
         parent_correlation_id: None,
     };
+    emit(installer, entry, target, on_failure).await
+}
+
+/// Writes one entry: the only place the installer talks to the audit sink or the fallback file.
+async fn emit(
+    installer: &Installer<'_>,
+    entry: AuditEntry,
+    plugin_id: &str,
+    on_failure: OnAuditFailure<'_>,
+) -> Result<Option<AuditWarning>, InstallError> {
     let deadline = tokio::time::Instant::now() + DEFAULT_AUDIT_TIMEOUT;
     let alerts = match on_failure {
         OnAuditFailure::FailClosed => {
@@ -325,8 +377,8 @@ async fn audit(
     };
     if let Some(alerts) = alerts {
         alerts.alert(&InstallAlert::RollbackAuditFallback {
-            plugin_id: target.to_owned(),
-            correlation_id: correlation.to_owned(),
+            plugin_id: plugin_id.to_owned(),
+            correlation_id: entry.correlation_id.clone(),
             warning: warning.clone(),
         });
     }
@@ -364,6 +416,8 @@ fn installed_manifest(base: &Path, digest_hex: &str) -> Result<Manifest, Install
 #[derive(Default)]
 struct Basis {
     from_digest: Option<[u8; 32]>,
+    /// The manifest `version` of the active version, when it could be read.
+    from_version: Option<String>,
     capabilities: Option<Capabilities>,
     view: Option<UpgradeView>,
     /// A version is active but its manifest could not be read.
@@ -381,6 +435,7 @@ fn upgrade_from(base: &Path, state: &InstallState, new: &Manifest) -> Result<Bas
     Ok(match installed_manifest(base, active) {
         Ok(old) => Basis {
             from_digest: Some(from_digest),
+            from_version: Some(old.version.clone()),
             view: Some(UpgradeView {
                 from_digest,
                 permissions: PermissionDiff::between(&old, new),
@@ -394,6 +449,152 @@ fn upgrade_from(base: &Path, state: &InstallState, new: &Manifest) -> Result<Bas
             ..Basis::default()
         },
     })
+}
+
+/// Writes the audit entry of one grant carried over or restored, and switches the grants.
+struct SwitchAudit<'a> {
+    installer: &'a Installer<'a>,
+    /// Whoever switched the versions.
+    actor: &'a Principal,
+    correlation: &'a str,
+    plugin_id: &'a str,
+    from_digest: Digest,
+    from_version: &'a str,
+    to_digest: Digest,
+    to_version: &'a str,
+}
+
+impl SwitchAudit<'_> {
+    /// The entry for `candidate`: see the module docs for what it shows and what it commits to.
+    async fn record(
+        &self,
+        action: &'static str,
+        domain: &'static str,
+        candidate: &Candidate,
+        on_failure: OnAuditFailure<'_>,
+    ) -> Result<Option<AuditWarning>, InstallError> {
+        let (old, new) = (&candidate.source, &candidate.grant);
+        let mut chain = vec![AuditPrincipal {
+            kind: PrincipalKind::Plugin,
+            id: format!("plugin:{}#sha256:{}", self.plugin_id, self.to_digest),
+            tenant: self.actor.tenant.clone(),
+            session: self.actor.session.clone(),
+        }];
+        chain.extend(AuditPrincipal::chain_of(self.actor));
+        let input_digest = grant_switch_digest(
+            domain,
+            &GrantSwitchRecord {
+                plugin_id: self.plugin_id,
+                from_digest: self.from_digest,
+                from_version: self.from_version,
+                to_digest: self.to_digest,
+                to_version: self.to_version,
+                old,
+                new,
+            },
+        );
+        let entry = AuditEntry {
+            timestamp_unix_ms: self.installer.clock.now_unix_ms(),
+            principal_chain: chain,
+            tenant: new.tenant.clone(),
+            action: Action::new(action, PERMISSION),
+            target: Some(TargetRef::connection(&new.target_id)),
+            risk: Risk::Write,
+            decision: AuditDecision::Allow,
+            approval_id: Some(if old.id == new.id {
+                new.id.to_string()
+            } else {
+                format!("{}>{}", old.id, new.id)
+            }),
+            outcome: Outcome::Success,
+            duration_ms: None,
+            correlation_id: self.correlation.to_owned(),
+            input_digest,
+            statement_digest: None,
+            delivery: None,
+            parent_correlation_id: None,
+        };
+        emit(self.installer, entry, self.plugin_id, on_failure).await
+    }
+
+    /// Activate each carried grant after its entry. An entry that cannot be written means that
+    /// grant is not carried (fail closed).
+    async fn carry_all(
+        &self,
+        store: &GrantStore,
+        candidates: Vec<Candidate>,
+        mut out: GrantSwitch,
+    ) -> GrantSwitch {
+        for c in &candidates {
+            let outcome = store
+                .activate_audited(c, || {
+                    self.record(
+                        CARRY_GRANT_ACTION,
+                        GRANT_CARRY_DIGEST_DOMAIN,
+                        c,
+                        OnAuditFailure::FailClosed,
+                    )
+                })
+                .await;
+            match outcome {
+                ActivateOutcome::Activated(_) => {
+                    if c.narrowed {
+                        out.narrowed.push(c.grant.id.clone());
+                    }
+                    out.carried.push((c.source.id.clone(), c.grant.id.clone()));
+                }
+                ActivateOutcome::Skipped => out.dropped.push(c.source.id.clone()),
+                ActivateOutcome::Refused(e) => {
+                    out.audit_failed.push((c.source.id.clone(), audit_error(e)))
+                }
+            }
+        }
+        out
+    }
+
+    /// Reactivate each parked grant after its entry. The entry falls back to the local file and
+    /// an alert instead of failing (question 41), so a failing sink does not stop the restore;
+    /// the warnings say where the entries went.
+    async fn restore_all(
+        &self,
+        store: &GrantStore,
+        alerts: Option<&dyn AlertSink>,
+        candidates: Vec<Candidate>,
+        mut out: GrantSwitch,
+    ) -> (GrantSwitch, Vec<AuditWarning>) {
+        let mut warnings = Vec::new();
+        for c in &candidates {
+            let outcome = store
+                .activate_audited(c, || {
+                    self.record(
+                        RESTORE_GRANT_ACTION,
+                        GRANT_RESTORE_DIGEST_DOMAIN,
+                        c,
+                        OnAuditFailure::Fallback(alerts),
+                    )
+                })
+                .await;
+            match outcome {
+                ActivateOutcome::Activated(warning) => {
+                    out.restored.push(c.grant.id.clone());
+                    warnings.extend(warning);
+                }
+                ActivateOutcome::Skipped => out.not_restored.push(c.grant.id.clone()),
+                // The fallback never refuses; kept so the match is exhaustive and fails closed.
+                ActivateOutcome::Refused(e) => {
+                    out.audit_failed.push((c.grant.id.clone(), audit_error(e)))
+                }
+            }
+        }
+        (out, warnings)
+    }
+}
+
+fn audit_error(e: InstallError) -> AuditError {
+    match e {
+        InstallError::Audit(e) => e,
+        other => AuditError(other.to_string()),
+    }
 }
 
 fn default_directory_sync(parent: &Path) -> std::io::Result<()> {
@@ -718,13 +919,48 @@ impl<'a> Installer<'a> {
             }
             Err(StateCommitError { published: false }) => return Err(InstallError::Io),
         }
-        let grants = hooks
-            .grants
-            .map(|store| store.roll_back(plugin_id, Digest(from), Digest(bytes)));
+        if warnings.contains(&SwitchWarning::DirectorySyncFailed)
+            && let Some(alerts) = hooks.alerts
+        {
+            alerts.alert(&InstallAlert::SwitchSyncFailed {
+                plugin_id: plugin_id.to_owned(),
+                correlation_id: correlation_id.to_owned(),
+            });
+        }
+        let mut restore_audit_warnings = Vec::new();
+        let grants = match hooks.grants {
+            Some(store) => {
+                let (candidates, switch) =
+                    store.begin_roll_back(plugin_id, Digest(from), Digest(bytes));
+                let from_version = installed_manifest(&base, &hex(&from))
+                    .map(|m| m.version)
+                    .unwrap_or_default();
+                let to_version = installed_manifest(&base, &hex(&bytes))
+                    .map(|m| m.version)
+                    .unwrap_or_default();
+                let switch_audit = SwitchAudit {
+                    installer: self,
+                    actor: principal,
+                    correlation: correlation_id,
+                    plugin_id,
+                    from_digest: Digest(from),
+                    from_version: &from_version,
+                    to_digest: Digest(bytes),
+                    to_version: &to_version,
+                };
+                let (switch, restore_warnings) = switch_audit
+                    .restore_all(store, hooks.alerts, candidates, switch)
+                    .await;
+                restore_audit_warnings = restore_warnings;
+                Some(switch)
+            }
+            None => None,
+        };
         Ok(Rollback {
             active_digest: bytes,
             grants,
             audit_warning,
+            restore_audit_warnings,
             warnings,
         })
     }
@@ -903,7 +1139,19 @@ impl StagedInstall<'_> {
             InstalledPlugin::from_manifest(&self.package.manifest, Digest(self.package.digest));
         let grants = match (hooks.grants, basis.from_digest) {
             (Some(store), Some(from)) => {
-                Some(store.upgrade(Digest(from), basis.capabilities.as_ref(), &plugin))
+                let (candidates, switch) =
+                    store.begin_upgrade(Digest(from), basis.capabilities.as_ref(), &plugin);
+                let switch_audit = SwitchAudit {
+                    installer: self.installer,
+                    actor: approver,
+                    correlation: &self.correlation_id,
+                    plugin_id: &plugin.id,
+                    from_digest: Digest(from),
+                    from_version: basis.from_version.as_deref().unwrap_or_default(),
+                    to_digest: plugin.digest,
+                    to_version: &self.package.manifest.version,
+                };
+                Some(switch_audit.carry_all(store, candidates, switch).await)
             }
             (Some(_), None) => Some(GrantSwitch::default()),
             _ => None,
@@ -912,8 +1160,17 @@ impl StagedInstall<'_> {
         if basis.unreadable {
             warnings.push(SwitchWarning::PreviousManifestUnreadable);
         }
+        if grants.as_ref().is_some_and(|g| !g.audit_failed.is_empty()) {
+            warnings.push(SwitchWarning::GrantsNotCarriedAuditFailed);
+        }
         if committed == CommitOutcome::SyncFailed {
             warnings.push(SwitchWarning::DirectorySyncFailed);
+            if let Some(alerts) = hooks.alerts {
+                alerts.alert(&InstallAlert::SwitchSyncFailed {
+                    plugin_id: plugin.id.clone(),
+                    correlation_id: self.correlation_id.clone(),
+                });
+            }
         }
         Ok(Activation {
             plugin,

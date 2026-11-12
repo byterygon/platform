@@ -190,6 +190,78 @@ fn grant_create_body(plugin: &InstalledPlugin, req: &GrantRequest) -> Vec<u8> {
     e.0
 }
 
+/// Domain separator of the digest a grant carry-over entry commits to.
+pub const GRANT_CARRY_DIGEST_DOMAIN: &str = "byterygon.plugin-host.grant.carry.v1";
+/// Domain separator of the digest a grant restore entry commits to.
+pub const GRANT_RESTORE_DIGEST_DOMAIN: &str = "byterygon.plugin-host.grant.restore.v1";
+
+/// What the audit entry of a grant carry-over or restore commits to (Plugin Host spec, question
+/// 42). `old` is the grant the switch started from and `new` the one that becomes active; for a
+/// restore they are the same grant.
+pub struct GrantSwitchRecord<'a> {
+    pub plugin_id: &'a str,
+    pub from_digest: Digest,
+    /// The manifest `version` of the version the grant comes from; empty if it was unreadable.
+    pub from_version: &'a str,
+    pub to_digest: Digest,
+    /// The manifest `version` of the version the grant is bound to afterwards.
+    pub to_version: &'a str,
+    pub old: &'a ConnectionGrant,
+    pub new: &'a ConnectionGrant,
+}
+
+/// The `input_digest` of a grant carry-over ([`GRANT_CARRY_DIGEST_DOMAIN`]) or restore
+/// ([`GRANT_RESTORE_DIGEST_DOMAIN`]) entry: SHA-256 over the domain, a zero byte and the encoding
+/// below, which uses the encoding rules of [`grant_create_digest`]. The audit entry itself
+/// shows the action, the connection target, the plugin (with its new digest) acting for the
+/// person who switched versions, and the grant ids (`approval_id`); everything else it
+/// commits to here, as for grant creation. Fields, in this order:
+///
+/// | # | Field | Encoding |
+/// | --- | --- | --- |
+/// | 1 | plugin id | str |
+/// | 2 | source version digest | 32 bytes |
+/// | 3 | source version | str |
+/// | 4 | destination version digest | 32 bytes |
+/// | 5 | destination version | str |
+/// | 6 | old grant id | str |
+/// | 7 | new grant id | str |
+/// | 8 | tenant | str |
+/// | 9 | connection id | str |
+/// | 10 | target id | str |
+/// | 11 | original approver id | str |
+/// | 12 | original approver session | str |
+/// | 13 | expires at (Unix ms) | `0x00`, or `0x01` then a `u64` |
+/// | 14 | cancel connection kept | `0x00`/`0x01` |
+/// | 15 | secret binding kept | `0x00`/`0x01` |
+///
+/// The approver and the expiry are those of the original approval: a carried grant keeps both.
+pub fn grant_switch_digest(domain: &str, record: &GrantSwitchRecord<'_>) -> Digest {
+    let mut e = Encoder::default();
+    e.str(record.plugin_id);
+    e.raw(record.from_digest.as_bytes());
+    e.str(record.from_version);
+    e.raw(record.to_digest.as_bytes());
+    e.str(record.to_version);
+    e.str(record.old.id.as_str());
+    e.str(record.new.id.as_str());
+    e.str(record.new.tenant.as_str());
+    e.str(&record.new.connection_id);
+    e.str(&record.new.target_id);
+    e.str(&record.new.approver.id);
+    e.str(record.new.approver.session.as_str());
+    match record.new.expires_at_unix_ms {
+        None => e.u8(0),
+        Some(t) => {
+            e.u8(1);
+            e.raw(&t.to_be_bytes());
+        }
+    }
+    e.u8(u8::from(record.new.allow_cancel_connection));
+    e.u8(u8::from(record.new.secret.is_some()));
+    domain_digest(domain, &e.0)
+}
+
 /// Canonical encoder for [`grant_create_digest`].
 #[derive(Default)]
 struct Encoder(Vec<u8>);
@@ -645,6 +717,9 @@ struct StoreInner {
     parked: HashMap<String, Parked>,
     /// A carried grant and the grant it was carried from, so revoking an ancestor revokes it.
     lineage: HashMap<GrantId, GrantId>,
+    /// Grants a version switch is about to activate, waiting for their audit entry. A grant is
+    /// activated only while it is still here; revoking its source removes it.
+    pending: HashMap<GrantId, Arc<ConnectionGrant>>,
 }
 
 /// The grants a plugin version held when it stopped being the active version.
@@ -710,6 +785,28 @@ impl StoreInner {
     }
 }
 
+/// A grant a version switch wants to make active, waiting for its audit entry.
+pub(crate) struct Candidate {
+    /// The grant to activate: a new grant for a carry-over, the parked grant itself for a
+    /// restore.
+    pub(crate) grant: Arc<ConnectionGrant>,
+    /// The grant it comes from (the same grant, for a restore).
+    pub(crate) source: Arc<ConnectionGrant>,
+    /// The new version no longer requests something the source had (carry-over only).
+    pub(crate) narrowed: bool,
+}
+
+/// What [`GrantStore::activate_audited`] did.
+pub(crate) enum ActivateOutcome<T, E> {
+    /// The entry was written and the grant is active; `T` is what writing the entry returned.
+    Activated(T),
+    /// The grant was not activated, and no entry was written: it was revoked, has expired,
+    /// its target has another active grant, or the target's lock could not be taken in time.
+    Skipped,
+    /// The entry could not be written, so the grant was not activated.
+    Refused(E),
+}
+
 /// What a plugin version switch did to the plugin's connection grants. Produced by the installer
 /// under the per-plugin lock (see [`crate::install`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -731,6 +828,11 @@ pub struct GrantSwitch {
     pub not_restored: Vec<GrantId>,
     /// For a rollback: whether the version's parked grant set was found.
     pub restore: RestoreOutcome,
+    /// Grants that could have been carried over but were not, because their audit entry could
+    /// not be written (the source grant, and why). Fail closed: no grant becomes active without
+    /// its entry. They stay parked, so a rollback restores them. Never set for a rollback, which
+    /// restores grants even if the audit sink fails (spec question 41).
+    pub audit_failed: Vec<(GrantId, AuditError)>,
 }
 
 /// Whether a rollback found the parked grant set of the version it returned to.
@@ -901,6 +1003,12 @@ impl Drop for TargetLock<'_> {
 /// returns to, under their original ids. Only one parked set (the retained previous version) is
 /// kept per plugin, matching the installer's retention. Only the installer switches versions,
 /// under its per-plugin lock.
+///
+/// A carried or restored grant becomes active only after its audit entry is written (spec
+/// question 42, see [`crate::install`]): the switch first ends and parks the old grants, then
+/// activates each candidate under the lock of its target, entry first. The installer decides what
+/// an audit failure means: a carry-over then does not take effect, while a restore does (spec
+/// question 41).
 ///
 /// Revocation wins over upgrades and rollback: revoking a grant by any id it had (the original,
 /// or a carried copy) revokes every active grant carried from it and discards every parked grant
@@ -1225,6 +1333,22 @@ impl GrantStore {
                     carried.end(EntryState::Revoked);
                 }
             }
+            // A grant a switch is about to activate counts as well: it must not become active.
+            let pending: Vec<_> = inner
+                .pending
+                .values()
+                .filter(|g| {
+                    g.id == grant.id
+                        || inner.descends_from(&g.id, &grant.id)
+                        || (g.plugin.plugin_id == grant.plugin.plugin_id
+                            && g.tenant == grant.tenant
+                            && g.target_id == grant.target_id)
+                })
+                .map(|g| g.id.clone())
+                .collect();
+            for id in pending {
+                inner.pending.remove(&id);
+            }
             if let Some(parked) = inner.parked.get_mut(&grant.plugin.plugin_id) {
                 parked.grants.retain(|g| {
                     g.id != grant.id && (g.tenant != grant.tenant || g.target_id != grant.target_id)
@@ -1261,26 +1385,14 @@ impl GrantStore {
         lock(&self.inner).active_entry(&(tenant.clone(), target_id.to_owned()), now)
     }
 
-    /// Make `grant` the active grant of its target, with an expiry task if it expires. Returns
-    /// `false` (and changes nothing) if the grant has expired, the target already has an active
-    /// grant, or the grant expires and no Tokio runtime is available to end it on time.
-    fn activate_entry(
+    /// Insert `grant` as the active grant of `key`, with an expiry task if it expires.
+    fn insert_active(
         &self,
         inner: &mut StoreInner,
-        grant: Arc<ConnectionGrant>,
-        now: u64,
-    ) -> bool {
-        let key = (grant.tenant.clone(), grant.target_id.clone());
-        if grant.is_expired(now) || inner.active_entry(&key, now).is_some() {
-            return false;
-        }
-        let runtime = match grant.expires_at_unix_ms {
-            Some(_) => match tokio::runtime::Handle::try_current() {
-                Ok(runtime) => Some(runtime),
-                Err(_) => return false,
-            },
-            None => None,
-        };
+        key: TargetKey,
+        grant: &Arc<ConnectionGrant>,
+        runtime: Option<tokio::runtime::Handle>,
+    ) {
         let entry = Arc::new(GrantEntry::new(grant.clone()));
         inner.active.insert(key, grant.id.clone());
         inner.by_id.insert(grant.id.clone(), entry.clone());
@@ -1293,20 +1405,21 @@ impl GrantStore {
                 expires_at,
             ));
         }
-        true
     }
 
-    /// Upgrade: park the grants of version `from` of `to.id` and carry over the ones `to` can
-    /// use. The caller holds the plugin's install lock and has already made `to` active.
+    /// Upgrade, first half: end the grants of version `from` of `to.id`, park them, and return
+    /// the grants `to` can use as candidates. Nothing new is active yet: each candidate becomes
+    /// active through [`activate_audited`](Self::activate_audited), after its audit entry. The
+    /// caller holds the plugin's install lock and has already made `to` the active version.
     ///
     /// `from_capabilities` is what the old version requested; `None` (its manifest could not be
     /// read) carries nothing, so every old grant stays parked and needs a new approval.
-    pub(crate) fn upgrade(
+    pub(crate) fn begin_upgrade(
         &self,
         from: Digest,
         from_capabilities: Option<&Capabilities>,
         to: &InstalledPlugin,
-    ) -> GrantSwitch {
+    ) -> (Vec<Candidate>, GrantSwitch) {
         let now = self.clock.now_unix_ms();
         let mut inner = lock(&self.inner);
         let old = inner.supersede(&to.id, from, now);
@@ -1314,6 +1427,7 @@ impl GrantStore {
             parked: old.iter().map(|g| g.id.clone()).collect(),
             ..GrantSwitch::default()
         };
+        let mut candidates = Vec::new();
         for grant in &old {
             let carried = from_capabilities
                 .and_then(|from| carry(grant, from, to))
@@ -1325,16 +1439,14 @@ impl GrantStore {
                 out.dropped.push(grant.id.clone());
                 continue;
             };
-            let id = carried.id.clone();
-            if self.activate_entry(&mut inner, Arc::new(carried), now) {
-                inner.lineage.insert(id.clone(), grant.id.clone());
-                if narrowed {
-                    out.narrowed.push(id.clone());
-                }
-                out.carried.push((grant.id.clone(), id));
-            } else {
-                out.dropped.push(grant.id.clone());
-            }
+            let carried = Arc::new(carried);
+            inner.lineage.insert(carried.id.clone(), grant.id.clone());
+            inner.pending.insert(carried.id.clone(), carried.clone());
+            candidates.push(Candidate {
+                grant: carried,
+                source: grant.clone(),
+                narrowed,
+            });
         }
         // One previous version is retained, so this replaces any older parked set.
         inner.parked.insert(
@@ -1344,13 +1456,19 @@ impl GrantStore {
                 grants: old,
             },
         );
-        out
+        (candidates, out)
     }
 
-    /// Rollback of `plugin_id` from version `from` to version `to`: park the grants of `from`
-    /// and restore the parked grants of `to`. The caller holds the plugin's install lock and has
-    /// already made `to` the active version.
-    pub(crate) fn roll_back(&self, plugin_id: &str, from: Digest, to: Digest) -> GrantSwitch {
+    /// Rollback of `plugin_id` from version `from` to version `to`, first half: end the grants
+    /// of `from`, park them, and return the parked grants of `to` as candidates (see
+    /// [`begin_upgrade`](Self::begin_upgrade)). The caller holds the plugin's install lock and
+    /// has already made `to` the active version.
+    pub(crate) fn begin_roll_back(
+        &self,
+        plugin_id: &str,
+        from: Digest,
+        to: Digest,
+    ) -> (Vec<Candidate>, GrantSwitch) {
         let now = self.clock.now_unix_ms();
         let mut inner = lock(&self.inner);
         let current = inner.supersede(plugin_id, from, now);
@@ -1364,15 +1482,14 @@ impl GrantStore {
         } else {
             RestoreOutcome::NoParkedState
         };
-        if let Some(parked) = parked {
-            for grant in parked.grants {
-                let id = grant.id.clone();
-                if self.activate_entry(&mut inner, grant, now) {
-                    out.restored.push(id);
-                } else {
-                    out.not_restored.push(id);
-                }
-            }
+        let mut candidates = Vec::new();
+        for grant in parked.into_iter().flat_map(|p| p.grants) {
+            inner.pending.insert(grant.id.clone(), grant.clone());
+            candidates.push(Candidate {
+                source: grant.clone(),
+                grant,
+                narrowed: false,
+            });
         }
         inner.parked.insert(
             plugin_id.to_owned(),
@@ -1381,7 +1498,75 @@ impl GrantStore {
                 grants: current,
             },
         );
-        out
+        (candidates, out)
+    }
+
+    /// Second half of a version switch: make the candidate the active grant of its target, but
+    /// only after `record` has written its audit entry, so the entry and the grant never come
+    /// apart. Like `create`, it holds the target's lock from the check through the entry to the
+    /// insert; the entry is written first and the grant becomes active right after, so a
+    /// crash in between leaves an entry without a grant, never a grant without an entry.
+    ///
+    /// `record` is called at most once and decides what an audit failure means: `Err` means the
+    /// grant stays inactive (fail closed); a rollback passes a `record` that falls back instead
+    /// and so returns `Ok` (spec question 41).
+    pub(crate) async fn activate_audited<T, E, Fut>(
+        &self,
+        candidate: &Candidate,
+        record: impl FnOnce() -> Fut,
+    ) -> ActivateOutcome<T, E>
+    where
+        Fut: std::future::Future<Output = Result<T, E>>,
+    {
+        let grant = &candidate.grant;
+        let key = (grant.tenant.clone(), grant.target_id.clone());
+        let runtime = match grant.expires_at_unix_ms {
+            Some(_) => match tokio::runtime::Handle::try_current() {
+                Ok(runtime) => Some(runtime),
+                Err(_) => return self.skip(grant),
+            },
+            None => None,
+        };
+        let Some(_target) = self.creating.lock(&key, self.audit_timeout).await else {
+            return self.skip(grant);
+        };
+        {
+            let mut inner = lock(&self.inner);
+            let now = self.clock.now_unix_ms();
+            if !inner.pending.contains_key(&grant.id) {
+                return ActivateOutcome::Skipped;
+            }
+            if grant.is_expired(now) {
+                inner.pending.remove(&grant.id);
+                return ActivateOutcome::Skipped;
+            }
+            if inner.active_entry(&key, now).is_some() {
+                inner.pending.remove(&grant.id);
+                return ActivateOutcome::Skipped;
+            }
+        }
+        let recorded = match record().await {
+            Ok(recorded) => recorded,
+            Err(e) => {
+                lock(&self.inner).pending.remove(&grant.id);
+                return ActivateOutcome::Refused(e);
+            }
+        };
+        let mut inner = lock(&self.inner);
+        // Revoked while the entry was written: the revocation wins.
+        if inner.pending.remove(&grant.id).is_none() {
+            return ActivateOutcome::Skipped;
+        }
+        if inner.active_entry(&key, self.clock.now_unix_ms()).is_some() {
+            return ActivateOutcome::Skipped;
+        }
+        self.insert_active(&mut inner, key, grant, runtime);
+        ActivateOutcome::Activated(recorded)
+    }
+
+    fn skip<T, E>(&self, grant: &ConnectionGrant) -> ActivateOutcome<T, E> {
+        lock(&self.inner).pending.remove(&grant.id);
+        ActivateOutcome::Skipped
     }
 
     async fn authorize<A: Authorizer>(
