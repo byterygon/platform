@@ -362,6 +362,7 @@ fn deny(message: &str) -> OpenError {
 /// Audit reasons for an open whose grant is no longer active.
 const GRANT_REVOKED: &str = "grant revoked";
 const GRANT_EXPIRED: &str = "grant expired";
+const GRANT_SUPERSEDED: &str = "plugin version replaced";
 
 /// The denial for an open whose grant ended while the open was in progress, with the reason
 /// taken from the grant's final state, as for a grant that had already ended before the open.
@@ -370,6 +371,7 @@ fn grant_ended(state: EntryState) -> OpenError {
     match state {
         EntryState::Revoked => deny(GRANT_REVOKED),
         EntryState::Expired => deny(GRANT_EXPIRED),
+        EntryState::Superseded => deny(GRANT_SUPERSEDED),
         // Not reached: callers read the state after it left `Active`, and it never returns.
         EntryState::Active => deny("grant revoked or expired"),
     }
