@@ -18,7 +18,8 @@ env:
 jobs:
   rust:
     name: Rust (fmt, clippy, test)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install toolchain from rust-toolchain.toml
@@ -27,7 +28,9 @@ jobs:
       # ambidex-tauri links Tauri, which needs WebKitGTK (and GTK 3) on Linux. The PostgreSQL
       # driver tests start a throwaway server from the postgresql binaries.
       - name: Install system libraries and PostgreSQL
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev postgresql
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libwebkit2gtk-4.1-dev postgresql
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Build documentation
@@ -42,22 +45,30 @@ jobs:
       # runs again in a fresh network namespace with only loopback, as the runner user, offline.
       # It includes the rpc-gen drift test (tests/codegen.rs), so this also shows that generation
       # needs no network and that the committed api.ts and api.manifest.json are current (spec §2).
+      # Plugin Host runs under the same constraint. Every crate was already downloaded by the
+      # steps above, so nothing is fetched here. The script stops at the first failing command.
       - name: Conformance suite (network disconnected)
         run: |
           sudo unshare --net -- sh -c '
+            set -e
             ip link set lo up
             if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
               echo "network is reachable"; exit 1
             fi
-            exec setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
-              env PATH="$1" HOME="$2" CARGO_TERM_COLOR=always BYTERYGON_REQUIRE_WRITER_GATE=1 \
-              cargo test -p ambidex-conformance --locked --offline
+            as_runner() {
+              setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
+                env PATH="$1" HOME="$2" CARGO_TERM_COLOR=always BYTERYGON_REQUIRE_WRITER_GATE=1 \
+                cargo test -p "$3" --locked --offline
+            }
+            as_runner "$1" "$2" ambidex-conformance
+            as_runner "$1" "$2" plugin-host
           ' sh "$PATH" "$HOME"
 
   typescript:
     # Must match the required status check in the protect-main ruleset; do not rename without updating it.
     name: TypeScript (typecheck)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The runtime's integration tests run against the Rust conformance server
@@ -79,7 +90,8 @@ jobs:
 
   licenses:
     name: License policy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install toolchain from rust-toolchain.toml
@@ -96,7 +108,8 @@ jobs:
 
   secrets:
     name: Secret scan (gitleaks)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     env:
       GITLEAKS_VERSION: 8.30.1
     steps:
