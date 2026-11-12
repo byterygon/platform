@@ -14,7 +14,7 @@ use plugin_host::grant::{
 };
 use plugin_host::install::{
     AlertSink, Approval, AuditWarning, CARRY_GRANT_ACTION, FALLBACK_AUDIT_FILE, HostHooks,
-    InstallAlert, InstallError, Installer, RESTORE_GRANT_ACTION, SwitchWarning,
+    InstallAlert, InstallError, Installer, RESTORE_GRANT_ACTION, SwitchStep, SwitchWarning,
 };
 use plugin_host::package::{LimitField, LimitsError, verify_bytes};
 use plugin_host::package::{PackageError, PackagePolicy, PinnedKey, TrustStore, canonical_bytes};
@@ -26,8 +26,8 @@ use plugin_host::{
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use security_types::{
-    AuditEntry, Authorizer, AuthzRequest, BoxFuture, Decision, Outcome, Principal, PrincipalKind,
-    Reason, SessionId, TargetRef, TenantId,
+    AuditEntry, Authorizer, AuthzRequest, BoxFuture, Decision, Delivery, Outcome, Principal,
+    PrincipalKind, Reason, SessionId, TargetRef, TenantId,
 };
 use semver::Version;
 use sha2::{Digest as _, Sha256};
@@ -36,6 +36,7 @@ use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 const PLUGIN: &str = "org.example.demo";
 const ROLLBACK: &str = "plugin-host.packages.rollback";
 const ACTIVATE: &str = "plugin-host.packages.activate";
+const APPROVE: &str = "plugin-host.packages.approve";
 
 const HEADER: &str = r#"manifest_version = 1
 id = "org.example.demo"
@@ -832,7 +833,15 @@ async fn activation_is_still_refused_when_audit_fails() {
     let result = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks).await;
     assert!(matches!(result, Err(InstallError::Audit(_))), "{result:?}");
     assert!(!root.0.join(PLUGIN).join("state.json").exists());
-    // The fallback is for rollback only.
+    // The approval was recorded, and ends with an error because nothing was activated.
+    assert_eq!(
+        steps(&log.1.entries(), "install"),
+        [
+            (APPROVE.to_owned(), Outcome::Started),
+            (APPROVE.to_owned(), unavailable()),
+        ]
+    );
+    // Both entries reached the primary sink, so the fallback was not used.
     assert!(!root.0.join(FALLBACK_AUDIT_FILE).exists());
     assert!(alerts.0.lock().unwrap().is_empty());
 }
@@ -893,25 +902,28 @@ async fn rollback_proceeds_with_fallback_audit_when_the_primary_sink_fails() {
             fallback: fallback.clone(),
         }
     );
-    assert_eq!(
-        *alerts.0.lock().unwrap(),
-        vec![InstallAlert::RollbackAuditFallback {
-            plugin_id: PLUGIN.into(),
-            correlation_id: "rb-1".into(),
-            warning,
-        }]
-    );
+    assert_eq!(rolled.outcome_audit_warning, Some(warning.clone()));
+    // One alert for the decision entry and one for the outcome entry.
+    let alert = InstallAlert::RollbackAuditFallback {
+        plugin_id: PLUGIN.into(),
+        correlation_id: "rb-1".into(),
+        warning,
+    };
+    assert_eq!(*alerts.0.lock().unwrap(), vec![alert.clone(), alert]);
     // The fallback file holds the entry the primary sink refused, in the shared audit format.
     let text = std::fs::read_to_string(&fallback).unwrap();
     let entries: Vec<AuditEntry> = text
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].action.name, ROLLBACK);
-    assert_eq!(entries[0].correlation_id, "rb-1");
-    assert_eq!(entries[0].input_digest.0, d1);
-    assert_eq!(entries[0].outcome, security_types::Outcome::Success);
+    assert_eq!(entries.len(), 2);
+    for entry in &entries {
+        assert_eq!(entry.action.name, ROLLBACK);
+        assert_eq!(entry.correlation_id, "rb-1");
+        assert_eq!(entry.input_digest.0, d1);
+    }
+    assert_eq!(entries[0].outcome, Outcome::Started);
+    assert_eq!(entries[1].outcome, Outcome::Success);
     assert!(
         log.1
             .records()
@@ -934,8 +946,8 @@ async fn rollback_proceeds_with_fallback_audit_when_the_primary_sink_fails() {
                 .correlation_id
         })
         .collect();
-    assert_eq!(ids, ["rb-1", "rb-2"]);
-    assert_eq!(alerts.0.lock().unwrap().len(), 2);
+    assert_eq!(ids, ["rb-1", "rb-1", "rb-2", "rb-2"]);
+    assert_eq!(alerts.0.lock().unwrap().len(), 4);
 }
 
 #[tokio::test]
@@ -972,14 +984,16 @@ async fn rollback_proceeds_when_both_audit_sinks_fail() {
             if *primary == AuditError("primary sink down".into())),
         "{warning:?}"
     );
-    assert_eq!(
-        *alerts.0.lock().unwrap(),
-        vec![InstallAlert::RollbackAuditFallback {
-            plugin_id: PLUGIN.into(),
-            correlation_id: "rb".into(),
-            warning,
-        }]
-    );
+    assert!(matches!(
+        rolled.outcome_audit_warning,
+        Some(AuditWarning::BothFailed { .. })
+    ));
+    let alert = InstallAlert::RollbackAuditFallback {
+        plugin_id: PLUGIN.into(),
+        correlation_id: "rb".into(),
+        warning,
+    };
+    assert_eq!(*alerts.0.lock().unwrap(), vec![alert.clone(), alert]);
 }
 
 #[tokio::test]
@@ -1007,6 +1021,7 @@ async fn rollback_without_audit_failure_has_no_warning_and_no_fallback_file() {
         .await
         .unwrap();
     assert_eq!(rolled.audit_warning, None);
+    assert_eq!(rolled.outcome_audit_warning, None);
     assert!(!root.0.join(FALLBACK_AUDIT_FILE).exists());
     assert!(alerts.0.lock().unwrap().is_empty());
     assert!(
@@ -1944,7 +1959,8 @@ async fn restore_proceeds_with_fallback_audit_when_the_primary_sink_fails() {
     assert_eq!(written[0].approval_id.as_deref(), Some(main.id.as_str()));
     assert_eq!(written[0].target, Some(TargetRef::connection("pg1")));
     assert!(entries_of(&log.1, RESTORE_GRANT_ACTION).is_empty());
-    assert_eq!(entries_of(&log.1, ROLLBACK).len(), 1);
+    // The rollback's decision and outcome entries.
+    assert_eq!(entries_of(&log.1, ROLLBACK).len(), 2);
 }
 
 #[tokio::test]
@@ -2053,4 +2069,422 @@ async fn revoking_while_the_entry_is_written_keeps_the_grant_inactive() {
         .create(&Allow, &human(), &v2_plugin, req, "again")
         .await
         .unwrap();
+}
+
+// ---- TSK-29: decision before, outcome after ----
+
+/// Fails the entries the predicate picks; records the rest.
+struct FailWhen(fn(&AuditEntry) -> bool, MemoryAuditLog);
+impl AuditSink for FailWhen {
+    fn append(&self, entry: AuditEntry) -> BoxFuture<'_, Result<(), AuditError>> {
+        if (self.0)(&entry) {
+            Box::pin(async { Err(AuditError("primary sink down".into())) })
+        } else {
+            self.1.append(entry)
+        }
+    }
+}
+
+fn io_error() -> Outcome {
+    Outcome::Error { code: "Io".into() }
+}
+
+fn unavailable() -> Outcome {
+    Outcome::Error {
+        code: "Unavailable".into(),
+    }
+}
+
+/// The approve, activate and rollback entries written under `correlation`, in order.
+fn steps(entries: &[AuditEntry], correlation: &str) -> Vec<(String, Outcome)> {
+    entries
+        .iter()
+        .filter(|e| {
+            e.correlation_id == correlation
+                && [APPROVE, ACTIVATE, ROLLBACK].contains(&e.action.name.as_str())
+        })
+        .map(|e| (e.action.name.clone(), e.outcome.clone()))
+        .collect()
+}
+
+fn fail_move(step: SwitchStep) -> std::io::Result<()> {
+    match step {
+        SwitchStep::MoveVersion => Err(std::io::Error::other("injected move failure")),
+        SwitchStep::CommitState => Ok(()),
+    }
+}
+
+fn fail_commit(step: SwitchStep) -> std::io::Result<()> {
+    match step {
+        SwitchStep::CommitState => Err(std::io::Error::other("injected commit failure")),
+        SwitchStep::MoveVersion => Ok(()),
+    }
+}
+
+fn read_fallback(root: &Path) -> Vec<AuditEntry> {
+    std::fs::read_to_string(root.join(FALLBACK_AUDIT_FILE))
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+fn version_dirs(root: &Path) -> usize {
+    std::fs::read_dir(root.join(PLUGIN).join("versions"))
+        .map(|d| d.count())
+        .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn activation_and_rollback_record_the_decision_before_and_the_outcome_after() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("outcome-order");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let activated = install(
+        &installer,
+        &publisher.package("1.0.0", FULL, 0),
+        HostHooks::default(),
+    )
+    .await
+    .unwrap();
+    assert!(activated.outcome_audit_warnings.is_empty());
+    let entries = log.entries();
+    assert_eq!(
+        steps(&entries, "install"),
+        [
+            (APPROVE.to_owned(), Outcome::Started),
+            (ACTIVATE.to_owned(), Outcome::Started),
+            (ACTIVATE.to_owned(), Outcome::Success),
+            (APPROVE.to_owned(), Outcome::Success),
+        ]
+    );
+    // A decision entry is an admission; an outcome entry is a completion with a duration.
+    for entry in entries
+        .iter()
+        .filter(|e| [APPROVE, ACTIVATE].contains(&e.action.name.as_str()))
+    {
+        let outcome = entry.outcome != Outcome::Started;
+        assert_eq!(entry.delivery, outcome.then_some(Delivery::Delivered));
+        assert_eq!(entry.duration_ms.is_some(), outcome);
+        assert_eq!(entry.input_digest, activated.plugin.digest);
+    }
+    assert!(security_types::unfinished(&entries).is_empty());
+
+    install(
+        &installer,
+        &publisher.package("2.0.0", FULL, 0),
+        HostHooks::default(),
+    )
+    .await
+    .unwrap();
+    let rolled = installer
+        .rollback(&Allow, &human(), PLUGIN, "rb")
+        .await
+        .unwrap();
+    assert_eq!(rolled.outcome_audit_warning, None);
+    let entries = log.entries();
+    assert_eq!(
+        steps(&entries, "rb"),
+        [
+            (ROLLBACK.to_owned(), Outcome::Started),
+            (ROLLBACK.to_owned(), Outcome::Success),
+        ]
+    );
+    let outcome = entries.last().unwrap();
+    assert_eq!(outcome.delivery, Some(Delivery::Delivered));
+    assert!(outcome.duration_ms.is_some());
+    assert!(security_types::unfinished(&entries).is_empty());
+}
+
+#[tokio::test]
+async fn failed_activation_leaves_error_entries_at_each_step() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("outcome-activate-fails");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let v1 = install(
+        &installer,
+        &publisher.package("1.0.0", FULL, 0),
+        HostHooks::default(),
+    )
+    .await
+    .unwrap();
+    let failed = [
+        (APPROVE.to_owned(), Outcome::Started),
+        (ACTIVATE.to_owned(), Outcome::Started),
+        (ACTIVATE.to_owned(), io_error()),
+        (APPROVE.to_owned(), io_error()),
+    ];
+    let v2 = publisher.package("2.0.0", FULL, 0);
+
+    // The staged files cannot be moved, then the state file cannot be replaced.
+    for (correlation, fault) in [
+        ("move", fail_move as fn(SwitchStep) -> _),
+        ("commit", fail_commit),
+    ] {
+        let stage = installer.stage(&v2, &human(), correlation).await.unwrap();
+        let digest = stage.approval_view().package_digest;
+        let hooks = HostHooks {
+            fault: Some(fault),
+            ..HostHooks::default()
+        };
+        let result = stage
+            .activate(&Allow, &human(), Approval::package(digest), hooks)
+            .await;
+        assert!(matches!(result, Err(InstallError::Io)), "{result:?}");
+        assert_eq!(steps(&log.entries(), correlation), failed, "{correlation}");
+        // The previous version is still active and the failed one left nothing behind.
+        assert_eq!(active_digest(&root.0), hex(&v1.plugin.digest.0));
+        assert_eq!(version_dirs(&root.0), 1, "{correlation}");
+    }
+
+    // The version directory already exists.
+    let stage = installer.stage(&v2, &human(), "exists").await.unwrap();
+    let digest = stage.approval_view().package_digest;
+    let taken = root.0.join(PLUGIN).join("versions").join(hex(&digest));
+    std::fs::create_dir(&taken).unwrap();
+    let result = stage
+        .activate(
+            &Allow,
+            &human(),
+            Approval::package(digest),
+            HostHooks::default(),
+        )
+        .await;
+    assert!(matches!(result, Err(InstallError::Io)), "{result:?}");
+    assert_eq!(steps(&log.entries(), "exists"), failed);
+    assert_eq!(active_digest(&root.0), hex(&v1.plugin.digest.0));
+    std::fs::remove_dir(&taken).unwrap();
+
+    // Nothing above was logged as a success, and the same package still installs afterwards.
+    let entries = log.entries();
+    for correlation in ["move", "commit", "exists"] {
+        assert!(
+            !steps(&entries, correlation)
+                .iter()
+                .any(|(_, outcome)| *outcome == Outcome::Success)
+        );
+    }
+    let v2 = install(&installer, &v2, HostHooks::default())
+        .await
+        .unwrap();
+    assert_eq!(active_digest(&root.0), hex(&v2.plugin.digest.0));
+}
+
+#[tokio::test]
+async fn approval_that_cannot_be_recorded_changes_nothing() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = FailAction(APPROVE, MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let root = Root::new("outcome-approve-audit");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let hooks = HostHooks {
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    let result = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks).await;
+    assert!(matches!(result, Err(InstallError::Audit(_))), "{result:?}");
+    assert!(steps(&log.1.entries(), "install").is_empty());
+    assert!(!root.0.join(PLUGIN).join("state.json").exists());
+    assert_eq!(version_dirs(&root.0), 0);
+    assert!(!root.0.join(FALLBACK_AUDIT_FILE).exists());
+    assert!(alerts.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn activation_stands_when_its_outcome_entry_cannot_be_written() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    // The decisions are recorded; every outcome entry fails.
+    let log = FailWhen(|e| e.delivery.is_some(), MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let root = Root::new("outcome-activate-lost");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let hooks = HostHooks {
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    let activated = install(&installer, &publisher.package("1.0.0", FULL, 0), hooks)
+        .await
+        .unwrap();
+    assert_eq!(active_digest(&root.0), hex(&activated.plugin.digest.0));
+    let warning = AuditWarning::PrimaryFailed {
+        primary: AuditError("primary sink down".into()),
+        fallback: root.0.join(FALLBACK_AUDIT_FILE),
+    };
+    assert_eq!(
+        activated.outcome_audit_warnings,
+        vec![warning.clone(), warning.clone()]
+    );
+    let alert = |action: &str| InstallAlert::OutcomeAuditFallback {
+        plugin_id: PLUGIN.into(),
+        correlation_id: "install".into(),
+        action: action.into(),
+        warning: warning.clone(),
+    };
+    assert_eq!(
+        *alerts.0.lock().unwrap(),
+        vec![alert(ACTIVATE), alert(APPROVE)]
+    );
+    // The primary log shows two decisions without an outcome; the fallback file has the outcomes.
+    let primary = log.1.entries();
+    assert_eq!(
+        steps(&primary, "install"),
+        [
+            (APPROVE.to_owned(), Outcome::Started),
+            (ACTIVATE.to_owned(), Outcome::Started),
+        ]
+    );
+    assert_eq!(security_types::unfinished(&primary).len(), 2);
+    assert_eq!(
+        steps(&read_fallback(&root.0), "install"),
+        [
+            (ACTIVATE.to_owned(), Outcome::Success),
+            (APPROVE.to_owned(), Outcome::Success),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn failed_rollback_leaves_an_error_entry_and_the_active_version() {
+    let publisher = Publisher::new();
+    let (trust, policy, log) = (publisher.trust(), policy(), MemoryAuditLog::new());
+    let root = Root::new("outcome-rollback-fails");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let (_, d2) = two_versions(&installer, &publisher).await;
+    let store = grant_store();
+    let hooks = HostHooks {
+        grants: Some(&store),
+        fault: Some(fail_commit),
+        ..HostHooks::default()
+    };
+    let result = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+        .await;
+    assert!(matches!(result, Err(InstallError::Io)), "{result:?}");
+    assert_eq!(active_digest(&root.0), hex(&d2));
+    assert_eq!(
+        steps(&log.entries(), "rb"),
+        [
+            (ROLLBACK.to_owned(), Outcome::Started),
+            (ROLLBACK.to_owned(), io_error()),
+        ]
+    );
+    // No grant was restored for a rollback that did not happen.
+    assert!(entries_of(&log, RESTORE_GRANT_ACTION).is_empty());
+
+    // With the primary sink down, both entries of the failed rollback go to the fallback file.
+    let down = FailAction(ROLLBACK, MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let installer = Installer {
+        audit: &down,
+        ..installer
+    };
+    let hooks = HostHooks {
+        alerts: Some(&alerts),
+        fault: Some(fail_commit),
+        ..HostHooks::default()
+    };
+    let result = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb-down", hooks)
+        .await;
+    assert!(matches!(result, Err(InstallError::Io)), "{result:?}");
+    assert_eq!(active_digest(&root.0), hex(&d2));
+    assert_eq!(
+        steps(&read_fallback(&root.0), "rb-down"),
+        [
+            (ROLLBACK.to_owned(), Outcome::Started),
+            (ROLLBACK.to_owned(), io_error()),
+        ]
+    );
+    assert_eq!(alerts.0.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn rollback_stands_when_only_its_outcome_entry_misses_the_primary_sink() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = FailWhen(
+        |e| e.action.name == ROLLBACK && e.delivery.is_some(),
+        MemoryAuditLog::new(),
+    );
+    let alerts = Alerts::default();
+    let root = Root::new("outcome-rollback-lost");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let (d1, _) = two_versions(&installer, &publisher).await;
+    let hooks = HostHooks {
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    let rolled = installer
+        .rollback_with(&Allow, &human(), PLUGIN, "rb", hooks)
+        .await
+        .unwrap();
+    assert_eq!(active_digest(&root.0), hex(&d1));
+    assert_eq!(rolled.audit_warning, None);
+    let warning = AuditWarning::PrimaryFailed {
+        primary: AuditError("primary sink down".into()),
+        fallback: root.0.join(FALLBACK_AUDIT_FILE),
+    };
+    assert_eq!(rolled.outcome_audit_warning, Some(warning.clone()));
+    assert_eq!(
+        *alerts.0.lock().unwrap(),
+        vec![InstallAlert::RollbackAuditFallback {
+            plugin_id: PLUGIN.into(),
+            correlation_id: "rb".into(),
+            warning,
+        }]
+    );
+    assert_eq!(
+        steps(&log.1.entries(), "rb"),
+        [(ROLLBACK.to_owned(), Outcome::Started)]
+    );
+    assert_eq!(
+        steps(&read_fallback(&root.0), "rb"),
+        [(ROLLBACK.to_owned(), Outcome::Success)]
+    );
 }

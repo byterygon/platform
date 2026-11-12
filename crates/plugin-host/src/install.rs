@@ -62,6 +62,32 @@
 //! for the entry of each restored grant ([`Rollback::restore_audit_warnings`]): a rollback
 //! restores the grants of the known-good version even when the audit sink is down. A rollback
 //! that is refused is not performed, so its entry is fail-closed.
+//!
+//! # Decision before, outcome after (TSK-29)
+//!
+//! Approve, activate and rollback are recorded as two entries each, as Ambidex records a call
+//! that runs (`security_types::audit`): the decision, with [`Outcome::Started`], before anything
+//! is changed, and the outcome after, with [`Outcome::Success`] or [`Outcome::Error`], the
+//! duration and [`Delivery::Delivered`], under the same action and correlation id. A refusal is
+//! one entry, as before.
+//!
+//! - The decision entry follows the rules above: without it nothing is changed (rollback falls
+//!   back to the local file instead).
+//! - An approval has no effect of its own: it authorizes the activation made by the same call,
+//!   so its outcome is the outcome of that activation, written last. One activation therefore
+//!   reads: approve `Started`, activate `Started`, activate outcome, approve outcome. When the
+//!   activate decision cannot be written, nothing is activated and the approval ends with
+//!   `Error` (`Unavailable`).
+//! - The outcome is that of the version switch: `Success` once the state file names the version
+//!   (also when only the directory sync failed, see above), `Error` with the code `Io` when the
+//!   switch failed and the previous state still holds. Grants are recorded by their own entries.
+//! - An outcome entry is written after the fact, so it cannot fail closed: when the primary sink
+//!   fails it goes to [`FALLBACK_AUDIT_FILE`], an alert is raised
+//!   ([`InstallAlert::OutcomeAuditFallback`], or [`InstallAlert::RollbackAuditFallback`] for a
+//!   rollback) and the result carries the warning ([`Activation::outcome_audit_warnings`],
+//!   [`Rollback::outcome_audit_warning`]). It never changes the result of the step.
+//! - A `Started` entry with no outcome entry means the outcome is unknown (the process stopped,
+//!   or both sinks failed): read the state file.
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -70,8 +96,8 @@ use std::path::{Path, PathBuf};
 
 use ring::rand::{SecureRandom, SystemRandom};
 use security_types::{
-    Action, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest, Decision, Digest,
-    Outcome, Principal, PrincipalKind, Reason, Risk, TargetRef, append_within,
+    Action, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest, Decision,
+    Delivery, Digest, Outcome, Principal, PrincipalKind, Reason, Risk, TargetRef, append_within,
 };
 use serde::{Deserialize, Serialize};
 use sha2::Digest as _;
@@ -88,7 +114,8 @@ use crate::package::{
 };
 
 /// The local, append-only fallback audit file under the install root, used only when the
-/// primary sink fails during a rollback. One JSON-encoded [`AuditEntry`] per line, not hash
+/// primary sink fails during a rollback or while the outcome of an activation is recorded. One
+/// JSON-encoded [`AuditEntry`] per line, not hash
 /// chained; an administrator imports it into the audit store once the primary sink is back.
 pub const FALLBACK_AUDIT_FILE: &str = ".audit-fallback.jsonl";
 
@@ -107,6 +134,15 @@ pub enum InstallAlert {
         correlation_id: String,
         warning: AuditWarning,
     },
+    /// The outcome entry of an approval or activation could not be written to the primary audit
+    /// sink. The step itself is not affected.
+    OutcomeAuditFallback {
+        plugin_id: String,
+        correlation_id: String,
+        /// The audited action, e.g. `plugin-host.packages.activate`.
+        action: String,
+        warning: AuditWarning,
+    },
     /// The state file was renamed but syncing the install directory failed (see
     /// [`SwitchWarning::DirectorySyncFailed`]).
     SwitchSyncFailed {
@@ -115,7 +151,8 @@ pub enum InstallAlert {
     },
 }
 
-/// Why a rollback's audit entry did not reach the primary audit sink.
+/// Why an audit entry that does not fail closed (a rollback's, or the outcome of an approval or
+/// activation) did not reach the primary audit sink.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditWarning {
     /// The primary sink failed; the entry was appended to the fallback file at `fallback`.
@@ -141,6 +178,20 @@ pub struct HostHooks<'h> {
     /// failure; leave it `None`.
     #[doc(hidden)]
     pub directory_sync: Option<fn(&Path) -> std::io::Result<()>>,
+    /// Called before each step of a version switch; an error fails that step. For tests that
+    /// inject a failure; leave it `None`.
+    #[doc(hidden)]
+    pub fault: Option<fn(SwitchStep) -> std::io::Result<()>>,
+}
+
+/// A step of a version switch at which [`HostHooks::fault`] can inject a failure.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwitchStep {
+    /// Moving the staged files to their version directory (activation only).
+    MoveVersion,
+    /// Replacing the state file.
+    CommitState,
 }
 
 /// Something an administrator should know about a version switch that succeeded.
@@ -189,6 +240,8 @@ pub struct Activation {
     /// What happened to connection grants, when a grant store was given.
     pub grants: Option<GrantSwitch>,
     pub warnings: Vec<SwitchWarning>,
+    /// One per outcome entry (activate, approve) that missed the primary audit sink.
+    pub outcome_audit_warnings: Vec<AuditWarning>,
 }
 
 /// The result of a rollback.
@@ -198,8 +251,10 @@ pub struct Rollback {
     pub active_digest: [u8; 32],
     /// What happened to connection grants, when a grant store was given.
     pub grants: Option<GrantSwitch>,
-    /// Set when an audit entry of this rollback missed the primary audit sink.
+    /// Set when the decision entry of this rollback missed the primary audit sink.
     pub audit_warning: Option<AuditWarning>,
+    /// Set when the outcome entry of this rollback missed the primary audit sink.
+    pub outcome_audit_warning: Option<AuditWarning>,
     /// One per restored grant whose audit entry missed the primary sink (question 41 applies to
     /// them too: the grant was restored regardless).
     pub restore_audit_warnings: Vec<AuditWarning>,
@@ -218,6 +273,8 @@ pub const CARRY_GRANT_ACTION: &str = "plugin-host.packages.carry-grant";
 /// Action of the entry written for each grant a rollback restores (spec question 42).
 pub const RESTORE_GRANT_ACTION: &str = "plugin-host.packages.restore-grant";
 const PERMISSION: &str = "admin.plugins.install";
+/// Outcome code of a version switch that failed on the file system.
+const IO_CODE: &str = "Io";
 
 #[derive(Debug)]
 pub enum InstallError {
@@ -313,6 +370,9 @@ enum OnAuditFailure<'h> {
     /// Rollback only (question 41): append to the fallback file, raise an alert, and return a
     /// warning instead of an error.
     Fallback(Option<&'h dyn AlertSink>),
+    /// The outcome entry of an approval or activation: as `Fallback`, with
+    /// [`InstallAlert::OutcomeAuditFallback`].
+    OutcomeFallback(Option<&'h dyn AlertSink>),
 }
 
 /// Records one package entry; the caller stops (fails closed) if it is not written within
@@ -331,7 +391,32 @@ async fn audit(
     outcome: Outcome,
     on_failure: OnAuditFailure<'_>,
 ) -> Result<Option<AuditWarning>, InstallError> {
-    let entry = AuditEntry {
+    let entry = package_entry(
+        installer,
+        principal,
+        correlation,
+        action,
+        target,
+        digest,
+        decision,
+        outcome,
+    );
+    emit(installer, entry, target, on_failure).await
+}
+
+/// The entry of one package step.
+#[allow(clippy::too_many_arguments)]
+fn package_entry(
+    installer: &Installer<'_>,
+    principal: &Principal,
+    correlation: &str,
+    action: &str,
+    target: &str,
+    digest: [u8; 32],
+    decision: AuditDecision,
+    outcome: Outcome,
+) -> AuditEntry {
+    AuditEntry {
         timestamp_unix_ms: installer.clock.now_unix_ms(),
         principal_chain: AuditPrincipal::chain_of(principal),
         tenant: principal.tenant.clone(),
@@ -347,8 +432,83 @@ async fn audit(
         statement_digest: None,
         delivery: None,
         parent_correlation_id: None,
-    };
-    emit(installer, entry, target, on_failure).await
+    }
+}
+
+/// An allowed step recorded as two entries (see the module docs): [`Step::start`] writes the
+/// decision before the step acts, [`Step::finish`] the outcome after.
+struct Step<'s> {
+    installer: &'s Installer<'s>,
+    plugin_id: &'s str,
+    /// The decision entry; the outcome entry repeats it.
+    entry: AuditEntry,
+}
+
+impl<'s> Step<'s> {
+    /// Writes the decision entry. `Err` means the step must not act.
+    async fn start(
+        installer: &'s Installer<'s>,
+        principal: &Principal,
+        correlation: &str,
+        action: &str,
+        plugin_id: &'s str,
+        digest: [u8; 32],
+        on_failure: OnAuditFailure<'_>,
+    ) -> Result<(Step<'s>, Option<AuditWarning>), InstallError> {
+        let entry = package_entry(
+            installer,
+            principal,
+            correlation,
+            action,
+            plugin_id,
+            digest,
+            AuditDecision::Allow,
+            Outcome::Started,
+        );
+        let warning = emit(installer, entry.clone(), plugin_id, on_failure).await?;
+        Ok((
+            Step {
+                installer,
+                plugin_id,
+                entry,
+            },
+            warning,
+        ))
+    }
+
+    /// Writes the outcome entry. The step has already acted, so `on_failure` must be one of the
+    /// fallbacks; the warning says when the entry missed the primary sink.
+    async fn finish(
+        &self,
+        outcome: Outcome,
+        on_failure: OnAuditFailure<'_>,
+    ) -> Option<AuditWarning> {
+        debug_assert!(!matches!(on_failure, OnAuditFailure::FailClosed));
+        let now = self.installer.clock.now_unix_ms();
+        let entry = AuditEntry {
+            timestamp_unix_ms: now,
+            outcome,
+            duration_ms: Some(now.saturating_sub(self.entry.timestamp_unix_ms)),
+            delivery: Some(Delivery::Delivered),
+            ..self.entry.clone()
+        };
+        emit(self.installer, entry, self.plugin_id, on_failure)
+            .await
+            .ok()
+            .flatten()
+    }
+}
+
+fn outcome_of<T>(result: &Result<T, InstallError>) -> Outcome {
+    match result {
+        Ok(_) => Outcome::Success,
+        Err(InstallError::Audit(_)) => Outcome::Error {
+            code: crate::error_code::UNAVAILABLE.into(),
+        },
+        Err(_) => Outcome::Error {
+            code: IO_CODE.into(),
+        },
+    }
 }
 
 /// Writes one entry: the only place the installer talks to the audit sink or the fallback file.
@@ -359,14 +519,15 @@ async fn emit(
     on_failure: OnAuditFailure<'_>,
 ) -> Result<Option<AuditWarning>, InstallError> {
     let deadline = tokio::time::Instant::now() + DEFAULT_AUDIT_TIMEOUT;
-    let alerts = match on_failure {
+    let (alerts, outcome) = match on_failure {
         OnAuditFailure::FailClosed => {
             return append_within(installer.audit, entry, deadline)
                 .await
                 .map(|()| None)
                 .map_err(InstallError::Audit);
         }
-        OnAuditFailure::Fallback(alerts) => alerts,
+        OnAuditFailure::Fallback(alerts) => (alerts, false),
+        OnAuditFailure::OutcomeFallback(alerts) => (alerts, true),
     };
     let Err(primary) = append_within(installer.audit, entry.clone(), deadline).await else {
         return Ok(None);
@@ -376,10 +537,22 @@ async fn emit(
         Err(fallback) => AuditWarning::BothFailed { primary, fallback },
     };
     if let Some(alerts) = alerts {
-        alerts.alert(&InstallAlert::RollbackAuditFallback {
-            plugin_id: plugin_id.to_owned(),
-            correlation_id: entry.correlation_id.clone(),
-            warning: warning.clone(),
+        let plugin_id = plugin_id.to_owned();
+        let correlation_id = entry.correlation_id.clone();
+        let warning = warning.clone();
+        alerts.alert(&if outcome {
+            InstallAlert::OutcomeAuditFallback {
+                plugin_id,
+                correlation_id,
+                action: entry.action.name.clone(),
+                warning,
+            }
+        } else {
+            InstallAlert::RollbackAuditFallback {
+                plugin_id,
+                correlation_id,
+                warning,
+            }
         });
     }
     Ok(Some(warning))
@@ -891,28 +1064,38 @@ impl<'a> Installer<'a> {
             .await?;
             return Err(InstallError::Denied);
         }
-        let audit_warning = audit(
+        let from = state
+            .previous
+            .as_deref()
+            .and_then(parse_digest)
+            .ok_or(InstallError::Io)?;
+        let (step, audit_warning) = Step::start(
             self,
             principal,
             correlation_id,
             ROLLBACK,
             plugin_id,
             bytes,
-            AuditDecision::Allow,
-            Outcome::Success,
             on_failure,
         )
         .await?;
-        let from = state
-            .previous
-            .as_deref()
-            .and_then(parse_digest)
-            .ok_or(InstallError::Io)?;
         let sync = hooks.directory_sync.unwrap_or(default_directory_sync);
         let mut warnings = Vec::new();
+        let committed = match hooks.fault.map_or(Ok(()), |f| f(SwitchStep::CommitState)) {
+            Ok(()) => atomic_state_with_sync(&base, &state, sync),
+            Err(_) => Err(StateCommitError { published: false }),
+        };
+        // The outcome of the switch: an unpublished state leaves the rolled-back version active.
+        let outcome = match committed {
+            Err(StateCommitError { published: false }) => Outcome::Error {
+                code: IO_CODE.into(),
+            },
+            _ => Outcome::Success,
+        };
+        let outcome_audit_warning = step.finish(outcome, on_failure).await;
         // If the rename happened, the previous version is active even when the directory sync
         // failed, so the grants follow it and the caller is warned.
-        match atomic_state_with_sync(&base, &state, sync) {
+        match committed {
             Ok(()) => {}
             Err(StateCommitError { published: true }) => {
                 warnings.push(SwitchWarning::DirectorySyncFailed);
@@ -960,6 +1143,7 @@ impl<'a> Installer<'a> {
             active_digest: bytes,
             grants,
             audit_warning,
+            outcome_audit_warning,
             restore_audit_warnings,
             warnings,
         })
@@ -1098,43 +1282,47 @@ impl StagedInstall<'_> {
         let basis = upgrade_from(&base, &state, &self.package.manifest)?;
         self.check_widening(approver, basis.view.as_ref(), &approval)
             .await?;
-        audit(
+        let (approve, _) = Step::start(
             self.installer,
             approver,
             &self.correlation_id,
             APPROVE,
             id,
             self.package.digest,
-            AuditDecision::Allow,
-            Outcome::Success,
             OnAuditFailure::FailClosed,
         )
         .await?;
-        let versions = base.join("versions");
-        fs::create_dir_all(&versions).map_err(|_| InstallError::Io)?;
-        let digest = hex(&self.package.digest);
-        let version_path = versions.join(&digest);
-        if version_path.exists() {
-            return Err(InstallError::Io);
-        }
-        audit(
+        let on_outcome_failure = OnAuditFailure::OutcomeFallback(hooks.alerts);
+        let mut outcome_audit_warnings = Vec::new();
+        // Both decisions are recorded before anything is changed; the outcomes follow the switch.
+        let switched = match Step::start(
             self.installer,
             approver,
             &self.correlation_id,
             ACTIVATE,
             id,
             self.package.digest,
-            AuditDecision::Allow,
-            Outcome::Success,
             OnAuditFailure::FailClosed,
         )
-        .await?;
-        fs::rename(&self.stage, &version_path).map_err(|_| InstallError::Io)?;
-        state.previous = state.active.replace(digest);
-        let sync = hooks.directory_sync.unwrap_or(default_directory_sync);
-        // If the rename happened, the new version is active even when the directory sync failed,
-        // so the grants follow it and the caller is warned instead of getting an error.
-        let committed = commit_activation(&base, &version_path, &state, sync)?;
+        .await
+        {
+            Ok((activate, _)) => {
+                let switched = self.switch_version(&base, &mut state, &hooks);
+                outcome_audit_warnings.extend(
+                    activate
+                        .finish(outcome_of(&switched), on_outcome_failure)
+                        .await,
+                );
+                switched
+            }
+            Err(e) => Err(e),
+        };
+        outcome_audit_warnings.extend(
+            approve
+                .finish(outcome_of(&switched), on_outcome_failure)
+                .await,
+        );
+        let committed = switched?;
         let plugin =
             InstalledPlugin::from_manifest(&self.package.manifest, Digest(self.package.digest));
         let grants = match (hooks.grants, basis.from_digest) {
@@ -1177,7 +1365,41 @@ impl StagedInstall<'_> {
             upgrade: basis.view,
             grants,
             warnings,
+            outcome_audit_warnings,
         })
+    }
+
+    /// Move the staged files to their version directory and commit the state file that names
+    /// them. On an error the previous state still holds.
+    fn switch_version(
+        &self,
+        base: &Path,
+        state: &mut InstallState,
+        hooks: &HostHooks<'_>,
+    ) -> Result<CommitOutcome, InstallError> {
+        let fault = |step| match hooks.fault {
+            Some(f) => f(step).map_err(|_| InstallError::Io),
+            None => Ok(()),
+        };
+        let versions = base.join("versions");
+        fs::create_dir_all(&versions).map_err(|_| InstallError::Io)?;
+        let digest = hex(&self.package.digest);
+        let version_path = versions.join(&digest);
+        if version_path.exists() {
+            return Err(InstallError::Io);
+        }
+        fault(SwitchStep::MoveVersion)?;
+        fs::rename(&self.stage, &version_path).map_err(|_| InstallError::Io)?;
+        state.previous = state.active.replace(digest);
+        let sync = hooks.directory_sync.unwrap_or(default_directory_sync);
+        if fault(SwitchStep::CommitState).is_err() {
+            // As a failed commit: the old state is still active, so drop the unreferenced version.
+            let _ = fs::remove_dir_all(&version_path);
+            return Err(InstallError::Io);
+        }
+        // If the rename happened, the new version is active even when the directory sync failed,
+        // so the grants follow it and the caller is warned instead of getting an error.
+        commit_activation(base, &version_path, state, sync)
     }
 
     /// Refuse activation when `upgrade` widens the permissions and `approval` does not name

@@ -73,6 +73,9 @@
 //!   the audit timeout for the one ahead of it, and then has the audit timeout for its own write.
 //!   Package install steps ([`install`]) wait at most [`DEFAULT_AUDIT_TIMEOUT`] for theirs and
 //!   fail closed with `InstallError::Audit`.
+//! - **Decision before, outcome after.** Package approve, activate and rollback write a
+//!   `Started` entry before they change anything and an entry with the real outcome after
+//!   (TSK-29, see [`install`]).
 //! - **Revocation never waits.** It takes effect first; its entry is written right away when the
 //!   sink answers at once, otherwise in the background with retries ([`RetryPolicy`]), and a final
 //!   failure goes to the [`AuditReporter`]. [`GrantStore::flush_audit`] waits for pending entries.
