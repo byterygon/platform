@@ -22,6 +22,17 @@
 //! `create` and the broker also compare `expires_at` with the clock themselves, so an expired
 //! grant is never used even if the expiry task has not run yet.
 //!
+//! Expiry is an enforcement action of the host, so it is audited (spec question 36, TSK-22):
+//! exactly one entry with the action [`GRANT_EXPIRE_ACTION`] per grant that expired while active,
+//! written by the system principal [`GRANT_EXPIRY_PRINCIPAL`] once the transports are closed. The
+//! entry shows the tenant, the connection target, the grant id (in `approval_id`) and the time
+//! enforcement ran (its timestamp); the scheduled `expires_at` and the numbers of transports
+//! closed and of operations aborted in flight are committed in `input_digest`
+//! ([`grant_expire_digest`]), because `AuditEntry` has no free-form field. A grant that was
+//! revoked, or replaced by a version switch, before `expires_at` gets no expiry entry. Like a
+//! revocation, expiry never waits for the audit sink: the entry goes through the same retry
+//! queue, and a final failure is reported to the [`AuditReporter`].
+//!
 //! # Request digest
 //!
 //! Grant creation is authorized and audited with [`grant_create_digest`] (domain
@@ -38,7 +49,8 @@ use rustls::RootCertStore;
 use rustls::pki_types::{CertificateDer, ServerName};
 use security_types::{
     Action, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest, Decision, Digest,
-    Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, TargetRef, TenantId, append_within,
+    Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, SessionId, TargetRef, TenantId,
+    append_within,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::sync::watch;
@@ -50,6 +62,56 @@ use crate::audit::{
 use crate::manifest::{Capabilities, Manifest, PackageKind, Protocol, SecretScope, TlsRequirement};
 use crate::net::{AddressPolicy, IpNet, normalize_dns_name};
 use crate::{encode_digest, error_code};
+
+// NOTE: Provisional names until the Plugin Host permission catalogue is fixed (spec questions 25
+// and 36).
+/// Action of the entry written when a grant expires (spec question 36).
+pub const GRANT_EXPIRE_ACTION: &str = "plugin-host.grants.expire";
+/// The permission named in expiry entries. Nobody holds it: expiry is not requested or
+/// authorized, the host enforces it.
+pub const GRANT_EXPIRE_PERM: &str = "system.grants.expire";
+/// The id of the system principal that expiry entries are written by, in the grant's tenant.
+pub const GRANT_EXPIRY_PRINCIPAL: &str = "system:plugin-host";
+/// The session of [`GRANT_EXPIRY_PRINCIPAL`]: the host acts in no user session.
+pub const GRANT_EXPIRY_SESSION: &str = "system";
+/// Domain separator of [`grant_expire_digest`].
+pub const GRANT_EXPIRE_DIGEST_DOMAIN: &str = "byterygon.plugin-host.grant.expire.v1";
+
+/// What an expiry entry commits to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GrantExpiryRecord<'a> {
+    pub grant_id: &'a GrantId,
+    pub tenant: &'a TenantId,
+    pub target_id: &'a str,
+    /// The grant's scheduled expiry.
+    pub expires_at_unix_ms: u64,
+    /// When the host ended the grant; also the entry's timestamp.
+    pub enforced_at_unix_ms: u64,
+    /// Transports open under the grant that were closed.
+    pub transports_closed: u64,
+    /// Of those, the ones with an operation (`send`, `recv`, `start_tls`) in flight, which was
+    /// aborted. An `open` still connecting has no transport yet and is audited by the broker as
+    /// a denied open.
+    pub operations_aborted: u64,
+}
+
+/// The `input_digest` of an expiry entry: SHA-256 over [`GRANT_EXPIRE_DIGEST_DOMAIN`], a zero
+/// byte and, each as a little-endian `u64` length then the bytes: grant id, tenant, target id,
+/// and the four numbers of the record in field order, each as 8 big-endian bytes.
+pub fn grant_expire_digest(record: &GrantExpiryRecord<'_>) -> Digest {
+    encode_digest(
+        GRANT_EXPIRE_DIGEST_DOMAIN,
+        &[
+            record.grant_id.as_str().as_bytes(),
+            record.tenant.as_str().as_bytes(),
+            record.target_id.as_bytes(),
+            &record.expires_at_unix_ms.to_be_bytes(),
+            &record.enforced_at_unix_ms.to_be_bytes(),
+            &record.transports_closed.to_be_bytes(),
+            &record.operations_aborted.to_be_bytes(),
+        ],
+    )
+}
 
 /// Domain separator of [`grant_create_digest`].
 ///
@@ -621,7 +683,22 @@ impl GrantError {
 
 /// Something opened under a grant that revocation must close.
 pub(crate) trait Revocable: Send + Sync {
-    fn close_now(&self);
+    /// Closes it. Returns whether an operation was in flight on it (and is thereby aborted).
+    fn close_now(&self) -> bool;
+}
+
+/// What ending a grant closed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Closed {
+    transports: u64,
+    in_flight: u64,
+}
+
+/// An expiry that was enforced and still has to be audited.
+#[derive(Debug, Clone, Copy)]
+struct Expiry {
+    enforced_at_unix_ms: u64,
+    closed: Closed,
 }
 
 /// Whether a grant can still be used. Once it leaves `Active` it never returns.
@@ -640,6 +717,8 @@ pub(crate) struct GrantEntry {
     pub(crate) grant: Arc<ConnectionGrant>,
     state: watch::Sender<EntryState>,
     handles: Mutex<Vec<Weak<dyn Revocable>>>,
+    /// Set when the grant expired while active; taken by the expiry task, which audits it.
+    expiry: Mutex<Option<Expiry>>,
 }
 
 impl GrantEntry {
@@ -648,6 +727,7 @@ impl GrantEntry {
             grant,
             state: watch::Sender::new(EntryState::Active),
             handles: Mutex::default(),
+            expiry: Mutex::default(),
         }
     }
 
@@ -678,11 +758,12 @@ impl GrantEntry {
     }
 
     /// End the grant and close every handle opened under it. Revocation wins over expiry, so
-    /// revoking an expired grant still records it as revoked.
-    fn end(&self, to: EntryState) {
-        let handles = {
+    /// revoking an expired grant still records it as revoked. Returns what was closed when the
+    /// state changed, `None` when the grant had already ended this way.
+    fn end(&self, to: EntryState) -> Option<Closed> {
+        let (changed, handles) = {
             let mut handles = lock(&self.handles);
-            self.state.send_if_modified(|s| {
+            let changed = self.state.send_if_modified(|s| {
                 let change = matches!(
                     (*s, to),
                     (EntryState::Active, _)
@@ -696,10 +777,24 @@ impl GrantEntry {
                 }
                 change
             });
-            std::mem::take(&mut *handles)
+            (changed, std::mem::take(&mut *handles))
         };
+        let mut closed = Closed::default();
         for h in handles.iter().filter_map(Weak::upgrade) {
-            h.close_now();
+            closed.transports += 1;
+            closed.in_flight += u64::from(h.close_now());
+        }
+        changed.then_some(closed)
+    }
+
+    /// End the grant as expired, at `now`. Only the change from active is noted for the audit
+    /// entry, so a grant gets at most one.
+    fn expire(&self, now_unix_ms: u64) {
+        if let Some(closed) = self.end(EntryState::Expired) {
+            *lock(&self.expiry) = Some(Expiry {
+                enforced_at_unix_ms: now_unix_ms,
+                closed,
+            });
         }
     }
 }
@@ -736,7 +831,7 @@ impl StoreInner {
         if entry.is_active(now) {
             return Some(entry);
         }
-        self.expire(&entry);
+        self.expire(&entry, now);
         None
     }
 
@@ -754,9 +849,9 @@ impl StoreInner {
         false
     }
 
-    fn expire(&mut self, entry: &GrantEntry) {
+    fn expire(&mut self, entry: &GrantEntry, now: u64) {
         self.active.retain(|_, id| id != &entry.grant.id);
-        entry.end(EntryState::Expired);
+        entry.expire(now);
     }
 
     /// End every active grant bound to `plugin_id` at `digest` as superseded and return them.
@@ -1022,8 +1117,8 @@ pub struct GrantStore {
     audit_timeout: Duration,
     /// Per target, held across the target check, the audit write and the insert of one create.
     creating: TargetLocks,
-    /// Revocation entries.
-    queue: AuditQueue,
+    /// Revocation and expiry entries. Shared with the expiry tasks.
+    queue: Arc<AuditQueue>,
     inner: Arc<Mutex<StoreInner>>,
 }
 
@@ -1033,11 +1128,11 @@ impl GrantStore {
     pub fn new(clock: Arc<dyn Clock>, audit: Arc<dyn AuditSink>) -> Self {
         let reporter: Arc<dyn AuditReporter> = Arc::new(StderrReporter::new());
         Self {
-            queue: AuditQueue::new(
+            queue: Arc::new(AuditQueue::new(
                 Arc::clone(&audit),
                 Arc::clone(&reporter),
                 RetryPolicy::default(),
-            ),
+            )),
             clock,
             audit,
             reporter,
@@ -1067,12 +1162,16 @@ impl GrantStore {
         reporter: Arc<dyn AuditReporter>,
         retry: RetryPolicy,
     ) -> Self {
-        self.queue = AuditQueue::new(Arc::clone(&self.audit), Arc::clone(&reporter), retry);
+        self.queue = Arc::new(AuditQueue::new(
+            Arc::clone(&self.audit),
+            Arc::clone(&reporter),
+            retry,
+        ));
         self.reporter = reporter;
         self
     }
 
-    /// Completes once every revocation entry submitted so far is written, or given up after its
+    /// Completes once every revocation and expiry entry submitted so far is written, or given up after its
     /// retries and reported. Call it before shutting down.
     pub async fn flush_audit(&self) {
         self.queue.flushed().await;
@@ -1243,6 +1342,7 @@ impl GrantStore {
         if let (Some(runtime), Some(expires_at)) = (runtime, grant.expires_at_unix_ms) {
             runtime.spawn(expire_at(
                 self.clock.clone(),
+                self.queue.clone(),
                 Arc::downgrade(&self.inner),
                 Arc::downgrade(&entry),
                 entry.state(),
@@ -1399,6 +1499,7 @@ impl GrantStore {
         if let (Some(runtime), Some(expires_at)) = (runtime, grant.expires_at_unix_ms) {
             runtime.spawn(expire_at(
                 self.clock.clone(),
+                self.queue.clone(),
                 Arc::downgrade(&self.inner),
                 Arc::downgrade(&entry),
                 entry.state(),
@@ -1718,10 +1819,14 @@ impl GrantStore {
 }
 
 /// The expiry task of one grant: at `expires_at` (by `clock`) it ends the grant, closing every
-/// transport opened under it, and frees its target. It stops early if the grant is revoked, and
-/// holds only weak references, so it never keeps a dropped store or grant alive.
+/// transport opened under it, frees its target, and writes the expiry's audit entry. It also
+/// writes the entry when the store noticed the expiry first (a `create` or `lookup` that compared
+/// the clock). It stops without an entry if the grant is revoked or replaced first. It holds only
+/// weak references to the store and the grant, so it never keeps either alive; the audit queue it
+/// holds lives as long as the grant has a reference.
 async fn expire_at(
     clock: Arc<dyn Clock>,
+    queue: Arc<AuditQueue>,
     store: Weak<Mutex<StoreInner>>,
     entry: Weak<GrantEntry>,
     mut state: watch::Receiver<EntryState>,
@@ -1729,15 +1834,60 @@ async fn expire_at(
 ) {
     tokio::select! {
         () = clock.sleep_until(expires_at) => {}
-        // Revoked, or every reference to the grant is gone.
-        _ = state.wait_for(|s| *s != EntryState::Active) => return,
+        // Ended some other way; `false` when every reference to the grant is gone.
+        alive = async { state.wait_for(|s| *s != EntryState::Active).await.is_ok() } => {
+            if !alive {
+                return;
+            }
+        }
     }
     let Some(entry) = entry.upgrade() else {
         return;
     };
+    // No effect on a grant that has already ended.
+    let now = clock.now_unix_ms();
     match store.upgrade() {
-        Some(store) => lock(&store).expire(&entry),
-        None => entry.end(EntryState::Expired),
+        Some(store) => lock(&store).expire(&entry, now),
+        None => entry.expire(now),
+    }
+    let expiry = lock(&entry.expiry).take();
+    if let Some(expiry) = expiry {
+        queue.submit(expiry_entry(&entry.grant, expiry)).await;
+    }
+}
+
+/// The audit entry of an enforced expiry (see the module docs).
+fn expiry_entry(grant: &ConnectionGrant, expiry: Expiry) -> AuditEntry {
+    AuditEntry {
+        timestamp_unix_ms: expiry.enforced_at_unix_ms,
+        principal_chain: vec![AuditPrincipal {
+            kind: PrincipalKind::System,
+            id: GRANT_EXPIRY_PRINCIPAL.into(),
+            tenant: grant.tenant.clone(),
+            session: SessionId::new(GRANT_EXPIRY_SESSION),
+        }],
+        tenant: grant.tenant.clone(),
+        action: Action::new(GRANT_EXPIRE_ACTION, GRANT_EXPIRE_PERM),
+        target: Some(TargetRef::connection(&grant.target_id)),
+        risk: Risk::Write,
+        decision: AuditDecision::Allow,
+        approval_id: Some(grant.id.to_string()),
+        outcome: Outcome::Success,
+        duration_ms: None,
+        correlation_id: format!("expire:{}", grant.id),
+        input_digest: grant_expire_digest(&GrantExpiryRecord {
+            grant_id: &grant.id,
+            tenant: &grant.tenant,
+            target_id: &grant.target_id,
+            // Only a grant with an expiry has an expiry task.
+            expires_at_unix_ms: grant.expires_at_unix_ms.unwrap_or_default(),
+            enforced_at_unix_ms: expiry.enforced_at_unix_ms,
+            transports_closed: expiry.closed.transports,
+            operations_aborted: expiry.closed.in_flight,
+        }),
+        statement_digest: None,
+        delivery: None,
+        parent_correlation_id: None,
     }
 }
 

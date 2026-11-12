@@ -61,6 +61,9 @@
 //!   flight, and its target is free for a new grant (see [`grant`]). An `open` still connecting
 //!   when its grant expires or is revoked is audited as a denial, with the reason `grant expired`
 //!   or `grant revoked`.
+//!   The same holds for an `open` whose connect completes after `expires_at` but before the
+//!   expiry task ran. Each expiry is audited once, by a system principal
+//!   ([`GRANT_EXPIRE_ACTION`], see [`grant`]).
 //! - **Connect deadline.** [`BrokerLimits::connect_timeout`] bounds the TCP connect of one
 //!   `open` across all permitted addresses together.
 //!
@@ -101,9 +104,10 @@ pub use broker::{
 pub use contract::ContractBroker;
 pub use grant::{
     ConnectionGrant, DEFAULT_AUDIT_TIMEOUT, DriverKind, Eligibility, GRANT_CREATE_DIGEST_DOMAIN,
-    GrantError, GrantId, GrantRequest, GrantStore, GrantSwitch, Host, InstalledPlugin,
+    GRANT_EXPIRE_ACTION, GRANT_EXPIRE_DIGEST_DOMAIN, GRANT_EXPIRY_PRINCIPAL, GrantError,
+    GrantExpiryRecord, GrantId, GrantRequest, GrantStore, GrantSwitch, Host, InstalledPlugin,
     PluginBinding, SecretBinding, ServerTrust, TlsMode, TlsPolicy, TlsSettings,
-    grant_create_digest,
+    grant_create_digest, grant_expire_digest,
 };
 pub use manifest::{
     CapabilityKind, Manifest, ManifestError, NetworkTemplate, PermissionDelta, PermissionDiff,
