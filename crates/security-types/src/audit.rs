@@ -17,7 +17,9 @@
 //! completion entry with the result ([`Outcome::Success`] or [`Outcome::Error`]), the
 //! [`Delivery`] and the duration. A `Started` entry without a matching completion means the
 //! outcome is unknown: the process crashed, or an admission write that failed ambiguously was
-//! followed by a retry. Refusals and Plugin Host operations are one entry each.
+//! followed by a retry. Refusals and Plugin Host broker and grant operations are one entry each.
+//! Plugin Host package approve, activate and rollback are two entries like a call; an approval
+//! and its activation share a correlation id, and the approval's outcome is written last.
 //!
 //! # Format version
 //!
