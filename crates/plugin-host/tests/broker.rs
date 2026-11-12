@@ -12,16 +12,18 @@ use std::time::Duration;
 use plugin_host::grant::address_policy;
 use plugin_host::{
     AddressPolicy, AuditSink, BrokerConfig, BrokerError, BrokerLimits, BrokerScope, Caller, Clock,
-    DriverKind, Eligibility, GrantError, GrantRequest, GrantStore, InstalledPlugin, Manifest,
+    DriverKind, Eligibility, GRANT_EXPIRE_ACTION, GRANT_EXPIRY_PRINCIPAL, GrantError,
+    GrantExpiryRecord, GrantId, GrantRequest, GrantStore, InstalledPlugin, Manifest,
     MemoryAuditLog, NativeBroker, Resolver, SecretBinding, ServerTrust, TlsMode, TlsPolicy,
-    TlsSettings, Transport, grant_create_digest,
+    TlsSettings, Transport, grant_create_digest, grant_expire_digest,
 };
 use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair};
 use rustls::RootCertStore;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 use security_types::{
-    Action, ApprovalSpec, AuditChain, AuditDecision, Authorizer, AuthzRequest, Decision, Digest,
-    Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, SessionId, TenantId,
+    Action, ApprovalSpec, AuditChain, AuditDecision, AuditEntry, AuditPrincipal, Authorizer,
+    AuthzRequest, Decision, Digest, Outcome, Principal, PrincipalKind, Reason, Risk, RoleId,
+    SessionId, TargetRef, TenantId,
 };
 use support::hanging;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -1688,4 +1690,241 @@ async fn open_still_connecting_when_revoked_is_audited_as_revoked() {
     assert_eq!(result.unwrap_err(), BrokerError::PermissionDenied);
     assert!(env.grants.is_revoked(&id));
     assert_open_denied(&env, "grant revoked");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Audit of expiry (spec question 36, TSK-22)
+// ---------------------------------------------------------------------------------------------
+
+/// The expiry entries written so far, once the expiry tasks have run.
+async fn expiry_entries(env: &Env<FakeResolver>) -> Vec<AuditEntry> {
+    settle().await;
+    env.grants.flush_audit().await;
+    env.audit
+        .entries()
+        .into_iter()
+        .filter(|e| e.action.name == GRANT_EXPIRE_ACTION)
+        .collect()
+}
+
+/// The digest of the expiry entry of grant `id` on `pg1`.
+fn expiry_digest(
+    id: &GrantId,
+    expires_at: u64,
+    enforced_at: u64,
+    closed: u64,
+    aborted: u64,
+) -> Digest {
+    grant_expire_digest(&GrantExpiryRecord {
+        grant_id: id,
+        tenant: &TenantId::new("t1"),
+        target_id: "pg1",
+        expires_at_unix_ms: expires_at,
+        enforced_at_unix_ms: enforced_at,
+        transports_closed: closed,
+        operations_aborted: aborted,
+    })
+}
+
+#[tokio::test]
+async fn expiry_writes_one_audit_entry_by_the_system_principal() {
+    let srv = sink().await;
+    let env = env();
+    let start = env.clock.now_unix_ms();
+    let id = env.grant(expiring(&env, srv.addr.port(), 60_000)).await;
+    let scope = env.scope(alice());
+    let mut idle = scope.open("pg1", "data").await.unwrap();
+    let mut busy = scope.open("pg1", "data").await.unwrap();
+    scope.send(&mut idle, b"hello").await.unwrap();
+    assert!(expiry_entries(&env).await.is_empty());
+
+    // One transport is idle and one has a recv in flight when the grant expires.
+    let (result, ()) = tokio::join!(
+        tokio::time::timeout(Duration::from_secs(10), scope.recv(&mut busy, 1024)),
+        async {
+            settle().await;
+            env.clock.advance(60_000);
+        }
+    );
+    assert_eq!(
+        result.expect("recv was not aborted at expiry"),
+        Err(BrokerError::PermissionDenied)
+    );
+
+    let entries = expiry_entries(&env).await;
+    assert_eq!(entries.len(), 1, "{entries:?}");
+    let entry = &entries[0];
+    assert_eq!(
+        entry.principal_chain,
+        vec![AuditPrincipal {
+            kind: PrincipalKind::System,
+            id: GRANT_EXPIRY_PRINCIPAL.into(),
+            tenant: TenantId::new("t1"),
+            session: SessionId::new("system"),
+        }]
+    );
+    assert_eq!(entry.tenant, TenantId::new("t1"));
+    assert_eq!(entry.target, Some(TargetRef::connection("pg1")));
+    assert_eq!(entry.approval_id.as_deref(), Some(id.as_str()));
+    assert_eq!(entry.timestamp_unix_ms, start + 60_000);
+    assert_eq!(entry.decision, AuditDecision::Allow);
+    assert_eq!(entry.outcome, Outcome::Success);
+    assert_eq!(entry.risk, Risk::Write);
+    assert_eq!(entry.correlation_id, format!("expire:{id}"));
+    // Two transports closed, one of them with an operation in flight.
+    assert_eq!(
+        entry.input_digest,
+        expiry_digest(&id, start + 60_000, start + 60_000, 2, 1)
+    );
+    assert_ne!(
+        entry.input_digest,
+        expiry_digest(&id, start + 60_000, start + 60_000, 2, 0)
+    );
+
+    // Later uses, more time and a late revocation add no second expiry entry.
+    assert_eq!(
+        scope.send(&mut idle, b"late").await,
+        Err(BrokerError::PermissionDenied)
+    );
+    env.clock.advance(60_000);
+    env.grants
+        .revoke(&allow(), &admin(), &id, "late")
+        .await
+        .unwrap();
+    assert_eq!(expiry_entries(&env).await.len(), 1);
+    // The log is still one valid chain with the system entry in it.
+    AuditChain::verify_all(&env.audit.records()).unwrap();
+}
+
+#[tokio::test]
+async fn expiry_noticed_by_create_first_is_still_audited_once() {
+    let env = env();
+    let start = env.clock.now_unix_ms();
+    let first = env.grant(expiring(&env, 5432, 1_000)).await;
+
+    // `create` compares the clock before the expiry task had a chance to run, half a second late.
+    env.clock.advance(1_500);
+    let second = env.grant(expiring(&env, 5432, 1_000)).await;
+    let entries = expiry_entries(&env).await;
+    assert_eq!(entries.len(), 1, "{entries:?}");
+    assert_eq!(entries[0].approval_id.as_deref(), Some(first.as_str()));
+    // The entry carries the time enforcement ran, and commits to the scheduled time too.
+    assert_eq!(entries[0].timestamp_unix_ms, start + 1_500);
+    assert_eq!(
+        entries[0].input_digest,
+        expiry_digest(&first, start + 1_000, start + 1_500, 0, 0)
+    );
+
+    // The second grant gets its own entry when its time comes.
+    env.clock.advance(1_000);
+    let entries = expiry_entries(&env).await;
+    assert_eq!(entries.len(), 2, "{entries:?}");
+    assert_eq!(entries[1].approval_id.as_deref(), Some(second.as_str()));
+}
+
+#[tokio::test]
+async fn grant_revoked_before_expires_at_gets_no_expiry_entry() {
+    let srv = sink().await;
+    let env = env();
+    let id = env.grant(expiring(&env, srv.addr.port(), 60_000)).await;
+    let scope = env.scope(alice());
+    let _t = scope.open("pg1", "data").await.unwrap();
+    env.grants
+        .revoke(&allow(), &admin(), &id, "c")
+        .await
+        .unwrap();
+    env.clock.advance(120_000);
+    assert!(expiry_entries(&env).await.is_empty());
+    assert!(env.grants.is_revoked(&id));
+    // A grant without an expiry never gets one either.
+    let forever = env
+        .grant(request(5433, TlsMode::Direct, &Pki::new("CA").ca))
+        .await;
+    env.clock.advance(u64::MAX / 2);
+    assert!(expiry_entries(&env).await.is_empty());
+    assert!(env.grants.is_active(&forever));
+}
+
+/// A clock a test sets directly and whose sleepers never wake, so no expiry task ever runs: only
+/// the comparisons with the clock decide.
+struct DeafClock(std::sync::atomic::AtomicU64);
+
+impl Clock for DeafClock {
+    fn now_unix_ms(&self) -> u64 {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn sleep_until(&self, _: u64) -> std::pin::Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(std::future::pending())
+    }
+}
+
+/// Moves the clock forward while the open is resolving, that is after the broker checked the
+/// grant and before it connects.
+struct LateResolver(Arc<DeafClock>, u64);
+
+impl Resolver for LateResolver {
+    async fn resolve(&self, _host: &str, _port: u16) -> io::Result<Vec<IpAddr>> {
+        self.0
+            .0
+            .fetch_add(self.1, std::sync::atomic::Ordering::SeqCst);
+        Ok(vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
+    }
+}
+
+#[tokio::test]
+async fn connect_completing_after_expires_at_is_denied_before_the_expiry_task_runs() {
+    let mut srv = sink().await;
+    let clock = Arc::new(DeafClock(1_000_000.into()));
+    let audit = Arc::new(MemoryAuditLog::new());
+    let grants = Arc::new(GrantStore::new(
+        clock.clone(),
+        audit.clone() as Arc<dyn AuditSink>,
+    ));
+    let broker = NativeBroker::new(
+        grants.clone(),
+        LateResolver(clock.clone(), 60_000),
+        BrokerConfig::default(),
+    );
+    let mut req = request(srv.addr.port(), TlsMode::Direct, &Pki::new("unused").ca);
+    req.template_id = "tls-optional".into();
+    req.tls = TlsPolicy::Disabled;
+    req.expires_at_unix_ms = Some(1_060_000);
+    let id = grants
+        .create(&allow(), &admin(), &plugin(), req, "corr-grant")
+        .await
+        .unwrap()
+        .id
+        .clone();
+
+    // The grant is active when the open starts and has expired when the TCP connect completes.
+    let scope = broker.scope(caller(alice()));
+    assert_eq!(
+        scope.open("pg1", "data").await.unwrap_err(),
+        BrokerError::PermissionDenied
+    );
+    assert!(!grants.is_active(&id));
+    let opens: Vec<_> = audit
+        .entries()
+        .into_iter()
+        .filter(|e| e.action.name == "plugin-host.broker.open")
+        .collect();
+    assert_eq!(opens.len(), 1, "{opens:?}");
+    assert_eq!(
+        opens[0].decision,
+        AuditDecision::Deny {
+            reason: Reason::Policy {
+                message: "grant expired".into()
+            }
+        }
+    );
+    assert_eq!(
+        opens[0].outcome,
+        Outcome::Error {
+            code: "PermissionDenied".into()
+        }
+    );
+    // The connection the broker had made is closed, and nothing was sent on it.
+    closed_by_broker(srv.closed).await;
+    assert!(srv.bytes.try_recv().is_err());
 }

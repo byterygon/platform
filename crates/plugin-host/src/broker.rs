@@ -319,11 +319,15 @@ struct Handle {
 }
 
 impl Revocable for Handle {
-    fn close_now(&self) {
+    fn close_now(&self) -> bool {
         self.closed.store(true, Ordering::SeqCst);
         // If an operation holds the lock, it sees the revocation and closes the stream itself.
-        if let Ok(mut stream) = self.stream.try_lock() {
-            *stream = Stream::Closed;
+        match self.stream.try_lock() {
+            Ok(mut stream) => {
+                *stream = Stream::Closed;
+                false
+            }
+            Err(_) => true,
         }
     }
 }
@@ -490,6 +494,12 @@ impl<R: Resolver> BrokerScope<R> {
         if !entry.track(weak) {
             // The grant ended after the connect completed; dropping `handle` closes the socket.
             return Err(grant_ended(*ended.borrow()));
+        }
+        // The connect may have completed after `expires_at` but before the expiry task ran. The
+        // grant no longer covers the connection, so it is not handed out (and not audited as
+        // allowed); dropping `handle` closes the socket.
+        if grant.is_expired(self.now()) {
+            return Err(deny(GRANT_EXPIRED));
         }
         Ok(Transport {
             scope_id: self.id,
