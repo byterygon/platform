@@ -271,6 +271,7 @@ fn started(admission: &Admission<'_>) -> AuditEntry {
         statement_digest: None,
         delivery: None,
         parent_correlation_id: admission.parent_correlation_id.map(str::to_owned),
+        detail: None,
     }
 }
 
@@ -732,6 +733,7 @@ mod tests {
             statement_digest: None,
             delivery: Some(Delivery::Delivered),
             parent_correlation_id: None,
+            detail: None,
         }
     }
 

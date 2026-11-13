@@ -327,6 +327,7 @@ impl Guard {
             // A refused nested call (at dispatch or in a re-check) names its caller too (spec Open
             // question 26 item 14).
             parent_correlation_id: check.parent_correlation_id.map(str::to_owned),
+            detail: None,
         };
         // The call is refused whether or not the entry was recorded, so a failing sink cannot
         // let anything through; a failure is reported.

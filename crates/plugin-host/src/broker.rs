@@ -788,6 +788,7 @@ impl<R: Resolver> BrokerScope<R> {
                     statement_digest: None,
                     delivery: None,
                     parent_correlation_id: None,
+                    detail: None,
                 },
                 effect,
             )

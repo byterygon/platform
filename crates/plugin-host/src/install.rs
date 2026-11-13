@@ -43,7 +43,8 @@
 //! versions, and in `approval_id` the grant relied on (`<old id>><new id>` for a carry-over, the
 //! grant id for a restore). The source and destination version, both grant ids, the connection,
 //! the original approver and the expiry are committed in `input_digest`
-//! ([`grant_switch_digest`]), as for grant creation.
+//! ([`grant_switch_digest`]), as for grant creation, and readable in the entry's `detail`
+//! ([`grant_switch_detail`]).
 //!
 //! The entry and the grant take effect together: the grant becomes active only after its entry
 //! was written, under the lock of its target (see [`GrantStore`]). A carry-over follows the rule
@@ -115,7 +116,7 @@ use crate::audit::{AuditError, AuditSink, Clock};
 use crate::grant::{
     ActivateOutcome, Candidate, DEFAULT_AUDIT_TIMEOUT, GRANT_CARRY_DIGEST_DOMAIN,
     GRANT_RESTORE_DIGEST_DOMAIN, GrantStore, GrantSwitch, GrantSwitchRecord, InstalledPlugin,
-    grant_switch_digest,
+    grant_switch_detail, grant_switch_digest,
 };
 use crate::manifest::{Capabilities, Manifest, PermissionDelta, PermissionDiff};
 use crate::package::{
@@ -445,6 +446,7 @@ fn package_entry(
         statement_digest: None,
         delivery: None,
         parent_correlation_id: None,
+        detail: None,
     }
 }
 
@@ -678,18 +680,16 @@ impl SwitchAudit<'_> {
             session: self.actor.session.clone(),
         }];
         chain.extend(AuditPrincipal::chain_of(self.actor));
-        let input_digest = grant_switch_digest(
-            domain,
-            &GrantSwitchRecord {
-                plugin_id: self.plugin_id,
-                from_digest: self.from_digest,
-                from_version: self.from_version,
-                to_digest: self.to_digest,
-                to_version: self.to_version,
-                old,
-                new,
-            },
-        );
+        let record = GrantSwitchRecord {
+            plugin_id: self.plugin_id,
+            from_digest: self.from_digest,
+            from_version: self.from_version,
+            to_digest: self.to_digest,
+            to_version: self.to_version,
+            old,
+            new,
+        };
+        let input_digest = grant_switch_digest(domain, &record);
         let entry = AuditEntry {
             timestamp_unix_ms: self.installer.clock.now_unix_ms(),
             principal_chain: chain,
@@ -710,6 +710,7 @@ impl SwitchAudit<'_> {
             statement_digest: None,
             delivery: None,
             parent_correlation_id: None,
+            detail: grant_switch_detail(&record),
         };
         emit(self.installer, entry, self.plugin_id, on_failure).await
     }

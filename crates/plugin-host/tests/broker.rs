@@ -1780,6 +1780,17 @@ async fn expiry_writes_one_audit_entry_by_the_system_principal() {
         entry.input_digest,
         expiry_digest(&id, start + 60_000, start + 60_000, 2, 0)
     );
+    // The same values, readable (TSK-35).
+    let detail = entry.detail.as_ref().expect("an expiry entry has detail");
+    let fields: Vec<_> = detail.iter().collect();
+    assert_eq!(
+        fields,
+        [
+            ("expires_at_unix_ms", (start + 60_000).to_string().as_str()),
+            ("operations_aborted", "1"),
+            ("transports_closed", "2"),
+        ]
+    );
 
     // Later uses, more time and a late revocation add no second expiry entry.
     assert_eq!(
@@ -1814,6 +1825,13 @@ async fn expiry_noticed_by_create_first_is_still_audited_once() {
         entries[0].input_digest,
         expiry_digest(&first, start + 1_000, start + 1_500, 0, 0)
     );
+    // The scheduled time is readable in the detail; the time enforcement ran is the timestamp.
+    let detail = entries[0].detail.as_ref().unwrap();
+    assert_eq!(
+        detail.get("expires_at_unix_ms"),
+        Some((start + 1_000).to_string().as_str())
+    );
+    assert_eq!(detail.get("transports_closed"), Some("0"));
 
     // The second grant gets its own entry when its time comes.
     env.clock.advance(1_000);
