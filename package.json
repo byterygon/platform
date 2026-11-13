@@ -10,7 +10,8 @@
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "check:licenses": "node scripts/check-licenses.mjs"
+    "check:licenses": "node scripts/check-licenses.mjs",
+    "bench": "pnpm --filter @byterygon/ambidex bench"
   },
   "devDependencies": {
     "typescript": "7.0.2"

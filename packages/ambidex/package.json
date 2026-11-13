@@ -32,7 +32,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.build.json",
-    "test": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 \".test-build/test/**/*.test.js\""
+    "test": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 \".test-build/test/**/*.test.js\"",
+    "bench": "tsc -p tsconfig.bench.json && node .bench-build/bench/run.js"
   },
   "peerDependencies": {
     "apache-arrow": "^21.0.0"

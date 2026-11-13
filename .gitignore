@@ -9,6 +9,7 @@ target/
 node_modules/
 dist/
 .test-build/
+.bench-build/
 *.tsbuildinfo
 
 # Editors / OS

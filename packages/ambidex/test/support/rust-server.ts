@@ -17,7 +17,7 @@ import type { WebSocketLike } from "../../src/index.js";
 const here = dirname(fileURLToPath(import.meta.url));
 
 /** The repository root: the first ancestor with a Cargo.lock. */
-function workspaceRoot(): string {
+export function workspaceRoot(): string {
   let dir = here;
   while (!existsSync(join(dir, "Cargo.lock"))) {
     const parent = dirname(dir);

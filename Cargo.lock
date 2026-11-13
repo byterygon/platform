@@ -73,6 +73,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ambidex-bench"
+version = "0.0.0"
+dependencies = [
+ "ambidex",
+ "ambidex-axum",
+ "axum",
+ "db-driver",
+ "db-driver-postgres",
+ "plugin-host",
+ "rcgen",
+ "rustls",
+ "schemars 1.2.3",
+ "security-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "ts-rs",
+]
+
+[[package]]
 name = "ambidex-conformance"
 version = "0.0.0"
 dependencies = [
