@@ -37,6 +37,7 @@ const PLUGIN: &str = "org.example.demo";
 const ROLLBACK: &str = "plugin-host.packages.rollback";
 const ACTIVATE: &str = "plugin-host.packages.activate";
 const APPROVE: &str = "plugin-host.packages.approve";
+const INSTALL: &str = "plugin-host.packages.install";
 
 const HEADER: &str = r#"manifest_version = 1
 id = "org.example.demo"
@@ -2110,14 +2111,14 @@ fn steps(entries: &[AuditEntry], correlation: &str) -> Vec<(String, Outcome)> {
 fn fail_move(step: SwitchStep) -> std::io::Result<()> {
     match step {
         SwitchStep::MoveVersion => Err(std::io::Error::other("injected move failure")),
-        SwitchStep::CommitState => Ok(()),
+        _ => Ok(()),
     }
 }
 
 fn fail_commit(step: SwitchStep) -> std::io::Result<()> {
     match step {
         SwitchStep::CommitState => Err(std::io::Error::other("injected commit failure")),
-        SwitchStep::MoveVersion => Ok(()),
+        _ => Ok(()),
     }
 }
 
@@ -2365,7 +2366,8 @@ async fn activation_stands_when_its_outcome_entry_cannot_be_written() {
             (ACTIVATE.to_owned(), Outcome::Started),
         ]
     );
-    assert_eq!(security_types::unfinished(&primary).len(), 2);
+    // With the install decision, whose outcome entry failed too (it has no alert sink here).
+    assert_eq!(security_types::unfinished(&primary).len(), 3);
     assert_eq!(
         steps(&read_fallback(&root.0), "install"),
         [
@@ -2486,5 +2488,282 @@ async fn rollback_stands_when_only_its_outcome_entry_misses_the_primary_sink() {
     assert_eq!(
         steps(&read_fallback(&root.0), "rb"),
         [(ROLLBACK.to_owned(), Outcome::Success)]
+    );
+}
+
+// ---- TSK-34: the install step is recorded as a decision before and an outcome after ----
+
+fn fail_stage_write(step: SwitchStep) -> std::io::Result<()> {
+    match step {
+        SwitchStep::WriteStage => Err(std::io::Error::other("injected stage write failure")),
+        _ => Ok(()),
+    }
+}
+
+/// The install entries written under `correlation`, in order: target and outcome.
+fn install_steps(entries: &[AuditEntry], correlation: &str) -> Vec<(String, Outcome)> {
+    entries
+        .iter()
+        .filter(|e| e.correlation_id == correlation && e.action.name == INSTALL)
+        .map(|e| {
+            let target = e.target.as_ref().expect("install entries have a target");
+            (target.id.clone(), e.outcome.clone())
+        })
+        .collect()
+}
+
+/// Stage directories left under the install root.
+fn stage_dirs(root: &Path) -> usize {
+    std::fs::read_dir(root)
+        .map(|d| {
+            d.filter(|e| {
+                let name = e.as_ref().unwrap().file_name();
+                name.to_string_lossy().starts_with(".stage-")
+            })
+            .count()
+        })
+        .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn install_is_recorded_as_started_then_success_naming_the_plugin() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = MemoryAuditLog::new();
+    let root = Root::new("install-outcome-success");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let archive = publisher.package("1.0.0", FULL, 0);
+    let stage = installer.stage(&archive, &human(), "stage").await.unwrap();
+    assert_eq!(stage.outcome_audit_warning(), None);
+    let entries = log.entries();
+    assert_eq!(
+        install_steps(&entries, "stage"),
+        [
+            ("unverified".to_owned(), Outcome::Started),
+            (PLUGIN.to_owned(), Outcome::Success),
+        ]
+    );
+    // Both entries commit to the archive that was submitted; the outcome is the finished half.
+    let archive_digest: [u8; 32] = Sha256::digest(&archive).into();
+    assert!(entries.iter().all(|e| e.input_digest.0 == archive_digest));
+    assert_eq!(entries[0].delivery, None);
+    assert_eq!(entries[1].delivery, Some(Delivery::Delivered));
+    assert!(entries[1].duration_ms.is_some());
+    assert!(security_types::unfinished(&entries).is_empty());
+    assert!(!root.0.join(FALLBACK_AUDIT_FILE).exists());
+}
+
+#[tokio::test]
+async fn refused_package_ends_the_install_with_the_verification_error() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = MemoryAuditLog::new();
+    let root = Root::new("install-outcome-refused");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    // Signed by a key the trust store does not pin.
+    let foreign = Publisher::new().package("1.0.0", FULL, 0);
+    let result = installer.stage(&foreign, &human(), "refused").await;
+    let Err(InstallError::Package(error)) = result else {
+        panic!("expected a verification error");
+    };
+    let entries = log.entries();
+    assert_eq!(
+        install_steps(&entries, "refused"),
+        [
+            ("unverified".to_owned(), Outcome::Started),
+            (
+                "unverified".to_owned(),
+                Outcome::Error {
+                    code: format!("{error:?}")
+                }
+            ),
+        ]
+    );
+    // The refusal is the install's outcome: no entry under another action, nothing logged as a
+    // success, nothing unfinished, and nothing written under the install root.
+    assert_eq!(entries.len(), 2);
+    assert!(security_types::unfinished(&entries).is_empty());
+    assert!(!root.0.exists());
+}
+
+#[tokio::test]
+async fn failed_stage_write_is_not_logged_as_a_successful_install() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = MemoryAuditLog::new();
+    let root = Root::new("install-outcome-io");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let archive = publisher.package("1.0.0", FULL, 0);
+    let hooks = HostHooks {
+        fault: Some(fail_stage_write),
+        ..HostHooks::default()
+    };
+    let result = installer.stage_with(&archive, &human(), "io", hooks).await;
+    assert!(
+        matches!(result, Err(InstallError::Io)),
+        "{:?}",
+        result.err()
+    );
+    let entries = log.entries();
+    // The package was verified, so the outcome names the plugin; the write failed.
+    assert_eq!(
+        install_steps(&entries, "io"),
+        [
+            ("unverified".to_owned(), Outcome::Started),
+            (PLUGIN.to_owned(), io_error()),
+        ]
+    );
+    assert_eq!(stage_dirs(&root.0), 0);
+
+    // A failure before the stage is written (the plugin's state cannot be read) ends the same way.
+    std::fs::create_dir_all(&root.0).unwrap();
+    std::fs::write(root.0.join(PLUGIN), b"not a directory").unwrap();
+    let result = installer.stage(&archive, &human(), "blocked").await;
+    assert!(
+        matches!(result, Err(InstallError::Io)),
+        "{:?}",
+        result.err()
+    );
+    assert_eq!(
+        install_steps(&log.entries(), "blocked"),
+        [
+            ("unverified".to_owned(), Outcome::Started),
+            (PLUGIN.to_owned(), io_error()),
+        ]
+    );
+    assert_eq!(stage_dirs(&root.0), 0);
+    std::fs::remove_file(root.0.join(PLUGIN)).unwrap();
+
+    // The same archive still stages afterwards.
+    let stage = installer.stage(&archive, &human(), "retry").await.unwrap();
+    assert_eq!(stage.approval_view().plugin_id, PLUGIN);
+    assert_eq!(
+        install_steps(&log.entries(), "retry").last(),
+        Some(&(PLUGIN.to_owned(), Outcome::Success))
+    );
+}
+
+#[tokio::test]
+async fn install_decision_that_cannot_be_recorded_verifies_and_writes_nothing() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    let log = FailAction(INSTALL, MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let root = Root::new("install-decision-audit");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let hooks = HostHooks {
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    let archive = publisher.package("1.0.0", FULL, 0);
+    let result = installer
+        .stage_with(&archive, &human(), "closed", hooks)
+        .await;
+    assert!(
+        matches!(result, Err(InstallError::Audit(_))),
+        "{:?}",
+        result.err()
+    );
+    // Fail closed: no fallback, no alert, no file.
+    assert!(log.1.entries().is_empty());
+    assert!(alerts.0.lock().unwrap().is_empty());
+    assert!(!root.0.exists());
+}
+
+#[tokio::test]
+async fn stage_stands_when_its_outcome_entry_cannot_be_written() {
+    let publisher = Publisher::new();
+    let (trust, policy) = (publisher.trust(), policy());
+    // The decision is recorded; the outcome entry fails.
+    let log = FailWhen(|e| e.delivery.is_some(), MemoryAuditLog::new());
+    let alerts = Alerts::default();
+    let root = Root::new("install-outcome-lost");
+    let installer = Installer {
+        root: &root.0,
+        trust: &trust,
+        policy: &policy,
+        limits: PackageLimits::default(),
+        audit: &log,
+        clock: &SystemClock,
+    };
+    let hooks = HostHooks {
+        alerts: Some(&alerts),
+        ..HostHooks::default()
+    };
+    let archive = publisher.package("1.0.0", FULL, 0);
+    let stage = installer
+        .stage_with(&archive, &human(), "lost", hooks)
+        .await
+        .unwrap();
+    let warning = AuditWarning::PrimaryFailed {
+        primary: AuditError("primary sink down".into()),
+        fallback: root.0.join(FALLBACK_AUDIT_FILE),
+    };
+    assert_eq!(stage.outcome_audit_warning(), Some(&warning));
+    assert_eq!(
+        *alerts.0.lock().unwrap(),
+        vec![InstallAlert::OutcomeAuditFallback {
+            plugin_id: PLUGIN.into(),
+            correlation_id: "lost".into(),
+            action: INSTALL.into(),
+            warning: warning.clone(),
+        }]
+    );
+    let primary = log.1.entries();
+    assert_eq!(
+        install_steps(&primary, "lost"),
+        [("unverified".to_owned(), Outcome::Started)]
+    );
+    assert_eq!(security_types::unfinished(&primary).len(), 1);
+    assert_eq!(
+        install_steps(&read_fallback(&root.0), "lost"),
+        [(PLUGIN.to_owned(), Outcome::Success)]
+    );
+    assert_eq!(stage_dirs(&root.0), 1);
+
+    // A refused package whose outcome misses the primary sink is in the fallback file too.
+    let foreign = Publisher::new().package("1.0.0", FULL, 0);
+    let result = installer
+        .stage_with(&foreign, &human(), "refused", hooks)
+        .await;
+    let Err(InstallError::Package(error)) = result else {
+        panic!("expected a verification error");
+    };
+    assert_eq!(
+        install_steps(&read_fallback(&root.0), "refused"),
+        [(
+            "unverified".to_owned(),
+            Outcome::Error {
+                code: format!("{error:?}")
+            }
+        )]
     );
 }
