@@ -61,7 +61,17 @@ void client.fixture.missing;
 
 // Subscriptions and streams.
 assert<Equal<ReturnType<typeof client.fixture.counter>, Subscription<number>>>();
-assert<Equal<ReturnType<typeof client.fixture.rows>, StreamCall<number, Uint8Array>>>();
+assert<
+  Equal<ReturnType<typeof client.fixture.bytes>, StreamCall<generated.BytesSummary, Uint8Array>>
+>();
+assert<
+  Equal<
+    ReturnType<typeof client.fixture.arrow_rows>,
+    StreamCall<generated.ArrowRowsSummary, Uint8Array>
+  >
+>();
+// @ts-expect-error: the stream input is required and typed
+void client.fixture.bytes(null);
 
 // Errors narrow on `code`; `details` is the typed domain error. ApprovalRequired details are the
 // router's approval id or, when the handler raised that code itself, the domain error.
@@ -101,7 +111,7 @@ const viaReal: Promise<string> = real.fixture.big(1, { timeoutMs: 5, signal: opt
 const sub: Subscription<number> = real.fixture.counter({ count: 3, then: "wait" });
 // @ts-expect-error: the counter input is required and typed
 void real.fixture.counter(null);
-const rows: StreamCall<number, Uint8Array> = real.fixture.rows(null);
+const rows: StreamCall<generated.BytesSummary, Uint8Array> = real.fixture.bytes({ chunks: 1, size: 1 });
 void [viaReal, sub, rows, real.$connect(), real.$ping(), real.$close()];
 // @ts-expect-error: no such procedure
 void real.fixture.nope;

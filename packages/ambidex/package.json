@@ -5,11 +5,25 @@
   "license": "MIT OR Apache-2.0",
   "type": "module",
   "private": true,
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/arrow-worker.js"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./arrow": {
+      "types": "./dist/arrow.d.ts",
+      "import": "./dist/arrow.js"
+    },
+    "./arrow-decoder": {
+      "types": "./dist/arrow-decoder.d.ts",
+      "import": "./dist/arrow-decoder.js"
+    },
+    "./arrow-worker": {
+      "types": "./dist/arrow-worker.d.ts",
+      "import": "./dist/arrow-worker.js"
     }
   },
   "files": [
@@ -20,7 +34,16 @@
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.build.json",
     "test": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 \".test-build/test/**/*.test.js\""
   },
+  "peerDependencies": {
+    "apache-arrow": "^21.0.0"
+  },
+  "peerDependenciesMeta": {
+    "apache-arrow": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@types/node": "24.19.2"
+    "@types/node": "24.19.2",
+    "apache-arrow": "21.2.0"
   }
 }
