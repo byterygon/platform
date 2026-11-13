@@ -3,7 +3,8 @@
 TypeScript runtime for Ambidex, the dual-transport RPC protocol (Notion: Ambidex spec §1–§7,
 §10). It speaks the same binary frame protocol as the Rust engine (`crates/ambidex`) over the
 Tauri IPC transport on desktop and a binary WebSocket on web. No runtime dependencies, no CDN:
-the package is plain ES modules in `dist/`.
+the package is plain ES modules in `dist/`. Only the optional Arrow decoder needs `apache-arrow`
+(an optional peer dependency).
 
 ## Usage
 
@@ -47,7 +48,7 @@ same with a bare table. Procedure names are the wire names (spec Open question 2
 | query        | `Promise<Output>`                               | Rejects with `RpcError`                                     |
 | mutation     | `Promise<Output>`                               | Never resent by the runtime                                 |
 | subscription | `AsyncIterable<Event>` with `unsubscribe()`     | Ends with the server's `Result` or `Error` (see below)      |
-| stream       | `{ chunks(): AsyncIterable<Uint8Array>, result }` | M1 shape only: no credits, no Arrow decoding (M2)         |
+| stream       | `{ chunks(): AsyncIterable<Uint8Array>, result, cancel() }` | Paced by credits; Arrow decoding in a Worker (see below) |
 
 Control methods start with `$`, which no procedure name can: `$connect()` (open now, returns the
 `HelloAck`), `$ping()` (round trip in ms) and `$close()`.
@@ -88,6 +89,16 @@ Control methods start with `$`, which no procedure name can: `$connect()` (open 
   `Cancelled`. Events the consumer has not read yet are buffered up to `maxBufferedEvents`
   (default 1024), then the subscription ends with `ResourceExhausted`; the server bounds its own
   buffer the same way. Subscriptions count toward the server's `max_concurrent_calls`.
+- **Streams** (spec §5, §6, Open question 27). A stream is started with `Call`; `chunks()` yields
+  the binary `Chunk` payloads in order and `result` settles from `StreamEnd` (the typed summary)
+  or `Error` (after the chunks sent before it). The server starts every stream with a window of 4
+  credits and spends one per chunk. The runtime gives one back, `Credit {"chunks": 1}`, when the
+  consumer comes back for the next chunk, so the window measures real consumption: a consumer
+  that awaits between chunks slows the server's handler down, and at most the window is buffered
+  here. Nothing is granted for chunks nobody read: a caller that never iterates `chunks()` stalls
+  the stream at its window until the deadline. Leaving the loop early, `cancel()` or aborting the
+  `signal` sends `Cancel`, and `result` rejects with a local `Cancelled`. Deadlines and the safety
+  timer work as for calls (`timeoutDefaultMs` applies). Each chunk owns its `ArrayBuffer`.
 - **Errors** are `RpcError` instances with the wire fields `code`, `message`, `details`,
   `retryable`, `correlation_id`, plus `procedure` and `local` (true when the runtime produced it).
   `isRpcError(e, procedure)` narrows to that procedure's generated error union, and only matches
@@ -117,10 +128,42 @@ the shared runtime.
 - **`autoTransport()`** picks Tauri when `__TAURI_INTERNALS__` provides `invoke` and
   `transformCallback`, otherwise WebSocket. `force` overrides detection.
 
+## Arrow streams
+
+A stream procedure that sends Arrow IPC (the Rust `ArrowSink`) can be decoded off the UI thread
+(spec §4, §6). `apache-arrow` (`^21`) must be installed by the application; it is imported only
+by the Worker script, which ships in this package and is bundled with the application (no CDN,
+no runtime fetch).
+
+```ts
+import { decodeArrow } from "@byterygon/ambidex/arrow";
+
+const worker = new Worker(new URL("@byterygon/ambidex/arrow-worker", import.meta.url), {
+  type: "module",
+});
+const rows = decodeArrow(client.query.execute({ sql }), worker);
+const fields = await rows.schema; // name, type, nullable; also for a result without rows
+for await (const batch of rows.batches()) grid.append(batch);
+const summary = await rows.result;
+```
+
+- A batch is `{ numRows, columns }`; each column is an `ArrowData`: the Arrow buffers of the
+  array (`validity`, `offsets`, `values`, `children`, `dictionary`) as typed arrays, all views of
+  one `ArrayBuffer` per batch. The UI thread parses nothing and does not load apache-arrow.
+  `arrowIsValid(column, row)` reads the validity bitmap; `arrowTransferables(batch)` lists the
+  buffers to transfer a batch on.
+- Chunks are transferred to the Worker and batches transferred back. On Tauri the frames arrive
+  on the main thread and are transferred from there. On the web the whole client may live in the
+  application's own Worker: `inThreadArrowDecoder()` from `@byterygon/ambidex/arrow-decoder`
+  decodes there without a second Worker. One Worker serves any number of streams.
+- **Credits**: the next chunk is taken, which grants its credit, only after the Worker decoded
+  the previous one and the consumer came back for more batches.
+- The schema resolves before `batches()` is read. Chunks that are not an Arrow IPC stream, or a
+  Worker that fails (script not loaded), fail the call with a local `Internal` and cancel it.
+  Leaving `batches()` early or `cancel()` cancels the stream.
+
 ## Not in this package yet
 
-- **Streams (M2)**: credit-based flow control, Worker-side Arrow decoding, the chunk API. The
-  engine answers stream calls with `Unimplemented`, which `result` and `chunks()` surface.
 - **Backpressure for subscriptions (M2)**: no credits; a consumer that falls behind ends the
   subscription with `ResourceExhausted` (client or server side) instead of slowing the producer.
 

@@ -32,7 +32,7 @@ summarises what a session needs when Notion is unavailable.
 | `crates/plugin-host` | Plugin Host | MIT OR Apache-2.0 |
 | `crates/db-driver` | db-driver contract (Rust trait + WIT); `conformance` feature for driver tests | MIT OR Apache-2.0 |
 | `crates/db-driver-postgres` | First-party native PostgreSQL driver (sans-IO `postgres-protocol`, all I/O via the broker) | MIT OR Apache-2.0 |
-| `packages/ambidex` | `@byterygon/ambidex` TypeScript runtime: `createClient`, WebSocket and Tauri transports, `autoTransport` | MIT OR Apache-2.0 |
+| `packages/ambidex` | `@byterygon/ambidex` TypeScript runtime: `createClient`, WebSocket and Tauri transports, `autoTransport`, stream calls with credits, Worker Arrow decoding (`./arrow`, optional peer `apache-arrow`) | MIT OR Apache-2.0 |
 | `apps/dbee` | DBee product (placeholder) | AGPL-3.0-only |
 
 - Every `Cargo.toml` and `package.json` declares `license` explicitly. New crates/packages in

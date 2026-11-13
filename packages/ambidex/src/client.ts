@@ -7,8 +7,8 @@
 //
 // - query / mutation: `Promise<Output>`. Rejects with an `RpcError` (see `errors.ts`).
 // - subscription: `Subscription<Event>` (an `AsyncIterable` with `unsubscribe()`).
-// - stream: `StreamCall` with `chunks()` and `result` (M1 shape only; credits and Arrow decoding
-//   are M2, see `StreamHandle`).
+// - stream: `StreamCall` with `chunks()`, `result` and `cancel()`. The consumer paces the server
+//   with credits (see `StreamHandle`); `arrow.ts` decodes Arrow IPC chunks in a Worker.
 //
 // Connections: one at a time, opened on the first call (or `$connect()`), replaced on the next
 // call after it closes. Calls in flight when a connection closes fail with `Unavailable`; nothing
@@ -63,8 +63,9 @@ export interface ClientOptions {
    */
   readonly networkMarginMs?: number;
   /**
-   * Events (or chunks) buffered per subscription (or stream) the consumer has not read yet. When
-   * exceeded the subscription ends with `ResourceExhausted`. Default 1024.
+   * Events buffered per subscription the consumer has not read yet. When exceeded the
+   * subscription ends with `ResourceExhausted`. Default 1024. A stream is bounded by its credit
+   * window instead (a handful of chunks); this limit only catches a server that ignores credits.
    */
   readonly maxBufferedEvents?: number;
   /** Overrides `Hello.client_version`. */
@@ -550,6 +551,7 @@ class Runtime {
           c.release(callId);
           return;
         }
+        sink.bind?.((chunks) => c.credit(callId, chunks));
         try {
           c.sendJson(kind, callId, callPayload(def, input, opts.timeoutMs));
         } catch (error) {
@@ -592,6 +594,8 @@ type EndedBy = "server" | "client";
 
 interface PushSink {
   readonly ended: boolean;
+  /** Streams only: called once the call has an id, with the way to grant it credits. */
+  bind?(grant: (chunks: number) => void): void;
   frame(frame: Frame): void;
   terminate(error: RpcError, by?: EndedBy): void;
   onEnd(listener: (by: EndedBy) => void): void;
@@ -784,17 +788,29 @@ export class SubscriptionHandle<E> extends PushHandle<E> implements AsyncIterabl
 }
 
 /**
- * A stream call (spec §5, §6), M1 shape: `chunks()` yields the binary `Chunk` payloads in order
- * and `result` settles from `StreamEnd` (the typed summary) or `Error`.
+ * A stream call (spec §5, §6): `chunks()` yields the binary `Chunk` payloads in order and
+ * `result` settles from `StreamEnd` (the typed summary) or `Error`.
  *
- * Not in M1: credit-based flow control (the runtime sends no `Credit` frames), Worker-side Arrow
- * decoding and the chunk API on top of it. Leaving `chunks()` early cancels the stream.
+ * Flow control (spec §6, Open question 27): the server starts every stream with a window of 4
+ * credits and spends one per chunk. The runtime gives one back, `Credit {"chunks": 1}`, when the
+ * consumer comes back for the next chunk, which is when it is done with the previous one. So the
+ * window measures real consumption: a consumer that awaits between chunks (a Worker decoding, a
+ * grid rendering) slows the server's handler down, and at most the window is buffered here. No
+ * credit is sent once the stream ended, and none for chunks nobody read: a caller that never
+ * iterates `chunks()` stalls the stream at the initial window until its deadline.
+ *
+ * Leaving `chunks()` early, `cancel()` or aborting the `signal` sends `Cancel`; `result` then
+ * rejects with a local `Cancelled`. Each chunk owns its `ArrayBuffer`, so it can be transferred
+ * to a Worker without a copy.
  */
 export class StreamHandle<T> extends PushHandle<Uint8Array> {
   readonly result: Promise<T>;
   #resolve!: (value: T) => void;
   #reject!: (error: RpcError) => void;
   #summary: { value: T } | undefined;
+  #grant: ((chunks: number) => void) | undefined;
+  /** Chunks handed to the consumer and not yet paid back with a credit. */
+  #owed = 0;
 
   constructor(procedure: string, maxBuffered: number) {
     super(procedure, maxBuffered);
@@ -852,8 +868,27 @@ export class StreamHandle<T> extends PushHandle<Uint8Array> {
     else this.#reject(cancelled(this.procedure));
   }
 
+  bind(grant: (chunks: number) => void): void {
+    this.#grant = grant;
+  }
+
   chunks(): AsyncIterable<Uint8Array> {
-    const it = this.iterator();
+    const inner = this.iterator();
+    const it: AsyncIterableIterator<Uint8Array> = {
+      next: () => {
+        // Asking for the next chunk says the previous ones were consumed: pay them back.
+        const owed = this.#owed;
+        this.#owed = 0;
+        if (owed > 0 && !this.ended) this.#grant?.(owed);
+        return inner.next().then((r) => {
+          if (r.done !== true) this.#owed += 1;
+          return r;
+        });
+      },
+      return: (value?: unknown) => inner.return!(value),
+      throw: (error?: unknown) => inner.throw!(error),
+      [Symbol.asyncIterator]: () => it,
+    };
     return { [Symbol.asyncIterator]: () => it };
   }
 

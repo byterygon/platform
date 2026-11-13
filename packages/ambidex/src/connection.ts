@@ -177,6 +177,15 @@ export class Connection {
     this.#retireIfDone();
   }
 
+  /**
+   * Grants the stream `callId` `chunks` more chunks: `Credit {"chunks": n}` (spec §6, Open
+   * question 27). Nothing is sent for a call that already ended here: the server would ignore it.
+   */
+  credit(callId: number, chunks: number): void {
+    if (this.#state !== "open" || !this.#calls.has(callId)) return;
+    this.#trySend(jsonFrame(Kind.Credit, callId, { chunks }));
+  }
+
   /** Round trip of a Ping, in milliseconds. */
   ping(): Promise<number> {
     if (this.#state !== "open") {

@@ -29,8 +29,10 @@ import {
   encodeFrame,
   isRpcError,
 } from "../src/index.js";
+import { decodeArrow } from "../src/arrow.js";
 import * as api from "./conformance/api.js";
-import { settle } from "./support/mock-server.js";
+import { fixtureRow, rowsOf, startArrowWorker } from "./support/arrow.js";
+import { settle, tick } from "./support/mock-server.js";
 import { RustServer, serverUnavailable } from "./support/rust-server.js";
 
 const skip = serverUnavailable();
@@ -41,9 +43,65 @@ before(async () => {
   if (skip === undefined) server = await RustServer.start();
 });
 
+// The Arrow decoder in a worker thread, as a page runs it in a Web Worker.
+const arrowWorker = startArrowWorker();
+
 after(async () => {
+  await arrowWorker.stop();
   await server?.stop();
 });
+
+/** Wraps a transport and counts the stream frames passing through: chunks in, credits out. */
+class Counting implements Transport {
+  readonly name = "counting";
+  chunks = 0;
+  readonly credits: unknown[] = [];
+  #inner: Transport;
+
+  constructor(inner: Transport) {
+    this.#inner = inner;
+  }
+
+  async open(sink: PipeSink): Promise<Pipe> {
+    const inbound = new FrameDecoder(Number.MAX_SAFE_INTEGER);
+    const outbound = new FrameDecoder(Number.MAX_SAFE_INTEGER);
+    const pipe = await this.#inner.open({
+      data: (bytes) => {
+        inbound.push(bytes);
+        for (let f = inbound.next(); f !== undefined; f = inbound.next()) {
+          if (f.kind === Kind.Chunk) this.chunks += 1;
+        }
+        sink.data(bytes);
+      },
+      closed: (error) => sink.closed(error),
+    });
+    return {
+      ...(pipe.auth !== undefined ? { auth: pipe.auth } : {}),
+      send: (bytes) => {
+        outbound.push(bytes);
+        for (let f = outbound.next(); f !== undefined; f = outbound.next()) {
+          if (f.kind === Kind.Credit) {
+            this.credits.push(JSON.parse(new TextDecoder().decode(f.payload)));
+          }
+        }
+        pipe.send(bytes);
+      },
+      close: () => pipe.close(),
+    };
+  }
+}
+
+/** Waits until `condition` holds. */
+async function until(condition: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("condition not reached");
+    await tick(5);
+  }
+}
+
+/** The credit window every stream starts with (spec §6). */
+const INITIAL_CREDITS = 4;
 
 async function webSocket(origin?: string): Promise<Transport> {
   const session = await server.session();
@@ -349,18 +407,252 @@ for (const [name, makeTransport] of [
       client.$close();
     });
 
-    it("surfaces the server's Unimplemented for streams (M2)", async () => {
+    it("streams chunks in order, then the typed summary", async () => {
+      const client = createClient(api, await makeTransport());
+      const stream = client.fixture.bytes({ chunks: 10, size: 8 });
+      const seen: number[][] = [];
+      for await (const chunk of stream.chunks()) seen.push([...chunk]);
+      assert.deepEqual(
+        seen,
+        Array.from({ length: 10 }, (_, n) => new Array(8).fill(n)),
+      );
+      assert.deepEqual(await stream.result, { chunks: 10, bytes: 80 });
+      // A stream without chunks still ends with its summary.
+      const empty = client.fixture.bytes({ chunks: 0, size: 0 });
+      for await (const chunk of empty.chunks()) assert.fail(`unexpected chunk ${chunk.length}`);
+      assert.deepEqual(await empty.result, { chunks: 0, bytes: 0 });
+      assert.equal(await client.fixture.echo("alive"), "alive");
+      client.$close();
+    });
+
+    it("a slow consumer holds the server at its credit window", async () => {
+      const counting = new Counting(await makeTransport());
+      const client = createClient(api, counting);
+      const stream = client.fixture.bytes({ chunks: 12, size: 16 });
+      const it = stream.chunks()[Symbol.asyncIterator]();
+      assert.deepEqual([...((await it.next()).value as Uint8Array)], new Array(16).fill(0));
+      // The consumer holds the first chunk: the server sends its window and waits.
+      await until(() => counting.chunks === INITIAL_CREDITS);
+      await tick(150);
+      assert.equal(counting.chunks, INITIAL_CREDITS);
+      assert.deepEqual(counting.credits, []);
+      // Back for the second chunk: one credit, one more chunk from the server.
+      assert.deepEqual([...((await it.next()).value as Uint8Array)], new Array(16).fill(1));
+      await until(() => counting.chunks === INITIAL_CREDITS + 1);
+      await tick(150);
+      assert.equal(counting.chunks, INITIAL_CREDITS + 1);
+      assert.deepEqual(counting.credits, [{ chunks: 1 }]);
+      // The rest, in order, never more than the window ahead of the consumer.
+      let next = 2;
+      for (let r = await it.next(); r.done !== true; r = await it.next()) {
+        assert.deepEqual([...r.value], new Array(16).fill(next));
+        next += 1;
+        assert.ok(counting.chunks <= next + INITIAL_CREDITS);
+      }
+      assert.equal(next, 12);
+      assert.equal(counting.chunks, 12);
+      assert.deepEqual(await stream.result, { chunks: 12, bytes: 192 });
+      // One per chunk the consumer came back from; the one for the last chunk may race with the
+      // stream's end, and the server ignores it then.
+      assert.ok(counting.credits.length >= 12 - INITIAL_CREDITS && counting.credits.length <= 12);
+      assert.ok(counting.credits.every((c) => (c as { chunks: number }).chunks === 1));
+      client.$close();
+    });
+
+    it("leaving chunks() early cancels the stream on the server", async () => {
+      const counting = new Counting(await makeTransport());
+      const client = createClient(api, counting);
+      await client.$connect();
+      await server.events();
+      const stream = client.fixture.bytes({ chunks: 100, size: 8 });
+      for await (const chunk of stream.chunks()) {
+        assert.deepEqual([...chunk], new Array(8).fill(0));
+        break; // leaving the loop cancels
+      }
+      const r = await settle(stream.result);
+      assert.equal(r.ok, false);
+      assert.equal(r.error.code, "Cancelled");
+      assert.equal(r.error.local, true);
+      // The handler was waiting for a credit; Cancel reached it there.
+      await server.waitForEvent("Cancelled:bytes");
+      assert.ok(counting.chunks <= INITIAL_CREDITS + 1);
+      assert.equal(await client.fixture.echo(1), 1);
+      client.$close();
+    });
+
+    it("cancel() and abort end a stream with Cancelled and reach the handler", async () => {
+      const client = createClient(api, await makeTransport());
+      await client.$connect();
+      await server.events();
+      const cancelled = client.fixture.bytes({ chunks: 100, size: 8 });
+      const it = cancelled.chunks()[Symbol.asyncIterator]();
+      await it.next();
+      cancelled.cancel();
+      const viaCancel = await settle(it.next());
+      assert.equal(viaCancel.ok, false);
+      assert.equal(viaCancel.error.code, "Cancelled");
+      await server.waitForEvent("Cancelled:bytes");
+
+      const controller = new AbortController();
+      const aborted = client.fixture.bytes(
+        { chunks: 100, size: 8 },
+        { signal: controller.signal },
+      );
+      const chunks = aborted.chunks()[Symbol.asyncIterator]();
+      await chunks.next();
+      controller.abort();
+      const viaAbort = await settle(aborted.result);
+      assert.equal(viaAbort.ok, false);
+      assert.equal(viaAbort.error.code, "Cancelled");
+      assert.equal(viaAbort.error.local, true);
+      await server.waitForEvent("Cancelled:bytes");
+      assert.equal(await client.fixture.echo(2), 2);
+      client.$close();
+    });
+
+    it("timeoutMs ends a stream nobody reads with the server's DeadlineExceeded", async () => {
+      const client = createClient(api, await makeTransport());
+      const stream = client.fixture.bytes({ chunks: 100, size: 8 }, { timeoutMs: 150 });
+      const r = await settle(stream.result);
+      assert.equal(r.ok, false);
+      assert.equal(r.error.code, "DeadlineExceeded");
+      assert.equal(r.error.local, false, "the server's deadline, not the client's");
+      // The chunks sent before the deadline are still delivered, then the error.
+      const it = stream.chunks()[Symbol.asyncIterator]();
+      for (let n = 0; n < INITIAL_CREDITS; n++) assert.equal((await it.next()).done, false);
+      const end = await settle(it.next());
+      assert.equal(end.ok, false);
+      assert.equal(end.error.code, "DeadlineExceeded");
+      client.$close();
+    });
+
+    it("a stream's typed error arrives after its chunks", async () => {
+      const client = createClient(api, await makeTransport());
+      const stream = client.fixture.bytes({ chunks: 2, size: 4, then: "fail" });
+      const seen: number[] = [];
+      const ended = await settle(
+        (async () => {
+          for await (const chunk of stream.chunks()) seen.push(chunk[0] as number);
+        })(),
+      );
+      assert.deepEqual(seen, [0, 1]);
+      assert.equal(ended.ok, false);
+      assert.ok(isRpcError(ended.error, api.procedures.fixture.bytes));
+      assert.equal(ended.error.code, "FailedPrecondition");
+      assert.equal(ended.error.local, false);
+      assert.deepEqual(ended.error.details, {
+        kind: "Requested",
+        code: "FailedPrecondition",
+        retryable: false,
+      });
+      await assert.rejects(stream.result, (e: RpcError) => e.code === "FailedPrecondition");
+      client.$close();
+    });
+
+    it("an unauthorized stream is refused before any chunk", async () => {
+      const counting = new Counting(await makeTransport());
+      const client = createClient(api, counting);
+      const stream = client.fixture.secret_bytes(null);
+      const r = await settle(stream.chunks()[Symbol.asyncIterator]().next());
+      assert.equal(r.ok, false);
+      assert.equal(r.error.code, "PermissionDenied");
+      await assert.rejects(stream.result, (e: RpcError) => e.code === "PermissionDenied");
+      assert.equal(counting.chunks, 0);
+      assert.equal(await client.fixture.echo("alive"), "alive");
+      client.$close();
+    });
+
+    it("a declared-only stream answers Unimplemented", async () => {
       const client = createClient(api, await makeTransport());
       const stream = client.fixture.rows(null);
       await assert.rejects(stream.result, (e: RpcError) => e.code === "Unimplemented");
       assert.equal(await client.fixture.echo("alive"), "alive");
       client.$close();
     });
+
+    it("decodes the Arrow stream of ArrowSink in a Worker: schema, nulls, every row", async () => {
+      const client = createClient(api, await makeTransport());
+      // 1000-row batches do not fit the 4096-byte frames: the sink splits them by rows.
+      const arrow = decodeArrow(
+        client.fixture.arrow_rows({ rows: 2500, batch_rows: 1000 }),
+        arrowWorker.port,
+      );
+      assert.deepEqual(
+        (await arrow.schema).map((f) => [f.name, f.type, f.nullable]),
+        [
+          ["id", "Int64", false],
+          ["n", "Int32", true],
+          ["f", "Float64", false],
+          ["s", "Utf8", false],
+          ["b", "Binary", true],
+        ],
+      );
+      let id = 0;
+      let batches = 0;
+      for await (const batch of arrow.batches()) {
+        batches += 1;
+        for (const row of rowsOf(batch)) assert.deepEqual(row, fixtureRow(id++));
+      }
+      assert.equal(id, 2500);
+      assert.ok(batches > 3, "split into frame-sized batches");
+      assert.deepEqual(await arrow.result, { rows: 2500 });
+      client.$close();
+    });
+
+    it("grants an Arrow chunk's credit only after it was decoded and the consumer came back", async () => {
+      const counting = new Counting(await makeTransport());
+      const client = createClient(api, counting);
+      // A driver-like source: schema, ten batches, end-of-stream; one chunk each.
+      const arrow = decodeArrow(
+        client.fixture.arrow_rows({ rows: 500, batch_rows: 50, pre_encoded: true }),
+        arrowWorker.port,
+      );
+      await arrow.schema;
+      // Only the schema chunk was taken: nobody asked for a batch, so no credit went out.
+      await until(() => counting.chunks === INITIAL_CREDITS);
+      await tick(150);
+      assert.equal(counting.chunks, INITIAL_CREDITS);
+      assert.deepEqual(counting.credits, []);
+      // Asking for a batch takes the next chunk, which pays for the decoded schema chunk.
+      const it = arrow.batches()[Symbol.asyncIterator]();
+      const first = await it.next();
+      assert.equal(first.value?.numRows, 50);
+      await until(() => counting.chunks === INITIAL_CREDITS + 1);
+      await tick(150);
+      assert.equal(counting.chunks, INITIAL_CREDITS + 1, "holding a batch takes nothing more");
+      assert.deepEqual(counting.credits, [{ chunks: 1 }]);
+      let id = 50;
+      for (let r = await it.next(); r.done !== true; r = await it.next()) {
+        for (const row of rowsOf(r.value)) assert.deepEqual(row, fixtureRow(id++));
+      }
+      assert.equal(id, 500);
+      assert.equal(counting.chunks, 12);
+      assert.deepEqual(await arrow.result, { rows: 500 });
+      client.$close();
+    });
+
+    it("leaving batches() early cancels the Arrow stream on the server", async () => {
+      const client = createClient(api, await makeTransport());
+      await client.$connect();
+      await server.events();
+      const arrow = decodeArrow(
+        client.fixture.arrow_rows({ rows: 100_000, batch_rows: 50 }),
+        arrowWorker.port,
+      );
+      for await (const batch of arrow.batches()) {
+        assert.ok(batch.numRows > 0);
+        break;
+      }
+      await assert.rejects(arrow.result, (e: RpcError) => e.code === "Cancelled" && e.local);
+      await server.waitForEvent("Cancelled:arrow_rows");
+      assert.equal(await client.fixture.echo(3), 3);
+      client.$close();
+    });
   });
 }
 
 /**
- * Wraps a transport and withholds the server's terminal frames (Result, Error) for calls, like a
+ * Wraps a transport and withholds the server's terminal frames (Result, Error, StreamEnd), like a
  * server that never answers. `withheld` resolves with the first one it held back.
  */
 class Unanswered implements Transport {
@@ -382,7 +674,9 @@ class Unanswered implements Transport {
       data: (bytes) => {
         decoder.push(bytes);
         for (let f = decoder.next(); f !== undefined; f = decoder.next()) {
-          if ((f.kind === Kind.Result || f.kind === Kind.Error) && f.callId !== 0) {
+          const terminal =
+            f.kind === Kind.Result || f.kind === Kind.Error || f.kind === Kind.StreamEnd;
+          if (terminal && f.callId !== 0) {
             this.#resolve(f);
             continue;
           }
@@ -418,6 +712,35 @@ describe("safety timer against the Rust engine", { skip }, () => {
     assert.equal(withheld.kind, Kind.Error);
     await drain();
     // deadline 0 + cancel_grace_ms 100 + networkMarginMs 50.
+    t.mock.timers.tick(149);
+    await drain();
+    assert.equal(current(), undefined, "still waiting for the server inside the slack");
+    t.mock.timers.tick(1);
+    await drain();
+    const outcome = current();
+    assert.ok(outcome !== undefined && !outcome.ok);
+    assert.equal(outcome.error.code, "DeadlineExceeded");
+    assert.equal(outcome.error.local, true, "the client's safety timer");
+    t.mock.timers.reset();
+    client.$close();
+  });
+
+  it("ends a stream the server never ends, at its deadline plus the slack", async (t) => {
+    const transport = new Unanswered(await webSocket());
+    const client = createClient(api, transport, { networkMarginMs: 50, timeoutSlackMs: 60_000 });
+    await client.$connect();
+    await server.events();
+
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    // An already-expired deadline: the server's DeadlineExceeded is withheld.
+    const stream = client.fixture.bytes({ chunks: 100, size: 8 }, { timeoutMs: 0 });
+    const call: { outcome?: Awaited<ReturnType<typeof settle>> } = {};
+    void settle(stream.result).then((r) => {
+      call.outcome = r;
+    });
+    const current = () => call.outcome;
+    assert.equal((await transport.withheld).kind, Kind.Error);
+    await drain();
     t.mock.timers.tick(149);
     await drain();
     assert.equal(current(), undefined, "still waiting for the server inside the slack");

@@ -37,8 +37,15 @@ export interface Subscription<E> extends AsyncIterable<E> {
 
 /** A stream: ordered binary chunks with backpressure, then one typed final result. */
 export interface StreamCall<T, Chunk> {
+  /**
+   * The chunks, in order; iterate once. The server sends the next chunk only after this side took
+   * one (credits, spec §6). Leaving the loop early cancels the stream.
+   */
   chunks(): AsyncIterable<Chunk>;
+  /** The final result (`StreamEnd`); rejects with the stream's error, or `Cancelled`. */
   readonly result: Promise<T>;
+  /** Cancels the stream: sends `Cancel`, `result` rejects with a local `Cancelled`. */
+  cancel(): void;
 }
 
 type Types<P> = P extends { readonly __types?: infer T } ? NonNullable<T> : never;

@@ -880,33 +880,189 @@ describe("subscriptions", () => {
   });
 });
 
-describe("streams (M1 shape)", () => {
+describe("streams", () => {
+  const chunk = (n: number) => new Uint8Array([n, n]);
+  const credits = (frames: { kind: Kind }[]) => frames.filter((f) => f.kind === Kind.Credit);
+
   it("yields binary chunks then resolves the StreamEnd summary", async () => {
     const { transport, client } = setup();
-    const stream = client.fixture.rows(null);
+    const stream = client.fixture.bytes({ chunks: 2, size: 2 });
     const peer = await transport.peer();
     const call = await peer.nextOf(Kind.Call);
-    assert.deepEqual(json(call), { procedure: "fixture.rows", input: null });
-    peer.binary(Kind.Chunk, call.callId, new Uint8Array([1, 2]));
-    peer.binary(Kind.Chunk, call.callId, new Uint8Array([3]));
-    peer.json(Kind.StreamEnd, call.callId, 3);
+    assert.deepEqual(json(call), { procedure: "fixture.bytes", input: { chunks: 2, size: 2 } });
+    peer.binary(Kind.Chunk, call.callId, chunk(0));
+    peer.binary(Kind.Chunk, call.callId, chunk(1));
+    peer.json(Kind.StreamEnd, call.callId, { chunks: 2, bytes: 4 });
     const chunks: number[][] = [];
     for await (const c of stream.chunks()) chunks.push([...c]);
-    assert.deepEqual(chunks, [[1, 2], [3]]);
-    assert.equal(await stream.result, 3);
+    assert.deepEqual(chunks, [
+      [0, 0],
+      [1, 1],
+    ]);
+    assert.deepEqual(await stream.result, { chunks: 2, bytes: 4 });
+    // The stream had ended before anything was read: nothing left to pace.
+    assert.deepEqual(credits(peer.unread()), []);
+  });
+
+  it("grants one credit per chunk, when the consumer comes back for the next", async () => {
+    const { transport, client } = setup();
+    const stream = client.fixture.bytes({ chunks: 3, size: 2 });
+    const peer = await transport.peer();
+    const call = await peer.nextOf(Kind.Call);
+    peer.binary(Kind.Chunk, call.callId, chunk(0));
+    peer.binary(Kind.Chunk, call.callId, chunk(1));
+    const it = stream.chunks()[Symbol.asyncIterator]();
+    assert.deepEqual([...((await it.next()).value as Uint8Array)], [0, 0]);
+    await tick(20);
+    assert.deepEqual(credits(peer.unread()), [], "holding a chunk is not consuming it");
+    // Back for the second: the first is consumed.
+    assert.deepEqual([...((await it.next()).value as Uint8Array)], [1, 1]);
+    const first = await peer.nextOf(Kind.Credit);
+    assert.equal(first.callId, call.callId);
+    assert.equal(first.flags, 0);
+    assert.deepEqual(json(first), { chunks: 1 });
+    // Back for a third that has not arrived: the second is consumed all the same.
+    const third = it.next();
+    assert.deepEqual(json(await peer.nextOf(Kind.Credit)), { chunks: 1 });
+    peer.binary(Kind.Chunk, call.callId, chunk(2));
+    assert.deepEqual([...((await third).value as Uint8Array)], [2, 2]);
+    peer.json(Kind.StreamEnd, call.callId, { chunks: 3, bytes: 6 });
+    assert.equal((await it.next()).done, true);
+    await tick(20);
+    assert.deepEqual(credits(peer.unread()), [], "no credit once the stream ended");
+    assert.deepEqual(await stream.result, { chunks: 3, bytes: 6 });
+    assert.deepEqual(debugState(client), { live: 0, activeCalls: 0 });
+  });
+
+  it("sends no credit for chunks nobody read; cancel() sends Cancel once", async () => {
+    const { transport, client } = setup();
+    const stream = client.fixture.bytes({ chunks: 9, size: 2 });
+    const peer = await transport.peer();
+    const call = await peer.nextOf(Kind.Call);
+    for (let n = 0; n < 4; n++) peer.binary(Kind.Chunk, call.callId, chunk(n));
+    await tick(20);
+    assert.deepEqual(peer.unread(), []);
+    stream.cancel();
+    stream.cancel();
+    const cancel = await peer.next();
+    assert.equal(cancel.kind, Kind.Cancel);
+    assert.equal(cancel.callId, call.callId);
+    await assert.rejects(stream.result, (e: RpcError) => e.code === "Cancelled" && e.local);
+    await assert.rejects(
+      stream.chunks()[Symbol.asyncIterator]().next(),
+      (e: RpcError) => e.code === "Cancelled",
+    );
+    // A chunk still in flight reaches nobody, and is not paid for.
+    peer.binary(Kind.Chunk, call.callId, chunk(4));
+    await tick(20);
+    assert.deepEqual(peer.unread(), []);
+    assert.deepEqual(debugState(client), { live: 0, activeCalls: 0 });
+  });
+
+  it("leaving chunks() early cancels the stream", async () => {
+    const { transport, client } = setup();
+    const stream = client.fixture.bytes({ chunks: 9, size: 2 });
+    const peer = await transport.peer();
+    const call = await peer.nextOf(Kind.Call);
+    peer.binary(Kind.Chunk, call.callId, chunk(0));
+    peer.binary(Kind.Chunk, call.callId, chunk(1));
+    for await (const c of stream.chunks()) {
+      assert.deepEqual([...c], [0, 0]);
+      break;
+    }
+    const cancel = await peer.next();
+    assert.equal(cancel.kind, Kind.Cancel);
+    assert.equal(cancel.callId, call.callId);
+    await assert.rejects(stream.result, (e: RpcError) => e.code === "Cancelled" && e.local);
+    assert.deepEqual(debugState(client), { live: 0, activeCalls: 0 });
+  });
+
+  it("abort ends the stream with a local Cancelled and sends Cancel", async () => {
+    const { transport, client } = setup();
+    const controller = new AbortController();
+    const stream = client.fixture.bytes({ chunks: 9, size: 2 }, { signal: controller.signal });
+    const peer = await transport.peer();
+    const call = await peer.nextOf(Kind.Call);
+    peer.binary(Kind.Chunk, call.callId, chunk(0));
+    const it = stream.chunks()[Symbol.asyncIterator]();
+    await it.next();
+    controller.abort();
+    assert.equal((await peer.nextOf(Kind.Cancel)).callId, call.callId);
+    await assert.rejects(it.next(), (e: RpcError) => e.code === "Cancelled" && e.local);
+    await assert.rejects(stream.result, (e: RpcError) => e.code === "Cancelled" && e.local);
+    assert.deepEqual(credits(peer.unread()), []);
   });
 
   it("rejects result and chunks on Error without an unhandled rejection", async () => {
     const { transport, client } = setup();
-    const stream = client.fixture.rows(null);
+    const stream = client.fixture.bytes({ chunks: 1, size: 2 });
     const peer = await transport.peer();
     const call = await peer.nextOf(Kind.Call);
-    peer.error(call.callId, "Unimplemented");
-    await assert.rejects(stream.result, (e: RpcError) => e.code === "Unimplemented");
+    peer.error(call.callId, "PermissionDenied");
+    await assert.rejects(stream.result, (e: RpcError) => e.code === "PermissionDenied");
     await assert.rejects(
       stream.chunks()[Symbol.asyncIterator]().next(),
-      (e: RpcError) => e.code === "Unimplemented",
+      (e: RpcError) => e.code === "PermissionDenied",
     );
+  });
+
+  it("delivers the chunks before the server's Error", async () => {
+    const { transport, client } = setup();
+    const stream = client.fixture.bytes({ chunks: 1, size: 2, then: "fail" });
+    const peer = await transport.peer();
+    const call = await peer.nextOf(Kind.Call);
+    peer.binary(Kind.Chunk, call.callId, chunk(0));
+    peer.error(call.callId, "FailedPrecondition");
+    const it = stream.chunks()[Symbol.asyncIterator]();
+    assert.deepEqual([...((await it.next()).value as Uint8Array)], [0, 0]);
+    await assert.rejects(it.next(), (e: RpcError) => e.code === "FailedPrecondition");
+  });
+
+  it("a chunk without the binary flag ends the stream and cancels it", async () => {
+    const { transport, client } = setup();
+    const stream = client.fixture.bytes({ chunks: 1, size: 2 });
+    const peer = await transport.peer();
+    const call = await peer.nextOf(Kind.Call);
+    peer.json(Kind.Chunk, call.callId, "text");
+    await assert.rejects(stream.result, (e: RpcError) => e.code === "Internal" && e.local);
+    assert.equal((await peer.nextOf(Kind.Cancel)).callId, call.callId);
+  });
+
+  it("the safety timer ends a stream the server never ends, and cancels it", async () => {
+    const { transport, client } = setup({ timeoutSlackMs: 30 });
+    const stream = client.fixture.bytes({ chunks: 9, size: 2 }, { timeoutMs: 20 });
+    const peer = await transport.peer();
+    const call = await peer.nextOf(Kind.Call);
+    assert.equal(json(call).timeout_ms, 20);
+    peer.binary(Kind.Chunk, call.callId, chunk(0));
+    const it = stream.chunks()[Symbol.asyncIterator]();
+    await it.next();
+    const started = Date.now();
+    await assert.rejects(
+      stream.result,
+      (e: RpcError) => e.code === "DeadlineExceeded" && e.local && e.procedure === "fixture.bytes",
+    );
+    assert.ok(Date.now() - started >= 40, "deadline plus slack");
+    await assert.rejects(it.next(), (e: RpcError) => e.code === "DeadlineExceeded");
+    assert.equal((await peer.nextOf(Kind.Cancel)).callId, call.callId);
+    assert.deepEqual(debugState(client), { live: 0, activeCalls: 0 });
+  });
+
+  it("a connection loss fails the stream with Unavailable", async () => {
+    const { transport, client } = setup();
+    const stream = client.fixture.bytes({ chunks: 9, size: 2 });
+    const peer = await transport.peer();
+    await peer.nextOf(Kind.Call);
+    peer.drop();
+    await assert.rejects(stream.result, (e: RpcError) => e.code === "Unavailable");
+  });
+
+  it("chunks() can be iterated once", async () => {
+    const { client } = setup();
+    const stream = client.fixture.bytes({ chunks: 0, size: 0 });
+    stream.chunks();
+    assert.throws(() => stream.chunks(), TypeError);
+    stream.cancel();
   });
 });
 
