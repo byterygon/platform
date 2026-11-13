@@ -28,7 +28,8 @@
 //! entry shows the tenant, the connection target, the grant id (in `approval_id`) and the time
 //! enforcement ran (its timestamp); the scheduled `expires_at` and the numbers of transports
 //! closed and of operations aborted in flight are committed in `input_digest`
-//! ([`grant_expire_digest`]), because `AuditEntry` has no free-form field. A grant that was
+//! ([`grant_expire_digest`]) and readable in the entry's `detail` ([`grant_expire_detail`]). A
+//! grant that was
 //! revoked, or replaced by a version switch, before `expires_at` gets no expiry entry. Like a
 //! revocation, expiry never waits for the audit sink: the entry goes through the same retry
 //! queue, and a final failure is reported to the [`AuditReporter`].
@@ -48,9 +49,9 @@ use std::time::Duration;
 use rustls::RootCertStore;
 use rustls::pki_types::{CertificateDer, ServerName};
 use security_types::{
-    Action, AuditDecision, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest, Decision, Digest,
-    Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, SessionId, TargetRef, TenantId,
-    append_within,
+    Action, AuditDecision, AuditDetail, AuditEntry, AuditPrincipal, Authorizer, AuthzRequest,
+    Decision, Digest, Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, SessionId,
+    TargetRef, TenantId, append_within,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::sync::watch;
@@ -252,6 +253,24 @@ fn grant_create_body(plugin: &InstalledPlugin, req: &GrantRequest) -> Vec<u8> {
     e.0
 }
 
+/// The `detail` of an expiry entry (spec question 44): the values [`grant_expire_digest`] commits
+/// to that the entry does not show elsewhere, readable. The grant id is in `approval_id` and the
+/// time enforcement ran is the entry's timestamp.
+///
+/// | Key | Value |
+/// | --- | --- |
+/// | `expires_at_unix_ms` | the grant's scheduled expiry, decimal |
+/// | `transports_closed` | decimal |
+/// | `operations_aborted` | decimal |
+pub fn grant_expire_detail(record: &GrantExpiryRecord<'_>) -> Option<AuditDetail> {
+    AuditDetail::new([
+        ("expires_at_unix_ms", record.expires_at_unix_ms.to_string()),
+        ("transports_closed", record.transports_closed.to_string()),
+        ("operations_aborted", record.operations_aborted.to_string()),
+    ])
+    .ok()
+}
+
 /// Domain separator of the digest a grant carry-over entry commits to.
 pub const GRANT_CARRY_DIGEST_DOMAIN: &str = "byterygon.plugin-host.grant.carry.v1";
 /// Domain separator of the digest a grant restore entry commits to.
@@ -322,6 +341,50 @@ pub fn grant_switch_digest(domain: &str, record: &GrantSwitchRecord<'_>) -> Dige
     e.u8(u8::from(record.new.allow_cancel_connection));
     e.u8(u8::from(record.new.secret.is_some()));
     domain_digest(domain, &e.0)
+}
+
+/// The `detail` of a grant carry-over or restore entry (spec question 42): the values
+/// [`grant_switch_digest`] commits to that the entry does not show elsewhere, readable. The
+/// plugin id and the destination digest are in the entry's first principal, the tenant and the
+/// target id in the entry itself. With them, everything the digest covers can be read from the
+/// entry, unless a value was clipped ([`AuditDetail::clip`]: the versions come from plugin
+/// manifests and the approver from the identity provider, so they may be long or contain
+/// control characters); the digest always covers the exact values.
+///
+/// | Key | Value |
+/// | --- | --- |
+/// | `from_digest` | source version digest, `sha256:<hex>` |
+/// | `from_version` | source version; absent if its manifest was unreadable |
+/// | `to_version` | destination version |
+/// | `old_grant`, `new_grant` | grant ids (equal for a restore) |
+/// | `connection` | connection id |
+/// | `approver`, `approver_session` | who originally approved the grant |
+/// | `expires_at_unix_ms` | the grant's expiry, decimal; absent if it has none |
+/// | `cancel_connection` | `true`/`false`: the cancel connection was kept |
+/// | `secret_binding` | `true`/`false`: the secret binding was kept. The secret itself is never here |
+pub fn grant_switch_detail(record: &GrantSwitchRecord<'_>) -> Option<AuditDetail> {
+    let new = record.new;
+    let mut fields = vec![
+        ("from_digest", format!("sha256:{}", record.from_digest)),
+        ("to_version", AuditDetail::clip(record.to_version)),
+        ("old_grant", record.old.id.to_string()),
+        ("new_grant", new.id.to_string()),
+        ("connection", AuditDetail::clip(&new.connection_id)),
+        ("approver", AuditDetail::clip(&new.approver.id)),
+        (
+            "approver_session",
+            AuditDetail::clip(new.approver.session.as_str()),
+        ),
+        ("cancel_connection", new.allow_cancel_connection.to_string()),
+        ("secret_binding", new.secret.is_some().to_string()),
+    ];
+    if !record.from_version.is_empty() {
+        fields.push(("from_version", AuditDetail::clip(record.from_version)));
+    }
+    if let Some(t) = new.expires_at_unix_ms {
+        fields.push(("expires_at_unix_ms", t.to_string()));
+    }
+    AuditDetail::new(fields).ok()
 }
 
 /// Canonical encoder for [`grant_create_digest`].
@@ -1252,6 +1315,7 @@ impl GrantStore {
             statement_digest: None,
             delivery: None,
             parent_correlation_id: None,
+            detail: None,
         };
 
         if let Err(reason) = self
@@ -1414,6 +1478,7 @@ impl GrantStore {
             statement_digest: None,
             delivery: None,
             parent_correlation_id: None,
+            detail: None,
         };
         if result.is_ok() {
             // Revocation removes access, so it happens first and never waits on the sink.
@@ -1858,6 +1923,16 @@ async fn expire_at(
 
 /// The audit entry of an enforced expiry (see the module docs).
 fn expiry_entry(grant: &ConnectionGrant, expiry: Expiry) -> AuditEntry {
+    let record = GrantExpiryRecord {
+        grant_id: &grant.id,
+        tenant: &grant.tenant,
+        target_id: &grant.target_id,
+        // Only a grant with an expiry has an expiry task.
+        expires_at_unix_ms: grant.expires_at_unix_ms.unwrap_or_default(),
+        enforced_at_unix_ms: expiry.enforced_at_unix_ms,
+        transports_closed: expiry.closed.transports,
+        operations_aborted: expiry.closed.in_flight,
+    };
     AuditEntry {
         timestamp_unix_ms: expiry.enforced_at_unix_ms,
         principal_chain: vec![AuditPrincipal {
@@ -1875,19 +1950,11 @@ fn expiry_entry(grant: &ConnectionGrant, expiry: Expiry) -> AuditEntry {
         outcome: Outcome::Success,
         duration_ms: None,
         correlation_id: format!("expire:{}", grant.id),
-        input_digest: grant_expire_digest(&GrantExpiryRecord {
-            grant_id: &grant.id,
-            tenant: &grant.tenant,
-            target_id: &grant.target_id,
-            // Only a grant with an expiry has an expiry task.
-            expires_at_unix_ms: grant.expires_at_unix_ms.unwrap_or_default(),
-            enforced_at_unix_ms: expiry.enforced_at_unix_ms,
-            transports_closed: expiry.closed.transports,
-            operations_aborted: expiry.closed.in_flight,
-        }),
+        input_digest: grant_expire_digest(&record),
         statement_digest: None,
         delivery: None,
         parent_correlation_id: None,
+        detail: grant_expire_detail(&record),
     }
 }
 
@@ -2245,5 +2312,72 @@ mod tests {
         plain.tls = TlsPolicy::Disabled;
         assert_eq!(v1_digest(&p, &r), v1_digest(&p, &plain));
         assert_ne!(v2, grant_create_digest(&p, &plain));
+    }
+
+    #[test]
+    fn switch_detail_clips_text_the_host_does_not_control() {
+        let req = minimal();
+        let grant = ConnectionGrant {
+            id: GrantId("grant-1".into()),
+            plugin: PluginBinding {
+                plugin_id: plugin().id,
+                digest: plugin().digest,
+                driver_kind: DriverKind::Wasm,
+            },
+            tenant: req.tenant,
+            owner: req.owner,
+            eligible: req.eligible,
+            connection_id: req.connection_id,
+            target_id: req.target_id,
+            template_id: req.template_id,
+            protocol: Protocol::Tcp,
+            host: Host::Dns("db.test".into()),
+            port: req.port,
+            tls: req.tls,
+            addresses: req.addresses,
+            secret: None,
+            allow_cancel_connection: false,
+            created_at_unix_ms: 0,
+            expires_at_unix_ms: None,
+            approver: AuditPrincipal {
+                kind: PrincipalKind::Human,
+                id: format!("human:oidc:{}", "a".repeat(400)),
+                tenant: TenantId::new("t1"),
+                session: SessionId::new("s\n1"),
+            },
+        };
+        let long = "9".repeat(10_000);
+        let record = GrantSwitchRecord {
+            plugin_id: "org.example.pg",
+            from_digest: Digest([1; 32]),
+            from_version: "",
+            to_digest: Digest([2; 32]),
+            to_version: &format!("2.0\u{1b}[31m{long}"),
+            old: &grant,
+            new: &grant,
+        };
+        let detail = grant_switch_detail(&record).expect("always within the limits");
+        // An unreadable source manifest and a grant without expiry leave their keys out.
+        assert_eq!(detail.get("from_version"), None);
+        assert_eq!(detail.get("expires_at_unix_ms"), None);
+        let version = detail.get("to_version").unwrap();
+        assert!(version.starts_with("2.0\u{fffd}[31m999") && version.ends_with('…'));
+        assert_eq!(version.len(), AuditDetail::MAX_VALUE_BYTES);
+        assert!(detail.get("approver").unwrap().ends_with('…'));
+        assert_eq!(detail.get("approver_session"), Some("s\u{fffd}1"));
+        assert_eq!(
+            detail.get("from_digest").unwrap(),
+            format!("sha256:{}", "01".repeat(32))
+        );
+        // The digest still covers the exact values.
+        let exact = grant_switch_digest(GRANT_CARRY_DIGEST_DOMAIN, &record);
+        let clipped = GrantSwitchRecord {
+            to_version: version,
+            ..record
+        };
+        assert_ne!(
+            grant_switch_digest(GRANT_CARRY_DIGEST_DOMAIN, &clipped),
+            exact
+        );
     }
 }

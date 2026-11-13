@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use plugin_host::grant::address_policy;
 use plugin_host::grant::{
     GRANT_CARRY_DIGEST_DOMAIN, GRANT_RESTORE_DIGEST_DOMAIN, GrantSwitchRecord, RestoreOutcome,
-    grant_switch_digest,
+    grant_switch_detail, grant_switch_digest,
 };
 use plugin_host::install::{
     AlertSink, Approval, AuditWarning, CARRY_GRANT_ACTION, FALLBACK_AUDIT_FILE, HostHooks,
@@ -1750,6 +1750,31 @@ async fn carry_over_writes_one_audit_entry_per_grant() {
                 expected
             );
         }
+        // The same values, readable (TSK-35): everything the digest covers that the entry does
+        // not show elsewhere, and nothing of the secret but whether a binding was kept.
+        let detail = entry
+            .detail
+            .as_ref()
+            .expect("a carry-over entry has detail");
+        assert_eq!(entry.detail, grant_switch_detail(&record));
+        let mut want = vec![
+            ("approver", new.approver.id.clone()),
+            ("approver_session", new.approver.session.as_str().to_owned()),
+            ("cancel_connection", new.allow_cancel_connection.to_string()),
+            ("connection", new.connection_id.clone()),
+            ("from_digest", format!("sha256:{}", v1.plugin.digest)),
+            ("from_version", "1.0.0".to_owned()),
+            ("new_grant", new_id.to_string()),
+            ("old_grant", old_id.to_string()),
+            ("secret_binding", new.secret.is_some().to_string()),
+            ("to_version", "2.0.0".to_owned()),
+        ];
+        if let Some(t) = new.expires_at_unix_ms {
+            want.insert(4, ("expires_at_unix_ms", t.to_string()));
+        }
+        let got: Vec<_> = detail.iter().map(|(k, v)| (k, v.to_owned())).collect();
+        assert_eq!(got, want);
+        assert!(!format!("{detail:?}").contains("secret-ref-1"));
         digests.push(entry.input_digest.0);
     }
     assert_ne!(digests[0], digests[1]);
@@ -1820,20 +1845,29 @@ async fn restore_writes_one_audit_entry_per_grant() {
             entry.principal_chain[0].id,
             format!("plugin:{PLUGIN}#sha256:{}", v1.plugin.digest)
         );
+        let record = GrantSwitchRecord {
+            plugin_id: PLUGIN,
+            from_digest: v2.plugin.digest,
+            from_version: "2.0.0",
+            to_digest: v1.plugin.digest,
+            to_version: "1.0.0",
+            old: grant,
+            new: grant,
+        };
         assert_eq!(
             entry.input_digest,
-            grant_switch_digest(
-                GRANT_RESTORE_DIGEST_DOMAIN,
-                &GrantSwitchRecord {
-                    plugin_id: PLUGIN,
-                    from_digest: v2.plugin.digest,
-                    from_version: "2.0.0",
-                    to_digest: v1.plugin.digest,
-                    to_version: "1.0.0",
-                    old: grant,
-                    new: grant,
-                },
-            )
+            grant_switch_digest(GRANT_RESTORE_DIGEST_DOMAIN, &record)
+        );
+        // Readable too (TSK-35); a restore keeps the grant, so both ids are the same.
+        let detail = entry.detail.as_ref().expect("a restore entry has detail");
+        assert_eq!(entry.detail, grant_switch_detail(&record));
+        assert_eq!(detail.get("from_version"), Some("2.0.0"));
+        assert_eq!(detail.get("to_version"), Some("1.0.0"));
+        assert_eq!(detail.get("old_grant"), Some(grant.id.as_str()));
+        assert_eq!(detail.get("new_grant"), Some(grant.id.as_str()));
+        assert_eq!(
+            detail.get("from_digest"),
+            Some(format!("sha256:{}", v2.plugin.digest).as_str())
         );
     }
     // The restored grants are the originals, with their approver and expiry.

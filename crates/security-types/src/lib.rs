@@ -26,8 +26,8 @@ pub mod report;
 pub mod sink;
 
 pub use audit::{
-    AuditChain, AuditDecision, AuditEntry, AuditPrincipal, AuditRecord, ChainError, Delivery,
-    Outcome, unfinished,
+    AuditChain, AuditDecision, AuditDetail, AuditEntry, AuditPrincipal, AuditRecord, ChainError,
+    Delivery, DetailError, Outcome, unfinished,
 };
 pub use authz::{
     Action, ApprovalSpec, Authorizer, AuthzRequest, Decision, Reason, Risk, TargetRef,

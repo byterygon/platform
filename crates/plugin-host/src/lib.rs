@@ -107,7 +107,7 @@ pub use grant::{
     GRANT_EXPIRE_ACTION, GRANT_EXPIRE_DIGEST_DOMAIN, GRANT_EXPIRY_PRINCIPAL, GrantError,
     GrantExpiryRecord, GrantId, GrantRequest, GrantStore, GrantSwitch, Host, InstalledPlugin,
     PluginBinding, SecretBinding, ServerTrust, TlsMode, TlsPolicy, TlsSettings,
-    grant_create_digest, grant_expire_digest,
+    grant_create_digest, grant_expire_detail, grant_expire_digest,
 };
 pub use manifest::{
     CapabilityKind, Manifest, ManifestError, NetworkTemplate, PermissionDelta, PermissionDiff,

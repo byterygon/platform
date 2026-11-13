@@ -28,9 +28,25 @@
 //! existing record's encoding, and so its hash, unchanged: a new enum variant takes a tag never
 //! used before ([`Outcome::Started`] is tag 2), and a new field is optional, encoded only when
 //! present, after every older field, as its extension number then its value ([`Delivery`] is
-//! extension 1, [`AuditEntry::parent_correlation_id`] extension 2, in that order). Both keep the encoding unambiguous: old records parse exactly as before, and
+//! extension 1, [`AuditEntry::parent_correlation_id`] extension 2, [`AuditEntry::detail`] extension
+//! 3, in that order). Both keep the encoding unambiguous: old records parse exactly as before, and
 //! bytes after the last v1 field can only be an extension.
+//!
+//! # Detail
+//!
+//! [`AuditEntry::detail`] makes values readable that an entry otherwise only commits to in
+//! `input_digest` (Plugin Host spec questions 42 and 44): an [`AuditDetail`] is a small map of
+//! named text values. It is for values the host derives itself: identifiers, versions, digests,
+//! counts and times. It must never hold argument values, statement text, secret material or
+//! data read from a user's database; the rule that argument values are not part of the entry
+//! still holds. The type bounds what a mistake can leak or bloat: at most
+//! [`AuditDetail::MAX_FIELDS`] fields, keys of at most [`AuditDetail::MAX_KEY_BYTES`] bytes from
+//! `[a-z][a-z0-9_]*`, values of at most [`AuditDetail::MAX_VALUE_BYTES`] bytes without control
+//! characters. Text that the host does not control (a manifest's `version`, say) goes through
+//! [`AuditDetail::clip`] first. The detail is an aid for the reader: where a value is also
+//! committed in `input_digest`, the digest is the authority.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -49,6 +65,8 @@ const DOMAIN: &[u8] = b"byterygon.audit.record.v1\0";
 const EXT_DELIVERY: u8 = 1;
 /// Extension number of [`AuditEntry::parent_correlation_id`] in the encoding.
 const EXT_PARENT_CORRELATION_ID: u8 = 2;
+/// Extension number of [`AuditEntry::detail`] in the encoding.
+const EXT_DETAIL: u8 = 3;
 
 /// One principal in the acting chain, without its roles.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +144,164 @@ pub enum Delivery {
     FrameTooLarge,
 }
 
+/// Readable values of an entry, by name (see "Detail" in the module docs for what may go in).
+///
+/// Never empty, and always within the limits below: [`AuditDetail::new`] and deserialization
+/// both check them. Fields are kept, hashed and serialized in the byte order of their keys.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct AuditDetail(BTreeMap<String, String>);
+
+/// Why a set of fields is not an [`AuditDetail`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DetailError {
+    /// No fields. An entry without detail has `detail: None`.
+    Empty,
+    /// More than [`AuditDetail::MAX_FIELDS`] fields.
+    TooManyFields,
+    /// The key is empty, too long, or not `[a-z][a-z0-9_]*`.
+    InvalidKey { key: String },
+    /// The key appears twice.
+    DuplicateKey { key: String },
+    /// The value of `key` is too long or contains a control character. The value is not
+    /// repeated here.
+    InvalidValue { key: String },
+}
+
+impl fmt::Display for DetailError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DetailError::Empty => write!(f, "audit detail has no fields"),
+            DetailError::TooManyFields => write!(
+                f,
+                "audit detail has more than {} fields",
+                AuditDetail::MAX_FIELDS
+            ),
+            DetailError::InvalidKey { key } => write!(f, "invalid audit detail key {key:?}"),
+            DetailError::DuplicateKey { key } => write!(f, "duplicate audit detail key {key:?}"),
+            DetailError::InvalidValue { key } => {
+                write!(f, "invalid audit detail value for key {key:?}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for DetailError {}
+
+impl AuditDetail {
+    pub const MAX_FIELDS: usize = 16;
+    pub const MAX_KEY_BYTES: usize = 32;
+    pub const MAX_VALUE_BYTES: usize = 256;
+
+    /// A detail with exactly these fields, or the first rule one of them breaks.
+    pub fn new<K, V>(fields: impl IntoIterator<Item = (K, V)>) -> Result<Self, DetailError>
+    where
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let mut map = BTreeMap::new();
+        for (key, value) in fields {
+            let (key, value) = (key.into(), value.into());
+            if map.len() == Self::MAX_FIELDS {
+                return Err(DetailError::TooManyFields);
+            }
+            if !is_detail_key(&key) {
+                return Err(DetailError::InvalidKey { key });
+            }
+            if value.len() > Self::MAX_VALUE_BYTES || value.chars().any(char::is_control) {
+                return Err(DetailError::InvalidValue { key });
+            }
+            if map.contains_key(&key) {
+                return Err(DetailError::DuplicateKey { key });
+            }
+            map.insert(key, value);
+        }
+        if map.is_empty() {
+            return Err(DetailError::Empty);
+        }
+        Ok(Self(map))
+    }
+
+    /// `value` made acceptable as a detail value, for text the caller does not control: each
+    /// control character becomes U+FFFD, and a value longer than
+    /// [`AuditDetail::MAX_VALUE_BYTES`] is cut at a character boundary and ends in `…`. A value
+    /// already within the rules is returned unchanged.
+    pub fn clip(value: &str) -> String {
+        const ELLIPSIS: char = '…';
+        let mut out: String = value
+            .chars()
+            .map(|c| if c.is_control() { '\u{fffd}' } else { c })
+            .collect();
+        if out.len() > Self::MAX_VALUE_BYTES {
+            let mut end = Self::MAX_VALUE_BYTES - ELLIPSIS.len_utf8();
+            while !out.is_char_boundary(end) {
+                end -= 1;
+            }
+            out.truncate(end);
+            out.push(ELLIPSIS);
+        }
+        out
+    }
+
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).map(String::as_str)
+    }
+
+    /// The fields, in the byte order of their keys.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.0.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Always `false`: a detail has at least one field.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+fn is_detail_key(key: &str) -> bool {
+    key.len() <= AuditDetail::MAX_KEY_BYTES
+        && key.starts_with(|c: char| c.is_ascii_lowercase())
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
+impl<'de> Deserialize<'de> for AuditDetail {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Fields;
+
+        impl<'de> serde::de::Visitor<'de> for Fields {
+            type Value = AuditDetail;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a map of audit detail fields")
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<AuditDetail, A::Error> {
+                // Collected as pairs, not into a map, so a repeated key is an error rather than
+                // the last value winning.
+                let mut fields = Vec::new();
+                while let Some(field) = map.next_entry::<String, String>()? {
+                    if fields.len() == AuditDetail::MAX_FIELDS {
+                        return Err(serde::de::Error::custom(DetailError::TooManyFields));
+                    }
+                    fields.push(field);
+                }
+                AuditDetail::new(fields).map_err(serde::de::Error::custom)
+            }
+        }
+
+        deserializer.deserialize_map(Fields)
+    }
+}
+
 /// What happened. Argument values are never part of the entry; only `input_digest` is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -154,6 +330,10 @@ pub struct AuditEntry {
     /// entries (at dispatch or in a re-check).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_correlation_id: Option<String>,
+    /// Values the entry would otherwise only commit to in `input_digest`, readable; `None` for
+    /// most entries. See "Detail" in the module docs for what may go in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<AuditDetail>,
 }
 
 impl AuditEntry {
@@ -370,6 +550,7 @@ impl Encoder {
             statement_digest,
             delivery,
             parent_correlation_id,
+            detail,
         } = e;
         self.u64(*timestamp_unix_ms);
         self.u64(principal_chain.len() as u64);
@@ -416,6 +597,14 @@ impl Encoder {
         if let Some(parent) = parent_correlation_id {
             self.u8(EXT_PARENT_CORRELATION_ID);
             self.str(parent);
+        }
+        if let Some(detail) = detail {
+            self.u8(EXT_DETAIL);
+            self.u64(detail.len() as u64);
+            for (key, value) in detail.iter() {
+                self.str(key);
+                self.str(value);
+            }
         }
     }
 
@@ -501,6 +690,7 @@ mod tests {
             statement_digest: Some(Digest([9; 32])),
             delivery: None,
             parent_correlation_id: None,
+            detail: None,
         }
     }
 
@@ -589,6 +779,172 @@ mod tests {
         let json = serde_json::to_value(&nested).unwrap();
         assert_eq!(json["parentCorrelationId"], "corr-parent");
         assert_eq!(serde_json::from_value::<AuditEntry>(json).unwrap(), nested);
+    }
+
+    /// The detail of a grant expiry entry, as the Plugin Host writes it.
+    fn detail() -> AuditDetail {
+        AuditDetail::new([
+            ("transports_closed", "2"),
+            ("expires_at_unix_ms", "1760000000500"),
+            ("operations_aborted", "1"),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn detail_hashes_are_stable() {
+        // Golden values, cross-checked with an independent implementation of the encoding
+        // (`detail` is extension 3, then the number of fields, then each key and value
+        // length-prefixed, in the byte order of the keys, after the other extensions).
+        let mut alone = entry(0);
+        alone.detail = Some(detail());
+        let (_, mut after_others) = nested_admission_and_completion();
+        after_others.detail = Some(detail());
+        let mut chain = AuditChain::new();
+        assert_eq!(
+            chain.append(alone).hash.to_string(),
+            "cea7d0689fea789e8ec91effe1f6306c34e18954c0290bb370761be2ccb8ecc7"
+        );
+        assert_eq!(
+            chain.append(after_others).hash.to_string(),
+            "067561052f9acbdd7a6025c21bd062e2ce0e984f1780dd90cc9d7c1f2aeb29ee"
+        );
+    }
+
+    #[test]
+    fn detail_is_omitted_from_json_when_absent() {
+        let json = serde_json::to_value(entry(0)).unwrap();
+        assert!(json.get("detail").is_none());
+        let mut with = entry(0);
+        with.detail = Some(detail());
+        let text = serde_json::to_string(&with).unwrap();
+        // Keys are written in byte order, whatever order they were given in.
+        assert!(text.contains(concat!(
+            r#""detail":{"expires_at_unix_ms":"1760000000500","#,
+            r#""operations_aborted":"1","transports_closed":"2"}"#
+        )));
+        assert_eq!(serde_json::from_str::<AuditEntry>(&text).unwrap(), with);
+    }
+
+    #[test]
+    fn detail_is_bounded() {
+        let ok_value = "v".repeat(AuditDetail::MAX_VALUE_BYTES);
+        let ok_key = "k".repeat(AuditDetail::MAX_KEY_BYTES);
+        let d = AuditDetail::new([(ok_key.as_str(), ok_value.as_str())]).unwrap();
+        assert_eq!(d.get(&ok_key), Some(ok_value.as_str()));
+        assert_eq!((d.len(), d.is_empty()), (1, false));
+
+        let none: [(&str, &str); 0] = [];
+        assert_eq!(AuditDetail::new(none), Err(DetailError::Empty));
+        let long_key = format!("{ok_key}k");
+        for key in [
+            "", "Version", "9lives", "a-b", "a.b", "a b", "ké", &long_key,
+        ] {
+            assert_eq!(
+                AuditDetail::new([(key, "v")]),
+                Err(DetailError::InvalidKey { key: key.into() }),
+            );
+        }
+        for value in [
+            format!("{ok_value}v"),
+            "line\nbreak".into(),
+            "esc\u{1b}[0m".into(),
+        ] {
+            assert_eq!(
+                AuditDetail::new([("k", value)]),
+                Err(DetailError::InvalidValue { key: "k".into() }),
+            );
+        }
+        assert_eq!(
+            AuditDetail::new([("k", "1"), ("k", "2")]),
+            Err(DetailError::DuplicateKey { key: "k".into() }),
+        );
+        let many = |n: usize| AuditDetail::new((0..n).map(|i| (format!("k{i}"), "v")));
+        assert!(many(AuditDetail::MAX_FIELDS).is_ok());
+        assert_eq!(
+            many(AuditDetail::MAX_FIELDS + 1),
+            Err(DetailError::TooManyFields)
+        );
+        // An error never repeats the value.
+        let secret = format!("hunter2{ok_value}");
+        let error = AuditDetail::new([("k", secret)]).unwrap_err();
+        assert!(!format!("{error} {error:?}").contains("hunter2"));
+    }
+
+    #[test]
+    fn json_detail_is_checked_like_a_new_one() {
+        let mut v = serde_json::to_value(entry(0)).unwrap();
+        for bad in [
+            serde_json::json!({}),
+            serde_json::json!({ "Bad": "v" }),
+            serde_json::json!({ "k": "a\nb" }),
+            serde_json::json!({ "k": 1 }),
+            serde_json::json!(["k", "v"]),
+            serde_json::json!("k=v"),
+        ] {
+            v["detail"] = bad.clone();
+            assert!(
+                serde_json::from_value::<AuditEntry>(v.clone()).is_err(),
+                "{bad}"
+            );
+        }
+        let text = serde_json::to_string(&entry(0)).unwrap();
+        let repeated = text.replacen('{', r#"{"detail":{"k":"1","k":"2"},"#, 1);
+        let error = serde_json::from_str::<AuditEntry>(&repeated).unwrap_err();
+        assert!(error.to_string().contains("duplicate"), "{error}");
+        let fields: Vec<String> = (0..=AuditDetail::MAX_FIELDS)
+            .map(|i| format!(r#""k{i}":"v""#))
+            .collect();
+        let too_many = text.replacen('{', &format!(r#"{{"detail":{{{}}},"#, fields.join(",")), 1);
+        let error = serde_json::from_str::<AuditEntry>(&too_many).unwrap_err();
+        assert!(error.to_string().contains("more than"), "{error}");
+    }
+
+    #[test]
+    fn clip_makes_any_text_a_valid_value() {
+        assert_eq!(AuditDetail::clip("1.2.3"), "1.2.3");
+        assert_eq!(AuditDetail::clip(""), "");
+        assert_eq!(AuditDetail::clip("a\nb\u{1b}c"), "a\u{fffd}b\u{fffd}c");
+        let exact = "v".repeat(AuditDetail::MAX_VALUE_BYTES);
+        assert_eq!(AuditDetail::clip(&exact), exact);
+        for long in [
+            "v".repeat(AuditDetail::MAX_VALUE_BYTES + 1),
+            "é".repeat(AuditDetail::MAX_VALUE_BYTES),
+            "\n".repeat(AuditDetail::MAX_VALUE_BYTES),
+            format!("v{}", "€".repeat(AuditDetail::MAX_VALUE_BYTES)),
+        ] {
+            let clipped = AuditDetail::clip(&long);
+            assert!(clipped.len() <= AuditDetail::MAX_VALUE_BYTES, "{long}");
+            assert!(clipped.len() > AuditDetail::MAX_VALUE_BYTES - 4, "{long}");
+            assert!(clipped.ends_with('…'));
+            assert!(AuditDetail::new([("k", clipped)]).is_ok());
+        }
+    }
+
+    #[test]
+    fn detail_fields_cannot_shift_or_merge() {
+        let base = log(1).remove(0);
+        let hash = |fields: &[(&str, &str)]| {
+            let mut r = base.clone();
+            r.entry.detail = Some(AuditDetail::new(fields.iter().copied()).unwrap());
+            r.compute_hash()
+        };
+        let hashes = [
+            base.hash,
+            hash(&[("a", "bc")]),
+            hash(&[("ab", "c")]),
+            hash(&[("a", "b"), ("c", "")]),
+            hash(&[("a", ""), ("b", "c")]),
+            hash(&[("a", "b")]),
+            hash(&[("a", "")]),
+        ];
+        let unique: std::collections::HashSet<_> = hashes.iter().collect();
+        assert_eq!(unique.len(), hashes.len());
+        // The order the fields were given in does not matter.
+        assert_eq!(
+            hash(&[("a", "1"), ("b", "2")]),
+            hash(&[("b", "2"), ("a", "1")])
+        );
     }
 
     #[test]
@@ -732,6 +1088,7 @@ mod tests {
             |e| e.outcome = Outcome::Started,
             |e| e.delivery = Some(Delivery::Delivered),
             |e| e.parent_correlation_id = Some("corr-parent".into()),
+            |e| e.detail = Some(detail()),
         ];
         for (i, mutate) in mutations.into_iter().enumerate() {
             let mut r = base.clone();

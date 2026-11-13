@@ -1,4 +1,5 @@
-//! Records written before `Outcome::Started` and `delivery` existed still verify, and the same
+//! Records written before `Outcome::Started` and the extensions (`delivery`,
+//! `parent_correlation_id`, `detail`) existed still verify, and the same
 //! entries built with today's types still hash the same (Ambidex spec Open question 26e: the
 //! encodings and hashes of existing variants must not change).
 //!
@@ -8,8 +9,9 @@
 //! target, approval id, duration and statement digest.
 
 use security_types::{
-    Action, AuditChain, AuditDecision, AuditEntry, AuditPrincipal, AuditRecord, Digest, Outcome,
-    Principal, PrincipalKind, Reason, Risk, RoleId, SessionId, TargetRef, TenantId,
+    Action, AuditChain, AuditDecision, AuditDetail, AuditEntry, AuditPrincipal, AuditRecord,
+    Digest, Outcome, Principal, PrincipalKind, Reason, Risk, RoleId, SessionId, TargetRef,
+    TenantId,
 };
 
 const FIXTURE: &str = include_str!("fixtures/audit-v1.jsonl");
@@ -67,6 +69,7 @@ fn entries() -> Vec<AuditEntry> {
         statement_digest: None,
         delivery: None,
         parent_correlation_id: None,
+        detail: None,
     };
     let denied = |code: &str| Outcome::Error { code: code.into() };
 
@@ -132,7 +135,10 @@ fn pre_existing_records_still_verify() {
     let head = AuditChain::verify_all(&records).expect("the v1 fixture verifies");
     assert_eq!(head.next_seq(), 6);
     assert_eq!(records.last().unwrap().hash.to_string(), HEAD);
-    assert!(records.iter().all(|r| r.entry.delivery.is_none()));
+    assert!(records.iter().all(|r| {
+        let e = &r.entry;
+        e.delivery.is_none() && e.parent_correlation_id.is_none() && e.detail.is_none()
+    }));
 }
 
 #[test]
@@ -151,8 +157,32 @@ fn rebuilt_entries_hash_as_they_did_before() {
 
 #[test]
 fn reserialized_records_are_byte_identical() {
-    // `delivery` is omitted when absent, so old records keep their stored JSON exactly.
+    // Extensions are omitted when absent, so old records keep their stored JSON exactly.
     for (line, record) in FIXTURE.lines().zip(records()) {
         assert_eq!(serde_json::to_string(&record).unwrap(), line);
+    }
+}
+
+#[test]
+fn a_record_with_detail_continues_the_old_chain() {
+    // Extension 3 (TSK-35): old records keep their hashes, and a new record with `detail` links
+    // to them. The detail is covered by the hash: changing or dropping it is detected.
+    let mut records = records();
+    let mut chain = AuditChain::verify_all(&records).unwrap();
+    let mut entry = entries().remove(0);
+    entry.detail = Some(AuditDetail::new([("to_version", "1.1.0")]).unwrap());
+    records.push(chain.append(entry));
+    assert_eq!(records[5].hash.to_string(), HEAD);
+    assert_eq!(AuditChain::verify_all(&records).unwrap().next_seq(), 7);
+
+    let line = serde_json::to_string(&records[6]).unwrap();
+    assert!(line.contains(r#""detail":{"to_version":"1.1.0"}"#));
+    for tampered in [
+        line.replace("1.1.0", "1.1.1"),
+        line.replace(r#","detail":{"to_version":"1.1.0"}"#, ""),
+    ] {
+        assert_ne!(tampered, line);
+        let record: AuditRecord = serde_json::from_str(&tampered).unwrap();
+        assert_ne!(record.compute_hash(), record.hash);
     }
 }
