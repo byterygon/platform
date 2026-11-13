@@ -394,9 +394,14 @@ impl Manifest {
 }
 
 /// Reverse-DNS style id: dot-separated labels of `[a-z0-9-]`, at least two labels.
+///
+/// The ID names the plugin's directory under the install root, so it must also be a portable
+/// file name: an ID whose first label is a Windows device name (`nul.example`) is refused on
+/// every platform (see [`is_portable_component`]).
 pub(crate) fn is_plugin_id(id: &str) -> bool {
     id.len() <= 128
         && id.split('.').count() >= 2
+        && is_portable_component(id)
         && id.split('.').all(|label| {
             !label.is_empty()
                 && label
@@ -414,8 +419,9 @@ fn is_capability_id(id: &str) -> bool {
 }
 
 /// A relative path inside the package: `/`-separated, no empty, `.` or `..` components, no
-/// backslashes, drive letters or control characters.
-fn is_package_path(path: &str) -> bool {
+/// backslashes, drive letters or control characters, and every component a portable file name
+/// ([`is_portable_component`]). The archive reader and the manifest share this one rule.
+pub(crate) fn is_package_path(path: &str) -> bool {
     !path.is_empty()
         && path.len() <= 256
         && !path.starts_with('/')
@@ -423,7 +429,50 @@ fn is_package_path(path: &str) -> bool {
         && !path.chars().any(char::is_control)
         && path
             .split('/')
-            .all(|c| !c.is_empty() && c != "." && c != "..")
+            .all(|c| !c.is_empty() && c != "." && c != ".." && is_portable_component(c))
+}
+
+/// Windows device names (Plugin Host spec, question 45). Matched without regard to case against
+/// the part of a component before its first `.`, trailing spaces ignored, because Windows
+/// resolves `NUL.txt`, `nul .txt` and `Com1.tar.gz` to the device as well.
+const WINDOWS_DEVICE_NAMES: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
+/// `COM` and `LPT` followed by one of these are device names too. Windows also accepts the
+/// superscript digits.
+const WINDOWS_DEVICE_DIGITS: [char; 13] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '\u{b9}', '\u{b2}', '\u{b3}',
+];
+
+/// Whether one path component names the same file on every supported platform. Refused on every
+/// platform, so a package verified on Linux cannot hold a file that Windows would resolve to a
+/// device or silently rename:
+///
+/// - a component that ends in `.` or a space (Windows drops them, so `a.` and `a` collide);
+/// - a Windows device name, with or without extensions, in any letter case
+///   ([`WINDOWS_DEVICE_NAMES`], `COM0`–`COM9`, `LPT0`–`LPT9`).
+pub(crate) fn is_portable_component(component: &str) -> bool {
+    if component.ends_with(['.', ' ']) {
+        return false;
+    }
+    let stem = component
+        .split('.')
+        .next()
+        .unwrap_or(component)
+        .trim_end_matches(' ');
+    if WINDOWS_DEVICE_NAMES
+        .iter()
+        .any(|name| stem.eq_ignore_ascii_case(name))
+    {
+        return false;
+    }
+    let mut chars = stem.chars();
+    let port = stem
+        .get(..3)
+        .is_some_and(|p| p.eq_ignore_ascii_case("COM") || p.eq_ignore_ascii_case("LPT"));
+    !(port
+        && chars
+            .nth(3)
+            .is_some_and(|d| WINDOWS_DEVICE_DIGITS.contains(&d))
+        && chars.next().is_none())
 }
 
 #[cfg(test)]
@@ -594,5 +643,83 @@ scope = "user-selected"
             Manifest::from_toml(&"#".repeat(MAX_MANIFEST_BYTES + 1)),
             Err(ManifestError::TooLarge)
         );
+    }
+
+    #[test]
+    fn portable_components() {
+        for bad in [
+            "CON",
+            "con",
+            "PRN",
+            "AUX",
+            "NUL",
+            "nul.txt",
+            "NUL.tar.gz",
+            "nul .txt",
+            "nul  ",
+            "COM0",
+            "com1",
+            "COM9.dll",
+            "LPT0",
+            "lpt1",
+            "Lpt9.x",
+            "COM\u{b9}",
+            "lpt\u{b3}.txt",
+            "CONIN$",
+            "conout$.log",
+            "a.",
+            "a ",
+            "a.txt.",
+            "a.txt ",
+            " ",
+            "...",
+        ] {
+            assert!(!is_portable_component(bad), "{bad:?}");
+        }
+        for good in [
+            "console",
+            "com",
+            "lpt",
+            "com10",
+            "COM1x",
+            "xCOM1",
+            "nul_",
+            "nul-1.txt",
+            "a.nul",
+            "a b",
+            ".hidden",
+            " leading",
+            "com\u{b9}\u{b2}",
+            "conin",
+            "é",
+        ] {
+            assert!(is_portable_component(good), "{good:?}");
+        }
+    }
+
+    #[test]
+    fn package_paths_and_plugin_ids_are_portable() {
+        assert!(is_package_path("payload/lib/demo.wasm"));
+        for bad in [
+            "payload/nul",
+            "payload/aux.d/x",
+            "payload/x.",
+            "payload/d /x",
+            "NUL",
+        ] {
+            assert!(!is_package_path(bad), "{bad:?}");
+        }
+        assert!(is_plugin_id("org.example.demo"));
+        assert!(is_plugin_id("org.nul.con"));
+        assert!(is_plugin_id("console.example"));
+        for bad in [
+            "nul.example",
+            "con.example.demo",
+            "com1.example",
+            "lpt9.a.b",
+            "aux.x",
+        ] {
+            assert!(!is_plugin_id(bad), "{bad:?}");
+        }
     }
 }

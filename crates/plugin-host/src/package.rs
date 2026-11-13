@@ -363,6 +363,12 @@ pub struct PinnedKey {
     /// Empty means any plugin ID for this publisher; otherwise only these IDs are allowed.
     #[serde(default)]
     pub plugin_ids: BTreeSet<String>,
+    /// Marks the key as a first-party (Byterygon) signing key. A sidecar package is admitted
+    /// without [`PackagePolicy::allow_third_party_sidecars`] only when the pinned key that
+    /// verified it, and whose `plugin_ids` cover it, carries this flag. Omitted means `false`:
+    /// no publisher name, `byterygon` included, makes a key first-party.
+    #[serde(default)]
+    pub first_party: bool,
 }
 
 /// Local trust policy, loaded by the host from an administrator-controlled JSON file.
@@ -371,6 +377,11 @@ pub struct PinnedKey {
 /// `{ "publishers": { "example": [{ "public_key_hex": "<64 lowercase hex>", "plugin_ids": [] }] } }`.
 /// Empty `plugin_ids` allows all IDs under that publisher. The host must protect this file from
 /// plugin and user writes; the package cannot change it.
+///
+/// A key may carry `"first_party": true` (spec question 45); it is `false` when omitted, and
+/// any other value than a JSON boolean is refused:
+/// `{ "publishers": { "byterygon": [{ "public_key_hex": "…", "first_party": true }] } }`.
+/// Sidecars signed by such a key are admitted by default; see [`PinnedKey::first_party`].
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TrustStore {
@@ -403,6 +414,7 @@ pub struct PackagePolicy {
     pub interface: String,
     /// Exact OS/architecture string accepted for sidecars, e.g. `linux-x86_64`.
     pub platform: String,
+    /// Admit sidecars signed by a pinned key without [`PinnedKey::first_party`].
     pub allow_third_party_sidecars: bool,
 }
 
@@ -415,8 +427,12 @@ pub struct VerifiedPackage {
     /// SHA-256 of the canonical signed bytes, useful for comparing equivalent ZIP encodings.
     pub signed_digest: [u8; 32],
     pub signer_key: [u8; 32],
+    /// Whether the pinned entry of `signer_key` is marked [`PinnedKey::first_party`].
+    pub signer_first_party: bool,
     pub payload_digest: [u8; 32],
     files: BTreeMap<String, Vec<u8>>,
+    /// Size and SHA-256 of each of `files`, as verified against the signature.
+    file_digests: BTreeMap<String, (u64, [u8; 32])>,
 }
 
 impl VerifiedPackage {
@@ -424,6 +440,12 @@ impl VerifiedPackage {
     /// staging directory after approval checks are established.
     pub fn files(&self) -> &BTreeMap<String, Vec<u8>> {
         &self.files
+    }
+
+    /// The size and SHA-256 of every file in [`files`](Self::files), as covered by the
+    /// signature. The installer checks the staged files against these before activation.
+    pub fn file_digests(&self) -> &BTreeMap<String, (u64, [u8; 32])> {
+        &self.file_digests
     }
 }
 
@@ -523,16 +545,10 @@ pub fn canonical_bytes(entries: &BTreeMap<String, (u64, [u8; 32])>) -> Vec<u8> {
     out
 }
 
+/// An archive entry name: ASCII, and a portable package path (no traversal, no Windows device
+/// name, no component ending in a dot or a space; see [`crate::manifest::is_package_path`]).
 fn valid_path(path: &str) -> bool {
-    !path.is_empty()
-        && path.is_ascii()
-        && path.len() <= 256
-        && !path.starts_with('/')
-        && !path.contains(['\\', ':'])
-        && !path.chars().any(char::is_control)
-        && path
-            .split('/')
-            .all(|c| !c.is_empty() && c != "." && c != "..")
+    path.is_ascii() && crate::manifest::is_package_path(path)
 }
 
 fn read_archive<R: Read + Seek>(
@@ -863,11 +879,15 @@ pub fn verify<R: Read + Seek>(
     if manifest.publisher != publisher {
         return Err(PackageError::Signature);
     }
-    let signer_key = matching_keys
+    // Entries that verified the signature and whose scope covers this plugin. An entry that is
+    // out of scope contributes nothing, its first-party flag included.
+    let mut in_scope = matching_keys
         .into_iter()
-        .find(|(_, key)| key.plugin_ids.is_empty() || key.plugin_ids.contains(&manifest.id))
-        .map(|(raw, _)| raw)
-        .ok_or(PackageError::KeyNotAllowed)?;
+        .filter(|(_, key)| key.plugin_ids.is_empty() || key.plugin_ids.contains(&manifest.id))
+        .peekable();
+    let signer_key = in_scope.peek().ok_or(PackageError::KeyNotAllowed)?.0;
+    // The same key can be pinned more than once; an explicit flag on any entry in scope counts.
+    let signer_first_party = in_scope.any(|(_, key)| key.first_party);
     let req = VersionReq::parse(&manifest.host_api).map_err(|_| PackageError::HostApi)?;
     if !req.matches(&policy.host_api) || Version::parse(&manifest.version).is_err() {
         return Err(PackageError::HostApi);
@@ -891,8 +911,11 @@ pub fn verify<R: Read + Seek>(
     if !manifest.entry.starts_with("payload/") || !files.contains_key(&manifest.entry) {
         return Err(PackageError::Layout);
     }
+    // First-party is a property of the administrator-pinned key, never of a name the package
+    // supplies (spec question 45).
     if manifest.kind == PackageKind::Sidecar
-        && (manifest.publisher != "byterygon" && !policy.allow_third_party_sidecars)
+        && !signer_first_party
+        && !policy.allow_third_party_sidecars
     {
         return Err(PackageError::KindOrPlatform);
     }
@@ -916,8 +939,10 @@ pub fn verify<R: Read + Seek>(
         digest: archive_digest,
         signed_digest,
         signer_key,
+        signer_first_party,
         payload_digest: sha(&canonical_bytes(&payload_metadata)),
         files,
+        file_digests: metadata,
     })
 }
 

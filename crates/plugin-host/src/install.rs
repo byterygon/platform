@@ -98,6 +98,30 @@
 //!   package is therefore two entries, not a separate `verify-failed` entry. A missed outcome
 //!   entry is reported by [`StagedInstall::outcome_audit_warning`] when the stage succeeded, and
 //!   in every case by the fallback file and the alert.
+//!
+//! # The stage (TSK-28; Plugin Host spec, question 45)
+//!
+//! Verified files wait for approval in a stage directory `.stage-<random>` under the install
+//! root, which activation renames to the version directory.
+//!
+//! - **Private.** On Unix the stage and every directory in it are created with mode `0700`, and
+//!   the mode of the stage is set again after creation so that it does not depend on the umask.
+//!   The version directory is the renamed stage and keeps that mode. Windows has no mode bits:
+//!   the stage inherits the access control list of the install root, which the administrator
+//!   must restrict to the account the host runs as. The installer does not edit ACLs.
+//! - **Checked again.** Immediately before the rename, under the plugin lock and after both
+//!   `Started` entries, the stage is compared with what was verified
+//!   ([`VerifiedPackage::file_digests`]): exactly the verified files, each a regular file of the
+//!   verified size and SHA-256, in real directories; no link, no missing and no additional
+//!   entry. A difference refuses the activation with [`InstallError::StageChanged`]: nothing is
+//!   renamed, the previous state holds, the activate and approve outcome entries are `Error`
+//!   with the code `StageChanged`, and [`InstallAlert::StageChanged`] is raised. A stage that
+//!   cannot be read is refused the same way with `Io`. The stage is removed as for any failed
+//!   activation; the package has to be staged again.
+//!
+//! The check narrows the window in which a change to the stage goes unnoticed to the time
+//! between the check and the rename; it does not replace the private directory, and nothing
+//! protects a version directory from the account the host itself runs as.
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -156,6 +180,13 @@ pub enum InstallAlert {
     /// The state file was renamed but syncing the install directory failed (see
     /// [`SwitchWarning::DirectorySyncFailed`]).
     SwitchSyncFailed {
+        plugin_id: String,
+        correlation_id: String,
+    },
+    /// The staged files no longer matched the verified package when it was to be activated
+    /// ([`InstallError::StageChanged`]). Nothing was activated; something else wrote to the
+    /// install root.
+    StageChanged {
         plugin_id: String,
         correlation_id: String,
     },
@@ -288,6 +319,8 @@ pub const RESTORE_GRANT_ACTION: &str = "plugin-host.packages.restore-grant";
 const PERMISSION: &str = "admin.plugins.install";
 /// Outcome code of a version switch that failed on the file system.
 const IO_CODE: &str = "Io";
+/// Outcome code of an activation refused because the stage no longer matched the package.
+const STAGE_CHANGED_CODE: &str = "StageChanged";
 
 #[derive(Debug)]
 pub enum InstallError {
@@ -300,6 +333,9 @@ pub enum InstallError {
     /// The package requests permissions beyond the active version's, and the approval does not
     /// cover exactly this widening.
     PermissionsWidened(PermissionDiff),
+    /// The staged files differ from the verified package (changed, missing, added, or not
+    /// regular files). Nothing was activated.
+    StageChanged,
 }
 
 impl fmt::Display for InstallError {
@@ -322,6 +358,9 @@ pub struct ApprovalView {
     /// SHA-256 of the canonical v1 file encoding restricted to `payload/` entries.
     pub payload_digest: [u8; 32],
     pub package_digest: [u8; 32],
+    /// Whether the package was signed by a pinned key marked first-party
+    /// ([`crate::package::PinnedKey::first_party`]).
+    pub signer_first_party: bool,
     /// Set when another version of the plugin was active at staging time. Activation compares
     /// again under the plugin lock, against whatever is active then.
     pub upgrade: Option<UpgradeView>,
@@ -530,6 +569,9 @@ fn outcome_of<T>(result: &Result<T, InstallError>) -> Outcome {
         },
         Err(InstallError::Audit(_)) => Outcome::Error {
             code: crate::error_code::UNAVAILABLE.into(),
+        },
+        Err(InstallError::StageChanged) => Outcome::Error {
+            code: STAGE_CHANGED_CODE.into(),
         },
         Err(_) => Outcome::Error {
             code: IO_CODE.into(),
@@ -799,6 +841,21 @@ fn default_directory_sync(parent: &Path) -> std::io::Result<()> {
     File::open(parent).and_then(|f| f.sync_all())
 }
 
+/// Mode of the stage directory and of the directories in it on Unix: the owner only.
+#[cfg(unix)]
+const PRIVATE_DIR_MODE: u32 = 0o700;
+
+/// Creates directories only their owner can enter (Unix). Windows has no mode bits: a new
+/// directory inherits the access control list of its parent (see the module docs).
+fn owner_only_dirs(recursive: bool) -> fs::DirBuilder {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(recursive);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, PRIVATE_DIR_MODE);
+    builder
+}
+
+/// A new directory `.stage-<random>` under `root`, private to the owner on Unix.
 fn private_dir(root: &Path) -> Result<PathBuf, InstallError> {
     fs::create_dir_all(root).map_err(|_| InstallError::Io)?;
     for _ in 0..8 {
@@ -807,8 +864,21 @@ fn private_dir(root: &Path) -> Result<PathBuf, InstallError> {
             .fill(&mut random)
             .map_err(|_| InstallError::Io)?;
         let stage = root.join(format!(".stage-{}", hex(&random)));
-        match fs::create_dir(&stage) {
-            Ok(()) => return Ok(stage),
+        match owner_only_dirs(false).create(&stage) {
+            Ok(()) => {
+                // The mode given to mkdir is filtered by the umask; set it exactly.
+                #[cfg(unix)]
+                if fs::set_permissions(
+                    &stage,
+                    std::os::unix::fs::PermissionsExt::from_mode(PRIVATE_DIR_MODE),
+                )
+                .is_err()
+                {
+                    let _ = fs::remove_dir(&stage);
+                    return Err(InstallError::Io);
+                }
+                return Ok(stage);
+            }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(_) => return Err(InstallError::Io),
         }
@@ -825,6 +895,127 @@ fn write_file(path: &Path, bytes: &[u8]) -> Result<(), InstallError> {
     f.write_all(bytes)
         .and_then(|_| f.sync_all())
         .map_err(|_| InstallError::Io)
+}
+
+/// Compare the stage with the verified package: exactly the files in `expected`, each a regular
+/// file with the verified size and SHA-256, inside real directories. Links are never followed.
+/// A difference is [`InstallError::StageChanged`]; a stage that cannot be read is
+/// [`InstallError::Io`]. Either way the caller must not activate it.
+fn check_stage(
+    stage: &Path,
+    expected: &std::collections::BTreeMap<String, (u64, [u8; 32])>,
+) -> Result<(), InstallError> {
+    use std::collections::BTreeSet;
+
+    let io = |_| InstallError::Io;
+    // Every directory the verified files need, as stage-relative `/`-separated paths.
+    let mut directories = BTreeSet::from([String::new()]);
+    for path in expected.keys() {
+        let mut parent = path.as_str();
+        while let Some((head, _)) = parent.rsplit_once('/') {
+            directories.insert(head.to_owned());
+            parent = head;
+        }
+    }
+    let mut found = 0usize;
+    for directory in &directories {
+        let on_disk = if directory.is_empty() {
+            stage.to_path_buf()
+        } else {
+            stage.join(directory)
+        };
+        match fs::symlink_metadata(&on_disk) {
+            Ok(meta) if meta.is_dir() => {}
+            Ok(_) => return Err(InstallError::StageChanged),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(InstallError::StageChanged);
+            }
+            Err(e) => return Err(io(e)),
+        }
+        for entry in fs::read_dir(&on_disk).map_err(io)? {
+            let entry = entry.map_err(io)?;
+            let Ok(name) = entry.file_name().into_string() else {
+                return Err(InstallError::StageChanged);
+            };
+            let relative = if directory.is_empty() {
+                name
+            } else {
+                format!("{directory}/{name}")
+            };
+            // `file_type` does not follow links.
+            let kind = entry.file_type().map_err(io)?;
+            if kind.is_dir() && directories.contains(&relative) {
+                continue;
+            }
+            let Some((size, digest)) = expected.get(&relative) else {
+                return Err(InstallError::StageChanged);
+            };
+            if !kind.is_file() {
+                return Err(InstallError::StageChanged);
+            }
+            check_staged_file(&entry.path(), *size, digest)?;
+            found += 1;
+        }
+    }
+    // Names on disk are unique, so equal counts mean no verified file is missing.
+    if found != expected.len() {
+        return Err(InstallError::StageChanged);
+    }
+    Ok(())
+}
+
+/// One staged file: a regular file of exactly `size` bytes whose SHA-256 is `digest`.
+fn check_staged_file(path: &Path, size: u64, digest: &[u8; 32]) -> Result<(), InstallError> {
+    let io = |_| InstallError::Io;
+    // Look without following a link, open, then make sure the opened file is the one looked at,
+    // so a link swapped in between is not read in its place.
+    let listed = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(InstallError::StageChanged);
+        }
+        Err(e) => return Err(io(e)),
+    };
+    if !listed.is_file() || listed.len() != size {
+        return Err(InstallError::StageChanged);
+    }
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(InstallError::StageChanged);
+        }
+        Err(e) => return Err(io(e)),
+    };
+    let meta = file.metadata().map_err(io)?;
+    if !meta.is_file() || meta.len() != size {
+        return Err(InstallError::StageChanged);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if (meta.dev(), meta.ino()) != (listed.dev(), listed.ino()) {
+            return Err(InstallError::StageChanged);
+        }
+    }
+    let mut hash = sha2::Sha256::new();
+    let mut read = 0u64;
+    let mut chunk = [0u8; 64 * 1024];
+    loop {
+        let n = std::io::Read::read(&mut file, &mut chunk).map_err(io)?;
+        if n == 0 {
+            break;
+        }
+        read += n as u64;
+        if read > size {
+            return Err(InstallError::StageChanged);
+        }
+        hash.update(&chunk[..n]);
+    }
+    let actual: [u8; 32] = hash.finalize().into();
+    if read != size || actual != *digest {
+        return Err(InstallError::StageChanged);
+    }
+    Ok(())
 }
 
 /// Lock a plugin's state across installer instances and processes. The lock file is deliberately
@@ -1011,7 +1202,9 @@ impl<'a> Installer<'a> {
             for (path, bytes) in package.files() {
                 let destination = stage.join(path);
                 if let Some(parent) = destination.parent() {
-                    fs::create_dir_all(parent).map_err(|_| InstallError::Io)?;
+                    owner_only_dirs(true)
+                        .create(parent)
+                        .map_err(|_| InstallError::Io)?;
                 }
                 write_file(&destination, bytes)?;
             }
@@ -1214,6 +1407,7 @@ impl StagedInstall<'_> {
             capabilities: p.manifest.capabilities.clone(),
             payload_digest: p.payload_digest,
             package_digest: p.digest,
+            signer_first_party: p.signer_first_party,
             upgrade: self.upgrade.clone(),
         }
     }
@@ -1360,6 +1554,14 @@ impl StagedInstall<'_> {
         {
             Ok((activate, _)) => {
                 let switched = self.switch_version(&base, &mut state, &hooks);
+                if matches!(switched, Err(InstallError::StageChanged))
+                    && let Some(alerts) = hooks.alerts
+                {
+                    alerts.alert(&InstallAlert::StageChanged {
+                        plugin_id: id.clone(),
+                        correlation_id: self.correlation_id.clone(),
+                    });
+                }
                 outcome_audit_warnings.extend(
                     activate
                         .finish(outcome_of(&switched), on_outcome_failure)
@@ -1441,6 +1643,8 @@ impl StagedInstall<'_> {
             return Err(InstallError::Io);
         }
         fault(SwitchStep::MoveVersion)?;
+        // Last step before the rename: what is moved must still be what was verified.
+        check_stage(&self.stage, self.package.file_digests())?;
         fs::rename(&self.stage, &version_path).map_err(|_| InstallError::Io)?;
         state.previous = state.active.replace(digest);
         let sync = hooks.directory_sync.unwrap_or(default_directory_sync);

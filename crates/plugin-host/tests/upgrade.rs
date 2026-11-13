@@ -110,6 +110,7 @@ impl Publisher {
                 vec![PinnedKey {
                     public_key_hex: hex(self.key.public_key().as_ref()),
                     plugin_ids: Default::default(),
+                    first_party: false,
                 }],
             )]),
         }
