@@ -65,7 +65,7 @@
 //!
 //! # Decision before, outcome after (TSK-29)
 //!
-//! Approve, activate and rollback are recorded as two entries each, as Ambidex records a call
+//! Install, approve, activate and rollback are recorded as two entries each, as Ambidex records a call
 //! that runs (`security_types::audit`): the decision, with [`Outcome::Started`], before anything
 //! is changed, and the outcome after, with [`Outcome::Success`] or [`Outcome::Error`], the
 //! duration and [`Delivery::Delivered`], under the same action and correlation id. A refusal is
@@ -88,6 +88,15 @@
 //!   [`Rollback::outcome_audit_warning`]). It never changes the result of the step.
 //! - A `Started` entry with no outcome entry means the outcome is unknown (the process stopped,
 //!   or both sinks failed): read the state file.
+//! - Install (TSK-34): [`Installer::stage`] writes the `Started` entry before the archive is
+//!   verified, with the SHA-256 of the archive in `input_digest` and the target `unverified`, and
+//!   the outcome after the verified files were staged. The outcome is `Success`; `Error` with the
+//!   verification error as its code (e.g. `Signature`, `UntrustedPublisher`) when the package
+//!   was refused; or `Error` with `Io` when the stage could not be written. Once the package is
+//!   verified the outcome entry names the plugin it holds instead of `unverified`. A refused
+//!   package is therefore two entries, not a separate `verify-failed` entry. A missed outcome
+//!   entry is reported by [`StagedInstall::outcome_audit_warning`] when the stage succeeded, and
+//!   in every case by the fallback file and the alert.
 
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -134,8 +143,8 @@ pub enum InstallAlert {
         correlation_id: String,
         warning: AuditWarning,
     },
-    /// The outcome entry of an approval or activation could not be written to the primary audit
-    /// sink. The step itself is not affected.
+    /// The outcome entry of an install, approval or activation could not be written to the
+    /// primary audit sink. The step itself is not affected.
     OutcomeAuditFallback {
         plugin_id: String,
         correlation_id: String,
@@ -188,6 +197,8 @@ pub struct HostHooks<'h> {
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwitchStep {
+    /// Writing the verified files to the stage (install only).
+    WriteStage,
     /// Moving the staged files to their version directory (activation only).
     MoveVersion,
     /// Replacing the state file.
@@ -263,7 +274,8 @@ pub struct Rollback {
 
 // NOTE: Provisional names until the Plugin Host permission catalogue is fixed (spec question 25).
 const INSTALL: &str = "plugin-host.packages.install";
-const VERIFY_FAILED: &str = "plugin-host.packages.verify-failed";
+/// Target of an install entry written before the package is verified.
+const UNVERIFIED: &str = "unverified";
 const APPROVE: &str = "plugin-host.packages.approve";
 const REJECT: &str = "plugin-host.packages.reject";
 const ACTIVATE: &str = "plugin-host.packages.activate";
@@ -341,6 +353,7 @@ pub struct StagedInstall<'a> {
     principal: Principal,
     correlation_id: String,
     upgrade: Option<UpgradeView>,
+    outcome_audit_warning: Option<AuditWarning>,
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -439,7 +452,7 @@ fn package_entry(
 /// decision before the step acts, [`Step::finish`] the outcome after.
 struct Step<'s> {
     installer: &'s Installer<'s>,
-    plugin_id: &'s str,
+    plugin_id: String,
     /// The decision entry; the outcome entry repeats it.
     entry: AuditEntry,
 }
@@ -451,7 +464,7 @@ impl<'s> Step<'s> {
         principal: &Principal,
         correlation: &str,
         action: &str,
-        plugin_id: &'s str,
+        plugin_id: &str,
         digest: [u8; 32],
         on_failure: OnAuditFailure<'_>,
     ) -> Result<(Step<'s>, Option<AuditWarning>), InstallError> {
@@ -469,11 +482,18 @@ impl<'s> Step<'s> {
         Ok((
             Step {
                 installer,
-                plugin_id,
+                plugin_id: plugin_id.to_owned(),
                 entry,
             },
             warning,
         ))
+    }
+
+    /// Names the plugin the step turned out to concern (an install learns it by verifying the
+    /// package): the outcome entry then has this target instead of the decision entry's.
+    fn concerns(&mut self, plugin_id: &str) {
+        self.plugin_id = plugin_id.to_owned();
+        self.entry.target = Some(TargetRef::plugin(plugin_id));
     }
 
     /// Writes the outcome entry. The step has already acted, so `on_failure` must be one of the
@@ -492,7 +512,7 @@ impl<'s> Step<'s> {
             delivery: Some(Delivery::Delivered),
             ..self.entry.clone()
         };
-        emit(self.installer, entry, self.plugin_id, on_failure)
+        emit(self.installer, entry, &self.plugin_id, on_failure)
             .await
             .ok()
             .flatten()
@@ -502,6 +522,10 @@ impl<'s> Step<'s> {
 fn outcome_of<T>(result: &Result<T, InstallError>) -> Outcome {
     match result {
         Ok(_) => Outcome::Success,
+        // The verification error names why the package was refused; it carries no package bytes.
+        Err(InstallError::Package(e)) => Outcome::Error {
+            code: format!("{e:?}"),
+        },
         Err(InstallError::Audit(_)) => Outcome::Error {
             code: crate::error_code::UNAVAILABLE.into(),
         },
@@ -914,53 +938,73 @@ enum CommitOutcome {
 }
 
 impl<'a> Installer<'a> {
-    /// Audit the request, verify the package, then write only verified files to a private stage.
+    /// Audit the request, verify the package, then write only verified files to a private stage,
+    /// without alert or fault hooks. See [`stage_with`](Self::stage_with).
     pub async fn stage(
         &'a self,
         archive: &[u8],
         principal: &Principal,
         correlation_id: &str,
     ) -> Result<StagedInstall<'a>, InstallError> {
+        self.stage_with(archive, principal, correlation_id, HostHooks::default())
+            .await
+    }
+
+    /// Audit the request, verify the package, then write only verified files to a private stage.
+    ///
+    /// Two audit entries (see the [module docs](self)): the decision before the archive is
+    /// looked at, without which nothing is verified or written, and the outcome after. Of
+    /// `hooks` only `alerts` is used, for an outcome entry that missed the primary audit sink.
+    pub async fn stage_with(
+        &'a self,
+        archive: &[u8],
+        principal: &Principal,
+        correlation_id: &str,
+        hooks: HostHooks<'_>,
+    ) -> Result<StagedInstall<'a>, InstallError> {
         let archive_digest: [u8; 32] = sha2::Sha256::digest(archive).into();
-        audit(
+        let (mut step, _) = Step::start(
             self,
             principal,
             correlation_id,
             INSTALL,
-            "unverified",
+            UNVERIFIED,
             archive_digest,
-            AuditDecision::Allow,
-            Outcome::Success,
             OnAuditFailure::FailClosed,
         )
         .await?;
-        let package = match verify_bytes(archive, self.limits, self.trust, self.policy) {
-            Ok(p) => p,
-            Err(e) => {
-                audit(
-                    self,
-                    principal,
-                    correlation_id,
-                    VERIFY_FAILED,
-                    "unverified",
-                    archive_digest,
-                    AuditDecision::Deny {
-                        reason: Reason::Policy {
-                            message: format!("{e:?}"),
-                        },
-                    },
-                    Outcome::Error {
-                        code: format!("{e:?}"),
-                    },
-                    OnAuditFailure::FailClosed,
-                )
-                .await?;
-                return Err(InstallError::Package(e));
-            }
-        };
+        let staged = self.verify_and_stage(archive, principal, correlation_id, &mut step, hooks);
+        let warning = step
+            .finish(
+                outcome_of(&staged),
+                OnAuditFailure::OutcomeFallback(hooks.alerts),
+            )
+            .await;
+        staged.map(|mut staged| {
+            staged.outcome_audit_warning = warning;
+            staged
+        })
+    }
+
+    /// The install step itself, between its two audit entries.
+    fn verify_and_stage(
+        &'a self,
+        archive: &[u8],
+        principal: &Principal,
+        correlation_id: &str,
+        step: &mut Step<'_>,
+        hooks: HostHooks<'_>,
+    ) -> Result<StagedInstall<'a>, InstallError> {
+        let package = verify_bytes(archive, self.limits, self.trust, self.policy)
+            .map_err(InstallError::Package)?;
+        step.concerns(&package.manifest.id);
         // Informational for the approval view; activation compares again under the lock.
         let base = self.root.join(&package.manifest.id);
         let upgrade = upgrade_from(&base, &read_state(&base)?, &package.manifest)?.view;
+        hooks
+            .fault
+            .map_or(Ok(()), |fault| fault(SwitchStep::WriteStage))
+            .map_err(|_| InstallError::Io)?;
         let stage = private_dir(self.root)?;
         let write_result = (|| {
             for (path, bytes) in package.files() {
@@ -983,6 +1027,7 @@ impl<'a> Installer<'a> {
             principal: principal.clone(),
             correlation_id: correlation_id.to_owned(),
             upgrade,
+            outcome_audit_warning: None,
         })
     }
 
@@ -1151,6 +1196,12 @@ impl<'a> Installer<'a> {
 }
 
 impl StagedInstall<'_> {
+    /// Set when the outcome entry of the install step missed the primary audit sink (it went to
+    /// the fallback file, or was lost when that failed too). The stage is valid either way.
+    pub fn outcome_audit_warning(&self) -> Option<&AuditWarning> {
+        self.outcome_audit_warning.as_ref()
+    }
+
     pub fn approval_view(&self) -> ApprovalView {
         let p = &self.package;
         ApprovalView {
