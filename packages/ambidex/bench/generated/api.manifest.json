@@ -1,0 +1,147 @@
+{
+  "$defs": {
+    "ApprovalRequiredDetails": {
+      "description": "`details` of an `ApprovalRequired` error raised by the authorizer: the id of the recorded\napproval request.",
+      "properties": {
+        "approval_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id"
+      ],
+      "type": "object"
+    },
+    "BenchRowsInput": {
+      "description": "Input of `bench.rows`.",
+      "properties": {
+        "batch_rows": {
+          "default": null,
+          "description": "Rows per Arrow record batch; the driver's default when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rows": {
+          "description": "Rows to stream, at most the table's size.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "type": "object"
+    },
+    "BenchSummary": {
+      "description": "Final result of `bench.rows`: what the server saw. Times are milliseconds from the start of\nthe call.",
+      "properties": {
+        "bytes": {
+          "description": "Arrow IPC bytes sent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "chunks": {
+          "description": "Chunks (Ambidex stream frames) sent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "connect_ms": {
+          "description": "Opening the database connection through the broker.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "first_chunk_ms": {
+          "description": "The first chunk was handed to the transport.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "query_ms": {
+          "description": "The driver's own time for the statement.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rows": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_ms": {
+          "description": "The whole call.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "chunks",
+        "bytes",
+        "connect_ms",
+        "first_chunk_ms",
+        "query_ms",
+        "total_ms"
+      ],
+      "type": "object"
+    },
+    "Code": {
+      "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
+      "enum": [
+        "Cancelled",
+        "DeadlineExceeded",
+        "Unauthenticated",
+        "PermissionDenied",
+        "ApprovalRequired",
+        "InvalidArgument",
+        "NotFound",
+        "FailedPrecondition",
+        "ResourceExhausted",
+        "Unavailable",
+        "Unimplemented",
+        "VersionMismatch",
+        "Internal"
+      ],
+      "type": "string"
+    }
+  },
+  "api": {
+    "name": "bench",
+    "version": "0.0.0-bench"
+  },
+  "approval_required_details": {
+    "$ref": "#/$defs/ApprovalRequiredDetails"
+  },
+  "format": "ambidex.manifest.v1",
+  "procedures": [
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/BenchRowsInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "bench.rows",
+      "output": {
+        "$ref": "#/$defs/BenchSummary"
+      },
+      "perm": "bench.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    }
+  ],
+  "protocol": 1,
+  "schema_hash": "sha256:ff2d0913a8d634a9c8b04afe43330fbcc7830cf391eafde23f1772c4ccb21703"
+}

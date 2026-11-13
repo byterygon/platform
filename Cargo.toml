@@ -7,6 +7,7 @@ members = [
     "crates/ambidex-axum",
     "crates/ambidex-tauri",
     "crates/ambidex-conformance",
+    "crates/ambidex-bench",
     "crates/plugin-host",
     "crates/db-driver",
     "crates/db-driver-postgres",

@@ -1,0 +1,39 @@
+[package]
+name = "ambidex-bench"
+version = "0.0.0"
+description = "Benchmark server: PostgreSQL driver -> ArrowSink -> Ambidex WebSocket, for the TypeScript client."
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+# `bench-server` serves one stream procedure backed by db-driver-postgres over the real WebSocket
+# transport; `packages/ambidex/bench` drives it (see that directory's README).
+[[bin]]
+name = "bench-server"
+path = "src/bin/bench-server.rs"
+
+# `bench-gen` writes the benchmark API's `api.ts` and `api.manifest.json` (Ambidex spec §2).
+[[bin]]
+name = "bench-gen"
+path = "src/bin/bench-gen.rs"
+
+[dependencies]
+ambidex = { path = "../ambidex", features = ["arrow"] }
+ambidex-axum = { path = "../ambidex-axum" }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio", "ws"] }
+db-driver = { path = "../db-driver" }
+db-driver-postgres = { path = "../db-driver-postgres" }
+plugin-host = { path = "../plugin-host" }
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+schemars = { version = "1.2.3", default-features = false, features = ["derive"] }
+security-types = { path = "../security-types" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tokio = { version = "1.54.1", default-features = false, features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat"] }
