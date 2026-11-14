@@ -583,6 +583,26 @@
       ]
     },
     {
+      "name": "sidebar",
+      "type": "registry:ui",
+      "title": "Sidebar",
+      "description": "The side panel of an app shell: a provider with the open state and a Ctrl/Cmd+B toggle, a size.panel.xs panel on either side that collapses to an icon rail (labels become tooltips) or hides, a header, a scrolling content area, a footer, labelled groups, menus of buttons or links, a toggle and the main area beside it.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/icon-button",
+        "@byterygon/tooltip"
+      ],
+      "files": [
+        {
+          "path": "ui/sidebar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "slider",
       "type": "registry:ui",
       "title": "Slider",
@@ -782,6 +802,23 @@
       "files": [
         {
           "path": "ui/tooltip.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "tree",
+      "type": "registry:ui",
+      "title": "Tree",
+      "description": "A virtualized, keyboard-navigable tree following the ARIA treeview pattern: nodes with icons and trailing meta, lazy children with per-node loading and error-with-Retry rows, single selection, an action on Enter or double-click, type-ahead and a filter; only the visible rows are rendered.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/tree.tsx",
           "type": "registry:ui"
         }
       ]

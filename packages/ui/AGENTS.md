@@ -145,6 +145,15 @@ What `test/conventions.test.tsx` enforces for every component:
   for a router link); Pagination and Stepper are data-driven (`page`/`pageCount`, `steps`/`value`)
   and compose Button and IconButton; NavigationMenu renders its shared popup itself, and a link
   placed straight in the row takes `className={navigationMenuTriggerStyle}`.
+- Tree is the ARIA treeview pattern built here (Base UI has none): data-driven nodes, rows of
+  `size.control.sm` rendered only while visible, one tab stop with `aria-activedescendant` (the
+  active row is always rendered), `aria-level`/`aria-setsize`/`aria-posinset` on a flat DOM. The app
+  owns lazy loading: set `loading`, then `children` or `error`, from `onExpandedChange`/`onRetry`.
+- Sidebar: SidebarProvider holds the state and Ctrl/Cmd+B; collapsed labels stay in the
+  accessibility tree (`sr-only`) and show as Tooltips. Use `in-*` variants (`in-focus-visible:`)
+  rather than `group`: a bare `group` class is not a token utility and the check rejects it.
+- Data-driven components whose rows only exist with data (Toast, CommandPalette, Stepper, Tree)
+  export the row as a part so the conventions suite reads it from the examples.
 - Layers: scrim `z.overlay`, dialogs and sheets `z.modal`, everything attached to a control
   (popovers, menus, the lists of Select and Combobox) `z.popover`, so they open above a dialog;
   toasts `z.toast`, tooltips `z.tooltip`.

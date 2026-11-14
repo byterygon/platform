@@ -42,6 +42,7 @@ const ITEMS = [
   "hover-card", "dropdown-menu", "context-menu", "menubar", "split-button",
   "tabs", "toast", "command-palette",
   "breadcrumb", "pagination", "stepper", "navigation-menu",
+  "sidebar", "tree",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -168,7 +169,9 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 import { CommandPalette } from "@/components/ui/command-palette";
 import { NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger } from "@/components/ui/navigation-menu";
 import { Pagination } from "@/components/ui/pagination";
+import { Sidebar, SidebarContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Stepper } from "@/components/ui/stepper";
+import { Tree } from "@/components/ui/tree";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toast } from "@/components/ui/toast";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -273,6 +276,17 @@ function Overlays() {
         </BreadcrumbList>
       </Breadcrumb>
       <Pagination page={3} pageCount={20} />
+      <SidebarProvider hotkey={false}>
+        <Sidebar aria-label="Connections" collapsible="icon">
+          <SidebarContent>
+            <SidebarMenu>
+              <SidebarMenuItem><SidebarMenuButton active>Connections</SidebarMenuButton></SidebarMenuItem>
+            </SidebarMenu>
+            <Tree nodes={[{ id: "db", label: "orders-prod", children: [{ id: "public", label: "public" }] }]} defaultExpanded={["db"]} defaultSelected="public" aria-label="Schema" />
+          </SidebarContent>
+        </Sidebar>
+        <SidebarInset><SidebarTrigger /></SidebarInset>
+      </SidebarProvider>
       <Stepper steps={[{ title: "Details" }, { title: "Approve" }, { title: "Connect", error: true }]} value={1} />
       <NavigationMenu>
         <NavigationMenuList>
@@ -507,6 +521,8 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["w-panel-sm", "width", "size.panel.sm", "Byterygon Toast region"],
   ["data-current:bg-selected", "background-color", "color.interactive.selected", "Byterygon Pagination current page"],
   ["data-[status=error]:text-danger-fg", "color", "color.status.danger.fg", "Byterygon Stepper failed step"],
+  ["w-panel-xs", "width", "size.panel.xs", "Byterygon Sidebar width"],
+  ["h-control-sm", "height", "size.control.sm", "Byterygon Tree row (density)"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {
