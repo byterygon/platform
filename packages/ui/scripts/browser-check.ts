@@ -475,9 +475,12 @@ async function largeDocument(page: Page) {
   const beforeRun = await page.evaluate<number>("performance.now()");
   await page.key("Enter", { modifiers: RUN });
   check(await waitFor(page, `window.__check.runs.length > ${runs}`), "1 MB: Ctrl+Enter did not run the last statement");
-  const run = await page.evaluate<{ at: number; text: string }>("({ at: window.__check.runs.at(-1).at, text: window.__check.runs.at(-1).run.text })");
+  const run = await page.evaluate<{ at: number; text: string; source: string; start: number; end: number; length: number; cursor: number; tail: string }>(`(() => {
+    const r = window.__check.runs.at(-1); const e = window.__check.editor; const m = e.getModel();
+    return { at: r.at, text: r.run.text, source: r.run.source, start: r.run.start, end: r.run.end, length: m.getValueLength(), cursor: m.getOffsetAt(e.getPosition()), tail: m.getValue().slice(-40) };
+  })()`);
   const runMs = run.at - beforeRun;
-  check(run.text.startsWith("select id, name") && run.text.length < 120, `1 MB: onRun got ${run.text.length} characters, expected the last statement`);
+  check(run.text.startsWith("select id, name") && run.text.length < 120, `1 MB: onRun got ${JSON.stringify({ ...run, at: undefined })}, expected the last statement`);
   const limits = { loadMs: 5000, keystrokeMs: 200, runMs: 500 };
   check(loadMs < limits.loadMs, `1 MB: loading took ${Math.round(loadMs)} ms (limit ${limits.loadMs})`);
   check(keystrokeMs < limits.keystrokeMs, `1 MB: a keystroke took ${Math.round(keystrokeMs)} ms (limit ${limits.keystrokeMs})`);
