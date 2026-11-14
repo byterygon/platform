@@ -30,7 +30,7 @@ const STOCK = ["button", "card", "input"];
 /**
  * The Byterygon items named on the command line. Button comes in through the registry
  * dependencies of icon-button and input-group as well; cn through every item, and theme-scope
- * through select, combobox, multi-select and date-picker.
+ * through select, combobox, multi-select, date-picker and the overlays.
  */
 const ITEMS = [
   "button", "input", "field", "form", "textarea", "input-group", "icon-button", "kbd",
@@ -38,6 +38,7 @@ const ITEMS = [
   "number-input", "password-input", "search-input", "slider", "file-input",
   "select", "combobox", "multi-select",
   "calendar", "date-picker", "time-picker",
+  "dialog", "alert-dialog", "sheet", "popover", "tooltip",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -155,7 +156,12 @@ const MAIN = `import { useForm } from "@tanstack/react-form";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
@@ -182,6 +188,40 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button as StockButton } from "@/components/stock/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/stock/card";
 import { Input as StockInput } from "@/components/stock/input";
+
+function Overlays() {
+  return (
+    <TooltipProvider>
+      <Dialog open size="lg">
+        <DialogTrigger render={<Button variant="secondary" />}>Export</DialogTrigger>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Export result</DialogTitle><DialogDescription>The whole result.</DialogDescription></DialogHeader>
+          <DialogBody><Input aria-label="File" /></DialogBody>
+          <DialogFooter><DialogClose render={<Button variant="ghost" />}>Cancel</DialogClose></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog>
+        <AlertDialogTrigger render={<Button variant="danger" />}>Delete</AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Delete it?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="danger">Delete</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Sheet side="left" size="sm">
+        <SheetTrigger render={<Button />}>Edit</SheetTrigger>
+        <SheetContent><SheetHeader><SheetTitle>Edit</SheetTitle></SheetHeader><SheetBody /></SheetContent>
+      </Sheet>
+      <Popover>
+        <PopoverTrigger render={<Button variant="ghost" />}>Grant</PopoverTrigger>
+        <PopoverContent><PopoverTitle>Access</PopoverTitle><PopoverDescription>TLS required.</PopoverDescription></PopoverContent>
+      </Popover>
+      <Tooltip>
+        <TooltipTrigger render={<IconButton aria-label="Run" />}><svg aria-hidden="true" viewBox="0 0 16 16" /></TooltipTrigger>
+        <TooltipContent>Run <TooltipShortcut>Ctrl+Enter</TooltipShortcut></TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 function Connection() {
   const form = useForm({ defaultValues: { host: "" } });
@@ -265,6 +305,7 @@ createRoot(document.getElementById("root")!).render(
     <Button>Byterygon</Button>
     <Input aria-label="Byterygon input" />
     <Connection />
+    <Overlays />
     <Card>
       <CardHeader><CardTitle>Stock card</CardTitle></CardHeader>
       <CardContent>
@@ -390,6 +431,9 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["bg-neutral-subtle", "background-color", "color.neutral.subtle-bg", "Byterygon MultiSelect chip"],
   ["data-selected:bg-accent-solid", "background-color", "color.accent.bg", "Byterygon Calendar chosen day"],
   ["bg-accent-subtle", "background-color", "color.accent.subtle-bg", "Byterygon Calendar range band"],
+  ["bg-scrim", "background-color", "color.bg.scrim", "Byterygon Dialog, AlertDialog and Sheet scrim"],
+  ["max-w-panel-lg", "max-width", "size.panel.lg", "Byterygon Dialog lg"],
+  ["bg-neutral-solid", "background-color", "color.neutral.bg", "Byterygon Tooltip"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {

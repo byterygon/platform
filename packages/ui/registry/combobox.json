@@ -166,7 +166,7 @@
         {
           "name": "positioner",
           "element": "div",
-          "description": "In a portal at the end of <body>, at z.dropdown, with the frame's data-theme and data-density; data-slot=\"combobox-positioner\"."
+          "description": "In a portal at the end of <body>, at z.popover (above dialogs), with the frame's data-theme and data-density; data-slot=\"combobox-positioner\"."
         },
         {
           "name": "popup",
@@ -303,7 +303,7 @@
         "text.caption.size",
         "text.caption.tracking",
         "text.caption.weight",
-        "z.dropdown"
+        "z.popover"
       ],
       "examples": {
         "minimal": "ComboboxMinimal",

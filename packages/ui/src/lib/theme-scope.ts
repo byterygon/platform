@@ -63,3 +63,18 @@ export function useThemeScope<T extends Element>(forwardedRef?: Ref<T>) {
   );
   return { ref, anchor, scope, refresh };
 }
+
+/**
+ * One ref callback that sets both refs: a trigger needs a popup root's theme-scope ref (from
+ * context) and the caller's own `ref`.
+ */
+export function useMergedRef<T>(own: (element: T | null) => void, other: Ref<T> | undefined) {
+  return useCallback(
+    (element: T | null) => {
+      own(element);
+      if (typeof other === "function") other(element);
+      else if (other) other.current = element;
+    },
+    [own, other],
+  );
+}

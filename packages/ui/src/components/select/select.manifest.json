@@ -31,7 +31,7 @@
     { "name": "trigger", "element": "button", "description": "role=\"combobox\" with aria-haspopup=\"listbox\"; data-slot=\"select\", data-size and data-popup-open name it. A hidden <input> follows it for forms." },
     { "name": "value", "element": "span", "description": "The chosen label, or the placeholder with data-placeholder; data-slot=\"select-value\"." },
     { "name": "icon", "element": "span", "description": "The chevron, aria-hidden; data-slot=\"select-icon\"." },
-    { "name": "positioner", "element": "div", "description": "In a portal at the end of <body>, at z.dropdown, with the trigger's data-theme and data-density; data-slot=\"select-positioner\"." },
+    { "name": "positioner", "element": "div", "description": "In a portal at the end of <body>, at z.popover (above dialogs), with the trigger's data-theme and data-density; data-slot=\"select-positioner\"." },
     { "name": "popup", "element": "div", "description": "The surface, color.bg.overlay with elevation.overlay; at least the trigger's width and at most the height left in the viewport; data-slot=\"select-popup\"." },
     { "name": "list", "element": "div", "description": "role=\"listbox\"; data-slot=\"select-list\"." }
   ],
@@ -92,7 +92,7 @@
     "text.caption.size",
     "text.caption.tracking",
     "text.caption.weight",
-    "z.dropdown"
+    "z.popover"
   ],
   "examples": { "minimal": "SelectMinimal", "realistic": "SelectRealistic" },
   "accessibility": [

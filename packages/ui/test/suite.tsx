@@ -25,10 +25,13 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
     const source = readFileSync(join(dir, fileName(name, "component.tsx")), "utf8");
     const parts = manifest.parts ?? [];
     const ownSlots = new Set([name, ...parts.map((part) => part.slot)]);
+    /** A part's slot, or an inner element of the component (`popover-positioner`, a slot the manifest lists under `slots`). */
+    const isOwnSlot = (slot: string) => ownSlots.has(slot) || slot.startsWith(`${name}-`);
 
     /**
      * For a component with parts: the classes the examples render inside this component's own
-     * slots (an element counts when its nearest data-slot is the component or one of its parts),
+     * slots (an element counts when its nearest data-slot is the component, one of its parts, or an
+     * inner element named `<name>-*`),
      * and the slots seen. A part only renders inside the main component, so the examples are where
      * its classes are found; other components in the examples (an Input in a Field) are skipped.
      * The whole document is read, so popups in a portal count, and each closed popup trigger in the
@@ -46,7 +49,7 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
         }
         for (const element of document.body.querySelectorAll("[class]")) {
           const slot = element.closest("[data-slot]")?.getAttribute("data-slot");
-          if (!slot || !ownSlots.has(slot)) continue;
+          if (!slot || !isOwnSlot(slot)) continue;
           for (const c of element.getAttribute("class")!.split(/\s+/)) if (c) classes.add(c);
         }
       };

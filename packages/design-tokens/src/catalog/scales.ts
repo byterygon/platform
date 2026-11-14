@@ -135,6 +135,27 @@ const trackSize: RoleDef[] = [
   },
 ];
 
+/**
+ * Widths of floating and side panels. Fixed px, not density-aware: a panel holds text that wraps,
+ * and the compact density shrinks its controls and gaps, not the reading measure.
+ */
+const PANELS: readonly (readonly [string, number, string])[] = [
+  ["xs", 240, "a tooltip's maximum width, a sidebar"],
+  ["sm", 320, "a popover, a hover card, a toast"],
+  ["md", 448, "a dialog or an alert dialog, a side sheet"],
+  ["lg", 576, "a wide dialog, the command palette"],
+  ["xl", 768, "a dialog that holds a table or a form in two columns"],
+];
+const panelSize: RoleDef[] = PANELS.map(([name, value, fit]): RoleDef => ({
+  path: `size.panel.${name}`,
+  type: "dimension",
+  tier: "primitive",
+  value: px(value),
+  tailwind: `--spacing-panel-${name}`,
+  use: `Width of a ${name} panel (${value} px), for ${fit}: the w-panel-${name} and max-w-panel-${name} utilities.`,
+  avoid: "Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+}));
+
 const borderWidth: RoleDef[] = [0, 1, 2].map((value): RoleDef => ({
   path: `border.width.${value}`,
   type: "dimension",
@@ -225,6 +246,7 @@ export const SCALE_ROLES: readonly RoleDef[] = [
   ...fontTracking,
   ...iconSize,
   ...trackSize,
+  ...panelSize,
   ...borderWidth,
   ...breakpoint,
   ...opacity,

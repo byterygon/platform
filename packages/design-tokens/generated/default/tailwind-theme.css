@@ -17,6 +17,11 @@
   --spacing-icon-md: var(--by-size-icon-md);
   --spacing-icon-lg: var(--by-size-icon-lg);
   --spacing-track: var(--by-size-track);
+  --spacing-panel-xs: var(--by-size-panel-xs);
+  --spacing-panel-sm: var(--by-size-panel-sm);
+  --spacing-panel-md: var(--by-size-panel-md);
+  --spacing-panel-lg: var(--by-size-panel-lg);
+  --spacing-panel-xl: var(--by-size-panel-xl);
 
   --ease-standard: var(--by-motion-easing-standard);
   --ease-enter: var(--by-motion-easing-enter);

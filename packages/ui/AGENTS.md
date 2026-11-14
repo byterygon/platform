@@ -116,13 +116,40 @@ What `test/conventions.test.tsx` enforces for every component:
 - Field itself does not import TanStack Form (a structural `FieldState` type), so it also works
   with Base UI's `validate` or a hand-set `invalid`.
 
+## Overlays and navigation (wave 2)
+
+- Overlays are a root plus parts, as in shadcn: `Dialog` (no element) > `DialogTrigger` +
+  `DialogContent` > `DialogHeader` (`DialogTitle`, `DialogDescription`), `DialogBody`,
+  `DialogFooter`. Triggers and close buttons are unstyled Base UI parts: render a Button through
+  `render` (`<DialogTrigger render={<Button variant="secondary" />}>`). A root's look (`size`,
+  `side`) is a prop of the root, which its parts read from context; parts take no variant props.
+- AlertDialog and Sheet reuse `dialogClasses` and `useDialogScope` from dialog.tsx; HoverCard reuses
+  `popoverClasses`. A new overlay reuses them too rather than restyling a scrim or a popup.
+- A dialog may open without a trigger, so its content renders a hidden anchor where it sits in
+  the JSX and the popup takes that region's theme and density. Popover-like roots put
+  `useThemeScope`'s ref on the trigger through `useMergedRef` (the caller's `ref` still arrives).
+- Layers: scrim `z.overlay`, dialogs and sheets `z.modal`, everything attached to a control
+  (popovers, menus, the lists of Select and Combobox) `z.popover`, so they open above a dialog;
+  toasts `z.toast`, tooltips `z.tooltip`.
+- Motion: an element that moves (`transition`, `transition-transform`, an animation) also carries
+  `motion-reduce:transition-none` (or `motion-reduce:animate-none`); colour and opacity fades may
+  stay. `honoursReducedMotion` in `test/interact.ts` checks it; each overlay test calls it.
+- Tests use `test/interact.ts` (`click`, `press`, `key`, `hover`, `focus`, `waitFor`, `zLayer`):
+  open, keyboard, Escape and outside press, focus moving in and back to the trigger, ARIA roles,
+  the theme scope and reduced motion. Base UI moves focus asynchronously: wait for it.
+- The conventions suite opens every closed `aria-haspopup` trigger in the examples to read the
+  popup's classes. A popup without one (Tooltip) needs an example with `defaultOpen`. Inner
+  elements are named `<name>-<part>` (`popover-positioner`) so their classes count as the
+  component's; list them under `slots`.
+
 ## Styling rules
 
 - Roles, not primitives. Colours: `bg-surface`, `bg-inset`, `text-fg`, `text-fg-muted`,
   `border-border`, `border-border-strong`, `bg-hover`, `bg-pressed`, `bg-selected`, the status
   names (`bg-danger`, `text-danger-solid-fg`, `border-danger-border`, `text-danger-fg`). Size and
   space: `h-control-{xs,sm,md,lg}`, `px-control-x`, `p-inset-*`, `gap-inline-*`, `gap-stack-*`,
-  `size-icon-*`, `h-track` (a slider track or thin bar). Type: `text-body`, `text-label`, `text-caption`, `text-code`. Radius:
+  `size-icon-*`, `h-track` (a slider track or thin bar), `max-w-panel-{xs,sm,md,lg,xl}` (240 to
+  768 px: tooltips, popovers, dialogs, sheets, sidebars). Type: `text-body`, `text-label`, `text-caption`, `text-code`. Radius:
   `rounded-{xs..xl}`. Elevation: `shadow-raised`, `shadow-overlay`, `shadow-modal`.
 - The accent solid is `bg-accent-solid`, `hover:bg-accent-solid-hover`,
   `active:bg-accent-solid-active`, `text-accent-solid-fg`. Never bare `bg-accent`: in a project
@@ -139,7 +166,7 @@ What `test/conventions.test.tsx` enforces for every component:
 - When no role fits, add one to `@byterygon/design-tokens` (its AGENTS.md), never a raw value here.
 - Write every class out in full in the source, never assembled from template strings: Tailwind
   finds classes by scanning the installed files as text.
-- Popups (Select, Combobox, menus later) render in a portal: put `useThemeScope`'s `ref` on the
+- Popups (Select, Combobox, Popover, menus) render in a portal: put `useThemeScope`'s `ref` on the
   trigger, spread its `scope` on the positioner and call `refresh` when it opens, so a popup opened
   in a dark or compact region is dark or compact too. Base UI's run-time variables
   (`--anchor-width`, `--available-height`, `--transform-origin`) are not tokens: set them in

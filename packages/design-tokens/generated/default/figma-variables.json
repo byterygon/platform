@@ -10001,6 +10001,71 @@
           }
         },
         {
+          "name": "size/panel/xs",
+          "type": "FLOAT",
+          "description": "Width of a xs panel (240 px), for a tooltip's maximum width, a sidebar: the w-panel-xs and max-w-panel-xs utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-panel-xs)"
+          },
+          "valuesByMode": {
+            "Value": 240
+          }
+        },
+        {
+          "name": "size/panel/sm",
+          "type": "FLOAT",
+          "description": "Width of a sm panel (320 px), for a popover, a hover card, a toast: the w-panel-sm and max-w-panel-sm utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-panel-sm)"
+          },
+          "valuesByMode": {
+            "Value": 320
+          }
+        },
+        {
+          "name": "size/panel/md",
+          "type": "FLOAT",
+          "description": "Width of a md panel (448 px), for a dialog or an alert dialog, a side sheet: the w-panel-md and max-w-panel-md utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-panel-md)"
+          },
+          "valuesByMode": {
+            "Value": 448
+          }
+        },
+        {
+          "name": "size/panel/lg",
+          "type": "FLOAT",
+          "description": "Width of a lg panel (576 px), for a wide dialog, the command palette: the w-panel-lg and max-w-panel-lg utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-panel-lg)"
+          },
+          "valuesByMode": {
+            "Value": 576
+          }
+        },
+        {
+          "name": "size/panel/xl",
+          "type": "FLOAT",
+          "description": "Width of a xl panel (768 px), for a dialog that holds a table or a form in two columns: the w-panel-xl and max-w-panel-xl utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-panel-xl)"
+          },
+          "valuesByMode": {
+            "Value": 768
+          }
+        },
+        {
           "name": "border/width/0",
           "type": "FLOAT",
           "description": "A 0 px border. Primitive: reference it through a role, never from a component. Not for the focus ring: use ring.width.",

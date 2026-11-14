@@ -14366,6 +14366,78 @@
         }
       }
     },
+    "panel": {
+      "xs": {
+        "$type": "dimension",
+        "$value": {
+          "value": 240,
+          "unit": "px"
+        },
+        "$description": "Width of a xs panel (240 px), for a tooltip's maximum width, a sidebar: the w-panel-xs and max-w-panel-xs utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--spacing-panel-xs"
+          }
+        }
+      },
+      "sm": {
+        "$type": "dimension",
+        "$value": {
+          "value": 320,
+          "unit": "px"
+        },
+        "$description": "Width of a sm panel (320 px), for a popover, a hover card, a toast: the w-panel-sm and max-w-panel-sm utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--spacing-panel-sm"
+          }
+        }
+      },
+      "md": {
+        "$type": "dimension",
+        "$value": {
+          "value": 448,
+          "unit": "px"
+        },
+        "$description": "Width of a md panel (448 px), for a dialog or an alert dialog, a side sheet: the w-panel-md and max-w-panel-md utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--spacing-panel-md"
+          }
+        }
+      },
+      "lg": {
+        "$type": "dimension",
+        "$value": {
+          "value": 576,
+          "unit": "px"
+        },
+        "$description": "Width of a lg panel (576 px), for a wide dialog, the command palette: the w-panel-lg and max-w-panel-lg utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--spacing-panel-lg"
+          }
+        }
+      },
+      "xl": {
+        "$type": "dimension",
+        "$value": {
+          "value": 768,
+          "unit": "px"
+        },
+        "$description": "Width of a xl panel (768 px), for a dialog that holds a table or a form in two columns: the w-panel-xl and max-w-panel-xl utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--spacing-panel-xl"
+          }
+        }
+      }
+    },
     "control": {
       "xs": {
         "$type": "dimension",

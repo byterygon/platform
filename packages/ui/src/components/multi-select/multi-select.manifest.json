@@ -97,7 +97,7 @@
     "text.label.size",
     "text.label.tracking",
     "text.label.weight",
-    "z.dropdown"
+    "z.popover"
   ],
   "examples": { "minimal": "MultiSelectMinimal", "realistic": "MultiSelectRealistic" },
   "accessibility": [

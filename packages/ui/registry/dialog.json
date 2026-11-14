@@ -1,0 +1,255 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "dialog",
+  "type": "registry:ui",
+  "title": "Dialog",
+  "description": "A modal dialog on Base UI's Dialog: a trigger, a scrim, a centred popup in four widths with a title, a description, a scrolling body, a footer of actions and a close button.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/icon-button",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/dialog.tsx",
+      "type": "registry:ui",
+      "content": "import { Dialog as DialogPrimitive } from \"@base-ui/react/dialog\";\nimport { createContext, useContext, useEffect, type ComponentProps, type ReactNode, type Ref } from \"react\";\nimport { IconButton } from \"@/components/ui/icon-button\";\nimport { cn } from \"@/lib/cn\";\nimport { useThemeScope, type ThemeScope } from \"@/lib/theme-scope\";\n\n// A modal dialog on Base UI's Dialog: `Dialog` is the root (no element of its own) and the parts\n// compose it as shadcn's do: DialogTrigger, DialogContent (portal, scrim, centred popup and a\n// close button), DialogHeader with DialogTitle and DialogDescription, DialogBody, DialogFooter and\n// DialogClose. AlertDialog and Sheet reuse `dialogClasses` and `useDialogScope`.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const dialogVariants = {\n  /** The popup's maximum width, from the `size.panel.*` widths; it shrinks on narrow viewports. */\n  size: {\n    sm: \"max-w-panel-sm\",\n    md: \"max-w-panel-md\",\n    lg: \"max-w-panel-lg\",\n    xl: \"max-w-panel-xl\",\n  },\n} as const;\n\nexport type DialogSize = keyof typeof dialogVariants.size;\n\n/** The classes Dialog, AlertDialog and Sheet share. */\nexport const dialogClasses = {\n  backdrop: [\n    \"fixed inset-0 z-[var(--by-z-overlay)] bg-scrim\",\n    \"transition-opacity duration-[var(--by-motion-duration-slow)] ease-standard motion-reduce:transition-none\",\n    \"data-starting-style:opacity-0 data-ending-style:opacity-0\",\n  ],\n  viewport: \"fixed inset-0 z-[var(--by-z-modal)] flex items-center justify-center overflow-y-auto p-inset-lg\",\n  popup: [\n    \"relative flex max-h-full w-full flex-col gap-stack-md overflow-hidden rounded-lg border border-border bg-overlay p-inset-lg font-sans text-body text-fg shadow-modal outline-none\",\n    \"transition duration-[var(--by-motion-duration-slow)] ease-emphasized motion-reduce:transition-none\",\n    \"data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit\",\n  ],\n  header: \"flex flex-col gap-stack-xs\",\n  title: \"text-heading-4 text-fg\",\n  description: \"text-body text-fg-muted\",\n  body: \"-mx-inset-lg flex min-h-0 flex-1 flex-col gap-stack-md overflow-y-auto px-inset-lg\",\n  footer: \"flex flex-wrap items-center justify-end gap-inline-sm\",\n  close: \"absolute top-inset-md right-inset-md\",\n} as const;\n\nconst XIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"m4 4 8 8M12 4l-8 8\" />\n  </svg>\n);\n\n/** The close button's icon, shared with Sheet. */\nexport { XIcon };\n\ninterface DialogContextValue {\n  size: DialogSize;\n  scope: ThemeScope;\n  anchorRef: (element: Element | null) => void;\n}\n\nconst DialogContext = createContext<DialogContextValue>({ size: \"md\", scope: {}, anchorRef: () => {} });\n\n/**\n * The theme scope of a dialog-like root. A dialog may open without a trigger (a menu item or a\n * shortcut opens it), so the anchor is a hidden element that DialogContent renders where it sits in\n * the JSX: the popup in its portal then takes the theme and density of that region.\n */\nexport function useDialogScope(open: boolean | undefined) {\n  const { ref, scope, refresh } = useThemeScope<Element>();\n  useEffect(() => {\n    if (open) refresh();\n  }, [open, refresh]);\n  return { anchorRef: ref, scope, refresh };\n}\n\n/** The hidden element DialogContent, AlertDialogContent and SheetContent anchor their scope to. */\nexport function ScopeAnchor({ anchorRef }: { anchorRef: (element: Element | null) => void }) {\n  return <span ref={anchorRef} hidden />;\n}\n\nexport interface DialogProps extends DialogPrimitive.Root.Props {\n  /** The popup's maximum width, from `size.panel.*`. */\n  size?: DialogSize;\n}\n\n/**\n * A modal dialog on Base UI's Dialog. It renders no element: put a DialogTrigger and a\n * DialogContent inside. Focus moves into the popup when it opens, stays there, and returns to the\n * trigger when it closes; Escape and a click on the scrim close it.\n */\nexport function Dialog({ size = \"md\", onOpenChange, ...props }: DialogProps) {\n  const { anchorRef, scope, refresh } = useDialogScope(props.open);\n  return (\n    <DialogContext value={{ size, scope, anchorRef }}>\n      <DialogPrimitive.Root\n        onOpenChange={(open, details) => {\n          if (open) refresh();\n          onOpenChange?.(open, details);\n        }}\n        {...props}\n      />\n    </DialogContext>\n  );\n}\n\nexport interface DialogTriggerProps extends DialogPrimitive.Trigger.Props {\n  /** Reaches the trigger element. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** Opens the dialog. Unstyled: render a Button through `render` (`render={<Button />}`). */\nexport function DialogTrigger(props: DialogTriggerProps) {\n  return <DialogPrimitive.Trigger data-slot=\"dialog-trigger\" {...props} />;\n}\n\nexport interface DialogBackdropProps extends Omit<DialogPrimitive.Backdrop.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The scrim behind the popup, color.bg.scrim at z.overlay. DialogContent renders it. */\nexport function DialogBackdrop({ className, ...props }: DialogBackdropProps) {\n  const { scope } = useContext(DialogContext);\n  return <DialogPrimitive.Backdrop {...scope} data-slot=\"dialog-backdrop\" className={cn(dialogClasses.backdrop, className)} {...props} />;\n}\n\nexport interface DialogViewportProps extends Omit<DialogPrimitive.Viewport.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The fixed, scrollable layer at z.modal that centres the popup. DialogContent renders it. */\nexport function DialogViewport({ className, ...props }: DialogViewportProps) {\n  const { scope } = useContext(DialogContext);\n  return <DialogPrimitive.Viewport {...scope} data-slot=\"dialog-viewport\" className={cn(dialogClasses.viewport, className)} {...props} />;\n}\n\nexport interface DialogContentProps extends Omit<DialogPrimitive.Popup.Props, \"className\" | \"children\"> {\n  /** Shows the close button in the top corner. On by default; the footer can hold a DialogClose instead. */\n  showClose?: boolean;\n  /** The accessible name of the close button. */\n  closeLabel?: string;\n  children?: ReactNode;\n  /** Extra classes for the popup, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * The dialog itself: a portal with the scrim, the viewport and the popup (role=\"dialog\", named by\n * its DialogTitle and described by its DialogDescription; the page behind is made inert).\n */\nexport function DialogContent({ showClose = true, closeLabel = \"Close\", className, children, ...props }: DialogContentProps) {\n  const { size, anchorRef } = useContext(DialogContext);\n  return (\n    <>\n      <ScopeAnchor anchorRef={anchorRef} />\n      <DialogPrimitive.Portal>\n        <DialogBackdrop />\n        <DialogViewport>\n          <DialogPrimitive.Popup data-slot=\"dialog-content\" data-size={size} className={cn(dialogClasses.popup, dialogVariants.size[size], className)} {...props}>\n            {children}\n            {showClose ? (\n              <DialogPrimitive.Close render={<IconButton aria-label={closeLabel} size=\"sm\" />} className={cn(dialogClasses.close)}>\n                <XIcon />\n              </DialogPrimitive.Close>\n            ) : null}\n          </DialogPrimitive.Popup>\n        </DialogViewport>\n      </DialogPrimitive.Portal>\n    </>\n  );\n}\n\nexport interface DialogSectionProps extends Omit<ComponentProps<\"div\">, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The title and description, stacked; leaves room for the close button. */\nexport function DialogHeader({ className, ...props }: DialogSectionProps) {\n  return <div data-slot=\"dialog-header\" className={cn(dialogClasses.header, \"pe-control-md\", className)} {...props} />;\n}\n\n/** The content between the header and the footer; it scrolls when the dialog is taller than the viewport. */\nexport function DialogBody({ className, ...props }: DialogSectionProps) {\n  return <div data-slot=\"dialog-body\" className={cn(dialogClasses.body, className)} {...props} />;\n}\n\n/** The actions, at the end of the row: the primary action last. */\nexport function DialogFooter({ className, ...props }: DialogSectionProps) {\n  return <div data-slot=\"dialog-footer\" className={cn(dialogClasses.footer, className)} {...props} />;\n}\n\nexport interface DialogTitleProps extends Omit<DialogPrimitive.Title.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The dialog's heading (an `<h2>`), in type.heading-4; it names the dialog. */\nexport function DialogTitle({ className, ...props }: DialogTitleProps) {\n  return <DialogPrimitive.Title data-slot=\"dialog-title\" className={cn(dialogClasses.title, className)} {...props} />;\n}\n\nexport interface DialogDescriptionProps extends Omit<DialogPrimitive.Description.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A sentence under the title, in color.fg.muted; it describes the dialog. */\nexport function DialogDescription({ className, ...props }: DialogDescriptionProps) {\n  return <DialogPrimitive.Description data-slot=\"dialog-description\" className={cn(dialogClasses.description, className)} {...props} />;\n}\n\nexport interface DialogCloseProps extends DialogPrimitive.Close.Props {\n  /** Reaches the button. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** Closes the dialog. Unstyled: render a Button through `render` (`render={<Button variant=\"ghost\" />}`). */\nexport function DialogClose(props: DialogCloseProps) {\n  return <DialogPrimitive.Close data-slot=\"dialog-close\" {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "dialog",
+      "title": "Dialog",
+      "description": "A modal dialog on Base UI's Dialog: a trigger, a scrim, a centred popup in four widths with a title, a description, a scrolling body, a footer of actions and a close button.",
+      "usage": "Use Dialog for a short task the user must finish or cancel before going on, on top of the page: export settings, rename, keyboard shortcuts, About. Compose it as Dialog > DialogTrigger (render a Button) + DialogContent > DialogHeader (DialogTitle, DialogDescription), DialogBody, DialogFooter (DialogClose rendering a Button, then the primary action last). Every dialog needs a DialogTitle; open it without a trigger through open and onOpenChange (from a menu item or a shortcut). For a decision that must not be dismissed by a click outside (delete, destructive SQL, approve access) use AlertDialog; for a form that edits something beside the page (a connection) use Sheet; for a small, non-modal panel attached to a control use Popover.",
+      "status": "experimental",
+      "base": "@base-ui/react/dialog",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\" | \"xl\"",
+          "default": "md",
+          "description": "The popup's maximum width, from size.panel.* (320, 448, 576, 768 px); it shrinks on narrow viewports."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state; defaultOpen when uncontrolled."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean, details) => void",
+          "description": "Called when the trigger, a DialogClose, Escape or a click on the scrim opens or closes it."
+        },
+        {
+          "name": "modal",
+          "type": "boolean | \"trap-focus\"",
+          "default": true,
+          "description": "As Base UI: true traps focus, locks scroll and blocks the page."
+        },
+        {
+          "name": "disablePointerDismissal",
+          "type": "boolean",
+          "default": false,
+          "description": "Keeps the dialog open on a click outside it."
+        },
+        {
+          "name": "showClose",
+          "type": "boolean",
+          "default": true,
+          "description": "DialogContent: shows the close button in the top corner."
+        },
+        {
+          "name": "closeLabel",
+          "type": "string",
+          "default": "Close",
+          "description": "DialogContent: the accessible name of the close button."
+        },
+        {
+          "name": "initialFocus",
+          "type": "RefObject<HTMLElement> | boolean",
+          "description": "DialogContent: the element focused on open (default: the first focusable element)."
+        },
+        {
+          "name": "finalFocus",
+          "type": "RefObject<HTMLElement> | boolean",
+          "description": "DialogContent: the element focused on close (default: the trigger)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg",
+          "xl"
+        ]
+      },
+      "slots": [
+        {
+          "name": "backdrop",
+          "element": "div",
+          "description": "The scrim, color.bg.scrim at z.overlay; data-slot=\"dialog-backdrop\"."
+        },
+        {
+          "name": "viewport",
+          "element": "div",
+          "description": "A fixed layer at z.modal that centres and scrolls the popup, with the trigger region's data-theme and data-density; data-slot=\"dialog-viewport\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "role=\"dialog\", color.bg.overlay with elevation.modal; data-slot=\"dialog-content\", data-size."
+        }
+      ],
+      "parts": [
+        {
+          "name": "DialogTrigger",
+          "slot": "dialog-trigger",
+          "description": "Opens the dialog; unstyled, render a Button through render. aria-haspopup=\"dialog\" and aria-expanded."
+        },
+        {
+          "name": "DialogContent",
+          "slot": "dialog-content",
+          "description": "The portal with the scrim, the viewport and the popup, plus a close IconButton unless showClose is false."
+        },
+        {
+          "name": "DialogBackdrop",
+          "slot": "dialog-backdrop",
+          "description": "The scrim; DialogContent renders it."
+        },
+        {
+          "name": "DialogViewport",
+          "slot": "dialog-viewport",
+          "description": "The centring layer; DialogContent renders it."
+        },
+        {
+          "name": "DialogHeader",
+          "slot": "dialog-header",
+          "description": "The title and description, stacked, leaving room for the close button."
+        },
+        {
+          "name": "DialogTitle",
+          "slot": "dialog-title",
+          "description": "An <h2> in type.heading-4 that names the dialog (aria-labelledby)."
+        },
+        {
+          "name": "DialogDescription",
+          "slot": "dialog-description",
+          "description": "A <p> in color.fg.muted that describes the dialog (aria-describedby)."
+        },
+        {
+          "name": "DialogBody",
+          "slot": "dialog-body",
+          "description": "The content between header and footer; scrolls when the dialog is taller than the viewport."
+        },
+        {
+          "name": "DialogFooter",
+          "slot": "dialog-footer",
+          "description": "The actions at the end of the row, the primary action last."
+        },
+        {
+          "name": "DialogClose",
+          "slot": "dialog-close",
+          "description": "Closes the dialog; unstyled, render a Button through render."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "data-starting-style",
+          "description": "Opening: the popup grows from 95 % and fades in over motion.duration.slow with motion.easing.emphasized, the scrim fades in; reduced motion turns the transitions off."
+        },
+        {
+          "name": "closing",
+          "variant": "data-ending-style",
+          "description": "Closing: the reverse, with motion.easing.exit."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-active",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.bg.overlay",
+        "color.bg.scrim",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.neutral.bg",
+        "color.neutral.bg-active",
+        "color.neutral.bg-hover",
+        "color.neutral.fg",
+        "color.ring",
+        "elevation.modal.shadow",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.duration.slow",
+        "motion.easing.emphasized",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.lg",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.icon.sm",
+        "size.panel.lg",
+        "size.panel.md",
+        "size.panel.sm",
+        "size.panel.xl",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.lg",
+        "space.stack.md",
+        "space.stack.sm",
+        "space.stack.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.heading-4.leading",
+        "text.heading-4.size",
+        "text.heading-4.tracking",
+        "text.heading-4.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.modal",
+        "z.overlay"
+      ],
+      "examples": {
+        "minimal": "DialogMinimal",
+        "realistic": "DialogRealistic"
+      },
+      "accessibility": [
+        "The popup is role=\"dialog\", named by DialogTitle (aria-labelledby) and described by DialogDescription (aria-describedby); every dialog has a title. While it is open the rest of the page is hidden from assistive technology and inert (Base UI marks it, rather than setting aria-modal).",
+        "Opening moves focus into the popup (the first focusable element, or initialFocus); Tab and Shift+Tab stay inside; closing returns focus to the trigger (or finalFocus).",
+        "Escape closes the dialog, and so does a press on the scrim unless disablePointerDismissal is set; the page behind does not scroll and ignores the pointer while it is open.",
+        "The close button is an IconButton with an accessible name (closeLabel, \"Close\" by default) and a visible focus ring.",
+        "prefers-reduced-motion: reduce turns the scale and fade transitions off (motion-reduce:transition-none).",
+        "The popup takes the theme and density of the region it is declared in, not only of <html>, so its contrast matches the page that opened it."
+      ]
+    },
+    "example": "import { Button } from \"@/components/button/button\";\nimport { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from \"@/components/dialog/dialog\";\nimport { Field, FieldDescription, FieldLabel } from \"@/components/field/field\";\nimport { Input } from \"@/components/input/input\";\nimport { Kbd } from \"@/components/kbd/kbd\";\nimport { Select, SelectItem } from \"@/components/select/select\";\n\n/** The smallest useful Dialog: a trigger, a title, a sentence and the actions. */\nexport function DialogMinimal() {\n  return (\n    <Dialog>\n      <DialogTrigger render={<Button variant=\"secondary\" />}>About DBee</DialogTrigger>\n      <DialogContent>\n        <DialogHeader>\n          <DialogTitle>About DBee</DialogTitle>\n          <DialogDescription>Version 0.1.0, standalone desktop. Nothing is sent over the network except to the databases you approve.</DialogDescription>\n        </DialogHeader>\n        <DialogFooter>\n          <DialogClose render={<Button />}>Done</DialogClose>\n        </DialogFooter>\n      </DialogContent>\n    </Dialog>\n  );\n}\n\nconst formats = { csv: \"CSV\", tsv: \"TSV\", jsonl: \"JSON Lines\" };\n\nconst shortcuts: [string, string[]][] = [\n  [\"Command palette\", [\"Ctrl\", \"K\"]],\n  [\"New query tab\", [\"Ctrl\", \"T\"]],\n  [\"Run statement\", [\"Ctrl\", \"Enter\"]],\n  [\"Cancel running statement\", [\"Shift\", \"Escape\"]],\n  [\"Export result\", [\"Ctrl\", \"Shift\", \"S\"]],\n  [\"Toggle sidebar\", [\"Ctrl\", \"B\"]],\n];\n\n/**\n * DBee's dialogs, one per width: rename a tab (sm), export a result with a Select inside (md, the\n * Select's list opens above the dialog), the keyboard shortcuts (lg, a scrolling body) and the\n * details of a column (xl, no close button: the footer closes it).\n */\nexport function DialogRealistic() {\n  return (\n    <div className=\"flex flex-wrap items-center gap-inline-sm\">\n      <Dialog size=\"sm\">\n        <DialogTrigger render={<Button variant=\"ghost\" />}>Rename tab</DialogTrigger>\n        <DialogContent>\n          <DialogHeader>\n            <DialogTitle>Rename tab</DialogTitle>\n          </DialogHeader>\n          <Field>\n            <FieldLabel>Title</FieldLabel>\n            <Input defaultValue=\"Orders by region\" />\n          </Field>\n          <DialogFooter>\n            <DialogClose render={<Button variant=\"ghost\" />}>Cancel</DialogClose>\n            <DialogClose render={<Button />}>Rename</DialogClose>\n          </DialogFooter>\n        </DialogContent>\n      </Dialog>\n\n      <Dialog>\n        <DialogTrigger render={<Button variant=\"secondary\" />}>Export result</DialogTrigger>\n        <DialogContent>\n          <DialogHeader>\n            <DialogTitle>Export result</DialogTitle>\n            <DialogDescription>The statement runs again and the whole result is written, not only the rows loaded in the grid.</DialogDescription>\n          </DialogHeader>\n          <DialogBody>\n            <Field>\n              <FieldLabel>Format</FieldLabel>\n              <Select items={formats} defaultValue=\"csv\">\n                {Object.entries(formats).map(([value, label]) => (\n                  <SelectItem key={value} value={value}>\n                    {label}\n                  </SelectItem>\n                ))}\n              </Select>\n            </Field>\n            <Field>\n              <FieldLabel>Null text</FieldLabel>\n              <Input placeholder=\"empty\" />\n              <FieldDescription>Written for NULL values.</FieldDescription>\n            </Field>\n          </DialogBody>\n          <DialogFooter>\n            <DialogClose render={<Button variant=\"ghost\" />}>Cancel</DialogClose>\n            <Button>Choose file…</Button>\n          </DialogFooter>\n        </DialogContent>\n      </Dialog>\n\n      <Dialog size=\"lg\">\n        <DialogTrigger render={<Button variant=\"ghost\" />}>Keyboard shortcuts</DialogTrigger>\n        <DialogContent>\n          <DialogHeader>\n            <DialogTitle>Keyboard shortcuts</DialogTitle>\n            <DialogDescription>Every action is also in the command palette.</DialogDescription>\n          </DialogHeader>\n          <DialogBody>\n            <dl className=\"grid grid-cols-2 gap-stack-sm\">\n              {shortcuts.map(([action, keys]) => (\n                <div key={action} className=\"contents\">\n                  <dt className=\"text-body text-fg\">{action}</dt>\n                  <dd className=\"flex gap-inline-xs\">\n                    {keys.map((key) => (\n                      <Kbd key={key}>{key}</Kbd>\n                    ))}\n                  </dd>\n                </div>\n              ))}\n            </dl>\n          </DialogBody>\n        </DialogContent>\n      </Dialog>\n\n      <Dialog size=\"xl\">\n        <DialogTrigger render={<Button variant=\"ghost\" />}>Column details</DialogTrigger>\n        <DialogContent showClose={false}>\n          <DialogHeader>\n            <DialogTitle>orders.created_at</DialogTitle>\n            <DialogDescription>timestamp with time zone, not null, default now()</DialogDescription>\n          </DialogHeader>\n          <DialogFooter>\n            <DialogClose render={<Button variant=\"secondary\" />}>Close</DialogClose>\n          </DialogFooter>\n        </DialogContent>\n      </Dialog>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}
