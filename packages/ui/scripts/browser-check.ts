@@ -327,7 +327,16 @@ async function openPage(cdp: Cdp): Promise<Page> {
   };
 }
 
+/** Waits for `n` animation frames. */
 const frames = (n = 3) => `new Promise((r) => { let i = 0; const f = () => (++i >= ${n} ? r(true) : requestAnimationFrame(f)); requestAnimationFrame(f); })`;
+
+/**
+ * Whether the page produces animation frames. Monaco renders its lines in frames; headless Chrome
+ * on macOS stops producing them at times (it paces frames by the display, which may be asleep).
+ */
+async function producesFrames(page: Page): Promise<boolean> {
+  return page.evaluate<boolean>("new Promise((r) => { requestAnimationFrame(() => r(true)); setTimeout(() => r(false), 2000); })");
+}
 
 async function waitFor(page: Page, expression: string, timeout = 10_000): Promise<boolean> {
   const end = Date.now() + timeout;
@@ -391,6 +400,7 @@ interface Sample {
 }
 
 async function themes(page: Page) {
+  if (!check(await producesFrames(page), "the browser produces no animation frames, so Monaco cannot render (headless Chrome on macOS with the display asleep does this; rerun with the display awake)")) return { checked: [], densities: {} };
   const presets = await page.evaluate<string[]>("window.__check.presets");
   const checked: string[] = [];
   for (const preset of presets) {
@@ -398,7 +408,12 @@ async function themes(page: Page) {
       await page.evaluate(`window.__check.setPreset(${JSON.stringify(preset)}), window.__check.setTheme("${theme}"), ${frames()}`);
       // Editor 0 is in `theme`, editor 1 beside it in the other mode: each must match its own region.
       for (const [index, mode] of [[0, theme], [1, theme === "light" ? "dark" : "light"]] as const) {
-        const s = await page.evaluate<Sample>(`window.__sample(${index})`);
+        // After a theme change Monaco may briefly show a line as one untokenized span: poll.
+        let s = await page.evaluate<Sample>(`window.__sample(${index})`);
+        for (let tries = 0; tries < 40 && (s.keyword === null || !sameColor(s.keyword, s.expectedKeyword)); tries += 1) {
+          await new Promise((r) => setTimeout(r, 50));
+          s = await page.evaluate<Sample>(`window.__sample(${index})`);
+        }
         const where = `${preset}/${mode}${index === 1 ? " (second editor, beside the other mode)" : ""}`;
         check(sameColor(s.background, s.expectedBackground), `theme ${where}: editor background ${s.background}, expected editor.bg ${s.expectedBackground}`);
         check(sameColor(s.keyword, s.expectedKeyword), `theme ${where}: keyword colour ${s.keyword}, expected syntax.keyword ${s.expectedKeyword}`);
@@ -471,6 +486,8 @@ async function largeDocument(page: Page) {
   const keystrokeMs = (await page.evaluate<number>("window.__check.changes.at(-1).at")) - before;
   await page.key("Backspace");
   check(await waitFor(page, "window.__check.editor.getModel().getValueLength() === window.__big.length"), "1 MB: Backspace did not remove the typed key");
+  // The cursor on the last statement's line, explicitly, so the run does not depend on key timing.
+  await page.evaluate("(() => { const e = window.__check.editor; const m = e.getModel(); const line = m.getLineCount() - 1; e.setPosition({ lineNumber: line, column: m.getLineMaxColumn(line) }); return true; })()");
   const runs = await page.evaluate<number>("window.__check.runs.length");
   const beforeRun = await page.evaluate<number>("performance.now()");
   await page.key("Enter", { modifiers: RUN });
