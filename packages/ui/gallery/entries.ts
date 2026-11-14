@@ -39,6 +39,7 @@ export const gallery: GalleryEntry[] = [
   { name: "search-input", load: () => import("@/components/search-input/search-input.example") },
   { name: "select", load: () => import("@/components/select/select.example") },
   { name: "sheet", load: () => import("@/components/sheet/sheet.example") },
+  { name: "sidebar", load: () => import("@/components/sidebar/sidebar.example") },
   { name: "slider", load: () => import("@/components/slider/slider.example") },
   { name: "split-button", load: () => import("@/components/split-button/split-button.example") },
   { name: "stepper", load: () => import("@/components/stepper/stepper.example") },
@@ -50,5 +51,6 @@ export const gallery: GalleryEntry[] = [
   { name: "toggle-button", load: () => import("@/components/toggle-button/toggle-button.example") },
   { name: "toggle-group", load: () => import("@/components/toggle-group/toggle-group.example") },
   { name: "tooltip", load: () => import("@/components/tooltip/tooltip.example") },
+  { name: "tree", load: () => import("@/components/tree/tree.example") },
   // ui:new entries end
 ];

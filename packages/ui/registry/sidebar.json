@@ -1,0 +1,260 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "sidebar",
+  "type": "registry:ui",
+  "title": "Sidebar",
+  "description": "The side panel of an app shell: a provider with the open state and a Ctrl/Cmd+B toggle, a size.panel.xs panel on either side that collapses to an icon rail (labels become tooltips) or hides, a header, a scrolling content area, a footer, labelled groups, menus of buttons or links, a toggle and the main area beside it.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/icon-button",
+    "@byterygon/tooltip"
+  ],
+  "files": [
+    {
+      "path": "ui/sidebar.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { createContext, useContext, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from \"react\";\nimport { IconButton, type IconButtonProps } from \"@/components/ui/icon-button\";\nimport { Tooltip, TooltipContent, TooltipTrigger } from \"@/components/ui/tooltip\";\nimport { cn } from \"@/lib/cn\";\n\n// The side panel of an app shell (DBee's connections and schema tree): SidebarProvider holds the\n// open state (and Ctrl/Cmd+B), Sidebar is the panel, SidebarInset the main area beside it,\n// SidebarTrigger the toggle. Collapsing leaves an icon rail (collapsible=\"icon\", menu labels\n// become tooltips) or hides the panel (collapsible=\"offcanvas\"). The content is SidebarHeader,\n// SidebarContent (scrolls), SidebarFooter, SidebarGroup with SidebarGroupLabel, and SidebarMenu of\n// SidebarMenuItem > SidebarMenuButton. No Base UI part exists for it; the buttons use useRender.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const sidebarVariants = {\n  /** The side of the shell the panel sits on: the border is on its inner edge. */\n  side: {\n    left: \"border-e\",\n    right: \"order-last border-s\",\n  },\n} as const;\n\ntype Collapsible = \"icon\" | \"offcanvas\" | \"none\";\n\ninterface SidebarContextValue {\n  open: boolean;\n  setOpen: (open: boolean) => void;\n  sidebarId: string;\n}\n\nconst SidebarContext = createContext<SidebarContextValue>({ open: true, setOpen: () => {}, sidebarId: \"\" });\nconst CollapsibleContext = createContext<Collapsible>(\"none\");\n\n/** The sidebar's open state, for a custom toggle. */\nexport function useSidebar() {\n  const { open, setOpen } = useContext(SidebarContext);\n  return { open, setOpen, toggle: () => setOpen(!open) };\n}\n\nconst classes = {\n  provider: \"flex h-full min-h-0 w-full\",\n  root: [\n    \"flex h-full w-panel-xs shrink-0 flex-col overflow-hidden border-border bg-surface font-sans text-body text-fg\",\n    \"transition-all duration-[var(--by-motion-duration-base)] ease-standard motion-reduce:transition-none\",\n    \"data-[collapsed=icon]:w-control-lg data-[collapsed=offcanvas]:hidden\",\n  ],\n  header: \"flex flex-col gap-stack-xs p-inset-sm\",\n  content: \"flex min-h-0 flex-1 flex-col gap-stack-sm overflow-y-auto overflow-x-hidden p-inset-xs\",\n  footer: \"mt-auto flex flex-col gap-stack-xs p-inset-sm\",\n  group: \"flex flex-col gap-stack-xs\",\n  groupLabel: \"flex h-control-xs items-center px-inset-sm text-caption text-fg-subtle data-collapsed:sr-only\",\n  menu: \"flex flex-col gap-stack-xs\",\n  item: \"relative\",\n  button: [\n    \"flex h-control-md w-full min-w-0 cursor-default select-none items-center gap-inline-sm rounded-md px-inset-sm text-start text-body text-fg outline-none\",\n    \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:bg-hover data-active:bg-selected data-active:hover:bg-selected-hover\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n    \"data-disabled:pointer-events-none data-disabled:text-fg-disabled\",\n    \"data-collapsed:justify-center data-collapsed:px-0 [&_svg]:size-icon-md [&_svg]:shrink-0 [&_svg]:text-fg-muted\",\n  ],\n  label: \"min-w-0 flex-1 truncate data-collapsed:sr-only\",\n  inset: \"flex min-h-0 min-w-0 flex-1 flex-col\",\n} as const;\n\nconst PanelIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\">\n    <rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.5\" />\n    <path d=\"M6 3v10\" />\n  </svg>\n);\n\nexport interface SidebarProviderProps extends Omit<ComponentProps<\"div\">, \"className\"> {\n  /** Controlled open state; `defaultOpen` when uncontrolled. */\n  open?: boolean;\n  defaultOpen?: boolean;\n  onOpenChange?: (open: boolean) => void;\n  /** Ctrl+<key> (Cmd on macOS) toggles the sidebar; false turns it off. */\n  hotkey?: string | false;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The shell around a Sidebar and its SidebarInset: holds the open state and the Ctrl/Cmd+B toggle. */\nexport function SidebarProvider({ open: openProp, defaultOpen = true, onOpenChange, hotkey = \"b\", className, ...props }: SidebarProviderProps) {\n  const [openState, setOpenState] = useState(defaultOpen);\n  const open = openProp ?? openState;\n  const sidebarId = useId();\n  const latest = useRef({ open, setOpen: (_: boolean) => {} });\n  const setOpen = (next: boolean) => {\n    if (openProp === undefined) setOpenState(next);\n    onOpenChange?.(next);\n  };\n  latest.current = { open, setOpen };\n  useEffect(() => {\n    if (!hotkey) return undefined;\n    const listener = (event: KeyboardEvent) => {\n      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === hotkey.toLowerCase()) {\n        event.preventDefault();\n        latest.current.setOpen(!latest.current.open);\n      }\n    };\n    document.addEventListener(\"keydown\", listener);\n    return () => document.removeEventListener(\"keydown\", listener);\n  }, [hotkey]);\n  return (\n    <SidebarContext value={{ open, setOpen, sidebarId }}>\n      <div data-slot=\"sidebar-provider\" data-state={open ? \"expanded\" : \"collapsed\"} className={cn(classes.provider, className)} {...props} />\n    </SidebarContext>\n  );\n}\n\nexport interface SidebarProps extends Omit<ComponentProps<\"aside\">, \"className\"> {\n  /** The side of the shell. */\n  side?: keyof typeof sidebarVariants.side;\n  /** What collapsing does: leave an icon rail, hide the panel, or never collapse. */\n  collapsible?: Collapsible;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The side panel (an <aside>), size.panel.xs wide; collapsed, an icon rail or hidden. */\nexport function Sidebar({ side = \"left\", collapsible = \"offcanvas\", className, \"aria-label\": label = \"Sidebar\", ...props }: SidebarProps) {\n  const { open, sidebarId } = useContext(SidebarContext);\n  const collapsed = !open && collapsible !== \"none\" ? collapsible : undefined;\n  return (\n    <CollapsibleContext value={collapsed === \"icon\" ? \"icon\" : \"none\"}>\n      <aside\n        id={sidebarId || undefined}\n        data-slot=\"sidebar\"\n        data-side={side}\n        data-state={collapsed ? \"collapsed\" : \"expanded\"}\n        data-collapsed={collapsed}\n        aria-label={label}\n        className={cn(classes.root, sidebarVariants.side[side], className)}\n        {...props}\n      />\n    </CollapsibleContext>\n  );\n}\n\ntype WithClass<P> = Omit<P, \"className\"> & {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n};\n\n/** The top of the panel: a title, a filter box. */\nexport function SidebarHeader({ className, ...props }: WithClass<ComponentProps<\"div\">>) {\n  return <div data-slot=\"sidebar-header\" className={cn(classes.header, className)} {...props} />;\n}\n\n/** The scrolling middle of the panel: groups, menus, a Tree. */\nexport function SidebarContent({ className, ...props }: WithClass<ComponentProps<\"div\">>) {\n  return <div data-slot=\"sidebar-content\" className={cn(classes.content, className)} {...props} />;\n}\n\n/** The bottom of the panel: settings, the user. */\nexport function SidebarFooter({ className, ...props }: WithClass<ComponentProps<\"div\">>) {\n  return <div data-slot=\"sidebar-footer\" className={cn(classes.footer, className)} {...props} />;\n}\n\nconst GroupLabelContext = createContext<string | undefined>(undefined);\n\n/** A section of the panel (role=\"group\"), named by its SidebarGroupLabel. */\nexport function SidebarGroup({ className, ...props }: WithClass<ComponentProps<\"div\">>) {\n  const labelId = useId();\n  return (\n    <GroupLabelContext value={labelId}>\n      <div data-slot=\"sidebar-group\" role=\"group\" aria-labelledby={labelId} className={cn(classes.group, className)} {...props} />\n    </GroupLabelContext>\n  );\n}\n\n/** A section's heading, in type.caption; it names its group, and is visually hidden in the icon rail. */\nexport function SidebarGroupLabel({ className, ...props }: WithClass<ComponentProps<\"div\">>) {\n  const collapsed = useContext(CollapsibleContext) === \"icon\";\n  const id = useContext(GroupLabelContext);\n  return <div data-slot=\"sidebar-group-label\" id={id} data-collapsed={collapsed ? \"\" : undefined} className={cn(classes.groupLabel, className)} {...props} />;\n}\n\n/** A list of entries (a <ul>). */\nexport function SidebarMenu({ className, ...props }: WithClass<ComponentProps<\"ul\">>) {\n  return <ul data-slot=\"sidebar-menu\" className={cn(classes.menu, className)} {...props} />;\n}\n\n/** One entry (an <li>). */\nexport function SidebarMenuItem({ className, ...props }: WithClass<ComponentProps<\"li\">>) {\n  return <li data-slot=\"sidebar-menu-item\" className={cn(classes.item, className)} {...props} />;\n}\n\nexport interface SidebarMenuButtonProps extends WithClass<useRender.ComponentProps<\"button\">> {\n  /** The leading icon; the only thing visible in the icon rail. */\n  icon?: ReactNode;\n  /** The current page or view: color.interactive.selected and aria-current. */\n  active?: boolean;\n  /** Shown as a tooltip in the icon rail (defaults to the label when it is text). */\n  tooltip?: ReactNode;\n  /** Shown but not usable. */\n  disabled?: boolean;\n}\n\n/** An entry's button (or link, through `render`): icon and label; in the icon rail the label becomes a tooltip. */\nexport function SidebarMenuButton({ icon, active = false, tooltip, disabled = false, className, children, render, ...props }: SidebarMenuButtonProps) {\n  const collapsed = useContext(CollapsibleContext) === \"icon\";\n  const element = useRender({\n    defaultTagName: \"button\",\n    render,\n    props: {\n      \"data-slot\": \"sidebar-menu-button\",\n      type: render ? undefined : \"button\",\n      \"aria-current\": active ? \"page\" : undefined,\n      \"aria-disabled\": disabled || undefined,\n      \"data-active\": active ? \"\" : undefined,\n      \"data-disabled\": disabled ? \"\" : undefined,\n      \"data-collapsed\": collapsed ? \"\" : undefined,\n      ...props,\n      className: cn(classes.button, className),\n      children: (\n        <>\n          {icon}\n          <span data-collapsed={collapsed ? \"\" : undefined} className={cn(classes.label)}>\n            {children}\n          </span>\n        </>\n      ),\n    },\n  });\n  const tip = tooltip ?? (typeof children === \"string\" ? children : undefined);\n  if (!collapsed || tip === undefined) return element;\n  return (\n    <Tooltip>\n      <TooltipTrigger render={element} />\n      <TooltipContent side=\"right\">{tip}</TooltipContent>\n    </Tooltip>\n  );\n}\n\nexport interface SidebarTriggerProps extends Omit<IconButtonProps, \"aria-label\" | \"children\"> {\n  /** The button's accessible name. */\n  \"aria-label\"?: string;\n}\n\n/** Toggles the sidebar: an IconButton with aria-expanded and aria-controls (Ctrl/Cmd+B does the same). */\nexport function SidebarTrigger({ \"aria-label\": label = \"Toggle sidebar\", onClick, ...props }: SidebarTriggerProps) {\n  const { open, setOpen, sidebarId } = useContext(SidebarContext);\n  return (\n    <IconButton\n      data-slot=\"sidebar-trigger\"\n      aria-label={label}\n      aria-expanded={open}\n      aria-controls={sidebarId || undefined}\n      aria-keyshortcuts=\"Control+B Meta+B\"\n      onClick={(event, ...rest) => {\n        onClick?.(event, ...rest);\n        setOpen(!open);\n      }}\n      {...props}\n    >\n      <PanelIcon />\n    </IconButton>\n  );\n}\n\n/** The main area beside the sidebar. */\nexport function SidebarInset({ className, ...props }: WithClass<ComponentProps<\"main\">>) {\n  return <main data-slot=\"sidebar-inset\" className={cn(classes.inset, className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "sidebar",
+      "title": "Sidebar",
+      "description": "The side panel of an app shell: a provider with the open state and a Ctrl/Cmd+B toggle, a size.panel.xs panel on either side that collapses to an icon rail (labels become tooltips) or hides, a header, a scrolling content area, a footer, labelled groups, menus of buttons or links, a toggle and the main area beside it.",
+      "usage": "Use Sidebar for the persistent side panel of an application: DBee's connections and schema tree, a settings navigation. Compose it as SidebarProvider (open, onOpenChange; hotkey \"b\" for Ctrl/Cmd+B) > Sidebar (side, collapsible: \"icon\" or \"offcanvas\") with SidebarHeader, SidebarContent (SidebarGroup > SidebarGroupLabel + SidebarMenu > SidebarMenuItem > SidebarMenuButton with icon, active, tooltip; or a Tree), SidebarFooter; then SidebarInset for the main area with a SidebarTrigger. Name the Sidebar with aria-label. For a temporary panel over the page use Sheet; for top navigation, NavigationMenu; resizing the panel is wave 3's Resizable.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "SidebarProvider: controlled open state; defaultOpen (true) when uncontrolled."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean) => void",
+          "description": "SidebarProvider: called when the trigger or the hotkey toggles it."
+        },
+        {
+          "name": "hotkey",
+          "type": "string | false",
+          "default": "b",
+          "description": "SidebarProvider: Ctrl+key (Cmd on macOS) toggles the sidebar; false turns it off."
+        },
+        {
+          "name": "side",
+          "type": "\"left\" | \"right\"",
+          "default": "left",
+          "description": "Sidebar: the side of the shell."
+        },
+        {
+          "name": "collapsible",
+          "type": "\"icon\" | \"offcanvas\" | \"none\"",
+          "default": "offcanvas",
+          "description": "Sidebar: collapsed, leave an icon rail, hide the panel, or never collapse."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "default": "Sidebar",
+          "description": "Sidebar: the <aside> landmark's name."
+        },
+        {
+          "name": "icon",
+          "type": "ReactNode",
+          "description": "SidebarMenuButton: the leading icon, the only thing shown in the icon rail."
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "default": false,
+          "description": "SidebarMenuButton: the current view (aria-current, color.interactive.selected)."
+        },
+        {
+          "name": "tooltip",
+          "type": "ReactNode",
+          "description": "SidebarMenuButton: the tooltip in the icon rail; defaults to a text label."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement",
+          "description": "SidebarMenuButton: a link instead of a <button>."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own."
+        }
+      ],
+      "variants": {
+        "side": [
+          "left",
+          "right"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "aside",
+          "description": "The panel: a complementary landmark, color.bg.surface, size.panel.xs wide, size.control.lg in the icon rail, hidden off-canvas; data-slot=\"sidebar\", data-state, data-collapsed, data-side."
+        }
+      ],
+      "parts": [
+        {
+          "name": "SidebarProvider",
+          "slot": "sidebar-provider",
+          "description": "The shell row holding the open state and the hotkey."
+        },
+        {
+          "name": "SidebarHeader",
+          "slot": "sidebar-header",
+          "description": "The top of the panel."
+        },
+        {
+          "name": "SidebarContent",
+          "slot": "sidebar-content",
+          "description": "The scrolling middle of the panel."
+        },
+        {
+          "name": "SidebarFooter",
+          "slot": "sidebar-footer",
+          "description": "The bottom of the panel."
+        },
+        {
+          "name": "SidebarGroup",
+          "slot": "sidebar-group",
+          "description": "A section, role=\"group\" named by its label."
+        },
+        {
+          "name": "SidebarGroupLabel",
+          "slot": "sidebar-group-label",
+          "description": "A section heading in type.caption and color.fg.subtle; visually hidden in the icon rail."
+        },
+        {
+          "name": "SidebarMenu",
+          "slot": "sidebar-menu",
+          "description": "A list of entries, a <ul>."
+        },
+        {
+          "name": "SidebarMenuItem",
+          "slot": "sidebar-menu-item",
+          "description": "One entry, an <li>."
+        },
+        {
+          "name": "SidebarMenuButton",
+          "slot": "sidebar-menu-button",
+          "description": "An entry's button or link (size.control.md): icon and label, aria-current when active; in the icon rail a square with a Tooltip."
+        },
+        {
+          "name": "SidebarTrigger",
+          "slot": "sidebar-trigger",
+          "description": "An IconButton that toggles the sidebar, with aria-expanded and aria-controls."
+        },
+        {
+          "name": "SidebarInset",
+          "slot": "sidebar-inset",
+          "description": "The main area beside the sidebar, a <main>."
+        }
+      ],
+      "states": [
+        {
+          "name": "collapsed",
+          "variant": "data-[collapsed=icon]",
+          "description": "collapsible=\"icon\" and closed: an icon rail of size.control.lg; labels visually hidden and shown as tooltips."
+        },
+        {
+          "name": "offcanvas",
+          "variant": "data-[collapsed=offcanvas]",
+          "description": "collapsible=\"offcanvas\" and closed: the panel is hidden."
+        },
+        {
+          "name": "active",
+          "variant": "data-active",
+          "description": "The current entry: color.interactive.selected."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "An entry under the pointer: color.interactive.hover."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on an entry: the focus ring inside it."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "description": "An entry that cannot be used: color.fg.disabled, aria-disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.interactive.selected",
+        "color.interactive.selected-hover",
+        "color.ring",
+        "font.sans",
+        "motion.duration.base",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.xs",
+        "size.icon.md",
+        "size.icon.sm",
+        "size.panel.sm",
+        "size.panel.xs",
+        "space.inline.sm",
+        "space.inset.sm",
+        "space.inset.xs",
+        "space.stack.sm",
+        "space.stack.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "SidebarMinimal",
+        "realistic": "SidebarRealistic"
+      },
+      "accessibility": [
+        "The panel is an <aside> landmark named by aria-label; the main area is a <main>; sections are role=\"group\" named by their labels; entries are buttons or links in a list, the current one with aria-current=\"page\".",
+        "SidebarTrigger is an IconButton named \"Toggle sidebar\" with aria-expanded and aria-controls pointing at the panel; Ctrl+B (Cmd+B on macOS) toggles it too (aria-keyshortcuts).",
+        "In the icon rail the labels stay in the accessibility tree (visually hidden) and show as tooltips on hover and focus, so entries keep their names.",
+        "An off-canvas sidebar that is closed is display:none, so its content leaves the tab order.",
+        "The width change transitions over motion.duration.base; prefers-reduced-motion: reduce turns it off."
+      ]
+    },
+    "example": "import {\n  Sidebar,\n  SidebarContent,\n  SidebarFooter,\n  SidebarGroup,\n  SidebarGroupLabel,\n  SidebarHeader,\n  SidebarInset,\n  SidebarMenu,\n  SidebarMenuButton,\n  SidebarMenuItem,\n  SidebarProvider,\n  SidebarTrigger,\n} from \"@/components/sidebar/sidebar\";\nimport { Tree, type TreeNode } from \"@/components/tree/tree\";\n\nconst DatabaseIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" aria-hidden=\"true\">\n    <ellipse cx=\"8\" cy=\"4\" rx=\"5\" ry=\"1.75\" />\n    <path d=\"M3 4v8c0 1 2.2 1.75 5 1.75s5-.75 5-1.75V4\" />\n  </svg>\n);\n\nconst HistoryIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" aria-hidden=\"true\">\n    <circle cx=\"8\" cy=\"8\" r=\"5.5\" />\n    <path d=\"M8 5v3l2 1.5\" />\n  </svg>\n);\n\nconst GearIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" aria-hidden=\"true\">\n    <circle cx=\"8\" cy=\"8\" r=\"2\" />\n    <path d=\"M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4\" />\n  </svg>\n);\n\n/** The smallest useful Sidebar: a panel with a menu beside the main area, and its toggle. */\nexport function SidebarMinimal() {\n  return (\n    <SidebarProvider hotkey={false} className=\"h-panel-xs rounded-md border border-border\">\n      <Sidebar aria-label=\"Navigation\">\n        <SidebarContent>\n          <SidebarMenu>\n            <SidebarMenuItem>\n              <SidebarMenuButton icon={<DatabaseIcon />} active>\n                Connections\n              </SidebarMenuButton>\n            </SidebarMenuItem>\n            <SidebarMenuItem>\n              <SidebarMenuButton icon={<HistoryIcon />}>History</SidebarMenuButton>\n            </SidebarMenuItem>\n          </SidebarMenu>\n        </SidebarContent>\n      </Sidebar>\n      <SidebarInset className=\"p-inset-sm\">\n        <SidebarTrigger />\n      </SidebarInset>\n    </SidebarProvider>\n  );\n}\n\nconst schema: TreeNode[] = [\n  { id: \"orders-prod\", label: \"orders-prod\", icon: <DatabaseIcon />, children: [{ id: \"public\", label: \"public\" }, { id: \"analytics\", label: \"analytics\" }] },\n  { id: \"staging\", label: \"staging\", icon: <DatabaseIcon /> },\n];\n\n/**\n * DBee's shell: the connections tree in a sidebar with a header and a footer (Ctrl+B toggles it),\n * and the same shell collapsed to an icon rail where the labels become tooltips.\n */\nexport function SidebarRealistic() {\n  return (\n    <div className=\"flex w-full flex-col gap-stack-md\">\n      <SidebarProvider className=\"h-panel-sm rounded-md border border-border\">\n        <Sidebar aria-label=\"Connections\" collapsible=\"icon\">\n          <SidebarHeader>\n            <p className=\"text-label text-fg\">orders workspace</p>\n          </SidebarHeader>\n          <SidebarContent>\n            <SidebarGroup>\n              <SidebarGroupLabel>Connections</SidebarGroupLabel>\n              <Tree nodes={schema} defaultExpanded={[\"orders-prod\"]} aria-label=\"Connections and schemas\" className=\"h-panel-xs\" />\n            </SidebarGroup>\n          </SidebarContent>\n          <SidebarFooter>\n            <SidebarMenu>\n              <SidebarMenuItem>\n                <SidebarMenuButton icon={<GearIcon />}>Settings</SidebarMenuButton>\n              </SidebarMenuItem>\n            </SidebarMenu>\n          </SidebarFooter>\n        </Sidebar>\n        <SidebarInset className=\"gap-stack-sm p-inset-sm\">\n          <SidebarTrigger />\n          <p className=\"text-body text-fg-muted\">Query tabs go here.</p>\n        </SidebarInset>\n      </SidebarProvider>\n\n      <SidebarProvider defaultOpen={false} hotkey={false} className=\"h-panel-xs rounded-md border border-border\">\n        <Sidebar aria-label=\"Navigation (collapsed)\" collapsible=\"icon\">\n          <SidebarContent>\n            <SidebarGroup>\n              <SidebarGroupLabel>Workspace</SidebarGroupLabel>\n              <SidebarMenu>\n                <SidebarMenuItem>\n                  <SidebarMenuButton icon={<DatabaseIcon />} active>\n                    Connections\n                  </SidebarMenuButton>\n                </SidebarMenuItem>\n                <SidebarMenuItem>\n                  <SidebarMenuButton icon={<HistoryIcon />} disabled>\n                    History\n                  </SidebarMenuButton>\n                </SidebarMenuItem>\n              </SidebarMenu>\n            </SidebarGroup>\n          </SidebarContent>\n        </Sidebar>\n        <SidebarInset className=\"p-inset-sm\">\n          <SidebarTrigger />\n        </SidebarInset>\n      </SidebarProvider>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

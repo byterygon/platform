@@ -1,0 +1,250 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "tree",
+  "type": "registry:ui",
+  "title": "Tree",
+  "description": "A virtualized, keyboard-navigable tree following the ARIA treeview pattern: nodes with icons and trailing meta, lazy children with per-node loading and error-with-Retry rows, single selection, an action on Enter or double-click, type-ahead and a filter; only the visible rows are rendered.",
+  "dependencies": [],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/tree.tsx",
+      "type": "registry:ui",
+      "content": "import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenPx } from \"@/lib/theme-scope\";\n\n// A virtualized, keyboard-navigable tree (DBee's schema browser) following the ARIA treeview\n// pattern; Base UI has no tree, so it is built here. Data-driven: `nodes` with `children`, or\n// `hasChildren` for children the app loads when the node expands (`onExpandedChange`), shown with\n// a per-node loading row or an error row with Retry. Only the visible rows are rendered: the\n// tree is a scroll container of fixed-height rows (size.control.sm, so density applies), and\n// focus stays on the tree with aria-activedescendant naming the active row.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const treeVariants = {} as const;\n\nexport interface TreeNode {\n  /** Unique in the tree. */\n  id: string;\n  /** The node's name, shown and matched by type-ahead and `filter`. */\n  label: string;\n  /** A leading icon (aria-hidden). */\n  icon?: ReactNode;\n  /** Trailing content: a type, a badge, a status. */\n  meta?: ReactNode;\n  /** Loaded children; leave undefined with hasChildren for children loaded on expand. */\n  children?: readonly TreeNode[];\n  /** The node can expand although its children are not loaded yet. */\n  hasChildren?: boolean;\n  /** Its children are loading (shows a loading row while expanded). */\n  loading?: boolean;\n  /** Loading its children failed: the message, shown in an error row with Retry. */\n  error?: ReactNode;\n  /** Shown but cannot be selected or activated. */\n  disabled?: boolean;\n}\n\n/** A visible row: a node, or the loading or error row under an expanded node. */\ninterface Row {\n  key: string;\n  kind: \"node\" | \"loading\" | \"error\";\n  node: TreeNode;\n  level: number;\n  setSize: number;\n  posInSet: number;\n  parentId: string | null;\n}\n\nconst classes = {\n  root: [\n    \"relative overflow-auto overscroll-contain font-sans text-body text-fg outline-none\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n  ],\n  row: [\n    \"absolute inset-x-0 flex h-control-sm cursor-default select-none items-center gap-inline-xs pe-inset-sm whitespace-nowrap\",\n    \"hover:bg-hover data-selected:bg-selected data-selected:hover:bg-selected-hover\",\n    \"data-active:outline-none in-focus-visible:data-active:outline-solid in-focus-visible:data-active:outline-[length:var(--by-ring-width)] in-focus-visible:data-active:-outline-offset-[var(--by-ring-width)] in-focus-visible:data-active:outline-ring\",\n    \"data-disabled:text-fg-disabled\",\n    \"[&_svg]:size-icon-sm [&_svg]:shrink-0\",\n  ],\n  chevron: \"flex size-icon-md shrink-0 items-center justify-center text-fg-muted transition-transform duration-[var(--by-motion-duration-fast)] ease-standard motion-reduce:transition-none data-expanded:rotate-90\",\n  icon: \"flex shrink-0 text-fg-muted\",\n  label: \"min-w-0 flex-1 truncate\",\n  meta: \"ms-auto shrink-0 ps-inline-sm text-caption text-fg-muted\",\n  status: \"text-fg-muted\",\n  error: \"min-w-0 truncate text-danger-fg\",\n  retry: \"shrink-0 rounded-xs px-inline-xs text-label text-fg-link underline underline-offset-4 hover:text-fg\",\n} as const;\n\nconst ChevronIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m6 4 4 4-4 4\" />\n  </svg>\n);\n\nconst expandable = (node: TreeNode) => (node.children !== undefined && node.children.length > 0) || node.hasChildren === true || node.loading === true || node.error !== undefined;\n\n/** The nodes that match `query`, with their ancestors (and the ids of those ancestors). */\nfunction filterNodes(nodes: readonly TreeNode[], query: string): { nodes: TreeNode[]; open: Set<string> } {\n  const open = new Set<string>();\n  const needle = query.trim().toLowerCase();\n  const walk = (list: readonly TreeNode[]): TreeNode[] => {\n    const out: TreeNode[] = [];\n    for (const node of list) {\n      const children = node.children ? walk(node.children) : [];\n      if (node.label.toLowerCase().includes(needle)) out.push(node);\n      else if (children.length > 0) {\n        open.add(node.id);\n        out.push({ ...node, children });\n      }\n    }\n    return out;\n  };\n  return { nodes: needle ? walk(nodes) : [...nodes], open };\n}\n\n/** The visible rows, in order, for the expanded set. */\nexport function flattenTree(nodes: readonly TreeNode[], expanded: ReadonlySet<string>): Row[] {\n  const rows: Row[] = [];\n  const walk = (list: readonly TreeNode[], level: number, parentId: string | null) => {\n    list.forEach((node, index) => {\n      rows.push({ key: node.id, kind: \"node\", node, level, setSize: list.length, posInSet: index + 1, parentId });\n      if (!expanded.has(node.id) || !expandable(node)) return;\n      if (node.loading) rows.push({ key: `${node.id}:loading`, kind: \"loading\", node, level: level + 1, setSize: 1, posInSet: 1, parentId: node.id });\n      else if (node.error !== undefined) rows.push({ key: `${node.id}:error`, kind: \"error\", node, level: level + 1, setSize: 1, posInSet: 1, parentId: node.id });\n      else if (node.children) walk(node.children, level + 1, node.id);\n    });\n  };\n  walk(nodes, 1, null);\n  return rows;\n}\n\nexport interface TreeItemProps {\n  /** The element id aria-activedescendant names. */\n  id: string;\n  node: TreeNode;\n  /** aria-level, aria-setsize and aria-posinset (the tree is flat in the DOM). */\n  level: number;\n  setSize: number;\n  posInSet: number;\n  /** The row's offset in the scroll content, in px. */\n  top: number;\n  /** Open or closed for a parent; undefined for a leaf. */\n  expanded: boolean | undefined;\n  selected: boolean;\n  /** The row the keyboard is on. */\n  active: boolean;\n  onClick?: (event: MouseEvent<HTMLDivElement>) => void;\n  onDoubleClick?: () => void;\n}\n\n/** One node's row (role=\"treeitem\"): chevron, icon, label and meta, indented by level. Tree renders one per visible node. */\nexport function TreeItem({ id, node, level, setSize, posInSet, top, expanded, selected, active, onClick, onDoubleClick }: TreeItemProps) {\n  return (\n    <div\n      id={id}\n      role=\"treeitem\"\n      aria-level={level}\n      aria-setsize={setSize}\n      aria-posinset={posInSet}\n      aria-expanded={expanded}\n      aria-selected={selected}\n      aria-disabled={node.disabled || undefined}\n      aria-busy={node.loading || undefined}\n      data-slot=\"tree-item\"\n      data-active={active ? \"\" : undefined}\n      data-selected={selected ? \"\" : undefined}\n      data-disabled={node.disabled ? \"\" : undefined}\n      style={{ top, paddingInlineStart: `calc(${level - 1} * var(--by-size-icon-md) + var(--by-space-inset-xs))` }}\n      onClick={onClick}\n      onDoubleClick={onDoubleClick}\n      className={cn(classes.row)}\n    >\n      {expanded !== undefined ? (\n        <span data-slot=\"tree-chevron\" data-expanded={expanded ? \"\" : undefined} className={cn(classes.chevron)}>\n          <ChevronIcon />\n        </span>\n      ) : (\n        <span className=\"size-icon-md shrink-0\" />\n      )}\n      {node.icon ? (\n        <span aria-hidden=\"true\" className={classes.icon}>\n          {node.icon}\n        </span>\n      ) : null}\n      <span className={classes.label}>{node.label}</span>\n      {node.meta ? <span className={classes.meta}>{node.meta}</span> : null}\n    </div>\n  );\n}\n\n/** The row indices to render: the visible window, plus the active row so aria-activedescendant always names an element. */\nfunction renderedIndices(first: number, last: number, active: number, count: number): number[] {\n  const indices = Array.from({ length: Math.max(0, last - first) }, (_, i) => first + i);\n  if (active < count && (active < first || active >= last)) indices.push(active);\n  return indices;\n}\n\nexport interface TreeProps {\n  /** The top-level nodes. */\n  nodes: readonly TreeNode[];\n  /** Expanded node ids (controlled); `defaultExpanded` when uncontrolled. */\n  expanded?: readonly string[];\n  defaultExpanded?: readonly string[];\n  /** Called with the new expanded ids, and the node that changed (load its children if needed). */\n  onExpandedChange?: (expanded: string[], node: TreeNode, isExpanded: boolean) => void;\n  /** The selected node id (controlled); `defaultSelected` when uncontrolled. */\n  selected?: string | null;\n  defaultSelected?: string | null;\n  onSelectedChange?: (id: string, node: TreeNode) => void;\n  /** Enter or a double-click on a node (open a table). */\n  onAction?: (node: TreeNode) => void;\n  /** Retry loading a node's children after an error (Enter on the error row, or its Retry button). */\n  onRetry?: (node: TreeNode) => void;\n  /** Shows only nodes whose label contains this text, with their ancestors expanded. */\n  filter?: string;\n  /** The tree's accessible name. */\n  \"aria-label\"?: string;\n  /** Rows rendered above and below the visible ones. */\n  overscan?: number;\n  /** Text of the loading row. */\n  loadingText?: string;\n  /** Text of the Retry button. */\n  retryText?: string;\n  /** Shown when there are no nodes. */\n  emptyText?: ReactNode;\n  /** Extra classes (give the tree a height: h-full in a sized panel), merged after the component's own. */\n  className?: string;\n  /** Reaches the tree element. */\n  ref?: Ref<HTMLDivElement>;\n}\n\n/** The tree: a scroll container (role=\"tree\") of virtualized rows (role=\"treeitem\"). */\nexport function Tree({\n  nodes = [],\n  expanded: expandedProp,\n  defaultExpanded = [],\n  onExpandedChange,\n  selected: selectedProp,\n  defaultSelected = null,\n  onSelectedChange,\n  onAction,\n  onRetry,\n  filter = \"\",\n  \"aria-label\": label = \"Tree\",\n  overscan = 8,\n  loadingText = \"Loading…\",\n  retryText = \"Retry\",\n  emptyText = \"Nothing to show\",\n  className,\n  ref,\n}: TreeProps) {\n  const [expandedState, setExpandedState] = useState<readonly string[]>(defaultExpanded);\n  const [selectedState, setSelectedState] = useState<string | null>(defaultSelected);\n  const expandedList = expandedProp ?? expandedState;\n  const selected = selectedProp === undefined ? selectedState : selectedProp;\n\n  const { nodes: shown, open: filterOpen } = useMemo(() => filterNodes(nodes, filter), [nodes, filter]);\n  const expandedSet = useMemo(() => new Set([...expandedList, ...filterOpen]), [expandedList, filterOpen]);\n  const rows = useMemo(() => flattenTree(shown, expandedSet), [shown, expandedSet]);\n\n  const [activeKey, setActiveKey] = useState<string | null>(null);\n  const activeIndex = Math.max(0, rows.findIndex((row) => row.key === activeKey));\n  const active = rows[activeIndex];\n\n  const container = useRef<HTMLDivElement | null>(null);\n  const [rowHeight, setRowHeight] = useState(28);\n  const [scrollTop, setScrollTop] = useState(0);\n  const [viewport, setViewport] = useState(0);\n  const setRef = useCallback(\n    (element: HTMLDivElement | null) => {\n      container.current = element;\n      if (element) {\n        setRowHeight(tokenPx(element, \"--by-size-control-sm\", 28));\n        setViewport(element.clientHeight);\n      }\n      if (typeof ref === \"function\") ref(element);\n      else if (ref) ref.current = element;\n    },\n    [ref],\n  );\n  useEffect(() => {\n    const element = container.current;\n    if (!element || typeof ResizeObserver === \"undefined\") return undefined;\n    const observer = new ResizeObserver(() => {\n      setViewport(element.clientHeight);\n      setRowHeight(tokenPx(element, \"--by-size-control-sm\", 28));\n    });\n    observer.observe(element);\n    return () => observer.disconnect();\n  }, []);\n\n  // jsdom and a not-yet-laid-out panel report 0: render a screenful anyway.\n  const height = viewport || rowHeight * 30;\n  const first = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);\n  const last = Math.min(rows.length, Math.ceil((scrollTop + height) / rowHeight) + overscan);\n\n  const idFor = useCallback((key: string) => `tree-${label.replace(/\\W+/g, \"-\")}-${key.replace(/\\W+/g, \"-\")}`, [label]);\n\n  const scrollIntoView = (index: number) => {\n    const element = container.current;\n    if (!element) return;\n    const top = index * rowHeight;\n    if (top < element.scrollTop) element.scrollTop = top;\n    else if (top + rowHeight > element.scrollTop + (element.clientHeight || height)) element.scrollTop = top + rowHeight - (element.clientHeight || height);\n    setScrollTop(element.scrollTop);\n  };\n\n  const moveTo = (index: number) => {\n    const row = rows[Math.min(rows.length - 1, Math.max(0, index))];\n    if (!row) return;\n    setActiveKey(row.key);\n    scrollIntoView(rows.indexOf(row));\n  };\n\n  const setExpanded = (node: TreeNode, isExpanded: boolean) => {\n    const next = isExpanded ? [...new Set([...expandedList, node.id])] : expandedList.filter((id) => id !== node.id);\n    if (expandedProp === undefined) setExpandedState(next);\n    onExpandedChange?.(next, node, isExpanded);\n  };\n\n  const select = (node: TreeNode) => {\n    if (node.disabled) return;\n    if (selectedProp === undefined) setSelectedState(node.id);\n    onSelectedChange?.(node.id, node);\n  };\n\n  const typeahead = useRef({ text: \"\", at: 0 });\n\n  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {\n    if (!active) return;\n    const node = active.node;\n    const isOpen = expandedSet.has(node.id);\n    const handled = () => {\n      event.preventDefault();\n      event.stopPropagation();\n    };\n    switch (event.key) {\n      case \"ArrowDown\":\n        handled();\n        moveTo(activeIndex + 1);\n        return;\n      case \"ArrowUp\":\n        handled();\n        moveTo(activeIndex - 1);\n        return;\n      case \"Home\":\n        handled();\n        moveTo(0);\n        return;\n      case \"End\":\n        handled();\n        moveTo(rows.length - 1);\n        return;\n      case \"ArrowRight\":\n        handled();\n        if (active.kind !== \"node\") return;\n        if (expandable(node) && !isOpen) setExpanded(node, true);\n        else if (isOpen) moveTo(activeIndex + 1);\n        return;\n      case \"ArrowLeft\":\n        handled();\n        if (active.kind === \"node\" && isOpen && expandable(node)) setExpanded(node, false);\n        else if (active.parentId) moveTo(rows.findIndex((row) => row.key === active.parentId));\n        return;\n      case \"Enter\":\n        handled();\n        if (active.kind === \"error\") onRetry?.(node);\n        else if (active.kind === \"node\" && !node.disabled) {\n          select(node);\n          onAction?.(node);\n        }\n        return;\n      case \" \":\n        handled();\n        if (active.kind === \"node\") select(node);\n        return;\n      default:\n        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {\n          const now = Date.now();\n          const state = typeahead.current;\n          state.text = now - state.at > 700 ? event.key.toLowerCase() : state.text + event.key.toLowerCase();\n          state.at = now;\n          const order = [...rows.slice(activeIndex + 1), ...rows.slice(0, activeIndex + 1)];\n          const match = order.find((row) => row.kind === \"node\" && row.node.label.toLowerCase().startsWith(state.text));\n          if (match) {\n            handled();\n            moveTo(rows.indexOf(match));\n          }\n        }\n    }\n  };\n\n  const onRowClick = (row: Row, event: MouseEvent) => {\n    setActiveKey(row.key);\n    if (row.kind !== \"node\") return;\n    const target = event.target as Element;\n    if (target.closest('[data-slot=\"tree-chevron\"]') && expandable(row.node)) {\n      setExpanded(row.node, !expandedSet.has(row.node.id));\n      return;\n    }\n    select(row.node);\n  };\n\n  if (rows.length === 0) {\n    return (\n      <div data-slot=\"tree\" role=\"tree\" aria-label={label} className={cn(classes.root, className)} ref={setRef}>\n        <p data-slot=\"tree-empty\" role=\"none\" className=\"p-inset-sm text-body text-fg-muted\">\n          {emptyText}\n        </p>\n      </div>\n    );\n  }\n\n  return (\n    <div\n      data-slot=\"tree\"\n      role=\"tree\"\n      aria-label={label}\n      aria-activedescendant={active ? idFor(active.key) : undefined}\n      tabIndex={0}\n      ref={setRef}\n      onKeyDown={onKeyDown}\n      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}\n      className={cn(classes.root, className)}\n    >\n      <div style={{ height: rows.length * rowHeight, position: \"relative\" }}>\n        {renderedIndices(first, last, activeIndex, rows.length).map((index) => {\n          const row = rows[index]!;\n          const { node } = row;\n          const isOpen = expandedSet.has(node.id);\n          const common = {\n            id: idFor(row.key),\n            role: \"treeitem\",\n            \"aria-level\": row.level,\n            \"aria-setsize\": row.setSize,\n            \"aria-posinset\": row.posInSet,\n            \"data-active\": row.key === active?.key ? \"\" : undefined,\n            style: { top: index * rowHeight, paddingInlineStart: `calc(${row.level - 1} * var(--by-size-icon-md) + var(--by-space-inset-xs))` },\n          } as const;\n          if (row.kind === \"loading\") {\n            return (\n              <div key={row.key} {...common} data-slot=\"tree-loading\" aria-disabled=\"true\" aria-busy=\"true\" onClick={() => setActiveKey(row.key)} className={cn(classes.row, classes.status)}>\n                <span className=\"size-icon-md shrink-0\" />\n                {loadingText}\n              </div>\n            );\n          }\n          if (row.kind === \"error\") {\n            return (\n              <div key={row.key} {...common} data-slot=\"tree-error\" onClick={() => setActiveKey(row.key)} className={cn(classes.row)}>\n                <span className=\"size-icon-md shrink-0\" />\n                <span className={classes.error}>{node.error}</span>\n                {onRetry ? (\n                  <button type=\"button\" tabIndex={-1} data-slot=\"tree-retry\" onClick={() => onRetry(node)} className={cn(classes.retry)}>\n                    {retryText}\n                  </button>\n                ) : null}\n              </div>\n            );\n          }\n          return (\n            <TreeItem\n              key={row.key}\n              id={common.id}\n              node={node}\n              level={row.level}\n              setSize={row.setSize}\n              posInSet={row.posInSet}\n              top={index * rowHeight}\n              expanded={expandable(node) ? isOpen : undefined}\n              selected={node.id === selected}\n              active={row.key === active?.key}\n              onClick={(event) => onRowClick(row, event)}\n              onDoubleClick={() => !node.disabled && onAction?.(node)}\n            />\n          );\n        })}\n      </div>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "tree",
+      "title": "Tree",
+      "description": "A virtualized, keyboard-navigable tree following the ARIA treeview pattern: nodes with icons and trailing meta, lazy children with per-node loading and error-with-Retry rows, single selection, an action on Enter or double-click, type-ahead and a filter; only the visible rows are rendered.",
+      "usage": "Use Tree for a hierarchy the user browses and opens: DBee's connections and schema browser (connection, schema, Tables and Views, table, columns), a file list. Pass nodes ({ id, label, icon, meta, children, hasChildren, loading, error, disabled }); load children when onExpandedChange reports a node opened (set loading, then children or error) and retry in onRetry; open the node in onAction (Enter, double-click); filter with filter (the text of a SearchInput above it). Give it a height (h-full in a sized panel): it scrolls and renders only what is visible, so thousands of nodes stay fast. Wrap it in a ContextMenuTrigger for node actions, using the selected node. For a few levels of navigation links use Sidebar; for a flat list, a listbox (Select, Combobox).",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [],
+      "props": [
+        {
+          "name": "nodes",
+          "type": "TreeNode[]",
+          "required": true,
+          "description": "The top-level nodes; a TreeNode is { id, label, icon?, meta?, children?, hasChildren?, loading?, error?, disabled? }."
+        },
+        {
+          "name": "expanded",
+          "type": "string[]",
+          "description": "Expanded node ids (controlled); defaultExpanded when uncontrolled."
+        },
+        {
+          "name": "onExpandedChange",
+          "type": "(expanded: string[], node, isExpanded: boolean) => void",
+          "description": "Called when a node opens or closes; load its children here."
+        },
+        {
+          "name": "selected",
+          "type": "string | null",
+          "description": "The selected node id (controlled); defaultSelected when uncontrolled."
+        },
+        {
+          "name": "onSelectedChange",
+          "type": "(id: string, node) => void",
+          "description": "Called when a click or Space selects a node."
+        },
+        {
+          "name": "onAction",
+          "type": "(node) => void",
+          "description": "Enter or a double-click on a node: open it."
+        },
+        {
+          "name": "onRetry",
+          "type": "(node) => void",
+          "description": "Retry loading a node's children: Enter on its error row, or the Retry button."
+        },
+        {
+          "name": "filter",
+          "type": "string",
+          "default": "",
+          "description": "Shows only nodes whose label contains the text, with their ancestors expanded; it filters loaded nodes, it does not load."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "default": "Tree",
+          "description": "The tree's accessible name."
+        },
+        {
+          "name": "overscan",
+          "type": "number",
+          "default": 8,
+          "description": "Rows rendered beyond the visible ones."
+        },
+        {
+          "name": "loadingText",
+          "type": "string",
+          "default": "Loading…",
+          "description": "The loading row's text."
+        },
+        {
+          "name": "retryText",
+          "type": "string",
+          "default": "Retry",
+          "description": "The Retry button's text."
+        },
+        {
+          "name": "emptyText",
+          "type": "ReactNode",
+          "default": "Nothing to show",
+          "description": "Shown when there are no nodes (or none match the filter)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes; give the tree a height."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the tree element."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "role=\"tree\", the scroll container and the focus target (aria-activedescendant); data-slot=\"tree\"."
+        },
+        {
+          "name": "chevron",
+          "element": "span",
+          "description": "The expander, turned while open; data-slot=\"tree-chevron\"."
+        },
+        {
+          "name": "loading",
+          "element": "div",
+          "description": "The row under an expanding node while its children load (aria-busy); data-slot=\"tree-loading\"."
+        },
+        {
+          "name": "error",
+          "element": "div",
+          "description": "The row under a node whose children failed to load, with the message in color.status.danger.fg and Retry; data-slot=\"tree-error\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "TreeItem",
+          "slot": "tree-item",
+          "description": "A node's row: role=\"treeitem\" of size.control.sm with aria-level, aria-setsize, aria-posinset, aria-expanded and aria-selected, indented by level; Tree renders one per visible node."
+        }
+      ],
+      "states": [
+        {
+          "name": "selected",
+          "variant": "data-selected",
+          "props": {
+            "nodes": [
+              {
+                "id": "a",
+                "label": "orders",
+                "children": [
+                  {
+                    "id": "b",
+                    "label": "id"
+                  }
+                ]
+              },
+              {
+                "id": "c",
+                "label": "customers",
+                "hasChildren": true,
+                "error": "Could not load",
+                "disabled": true
+              },
+              {
+                "id": "d",
+                "label": "events",
+                "loading": true
+              }
+            ],
+            "defaultExpanded": [
+              "a",
+              "c",
+              "d"
+            ],
+            "defaultSelected": "a"
+          },
+          "description": "The selected node: color.interactive.selected."
+        },
+        {
+          "name": "active",
+          "variant": "data-active",
+          "description": "The row the keyboard is on: the focus ring while the tree has keyboard focus."
+        },
+        {
+          "name": "expanded",
+          "variant": "data-expanded",
+          "description": "An open node's chevron turns a quarter."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "A row under the pointer: color.interactive.hover."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "description": "A node that cannot be selected: color.fg.disabled, aria-disabled."
+        }
+      ],
+      "tokens": [
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.interactive.hover",
+        "color.interactive.selected",
+        "color.interactive.selected-hover",
+        "color.ring",
+        "color.status.danger.fg",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "radius.md",
+        "ring.width",
+        "size.control.sm",
+        "size.icon.md",
+        "size.icon.sm",
+        "size.panel.sm",
+        "size.panel.xs",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.sm",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight"
+      ],
+      "examples": {
+        "minimal": "TreeMinimal",
+        "realistic": "TreeRealistic"
+      },
+      "accessibility": [
+        "The tree is role=\"tree\" named by aria-label and is one tab stop; the active row is named by aria-activedescendant (always rendered, even when scrolled away), so virtualization does not move DOM focus.",
+        "Rows are role=\"treeitem\" with aria-level, aria-setsize and aria-posinset (the tree is flat in the DOM), aria-expanded on parents, aria-selected, aria-disabled and aria-busy while loading.",
+        "ArrowDown and ArrowUp move; ArrowRight opens a node or moves to its first child; ArrowLeft closes it or moves to its parent; Home and End go to the first and last row; typing jumps to the next node starting with the text; Space selects; Enter runs onAction (or Retry on an error row).",
+        "A loading row says so in text and an error row shows the message and Retry; Retry is out of the tab order because Enter on the row retries.",
+        "Selection uses color.interactive.selected and aria-selected; the focus ring shows only on keyboard focus.",
+        "Only the chevron turns; prefers-reduced-motion: reduce turns that off."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { SearchInput } from \"@/components/search-input/search-input\";\nimport { Tree, type TreeNode } from \"@/components/tree/tree\";\n\nconst FolderIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" aria-hidden=\"true\">\n    <path d=\"M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z\" />\n  </svg>\n);\n\nconst TableIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" aria-hidden=\"true\">\n    <rect x=\"2.5\" y=\"3\" width=\"11\" height=\"10\" rx=\"1\" />\n    <path d=\"M2.5 6.5h11M6.5 6.5V13\" />\n  </svg>\n);\n\nconst DatabaseIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" aria-hidden=\"true\">\n    <ellipse cx=\"8\" cy=\"4\" rx=\"5\" ry=\"1.75\" />\n    <path d=\"M3 4v8c0 1 2.2 1.75 5 1.75s5-.75 5-1.75V4M3 8c0 1 2.2 1.75 5 1.75S13 9 13 8\" />\n  </svg>\n);\n\n/** The smallest useful Tree: a schema with its tables and columns. */\nexport function TreeMinimal() {\n  const nodes: TreeNode[] = [\n    {\n      id: \"public\",\n      label: \"public\",\n      icon: <FolderIcon />,\n      children: [\n        { id: \"orders\", label: \"orders\", icon: <TableIcon />, children: [{ id: \"orders.id\", label: \"id\", meta: \"bigint\" }, { id: \"orders.status\", label: \"status\", meta: \"text\" }] },\n        { id: \"customers\", label: \"customers\", icon: <TableIcon /> },\n      ],\n    },\n  ];\n  return <Tree nodes={nodes} defaultExpanded={[\"public\"]} aria-label=\"Schema\" className=\"h-panel-xs w-full\" />;\n}\n\nconst manyTables = (schema: string, count: number): TreeNode[] =>\n  Array.from({ length: count }, (_, i) => ({ id: `${schema}.t${i}`, label: `event_${String(i).padStart(4, \"0\")}`, icon: <TableIcon />, meta: `${(i * 37) % 900} kB` }));\n\n/**\n * DBee's schema browser: connections with a status, a lazily loaded schema (loading, then\n * children), one that failed with Retry, a schema of 2,000 tables (only the visible rows are\n * rendered), and the filter box above it.\n */\nexport function TreeRealistic() {\n  const [filter, setFilter] = useState(\"\");\n  const [analytics, setAnalytics] = useState<Partial<TreeNode>>({ hasChildren: true });\n  const [failed, setFailed] = useState<Partial<TreeNode>>({ error: \"Could not load schemas: connection refused\" });\n  const nodes: TreeNode[] = [\n    {\n      id: \"orders-prod\",\n      label: \"orders-prod\",\n      icon: <DatabaseIcon />,\n      meta: \"TLS\",\n      children: [\n        { id: \"orders-prod.public\", label: \"public\", icon: <FolderIcon />, children: manyTables(\"public\", 2000) },\n        { id: \"orders-prod.analytics\", label: \"analytics\", icon: <FolderIcon />, ...analytics },\n      ],\n    },\n    { id: \"staging\", label: \"staging\", icon: <DatabaseIcon />, meta: \"expires in 14 min\", ...failed },\n    { id: \"archive\", label: \"archive (disconnected)\", icon: <DatabaseIcon />, disabled: true },\n  ];\n  const load = (_: string[], node: TreeNode, open: boolean) => {\n    if (!open || node.id !== \"orders-prod.analytics\" || analytics.children) return;\n    setAnalytics({ loading: true });\n    setTimeout(() => setAnalytics({ children: [{ id: \"analytics.daily\", label: \"daily_revenue\", icon: <TableIcon /> }] }), 600);\n  };\n  const retry = (node: TreeNode) => {\n    if (node.id !== \"staging\") return;\n    setFailed({ loading: true });\n    setTimeout(() => setFailed({ children: [{ id: \"staging.public\", label: \"public\", icon: <FolderIcon /> }] }), 600);\n  };\n  return (\n    <div className=\"flex w-full flex-col gap-stack-sm\">\n      <SearchInput aria-label=\"Filter the tree\" placeholder=\"Filter loaded nodes\" size=\"sm\" value={filter} onValueChange={setFilter} />\n      <Tree\n        nodes={nodes}\n        defaultExpanded={[\"orders-prod\", \"orders-prod.public\", \"staging\"]}\n        onExpandedChange={load}\n        onRetry={retry}\n        filter={filter}\n        aria-label=\"Connections and schemas\"\n        className=\"h-panel-sm w-full rounded-md border border-border\"\n      />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {}
+  }
+}
