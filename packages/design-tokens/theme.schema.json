@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:byterygon:design-tokens:theme:1",
+  "title": "Byterygon theme",
+  "description": "A theme for @byterygon/design-tokens: seeds plus overrides. Every seed is optional and takes the default when omitted. `by-tokens validate --theme <file>` is the authority; this schema is for editors and for tools that write theme files.",
+  "type": "object",
+  "required": ["schemaVersion", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1, "description": "Version of this file format." },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Lower-case letters, digits and dashes. Names the output directory."
+    },
+    "description": { "type": "string" },
+    "seeds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "colors": {
+          "type": "object",
+          "description": "One ramp per entry. neutral, brand, red, amber, green and blue exist by default; any other name adds a ramp.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9]*$", "not": { "enum": ["base", "white", "black"] } },
+          "additionalProperties": { "$ref": "#/$defs/ramp" }
+        },
+        "radius": { "type": "number", "minimum": 0, "maximum": 32, "description": "Corner radius of a standard control, in px." },
+        "colorScheme": { "enum": ["light", "dark"], "description": "The scheme :root gets." },
+        "density": { "enum": ["comfortable", "compact"], "description": "The density :root gets." },
+        "contrast": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "enum": ["AA", "AAA"], "description": "WCAG 2.2 level: AA is 4.5:1 text and 3:1 UI, AAA is 7:1 and 4.5:1." },
+            "apca": {
+              "type": "object",
+              "description": "Optional APCA minimums (absolute Lc). Without them APCA is reported but not enforced.",
+              "additionalProperties": false,
+              "properties": {
+                "text": { "type": "number", "minimum": 0, "maximum": 108 },
+                "ui": { "type": "number", "minimum": 0, "maximum": 108 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "overrides": {
+      "type": "object",
+      "description": "Token path to value. A value applies to every mode; an object keyed by mode name (light, dark, comfortable, compact) changes those modes only.",
+      "propertyNames": { "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+$" },
+      "additionalProperties": {
+        "description": "An alias such as {color.brand.11}, or a literal of the token's type: oklch(L C H), oklch(L C H / A), #rrggbb, 12px, 0.75rem, 150ms, a number, a font family or list of families, or a list of shadow layers."
+      }
+    }
+  },
+  "$defs": {
+    "ramp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hue": { "type": "number", "minimum": 0, "maximum": 360, "description": "OKLCH hue in degrees. Optional for neutral, which then follows the brand hue." },
+        "chroma": { "type": "number", "minimum": 0, "maximum": 0.4, "description": "Chroma of the solid step, before gamut mapping." },
+        "solid": {
+          "type": "object",
+          "description": "Lightness of the solid step (9) per scheme, for hues that need a light solid (amber, yellow, lime).",
+          "additionalProperties": false,
+          "properties": {
+            "light": { "type": "number", "minimum": 0.2, "maximum": 0.95 },
+            "dark": { "type": "number", "minimum": 0.2, "maximum": 0.95 }
+          }
+        }
+      }
+    }
+  }
+}
