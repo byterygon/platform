@@ -10,7 +10,7 @@ import { PACKAGE_ROOT } from "../scripts/registry.ts";
 import { describeComponent } from "./suite.tsx";
 
 const temp = mkdtempSync(join(PACKAGE_ROOT, ".scaffold-test-"));
-for (const path of ["package.json", "src/lib/cn.ts", "gallery/entries.ts"]) {
+for (const path of ["package.json", "src/lib/cn.ts", "src/lib/theme-scope.ts", "gallery/entries.ts"]) {
   mkdirSync(join(temp, path, ".."), { recursive: true });
   cpSync(join(PACKAGE_ROOT, path), join(temp, path));
 }

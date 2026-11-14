@@ -6,7 +6,7 @@ import { createElement, type ComponentType } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { COMPONENT_FILES, camel, fileName, validateManifest, type Manifest } from "../scripts/lib/manifest.ts";
 import { checkClasses, checkImports, stateVariants, variantCombinations } from "./conventions.ts";
-import { axeViolations, classesIn, cleanup, render } from "./render.tsx";
+import { act, axeViolations, classesIn, cleanup, render } from "./render.tsx";
 
 type Module = Record<string, unknown>;
 
@@ -31,22 +31,36 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
      * slots (an element counts when its nearest data-slot is the component or one of its parts),
      * and the slots seen. A part only renders inside the main component, so the examples are where
      * its classes are found; other components in the examples (an Input in a Field) are skipped.
+     * The whole document is read, so popups in a portal count, and each closed popup trigger in the
+     * example (`aria-haspopup`) is clicked once so the parts inside its popup render too.
      */
     const exampleClasses = async () => {
       const classes = new Set<string>();
       const slots = new Set<string>();
       if (parts.length === 0) return { classes, slots };
       const { example } = await load();
-      for (const exportName of [manifest.examples.minimal, manifest.examples.realistic]) {
-        const { container, unmount } = render(createElement(example[exportName] as ComponentType));
-        for (const element of container.querySelectorAll("[data-slot]")) {
+      const collect = () => {
+        for (const element of document.body.querySelectorAll("[data-slot]")) {
           const slot = element.getAttribute("data-slot")!;
           if (ownSlots.has(slot)) slots.add(slot);
         }
-        for (const element of container.querySelectorAll("[class]")) {
+        for (const element of document.body.querySelectorAll("[class]")) {
           const slot = element.closest("[data-slot]")?.getAttribute("data-slot");
           if (!slot || !ownSlots.has(slot)) continue;
           for (const c of element.getAttribute("class")!.split(/\s+/)) if (c) classes.add(c);
+        }
+      };
+      for (const exportName of [manifest.examples.minimal, manifest.examples.realistic]) {
+        const { container, unmount } = render(createElement(example[exportName] as ComponentType));
+        collect();
+        for (const trigger of container.querySelectorAll('[aria-haspopup]:not([aria-expanded="true"])')) {
+          await act(async () => {
+            trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+          });
+          collect();
+          await act(async () => {
+            (document.activeElement ?? trigger).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+          });
         }
         unmount();
       }
@@ -91,8 +105,9 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
       const classes = new Set<string>();
       const renders = [...variantCombinations(manifest.variants), ...manifest.states.filter((s) => s.props).map((s) => s.props as Record<string, unknown>)];
       for (const props of renders) {
-        const { container, unmount } = render(createElement(Component, { ...props, "aria-label": manifest.title }));
-        for (const c of classesIn(container)) classes.add(c);
+        const { unmount } = render(createElement(Component, { ...props, "aria-label": manifest.title }));
+        await act(async () => {});
+        for (const c of classesIn(document.body)) classes.add(c);
         unmount();
       }
       for (const c of (await exampleClasses()).classes) classes.add(c);
@@ -106,8 +121,9 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
       const Component = component[manifest.title] as ComponentType<Record<string, unknown>>;
       const all = new Set<string>();
       for (const props of [{}, ...manifest.states.map((s) => s.props ?? {})]) {
-        const { container, unmount } = render(createElement(Component, { ...props, "aria-label": manifest.title }));
-        for (const c of classesIn(container)) all.add(c);
+        const { unmount } = render(createElement(Component, { ...props, "aria-label": manifest.title }));
+        await act(async () => {});
+        for (const c of classesIn(document.body)) all.add(c);
         unmount();
       }
       for (const c of (await exampleClasses()).classes) all.add(c);
@@ -116,8 +132,10 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
         expect(variants.has(state.variant), `state "${state.name}": no class uses the ${state.variant}: variant`).toBe(true);
         const attribute = /^(data|aria)-[a-z-]+$/.test(state.variant) ? state.variant : undefined;
         if (attribute && state.props) {
-          const { container } = render(createElement(Component, { ...state.props, "aria-label": manifest.title }));
-          expect(container.querySelector(`[${attribute}]:not([${attribute}="false"])`), `state "${state.name}": ${JSON.stringify(state.props)} must set ${attribute}`).not.toBeNull();
+          const { unmount } = render(createElement(Component, { ...state.props, "aria-label": manifest.title }));
+          await act(async () => {});
+          expect(document.body.querySelector(`[${attribute}]:not([${attribute}="false"])`), `state "${state.name}": ${JSON.stringify(state.props)} must set ${attribute}`).not.toBeNull();
+          unmount();
         }
       }
     });

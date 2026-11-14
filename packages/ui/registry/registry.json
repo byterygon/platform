@@ -40,6 +40,26 @@
       ]
     },
     {
+      "name": "combobox",
+      "type": "registry:ui",
+      "title": "Combobox",
+      "description": "One choice from a long list, typed to filter, on Base UI's Combobox: an input in an Input-like frame with clear and open buttons, and a popup of filtered items, groups, a no-results line and a status line, in three sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/select",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/combobox.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "field",
       "type": "registry:ui",
       "title": "Field",
@@ -170,6 +190,26 @@
       ]
     },
     {
+      "name": "multi-select",
+      "type": "registry:ui",
+      "title": "MultiSelect",
+      "description": "Several choices from a list, typed to filter, on Base UI's Combobox with multiple: each chosen item is a removable chip before the input, with Combobox's popup and items, in three sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/combobox",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/multi-select.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "number-input",
       "type": "registry:ui",
       "title": "NumberInput",
@@ -239,6 +279,26 @@
       "files": [
         {
           "path": "ui/search-input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "select",
+      "type": "registry:ui",
+      "title": "Select",
+      "description": "One choice from a list, on Base UI's Select: a trigger that looks like an Input and shows the chosen label, and a listbox popup with items, groups and separators, in three sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/input",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/select.tsx",
           "type": "registry:ui"
         }
       ]
@@ -345,6 +405,19 @@
       "files": [
         {
           "path": "lib/cn.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
+      "name": "theme-scope",
+      "type": "registry:lib",
+      "title": "theme-scope",
+      "description": "Gives a popup in a portal the data-theme and data-density of the control that opened it, and reads length tokens in px. Select, Combobox and MultiSelect import it from @/lib/theme-scope.",
+      "dependencies": [],
+      "files": [
+        {
+          "path": "lib/theme-scope.ts",
           "type": "registry:lib"
         }
       ]

@@ -50,6 +50,23 @@ function dependenciesOf(root: string, names: readonly string[]): { dependencies:
 }
 
 /**
+ * The helpers in src/lib that components may import, each shipped as a `registry:lib` item at
+ * `lib/<name>.ts`, with the npm packages it needs.
+ */
+export const LIBS: Record<string, { dependencies: string[]; description: string; llms: string }> = {
+  cn: {
+    dependencies: ["cn"],
+    description: "Class-name merging that knows the Tailwind names of the Byterygon token roles. Every Byterygon component imports it from @/lib/cn.",
+    llms: "class-name merging that knows the role names; every component depends on it.",
+  },
+  "theme-scope": {
+    dependencies: [],
+    description: "Gives a popup in a portal the data-theme and data-density of the control that opened it, and reads length tokens in px. Select, Combobox and MultiSelect import it from @/lib/theme-scope.",
+    llms: "gives popups in a portal the theme and density of their trigger; the popup components depend on it.",
+  },
+};
+
+/**
  * The shipped source of a component: the repo's own `@/components/<n>/<n>` imports become the
  * shadcn layout's `@/components/ui/<n>`, and every `@/` import becomes a registry dependency.
  */
@@ -62,11 +79,13 @@ export function shipSource(source: string, name: string): { content: string; reg
       deps.add(`${NAMESPACE}/${component[1]}`);
       return `${open}@/components/ui/${component[1]}${close}`;
     }
-    if (specifier === "@/lib/cn") {
-      deps.add(`${NAMESPACE}/cn`);
+    const lib = /^@\/lib\/([a-z0-9-]+)$/.exec(specifier);
+    if (lib && Object.hasOwn(LIBS, lib[1]!)) {
+      deps.add(`${NAMESPACE}/${lib[1]}`);
       return `${open}${specifier}${close}`;
     }
-    problems.push(`${name}: imports ${specifier}; a component may import @/lib/cn and @/components/<name>/<name> only`);
+    const allowed = Object.keys(LIBS).map((l) => `@/lib/${l}`).join(", ");
+    problems.push(`${name}: imports ${specifier}; a component may import ${allowed} and @/components/<name>/<name> only`);
     return `${open}${specifier}${close}`;
   });
   if (problems.length > 0) throw new RegistryError(problems);
@@ -98,16 +117,17 @@ function componentItem(root: string, name: string): Item {
   };
 }
 
-function cnItem(root: string): Item {
-  const { dependencies, versions } = dependenciesOf(root, ["cn"]);
+function libItem(root: string, name: string): Item {
+  const lib = LIBS[name]!;
+  const { dependencies, versions } = dependenciesOf(root, lib.dependencies);
   return {
     $schema: SCHEMA_ITEM,
-    name: "cn",
+    name,
     type: "registry:lib",
-    title: "cn",
-    description: "Class-name merging that knows the Tailwind names of the Byterygon token roles. Every Byterygon component imports it from @/lib/cn.",
+    title: name,
+    description: lib.description,
     dependencies,
-    files: [{ path: "lib/cn.ts", type: "registry:lib", content: readFileSync(join(root, "src", "lib", "cn.ts"), "utf8") }],
+    files: [{ path: `lib/${name}.ts`, type: "registry:lib", content: readFileSync(join(root, "src", "lib", `${name}.ts`), "utf8") }],
     meta: { dependencyVersions: versions },
   };
 }
@@ -194,7 +214,7 @@ function llmsTxt(items: Item[]): string {
     lines.push(`- Tokens: ${manifest.tokens.join(", ")}`);
     lines.push(`- Accessibility: ${manifest.accessibility.join(" ")}`, "");
   }
-  lines.push("## Helpers", "", "- [cn.json](cn.json): class-name merging that knows the role names; every component depends on it.", "");
+  lines.push("## Helpers", "", ...Object.entries(LIBS).map(([name, lib]) => `- [${name}.json](${name}.json): ${lib.llms}`), "");
   return lines.join("\n");
 }
 
@@ -211,7 +231,7 @@ export function buildRegistry(root = PACKAGE_ROOT): Map<string, string> {
     }
   }
   if (problems.length > 0) throw new RegistryError(problems);
-  items.push(cnItem(root));
+  for (const name of Object.keys(LIBS)) items.push(libItem(root, name));
   for (const preset of presets()) items.push(themeItem(preset));
   const files = new Map<string, string>();
   for (const item of items) files.set(`${item.name}.json`, `${JSON.stringify(item, null, 2)}\n`);
