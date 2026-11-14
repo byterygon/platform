@@ -10,8 +10,10 @@ export interface GalleryEntry {
 export const gallery: GalleryEntry[] = [
   // ui:new entries start
   { name: "button", load: () => import("@/components/button/button.example") },
+  { name: "calendar", load: () => import("@/components/calendar/calendar.example") },
   { name: "checkbox", load: () => import("@/components/checkbox/checkbox.example") },
   { name: "combobox", load: () => import("@/components/combobox/combobox.example") },
+  { name: "date-picker", load: () => import("@/components/date-picker/date-picker.example") },
   { name: "field", load: () => import("@/components/field/field.example") },
   { name: "file-input", load: () => import("@/components/file-input/file-input.example") },
   { name: "form", load: () => import("@/components/form/form.example") },
@@ -28,6 +30,7 @@ export const gallery: GalleryEntry[] = [
   { name: "slider", load: () => import("@/components/slider/slider.example") },
   { name: "switch", load: () => import("@/components/switch/switch.example") },
   { name: "textarea", load: () => import("@/components/textarea/textarea.example") },
+  { name: "time-picker", load: () => import("@/components/time-picker/time-picker.example") },
   { name: "toggle-button", load: () => import("@/components/toggle-button/toggle-button.example") },
   { name: "toggle-group", load: () => import("@/components/toggle-group/toggle-group.example") },
   // ui:new entries end

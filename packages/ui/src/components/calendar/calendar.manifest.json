@@ -1,0 +1,227 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "calendar",
+  "title": "Calendar",
+  "description": "A month grid to pick one day, several days or a range, on react-day-picker with date-fns, styled with token roles: control-sized day buttons, the accent solid for the chosen day and the accent subtle band for a range.",
+  "usage": "Use Calendar on its own where the month should stay visible (a history window, a schedule), or let DatePicker open it in a popup next to a text field. Set mode to \"single\", \"multiple\" or \"range\" and pass selected and onSelect as react-day-picker's (Date, Date[] or { from, to }). Limit the choice with disabled matchers ({ before }, { after }, a weekday list), show two months for ranges with numberOfMonths={2}, and pass a date-fns locale for the language and the first day of the week (weekStartsOn overrides it). Give it an aria-label that says what the date is for. To type a date, or to keep the form compact, use DatePicker; for a time of day, TimePicker.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [
+    "react-day-picker",
+    "date-fns"
+  ],
+  "props": [
+    {
+      "name": "mode",
+      "type": "\"single\" | \"multiple\" | \"range\"",
+      "description": "What a click selects: one day, a set of days, or the start and end of a range. Without a mode the days are not selectable."
+    },
+    {
+      "name": "selected",
+      "type": "Date | Date[] | DateRange",
+      "description": "The chosen day, days or range ({ from, to }), as the mode says."
+    },
+    {
+      "name": "onSelect",
+      "type": "(selected, triggerDate, modifiers, event) => void",
+      "description": "Called with the new selection when a day is clicked or chosen with Enter or Space."
+    },
+    {
+      "name": "required",
+      "type": "boolean",
+      "default": false,
+      "description": "A chosen day cannot be unselected by clicking it again."
+    },
+    {
+      "name": "disabled",
+      "type": "Matcher | Matcher[]",
+      "description": "Days that cannot be chosen: a Date, { before }, { after }, { from, to }, { dayOfWeek: [0, 6] } or a function."
+    },
+    {
+      "name": "defaultMonth",
+      "type": "Date",
+      "description": "The month shown first; month and onMonthChange control it."
+    },
+    {
+      "name": "startMonth",
+      "type": "Date",
+      "description": "The earliest month navigation reaches; endMonth is the latest."
+    },
+    {
+      "name": "numberOfMonths",
+      "type": "number",
+      "default": 1,
+      "description": "Months side by side; they wrap when the space is narrow."
+    },
+    {
+      "name": "showOutsideDays",
+      "type": "boolean",
+      "default": true,
+      "description": "Shows the days of the previous and next month in color.fg.subtle."
+    },
+    {
+      "name": "showWeekNumber",
+      "type": "boolean",
+      "default": false,
+      "description": "Adds a column of week numbers."
+    },
+    {
+      "name": "locale",
+      "type": "Locale (date-fns)",
+      "description": "Month and weekday names, labels and the first day of the week."
+    },
+    {
+      "name": "weekStartsOn",
+      "type": "0 | 1 | 2 | 3 | 4 | 5 | 6",
+      "description": "First day of the week, over the locale's (1 is Monday)."
+    },
+    {
+      "name": "footer",
+      "type": "ReactNode",
+      "description": "Text under the grid, announced politely (role=\"status\")."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "What the date is for; names the calendar's root."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes for the root, merged after the component's own."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The calendar, data-slot=\"calendar\"; holds the months, wrapping when narrow."
+    },
+    {
+      "name": "navigation",
+      "element": "button",
+      "description": "Previous and next month: ghost icon buttons of size.control.sm beside the caption, aria-disabled at startMonth and endMonth."
+    },
+    {
+      "name": "caption",
+      "element": "span",
+      "description": "The month and year in type.label, a polite live region."
+    },
+    {
+      "name": "grid",
+      "element": "table",
+      "description": "role=\"grid\": weekday headers in type.caption and color.fg.muted, then a row per week."
+    },
+    {
+      "name": "footer",
+      "element": "div",
+      "description": "The footer text in type.caption."
+    }
+  ],
+  "parts": [
+    {
+      "name": "CalendarDayButton",
+      "slot": "calendar-day-button",
+      "description": "A day: a size.control.md square button in a gridcell; data-selected, data-today, data-outside, data-disabled and data-range-start, -middle, -end show its state. Calendar renders it; pass it as components.DayButton when wrapping it."
+    }
+  ],
+  "states": [
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on a day or a navigation button: a ring of ring.width in color.ring."
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "A day under the pointer: color.interactive.hover."
+    },
+    {
+      "name": "selected",
+      "variant": "data-selected",
+      "description": "A chosen day, or an end of a range: color.accent.bg with its foreground."
+    },
+    {
+      "name": "range-middle",
+      "variant": "data-range-middle",
+      "description": "A day inside a range: on the color.accent.subtle-bg band, in color.accent.subtle-fg."
+    },
+    {
+      "name": "range-start",
+      "variant": "data-range-start",
+      "description": "The first day of a range: square on the side the band continues."
+    },
+    {
+      "name": "today",
+      "variant": "data-today",
+      "description": "Today: a color.accent.bg border and the strong weight, so it is not marked by colour alone."
+    },
+    {
+      "name": "outside",
+      "variant": "data-outside",
+      "description": "A day of the previous or next month: color.fg.subtle."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "description": "A day that cannot be chosen: color.fg.disabled and struck through."
+    }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.accent.bg-active",
+    "color.accent.bg-hover",
+    "color.accent.fg",
+    "color.accent.subtle-bg",
+    "color.accent.subtle-fg",
+    "color.fg.default",
+    "color.fg.disabled",
+    "color.fg.muted",
+    "color.fg.subtle",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.ring",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.md",
+    "size.control.sm",
+    "size.icon.sm",
+    "space.inline.sm",
+    "space.inline.xl",
+    "space.stack.sm",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "CalendarMinimal",
+    "realistic": "CalendarRealistic"
+  },
+  "accessibility": [
+    "Each month is a role=\"grid\" named by its month; the days are buttons in gridcells whose labels give the full date and say when it is today or selected (aria-selected on the cell).",
+    "One day is in the tab order (the chosen day, else today, else the first day); the arrow keys move a day or a week, Home and End to the week's start and end, PageUp and PageDown a month (with Shift a year), and Enter or Space chooses.",
+    "The caption is a polite live region, so moving to another month announces it; the navigation buttons are named \"Go to the Previous Month\" and \"Go to the Next Month\" (the labels prop renames them) and are aria-disabled at the limits.",
+    "Disabled days are skipped as choices and struck through as well as dimmed; today carries a border and the strong weight besides its colour.",
+    "Give the calendar an aria-label that says what the date is for; pass a date-fns locale to have the labels in the user's language."
+  ]
+}

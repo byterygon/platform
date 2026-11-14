@@ -30,13 +30,14 @@ const STOCK = ["button", "card", "input"];
 /**
  * The Byterygon items named on the command line. Button comes in through the registry
  * dependencies of icon-button and input-group as well; cn through every item, and theme-scope
- * through select, combobox and multi-select.
+ * through select, combobox, multi-select and date-picker.
  */
 const ITEMS = [
   "button", "input", "field", "form", "textarea", "input-group", "icon-button", "kbd",
   "toggle-button", "toggle-group", "checkbox", "radio-group", "switch",
   "number-input", "password-input", "search-input", "slider", "file-input",
   "select", "combobox", "multi-select",
+  "calendar", "date-picker", "time-picker",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -71,7 +72,7 @@ function blankApp(dir: string, registryTemplate: string): void {
     name: "blank-vite-app",
     private: true,
     type: "module",
-    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority"].map((n) => [n, version(n)])),
+    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority", "react-day-picker", "date-fns"].map((n) => [n, version(n)])),
     devDependencies: Object.fromEntries(["vite", "@tailwindcss/vite", "tailwindcss"].map((n) => [n, version(n)])),
   });
   write("tsconfig.json", { compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", jsx: "react-jsx", strict: true, baseUrl: ".", paths: { "@/*": ["./src/*"] } }, include: ["src"] });
@@ -155,8 +156,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
 import { Combobox, ComboboxItem } from "@/components/ui/combobox";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { FileInput } from "@/components/ui/file-input";
 import { Form } from "@/components/ui/form";
@@ -173,6 +176,7 @@ import { Select, SelectGroup, SelectGroupLabel, SelectItem, SelectSeparator } fr
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { TimePicker } from "@/components/ui/time-picker";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button as StockButton } from "@/components/stock/button";
@@ -243,6 +247,10 @@ function Connection() {
           {(column: string) => <ComboboxItem key={column} value={column}>{column}</ComboboxItem>}
         </MultiSelect>
       </Field>
+      <Field><FieldLabel>Restore to</FieldLabel><DatePicker /></Field>
+      <Field><FieldLabel>History</FieldLabel><DatePicker mode="range" /></Field>
+      <Field><FieldLabel>Backup at</FieldLabel><TimePicker defaultValue="02:30" /></Field>
+      <Calendar mode="range" aria-label="History window" defaultMonth={new Date(2026, 10, 1)} selected={{ from: new Date(2026, 10, 3), to: new Date(2026, 10, 9) }} />
       <ToggleButton defaultPressed>Wrap</ToggleButton>
       <ToggleGroup aria-label="View" defaultValue={["grid"]}>
         <ToggleGroupItem value="grid">Grid</ToggleGroupItem>
@@ -380,6 +388,8 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["h-track", "height", "size.track", "Byterygon Slider track"],
   ["bg-overlay", "background-color", "color.bg.overlay", "Byterygon Select, Combobox and MultiSelect popup"],
   ["bg-neutral-subtle", "background-color", "color.neutral.subtle-bg", "Byterygon MultiSelect chip"],
+  ["data-selected:bg-accent-solid", "background-color", "color.accent.bg", "Byterygon Calendar chosen day"],
+  ["bg-accent-subtle", "background-color", "color.accent.subtle-bg", "Byterygon Calendar range band"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {

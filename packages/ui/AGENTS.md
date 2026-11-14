@@ -100,6 +100,14 @@ What `test/conventions.test.tsx` enforces for every component:
   Pass Select `items` so the trigger shows the chosen label before the popup has opened. Wire
   TanStack Form's blur to `onOpenChange` (on close). MultiSelect keeps its list open after a
   choice and uses Combobox's items and popup.
+- Dates and times: Calendar is react-day-picker with every class replaced (its `classNames` map
+  is complete, so no `rdp-*` class or stylesheet is needed); the day buttons carry their state as
+  data attributes (`data-selected`, `data-today`, `data-range-middle`). DatePicker is a text
+  field on InputGroup, read with date-fns in `format` on blur and Enter, plus a Calendar in a
+  Popover; its value is a local `Date` (range: `{ from, to }`) or null when the text is not a
+  date (then the field is aria-invalid). TimePicker is one Base UI Input edited by segment; its
+  value is "HH:mm" or "HH:mm:ss" on the 24-hour clock, null until complete. Validate null as
+  missing in TanStack Form.
 - Form state and validation are TanStack Form: `useForm`, `<Form form={form}>`, `form.Field`, and
   `<Field field={field}>`, which maps `isTouched && !isValid`, `isTouched`, `isDirty` and `name`
   to Base UI's controlled `invalid`, `touched`, `dirty`, `name` and gives FieldError the errors.
