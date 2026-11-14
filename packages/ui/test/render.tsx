@@ -67,9 +67,15 @@ export function classesIn(container: HTMLElement): Set<string> {
   const classes = new Set<string>();
   for (const element of container.querySelectorAll("[class]")) {
     if (element.parentElement?.closest("[data-foreign-dom]")) continue;
-    for (const name of element.getAttribute("class")!.split(/\s+/)) if (name) classes.add(name);
+    for (const name of element.getAttribute("class")!.split(/\s+/)) if (name && !isLibraryClass(name)) classes.add(name);
   }
   return classes;
 }
+
+/**
+ * A class Base UI adds itself for its own injected stylesheet (ScrollArea's viewport gets
+ * `base-ui-disable-scrollbar`); it is not a Tailwind utility, so the token check skips it.
+ */
+export const isLibraryClass = (name: string) => name.startsWith("base-ui-");
 
 export { act };

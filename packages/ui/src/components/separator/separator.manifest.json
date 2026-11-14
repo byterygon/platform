@@ -1,0 +1,86 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "separator",
+  "title": "Separator",
+  "description": "A thin rule between groups of content, horizontal or vertical, in a border role at border.width.1.",
+  "usage": "Use Separator between sections of a panel, between groups of controls in a Toolbar or StatusBar (orientation=\"vertical\"), or between the facts of a summary line. It is announced as a separator; for pure decoration use a border on the container instead. Between resizable panes use Resizable's handle, not a Separator.",
+  "status": "experimental",
+  "base": "@base-ui/react/separator",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"default\" | \"muted\" | \"strong\"",
+      "default": "default",
+      "description": "The border role: default between sections, muted inside a dense list, strong between panes."
+    },
+    {
+      "name": "orientation",
+      "type": "\"horizontal\" | \"vertical\"",
+      "default": "horizontal",
+      "description": "Sets aria-orientation and data-orientation; a vertical rule stretches to its row's height."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element with the separator's props."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "default",
+      "muted",
+      "strong"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The rule, role=\"separator\"; data-slot=\"separator\", data-variant, data-orientation."
+    }
+  ],
+  "states": [
+    {
+      "name": "horizontal",
+      "variant": "data-[orientation=horizontal]",
+      "description": "A full-width rule of border.width.1."
+    },
+    {
+      "name": "vertical",
+      "variant": "data-[orientation=vertical]",
+      "props": {
+        "orientation": "vertical"
+      },
+      "description": "A rule of border.width.1 that stretches to the row's height."
+    }
+  ],
+  "tokens": [
+    "border.width.1",
+    "color.border.default",
+    "color.border.muted",
+    "color.border.strong"
+  ],
+  "examples": {
+    "minimal": "SeparatorMinimal",
+    "realistic": "SeparatorRealistic"
+  },
+  "accessibility": [
+    "Renders a <div role=\"separator\"> with aria-orientation; screen readers announce the boundary between groups.",
+    "Not focusable and not interactive (a movable pane divider is Resizable's handle).",
+    "Thickness is border.width.1 and colour a border role, so it never carries information on its own."
+  ]
+}

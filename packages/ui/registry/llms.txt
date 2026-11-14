@@ -17,6 +17,20 @@ Install (components.json: "registries": { "@byterygon": "<this folder or URL>/{n
 
 ## Components
 
+### Accordion
+
+[accordion.json](accordion.json): A stack of sections with heading triggers that open one at a time, or several with multiple; the panel fades in.
+
+Usage: Use Accordion for a list of sections a user reads or edits one at a time: settings groups, FAQ-style help, the parts of a long connection form. Compose Accordion > AccordionItem (value) > AccordionTrigger + AccordionPanel. defaultValue and value are arrays of open values; multiple lets several stay open. For a single optional block use Collapsible; for views the user switches between, use Tabs.
+
+- Wraps: @base-ui/react/accordion
+- Parts: AccordionItem (data-slot accordion-item): One section; value identifies it, disabled turns it off.; AccordionTrigger (data-slot accordion-trigger): The heading and toggle: an <h3> with a full-width button and a chevron.; AccordionPanel (data-slot accordion-panel): The section's content, shown while open.
+- variant: plain, outline
+- Props: variant ("plain" | "outline", default "plain"); value (unknown[]); defaultValue (unknown[]); onValueChange ((value: unknown[], details) => void); multiple (boolean, default false); disabled (boolean, default false); children (ReactNode); className (string); ref (Ref<HTMLDivElement>)
+- States: open (in-data-panel-open), hover (hover), focus-visible (focus-visible), disabled (data-disabled), entering (data-starting-style), leaving (data-ending-style)
+- Tokens: color.bg.surface, color.border.default, color.fg.default, color.fg.link, color.fg.muted, color.ring, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.md, size.icon.md, size.panel.md, space.inline.md, space.inset.sm, space.inset.xs, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight
+- Accessibility: Each trigger is a <button> inside an <h3>, with aria-expanded and aria-controls naming its panel; Enter and Space toggle it. Triggers are native buttons in the tab order; Tab and Shift+Tab move between them. Base UI's Accordion has no arrow-key navigation between headers (optional in the ARIA accordion pattern). The panel is a region labelled by its trigger and is removed from the DOM while closed. The chevron is aria-hidden; the state is announced through aria-expanded. Its turn stops under prefers-reduced-motion.
+
 ### AlertDialog
 
 [alert-dialog.json](alert-dialog.json): A decision the user must make before going on, on Base UI's AlertDialog: Dialog's scrim and popup with role="alertdialog", no close button and no dismissal by an outside click, a Cancel and an Action in the footer.
@@ -71,6 +85,20 @@ Usage: Use Calendar on its own where the month should stay visible (a history wi
 - Tokens: color.accent.bg, color.accent.bg-active, color.accent.bg-hover, color.accent.fg, color.accent.subtle-bg, color.accent.subtle-fg, color.fg.default, color.fg.disabled, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.ring, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.md, size.control.sm, size.icon.sm, space.inline.sm, space.inline.xl, space.stack.sm, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
 - Accessibility: Each month is a role="grid" named by its month; the days are buttons in gridcells whose labels give the full date and say when it is today or selected (aria-selected on the cell). One day is in the tab order (the chosen day, else today, else the first day); the arrow keys move a day or a week, Home and End to the week's start and end, PageUp and PageDown a month (with Shift a year), and Enter or Space chooses. The caption is a polite live region, so moving to another month announces it; the navigation buttons are named "Go to the Previous Month" and "Go to the Next Month" (the labels prop renames them) and are aria-disabled at the limits. Disabled days are skipped as choices and struck through as well as dimmed; today carries a border and the strong weight besides its colour. Give the calendar an aria-label that says what the date is for; pass a date-fns locale to have the labels in the user's language.
 
+### Card
+
+[card.json](card.json): A bounded surface that groups one subject, with a header (title, description, action), content and a footer; padding follows density.
+
+Usage: Use Card for one subject among several on a page: a connection on the start screen, a saved query, a metric with its Stat. Compose Card > CardHeader (CardTitle, CardDescription, CardAction), CardContent, CardFooter; every part is optional. variant="raised" lifts it off bg.canvas, "inset" makes a quiet group inside another surface. Do not nest cards, and do not use one as a page section with a single child: a heading and Separator are lighter. For a list of many records use Table.
+
+- Wraps: @base-ui/react/use-render
+- Parts: CardHeader (data-slot card-header): The top of the card: title and action on the first line, description below.; CardTitle (data-slot card-title): The heading, an <h3> by default; render another level with render.; CardDescription (data-slot card-description): One or two lines under the title.; CardAction (data-slot card-action): Buttons or a menu trigger at the header's end.; CardContent (data-slot card-content): The body.; CardFooter (data-slot card-footer): Actions or facts at the bottom, in a row that wraps.
+- variant: outline, raised, inset
+- Props: variant ("outline" | "raised" | "inset", default "outline"); children (ReactNode); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: 
+- Tokens: color.bg.inset, color.bg.raised, color.bg.surface, color.border.default, color.border.muted, color.fg.default, color.fg.muted, font.sans, radius.lg, shadow.raised, size.panel.sm, size.panel.xs, space.inline.md, space.inline.sm, space.inline.xs, space.inset.md, space.stack.md, space.stack.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.heading-4.leading, text.heading-4.size, text.heading-4.tracking, text.heading-4.weight
+- Accessibility: A plain grouping element; render an <article> or <section> when the card is a self-contained item or a labelled region. CardTitle is a heading (<h3>), so screen-reader users can jump between cards; pick the level that fits the page with render. Not focusable itself; the controls inside are reached in reading order. Long titles and descriptions wrap (wrap-break-word), so nothing is cut off at any width or density.
+
 ### Checkbox
 
 [checkbox.json](checkbox.json): A checkbox on Base UI's Checkbox, ticked, unticked or mixed, in three sizes, with CheckboxGroup for several checkboxes sharing one value and a parent "select all".
@@ -97,6 +125,19 @@ Usage: Use CodeInput for code that fits in a form: one-line SQL conditions and f
 - States: focused (data-focused), multiline (data-multiline), read-only (data-readonly), invalid (data-invalid), disabled (data-disabled)
 - Tokens: color.bg.inset, color.bg.surface, color.border.strong, color.ring, color.status.danger.border, editor.fg, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, space.control.x, space.inline.md, space.inline.sm, space.inline.xs, space.inset.lg, space.inset.sm
 - Accessibility: The text area is CodeMirror's contenteditable with role textbox and aria-multiline; inside a Field it takes the FieldLabel (aria-labelledby), the description and error (aria-describedby) and aria-invalid from the Field; on its own, give it aria-label. Tab and Shift+Tab always leave the field (no indentation with Tab), so focus is never trapped; a FieldLabel click focuses the text area. Enter submits a one-line field (onSubmit), as in a text input; in a multi-line one it inserts a line break. Ctrl+Z and Ctrl+Shift+Z undo and redo. Read-only and pretty fields stay focusable so the text can be read, selected and copied by keyboard (aria-readonly); disabled ones leave the tab order (aria-disabled). Syntax colours are syntax.* roles, contrast-checked on the editor background in every mode; colour is never the only signal of an error (FieldError text, the danger border). Focus shows a ring of ring.width in color.ring on the frame.
+
+### Collapsible
+
+[collapsible.json](collapsible.json): One section that shows and hides its panel: a quiet text trigger with a turning chevron and a panel that fades in.
+
+Usage: Use Collapsible for one optional block of detail under something else: server notices under a result, advanced connection options, a query plan. Compose Collapsible > CollapsibleTrigger + CollapsiblePanel; control it with open and onOpenChange or start it with defaultOpen. For a list of sections of which one or several open, use Accordion; for detail that only matters on hover, use HoverCard.
+
+- Wraps: @base-ui/react/collapsible
+- Parts: CollapsibleTrigger (data-slot collapsible-trigger): The button that opens and closes the panel; chevron={false} drops the chevron.; CollapsiblePanel (data-slot collapsible-panel): The content shown while open; keepMounted keeps it in the DOM while closed.
+- Props: open (boolean); defaultOpen (boolean, default false); onOpenChange ((open: boolean, details) => void); disabled (boolean, default false); children (ReactNode); className (string); ref (Ref<HTMLDivElement>)
+- States: open (data-panel-open), hover (hover), focus-visible (focus-visible), disabled (data-disabled), entering (data-starting-style), leaving (data-ending-style)
+- Tokens: color.bg.inset, color.fg.default, color.fg.muted, color.ring, font.mono, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, radius.sm, ring.offset, ring.width, size.control.sm, size.icon.sm, space.inline.xs, space.inset.sm, space.inset.xs, space.stack.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: The trigger is a <button> with aria-expanded and aria-controls naming the panel; Enter and Space toggle it. The panel is removed from the DOM (or hidden with keepMounted) while closed, so its content is not read or reached by Tab. The chevron is aria-hidden; the open state is announced through aria-expanded, not the icon. Only opacity changes while opening, and the chevron's turn stops under prefers-reduced-motion.
 
 ### Combobox
 
@@ -389,6 +430,18 @@ Usage: Use RadioGroup when the user must pick exactly one of two to about six op
 - Tokens: color.accent.bg, color.accent.bg-hover, color.accent.fg, color.bg.surface, color.border.strong, color.interactive.hover, color.ring, color.status.danger.border, motion.duration.fast, motion.easing.standard, opacity.disabled, ring.offset, ring.width, size.icon.lg, size.icon.md, size.icon.sm, space.stack.sm
 - Accessibility: Renders a <div role="radiogroup"> named by its FieldLegend (aria-labelledby), with a <span role="radio"> and aria-checked per option, and hidden native inputs for forms. Tab enters the group at the chosen radio (or the first) and leaves it; arrow keys move the choice, skipping disabled radios. Wrap each radio and its text in a FieldLabel: the text chooses it too, which enlarges the target beyond the 14 to 20 px circle (WCAG 2.2 target size). A FieldDescription inside the FieldItem describes that option only. The chosen radio shows a dot as well as the accent fill; the border is color.border.strong (3:1 against the surface). Focus shows a ring of ring.width in color.ring (3:1 on every surface).
 
+### ScrollArea
+
+[scroll-area.json](scroll-area.json): A scroll container with thin themed overlay scrollbars that fade in while hovering or scrolling; the viewport scrolls natively.
+
+Usage: Use ScrollArea for a panel, popover body or log that scrolls inside a fixed height (give it h-full in a sized panel or a max-h-panel-* class). scrollbars picks which bars are drawn; the content scrolls on both axes when it overflows. For long lists, put the virtualized component inside and read the viewport through viewportRef. The page itself should keep the browser's scrollbar.
+
+- Wraps: @base-ui/react/scroll-area
+- Props: children (ReactNode); scrollbars ("vertical" | "horizontal" | "both", default "vertical"); viewportRef (Ref<HTMLDivElement>); onViewportScroll ((event: UIEvent<HTMLDivElement>) => void); aria-label (string); aria-labelledby (string); className (string); ref (Ref<HTMLDivElement>)
+- States: focus-visible (focus-visible), hovering (data-hovering), scrolling (data-scrolling), hover (hover)
+- Tokens: border.width.1, color.border.strong, color.fg.subtle, color.ring, motion.duration.base, motion.easing.standard, ring.width, size.track
+- Accessibility: The viewport scrolls natively, so wheel, touch, and the arrow, Page and Home/End keys work once it has focus. When the content overflows the viewport is in the tab order (tabIndex 0) and shows a focus ring, so keyboard users can scroll it. Pass aria-label or aria-labelledby when the region needs a name; the viewport then has role="region". The overlay scrollbars are pointer aids; they are not focusable and carry no information the keyboard lacks.
+
 ### SearchInput
 
 [search-input.json](search-input.json): A search box on InputGroup and Base UI's Input: a search icon, type="search", and a Clear button (and Escape) while there is text, in three density-aware sizes.
@@ -415,6 +468,19 @@ Usage: Use Select when the user picks one value from a fixed list of about five 
 - States: focus-visible (focus-visible), open (data-popup-open), entering (data-starting-style), placeholder (data-placeholder), highlighted (data-highlighted), invalid (data-invalid), disabled (data-disabled)
 - Tokens: color.bg.overlay, color.bg.surface, color.border.default, color.border.focus, color.border.strong, color.fg.default, color.fg.disabled, color.fg.muted, color.fg.subtle, color.interactive.hover, color.ring, color.status.danger.border, elevation.overlay.shadow, font.sans, motion.duration.fast, motion.easing.enter, motion.easing.exit, motion.easing.standard, opacity.disabled, radius.md, radius.sm, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.control.xs, size.icon.sm, space.control.x, space.inline.sm, space.inset.lg, space.inset.sm, space.inset.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, z.popover
 - Accessibility: The trigger is a <button role="combobox"> with aria-haspopup="listbox" and aria-expanded, named by its FieldLabel (aria-labelledby) or aria-label; the popup is a role="listbox" of role="option" items with aria-selected. Enter, Space, ArrowDown and ArrowUp open the popup; arrow keys, Home and End move the highlight, typing jumps to the option that starts with the text, Enter chooses and Escape closes, and focus returns to the trigger. Disabled options are skipped by the keyboard and shown in color.fg.disabled; a group's label names the group (aria-labelledby). The chosen option shows a check mark as well as its place in the trigger, so the state does not rest on colour; the trigger border is color.border.strong (3:1 against the surface). The popup takes the trigger's theme and density even when they are set on a region rather than <html>, so its contrast matches the page it opened from.
+
+### Separator
+
+[separator.json](separator.json): A thin rule between groups of content, horizontal or vertical, in a border role at border.width.1.
+
+Usage: Use Separator between sections of a panel, between groups of controls in a Toolbar or StatusBar (orientation="vertical"), or between the facts of a summary line. It is announced as a separator; for pure decoration use a border on the container instead. Between resizable panes use Resizable's handle, not a Separator.
+
+- Wraps: @base-ui/react/separator
+- variant: default, muted, strong
+- Props: variant ("default" | "muted" | "strong", default "default"); orientation ("horizontal" | "vertical", default "horizontal"); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLDivElement>)
+- States: horizontal (data-[orientation=horizontal]), vertical (data-[orientation=vertical])
+- Tokens: border.width.1, color.border.default, color.border.muted, color.border.strong
+- Accessibility: Renders a <div role="separator"> with aria-orientation; screen readers announce the boundary between groups. Not focusable and not interactive (a movable pane divider is Resizable's handle). Thickness is border.width.1 and colour a border role, so it never carries information on its own.
 
 ### Sheet
 

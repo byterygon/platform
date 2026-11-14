@@ -1,0 +1,151 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "scroll-area",
+  "type": "registry:ui",
+  "title": "ScrollArea",
+  "description": "A scroll container with thin themed overlay scrollbars that fade in while hovering or scrolling; the viewport scrolls natively.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/scroll-area.tsx",
+      "type": "registry:ui",
+      "content": "import { ScrollArea as ScrollAreaPrimitive } from \"@base-ui/react/scroll-area\";\nimport type { CSSProperties, ReactNode, Ref, UIEvent } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// A scroll container with thin overlay scrollbars that match the theme, on Base UI's ScrollArea:\n// the viewport scrolls natively (wheel, touch, keyboard once focused), the scrollbars are drawn\n// on top and fade in while hovering or scrolling. Give it a height (h-full in a sized panel,\n// max-h-panel-sm). The viewport is the element that scrolls: `viewportRef` reaches it, so a\n// virtualized list can read its scrollTop and clientHeight.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const scrollAreaVariants = {} as const;\n\nconst classes = {\n  root: \"relative flex min-h-0 min-w-0 flex-col overflow-hidden\",\n  viewport: [\n    \"min-h-0 flex-1 overscroll-contain outline-none\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n  ],\n  content: \"min-w-full\",\n  scrollbar: [\n    \"pointer-events-none absolute flex touch-none select-none p-[var(--by-border-width-1)] opacity-0\",\n    \"transition-opacity duration-[var(--by-motion-duration-base)] ease-standard\",\n    \"data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100\",\n    \"data-[orientation=vertical]:inset-y-0 data-[orientation=vertical]:inset-e-0 data-[orientation=vertical]:w-track\",\n    \"data-[orientation=horizontal]:inset-x-0 data-[orientation=horizontal]:bottom-0 data-[orientation=horizontal]:h-track\",\n    // Kept mounted; a bar whose axis does not overflow stays invisible.\n    \"data-[orientation=vertical]:not-data-has-overflow-y:invisible data-[orientation=horizontal]:not-data-has-overflow-x:invisible\",\n  ],\n  thumb: \"w-full rounded-full bg-border-strong hover:bg-fg-subtle\",\n} as const;\n\n// Base UI measures the thumb and publishes its length as a run-time variable; it is not a token.\nconst thumbStyle: Record<\"vertical\" | \"horizontal\", CSSProperties> = {\n  vertical: { height: \"var(--scroll-area-thumb-height)\" },\n  horizontal: { width: \"var(--scroll-area-thumb-width)\", height: \"100%\" },\n};\n\nexport interface ScrollAreaProps extends Omit<ScrollAreaPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** The scrolling content. */\n  children?: ReactNode;\n  /** Which scrollbars to draw. The viewport scrolls on both axes whenever its content overflows. */\n  scrollbars?: \"vertical\" | \"horizontal\" | \"both\";\n  /** Reaches the viewport, the element that scrolls (read scrollTop and clientHeight here). */\n  viewportRef?: Ref<HTMLDivElement>;\n  /** Called when the viewport scrolls. */\n  onViewportScroll?: (event: UIEvent<HTMLDivElement>) => void;\n  /** Names the scrolling region; the viewport then has role=\"region\". */\n  \"aria-label\"?: string;\n  /** Names the scrolling region by another element's id; the viewport then has role=\"region\". */\n  \"aria-labelledby\"?: string;\n  /** Extra classes on the root (give it a height), merged after the component's own. */\n  className?: string;\n}\n\n/**\n * A scroll container with themed overlay scrollbars, on Base UI's ScrollArea. The ref reaches the\n * root; `viewportRef` the viewport that scrolls, which is focusable when its content overflows.\n */\nexport function ScrollArea({\n  children,\n  scrollbars = \"vertical\",\n  viewportRef,\n  onViewportScroll,\n  \"aria-label\": ariaLabel,\n  \"aria-labelledby\": ariaLabelledBy,\n  className,\n  ...props\n}: ScrollAreaProps) {\n  const labelled = ariaLabel !== undefined || ariaLabelledBy !== undefined;\n  return (\n    <ScrollAreaPrimitive.Root data-slot=\"scroll-area\" className={cn(classes.root, className)} {...props}>\n      <ScrollAreaPrimitive.Viewport\n        ref={viewportRef}\n        data-slot=\"scroll-area-viewport\"\n        role={labelled ? \"region\" : undefined}\n        aria-label={ariaLabel}\n        aria-labelledby={ariaLabelledBy}\n        onScroll={onViewportScroll}\n        className={cn(classes.viewport)}\n      >\n        <ScrollAreaPrimitive.Content data-slot=\"scroll-area-content\" className={classes.content}>\n          {children}\n        </ScrollAreaPrimitive.Content>\n      </ScrollAreaPrimitive.Viewport>\n      {scrollbars !== \"horizontal\" ? <ScrollAreaScrollbar orientation=\"vertical\" /> : null}\n      {scrollbars !== \"vertical\" ? <ScrollAreaScrollbar orientation=\"horizontal\" /> : null}\n    </ScrollAreaPrimitive.Root>\n  );\n}\n\nexport interface ScrollAreaScrollbarProps {\n  orientation: \"vertical\" | \"horizontal\";\n}\n\n/** One overlay scrollbar with its thumb; ScrollArea renders the ones `scrollbars` asks for. */\nexport function ScrollAreaScrollbar({ orientation }: ScrollAreaScrollbarProps) {\n  return (\n    <ScrollAreaPrimitive.Scrollbar data-slot=\"scroll-area-scrollbar\" orientation={orientation} keepMounted className={cn(classes.scrollbar)}>\n      <ScrollAreaPrimitive.Thumb data-slot=\"scroll-area-thumb\" style={thumbStyle[orientation]} className={cn(classes.thumb)} />\n    </ScrollAreaPrimitive.Scrollbar>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "scroll-area",
+      "title": "ScrollArea",
+      "description": "A scroll container with thin themed overlay scrollbars that fade in while hovering or scrolling; the viewport scrolls natively.",
+      "usage": "Use ScrollArea for a panel, popover body or log that scrolls inside a fixed height (give it h-full in a sized panel or a max-h-panel-* class). scrollbars picks which bars are drawn; the content scrolls on both axes when it overflows. For long lists, put the virtualized component inside and read the viewport through viewportRef. The page itself should keep the browser's scrollbar.",
+      "status": "experimental",
+      "base": "@base-ui/react/scroll-area",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "The scrolling content."
+        },
+        {
+          "name": "scrollbars",
+          "type": "\"vertical\" | \"horizontal\" | \"both\"",
+          "default": "vertical",
+          "description": "Which overlay scrollbars to draw."
+        },
+        {
+          "name": "viewportRef",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the viewport, the element that scrolls."
+        },
+        {
+          "name": "onViewportScroll",
+          "type": "(event: UIEvent<HTMLDivElement>) => void",
+          "description": "Called when the viewport scrolls."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Names the scrolling region; the viewport gets role=\"region\"."
+        },
+        {
+          "name": "aria-labelledby",
+          "type": "string",
+          "description": "Names the region by another element's id."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes on the root; give it a height."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The frame; data-slot=\"scroll-area\", Base UI's data-has-overflow-x/y and data-scrolling."
+        },
+        {
+          "name": "viewport",
+          "element": "div",
+          "description": "The element that scrolls, focusable when its content overflows; data-slot=\"scroll-area-viewport\"."
+        },
+        {
+          "name": "content",
+          "element": "div",
+          "description": "Wraps the children, at least as wide as the viewport; data-slot=\"scroll-area-content\"."
+        },
+        {
+          "name": "scrollbar",
+          "element": "div",
+          "description": "An overlay scrollbar of size.track, shown while hovering or scrolling; data-slot=\"scroll-area-scrollbar\", data-orientation."
+        },
+        {
+          "name": "thumb",
+          "element": "div",
+          "description": "The thumb in color.border.strong; data-slot=\"scroll-area-thumb\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on the viewport: an inset ring of ring.width in color.ring."
+        },
+        {
+          "name": "hovering",
+          "variant": "data-hovering",
+          "description": "Pointer over the area: the scrollbars fade in."
+        },
+        {
+          "name": "scrolling",
+          "variant": "data-scrolling",
+          "description": "While scrolling: the scrollbars fade in."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over the thumb: color.fg.subtle."
+        }
+      ],
+      "tokens": [
+        "border.width.1",
+        "color.border.strong",
+        "color.fg.subtle",
+        "color.ring",
+        "motion.duration.base",
+        "motion.easing.standard",
+        "ring.width",
+        "size.track"
+      ],
+      "examples": {
+        "minimal": "ScrollAreaMinimal",
+        "realistic": "ScrollAreaRealistic"
+      },
+      "accessibility": [
+        "The viewport scrolls natively, so wheel, touch, and the arrow, Page and Home/End keys work once it has focus.",
+        "When the content overflows the viewport is in the tab order (tabIndex 0) and shows a focus ring, so keyboard users can scroll it.",
+        "Pass aria-label or aria-labelledby when the region needs a name; the viewport then has role=\"region\".",
+        "The overlay scrollbars are pointer aids; they are not focusable and carry no information the keyboard lacks."
+      ]
+    },
+    "example": "import { ScrollArea } from \"@/components/scroll-area/scroll-area\";\n\nconst notices = Array.from({ length: 40 }, (_, i) => `NOTICE ${String(i + 1).padStart(2, \"0\")}: relation \"orders_${i}\" already exists, skipping`);\n\n/** The smallest useful ScrollArea: a fixed-height list that scrolls. */\nexport function ScrollAreaMinimal() {\n  return (\n    <ScrollArea aria-label=\"Notices\" className=\"h-panel-xs w-panel-sm rounded-md border border-border\">\n      <ul className=\"flex flex-col gap-stack-xs p-inset-sm text-body text-fg\">\n        {notices.map((notice) => (\n          <li key={notice}>{notice}</li>\n        ))}\n      </ul>\n    </ScrollArea>\n  );\n}\n\n/** A server log in a results panel: long unbroken lines scroll sideways, both scrollbars drawn. */\nexport function ScrollAreaRealistic() {\n  return (\n    <ScrollArea scrollbars=\"both\" aria-label=\"Server log\" className=\"h-panel-xs max-w-panel-md rounded-md border border-border bg-inset\">\n      <pre className=\"p-inset-sm font-mono text-code text-fg\">\n        {notices.map((notice, i) => `2026-11-14 09:${String(i).padStart(2, \"0\")}:00.000 UTC [4812] ${notice} (statement: create table if not exists orders_${i} (id bigint primary key, payload jsonb not null))`).join(\"\\n\")}\n      </pre>\n    </ScrollArea>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

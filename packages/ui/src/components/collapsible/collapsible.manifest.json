@@ -1,0 +1,165 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "collapsible",
+  "title": "Collapsible",
+  "description": "One section that shows and hides its panel: a quiet text trigger with a turning chevron and a panel that fades in.",
+  "usage": "Use Collapsible for one optional block of detail under something else: server notices under a result, advanced connection options, a query plan. Compose Collapsible > CollapsibleTrigger + CollapsiblePanel; control it with open and onOpenChange or start it with defaultOpen. For a list of sections of which one or several open, use Accordion; for detail that only matters on hover, use HoverCard.",
+  "status": "experimental",
+  "base": "@base-ui/react/collapsible",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "open",
+      "type": "boolean",
+      "description": "Open state (controlled)."
+    },
+    {
+      "name": "defaultOpen",
+      "type": "boolean",
+      "default": false,
+      "description": "Initial open state (uncontrolled)."
+    },
+    {
+      "name": "onOpenChange",
+      "type": "(open: boolean, details) => void",
+      "description": "Called when the trigger opens or closes it."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "The trigger does nothing and is dimmed."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "CollapsibleTrigger and CollapsiblePanel."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes on the root, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root <div>."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The section; data-slot=\"collapsible\", data-open when open."
+    },
+    {
+      "name": "trigger",
+      "element": "button",
+      "description": "The toggle; data-slot=\"collapsible-trigger\", data-panel-open, aria-expanded, aria-controls."
+    },
+    {
+      "name": "chevron",
+      "element": "span",
+      "description": "The chevron, turned a quarter while open; data-slot=\"collapsible-chevron\"."
+    },
+    {
+      "name": "panel",
+      "element": "div",
+      "description": "The content; data-slot=\"collapsible-panel\", data-open, data-starting-style and data-ending-style while it fades."
+    }
+  ],
+  "parts": [
+    {
+      "name": "CollapsibleTrigger",
+      "slot": "collapsible-trigger",
+      "description": "The button that opens and closes the panel; chevron={false} drops the chevron."
+    },
+    {
+      "name": "CollapsiblePanel",
+      "slot": "collapsible-panel",
+      "description": "The content shown while open; keepMounted keeps it in the DOM while closed."
+    }
+  ],
+  "states": [
+    {
+      "name": "open",
+      "variant": "data-panel-open",
+      "description": "Open: the trigger in color.fg.default and the chevron turned."
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over the trigger: color.fg.default."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the trigger: a ring of ring.width in color.ring."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "props": {
+        "disabled": true
+      },
+      "description": "The trigger ignores interaction, at opacity.disabled."
+    },
+    {
+      "name": "entering",
+      "variant": "data-starting-style",
+      "description": "The panel fades in from opacity 0."
+    },
+    {
+      "name": "leaving",
+      "variant": "data-ending-style",
+      "description": "The panel fades out to opacity 0."
+    }
+  ],
+  "tokens": [
+    "color.bg.inset",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.ring",
+    "font.mono",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "radius.sm",
+    "ring.offset",
+    "ring.width",
+    "size.control.sm",
+    "size.icon.sm",
+    "space.inline.xs",
+    "space.inset.sm",
+    "space.inset.xs",
+    "space.stack.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "CollapsibleMinimal",
+    "realistic": "CollapsibleRealistic"
+  },
+  "accessibility": [
+    "The trigger is a <button> with aria-expanded and aria-controls naming the panel; Enter and Space toggle it.",
+    "The panel is removed from the DOM (or hidden with keepMounted) while closed, so its content is not read or reached by Tab.",
+    "The chevron is aria-hidden; the open state is announced through aria-expanded, not the icon.",
+    "Only opacity changes while opening, and the chevron's turn stops under prefers-reduced-motion."
+  ]
+}

@@ -1,0 +1,160 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "card",
+  "title": "Card",
+  "description": "A bounded surface that groups one subject, with a header (title, description, action), content and a footer; padding follows density.",
+  "usage": "Use Card for one subject among several on a page: a connection on the start screen, a saved query, a metric with its Stat. Compose Card > CardHeader (CardTitle, CardDescription, CardAction), CardContent, CardFooter; every part is optional. variant=\"raised\" lifts it off bg.canvas, \"inset\" makes a quiet group inside another surface. Do not nest cards, and do not use one as a page section with a single child: a heading and Separator are lighter. For a list of many records use Table.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"outline\" | \"raised\" | \"inset\"",
+      "default": "outline",
+      "description": "outline on the page surface, raised with elevation, inset for a quiet group."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "The card's parts."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render an <article> or <section> instead of the <div>."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "outline",
+      "raised",
+      "inset"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The surface; data-slot=\"card\", data-variant."
+    },
+    {
+      "name": "header",
+      "element": "div",
+      "description": "Title and action on one line, the description below; data-slot=\"card-header\"."
+    },
+    {
+      "name": "title",
+      "element": "h3",
+      "description": "The heading in text.heading-4; wraps long names; data-slot=\"card-title\"."
+    },
+    {
+      "name": "description",
+      "element": "p",
+      "description": "Secondary text in text.caption, color.fg.muted; data-slot=\"card-description\"."
+    },
+    {
+      "name": "action",
+      "element": "div",
+      "description": "Controls at the header's end; data-slot=\"card-action\"."
+    },
+    {
+      "name": "content",
+      "element": "div",
+      "description": "The body; data-slot=\"card-content\"."
+    },
+    {
+      "name": "footer",
+      "element": "div",
+      "description": "A wrapping row of actions; data-slot=\"card-footer\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "CardHeader",
+      "slot": "card-header",
+      "description": "The top of the card: title and action on the first line, description below."
+    },
+    {
+      "name": "CardTitle",
+      "slot": "card-title",
+      "description": "The heading, an <h3> by default; render another level with render."
+    },
+    {
+      "name": "CardDescription",
+      "slot": "card-description",
+      "description": "One or two lines under the title."
+    },
+    {
+      "name": "CardAction",
+      "slot": "card-action",
+      "description": "Buttons or a menu trigger at the header's end."
+    },
+    {
+      "name": "CardContent",
+      "slot": "card-content",
+      "description": "The body."
+    },
+    {
+      "name": "CardFooter",
+      "slot": "card-footer",
+      "description": "Actions or facts at the bottom, in a row that wraps."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.bg.inset",
+    "color.bg.raised",
+    "color.bg.surface",
+    "color.border.default",
+    "color.border.muted",
+    "color.fg.default",
+    "color.fg.muted",
+    "font.sans",
+    "radius.lg",
+    "shadow.raised",
+    "size.panel.sm",
+    "size.panel.xs",
+    "space.inline.md",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.md",
+    "space.stack.md",
+    "space.stack.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.heading-4.leading",
+    "text.heading-4.size",
+    "text.heading-4.tracking",
+    "text.heading-4.weight"
+  ],
+  "examples": {
+    "minimal": "CardMinimal",
+    "realistic": "CardRealistic"
+  },
+  "accessibility": [
+    "A plain grouping element; render an <article> or <section> when the card is a self-contained item or a labelled region.",
+    "CardTitle is a heading (<h3>), so screen-reader users can jump between cards; pick the level that fits the page with render.",
+    "Not focusable itself; the controls inside are reached in reading order.",
+    "Long titles and descriptions wrap (wrap-break-word), so nothing is cut off at any width or density."
+  ]
+}

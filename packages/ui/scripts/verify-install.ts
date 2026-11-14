@@ -44,6 +44,7 @@ const ITEMS = [
   "breadcrumb", "pagination", "stepper", "navigation-menu",
   "sidebar", "tree",
   "sql-editor", "code-input",
+  "separator", "scroll-area", "card", "collapsible", "accordion",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -173,6 +174,11 @@ import { Pagination } from "@/components/ui/pagination";
 import { Sidebar, SidebarContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Stepper } from "@/components/ui/stepper";
 import { Tree } from "@/components/ui/tree";
+import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/components/ui/accordion";
+import { Card as ByCard, CardAction, CardDescription, CardFooter, CardContent as ByCardContent, CardHeader as ByCardHeader, CardTitle as ByCardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { SqlEditor } from "@/components/ui/sql-editor";
 import { CodeInput } from "@/components/ui/code-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -305,6 +311,24 @@ function Overlays() {
   );
 }
 
+function Layout() {
+  return (
+    <ByCard variant="raised">
+      <ByCardHeader><ByCardTitle>orders-prod</ByCardTitle><CardDescription>Read-only</CardDescription><CardAction><Button size="sm">Edit</Button></CardAction></ByCardHeader>
+      <ByCardContent>
+        <ScrollArea aria-label="Notices" scrollbars="both"><p>NOTICE: relation already exists</p></ScrollArea>
+        <Separator />
+        <Collapsible defaultOpen><CollapsibleTrigger>1 notice</CollapsibleTrigger><CollapsiblePanel>Skipped.</CollapsiblePanel></Collapsible>
+        <Separator orientation="vertical" variant="strong" />
+        <Accordion variant="outline" defaultValue={["tls"]}>
+          <AccordionItem value="tls"><AccordionTrigger>TLS</AccordionTrigger><AccordionPanel>Verified.</AccordionPanel></AccordionItem>
+        </Accordion>
+      </ByCardContent>
+      <CardFooter><Button size="sm">Connect</Button></CardFooter>
+    </ByCard>
+  );
+}
+
 function Connection() {
   const form = useForm({ defaultValues: { host: "" } });
   return (
@@ -388,6 +412,7 @@ createRoot(document.getElementById("root")!).render(
     <Input aria-label="Byterygon input" />
     <Connection />
     <Overlays />
+    <Layout />
     <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
     <Field><FieldLabel>Filter</FieldLabel><CodeInput language="sql" defaultValue="id = 1" onSubmit={(v) => console.log(v)} /></Field>
     <CodeInput aria-label="Cell value" language="json" pretty value='{"id":1}' />
@@ -539,6 +564,9 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["data-[status=error]:text-danger-fg", "color", "color.status.danger.fg", "Byterygon Stepper failed step"],
   ["w-panel-xs", "width", "size.panel.xs", "Byterygon Sidebar width"],
   ["h-control-sm", "height", "size.control.sm", "Byterygon Tree row (density)"],
+  ["py-inset-md", "padding-block", "space.inset.md", "Byterygon Card padding (density)"],
+  ["data-[orientation=vertical]:w-track", "width", "size.track", "Byterygon ScrollArea scrollbar"],
+  ["data-[orientation=horizontal]:h-[var(--by-border-width-1)]", "height", "border.width.1", "Byterygon Separator"],
   ["bg-editor", "background-color", "editor.bg", "Byterygon SqlEditor frame"],
   ["p-inset-sm", "padding", "space.inset.sm", "Byterygon SqlEditor fallback (density)"],
   ["data-readonly:bg-inset", "background-color", "color.bg.inset", "Byterygon CodeInput read-only and pretty"],

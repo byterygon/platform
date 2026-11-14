@@ -1,0 +1,197 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "accordion",
+  "title": "Accordion",
+  "description": "A stack of sections with heading triggers that open one at a time, or several with multiple; the panel fades in.",
+  "usage": "Use Accordion for a list of sections a user reads or edits one at a time: settings groups, FAQ-style help, the parts of a long connection form. Compose Accordion > AccordionItem (value) > AccordionTrigger + AccordionPanel. defaultValue and value are arrays of open values; multiple lets several stay open. For a single optional block use Collapsible; for views the user switches between, use Tabs.",
+  "status": "experimental",
+  "base": "@base-ui/react/accordion",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"plain\" | \"outline\"",
+      "default": "plain",
+      "description": "plain separates sections by rules; outline frames them in a bordered surface."
+    },
+    {
+      "name": "value",
+      "type": "unknown[]",
+      "description": "Open item values (controlled)."
+    },
+    {
+      "name": "defaultValue",
+      "type": "unknown[]",
+      "description": "Open item values at first (uncontrolled)."
+    },
+    {
+      "name": "onValueChange",
+      "type": "(value: unknown[], details) => void",
+      "description": "Called with the open values when a section opens or closes."
+    },
+    {
+      "name": "multiple",
+      "type": "boolean",
+      "default": false,
+      "description": "Several sections may be open at once."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Disables every section (AccordionItem takes disabled for one)."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "AccordionItems."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes on the root, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root <div>."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "plain",
+      "outline"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The stack; data-slot=\"accordion\", data-variant."
+    },
+    {
+      "name": "item",
+      "element": "div",
+      "description": "One section, ruled off from the next; data-slot=\"accordion-item\", data-open, data-disabled."
+    },
+    {
+      "name": "header",
+      "element": "h3",
+      "description": "The heading around the trigger; data-slot=\"accordion-header\"."
+    },
+    {
+      "name": "trigger",
+      "element": "button",
+      "description": "The full-width toggle in text.body-strong; data-slot=\"accordion-trigger\", data-panel-open."
+    },
+    {
+      "name": "chevron",
+      "element": "span",
+      "description": "The chevron, turned while open; data-slot=\"accordion-chevron\"."
+    },
+    {
+      "name": "panel",
+      "element": "div",
+      "description": "The content; data-slot=\"accordion-panel\", data-open."
+    }
+  ],
+  "parts": [
+    {
+      "name": "AccordionItem",
+      "slot": "accordion-item",
+      "description": "One section; value identifies it, disabled turns it off."
+    },
+    {
+      "name": "AccordionTrigger",
+      "slot": "accordion-trigger",
+      "description": "The heading and toggle: an <h3> with a full-width button and a chevron."
+    },
+    {
+      "name": "AccordionPanel",
+      "slot": "accordion-panel",
+      "description": "The section's content, shown while open."
+    }
+  ],
+  "states": [
+    {
+      "name": "open",
+      "variant": "in-data-panel-open",
+      "props": {
+        "defaultValue": [
+          "network"
+        ]
+      },
+      "description": "Open: the chevron points up."
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over a trigger: color.fg.link."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on a trigger: a ring of ring.width in color.ring."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "props": {
+        "disabled": true
+      },
+      "description": "Ignores interaction, at opacity.disabled."
+    },
+    {
+      "name": "entering",
+      "variant": "data-starting-style",
+      "description": "The panel fades in from opacity 0."
+    },
+    {
+      "name": "leaving",
+      "variant": "data-ending-style",
+      "description": "The panel fades out to opacity 0."
+    }
+  ],
+  "tokens": [
+    "color.bg.surface",
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.link",
+    "color.fg.muted",
+    "color.ring",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.md",
+    "size.icon.md",
+    "size.panel.md",
+    "space.inline.md",
+    "space.inset.sm",
+    "space.inset.xs",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight"
+  ],
+  "examples": {
+    "minimal": "AccordionMinimal",
+    "realistic": "AccordionRealistic"
+  },
+  "accessibility": [
+    "Each trigger is a <button> inside an <h3>, with aria-expanded and aria-controls naming its panel; Enter and Space toggle it.",
+    "Triggers are native buttons in the tab order; Tab and Shift+Tab move between them. Base UI's Accordion has no arrow-key navigation between headers (optional in the ARIA accordion pattern).",
+    "The panel is a region labelled by its trigger and is removed from the DOM while closed.",
+    "The chevron is aria-hidden; the state is announced through aria-expanded. Its turn stops under prefers-reduced-motion."
+  ]
+}
