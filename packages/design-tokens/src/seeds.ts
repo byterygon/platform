@@ -22,8 +22,14 @@ export const DEFAULT_SEEDS: Seeds = {
     amber: { hue: 75, chroma: 0.15, solid: { light: 0.8, dark: 0.8 } },
     green: { hue: 150, chroma: 0.14 },
     blue: { hue: 255, chroma: 0.17 },
+    // Hues the status ramps leave open: syntax, data types and chart series need more than six.
+    violet: { hue: 305, chroma: 0.15 },
+    orange: { hue: 55, chroma: 0.16 },
+    teal: { hue: 190, chroma: 0.11 },
+    pink: { hue: 350, chroma: 0.16 },
   },
   radius: 6,
+  fontSize: 14,
   colorScheme: "light",
   density: "comfortable",
   contrast: { level: "AA" },
@@ -38,8 +44,8 @@ export interface ResolvedSeeds extends Omit<Seeds, "colors"> {
 const RESERVED_RAMPS = new Set(["base", "white", "black"]);
 const RAMP_NAME = /^[a-z][a-z0-9]*$/;
 
-const SEED_KEYS = ["colors", "radius", "colorScheme", "density", "contrast"] as const;
-const RAMP_KEYS = ["hue", "chroma", "solid"] as const;
+const SEED_KEYS = ["colors", "radius", "fontSize", "colorScheme", "density", "contrast"] as const;
+const RAMP_KEYS = ["hue", "chroma", "solid", "tint"] as const;
 
 export function resolveSeeds(input: SeedsInput | undefined): { seeds: ResolvedSeeds; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];
@@ -85,7 +91,7 @@ export function resolveSeeds(input: SeedsInput | undefined): { seeds: ResolvedSe
   if (colorsInput !== undefined && !isPlainObject(colorsInput)) error("seeds.colors", "seeds.colors must be an object");
   const colorSources: Record<string, unknown> = isPlainObject(colorsInput) ? colorsInput : {};
   const names = [...new Set([...Object.keys(DEFAULT_SEEDS.colors), ...Object.keys(colorSources)])];
-  const partial = new Map<string, { hue?: number; chroma: number; solid?: { light?: number; dark?: number } }>();
+  const partial = new Map<string, { hue?: number; chroma: number; solid?: { light?: number; dark?: number }; tint?: number }>();
 
   for (const name of names) {
     const path = `seeds.colors.${name}`;
@@ -114,9 +120,10 @@ export function resolveSeeds(input: SeedsInput | undefined): { seeds: ResolvedSe
       error(`${path}.hue`, `${path} needs a hue`, { required: "0..360", fix: { summary: "Add hue in OKLCH degrees, for example 230." } });
       continue;
     }
-    const ramp: { hue?: number; chroma: number; solid?: { light?: number; dark?: number } } = {
+    const ramp: { hue?: number; chroma: number; solid?: { light?: number; dark?: number }; tint?: number } = {
       chroma: number(`${path}.chroma`, fields["chroma"], 0, 0.4, 0),
     };
+    if (fields["tint"] !== undefined) ramp.tint = number(`${path}.tint`, fields["tint"], 0, 0.1, 0);
     if (fields["hue"] !== undefined) ramp.hue = number(`${path}.hue`, fields["hue"], 0, 360, 0);
     const solid = fields["solid"];
     if (solid !== undefined) {
@@ -138,7 +145,12 @@ export function resolveSeeds(input: SeedsInput | undefined): { seeds: ResolvedSe
   const brandHue = partial.get("brand")?.hue ?? (DEFAULT_SEEDS.colors["brand"] as RampSeed).hue;
   const colors: Record<string, RampSeed> = {};
   for (const [name, ramp] of partial) {
-    colors[name] = { hue: ramp.hue ?? brandHue, chroma: ramp.chroma, ...(ramp.solid ? { solid: ramp.solid } : {}) };
+    colors[name] = {
+      hue: ramp.hue ?? brandHue,
+      chroma: ramp.chroma,
+      ...(ramp.solid ? { solid: ramp.solid } : {}),
+      ...(ramp.tint !== undefined ? { tint: ramp.tint } : {}),
+    };
   }
 
   const contrastInput = source["contrast"];
@@ -166,6 +178,7 @@ export function resolveSeeds(input: SeedsInput | undefined): { seeds: ResolvedSe
   const seeds: ResolvedSeeds = {
     colors,
     radius: number("seeds.radius", source["radius"], 0, 32, DEFAULT_SEEDS.radius),
+    fontSize: number("seeds.fontSize", source["fontSize"], 11, 18, DEFAULT_SEEDS.fontSize),
     colorScheme: oneOf("seeds.colorScheme", source["colorScheme"], ["light", "dark"] as const, DEFAULT_SEEDS.colorScheme),
     density: oneOf("seeds.density", source["density"], ["comfortable", "compact"] as const, DEFAULT_SEEDS.density),
     contrast: apca ? { level, apca } : { level },

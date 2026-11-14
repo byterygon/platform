@@ -1,0 +1,17 @@
+{
+  "$schema": "../theme.schema.json",
+  "schemaVersion": 1,
+  "name": "slate",
+  "description": "Slate: near-greyscale and minimal. A muted slate-blue accent on a barely tinted neutral, square-ish corners, light by default, comfortable density.",
+  "seeds": {
+    "colors": {
+      "neutral": { "chroma": 0.012 },
+      "brand": { "hue": 255, "chroma": 0.045 }
+    },
+    "radius": 4,
+    "colorScheme": "light",
+    "density": "comfortable",
+    "contrast": { "level": "AA" }
+  },
+  "overrides": {}
+}

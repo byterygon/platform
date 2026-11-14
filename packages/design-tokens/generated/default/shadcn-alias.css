@@ -27,8 +27,22 @@
   --accent: var(--by-color-interactive-hover);
   --accent-foreground: var(--by-color-fg-default);
   --destructive: var(--by-color-status-danger-solid);
+  --destructive-foreground: var(--by-color-status-danger-solid-fg);
   --border: var(--by-color-border-default);
   --input: var(--by-color-border-strong);
   --ring: var(--by-color-ring);
   --radius: var(--by-radius-md);
+  --chart-1: var(--by-chart-cat-1);
+  --chart-2: var(--by-chart-cat-2);
+  --chart-3: var(--by-chart-cat-3);
+  --chart-4: var(--by-chart-cat-4);
+  --chart-5: var(--by-chart-cat-5);
+  --sidebar: var(--by-color-bg-inset);
+  --sidebar-foreground: var(--by-color-fg-default);
+  --sidebar-primary: var(--by-color-accent-bg);
+  --sidebar-primary-foreground: var(--by-color-fg-on-accent);
+  --sidebar-accent: var(--by-color-interactive-hover);
+  --sidebar-accent-foreground: var(--by-color-fg-default);
+  --sidebar-border: var(--by-color-border-default);
+  --sidebar-ring: var(--by-color-ring);
 }

@@ -37,8 +37,11 @@ export interface RoleDef {
   /** Dot path; becomes the CSS variable `--by-` plus the path joined with dashes. */
   readonly path: string;
   readonly type: TokenType;
-  /** `semantic` unless stated. */
-  readonly tier?: Exclude<Tier, "primitive">;
+  /**
+   * `semantic` unless stated. A `primitive` role holds a literal (a number a seed drives, a
+   * duration, a scale step) and is referenced by roles, never by components.
+   */
+  readonly tier?: Tier;
   /** The value, or a function of the seeds for roles a seed drives (radius). */
   readonly value: RoleValue | ((seeds: ResolvedSeeds) => RoleValue);
   /** When to use the token. A full sentence. */

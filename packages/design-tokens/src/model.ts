@@ -178,6 +178,8 @@ export interface Seeds {
   readonly colors: Readonly<Record<string, RampSeed | NeutralSeed>>;
   /** Corner radius of a medium control, in px. */
   readonly radius: number;
+  /** Size of body text in px; the type scale (`font.size.*`) is derived from it. */
+  readonly fontSize: number;
   /** The colour scheme `:root` gets. */
   readonly colorScheme: "light" | "dark";
   /** The density `:root` gets. */
@@ -192,6 +194,7 @@ export interface Seeds {
 export interface SeedsInput {
   readonly colors?: Readonly<Record<string, Partial<RampSeed>>>;
   readonly radius?: number;
+  readonly fontSize?: number;
   readonly colorScheme?: "light" | "dark";
   readonly density?: "comfortable" | "compact";
   readonly contrast?: {

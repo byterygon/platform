@@ -1,0 +1,23 @@
+{
+  "$schema": "../theme.schema.json",
+  "schemaVersion": 1,
+  "name": "high-contrast",
+  "description": "High contrast: WCAG 2.2 AAA (7:1 text, 4.5:1 for controls and focus), pure grey neutral, a deep blue accent and a thick focus ring. Comfortable density.",
+  "seeds": {
+    "colors": {
+      "neutral": { "chroma": 0 },
+      "brand": { "hue": 250, "chroma": 0.15 },
+      "orange": { "chroma": 0.117 },
+      "teal": { "chroma": 0.0786 }
+    },
+    "radius": 2,
+    "colorScheme": "light",
+    "density": "comfortable",
+    "contrast": { "level": "AAA" }
+  },
+  "overrides": {
+    "ring.width": "3px",
+    "color.neutral.11": "oklch(0.3875 0 0)",
+    "color.neutral-dark.11": "oklch(0.8975 0 0)"
+  }
+}

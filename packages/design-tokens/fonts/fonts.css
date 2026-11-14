@@ -1,0 +1,49 @@
+/*
+ * Byterygon UI fonts, served from this package. Nothing is fetched from a CDN: the files sit next
+ * to this one. Import it once, before tokens.css:
+ *
+ *   @import "@byterygon/design-tokens/fonts/fonts.css";
+ *
+ * Inter is the interface font (font.sans), JetBrains Mono the code font (font.mono). Both are
+ * SIL Open Font License 1.1; the licences are in the font folders and the checksums in
+ * manifest.json (scripts/check-licenses.mjs verifies both).
+ */
+
+/* Inter 4.1, variable: weights 100-900 and the optical-size axis in one file. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./inter/InterVariable.woff2") format("woff2");
+}
+
+/* JetBrains Mono 2.304, the four weights the type scale uses (400, 500, 600, 700). */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./jetbrains-mono/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./jetbrains-mono/JetBrainsMono-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./jetbrains-mono/JetBrainsMono-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./jetbrains-mono/JetBrainsMono-Bold.woff2") format("woff2");
+}

@@ -33,7 +33,7 @@ summarises what a session needs when Notion is unavailable.
 | `crates/db-driver` | db-driver contract (Rust trait + WIT); `conformance` feature for driver tests | MIT OR Apache-2.0 |
 | `crates/db-driver-postgres` | First-party native PostgreSQL driver (sans-IO `postgres-protocol`, all I/O via the broker) | MIT OR Apache-2.0 |
 | `packages/ambidex` | `@byterygon/ambidex` TypeScript runtime: `createClient`, WebSocket and Tauri transports, `autoTransport`, stream calls with credits, Worker Arrow decoding (`./arrow`, optional peer `apache-arrow`) | MIT OR Apache-2.0 |
-| `packages/design-tokens` | `@byterygon/design-tokens`: seeds plus overrides to DTCG tokens (OKLCH ramps, Light/Dark and Comfortable/Compact modes, contrast checks), Style Dictionary outputs (`generated/<theme>/`), `by-tokens` CLI; see its `AGENTS.md` | MIT OR Apache-2.0 |
+| `packages/design-tokens` | `@byterygon/design-tokens`: seeds plus overrides to DTCG tokens (OKLCH ramps, the full catalogue of type, space, size, elevation, motion and domain tokens, Light/Dark and Comfortable/Compact modes, contrast checks), six presets in `themes/`, vendored Inter and JetBrains Mono (`fonts/`, OFL), Style Dictionary outputs (`generated/<theme>/`), `by-tokens` CLI; see its `AGENTS.md` | MIT OR Apache-2.0 |
 | `apps/dbee` | DBee product (placeholder) | AGPL-3.0-only |
 
 - Every `Cargo.toml` and `package.json` declares `license` explicitly. New crates/packages in
@@ -75,9 +75,11 @@ them), `skip_serializing_if` fields `#[ts(optional)]` (the server may leave them
 API's generated files live in `packages/ambidex/test/conformance/` and are committed; CI fails
 when they are stale.
 
-Design tokens (TSK-40): `packages/design-tokens/generated/default/` is generated from
-`themes/default.theme.json` and committed; its drift test fails when the files are stale. Regenerate
-with `pnpm --filter @byterygon/design-tokens build && pnpm --filter @byterygon/design-tokens tokens build`.
+Design tokens (TSK-40, TSK-41): `packages/design-tokens/generated/<theme>/` is generated from
+`themes/<theme>.theme.json` and committed (all six files for `default`, the three CSS files for the other
+presets); its drift test fails when any is stale. Regenerate with
+`pnpm --filter @byterygon/design-tokens build && pnpm --filter @byterygon/design-tokens tokens build --theme <name>`
+(`default` when omitted). `scripts/check-licenses.mjs` also checks the vendored fonts' licences and checksums.
 
 ## Offline builds
 

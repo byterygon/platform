@@ -1,0 +1,38 @@
+{
+  "$comment": "Vendored fonts. scripts/check-licenses.mjs checks that every family has an allowed licence and its licence text, that every file listed exists with this sha256, and that no font file is unlisted. To update a font: download the release archive, check its sha256 against the publisher's, copy the files, and edit this file.",
+  "fonts": [
+    {
+      "family": "Inter",
+      "version": "4.1",
+      "license": "OFL-1.1",
+      "licenseFiles": ["inter/LICENSE.txt"],
+      "source": "https://github.com/rsms/inter/releases/tag/v4.1",
+      "archive": {
+        "url": "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+        "sha256": "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e",
+        "path": "web/InterVariable.woff2"
+      },
+      "files": [
+        { "path": "inter/InterVariable.woff2", "sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3" }
+      ]
+    },
+    {
+      "family": "JetBrains Mono",
+      "version": "2.304",
+      "license": "OFL-1.1",
+      "licenseFiles": ["jetbrains-mono/OFL.txt", "jetbrains-mono/AUTHORS.txt"],
+      "source": "https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304",
+      "archive": {
+        "url": "https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip",
+        "sha256": "6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf",
+        "path": "fonts/webfonts/"
+      },
+      "files": [
+        { "path": "jetbrains-mono/JetBrainsMono-Regular.woff2", "sha256": "a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2" },
+        { "path": "jetbrains-mono/JetBrainsMono-Medium.woff2", "sha256": "086c48dfbea9ddaff1320f7e09399b8e2924e88ce67453721255db3bdbb5a353" },
+        { "path": "jetbrains-mono/JetBrainsMono-SemiBold.woff2", "sha256": "918edad542a1da608fd2ba8daebaff9ac802309103fe760eed465b8b4e47faf1" },
+        { "path": "jetbrains-mono/JetBrainsMono-Bold.woff2", "sha256": "c503cc5ec5f8b2c7666b7ecda1adf44bd45f2e6579b2eba0fc292150416588a2" }
+      ]
+    }
+  ]
+}
