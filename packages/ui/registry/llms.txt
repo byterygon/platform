@@ -1,0 +1,45 @@
+# Byterygon UI registry
+
+> Base UI components styled with Byterygon design-token roles, as a static shadcn registry. No network: install from this folder or from a static server you host.
+
+Install (components.json: "registries": { "@byterygon": "<this folder or URL>/{name}.json" }, "tailwind": { "baseColor": "" }):
+
+    shadcn add <this folder>/theme-default.json @byterygon/button
+
+## Themes
+
+- [theme-default](theme-default.json): The Byterygon default theme: a blue-teal brand on a neutral tinted with the same hue, light by default, comfortable density, WCAG 2.2 AA.
+- [theme-high-contrast](theme-high-contrast.json): High contrast: WCAG 2.2 AAA (7:1 text, 4.5:1 for controls and focus), pure grey neutral, a deep blue accent and a thick focus ring. Comfortable density.
+- [theme-midnight](theme-midnight.json): Midnight: dark first, on a deep blue neutral with a periwinkle accent. The light scheme is a cool blue-tinted counterpart. Comfortable density.
+- [theme-paper](theme-paper.json): Paper: a warm light theme for reading. Cream backgrounds, a rust accent, larger text with relaxed line height, rounder corners, comfortable density.
+- [theme-slate](theme-slate.json): Slate: near-greyscale and minimal. A muted slate-blue accent on a barely tinted neutral, square-ish corners, light by default, comfortable density.
+- [theme-terminal](theme-terminal.json): Terminal: dark first, a green accent on a green-black neutral, monospace for all interface text, 13 px text, square corners, compact density.
+
+## Components
+
+### Button
+
+[button.json](button.json): An action button: primary, secondary, ghost and danger variants in three density-aware sizes, with disabled and loading states.
+
+- Wraps: @base-ui/react/button
+- variant: primary, secondary, ghost, danger
+- size: sm, md, lg
+- Props: variant ("primary" | "secondary" | "ghost" | "danger", default "primary"); size ("sm" | "md" | "lg", default "md"); loading (boolean, default false); disabled (boolean, default false); type ("button" | "submit" | "reset", default "button"); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLButtonElement>)
+- States: hover (hover), active (active), focus-visible (focus-visible), disabled (data-disabled), loading (data-loading)
+- Tokens: color.accent.bg, color.accent.bg-active, color.accent.bg-hover, color.accent.fg, color.fg.default, color.interactive.active, color.interactive.hover, color.neutral.bg, color.neutral.bg-active, color.neutral.bg-hover, color.neutral.fg, color.ring, color.status.danger.solid, color.status.danger.solid-fg, color.status.danger.solid-hover, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.icon.sm, space.control.x, space.inline.sm, space.inset.lg, space.inset.sm, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: Renders a native <button> with type="button" unless type is set, so Enter and Space activate it. An icon-only button needs aria-label. Disabled uses the native disabled attribute; loading keeps the button focusable (aria-disabled) so focus is not lost mid-action, and sets aria-busy. The focus ring shows for keyboard focus only (focus-visible) and meets 3:1 against every surface (token pair color.ring). Text and background pairs of every variant are contrast-checked by the token build in light and dark.
+
+### Input
+
+[input.json](input.json): A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.
+
+- Wraps: @base-ui/react/input
+- size: sm, md, lg
+- Props: size ("sm" | "md" | "lg", default "md"); value (string); defaultValue (string); onValueChange ((value: string, details) => void); disabled (boolean, default false); aria-invalid (boolean | "true" | "false"); className (string); ref (Ref<HTMLInputElement>)
+- States: focus-visible (focus-visible), invalid (aria-invalid), invalid-in-field (data-invalid), disabled (data-disabled)
+- Tokens: color.bg.surface, color.border.strong, color.fg.default, color.fg.subtle, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, space.control.x, space.inset.lg, space.inset.sm, text.body.leading, text.body.size, text.body.tracking, text.body.weight
+- Accessibility: Renders a native <input>; give it a visible <label> (or a Base UI Field.Label), or aria-label when there is no room for one. Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface. Mark errors with aria-invalid and point aria-describedby at the message; the danger border is not the only signal. The border (color.border.strong) meets 3:1 against every surface, as WCAG 1.4.11 asks of a control's outline. Focus shows a ring of ring.width in color.ring.
+
+## Helpers
+
+- [cn.json](cn.json): class-name merging that knows the role names; every component depends on it.

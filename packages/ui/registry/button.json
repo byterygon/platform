@@ -1,0 +1,188 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "button",
+  "type": "registry:ui",
+  "title": "Button",
+  "description": "An action button: primary, secondary, ghost and danger variants in three density-aware sizes, with disabled and loading states.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/button.tsx",
+      "type": "registry:ui",
+      "content": "import { Button as ButtonPrimitive } from \"@base-ui/react/button\";\nimport { cn } from \"@/lib/cn\";\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const buttonVariants = {\n  variant: {\n    /** The one primary action of a view. */\n    primary: \"bg-accent-solid text-accent-solid-fg hover:bg-accent-solid-hover active:bg-accent-solid-active\",\n    /** A filled grey action next to the primary one. */\n    secondary: \"bg-neutral-solid text-neutral-solid-fg hover:bg-neutral-solid-hover active:bg-neutral-solid-active\",\n    /** A quiet action in toolbars, tables and dense layouts. */\n    ghost: \"bg-transparent text-fg hover:bg-hover active:bg-pressed\",\n    /** An action that destroys data or cannot be undone. */\n    danger: \"bg-danger text-danger-solid-fg hover:bg-danger-hover active:bg-danger-hover\",\n  },\n  size: {\n    sm: \"h-control-sm px-inset-sm text-label\",\n    md: \"h-control-md px-control-x text-label\",\n    lg: \"h-control-lg px-inset-lg text-body-strong\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex shrink-0 select-none items-center justify-center gap-inline-sm whitespace-nowrap\",\n  \"rounded-md border border-transparent font-sans\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"data-disabled:pointer-events-none data-disabled:opacity-[var(--by-opacity-disabled)]\",\n  \"data-loading:pointer-events-none\",\n  \"[&_svg]:size-icon-sm [&_svg]:shrink-0\",\n];\n\nexport interface ButtonProps extends Omit<ButtonPrimitive.Props, \"className\"> {\n  /** Visual weight of the action. */\n  variant?: keyof typeof buttonVariants.variant;\n  /** Control height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof buttonVariants.size;\n  /**\n   * Shows that the action is running: the button stays focusable, ignores clicks and sets\n   * `aria-busy` and `data-loading`.\n   */\n  loading?: boolean;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * An action button on Base UI's Button (a native `<button>` unless `render` changes it). The ref\n * reaches the rendered element.\n */\nexport function Button({ variant = \"primary\", size = \"md\", loading = false, disabled, className, type = \"button\", ...props }: ButtonProps) {\n  return (\n    <ButtonPrimitive\n      data-slot=\"button\"\n      data-variant={variant}\n      data-size={size}\n      data-loading={loading ? \"\" : undefined}\n      aria-busy={loading || undefined}\n      type={type}\n      disabled={disabled || loading}\n      focusableWhenDisabled={loading}\n      className={cn(base, buttonVariants.variant[variant], buttonVariants.size[size], className)}\n      {...props}\n    />\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "button",
+      "title": "Button",
+      "description": "An action button: primary, secondary, ghost and danger variants in three density-aware sizes, with disabled and loading states.",
+      "status": "experimental",
+      "base": "@base-ui/react/button",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "variant",
+          "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"",
+          "default": "primary",
+          "description": "Visual weight. One primary action per view; danger for actions that destroy data."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Control height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "default": false,
+          "description": "The action is running: focusable, ignores clicks, sets aria-busy and data-loading."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction and sets data-disabled."
+        },
+        {
+          "name": "type",
+          "type": "\"button\" | \"submit\" | \"reset\"",
+          "default": "button",
+          "description": "The native button type. Defaults to button so a Button inside a form does not submit it."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element (a link) with the button's props and behaviour."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLButtonElement>",
+          "description": "Reaches the rendered element."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "primary",
+          "secondary",
+          "ghost",
+          "danger"
+        ],
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "button",
+          "description": "The button; data-slot=\"button\", data-variant and data-size name its variant."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over the button: the variant's hover colour."
+        },
+        {
+          "name": "active",
+          "variant": "active",
+          "description": "Pressed: the variant's pressed colour."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: a ring of ring.width in color.ring, offset by ring.offset."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled."
+        },
+        {
+          "name": "loading",
+          "variant": "data-loading",
+          "props": {
+            "loading": true
+          },
+          "description": "Running: aria-busy, ignores clicks, stays focusable."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-active",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.fg.default",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.neutral.bg",
+        "color.neutral.bg-active",
+        "color.neutral.bg-hover",
+        "color.neutral.fg",
+        "color.ring",
+        "color.status.danger.solid",
+        "color.status.danger.solid-fg",
+        "color.status.danger.solid-hover",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inset.lg",
+        "space.inset.sm",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "ButtonMinimal",
+        "realistic": "ButtonRealistic"
+      },
+      "accessibility": [
+        "Renders a native <button> with type=\"button\" unless type is set, so Enter and Space activate it.",
+        "An icon-only button needs aria-label.",
+        "Disabled uses the native disabled attribute; loading keeps the button focusable (aria-disabled) so focus is not lost mid-action, and sets aria-busy.",
+        "The focus ring shows for keyboard focus only (focus-visible) and meets 3:1 against every surface (token pair color.ring).",
+        "Text and background pairs of every variant are contrast-checked by the token build in light and dark."
+      ]
+    },
+    "example": "import { Button } from \"@/components/button/button\";\n\n/** The smallest useful Button. */\nexport function ButtonMinimal() {\n  return <Button>Save</Button>;\n}\n\n/** A dialog footer: one primary action, a quiet cancel, a destructive action and a running one. */\nexport function ButtonRealistic() {\n  return (\n    <div className=\"flex flex-wrap items-center gap-inline-sm\">\n      <Button variant=\"ghost\">Cancel</Button>\n      <Button variant=\"secondary\">Duplicate</Button>\n      <Button variant=\"danger\">Delete table</Button>\n      <Button loading>Running query</Button>\n      <Button size=\"sm\" disabled>\n        Disabled\n      </Button>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

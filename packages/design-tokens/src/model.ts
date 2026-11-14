@@ -122,6 +122,11 @@ export interface Token {
   readonly modes?: Readonly<Record<string, TokenValue>>;
   /** Tailwind v4 theme variable that exposes the token as a utility, for example `--color-surface`. */
   readonly tailwind?: string;
+  /**
+   * More Tailwind variables for the same token, for a name that must not collide with another
+   * library's (`--color-accent-solid`: shadcn/ui's `--color-accent` means a hover background).
+   */
+  readonly tailwindAliases?: readonly string[];
   /** Set on generated ramp steps. */
   readonly ramp?: RampInfo;
   /** True when the theme's `overrides` changed the token. */

@@ -280,6 +280,7 @@ function formatTailwindTheme(input: FormatInput): string {
     if (group && next !== group) lines.push("");
     group = next;
     lines.push(`  ${token.tailwind}: var(${cssVarName(token.path)});`);
+    for (const alias of token.tailwindAliases ?? []) lines.push(`  ${alias}: var(${cssVarName(token.path)});`);
   }
   const variants = set.axes.flatMap((axis) =>
     axis.modes

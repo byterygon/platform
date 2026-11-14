@@ -200,14 +200,19 @@ export function validate(set: TokenSet): ValidationResult {
   // Output mappings.
   const tailwind = new Map<string, string>();
   for (const token of set.tokens.values()) {
-    if (!token.tailwind) continue;
-    const taken = tailwind.get(token.tailwind);
-    if (taken) {
-      error("output-mapping", token.path, `${token.path} and ${taken} both map to the Tailwind variable ${token.tailwind}`, { related: taken });
-    } else if (!/^--[a-z][a-z0-9-]*$/.test(token.tailwind)) {
-      error("output-mapping", token.path, `${token.tailwind} is not a valid Tailwind theme variable name`);
-    } else {
-      tailwind.set(token.tailwind, token.path);
+    if (token.tailwindAliases?.length && !token.tailwind) {
+      error("output-mapping", token.path, `${token.path} has tailwindAliases but no tailwind name`);
+    }
+    for (const name of [token.tailwind, ...(token.tailwindAliases ?? [])]) {
+      if (!name) continue;
+      const taken = tailwind.get(name);
+      if (taken) {
+        error("output-mapping", token.path, `${token.path} and ${taken} both map to the Tailwind variable ${name}`, { related: taken });
+      } else if (!/^--[a-z][a-z0-9-]*$/.test(name)) {
+        error("output-mapping", token.path, `${name} is not a valid Tailwind theme variable name`);
+      } else {
+        tailwind.set(name, token.path);
+      }
     }
   }
   for (const [variable, path] of Object.entries(set.shadcn)) {

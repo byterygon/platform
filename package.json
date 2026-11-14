@@ -11,6 +11,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "check:licenses": "node scripts/check-licenses.mjs",
+    "ui:new": "pnpm --filter @byterygon/ui new",
     "bench": "pnpm --filter @byterygon/ambidex bench"
   },
   "devDependencies": {

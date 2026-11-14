@@ -177,6 +177,7 @@ const accent: RoleDef[] = [
     type: "color",
     value: ramp("brand", "contrast"),
     tailwind: "--color-accent-fg",
+    tailwindAliases: ["--color-accent-solid-fg"],
     use: "Text and icons on color.accent.bg and its hover and pressed colours (the same colour as color.fg.on-accent).",
     avoid: "Not on color.accent.subtle-bg: use color.accent.subtle-fg.",
   },
@@ -185,6 +186,9 @@ const accent: RoleDef[] = [
     type: "color",
     value: ramp("brand", 9),
     tailwind: "--color-accent",
+    // shadcn/ui's `bg-accent` is a hover background (its --accent), so Byterygon components use
+    // `bg-accent-solid`, and a project with stock shadcn components can keep shadcn's meaning.
+    tailwindAliases: ["--color-accent-solid"],
     use: "The filled background of the primary action and of checked controls.",
     avoid: "Not for large areas, and not more than one primary action per view.",
   },
@@ -193,6 +197,7 @@ const accent: RoleDef[] = [
     type: "color",
     value: ramp("brand", 10),
     tailwind: "--color-accent-hover",
+    tailwindAliases: ["--color-accent-solid-hover"],
     use: "color.accent.bg while hovered.",
     avoid: "Not a resting colour.",
   },
@@ -201,6 +206,7 @@ const accent: RoleDef[] = [
     type: "color",
     value: ramp("brand", 11),
     tailwind: "--color-accent-active",
+    tailwindAliases: ["--color-accent-solid-active"],
     use: "color.accent.bg while pressed.",
     avoid: "Not a resting colour.",
   },

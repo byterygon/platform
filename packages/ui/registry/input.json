@@ -1,0 +1,159 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "input",
+  "type": "registry:ui",
+  "title": "Input",
+  "description": "A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/input.tsx",
+      "type": "registry:ui",
+      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { cn } from \"@/lib/cn\";\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const inputVariants = {\n  size: {\n    sm: \"h-control-sm px-inset-sm\",\n    md: \"h-control-md px-control-x\",\n    lg: \"h-control-lg px-inset-lg\",\n  },\n} as const;\n\nconst base = [\n  \"flex w-full min-w-0 rounded-md border border-border-strong bg-surface font-sans text-body text-fg\",\n  \"placeholder:text-fg-subtle\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\nexport interface InputProps extends Omit<InputPrimitive.Props, \"className\" | \"size\"> {\n  /** Control height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof inputVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A single-line text input on Base UI's Input. Inside a Base UI Field it takes the field's label,\n * description and validity; on its own, set `aria-invalid` to mark it invalid. The ref reaches\n * the `<input>`.\n */\nexport function Input({ size = \"md\", className, ...props }: InputProps) {\n  return <InputPrimitive data-slot=\"input\" data-size={size} className={cn(base, inputVariants.size[size], className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "input",
+      "title": "Input",
+      "description": "A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.",
+      "status": "experimental",
+      "base": "@base-ui/react/input",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Control height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "description": "The value, when controlled."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string",
+          "description": "The initial value, when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: string, details) => void",
+          "description": "Called with the new value on every change."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction and sets data-disabled."
+        },
+        {
+          "name": "aria-invalid",
+          "type": "boolean | \"true\" | \"false\"",
+          "description": "Marks the value invalid outside a Field; inside a Field, data-invalid comes from its validation."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLInputElement>",
+          "description": "Reaches the <input>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "input",
+          "description": "The input; data-slot=\"input\" and data-size name it."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Focused: a ring of ring.width in color.ring, offset by ring.offset."
+        },
+        {
+          "name": "invalid",
+          "variant": "aria-invalid",
+          "props": {
+            "aria-invalid": true
+          },
+          "description": "Invalid value: the danger border. Inside a Field the same style follows data-invalid."
+        },
+        {
+          "name": "invalid-in-field",
+          "variant": "data-invalid",
+          "description": "Invalid inside a Base UI Field (its validation sets data-invalid)."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.subtle",
+        "color.ring",
+        "color.status.danger.border",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "space.control.x",
+        "space.inset.lg",
+        "space.inset.sm",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight"
+      ],
+      "examples": {
+        "minimal": "InputMinimal",
+        "realistic": "InputRealistic"
+      },
+      "accessibility": [
+        "Renders a native <input>; give it a visible <label> (or a Base UI Field.Label), or aria-label when there is no room for one.",
+        "Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface.",
+        "Mark errors with aria-invalid and point aria-describedby at the message; the danger border is not the only signal.",
+        "The border (color.border.strong) meets 3:1 against every surface, as WCAG 1.4.11 asks of a control's outline.",
+        "Focus shows a ring of ring.width in color.ring."
+      ]
+    },
+    "example": "import { Input } from \"@/components/input/input\";\n\n/** The smallest useful Input: a labelled text field. */\nexport function InputMinimal() {\n  return <Input aria-label=\"Table name\" placeholder=\"customers\" />;\n}\n\n/** A connection form: labels, a hint, an invalid field with its message, and a disabled field. */\nexport function InputRealistic() {\n  return (\n    <form className=\"flex flex-col gap-stack-md\">\n      <label className=\"flex flex-col gap-stack-xs text-label text-fg\">\n        Host\n        <Input name=\"host\" defaultValue=\"db.internal\" aria-describedby=\"host-hint\" />\n        <span id=\"host-hint\" className=\"text-caption text-fg-muted\">\n          A name or address on your network.\n        </span>\n      </label>\n      <label className=\"flex flex-col gap-stack-xs text-label text-fg\">\n        Port\n        <Input name=\"port\" size=\"sm\" defaultValue=\"99999\" aria-invalid=\"true\" aria-describedby=\"port-error\" />\n        <span id=\"port-error\" className=\"text-caption text-danger-fg\">\n          The port must be between 1 and 65535.\n        </span>\n      </label>\n      <label className=\"flex flex-col gap-stack-xs text-label text-fg\">\n        Driver\n        <Input name=\"driver\" defaultValue=\"postgres\" disabled />\n      </label>\n    </form>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

@@ -228,7 +228,7 @@ function findToken(set: TokenSet, name: string): Token {
   if (direct) return direct;
   const variable = name.replace(/^var\((.*)\)$/, "$1");
   for (const token of set.tokens.values()) {
-    if (cssVarName(token.path) === variable || token.tailwind === variable) return token;
+    if (cssVarName(token.path) === variable || token.tailwind === variable || token.tailwindAliases?.includes(variable)) return token;
   }
   const near = closest(name, set.tokens.keys(), 5);
   throw new UsageError("unknown-token", `no token named "${name}"`, near.length > 0 ? `Did you mean ${near.join(", ")}?` : "Run `by-tokens search <words>` to find it.");
@@ -270,7 +270,7 @@ async function explain(args: ParsedArgs, io: Io): Promise<Outcome> {
   const text = [
     `${token.path}  (${token.tier} ${token.type}${token.overridden ? ", overridden by the theme" : ""})`,
     `  ${token.description}`,
-    `  css: var(${cssVarName(token.path)})${token.tailwind ? `   tailwind: ${token.tailwind}` : ""}${shadcn.length > 0 ? `   shadcn: ${shadcn.join(", ")}` : ""}`,
+    `  css: var(${cssVarName(token.path)})${token.tailwind ? `   tailwind: ${[token.tailwind, ...(token.tailwindAliases ?? [])].join(", ")}` : ""}${shadcn.length > 0 ? `   shadcn: ${shadcn.join(", ")}` : ""}`,
     "values:",
     ...values.map((v) => `  ${modeText(v.mode).trim() || "(all modes)"}: ${v.chain.length > 1 ? `${v.chain.join(" -> ")} = ` : ""}${v.resolved}${v.hex ? ` ${v.hex}` : ""}`),
     ...(users.length > 0 ? [`referenced by (${users.length}): ${users.join(", ")}`] : token.tier === "primitive" ? ["referenced by: nothing"] : []),
@@ -285,6 +285,7 @@ async function explain(args: ParsedArgs, io: Io): Promise<Outcome> {
         path: token.path,
         cssVar: cssVarName(token.path),
         ...(token.tailwind ? { tailwind: token.tailwind } : {}),
+        ...(token.tailwindAliases?.length ? { tailwindAliases: token.tailwindAliases } : {}),
         shadcn,
         type: token.type,
         tier: token.tier,
@@ -317,7 +318,7 @@ async function search(args: ParsedArgs, io: Io): Promise<Outcome> {
   for (const token of set.tokens.values()) {
     if ((tier && token.tier !== tier) || (type && token.type !== type)) continue;
     const path = token.path.toLowerCase();
-    const names = `${cssVarName(token.path)} ${token.tailwind ?? ""}`.toLowerCase();
+    const names = `${cssVarName(token.path)} ${token.tailwind ?? ""} ${(token.tailwindAliases ?? []).join(" ")}`.toLowerCase();
     const description = token.description.toLowerCase();
     let score = token.tier === "primitive" ? 0 : 0.5; // roles first: they are what components use
     let matched = true;
