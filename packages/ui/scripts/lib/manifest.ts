@@ -91,6 +91,12 @@ export function validateManifest(value: unknown, folder?: string): string[] {
     if (!Array.isArray(v) || v.some((x) => !isText(x))) errors.push(`${key} must be a list of strings`);
   };
   strings("dependencies", m.dependencies);
+  // Base UI only (CLAUDE.md): no Radix primitives, whatever the package is called.
+  if (Array.isArray(m.dependencies)) {
+    for (const dep of m.dependencies) {
+      if (typeof dep === "string" && /^(?:radix-ui|@radix-ui\/)/.test(dep)) errors.push(`dependency ${dep}: Byterygon UI is built on Base UI only; use the @base-ui/react part instead`);
+    }
+  }
   strings("tokens", m.tokens);
   strings("accessibility", m.accessibility);
   if (Array.isArray(m.tokens) && [...m.tokens].sort().join() !== m.tokens.join()) errors.push(`tokens must be sorted`);
