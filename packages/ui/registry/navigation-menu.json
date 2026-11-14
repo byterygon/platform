@@ -1,0 +1,217 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "navigation-menu",
+  "type": "registry:ui",
+  "title": "NavigationMenu",
+  "description": "Site or app navigation with panels of links, on Base UI's NavigationMenu: a <nav> row of titles that open panels in one shared popup, links with descriptions and a current-page mark, and plain links in the row.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/navigation-menu.tsx",
+      "type": "registry:ui",
+      "content": "import { NavigationMenu as NavigationMenuPrimitive } from \"@base-ui/react/navigation-menu\";\nimport type { ReactNode, Ref } from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenPx, useThemeScope } from \"@/lib/theme-scope\";\n\n// Site or app navigation with panels of links, on Base UI's NavigationMenu: `NavigationMenu` is\n// the <nav> (it also renders the shared popup), NavigationMenuList the row, NavigationMenuItem\n// one entry, NavigationMenuTrigger a title that opens its NavigationMenuContent, and\n// NavigationMenuLink a link (in a panel, or straight in the row with navigationMenuTriggerStyle).\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const navigationMenuVariants = {} as const;\n\n/** The look of a row entry: NavigationMenuTrigger uses it; give it to a NavigationMenuLink placed straight in the row. */\nexport const navigationMenuTriggerStyle = [\n  \"inline-flex h-control-md select-none items-center gap-inline-xs rounded-md px-control-x font-sans text-label text-fg outline-none\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:bg-hover data-popup-open:bg-hover data-active:bg-selected\",\n  \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"[&_svg]:size-icon-sm\",\n].join(\" \");\n\nconst classes = {\n  root: \"relative font-sans\",\n  list: \"flex items-center gap-inline-xs data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch\",\n  icon: \"flex text-fg-muted transition-transform duration-[var(--by-motion-duration-base)] ease-standard motion-reduce:transition-none data-popup-open:rotate-180\",\n  positioner: \"z-[var(--by-z-popover)] outline-none\",\n  popup: [\n    \"relative overflow-hidden rounded-md border border-border bg-overlay text-body text-fg shadow-overlay outline-none\",\n    \"transition-opacity duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none\",\n    \"data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit\",\n  ],\n  viewport: \"relative size-full overflow-hidden\",\n  content: [\n    \"flex w-panel-md max-w-full flex-col gap-stack-xs p-inset-sm\",\n    \"transition-opacity duration-[var(--by-motion-duration-base)] ease-standard motion-reduce:transition-none\",\n    \"data-starting-style:opacity-0 data-ending-style:opacity-0\",\n  ],\n  link: [\n    \"flex flex-col gap-stack-xs rounded-sm p-inset-sm text-body text-fg outline-none\",\n    \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:bg-hover data-active:bg-selected\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n  ],\n} as const;\n\nconst ChevronIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m4 6 4 4 4-4\" />\n  </svg>\n);\n\n/** Base UI sizes the popup to the open panel through these run-time variables; they are not tokens. */\nconst popupStyle = { width: \"var(--popup-width)\", height: \"var(--popup-height)\", transformOrigin: \"var(--transform-origin)\" } as const;\n\nexport interface NavigationMenuProps extends Omit<NavigationMenuPrimitive.Root.Props, \"className\"> {\n  /** Extra classes for the <nav>, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the <nav>. */\n  ref?: Ref<HTMLElement>;\n  children?: ReactNode;\n}\n\n/** The navigation (a <nav>): a NavigationMenuList inside; the panels open in one shared popup below the row. */\nexport function NavigationMenu({ className, children, ref, onValueChange, ...props }: NavigationMenuProps) {\n  const { ref: scopeRef, anchor, scope, refresh } = useThemeScope<HTMLElement>(ref);\n  return (\n    <NavigationMenuPrimitive.Root\n      data-slot=\"navigation-menu\"\n      ref={scopeRef}\n      onValueChange={(value, details) => {\n        if (value !== null) refresh();\n        onValueChange?.(value, details);\n      }}\n      className={cn(classes.root, className)}\n      {...props}\n    >\n      {children}\n      <NavigationMenuPrimitive.Portal>\n        <NavigationMenuPrimitive.Positioner {...scope} data-slot=\"navigation-menu-positioner\" align=\"start\" sideOffset={() => tokenPx(anchor.current, \"--by-space-inline-xs\", 4)} className={cn(classes.positioner)}>\n          <NavigationMenuPrimitive.Popup data-slot=\"navigation-menu-popup\" style={popupStyle} className={cn(classes.popup)}>\n            <NavigationMenuPrimitive.Viewport data-slot=\"navigation-menu-viewport\" className={cn(classes.viewport)} />\n          </NavigationMenuPrimitive.Popup>\n        </NavigationMenuPrimitive.Positioner>\n      </NavigationMenuPrimitive.Portal>\n    </NavigationMenuPrimitive.Root>\n  );\n}\n\ntype WithClass<P> = Omit<P, \"className\"> & {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n};\n\n/** The row of entries (a <ul>). */\nexport function NavigationMenuList({ className, ...props }: WithClass<NavigationMenuPrimitive.List.Props>) {\n  return <NavigationMenuPrimitive.List data-slot=\"navigation-menu-list\" className={cn(classes.list, className)} {...props} />;\n}\n\n/** One entry (an <li>): a NavigationMenuTrigger with its NavigationMenuContent, or a NavigationMenuLink. */\nexport function NavigationMenuItem({ className, ...props }: WithClass<NavigationMenuPrimitive.Item.Props>) {\n  return <NavigationMenuPrimitive.Item data-slot=\"navigation-menu-item\" className={cn(className)} {...props} />;\n}\n\n/** A title that opens its panel on click, hover or Enter, with a chevron that turns while open. */\nexport function NavigationMenuTrigger({ className, children, ...props }: WithClass<NavigationMenuPrimitive.Trigger.Props>) {\n  return (\n    <NavigationMenuPrimitive.Trigger data-slot=\"navigation-menu-trigger\" className={cn(navigationMenuTriggerStyle, className)} {...props}>\n      {children}\n      <NavigationMenuPrimitive.Icon data-slot=\"navigation-menu-icon\" className={cn(classes.icon)}>\n        <ChevronIcon />\n      </NavigationMenuPrimitive.Icon>\n    </NavigationMenuPrimitive.Trigger>\n  );\n}\n\n/** The panel of an entry: its links, shown in the shared popup, size.panel.md wide. */\nexport function NavigationMenuContent({ className, ...props }: WithClass<NavigationMenuPrimitive.Content.Props>) {\n  return <NavigationMenuPrimitive.Content data-slot=\"navigation-menu-content\" className={cn(classes.content, className)} {...props} />;\n}\n\n/** A link: in a panel a row (title, then a muted description); `active` marks the current page (aria-current). */\nexport function NavigationMenuLink({ className, ...props }: WithClass<NavigationMenuPrimitive.Link.Props>) {\n  return <NavigationMenuPrimitive.Link data-slot=\"navigation-menu-link\" className={cn(classes.link, className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "navigation-menu",
+      "title": "NavigationMenu",
+      "description": "Site or app navigation with panels of links, on Base UI's NavigationMenu: a <nav> row of titles that open panels in one shared popup, links with descriptions and a current-page mark, and plain links in the row.",
+      "usage": "Use NavigationMenu for the top navigation of a web build or a docs site, where entries group several destinations: Workspace (connections, saved queries, history), Administration. Compose it as NavigationMenu > NavigationMenuList > NavigationMenuItem (value) with a NavigationMenuTrigger and a NavigationMenuContent of NavigationMenuLinks (href; active for the current page), or a NavigationMenuLink straight in the row with className={navigationMenuTriggerStyle}. It navigates; for actions use Menubar or DropdownMenu; for an app's side navigation use Sidebar; for views of one place, Tabs.",
+      "status": "experimental",
+      "base": "@base-ui/react/navigation-menu",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string | null",
+          "description": "NavigationMenu: the open entry (controlled); defaultValue when uncontrolled; null when closed."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value, details) => void",
+          "description": "NavigationMenu: called when an entry opens or the menu closes."
+        },
+        {
+          "name": "orientation",
+          "type": "\"horizontal\" | \"vertical\"",
+          "default": "horizontal",
+          "description": "NavigationMenu: the direction of the row and of its arrow keys."
+        },
+        {
+          "name": "delay",
+          "type": "number",
+          "default": 50,
+          "description": "NavigationMenu: ms of hover before a panel opens."
+        },
+        {
+          "name": "href",
+          "type": "string",
+          "description": "NavigationMenuLink: the destination."
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "default": false,
+          "description": "NavigationMenuLink: the current page (aria-current=\"page\", color.interactive.selected)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes; navigationMenuTriggerStyle makes a link look like a row entry."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "nav",
+          "description": "The navigation landmark; data-slot=\"navigation-menu\"."
+        },
+        {
+          "name": "positioner",
+          "element": "div",
+          "description": "The shared popup's positioner under the row, at z.popover, with the row's data-theme and data-density; data-slot=\"navigation-menu-positioner\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "The shared popup, color.bg.overlay with elevation.overlay, sized to the open panel; data-slot=\"navigation-menu-popup\"."
+        },
+        {
+          "name": "icon",
+          "element": "span",
+          "description": "The trigger's chevron, turned while open; data-slot=\"navigation-menu-icon\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "NavigationMenuList",
+          "slot": "navigation-menu-list",
+          "description": "The row of entries, a <ul>."
+        },
+        {
+          "name": "NavigationMenuItem",
+          "slot": "navigation-menu-item",
+          "description": "One entry, an <li>."
+        },
+        {
+          "name": "NavigationMenuTrigger",
+          "slot": "navigation-menu-trigger",
+          "description": "A title button with aria-expanded and a chevron; color.interactive.hover while hovered or open."
+        },
+        {
+          "name": "NavigationMenuContent",
+          "slot": "navigation-menu-content",
+          "description": "An entry's panel of links, size.panel.md wide, shown in the shared popup."
+        },
+        {
+          "name": "NavigationMenuLink",
+          "slot": "navigation-menu-link",
+          "description": "A link: a row with a title and a muted description in a panel; data-active and aria-current=\"page\" when active."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "data-popup-open",
+          "description": "A trigger whose panel is open keeps color.interactive.hover; its chevron turns."
+        },
+        {
+          "name": "entering",
+          "variant": "data-starting-style",
+          "description": "The popup and a panel fade in over motion.duration.base; reduced motion turns it off."
+        },
+        {
+          "name": "leaving",
+          "variant": "data-ending-style",
+          "description": "They fade out with motion.easing.exit."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "A trigger or link under the pointer: color.interactive.hover."
+        },
+        {
+          "name": "active",
+          "variant": "data-active",
+          "description": "The current page's link: color.interactive.selected."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: the focus ring."
+        }
+      ],
+      "tokens": [
+        "color.bg.overlay",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.interactive.hover",
+        "color.interactive.selected",
+        "color.ring",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.base",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "radius.md",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.icon.sm",
+        "size.panel.md",
+        "space.control.x",
+        "space.inline.xs",
+        "space.inset.sm",
+        "space.stack.xs",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.popover"
+      ],
+      "examples": {
+        "minimal": "NavigationMenuMinimal",
+        "realistic": "NavigationMenuRealistic"
+      },
+      "accessibility": [
+        "A <nav> landmark holding a list; triggers are buttons with aria-expanded and aria-controls; panels hold ordinary links, the current one with aria-current=\"page\".",
+        "Tab moves along the row; Enter, Space or ArrowDown opens a trigger's panel and Tab moves into its links; ArrowLeft and ArrowRight move between entries; Escape closes the panel and returns focus to its trigger.",
+        "Hovering a trigger opens its panel after a short delay; moving to another trigger switches panels in the same popup.",
+        "Links in the row look like triggers but stay links (Enter follows them).",
+        "prefers-reduced-motion: reduce turns the fades and the chevron's turn off.",
+        "The popup takes the row's theme and density and sits at z.popover."
+      ]
+    },
+    "example": "import {\n  NavigationMenu,\n  NavigationMenuContent,\n  NavigationMenuItem,\n  NavigationMenuLink,\n  NavigationMenuList,\n  NavigationMenuTrigger,\n  navigationMenuTriggerStyle,\n} from \"@/components/navigation-menu/navigation-menu\";\n\n/** The smallest useful NavigationMenu: one panel of links and one link in the row. */\nexport function NavigationMenuMinimal() {\n  return (\n    <NavigationMenu>\n      <NavigationMenuList>\n        <NavigationMenuItem>\n          <NavigationMenuTrigger>Workspace</NavigationMenuTrigger>\n          <NavigationMenuContent>\n            <NavigationMenuLink href=\"#connections\">Connections</NavigationMenuLink>\n            <NavigationMenuLink href=\"#saved\">Saved queries</NavigationMenuLink>\n          </NavigationMenuContent>\n        </NavigationMenuItem>\n        <NavigationMenuItem>\n          <NavigationMenuLink href=\"#audit\" className={navigationMenuTriggerStyle}>\n            Audit log\n          </NavigationMenuLink>\n        </NavigationMenuItem>\n      </NavigationMenuList>\n    </NavigationMenu>\n  );\n}\n\nconst describedLink = (title: string, description: string) => (\n  <>\n    <span className=\"text-body-strong text-fg\">{title}</span>\n    <span className=\"text-caption text-fg-muted\">{description}</span>\n  </>\n);\n\n/** The web build's top navigation: two panels of described links, the current page marked, and a plain link. */\nexport function NavigationMenuRealistic() {\n  return (\n    <NavigationMenu>\n      <NavigationMenuList>\n        <NavigationMenuItem value=\"workspace\">\n          <NavigationMenuTrigger>Workspace</NavigationMenuTrigger>\n          <NavigationMenuContent>\n            <NavigationMenuLink href=\"#connections\" active>\n              {describedLink(\"Connections\", \"Databases you approved access to\")}\n            </NavigationMenuLink>\n            <NavigationMenuLink href=\"#saved\">{describedLink(\"Saved queries\", \"SQL files in this workspace\")}</NavigationMenuLink>\n            <NavigationMenuLink href=\"#history\">{describedLink(\"History\", \"Statements you ran, newest first\")}</NavigationMenuLink>\n          </NavigationMenuContent>\n        </NavigationMenuItem>\n        <NavigationMenuItem value=\"admin\">\n          <NavigationMenuTrigger>Administration</NavigationMenuTrigger>\n          <NavigationMenuContent>\n            <NavigationMenuLink href=\"#grants\">{describedLink(\"Grants\", \"Who may connect where, and until when\")}</NavigationMenuLink>\n            <NavigationMenuLink href=\"#audit\">{describedLink(\"Audit log\", \"Every call with its correlation id\")}</NavigationMenuLink>\n          </NavigationMenuContent>\n        </NavigationMenuItem>\n        <NavigationMenuItem>\n          <NavigationMenuLink href=\"#about\" className={navigationMenuTriggerStyle}>\n            About\n          </NavigationMenuLink>\n        </NavigationMenuItem>\n      </NavigationMenuList>\n    </NavigationMenu>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

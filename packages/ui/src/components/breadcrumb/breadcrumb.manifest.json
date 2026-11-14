@@ -1,0 +1,62 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "breadcrumb",
+  "title": "Breadcrumb",
+  "description": "Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list of links, the current place, separators and an ellipsis for collapsed items, on Base UI's useRender.",
+  "usage": "Use Breadcrumb to show and move up a path: connection, schema, table, column; a settings section. Compose it as Breadcrumb > BreadcrumbList > BreadcrumbItem (BreadcrumbLink with href, or render a router link) with BreadcrumbSeparator between items, and BreadcrumbPage for the last, current place. Collapse a long middle into BreadcrumbEllipsis inside a DropdownMenuTrigger listing the hidden places. It is not a substitute for navigation: use Sidebar or NavigationMenu for that; for steps of a task, Stepper.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "aria-label", "type": "string", "default": "Breadcrumb", "description": "Breadcrumb: the name of the <nav> landmark." },
+    { "name": "href", "type": "string", "description": "BreadcrumbLink: the place's address." },
+    { "name": "render", "type": "ReactElement | (props) => ReactElement", "description": "BreadcrumbLink: a router link instead of <a>." },
+    { "name": "children", "type": "ReactNode", "description": "BreadcrumbSeparator: a custom mark (\"/\"); a chevron by default." },
+    { "name": "className", "type": "string", "description": "On each part: extra classes, merged after the component's own." }
+  ],
+  "variants": {},
+  "slots": [
+    { "name": "root", "element": "nav", "description": "A navigation landmark named Breadcrumb; data-slot=\"breadcrumb\"." }
+  ],
+  "parts": [
+    { "name": "BreadcrumbList", "slot": "breadcrumb-list", "description": "An <ol> that wraps on narrow widths, in color.fg.muted." },
+    { "name": "BreadcrumbItem", "slot": "breadcrumb-item", "description": "An <li> holding a link, the page or an ellipsis." },
+    { "name": "BreadcrumbLink", "slot": "breadcrumb-link", "description": "An <a> (or render) in color.fg.muted, underlined and color.fg.default on hover, truncated when long." },
+    { "name": "BreadcrumbPage", "slot": "breadcrumb-page", "description": "The current place, a <span> with aria-current=\"page\" in color.fg.default." },
+    { "name": "BreadcrumbSeparator", "slot": "breadcrumb-separator", "description": "An aria-hidden <li> with a chevron or the given mark, in color.fg.subtle." },
+    { "name": "BreadcrumbEllipsis", "slot": "breadcrumb-ellipsis", "description": "Three dots for collapsed places, with visually hidden text \"More places\"." }
+  ],
+  "states": [
+    { "name": "hover", "variant": "hover", "description": "A link under the pointer: color.fg.default and underlined." },
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus on a link: a ring of ring.width in color.ring." }
+  ],
+  "tokens": [
+    "color.fg.default",
+    "color.fg.muted",
+    "color.fg.subtle",
+    "color.ring",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "radius.xs",
+    "ring.offset",
+    "ring.width",
+    "size.icon.md",
+    "size.icon.sm",
+    "size.icon.xs",
+    "space.inline.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight"
+  ],
+  "examples": { "minimal": "BreadcrumbMinimal", "realistic": "BreadcrumbRealistic" },
+  "accessibility": [
+    "The trail is a <nav> landmark named \"Breadcrumb\" holding an ordered list, so its length and order are announced.",
+    "The current place has aria-current=\"page\" and is not a link; the separators are aria-hidden, so they are not read between items.",
+    "Links are in the tab order with a visible focus ring; a collapsed middle is a menu button with an accessible name.",
+    "Long names are truncated visually but keep their full text for assistive technology.",
+    "Only colours transition; nothing moves."
+  ]
+}

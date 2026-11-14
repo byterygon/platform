@@ -1,0 +1,181 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "stepper",
+  "type": "registry:ui",
+  "title": "Stepper",
+  "description": "The steps of a task done in order: an ordered list of numbered steps joined by lines, showing done (accent, check), current, upcoming and failed steps, horizontal or vertical, with completed steps optionally clickable to go back.",
+  "dependencies": [],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/stepper.tsx",
+      "type": "registry:ui",
+      "content": "import type { ComponentProps, ReactNode } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// The steps of a task done in order (add a connection, then approve access, then connect): an\n// ordered list of numbered steps that shows which are done, which is current and which failed.\n// Data-driven: `steps`, `value` (the current index). With `onValueChange` the steps already done\n// become buttons, so the user can go back. No Base UI part exists for it.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const stepperVariants = {\n  /** A row of steps joined by lines, or a column (for a side panel). */\n  orientation: {\n    horizontal: \"flex-row items-start gap-inline-sm\",\n    vertical: \"flex-col\",\n  },\n} as const;\n\nexport type StepStatus = \"complete\" | \"current\" | \"upcoming\" | \"error\";\n\nconst classes = {\n  root: \"flex w-full font-sans\",\n  item: \"flex min-w-0 gap-inline-sm data-[orientation=horizontal]:flex-1 data-[orientation=horizontal]:items-center\",\n  marker: \"flex shrink-0 flex-col items-center\",\n  indicator: [\n    \"flex size-control-sm shrink-0 items-center justify-center rounded-full border text-label [&_svg]:size-icon-sm\",\n    \"data-[status=complete]:border-accent-solid data-[status=complete]:bg-accent-solid data-[status=complete]:text-accent-solid-fg\",\n    \"data-[status=current]:border-accent-solid data-[status=current]:text-fg\",\n    \"data-[status=upcoming]:border-border-strong data-[status=upcoming]:text-fg-muted\",\n    \"data-[status=error]:border-danger-border data-[status=error]:bg-danger-subtle data-[status=error]:text-danger-fg\",\n  ],\n  text: \"flex min-w-0 flex-col pb-stack-md data-[orientation=horizontal]:pb-0\",\n  title: \"truncate text-label text-fg data-[status=upcoming]:text-fg-muted data-[status=error]:text-danger-fg\",\n  description: \"text-caption text-fg-muted\",\n  connector: [\n    \"shrink-0 bg-border data-[status=complete]:bg-accent-solid\",\n    \"data-[orientation=horizontal]:h-px data-[orientation=horizontal]:min-w-control-sm data-[orientation=horizontal]:flex-1\",\n    \"data-[orientation=vertical]:min-h-stack-md data-[orientation=vertical]:w-px data-[orientation=vertical]:flex-1\",\n  ],\n  button: [\n    \"flex min-w-0 items-center gap-inline-sm rounded-sm text-start outline-none data-[orientation=vertical]:items-start\",\n    \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:bg-hover\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  ],\n} as const;\n\nexport interface Step {\n  /** The step's name. */\n  title: ReactNode;\n  /** A line under the title. */\n  description?: ReactNode;\n  /** Marks a step that failed (it shows an error even if it is done or current). */\n  error?: boolean;\n}\n\nconst CheckIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.75\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m3.5 8.5 3 3 6-7\" />\n  </svg>\n);\n\nconst AlertIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.75\" strokeLinecap=\"round\">\n    <path d=\"M8 4v5M8 11.5v.5\" />\n  </svg>\n);\n\n/** The status of step `index` when step `value` is current. */\nexport function stepStatus(steps: readonly Step[], index: number, value: number): StepStatus {\n  if (steps[index]?.error) return \"error\";\n  if (index < value) return \"complete\";\n  return index === value ? \"current\" : \"upcoming\";\n}\n\nconst STATUS_TEXT: Record<StepStatus, string> = { complete: \"completed\", current: \"current step\", upcoming: \"not started\", error: \"failed\" };\n\nexport interface StepperItemProps {\n  /** The step. */\n  step: Step;\n  /** Its position, from 0 (shown as index + 1). */\n  index: number;\n  /** Its status (stepStatus). */\n  status: StepStatus;\n  /** The Stepper's orientation. */\n  orientation: keyof typeof stepperVariants.orientation;\n  /** The last step has no connector. */\n  last: boolean;\n  /** When given and the step is complete, the step is a button calling it. */\n  onSelect?: (() => void) | undefined;\n}\n\n/** One step: its indicator, title, description and connector. Stepper renders one per step. */\nexport function StepperItem({ step, index, status, orientation, last, onSelect }: StepperItemProps) {\n  const indicator = (\n    <span data-slot=\"stepper-indicator\" data-status={status} aria-hidden=\"true\" className={cn(classes.indicator)}>\n      {status === \"error\" ? <AlertIcon /> : status === \"complete\" ? <CheckIcon /> : index + 1}\n    </span>\n  );\n  const text = (\n    <span data-slot=\"stepper-text\" data-orientation={orientation} className={cn(classes.text)}>\n      <span data-slot=\"stepper-title\" data-status={status} className={cn(classes.title)}>\n        {step.title}\n      </span>\n      {step.description ? (\n        <span data-slot=\"stepper-description\" className={cn(classes.description)}>\n          {step.description}\n        </span>\n      ) : null}\n      <span className=\"sr-only\">, {STATUS_TEXT[status]}</span>\n    </span>\n  );\n  const connector = last ? null : <span data-slot=\"stepper-connector\" data-status={status} data-orientation={orientation} aria-hidden=\"true\" className={cn(classes.connector)} />;\n  const body = (\n    <>\n      {orientation === \"vertical\" ? (\n        <span className={classes.marker}>\n          {indicator}\n          {connector}\n        </span>\n      ) : (\n        indicator\n      )}\n      {text}\n    </>\n  );\n  return (\n    <li data-slot=\"stepper-item\" data-status={status} data-orientation={orientation} aria-current={status === \"current\" ? \"step\" : undefined} className={cn(classes.item)}>\n      {onSelect && status === \"complete\" ? (\n        <button type=\"button\" data-slot=\"stepper-button\" data-orientation={orientation} onClick={onSelect} className={cn(classes.button)}>\n          {body}\n        </button>\n      ) : (\n        body\n      )}\n      {orientation === \"horizontal\" ? connector : null}\n    </li>\n  );\n}\n\nexport interface StepperProps extends Omit<ComponentProps<\"ol\">, \"className\" | \"onChange\"> {\n  /** The steps, in order. */\n  steps: readonly Step[];\n  /** The current step's index, from 0; steps.length when all are done. */\n  value: number;\n  /** Lets the user go back: the completed steps become buttons calling this with their index. */\n  onValueChange?: (index: number) => void;\n  /** A row (default) or a column. */\n  orientation?: keyof typeof stepperVariants.orientation;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** Numbered steps joined by lines: done (accent, check), current, upcoming, failed. */\nexport function Stepper({ steps = [], value, onValueChange, orientation = \"horizontal\", className, \"aria-label\": label = \"Progress\", ...props }: StepperProps) {\n  return (\n    <ol data-slot=\"stepper\" data-orientation={orientation} aria-label={label} className={cn(classes.root, stepperVariants.orientation[orientation], className)} {...props}>\n      {steps.map((step, index) => (\n        <StepperItem\n          key={index}\n          step={step}\n          index={index}\n          status={stepStatus(steps, index, value)}\n          orientation={orientation}\n          last={index === steps.length - 1}\n          onSelect={onValueChange ? () => onValueChange(index) : undefined}\n        />\n      ))}\n    </ol>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "stepper",
+      "title": "Stepper",
+      "description": "The steps of a task done in order: an ordered list of numbered steps joined by lines, showing done (accent, check), current, upcoming and failed steps, horizontal or vertical, with completed steps optionally clickable to go back.",
+      "usage": "Use Stepper to show where the user is in a task of three to six ordered steps: add a connection, approve access, connect; a first-run guide. Pass steps ({ title, description?, error? }) and value (the current index; steps.length when all are done); pass onValueChange to let the user return to a completed step; name it with aria-label. It shows progress, it does not hold the steps' content: render the current step's form beside it. For a hierarchy use Breadcrumb; for views the user switches freely, Tabs.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [],
+      "props": [
+        {
+          "name": "steps",
+          "type": "{ title: ReactNode; description?: ReactNode; error?: boolean }[]",
+          "required": true,
+          "description": "The steps, in order; error marks one that failed."
+        },
+        {
+          "name": "value",
+          "type": "number",
+          "required": true,
+          "description": "The current step's index from 0; steps.length when all are done."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(index: number) => void",
+          "description": "Makes completed steps buttons that go back to them."
+        },
+        {
+          "name": "orientation",
+          "type": "\"horizontal\" | \"vertical\"",
+          "default": "horizontal",
+          "description": "A row of steps, or a column for a side panel."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "default": "Progress",
+          "description": "The list's accessible name: what the steps are for."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the list."
+        }
+      ],
+      "variants": {
+        "orientation": [
+          "horizontal",
+          "vertical"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "ol",
+          "description": "The list; data-slot=\"stepper\", data-orientation."
+        },
+        {
+          "name": "indicator",
+          "element": "span",
+          "description": "The circle (size.control.sm) with the number, a check when done, or an alert mark when failed; aria-hidden; data-slot=\"stepper-indicator\"."
+        },
+        {
+          "name": "title",
+          "element": "span",
+          "description": "The step's name in type.label, with its status as visually hidden text; data-slot=\"stepper-title\"."
+        },
+        {
+          "name": "connector",
+          "element": "span",
+          "description": "The line to the next step, color.accent.bg once the step is done; data-slot=\"stepper-connector\"."
+        },
+        {
+          "name": "button",
+          "element": "button",
+          "description": "Wraps a completed step when onValueChange is given; data-slot=\"stepper-button\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "StepperItem",
+          "slot": "stepper-item",
+          "description": "One step, an <li> with aria-current=\"step\" when current and data-status; Stepper renders one per step."
+        }
+      ],
+      "states": [
+        {
+          "name": "complete",
+          "variant": "data-[status=complete]",
+          "description": "A step before the current one: accent circle with a check, accent connector."
+        },
+        {
+          "name": "current",
+          "variant": "data-[status=current]",
+          "description": "The current step: accent ring, aria-current=\"step\"."
+        },
+        {
+          "name": "upcoming",
+          "variant": "data-[status=upcoming]",
+          "description": "A step after the current one: color.border.strong ring, color.fg.muted number and title."
+        },
+        {
+          "name": "error",
+          "variant": "data-[status=error]",
+          "description": "A step that failed: color.status.danger border, background and text, an alert mark."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "A clickable completed step under the pointer: color.interactive.hover."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on a clickable step: the focus ring."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.fg",
+        "color.border.default",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.bg",
+        "color.status.danger.border",
+        "color.status.danger.fg",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.sm",
+        "size.icon.sm",
+        "space.inline.sm",
+        "space.stack.md",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "StepperMinimal",
+        "realistic": "StepperRealistic"
+      },
+      "accessibility": [
+        "An ordered list named by aria-label; the current step has aria-current=\"step\".",
+        "Each step's status is visually hidden text after its title (completed, current step, not started, failed), so it does not rest on the circle's colour or icon, which are aria-hidden.",
+        "With onValueChange, completed steps are buttons in the tab order with a focus ring; upcoming steps are not interactive.",
+        "Only colours transition; nothing moves."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { Stepper, type Step } from \"@/components/stepper/stepper\";\n\nconst connectionSteps: Step[] = [{ title: \"Connection details\" }, { title: \"Approve access\" }, { title: \"Connect\" }];\n\n/** The smallest useful Stepper: three steps, the second current. */\nexport function StepperMinimal() {\n  return <Stepper steps={connectionSteps} value={1} aria-label=\"New connection\" />;\n}\n\n/**\n * The first run in a side panel (vertical, descriptions, completed steps clickable to go back) and\n * a row where the connection attempt failed.\n */\nexport function StepperRealistic() {\n  const [value, setValue] = useState(2);\n  const firstRun: Step[] = [\n    { title: \"Add a connection\", description: \"Host, database, user\" },\n    { title: \"Approve access\", description: \"TLS and allowed addresses\" },\n    { title: \"Connect\", description: \"Open a session\" },\n    { title: \"Run a query\", description: \"Ctrl+Enter\" },\n  ];\n  const failed: Step[] = [{ title: \"Connection details\" }, { title: \"Approve access\" }, { title: \"Connect\", error: true }];\n  return (\n    <div className=\"flex w-full flex-col gap-stack-lg\">\n      <Stepper steps={firstRun} value={value} onValueChange={setValue} orientation=\"vertical\" aria-label=\"First run\" />\n      <Stepper steps={failed} value={2} aria-label=\"Reconnect orders-prod\" />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {}
+  }
+}
