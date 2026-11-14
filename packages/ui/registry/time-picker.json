@@ -1,0 +1,195 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "time-picker",
+  "type": "registry:ui",
+  "title": "TimePicker",
+  "description": "A time of day typed into hour, minute, optional second and AM/PM segments, on Base UI's Input: the arrow keys step a segment and digits fill it, in three sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/input"
+  ],
+  "files": [
+    {
+      "path": "ui/time-picker.tsx",
+      "type": "registry:ui",
+      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { useLayoutEffect, useRef, useState, type ClipboardEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type Ref } from \"react\";\nimport { inputVariants } from \"@/components/ui/input\";\nimport { cn } from \"@/lib/cn\";\n\n// A time of day typed into segments: hours, minutes, optionally seconds, and AM/PM in the 12-hour\n// cycle. Base UI has no time field, and a native <input type=\"time\"> looks and behaves differently\n// in each webview DBee runs in (WebKitGTK, WebView2, WKWebView), so this is one Base UI Input\n// (so a Field labels, describes and validates it like any input) that edits its text a segment\n// at a time: the selection is always one segment, the digits fill it and move on, the arrow keys\n// step it. The value is \"HH:mm\" or \"HH:mm:ss\" on the 24-hour clock, or null until every segment\n// has a value.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const timePickerVariants = {\n  size: inputVariants.size,\n} as const;\n\nconst base = [\n  \"flex w-full min-w-0 rounded-md border border-border-strong bg-surface font-sans text-body tabular-nums text-fg\",\n  \"placeholder:text-fg-subtle selection:bg-selected selection:text-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\ntype Kind = \"hour\" | \"minute\" | \"second\" | \"period\";\ntype Period = \"AM\" | \"PM\";\ninterface Segments {\n  hour: number | null;\n  minute: number | null;\n  second: number | null;\n  period: Period | null;\n}\n\nconst EMPTY: Segments = { hour: null, minute: null, second: null, period: null };\n\nconst range = (kind: Kind, cycle: 12 | 24) => (kind === \"hour\" ? (cycle === 12 ? [1, 12] : [0, 23]) : [0, 59]) as [number, number];\n\nconst pad = (n: number | null) => (n === null ? \"--\" : String(n).padStart(2, \"0\"));\n\n/** \"14:05\", \"14:05:09\" (24-hour) into segments of the given cycle; null if it is not a time. */\nexport function parseTime(text: string | null | undefined, cycle: 12 | 24 = 24): Segments | null {\n  if (!text) return null;\n  const match = /^\\s*(\\d{1,2})(?:[:.h]?(\\d{2}))(?:[:.](\\d{2}))?\\s*([ap])?\\.?m?\\.?\\s*$/i.exec(text);\n  if (!match) return null;\n  let hour = Number(match[1]);\n  const minute = Number(match[2]);\n  const second = match[3] === undefined ? 0 : Number(match[3]);\n  const suffix = match[4]?.toLowerCase();\n  if (suffix) {\n    if (hour < 1 || hour > 12) return null;\n    hour = (hour % 12) + (suffix === \"p\" ? 12 : 0);\n  }\n  if (hour > 23 || minute > 59 || second > 59) return null;\n  if (cycle === 24) return { hour, minute, second, period: null };\n  return { hour: hour % 12 === 0 ? 12 : hour % 12, minute, second, period: hour < 12 ? \"AM\" : \"PM\" };\n}\n\nfunction toValue(s: Segments, kinds: readonly Kind[]): string | null {\n  if (kinds.some((kind) => s[kind] === null)) return null;\n  let hour = s.hour!;\n  if (kinds.includes(\"period\")) hour = (hour % 12) + (s.period === \"PM\" ? 12 : 0);\n  const time = `${pad(hour)}:${pad(s.minute)}`;\n  return kinds.includes(\"second\") ? `${time}:${pad(s.second)}` : time;\n}\n\n/** The text of the segments and where each one sits in it. */\nfunction layout(s: Segments, kinds: readonly Kind[]) {\n  let text = \"\";\n  const spans: [number, number][] = [];\n  kinds.forEach((kind, index) => {\n    if (index > 0) text += kind === \"period\" ? \" \" : \":\";\n    const part = kind === \"period\" ? (s.period ?? \"--\") : pad(s[kind]);\n    spans.push([text.length, text.length + part.length]);\n    text += part;\n  });\n  return { text, spans };\n}\n\ntype Handled = \"onKeyDown\" | \"onFocus\" | \"onBlur\" | \"onMouseDown\" | \"onMouseUp\" | \"onPaste\";\n\nexport interface TimePickerProps extends Omit<InputPrimitive.Props, \"className\" | \"size\" | \"value\" | \"defaultValue\" | \"onValueChange\" | \"type\" | \"ref\" | Handled> {\n  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;\n  onFocus?: (event: FocusEvent<HTMLInputElement>) => void;\n  onBlur?: (event: FocusEvent<HTMLInputElement>) => void;\n  onMouseDown?: (event: MouseEvent<HTMLInputElement>) => void;\n  onMouseUp?: (event: MouseEvent<HTMLInputElement>) => void;\n  onPaste?: (event: ClipboardEvent<HTMLInputElement>) => void;\n  /** \"HH:mm\" (or \"HH:mm:ss\" with `seconds`) on the 24-hour clock; null while incomplete. */\n  value?: string | null;\n  /** Initial value when uncontrolled. */\n  defaultValue?: string | null;\n  /** Called with the new value when a segment changes: the time once all are filled, else null. */\n  onValueChange?: (value: string | null) => void;\n  /** Shows and edits seconds. */\n  seconds?: boolean;\n  /** 24 (default) or 12 with an AM/PM segment. The value is on the 24-hour clock either way. */\n  hourCycle?: 12 | 24;\n  /** How far ArrowUp and ArrowDown move the minutes. */\n  minuteStep?: number;\n  /** Control height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof timePickerVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the `<input>`. */\n  ref?: Ref<HTMLInputElement>;\n}\n\n/**\n * A time field on Base UI's Input, edited by segment. Inside a Field it takes the label,\n * description and validity. The ref reaches the `<input>`.\n */\nexport function TimePicker({\n  value,\n  defaultValue = null,\n  onValueChange,\n  seconds = false,\n  hourCycle = 24,\n  minuteStep = 1,\n  size = \"md\",\n  placeholder,\n  readOnly,\n  className,\n  ref,\n  onKeyDown,\n  onFocus,\n  onBlur,\n  onMouseDown,\n  onMouseUp,\n  onPaste,\n  ...props\n}: TimePickerProps) {\n  const kinds: Kind[] = [\"hour\", \"minute\"];\n  if (seconds) kinds.push(\"second\");\n  if (hourCycle === 12) kinds.push(\"period\");\n\n  const [segments, setSegments] = useState<Segments>(() => parseTime(value !== undefined ? value : defaultValue, hourCycle) ?? EMPTY);\n  const [active, setActive] = useState(0);\n  // The value last reported or received, so a controlled value that changes elsewhere replaces\n  // the segments, while one that only echoes the segments' own value leaves a partial edit alone.\n  const [known, setKnown] = useState<string | null | undefined>(value);\n  if (value !== undefined && value !== known) {\n    setKnown(value);\n    setSegments(parseTime(value, hourCycle) ?? EMPTY);\n  }\n  const typed = useRef(\"\");\n  const input = useRef<HTMLInputElement | null>(null);\n  const pointer = useRef(false);\n\n  const empty = kinds.every((kind) => segments[kind] === null);\n  const { text, spans } = layout(segments, kinds);\n  const shown = empty ? \"\" : text;\n\n  /** Selects segment `index` while the input has focus; the layout effect keeps it selected. */\n  const select = (index: number) => {\n    const element = input.current;\n    if (!element || element.ownerDocument.activeElement !== element || !shown) return;\n    const [start, end] = spans[index]!;\n    element.setSelectionRange(start, end);\n  };\n\n  useLayoutEffect(() => select(active));\n\n  const commit = (next: Segments) => {\n    setSegments(next);\n    const before = toValue(segments, kinds);\n    const after = toValue(next, kinds);\n    if (after !== before) {\n      setKnown(after);\n      onValueChange?.(after);\n    }\n  };\n\n  const move = (index: number) => {\n    typed.current = \"\";\n    setActive(Math.max(0, Math.min(kinds.length - 1, index)));\n  };\n\n  const step = (kind: Kind, delta: number) => {\n    if (kind === \"period\") return commit({ ...segments, period: segments.period === \"AM\" ? \"PM\" : \"AM\" });\n    const [min, max] = range(kind, hourCycle);\n    const current = segments[kind];\n    const size = max - min + 1;\n    const amount = kind === \"minute\" ? delta * minuteStep : delta;\n    const next = current === null ? (delta > 0 ? min : max) : ((((current - min + amount) % size) + size) % size) + min;\n    commit({ ...segments, [kind]: next });\n  };\n\n  const type = (kind: Kind, digit: number) => {\n    if (kind === \"period\") return;\n    const [min, max] = range(kind, hourCycle);\n    const digits = typed.current + String(digit);\n    const number = Number(digits);\n    if (digits.length === 1) {\n      // A first digit that cannot start a two-digit value fills the segment on its own.\n      if (number * 10 > max) {\n        commit({ ...segments, [kind]: Math.max(min, number) });\n        return move(active + 1);\n      }\n      typed.current = digits;\n      commit({ ...segments, [kind]: number < min ? null : number });\n      return;\n    }\n    typed.current = \"\";\n    commit({ ...segments, [kind]: number > max || number < min ? (digit < min ? segments[kind] : digit) : number });\n    move(active + 1);\n  };\n\n  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {\n    onKeyDown?.(event);\n    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;\n    const kind = kinds[active]!;\n    const editable = !readOnly && !props.disabled;\n    switch (event.key) {\n      case \"ArrowLeft\":\n      case \"ArrowRight\": {\n        event.preventDefault();\n        const forward = (event.key === \"ArrowRight\") !== (event.currentTarget.dir === \"rtl\" || getComputedStyle(event.currentTarget).direction === \"rtl\");\n        return move(active + (forward ? 1 : -1));\n      }\n      case \"ArrowUp\":\n      case \"ArrowDown\":\n        event.preventDefault();\n        typed.current = \"\";\n        if (editable) step(kind, event.key === \"ArrowUp\" ? 1 : -1);\n        return;\n      case \"Home\":\n      case \"End\": {\n        event.preventDefault();\n        if (!editable) return;\n        if (kind === \"period\") return commit({ ...segments, period: event.key === \"Home\" ? \"AM\" : \"PM\" });\n        const [min, max] = range(kind, hourCycle);\n        return commit({ ...segments, [kind]: event.key === \"Home\" ? min : max });\n      }\n      case \"Backspace\":\n      case \"Delete\":\n        event.preventDefault();\n        if (!editable) return;\n        typed.current = \"\";\n        if (segments[kind] === null && event.key === \"Backspace\") return move(active - 1);\n        return commit({ ...segments, [kind]: null });\n      case \":\":\n      case \".\":\n      case \" \":\n        event.preventDefault();\n        return move(active + 1);\n      case \"Tab\":\n      case \"Enter\":\n      case \"Escape\":\n        return;\n    }\n    if (event.key.length !== 1) return;\n    event.preventDefault();\n    if (!editable) return;\n    if (/^\\d$/.test(event.key)) {\n      if (kind === \"period\") return;\n      return type(kind, Number(event.key));\n    }\n    const letter = event.key.toLowerCase();\n    if (kinds.includes(\"period\") && (letter === \"a\" || letter === \"p\")) {\n      commit({ ...segments, period: letter === \"a\" ? \"AM\" : \"PM\" });\n      if (kind === \"period\") move(active + 1);\n    }\n  };\n\n  const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {\n    onPaste?.(event);\n    if (event.defaultPrevented) return;\n    event.preventDefault();\n    if (readOnly || props.disabled) return;\n    const parsed = parseTime(event.clipboardData.getData(\"text\"), hourCycle);\n    if (parsed) commit({ ...parsed, second: seconds ? parsed.second : null });\n  };\n\n  const handleFocus = (event: FocusEvent<HTMLInputElement>) => {\n    onFocus?.(event);\n    typed.current = \"\";\n    if (pointer.current) return;\n    setActive(0);\n    select(0);\n  };\n\n  const handleMouseUp = (event: MouseEvent<HTMLInputElement>) => {\n    onMouseUp?.(event);\n    pointer.current = false;\n    const caret = event.currentTarget.selectionStart ?? 0;\n    const index = spans.findIndex(([, end]) => caret <= end);\n    const next = index < 0 ? kinds.length - 1 : index;\n    typed.current = \"\";\n    setActive(next);\n    select(next);\n  };\n\n  const handleBlur = (event: FocusEvent<HTMLInputElement>) => {\n    onBlur?.(event);\n    typed.current = \"\";\n  };\n\n  const setRef = (element: HTMLInputElement | null) => {\n    input.current = element;\n    if (typeof ref === \"function\") ref(element);\n    else if (ref) ref.current = element;\n  };\n\n  return (\n    <InputPrimitive\n      ref={setRef}\n      data-slot=\"time-picker\"\n      data-size={size}\n      type=\"text\"\n      inputMode={hourCycle === 24 ? \"numeric\" : \"text\"}\n      autoComplete=\"off\"\n      spellCheck={false}\n      placeholder={placeholder ?? layout(EMPTY, kinds).text}\n      pattern={hourCycle === 24 ? (seconds ? \"\\\\d{2}:\\\\d{2}:\\\\d{2}\" : \"\\\\d{2}:\\\\d{2}\") : seconds ? \"\\\\d{2}:\\\\d{2}:\\\\d{2} [AP]M\" : \"\\\\d{2}:\\\\d{2} [AP]M\"}\n      readOnly={readOnly}\n      value={shown}\n      onValueChange={(next) => {\n        // Typing is handled by key; this is an input method, autofill or a mobile keyboard.\n        const parsed = parseTime(next, hourCycle);\n        if (parsed) commit({ ...parsed, second: seconds ? parsed.second : null });\n        else if (!next) commit(EMPTY);\n      }}\n      onKeyDown={handleKeyDown}\n      onPaste={handlePaste}\n      onFocus={handleFocus}\n      onBlur={handleBlur}\n      onMouseDown={(event) => {\n        onMouseDown?.(event);\n        pointer.current = true;\n      }}\n      onMouseUp={handleMouseUp}\n      className={cn(base, timePickerVariants.size[size], className)}\n      {...props}\n    />\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "time-picker",
+      "title": "TimePicker",
+      "description": "A time of day typed into hour, minute, optional second and AM/PM segments, on Base UI's Input: the arrow keys step a segment and digits fill it, in three sizes.",
+      "usage": "Use TimePicker for a time of day (a backup schedule, a maintenance window). Put it in a Field after a FieldLabel. The value is \"HH:mm\" (\"HH:mm:ss\" with seconds) on the 24-hour clock whatever hourCycle shows, and null until every segment is set; with TanStack Form wire value, onValueChange and onBlur to the field. A native form submits the text shown, which is the value on the 24-hour clock. hourCycle={12} adds an AM/PM segment (A and P set it). For a date use DatePicker; for a duration or a number of seconds, NumberInput.",
+      "status": "experimental",
+      "base": "@base-ui/react/input",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string | null",
+          "description": "Controlled value, \"HH:mm\" or \"HH:mm:ss\" on the 24-hour clock; null when empty or incomplete."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string | null",
+          "description": "Initial value when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: string | null) => void",
+          "description": "Called when a segment changes: with the time once every segment is set, else null."
+        },
+        {
+          "name": "seconds",
+          "type": "boolean",
+          "default": false,
+          "description": "Shows and edits a seconds segment."
+        },
+        {
+          "name": "hourCycle",
+          "type": "12 | 24",
+          "default": 24,
+          "description": "The clock shown; 12 adds an AM/PM segment. The value stays on the 24-hour clock."
+        },
+        {
+          "name": "minuteStep",
+          "type": "number",
+          "default": 1,
+          "description": "How far ArrowUp and ArrowDown move the minutes (15 for quarter hours); typing sets any minute."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Control height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "default": "--:--",
+          "description": "Shown while every segment is empty: the segments' shape by default."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "The form field name; a Field's name wins."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "default": false,
+          "description": "The field must have a time before the form submits."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction; a Field's disabled sets it too."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Focusable and selectable, but no segment changes."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLInputElement>",
+          "description": "Reaches the <input>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "input",
+          "element": "input",
+          "description": "The text control, data-slot=\"time-picker\" and data-size; its text is the segments (\"14:05\", \"02:05 PM\") with tabular figures, and the selection is always one segment."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: a ring of ring.width in color.ring; the selected segment in color.interactive.selected."
+        },
+        {
+          "name": "placeholder",
+          "variant": "placeholder",
+          "description": "No segment set: the placeholder in color.fg.subtle."
+        },
+        {
+          "name": "invalid",
+          "variant": "data-invalid",
+          "description": "In an invalid Field, or with aria-invalid: color.status.danger.border borders."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.subtle",
+        "color.interactive.selected",
+        "color.ring",
+        "color.status.danger.border",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "space.control.x",
+        "space.inset.lg",
+        "space.inset.sm",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight"
+      ],
+      "examples": {
+        "minimal": "TimePickerMinimal",
+        "realistic": "TimePickerRealistic"
+      },
+      "accessibility": [
+        "A text input named by its FieldLabel (or aria-label) and described by FieldDescription and FieldError; its value reads as a time (\"14:05\", \"02:05 PM\").",
+        "Focus selects the hour; ArrowLeft and ArrowRight (or typing a colon) move between segments, ArrowUp and ArrowDown step the selected one and wrap, Home and End set its lowest and highest value, Backspace and Delete clear it. Tab leaves the field.",
+        "Digits fill the selected segment and move on when it is complete (\"9\" in the hour gives 09); A and P set AM or PM. Pasting \"14:05\", \"2:05 pm\" or \"14:05:30\" sets every segment.",
+        "It needs no pointer and no popup, and the shape of the time (the placeholder) shows which segments exist.",
+        "Mark it invalid through its Field, which also links the error text; required and the pattern of the segments give Base UI's Field the native validity."
+      ]
+    },
+    "example": "import { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { TimePicker } from \"@/components/time-picker/time-picker\";\n\n/** The smallest useful TimePicker: a labelled time on the 24-hour clock. */\nexport function TimePickerMinimal() {\n  return (\n    <Field className=\"w-full\">\n      <FieldLabel>Backup at</FieldLabel>\n      <TimePicker defaultValue=\"02:30\" />\n    </Field>\n  );\n}\n\n/**\n * A maintenance window: a start with seconds, an end on the 12-hour clock that nobody has set\n * yet (invalid), a time the policy fixes, and the small size in 15-minute steps.\n */\nexport function TimePickerRealistic() {\n  return (\n    <div className=\"flex w-full flex-col gap-stack-md\">\n      <Field name=\"window-start\">\n        <FieldLabel>Window starts</FieldLabel>\n        <TimePicker defaultValue=\"23:00:00\" seconds />\n        <FieldDescription>Server time, 24-hour clock.</FieldDescription>\n      </Field>\n      <Field name=\"window-end\" invalid>\n        <FieldLabel>Window ends</FieldLabel>\n        <TimePicker hourCycle={12} />\n        <FieldError>Set when the window ends.</FieldError>\n      </Field>\n      <Field name=\"vacuum\" disabled>\n        <FieldLabel>Vacuum at</FieldLabel>\n        <TimePicker defaultValue=\"04:00\" />\n        <FieldDescription>Set by the workspace administrator.</FieldDescription>\n      </Field>\n      <Field name=\"report\">\n        <FieldLabel>Daily report</FieldLabel>\n        <TimePicker defaultValue=\"08:15\" size=\"sm\" minuteStep={15} />\n      </Field>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

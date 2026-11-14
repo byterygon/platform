@@ -1,0 +1,307 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "date-picker",
+  "type": "registry:ui",
+  "title": "DatePicker",
+  "description": "A date or a range of dates, typed into a text field (read with date-fns in a format, yyyy-MM-dd by default) or picked from a Calendar in a popup, on InputGroup and Base UI's Popover, in three sizes.",
+  "dependencies": [
+    "@base-ui/react",
+    "date-fns"
+  ],
+  "registryDependencies": [
+    "@byterygon/calendar",
+    "@byterygon/cn",
+    "@byterygon/input-group",
+    "@byterygon/select",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/date-picker.tsx",
+      "type": "registry:ui",
+      "content": "import { Popover as PopoverPrimitive } from \"@base-ui/react/popover\";\nimport { format as formatDate, isAfter, isBefore, isValid, parse, startOfDay, type Locale } from \"date-fns\";\nimport { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type Ref } from \"react\";\nimport { Calendar, type DateRange, type Matcher } from \"@/components/ui/calendar\";\nimport { InputGroup, InputGroupButton, InputGroupInput, inputGroupVariants } from \"@/components/ui/input-group\";\nimport { popupClasses, popupOffset } from \"@/components/ui/select\";\nimport { cn } from \"@/lib/cn\";\nimport { useThemeScope } from \"@/lib/theme-scope\";\n\n// A date (or a range of dates) typed into a text field or picked from a Calendar in a popup, on\n// InputGroup (so a Field labels, describes and validates the text field) and Base UI's Popover.\n// The text is read with date-fns in `format` (yyyy-MM-dd by default, the order a database\n// prints) when the field loses focus or on Enter; text that is not a date in that format, or is\n// outside min and max, leaves the value null and marks the field aria-invalid until corrected.\n// Dates are local days at midnight (date-fns), with no time zone of their own.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const datePickerVariants = {\n  size: inputGroupVariants.size,\n} as const;\n\nconst triggerClasses = [\"data-popup-open:bg-pressed\"];\n\nconst popupStyle = { maxHeight: \"var(--available-height)\", transformOrigin: \"var(--transform-origin)\" } as const;\n\n/** A range with both ends, as DatePicker reports it. */\nexport interface DatePickerRange {\n  from: Date;\n  to: Date;\n}\n\nconst CalendarIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <rect x=\"2.5\" y=\"3.5\" width=\"11\" height=\"10\" rx=\"1.5\" />\n    <path d=\"M2.5 6.5h11M5.5 2v3M10.5 2v3\" />\n  </svg>\n);\n\n// Range text: \"2026-11-01 – 2026-11-14\"; an en or em dash, \"to\", \"..\" or a spaced hyphen between.\nconst RANGE_SEPARATOR = /\\s*[–—]\\s*|\\s+-\\s+|\\s+to\\s+|\\s*\\.\\.\\s*/i;\nconst RANGE_JOIN = \" – \";\n\ninterface CommonProps {\n  /** The date-fns pattern of the text, for reading and writing it. */\n  format?: string;\n  /** date-fns locale: the calendar's language and first weekday, and month names in `format`. */\n  locale?: Locale;\n  /** The earliest day that can be chosen or typed. */\n  min?: Date;\n  /** The latest day that can be chosen or typed. */\n  max?: Date;\n  /** More days the calendar does not offer (react-day-picker matchers: weekends, holidays). */\n  disabledDays?: Matcher | Matcher[];\n  /** First day of the week in the calendar, over the locale's (1 is Monday). */\n  weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;\n  /** Months side by side in the popup; two by default for a range. */\n  numberOfMonths?: number;\n  /** Control height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof datePickerVariants.size;\n  /** Shown while the text is empty; the format by default. */\n  placeholder?: string;\n  /** Accessible name of the calendar button. */\n  calendarLabel?: string;\n  /** Controlled open state of the calendar popup. */\n  open?: boolean;\n  /** Initial open state when uncontrolled. */\n  defaultOpen?: boolean;\n  /** Called when the popup opens or closes. */\n  onOpenChange?: (open: boolean) => void;\n  /** The form field name of the text field; a Field's name wins. */\n  name?: string;\n  id?: string;\n  required?: boolean;\n  disabled?: boolean;\n  readOnly?: boolean;\n  autoFocus?: boolean;\n  /** Accessible name when there is no FieldLabel; set on the text field. */\n  \"aria-label\"?: string;\n  \"aria-describedby\"?: string;\n  onBlur?: (event: FocusEvent<HTMLInputElement>) => void;\n  onFocus?: (event: FocusEvent<HTMLInputElement>) => void;\n  /** Extra classes for the frame, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the text `<input>`. */\n  ref?: Ref<HTMLInputElement>;\n}\n\ninterface SingleProps extends CommonProps {\n  /** One day (default) or a range of two. */\n  mode?: \"single\";\n  /** Controlled value; null when empty or when the text is not a date. */\n  value?: Date | null;\n  /** Initial value when uncontrolled. */\n  defaultValue?: Date | null;\n  /** Called with the new day, or null. */\n  onValueChange?: (value: Date | null) => void;\n}\n\ninterface RangeProps extends CommonProps {\n  mode: \"range\";\n  /** Controlled value: both ends, or null. */\n  value?: DatePickerRange | null;\n  defaultValue?: DatePickerRange | null;\n  /** Called with both ends once the range is complete, or null. */\n  onValueChange?: (value: DatePickerRange | null) => void;\n}\n\nexport type DatePickerProps = SingleProps | RangeProps;\n\ntype Value = Date | DatePickerRange | null;\n\nconst sameValue = (a: Value | undefined, b: Value | undefined) => {\n  if (a == null || b == null) return a == b;\n  if (a instanceof Date || b instanceof Date) return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();\n  return a.from.getTime() === b.from.getTime() && a.to.getTime() === b.to.getTime();\n};\n\n/**\n * A date field on InputGroup and Base UI's Popover: type the date, or open the Calendar with the\n * button (or Alt+ArrowDown). `mode=\"range\"` takes two dates. Inside a Field the text field takes\n * the label, description and validity. The ref reaches the text `<input>`.\n */\nexport function DatePicker(props: DatePickerProps) {\n  const {\n    mode = \"single\",\n    value,\n    defaultValue = null,\n    onValueChange,\n    format = \"yyyy-MM-dd\",\n    locale,\n    min,\n    max,\n    disabledDays,\n    weekStartsOn,\n    numberOfMonths = mode === \"range\" ? 2 : 1,\n    size = \"md\",\n    placeholder,\n    calendarLabel = mode === \"range\" ? \"Choose dates\" : \"Choose date\",\n    open: openProp,\n    defaultOpen = false,\n    onOpenChange,\n    disabled,\n    readOnly,\n    onBlur,\n    className,\n    ref,\n    ...inputProps\n  } = props;\n  const range = mode === \"range\";\n  const report = onValueChange as ((value: Value) => void) | undefined;\n\n  // exactOptionalPropertyTypes: date-fns takes no `locale: undefined`.\n  const options = locale ? { locale } : {};\n\n  const write = (v: Value) => {\n    if (!v) return \"\";\n    if (v instanceof Date) return formatDate(v, format, options);\n    return `${formatDate(v.from, format, options)}${RANGE_JOIN}${formatDate(v.to, format, options)}`;\n  };\n\n  const [current, setCurrent] = useState<Value>(() => (value !== undefined ? value : defaultValue));\n  const [text, setText] = useState(() => write(current));\n  const [unparsed, setUnparsed] = useState(false);\n  // A controlled value that changes elsewhere replaces the text.\n  const [known, setKnown] = useState<Value | undefined>(value);\n  if (value !== undefined && !sameValue(value, known)) {\n    setKnown(value);\n    setCurrent(value);\n    setText(write(value));\n    setUnparsed(false);\n  }\n\n  const [openState, setOpenState] = useState(defaultOpen);\n  const open = openProp ?? openState;\n  // The days chosen so far while the popup is open (the first end of a range).\n  const [draft, setDraft] = useState<DateRange | undefined>();\n\n  const { ref: frameRef, anchor, scope, refresh } = useThemeScope<HTMLDivElement>();\n  const input = useRef<HTMLInputElement | null>(null);\n  const popup = useRef<HTMLDivElement | null>(null);\n\n  // A disabled Field disables the text field (Base UI's Input); the button follows it.\n  const [fieldDisabled, setFieldDisabled] = useState(false);\n  useLayoutEffect(() => {\n    const next = input.current?.hasAttribute(\"data-disabled\") ?? false;\n    if (next !== fieldDisabled) setFieldDisabled(next);\n  });\n\n  const inBounds = (day: Date) => (!min || !isBefore(day, startOfDay(min))) && (!max || !isAfter(day, startOfDay(max)));\n\n  const read = (raw: string): Value | undefined => {\n    const day = (part: string) => {\n      const parsed = parse(part.trim(), format, new Date(), options);\n      return isValid(parsed) && inBounds(parsed) ? parsed : undefined;\n    };\n    if (!range) return day(raw);\n    const parts = raw.split(RANGE_SEPARATOR);\n    if (parts.length !== 2) return undefined;\n    const from = day(parts[0]!);\n    const to = day(parts[1]!);\n    return from && to && !isAfter(from, to) ? { from, to } : undefined;\n  };\n\n  const commit = (next: Value) => {\n    setCurrent(next);\n    if (!sameValue(next, current)) {\n      setKnown(next);\n      report?.(next);\n    }\n  };\n\n  const commitText = () => {\n    if (!text.trim()) {\n      setUnparsed(false);\n      setText(\"\");\n      return commit(null);\n    }\n    const parsed = read(text);\n    if (parsed === undefined) {\n      setUnparsed(true);\n      return commit(null);\n    }\n    setUnparsed(false);\n    setText(write(parsed));\n    commit(parsed);\n  };\n\n  const setOpen = (next: boolean) => {\n    if (next) {\n      refresh();\n      setDraft(undefined);\n    }\n    setOpenState(next);\n    onOpenChange?.(next);\n  };\n\n  const choose = (next: Value) => {\n    setUnparsed(false);\n    setText(write(next));\n    commit(next);\n    setOpen(false);\n  };\n\n  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {\n    if (event.key === \"Enter\") commitText();\n    if (event.key === \"ArrowDown\" && event.altKey && !readOnly && !disabled) {\n      event.preventDefault();\n      commitText();\n      setOpen(true);\n    }\n  };\n\n  const setInputRef = (element: HTMLInputElement | null) => {\n    input.current = element;\n    if (typeof ref === \"function\") ref(element);\n    else if (ref) ref.current = element;\n  };\n\n  const days: Matcher[] = [...(min ? [{ before: min }] : []), ...(max ? [{ after: max }] : []), ...(disabledDays === undefined ? [] : Array.isArray(disabledDays) ? disabledDays : [disabledDays])];\n  const shownMonth = current instanceof Date ? current : (current?.from ?? (max && isBefore(max, new Date()) ? max : min && isAfter(min, new Date()) ? min : undefined));\n  const calendar = {\n    ...options,\n    ...(weekStartsOn === undefined ? {} : { weekStartsOn }),\n    ...(shownMonth ? { defaultMonth: shownMonth } : {}),\n    ...(min ? { startMonth: min } : {}),\n    ...(max ? { endMonth: max } : {}),\n    numberOfMonths,\n    disabled: days,\n  };\n  const triggerDisabled = disabled || readOnly || fieldDisabled;\n\n  return (\n    <PopoverPrimitive.Root open={open} onOpenChange={(next) => setOpen(next)}>\n      <InputGroup ref={frameRef} data-slot=\"date-picker\" size={size} className={cn(className)}>\n        <InputGroupInput\n          ref={setInputRef}\n          value={text}\n          onValueChange={(next) => {\n            setText(next);\n            if (unparsed && read(next) !== undefined) setUnparsed(false);\n          }}\n          onKeyDown={handleKeyDown}\n          onBlur={(event) => {\n            commitText();\n            onBlur?.(event);\n          }}\n          placeholder={placeholder ?? (range ? `${format}${RANGE_JOIN}${format}` : format)}\n          aria-invalid={unparsed || undefined}\n          autoComplete=\"off\"\n          spellCheck={false}\n          disabled={disabled}\n          readOnly={readOnly}\n          {...inputProps}\n        />\n        <PopoverPrimitive.Trigger\n          disabled={triggerDisabled}\n          render={\n            <InputGroupButton data-slot=\"date-picker-trigger\" aria-label={calendarLabel} className={cn(triggerClasses)}>\n              <CalendarIcon />\n            </InputGroupButton>\n          }\n        />\n      </InputGroup>\n      <PopoverPrimitive.Portal>\n        <PopoverPrimitive.Positioner {...scope} data-slot=\"date-picker-positioner\" anchor={anchor} side=\"bottom\" align=\"start\" sideOffset={() => popupOffset(anchor.current)} className={cn(popupClasses.positioner)}>\n          <PopoverPrimitive.Popup\n            ref={popup}\n            data-slot=\"date-picker-popup\"\n            style={popupStyle}\n            initialFocus={() => popup.current?.querySelector<HTMLElement>('[data-slot=\"calendar-day-button\"][tabindex=\"0\"]') ?? true}\n            finalFocus={input}\n            className={cn(popupClasses.popup, \"p-inset-sm\")}\n          >\n            {range ? (\n              <Calendar\n                mode=\"range\"\n                {...calendar}\n                resetOnSelect\n                selected={draft ?? (current && !(current instanceof Date) ? current : undefined)}\n                onSelect={(next) => {\n                  setDraft(next ?? undefined);\n                  if (next?.from && next.to && draft?.from) choose({ from: next.from, to: next.to });\n                }}\n                aria-label={calendarLabel}\n              />\n            ) : (\n              <Calendar\n                mode=\"single\"\n                {...calendar}\n                required\n                selected={current instanceof Date ? current : undefined}\n                onSelect={(next) => choose(next)}\n                aria-label={calendarLabel}\n              />\n            )}\n          </PopoverPrimitive.Popup>\n        </PopoverPrimitive.Positioner>\n      </PopoverPrimitive.Portal>\n    </PopoverPrimitive.Root>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "date-picker",
+      "title": "DatePicker",
+      "description": "A date or a range of dates, typed into a text field (read with date-fns in a format, yyyy-MM-dd by default) or picked from a Calendar in a popup, on InputGroup and Base UI's Popover, in three sizes.",
+      "usage": "Use DatePicker for a day in a form or a filter (a restore point, a snapshot date), and mode=\"range\" for a window of days (query history, an audit period). Put it in a Field after a FieldLabel: the text field takes the label, description and validity. The value is a local Date at midnight (range: { from, to }, both ends), or null when empty or when the text is not a date in format; with TanStack Form wire value, onValueChange and onBlur to the field, and validate null as missing. Limit the days with min, max and disabledDays (react-day-picker matchers, such as { dayOfWeek: [0, 6] }). Pass a date-fns locale for the calendar's language and first weekday; keep format unambiguous (yyyy-MM-dd, or dd/MM/yyyy where the locale reads it). For a time of day use TimePicker beside it; for a calendar that stays visible, Calendar.",
+      "status": "experimental",
+      "base": "@base-ui/react/popover",
+      "dependencies": [
+        "@base-ui/react",
+        "date-fns"
+      ],
+      "props": [
+        {
+          "name": "mode",
+          "type": "\"single\" | \"range\"",
+          "default": "single",
+          "description": "One day, or a range of two (typed as \"from – to\", picked with two clicks)."
+        },
+        {
+          "name": "value",
+          "type": "Date | { from: Date; to: Date } | null",
+          "description": "Controlled value; null when empty or when the text is not a date."
+        },
+        {
+          "name": "defaultValue",
+          "type": "Date | { from: Date; to: Date } | null",
+          "description": "Initial value when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value) => void",
+          "description": "Called with the new day or complete range, or null, when a day is picked or the typed text is read (on blur and Enter)."
+        },
+        {
+          "name": "format",
+          "type": "string",
+          "default": "yyyy-MM-dd",
+          "description": "The date-fns pattern the text is read and written in."
+        },
+        {
+          "name": "locale",
+          "type": "Locale (date-fns)",
+          "description": "The calendar's language and first weekday, and the month names in format."
+        },
+        {
+          "name": "min",
+          "type": "Date",
+          "description": "The earliest day that can be picked or typed; the calendar does not go before its month."
+        },
+        {
+          "name": "max",
+          "type": "Date",
+          "description": "The latest day that can be picked or typed."
+        },
+        {
+          "name": "disabledDays",
+          "type": "Matcher | Matcher[]",
+          "description": "More days the calendar does not offer: { dayOfWeek: [0, 6] }, a list of dates, a function."
+        },
+        {
+          "name": "weekStartsOn",
+          "type": "0 | 1 | 2 | 3 | 4 | 5 | 6",
+          "description": "First day of the week in the calendar, over the locale's."
+        },
+        {
+          "name": "numberOfMonths",
+          "type": "number",
+          "default": "1 (2 for a range)",
+          "description": "Months side by side in the popup."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Control height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "description": "Shown while the text is empty; the format by default."
+        },
+        {
+          "name": "calendarLabel",
+          "type": "string",
+          "default": "Choose date",
+          "description": "Accessible name of the calendar button and of the calendar (\"Choose dates\" for a range)."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state of the popup; defaultOpen and onOpenChange as in Base UI."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "The form field name of the text field, which submits the text; a Field's name wins."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "default": false,
+          "description": "The text field must not be empty when the form submits."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction; a Field's disabled sets it too, and disables the button."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "The text can be selected, not changed, and the popup does not open."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Accessible name of the text field when there is no FieldLabel."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the frame, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLInputElement>",
+          "description": "Reaches the text <input>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The InputGroup frame; data-slot=\"date-picker\" and data-size. The popup is placed against it."
+        },
+        {
+          "name": "input",
+          "element": "input",
+          "description": "The text field, Base UI's Input; data-slot=\"input-group-input\", aria-invalid while its text is not a date."
+        },
+        {
+          "name": "trigger",
+          "element": "button",
+          "description": "The calendar button, a ghost InputGroupButton with aria-haspopup=\"dialog\"; data-slot=\"date-picker-trigger\" and data-popup-open."
+        },
+        {
+          "name": "positioner",
+          "element": "div",
+          "description": "In a portal at the end of <body>, at z.dropdown, with the frame's data-theme and data-density; data-slot=\"date-picker-positioner\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "role=\"dialog\" holding the Calendar, color.bg.overlay with elevation.overlay; data-slot=\"date-picker-popup\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: a ring of ring.width in color.ring around the frame (the text field) or the button, and on the day in the calendar."
+        },
+        {
+          "name": "open",
+          "variant": "data-popup-open",
+          "props": {
+            "defaultOpen": true
+          },
+          "description": "The calendar is open: the button is color.interactive.active."
+        },
+        {
+          "name": "entering",
+          "variant": "data-starting-style",
+          "description": "The popup fades in over motion.duration.fast with motion.easing.enter, and out with motion.easing.exit."
+        },
+        {
+          "name": "invalid",
+          "variant": "has-[[data-slot=input-group-input][aria-invalid=true]]",
+          "description": "The text is not a date in format, or is outside min and max (aria-invalid), or the Field is invalid: color.status.danger.border borders."
+        },
+        {
+          "name": "selected",
+          "variant": "data-selected",
+          "description": "The chosen day in the calendar, or an end of the range: color.accent.bg."
+        },
+        {
+          "name": "disabled",
+          "variant": "has-[[data-slot=input-group-input][data-disabled]]",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction; the frame dims to opacity.disabled and the button is disabled."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-active",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.accent.subtle-fg",
+        "color.bg.overlay",
+        "color.bg.surface",
+        "color.border.default",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.border",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.md",
+        "space.inline.sm",
+        "space.inline.xl",
+        "space.inline.xs",
+        "space.inset.sm",
+        "space.inset.xs",
+        "space.stack.sm",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.dropdown"
+      ],
+      "examples": {
+        "minimal": "DatePickerMinimal",
+        "realistic": "DatePickerRealistic"
+      },
+      "accessibility": [
+        "The text field is named by its FieldLabel (or aria-label), described by FieldDescription and FieldError, and aria-invalid while its text is not a date; the placeholder shows the format to type.",
+        "The calendar button is named by calendarLabel (\"Choose date\") and has aria-haspopup=\"dialog\" and aria-expanded; Alt+ArrowDown in the text field opens the calendar too.",
+        "When the popup opens, focus moves to the chosen day (else today); the arrow keys, PageUp and PageDown move it, Enter or Space picks it, and the popup closes and returns focus to the text field. Escape closes it without a change.",
+        "The calendar is a role=\"grid\" per month with full-date labels on the days; days outside min, max or disabledDays are disabled and struck through.",
+        "Everything the popup does can be done by typing the date, so the field also works without a pointer or the popup."
+      ]
+    },
+    "example": "import { addDays, startOfDay } from \"date-fns\";\nimport { DatePicker } from \"@/components/date-picker/date-picker\";\nimport { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\n\n/** The smallest useful DatePicker: a labelled day, typed or picked. */\nexport function DatePickerMinimal() {\n  return (\n    <Field className=\"w-full\">\n      <FieldLabel>Restore to</FieldLabel>\n      <DatePicker defaultValue={startOfDay(new Date())} />\n    </Field>\n  );\n}\n\n/**\n * A query-history filter: a range over the last thirty days, a snapshot date with weekends\n * closed and nothing chosen yet (invalid), a retention date the policy fixes, and the small size.\n */\nexport function DatePickerRealistic() {\n  const today = startOfDay(new Date());\n  return (\n    <div className=\"flex w-full flex-col gap-stack-md\">\n      <Field name=\"history\">\n        <FieldLabel>Query history</FieldLabel>\n        <DatePicker mode=\"range\" defaultValue={{ from: addDays(today, -6), to: today }} min={addDays(today, -30)} max={today} />\n        <FieldDescription>Up to thirty days back, as yyyy-MM-dd – yyyy-MM-dd.</FieldDescription>\n      </Field>\n      <Field name=\"snapshot\" invalid>\n        <FieldLabel>Snapshot date</FieldLabel>\n        <DatePicker disabledDays={{ dayOfWeek: [0, 6] }} weekStartsOn={1} />\n        <FieldError>Choose a weekday for the snapshot.</FieldError>\n      </Field>\n      <Field name=\"retention\" disabled>\n        <FieldLabel>Keep backups until</FieldLabel>\n        <DatePicker defaultValue={addDays(today, 90)} />\n        <FieldDescription>Set by the workspace administrator.</FieldDescription>\n      </Field>\n      <Field name=\"since\">\n        <FieldLabel>Changed since</FieldLabel>\n        <DatePicker size=\"sm\" format=\"dd/MM/yyyy\" max={today} />\n      </Field>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0",
+      "date-fns": "4.4.0"
+    }
+  }
+}

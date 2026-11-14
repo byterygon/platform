@@ -1,0 +1,73 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "time-picker",
+  "title": "TimePicker",
+  "description": "A time of day typed into hour, minute, optional second and AM/PM segments, on Base UI's Input: the arrow keys step a segment and digits fill it, in three sizes.",
+  "usage": "Use TimePicker for a time of day (a backup schedule, a maintenance window). Put it in a Field after a FieldLabel. The value is \"HH:mm\" (\"HH:mm:ss\" with seconds) on the 24-hour clock whatever hourCycle shows, and null until every segment is set; with TanStack Form wire value, onValueChange and onBlur to the field. A native form submits the text shown, which is the value on the 24-hour clock. hourCycle={12} adds an AM/PM segment (A and P set it). For a date use DatePicker; for a duration or a number of seconds, NumberInput.",
+  "status": "experimental",
+  "base": "@base-ui/react/input",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "value", "type": "string | null", "description": "Controlled value, \"HH:mm\" or \"HH:mm:ss\" on the 24-hour clock; null when empty or incomplete." },
+    { "name": "defaultValue", "type": "string | null", "description": "Initial value when uncontrolled." },
+    { "name": "onValueChange", "type": "(value: string | null) => void", "description": "Called when a segment changes: with the time once every segment is set, else null." },
+    { "name": "seconds", "type": "boolean", "default": false, "description": "Shows and edits a seconds segment." },
+    { "name": "hourCycle", "type": "12 | 24", "default": 24, "description": "The clock shown; 12 adds an AM/PM segment. The value stays on the 24-hour clock." },
+    { "name": "minuteStep", "type": "number", "default": 1, "description": "How far ArrowUp and ArrowDown move the minutes (15 for quarter hours); typing sets any minute." },
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Control height from size.control.*, which follows data-density." },
+    { "name": "placeholder", "type": "string", "default": "--:--", "description": "Shown while every segment is empty: the segments' shape by default." },
+    { "name": "name", "type": "string", "description": "The form field name; a Field's name wins." },
+    { "name": "required", "type": "boolean", "default": false, "description": "The field must have a time before the form submits." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction; a Field's disabled sets it too." },
+    { "name": "readOnly", "type": "boolean", "default": false, "description": "Focusable and selectable, but no segment changes." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLInputElement>", "description": "Reaches the <input>." }
+  ],
+  "variants": {
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "input", "element": "input", "description": "The text control, data-slot=\"time-picker\" and data-size; its text is the segments (\"14:05\", \"02:05 PM\") with tabular figures, and the selection is always one segment." }
+  ],
+  "states": [
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus: a ring of ring.width in color.ring; the selected segment in color.interactive.selected." },
+    { "name": "placeholder", "variant": "placeholder", "description": "No segment set: the placeholder in color.fg.subtle." },
+    { "name": "invalid", "variant": "data-invalid", "description": "In an invalid Field, or with aria-invalid: color.status.danger.border borders." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." }
+  ],
+  "tokens": [
+    "color.bg.surface",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.subtle",
+    "color.interactive.selected",
+    "color.ring",
+    "color.status.danger.border",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.lg",
+    "size.control.md",
+    "size.control.sm",
+    "space.control.x",
+    "space.inset.lg",
+    "space.inset.sm",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight"
+  ],
+  "examples": { "minimal": "TimePickerMinimal", "realistic": "TimePickerRealistic" },
+  "accessibility": [
+    "A text input named by its FieldLabel (or aria-label) and described by FieldDescription and FieldError; its value reads as a time (\"14:05\", \"02:05 PM\").",
+    "Focus selects the hour; ArrowLeft and ArrowRight (or typing a colon) move between segments, ArrowUp and ArrowDown step the selected one and wrap, Home and End set its lowest and highest value, Backspace and Delete clear it. Tab leaves the field.",
+    "Digits fill the selected segment and move on when it is complete (\"9\" in the hour gives 09); A and P set AM or PM. Pasting \"14:05\", \"2:05 pm\" or \"14:05:30\" sets every segment.",
+    "It needs no pointer and no popup, and the shape of the time (the placeholder) shows which segments exist.",
+    "Mark it invalid through its Field, which also links the error text; required and the pattern of the segments give Base UI's Field the native validity."
+  ]
+}

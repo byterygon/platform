@@ -22,6 +22,27 @@
       ]
     },
     {
+      "name": "calendar",
+      "type": "registry:ui",
+      "title": "Calendar",
+      "description": "A month grid to pick one day, several days or a range, on react-day-picker with date-fns, styled with token roles: control-sized day buttons, the accent solid for the chosen day and the accent subtle band for a range.",
+      "dependencies": [
+        "react-day-picker",
+        "date-fns"
+      ],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn",
+        "@byterygon/icon-button"
+      ],
+      "files": [
+        {
+          "path": "ui/calendar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "checkbox",
       "type": "registry:ui",
       "title": "Checkbox",
@@ -55,6 +76,29 @@
       "files": [
         {
           "path": "ui/combobox.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "date-picker",
+      "type": "registry:ui",
+      "title": "DatePicker",
+      "description": "A date or a range of dates, typed into a text field (read with date-fns in a format, yyyy-MM-dd by default) or picked from a Calendar in a popup, on InputGroup and Base UI's Popover, in three sizes.",
+      "dependencies": [
+        "@base-ui/react",
+        "date-fns"
+      ],
+      "registryDependencies": [
+        "@byterygon/calendar",
+        "@byterygon/cn",
+        "@byterygon/input-group",
+        "@byterygon/select",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/date-picker.tsx",
           "type": "registry:ui"
         }
       ]
@@ -353,6 +397,25 @@
       "files": [
         {
           "path": "ui/textarea.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "time-picker",
+      "type": "registry:ui",
+      "title": "TimePicker",
+      "description": "A time of day typed into hour, minute, optional second and AM/PM segments, on Base UI's Input: the arrow keys step a segment and digits fill it, in three sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/input"
+      ],
+      "files": [
+        {
+          "path": "ui/time-picker.tsx",
           "type": "registry:ui"
         }
       ]
