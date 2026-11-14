@@ -1,0 +1,199 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "command-palette",
+  "type": "registry:ui",
+  "title": "CommandPalette",
+  "description": "The searchable list of every action, on Base UI's Dialog and an inline Autocomplete: a search field over grouped commands with icons and shortcuts, filtered in the page by label and keywords, opened by a hotkey; no network.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/dialog",
+    "@byterygon/dropdown-menu"
+  ],
+  "files": [
+    {
+      "path": "ui/command-palette.tsx",
+      "type": "registry:ui",
+      "content": "import { Autocomplete as AutocompletePrimitive } from \"@base-ui/react/autocomplete\";\nimport { Dialog as DialogPrimitive } from \"@base-ui/react/dialog\";\nimport { useEffect, useRef, useState, type ReactNode } from \"react\";\nimport { dialogClasses, ScopeAnchor, useDialogScope } from \"@/components/ui/dialog\";\nimport { menuClasses } from \"@/components/ui/dropdown-menu\";\nimport { cn } from \"@/lib/cn\";\n\n// The searchable list of every action, opened with a shortcut (Ctrl+K), on Base UI: a Dialog whose\n// content is an Autocomplete rendered inline (the list sits under the search field, not in a\n// popup). Commands are data: groups of { id, label, shortcut, keywords, disabled, onSelect }.\n// Filtering runs in the page on labels and keywords; nothing is fetched.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const commandPaletteVariants = {} as const;\n\nconst classes = {\n  viewport: \"items-start\",\n  popup: \"gap-0 p-0 max-w-panel-lg\",\n  search: \"flex items-center gap-inline-sm border-b border-border px-inset-md text-fg-muted [&_svg]:size-icon-md [&_svg]:shrink-0\",\n  input: \"h-control-lg min-w-0 flex-1 bg-transparent font-sans text-body text-fg outline-none placeholder:text-fg-subtle\",\n  list: \"flex max-h-panel-sm flex-col overflow-y-auto overscroll-contain p-inset-xs outline-none empty:hidden\",\n  group: \"flex flex-col\",\n  empty: \"px-inset-md py-inset-lg text-center text-body text-fg-muted empty:hidden\",\n} as const;\n\nexport interface Command {\n  /** Unique in the palette. */\n  id: string;\n  /** What the command does, as shown and searched (\"Open query tab\"). */\n  label: string;\n  /** Its shortcut as text (\"Ctrl+T\"), shown at the end of the row. */\n  shortcut?: string;\n  /** More words that find it (\"new\", \"tab\"). */\n  keywords?: readonly string[];\n  /** A leading icon, aria-hidden. */\n  icon?: ReactNode;\n  /** Shown but cannot run (no connection). */\n  disabled?: boolean;\n  /** Runs the command; the palette closes first. */\n  onSelect: () => void;\n}\n\nexport interface CommandGroup {\n  /** The group's heading (\"Query\", \"Connections\"). */\n  label: string;\n  items: readonly Command[];\n}\n\n/** True when every word of `query` is in the command's label, keywords or group. */\nexport function matchCommand(command: Command, query: string, group = \"\"): boolean {\n  const text = [command.label, group, ...(command.keywords ?? [])].join(\" \").toLowerCase();\n  return query\n    .toLowerCase()\n    .split(/\\s+/)\n    .filter(Boolean)\n    .every((word) => text.includes(word));\n}\n\nconst isMac = () => typeof navigator !== \"undefined\" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);\n\n/** True when the key event is `hotkey` (\"Mod+K\", \"Ctrl+Shift+P\"); Mod is Cmd on macOS, Ctrl elsewhere. */\nexport function matchesHotkey(event: KeyboardEvent, hotkey: string): boolean {\n  const parts = hotkey.split(\"+\").map((part) => part.trim().toLowerCase());\n  const keyName = parts.pop()!;\n  const mod = parts.includes(\"mod\");\n  const want = {\n    ctrl: parts.includes(\"ctrl\") || (mod && !isMac()),\n    meta: parts.includes(\"meta\") || parts.includes(\"cmd\") || (mod && isMac()),\n    shift: parts.includes(\"shift\"),\n    alt: parts.includes(\"alt\"),\n  };\n  return event.key.toLowerCase() === keyName && event.ctrlKey === want.ctrl && event.metaKey === want.meta && event.shiftKey === want.shift && event.altKey === want.alt;\n}\n\nconst SearchIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <circle cx=\"7\" cy=\"7\" r=\"4.5\" />\n    <path d=\"m10.5 10.5 3 3\" />\n  </svg>\n);\n\nexport interface CommandPaletteItemProps {\n  /** The command the row shows. */\n  command: Command;\n  /** Runs it (CommandPalette closes the palette first). */\n  onRun: (command: Command) => void;\n}\n\n/** One command's row: role=\"option\" with its icon, label and shortcut. CommandPalette renders one per command. */\nexport function CommandPaletteItem({ command, onRun }: CommandPaletteItemProps) {\n  return (\n    <AutocompletePrimitive.Item value={command} disabled={command.disabled ?? false} onClick={() => onRun(command)} data-slot=\"command-palette-item\" className={cn(menuClasses.item)}>\n      {command.icon}\n      <span className=\"min-w-0 flex-1 truncate\">{command.label}</span>\n      {command.shortcut ? (\n        <kbd data-slot=\"command-palette-shortcut\" className={cn(menuClasses.shortcut, \"font-mono\")}>\n          {command.shortcut}\n        </kbd>\n      ) : null}\n    </AutocompletePrimitive.Item>\n  );\n}\n\nexport interface CommandPaletteProps {\n  /** The commands, in groups. */\n  groups: readonly CommandGroup[];\n  /** Controlled open state; `defaultOpen` when uncontrolled. */\n  open?: boolean;\n  defaultOpen?: boolean;\n  onOpenChange?: (open: boolean) => void;\n  /** Shortcuts that toggle the palette anywhere in the page (\"Mod+K\", \"Mod+Shift+P\"). */\n  hotkeys?: readonly string[];\n  /** The search field's placeholder. */\n  placeholder?: string;\n  /** Shown when nothing matches. */\n  emptyText?: ReactNode;\n  /** The dialog's accessible name (visually hidden). */\n  title?: string;\n  /** Extra classes for the popup, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The command palette: a Dialog with a search field over a filtered, grouped list of commands. */\nexport function CommandPalette({\n  groups = [],\n  open: openProp,\n  defaultOpen = false,\n  onOpenChange,\n  hotkeys,\n  placeholder = \"Type a command\",\n  emptyText = \"No matching commands\",\n  title = \"Command palette\",\n  className,\n}: CommandPaletteProps) {\n  const [openState, setOpenState] = useState(defaultOpen);\n  const open = openProp ?? openState;\n  const setOpen = (next: boolean) => {\n    if (openProp === undefined) setOpenState(next);\n    onOpenChange?.(next);\n  };\n  const { anchorRef, scope, refresh } = useDialogScope(open);\n\n  const latest = useRef({ open, setOpen });\n  latest.current = { open, setOpen };\n  const hotkeyList = hotkeys?.join(\"|\");\n  useEffect(() => {\n    if (!hotkeyList) return undefined;\n    const keys = hotkeyList.split(\"|\");\n    const listener = (event: KeyboardEvent) => {\n      if (!keys.some((hotkey) => matchesHotkey(event, hotkey))) return;\n      event.preventDefault();\n      refresh();\n      latest.current.setOpen(!latest.current.open);\n    };\n    document.addEventListener(\"keydown\", listener);\n    return () => document.removeEventListener(\"keydown\", listener);\n  }, [hotkeyList, refresh]);\n\n  const run = (command: Command) => {\n    if (command.disabled) return;\n    setOpen(false);\n    command.onSelect();\n  };\n\n  return (\n    <>\n      <ScopeAnchor anchorRef={anchorRef} />\n      <DialogPrimitive.Root open={open} onOpenChange={(next) => setOpen(next)}>\n        <DialogPrimitive.Portal>\n          <DialogPrimitive.Backdrop {...scope} data-slot=\"command-palette-backdrop\" className={cn(dialogClasses.backdrop)} />\n          <DialogPrimitive.Viewport {...scope} data-slot=\"command-palette-viewport\" className={cn(dialogClasses.viewport, classes.viewport)}>\n            <DialogPrimitive.Popup data-slot=\"command-palette\" className={cn(dialogClasses.popup, classes.popup, className)}>\n              <DialogPrimitive.Title className=\"sr-only\">{title}</DialogPrimitive.Title>\n              <AutocompletePrimitive.Root\n                inline\n                open={open}\n                items={groups}\n                autoHighlight=\"always\"\n                filter={(command: Command, query: string) => matchCommand(command, query, groups.find((group) => group.items.includes(command))?.label)}\n                itemToStringValue={(command: Command) => command.label}\n              >\n                <div data-slot=\"command-palette-search\" className={cn(classes.search)}>\n                  <SearchIcon />\n                  <AutocompletePrimitive.Input data-slot=\"command-palette-input\" aria-label={title} placeholder={placeholder} className={cn(classes.input)} />\n                </div>\n                <AutocompletePrimitive.Empty data-slot=\"command-palette-empty\" className={cn(classes.empty)}>\n                  {emptyText}\n                </AutocompletePrimitive.Empty>\n                <AutocompletePrimitive.List data-slot=\"command-palette-list\" className={cn(classes.list)}>\n                  {(group: CommandGroup) => (\n                    <AutocompletePrimitive.Group key={group.label} items={group.items} data-slot=\"command-palette-group\" className={cn(classes.group)}>\n                      <AutocompletePrimitive.GroupLabel data-slot=\"command-palette-group-label\" className={cn(menuClasses.label)}>\n                        {group.label}\n                      </AutocompletePrimitive.GroupLabel>\n                      <AutocompletePrimitive.Collection>\n                        {(command: Command) => (\n                          <CommandPaletteItem key={command.id} command={command} onRun={run} />\n                        )}\n                      </AutocompletePrimitive.Collection>\n                    </AutocompletePrimitive.Group>\n                  )}\n                </AutocompletePrimitive.List>\n              </AutocompletePrimitive.Root>\n            </DialogPrimitive.Popup>\n          </DialogPrimitive.Viewport>\n        </DialogPrimitive.Portal>\n      </DialogPrimitive.Root>\n    </>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "command-palette",
+      "title": "CommandPalette",
+      "description": "The searchable list of every action, on Base UI's Dialog and an inline Autocomplete: a search field over grouped commands with icons and shortcuts, filtered in the page by label and keywords, opened by a hotkey; no network.",
+      "usage": "Use CommandPalette as the one place where every action of the app can be found and run from the keyboard, with its shortcut shown: DBee's Ctrl+K / Ctrl+Shift+P. Pass groups of commands ({ id, label, shortcut, keywords, icon, disabled, onSelect }), control open with open and onOpenChange (and a button with aria-haspopup=\"dialog\" for pointer users), and give hotkeys (\"Mod+K\": Cmd on macOS, Ctrl elsewhere) to toggle it anywhere. The palette closes before onSelect runs, so a command may open a dialog. Keep the list in sync with the app's shortcuts; for a few actions behind a button use DropdownMenu; for picking a value in a form, Combobox.",
+      "status": "experimental",
+      "base": "@base-ui/react/autocomplete",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "groups",
+          "type": "{ label: string; items: Command[] }[]",
+          "required": true,
+          "description": "The commands in groups; a Command is { id, label, shortcut?, keywords?, icon?, disabled?, onSelect }."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state; defaultOpen when uncontrolled."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean) => void",
+          "description": "Called when a hotkey, Escape, a press outside or a command opens or closes it."
+        },
+        {
+          "name": "hotkeys",
+          "type": "string[]",
+          "description": "Shortcuts that toggle the palette anywhere in the page, such as \"Mod+K\"; Mod is Cmd on macOS and Ctrl elsewhere."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "default": "Type a command",
+          "description": "The search field's placeholder."
+        },
+        {
+          "name": "emptyText",
+          "type": "ReactNode",
+          "default": "No matching commands",
+          "description": "Shown when nothing matches."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "default": "Command palette",
+          "description": "The dialog's and the search field's accessible name (the title is visually hidden)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the popup."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "backdrop",
+          "element": "div",
+          "description": "Dialog's scrim; data-slot=\"command-palette-backdrop\"."
+        },
+        {
+          "name": "viewport",
+          "element": "div",
+          "description": "Dialog's layer at z.modal, the popup near the top; data-slot=\"command-palette-viewport\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "role=\"dialog\", size.panel.lg wide; data-slot=\"command-palette\"."
+        },
+        {
+          "name": "input",
+          "element": "input",
+          "description": "role=\"combobox\" search field in size.control.lg; data-slot=\"command-palette-input\"."
+        },
+        {
+          "name": "list",
+          "element": "div",
+          "description": "role=\"listbox\" of groups, at most size.panel.sm tall, scrolling; data-slot=\"command-palette-list\"."
+        },
+        {
+          "name": "empty",
+          "element": "div",
+          "description": "The text shown when nothing matches; data-slot=\"command-palette-empty\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "CommandPaletteItem",
+          "slot": "command-palette-item",
+          "description": "One command's row, role=\"option\": icon, label and shortcut (<kbd>), DropdownMenu's item look; CommandPalette renders one per command."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "data-starting-style",
+          "description": "Opening: Dialog's scale and fade; reduced motion turns it off."
+        },
+        {
+          "name": "highlighted",
+          "variant": "data-highlighted",
+          "description": "The first match is highlighted as the user types; arrows move the highlight: color.interactive.hover."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "description": "A command that cannot run now: color.fg.disabled; it does not run."
+        }
+      ],
+      "tokens": [
+        "color.bg.overlay",
+        "color.bg.scrim",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.hover",
+        "color.status.danger.bg",
+        "color.status.danger.fg",
+        "elevation.modal.shadow",
+        "font.mono",
+        "font.sans",
+        "motion.duration.slow",
+        "motion.easing.emphasized",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "radius.lg",
+        "radius.sm",
+        "size.control.lg",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.md",
+        "size.icon.sm",
+        "size.panel.lg",
+        "size.panel.sm",
+        "space.inline.lg",
+        "space.inline.sm",
+        "space.inset.lg",
+        "space.inset.md",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "z.modal",
+        "z.overlay"
+      ],
+      "examples": {
+        "minimal": "CommandPaletteMinimal",
+        "realistic": "CommandPaletteRealistic"
+      },
+      "accessibility": [
+        "The palette is a modal role=\"dialog\" named by a visually hidden title; focus goes to the search field (role=\"combobox\") which controls a role=\"listbox\" of role=\"option\" commands in role=\"group\"s named by their headings.",
+        "Typing filters by label, keywords and group and highlights the first match; ArrowDown and ArrowUp move the highlight (aria-activedescendant) while focus stays in the field; Enter runs the highlighted command; Escape closes and focus returns to where it was.",
+        "The hotkeys toggle the palette from anywhere; every command shows its own shortcut, so the palette also teaches them.",
+        "Disabled commands are shown, so the user learns they exist, but cannot run.",
+        "prefers-reduced-motion: reduce turns Dialog's transitions off.",
+        "The palette takes the theme and density of the region where it is placed."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { Button } from \"@/components/button/button\";\nimport { CommandPalette, type CommandGroup } from \"@/components/command-palette/command-palette\";\nimport { Kbd } from \"@/components/kbd/kbd\";\n\nconst noop = () => {};\n\n/** The smallest useful CommandPalette: a button (and Ctrl+K) opening a few commands. */\nexport function CommandPaletteMinimal() {\n  const [open, setOpen] = useState(false);\n  const groups: CommandGroup[] = [\n    {\n      label: \"Query\",\n      items: [\n        { id: \"run\", label: \"Run statement\", shortcut: \"Ctrl+Enter\", onSelect: noop },\n        { id: \"new-tab\", label: \"New query tab\", shortcut: \"Ctrl+T\", onSelect: noop },\n      ],\n    },\n  ];\n  return (\n    <>\n      <Button variant=\"secondary\" aria-haspopup=\"dialog\" onClick={() => setOpen(true)}>\n        Commands <Kbd>Ctrl+K</Kbd>\n      </Button>\n      <CommandPalette groups={groups} open={open} onOpenChange={setOpen} hotkeys={[\"Mod+K\"]} />\n    </>\n  );\n}\n\nconst TableIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" aria-hidden=\"true\">\n    <rect x=\"2.5\" y=\"3\" width=\"11\" height=\"10\" rx=\"1\" />\n    <path d=\"M2.5 6.5h11M6.5 6.5V13\" />\n  </svg>\n);\n\n/** DBee's palette: every action with its binding, in groups, with keywords and an action that needs a connection. */\nexport function CommandPaletteRealistic() {\n  const [open, setOpen] = useState(false);\n  const [last, setLast] = useState(\"nothing yet\");\n  const run = (label: string) => () => setLast(label);\n  const groups: CommandGroup[] = [\n    {\n      label: \"Query\",\n      items: [\n        { id: \"run\", label: \"Run statement\", shortcut: \"Ctrl+Enter\", keywords: [\"execute\"], onSelect: run(\"Run statement\") },\n        { id: \"cancel\", label: \"Cancel running statement\", shortcut: \"Shift+Escape\", disabled: true, onSelect: run(\"Cancel\") },\n        { id: \"export\", label: \"Export result\", shortcut: \"Ctrl+Shift+S\", keywords: [\"csv\", \"json\", \"download\"], onSelect: run(\"Export result\") },\n        { id: \"new-tab\", label: \"New query tab\", shortcut: \"Alt+Shift+T\", keywords: [\"open\"], onSelect: run(\"New query tab\") },\n      ],\n    },\n    {\n      label: \"Connections\",\n      items: [\n        { id: \"add\", label: \"Add connection\", shortcut: \"Ctrl+Alt+N\", onSelect: run(\"Add connection\") },\n        { id: \"open-orders\", label: \"Open public.orders\", icon: <TableIcon />, keywords: [\"table\"], onSelect: run(\"Open public.orders\") },\n      ],\n    },\n    {\n      label: \"View\",\n      items: [\n        { id: \"sidebar\", label: \"Toggle sidebar\", shortcut: \"Ctrl+B\", onSelect: run(\"Toggle sidebar\") },\n        { id: \"settings\", label: \"Settings\", shortcut: \"Ctrl+,\", keywords: [\"preferences\", \"theme\", \"density\"], onSelect: run(\"Settings\") },\n      ],\n    },\n  ];\n  return (\n    <div className=\"flex items-center gap-inline-md\">\n      <Button aria-haspopup=\"dialog\" onClick={() => setOpen(true)}>\n        Open command palette\n      </Button>\n      <span className=\"text-body text-fg-muted\">Last command: {last}</span>\n      <CommandPalette groups={groups} open={open} onOpenChange={setOpen} hotkeys={[\"Mod+Shift+P\"]} placeholder=\"Type a command or a table\" />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

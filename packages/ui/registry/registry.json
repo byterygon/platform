@@ -102,6 +102,26 @@
       ]
     },
     {
+      "name": "command-palette",
+      "type": "registry:ui",
+      "title": "CommandPalette",
+      "description": "The searchable list of every action, on Base UI's Dialog and an inline Autocomplete: a search field over grouped commands with icons and shortcuts, filtered in the page by label and keywords, opened by a hotkey; no network.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/dialog",
+        "@byterygon/dropdown-menu"
+      ],
+      "files": [
+        {
+          "path": "ui/command-palette.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "context-menu",
       "type": "registry:ui",
       "title": "ContextMenu",
@@ -563,6 +583,24 @@
       ]
     },
     {
+      "name": "tabs",
+      "type": "registry:ui",
+      "title": "Tabs",
+      "description": "Tabs on Base UI's Tabs: a strip of tabs (underline or enclosed, two sizes, horizontal or vertical) with panels; tabs can carry a status icon, be closed with a button or Delete, and be reordered by drag or Alt+Shift+Arrow.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/tabs.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "textarea",
       "type": "registry:ui",
       "title": "Textarea",
@@ -595,6 +633,28 @@
       "files": [
         {
           "path": "ui/time-picker.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "toast",
+      "type": "registry:ui",
+      "title": "Toast",
+      "description": "Notifications on Base UI's Toast: a region in a corner of the window (or in the page flow) of toasts with a title, a description, a tone (info, success, warning, danger), an optional action and a close button; sticky toasts and high-priority announcements; no network.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn",
+        "@byterygon/dialog",
+        "@byterygon/icon-button",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/toast.tsx",
           "type": "registry:ui"
         }
       ]

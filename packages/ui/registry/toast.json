@@ -1,0 +1,200 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "toast",
+  "type": "registry:ui",
+  "title": "Toast",
+  "description": "Notifications on Base UI's Toast: a region in a corner of the window (or in the page flow) of toasts with a title, a description, a tone (info, success, warning, danger), an optional action and a close button; sticky toasts and high-priority announcements; no network.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/button",
+    "@byterygon/cn",
+    "@byterygon/dialog",
+    "@byterygon/icon-button",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/toast.tsx",
+      "type": "registry:ui",
+      "content": "import { Toast as ToastPrimitive } from \"@base-ui/react/toast\";\nimport { useEffect, type ReactNode } from \"react\";\nimport { Button } from \"@/components/ui/button\";\nimport { ScopeAnchor } from \"@/components/ui/dialog\";\nimport { IconButton } from \"@/components/ui/icon-button\";\nimport { cn } from \"@/lib/cn\";\nimport { useThemeScope } from \"@/lib/theme-scope\";\n\n// Notifications on Base UI's Toast. `Toast` is the region: put one near the root of the app. Add\n// toasts with `useToast().add({ title, description, type, timeout, priority, actionProps })` inside\n// it, or from anywhere with a manager from `createToastManager()` passed as `toastManager`.\n// `type` picks the tone (info, success, warning, danger); `timeout: 0` keeps a toast until it is\n// dismissed (sticky); `priority: \"high\"` announces it at once. Nothing leaves the page.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const toastVariants = {\n  /** Where the region sits: a corner of the window, or in the page flow (previews, docs, tests). */\n  placement: {\n    \"bottom-end\": \"fixed right-0 bottom-0 z-[var(--by-z-toast)] p-inset-lg\",\n    \"top-end\": \"fixed top-0 right-0 z-[var(--by-z-toast)] p-inset-lg\",\n    \"bottom-center\": \"fixed bottom-0 left-1/2 z-[var(--by-z-toast)] -translate-x-1/2 p-inset-lg\",\n    static: \"relative\",\n  },\n} as const;\n\nexport type ToastPlacement = keyof typeof toastVariants.placement;\n\nconst classes = {\n  viewport: \"flex w-panel-sm max-w-full flex-col gap-stack-sm outline-none\",\n  root: [\n    \"relative flex w-full items-start gap-inline-sm rounded-md border border-s-2 border-border bg-overlay p-inset-md font-sans text-body text-fg shadow-overlay outline-none\",\n    \"data-[type=info]:border-s-info-border data-[type=success]:border-s-success-border data-[type=warning]:border-s-warning-border data-[type=danger]:border-s-danger-border\",\n    \"transition duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none\",\n    \"data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit\",\n    \"data-limited:hidden\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  ],\n  content: \"flex min-w-0 flex-1 flex-col gap-stack-xs\",\n  title: \"text-body-strong text-fg\",\n  description: \"text-body text-fg-muted\",\n  actions: \"flex shrink-0 items-center gap-inline-xs\",\n} as const;\n\nconst XIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"m4.5 4.5 7 7m0-7-7 7\" />\n  </svg>\n);\n\n/** Adds, updates and closes toasts from inside a Toast region (Base UI's useToastManager). */\nexport const useToast = ToastPrimitive.useToastManager;\n/** A toast manager usable outside React (an error handler, a store); pass it to Toast as `toastManager`. */\nexport const createToastManager = ToastPrimitive.createToastManager;\n\nexport interface ToastProps {\n  /** A manager from createToastManager, to add toasts from outside React. */\n  toastManager?: ToastPrimitive.Provider.Props[\"toastManager\"];\n  /** Toasts shown at once; older ones wait (data-limited). */\n  limit?: number;\n  /** Default ms before a toast closes; 0 keeps them until dismissed. */\n  timeout?: number;\n  /** Where the region sits. */\n  placement?: ToastPlacement;\n  /** The accessible name of each toast's close button. */\n  closeLabel?: string;\n  /** The region's accessible name. */\n  \"aria-label\"?: string;\n  /** App content that calls useToast. */\n  children?: ReactNode;\n  /** Extra classes for the region, merged after the component's own so they win. */\n  className?: string;\n}\n\nexport interface ToastItemProps {\n  /** The toast object from useToast().toasts. */\n  toast: ToastPrimitive.Root.ToastObject;\n  /** The accessible name of the close button. */\n  closeLabel?: string;\n}\n\n/** One toast: its title and description, its action as a Button, and a close IconButton. Toast renders one per toast. */\nexport function ToastItem({ toast, closeLabel = \"Dismiss\" }: ToastItemProps) {\n  return (\n    <ToastPrimitive.Root toast={toast} data-slot=\"toast-item\" className={cn(classes.root)}>\n      <ToastPrimitive.Content data-slot=\"toast-content\" className={cn(classes.content)}>\n        <ToastPrimitive.Title data-slot=\"toast-title\" className={cn(classes.title)} />\n        <ToastPrimitive.Description data-slot=\"toast-description\" className={cn(classes.description)} />\n      </ToastPrimitive.Content>\n      <div data-slot=\"toast-actions\" className={cn(classes.actions)}>\n        {toast.actionProps ? <ToastPrimitive.Action render={<Button variant=\"secondary\" size=\"sm\" />} /> : null}\n        <ToastPrimitive.Close render={<IconButton aria-label={closeLabel} size=\"sm\" />}>\n          <XIcon />\n        </ToastPrimitive.Close>\n      </div>\n    </ToastPrimitive.Root>\n  );\n}\n\nfunction ToastList({ closeLabel }: { closeLabel: string }) {\n  const { toasts } = ToastPrimitive.useToastManager();\n  return toasts.map((toast) => <ToastItem key={toast.id} toast={toast} closeLabel={closeLabel} />);\n}\n\nfunction Region({ placement, closeLabel, label, className }: { placement: ToastPlacement; closeLabel: string; label: string; className?: string | undefined }) {\n  const { ref, scope, refresh } = useThemeScope<Element>();\n  const { toasts } = ToastPrimitive.useToastManager();\n  useEffect(() => {\n    if (toasts.length > 0) refresh();\n  }, [toasts.length, refresh]);\n  const viewport = (\n    <ToastPrimitive.Viewport {...scope} data-slot=\"toast\" data-placement={placement} aria-label={label} className={cn(toastVariants.placement[placement], classes.viewport, className)}>\n      <ToastList closeLabel={closeLabel} />\n    </ToastPrimitive.Viewport>\n  );\n  return (\n    <>\n      <ScopeAnchor anchorRef={ref} />\n      {placement === \"static\" ? viewport : <ToastPrimitive.Portal>{viewport}</ToastPrimitive.Portal>}\n    </>\n  );\n}\n\n/** The notification region on Base UI's Toast; children can call useToast. */\nexport function Toast({ toastManager, limit = 3, timeout = 5000, placement = \"bottom-end\", closeLabel = \"Dismiss\", \"aria-label\": label = \"Notifications\", children, className }: ToastProps) {\n  return (\n    <ToastPrimitive.Provider limit={limit} timeout={timeout} {...(toastManager ? { toastManager } : {})}>\n      {children}\n      <Region placement={placement} closeLabel={closeLabel} label={label} className={className} />\n    </ToastPrimitive.Provider>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "toast",
+      "title": "Toast",
+      "description": "Notifications on Base UI's Toast: a region in a corner of the window (or in the page flow) of toasts with a title, a description, a tone (info, success, warning, danger), an optional action and a close button; sticky toasts and high-priority announcements; no network.",
+      "usage": "Use Toast for short news about something the user did or that happened in the background: an export finished, a connection dropped, access is about to expire. Put one Toast near the root of the app with the app inside it, then call useToast().add({ title, description, type, timeout, priority, actionProps: { children, onClick } }) from any component, or pass a manager from createToastManager() as toastManager to add toasts from outside React. timeout: 0 keeps a toast until dismissed (use it for anything with an action the user must not miss); priority: \"high\" announces it at once. Errors that block a task belong on the page (an Alert); a decision belongs in an AlertDialog.",
+      "status": "experimental",
+      "base": "@base-ui/react/toast",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "placement",
+          "type": "\"bottom-end\" | \"top-end\" | \"bottom-center\" | \"static\"",
+          "default": "bottom-end",
+          "description": "Where the region sits: fixed in a corner at z.toast, or static in the page flow (previews, docs, tests)."
+        },
+        {
+          "name": "limit",
+          "type": "number",
+          "default": 3,
+          "description": "Toasts shown at once; the older ones wait."
+        },
+        {
+          "name": "timeout",
+          "type": "number",
+          "default": 5000,
+          "description": "Default ms before a toast closes; 0 keeps toasts until dismissed."
+        },
+        {
+          "name": "toastManager",
+          "type": "ToastManager",
+          "description": "A manager from createToastManager, to add toasts from outside React."
+        },
+        {
+          "name": "closeLabel",
+          "type": "string",
+          "default": "Dismiss",
+          "description": "The accessible name of each close button."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "default": "Notifications",
+          "description": "The region's accessible name."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "The app; components inside call useToast."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the region."
+        },
+        {
+          "name": "add(options)",
+          "type": "{ title, description, type, timeout, priority, actionProps, onClose } => id",
+          "description": "useToast() / manager: adds a toast; also update(id, options), close(id) and promise(promise, { loading, success, error })."
+        }
+      ],
+      "variants": {
+        "placement": [
+          "bottom-end",
+          "top-end",
+          "bottom-center",
+          "static"
+        ]
+      },
+      "slots": [
+        {
+          "name": "region",
+          "element": "div",
+          "description": "role=\"region\" named Notifications, aria-live=\"polite\", size.panel.sm wide; with the theme and density where Toast is placed; data-slot=\"toast\", data-placement."
+        },
+        {
+          "name": "content",
+          "element": "div",
+          "description": "The title (type.body-strong) and description (color.fg.muted); data-slot=\"toast-content\"."
+        },
+        {
+          "name": "actions",
+          "element": "div",
+          "description": "The action Button and the close IconButton; data-slot=\"toast-actions\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "ToastItem",
+          "slot": "toast-item",
+          "description": "One toast: role=\"dialog\" (\"alertdialog\" for high priority), color.bg.overlay with elevation.overlay and a coloured inner-edge border by tone; Toast renders one per toast."
+        }
+      ],
+      "states": [
+        {
+          "name": "tone",
+          "variant": "data-[type=danger]",
+          "description": "type sets the inner-edge border: color.status.info, success, warning or danger border."
+        },
+        {
+          "name": "entering",
+          "variant": "data-starting-style",
+          "description": "A new toast grows from 95 % and fades in over motion.duration.base; reduced motion turns it off."
+        },
+        {
+          "name": "leaving",
+          "variant": "data-ending-style",
+          "description": "A closing toast fades out with motion.easing.exit."
+        },
+        {
+          "name": "limited",
+          "variant": "data-limited",
+          "description": "Over the limit: hidden until a newer toast closes."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "A focused toast shows the focus ring."
+        }
+      ],
+      "tokens": [
+        "color.bg.overlay",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.ring",
+        "color.status.danger.border",
+        "color.status.info.border",
+        "color.status.success.border",
+        "color.status.warning.border",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.base",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.panel.sm",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.lg",
+        "space.inset.md",
+        "space.stack.sm",
+        "space.stack.xs",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "z.toast"
+      ],
+      "examples": {
+        "minimal": "ToastMinimal",
+        "realistic": "ToastRealistic"
+      },
+      "accessibility": [
+        "The region is role=\"region\" named \"Notifications\" with aria-live=\"polite\": new toasts are read without moving focus. A toast with priority \"high\" is also announced at once through a role=\"alert\" copy.",
+        "Each toast is a non-modal dialog labelled by its title and described by its description; its action is a Button and its close button an IconButton with an accessible name.",
+        "F6 moves focus into the region (Base UI's hotkey) and Tab moves between toasts and their buttons; Escape closes the focused toast. Hovering or focusing the region pauses the timers.",
+        "Anything the user must act on (an expiry warning with Renew) uses timeout 0 so it does not vanish before it can be reached.",
+        "The tone is a border colour and the title says the same in words, so meaning does not rest on colour.",
+        "prefers-reduced-motion: reduce turns the scale and fade transitions off."
+      ]
+    },
+    "example": "import { useEffect, useRef } from \"react\";\nimport { Button } from \"@/components/button/button\";\nimport { Toast, useToast } from \"@/components/toast/toast\";\n\nfunction SaveButton() {\n  const toast = useToast();\n  return (\n    <Button variant=\"secondary\" onClick={() => toast.add({ title: \"Query saved\", description: \"orders-by-region.sql\", type: \"success\" })}>\n      Save query\n    </Button>\n  );\n}\n\n/** The smallest useful Toast: the region near the app root, and a button that adds a toast to it. */\nexport function ToastMinimal() {\n  return (\n    <Toast>\n      <SaveButton />\n    </Toast>\n  );\n}\n\nfunction DbeeNotices() {\n  const toast = useToast();\n  const added = useRef(false);\n  useEffect(() => {\n    if (added.current) return;\n    added.current = true;\n    toast.add({\n      title: \"Access to orders-prod expires in 15 min\",\n      description: \"Sessions drop at 14:02.\",\n      type: \"warning\",\n      timeout: 0,\n      priority: \"high\",\n      actionProps: { children: \"Renew access\" },\n    });\n    toast.add({ title: \"Exported 1,000,000 rows\", description: \"orders.csv, 84 MB\", type: \"success\", timeout: 0 });\n    toast.add({ title: \"Connection lost\", description: \"orders-prod stopped answering.\", type: \"danger\", timeout: 0, actionProps: { children: \"Reconnect\" } });\n  }, [toast]);\n  return (\n    <Button variant=\"ghost\" onClick={() => toast.add({ title: \"Copied 12 cells\", type: \"info\" })}>\n      Copy cells\n    </Button>\n  );\n}\n\n/**\n * DBee's notices in the page flow (placement static): the expiry warning, sticky and announced at\n * once with a Renew action; an export that finished; a lost connection with Reconnect; and a\n * short info toast from the Copy button.\n */\nexport function ToastRealistic() {\n  return (\n    <Toast placement=\"static\" limit={4}>\n      <DbeeNotices />\n    </Toast>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

@@ -133,6 +133,14 @@ What `test/conventions.test.tsx` enforces for every component:
 - A dialog may open without a trigger, so its content renders a hidden anchor where it sits in
   the JSX and the popup takes that region's theme and density. Popover-like roots put
   `useThemeScope`'s ref on the trigger through `useMergedRef` (the caller's `ref` still arrives).
+- Tabs: closable tabs keep their close button out of the tab order and `aria-hidden` (the tablist
+  holds only tabs); Delete closes the focused tab (`aria-keyshortcuts`). Reordering is drag or
+  Alt+Shift+Arrow through TabsList `onReorder(value, index)`; the app owns the array.
+- Toast and CommandPalette render their items from data, so each exports its item as a part
+  (`ToastItem`, `CommandPaletteItem`) for the suite to find in the examples. CommandPalette is a Dialog
+  around an inline Base UI Autocomplete (no cmdk: it pulls in Radix); the example's opener has
+  `aria-haspopup="dialog"`, which is also correct for users. Toast's `placement="static"` puts the region
+  in the page flow for previews and tests.
 - Layers: scrim `z.overlay`, dialogs and sheets `z.modal`, everything attached to a control
   (popovers, menus, the lists of Select and Combobox) `z.popover`, so they open above a dialog;
   toasts `z.toast`, tooltips `z.tooltip`.

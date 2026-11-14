@@ -1,0 +1,84 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "toast",
+  "title": "Toast",
+  "description": "Notifications on Base UI's Toast: a region in a corner of the window (or in the page flow) of toasts with a title, a description, a tone (info, success, warning, danger), an optional action and a close button; sticky toasts and high-priority announcements; no network.",
+  "usage": "Use Toast for short news about something the user did or that happened in the background: an export finished, a connection dropped, access is about to expire. Put one Toast near the root of the app with the app inside it, then call useToast().add({ title, description, type, timeout, priority, actionProps: { children, onClick } }) from any component, or pass a manager from createToastManager() as toastManager to add toasts from outside React. timeout: 0 keeps a toast until dismissed (use it for anything with an action the user must not miss); priority: \"high\" announces it at once. Errors that block a task belong on the page (an Alert); a decision belongs in an AlertDialog.",
+  "status": "experimental",
+  "base": "@base-ui/react/toast",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "placement", "type": "\"bottom-end\" | \"top-end\" | \"bottom-center\" | \"static\"", "default": "bottom-end", "description": "Where the region sits: fixed in a corner at z.toast, or static in the page flow (previews, docs, tests)." },
+    { "name": "limit", "type": "number", "default": 3, "description": "Toasts shown at once; the older ones wait." },
+    { "name": "timeout", "type": "number", "default": 5000, "description": "Default ms before a toast closes; 0 keeps toasts until dismissed." },
+    { "name": "toastManager", "type": "ToastManager", "description": "A manager from createToastManager, to add toasts from outside React." },
+    { "name": "closeLabel", "type": "string", "default": "Dismiss", "description": "The accessible name of each close button." },
+    { "name": "aria-label", "type": "string", "default": "Notifications", "description": "The region's accessible name." },
+    { "name": "children", "type": "ReactNode", "description": "The app; components inside call useToast." },
+    { "name": "className", "type": "string", "description": "Extra classes for the region." },
+    { "name": "add(options)", "type": "{ title, description, type, timeout, priority, actionProps, onClose } => id", "description": "useToast() / manager: adds a toast; also update(id, options), close(id) and promise(promise, { loading, success, error })." }
+  ],
+  "variants": {
+    "placement": ["bottom-end", "top-end", "bottom-center", "static"]
+  },
+  "slots": [
+    { "name": "region", "element": "div", "description": "role=\"region\" named Notifications, aria-live=\"polite\", size.panel.sm wide; with the theme and density where Toast is placed; data-slot=\"toast\", data-placement." },
+    { "name": "content", "element": "div", "description": "The title (type.body-strong) and description (color.fg.muted); data-slot=\"toast-content\"." },
+    { "name": "actions", "element": "div", "description": "The action Button and the close IconButton; data-slot=\"toast-actions\"." }
+  ],
+  "parts": [
+    { "name": "ToastItem", "slot": "toast-item", "description": "One toast: role=\"dialog\" (\"alertdialog\" for high priority), color.bg.overlay with elevation.overlay and a coloured inner-edge border by tone; Toast renders one per toast." }
+  ],
+  "states": [
+    { "name": "tone", "variant": "data-[type=danger]", "description": "type sets the inner-edge border: color.status.info, success, warning or danger border." },
+    { "name": "entering", "variant": "data-starting-style", "description": "A new toast grows from 95 % and fades in over motion.duration.base; reduced motion turns it off." },
+    { "name": "leaving", "variant": "data-ending-style", "description": "A closing toast fades out with motion.easing.exit." },
+    { "name": "limited", "variant": "data-limited", "description": "Over the limit: hidden until a newer toast closes." },
+    { "name": "focus-visible", "variant": "focus-visible", "description": "A focused toast shows the focus ring." }
+  ],
+  "tokens": [
+    "color.bg.overlay",
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.ring",
+    "color.status.danger.border",
+    "color.status.info.border",
+    "color.status.success.border",
+    "color.status.warning.border",
+    "elevation.overlay.shadow",
+    "font.sans",
+    "motion.duration.base",
+    "motion.easing.enter",
+    "motion.easing.exit",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.panel.sm",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.lg",
+    "space.inset.md",
+    "space.stack.sm",
+    "space.stack.xs",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "z.toast"
+  ],
+  "examples": { "minimal": "ToastMinimal", "realistic": "ToastRealistic" },
+  "accessibility": [
+    "The region is role=\"region\" named \"Notifications\" with aria-live=\"polite\": new toasts are read without moving focus. A toast with priority \"high\" is also announced at once through a role=\"alert\" copy.",
+    "Each toast is a non-modal dialog labelled by its title and described by its description; its action is a Button and its close button an IconButton with an accessible name.",
+    "F6 moves focus into the region (Base UI's hotkey) and Tab moves between toasts and their buttons; Escape closes the focused toast. Hovering or focusing the region pauses the timers.",
+    "Anything the user must act on (an expiry warning with Renew) uses timeout 0 so it does not vanish before it can be reached.",
+    "The tone is a border colour and the title says the same in words, so meaning does not rest on colour.",
+    "prefers-reduced-motion: reduce turns the scale and fade transitions off."
+  ]
+}
