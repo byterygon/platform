@@ -3,24 +3,44 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { test } from "node:test";
 
-import { OUTPUT_FILES, buildTheme } from "../src/build.js";
+import { OUTPUT_FILES, buildTheme, committedOutputs } from "../src/build.js";
 import { EXTENSION } from "../src/model.js";
 import { ROOT, defaultTheme, themeWith } from "./helpers.js";
 
 const generated = (name: string) => join(ROOT, "generated", "default", name);
 
-test("the committed outputs of the default theme are current (drift check)", async () => {
-  const result = await buildTheme(defaultTheme());
-  assert.equal(result.ok, true);
-  assert.deepEqual([...result.files!.keys()], [...OUTPUT_FILES]);
-  for (const [name, content] of result.files!) {
-    assert.ok(existsSync(generated(name)), `generated/default/${name} is missing; run \`pnpm --filter @byterygon/design-tokens tokens:build\``);
-    assert.ok(
-      readFileSync(generated(name), "utf8") === content,
-      `generated/default/${name} is stale; run \`pnpm --filter @byterygon/design-tokens tokens:build\` and commit the result`,
-    );
+const PRESETS = readdirSync(join(ROOT, "themes"))
+  .filter((file) => file.endsWith(".theme.json"))
+  .map((file) => file.slice(0, -".theme.json".length))
+  .sort();
+
+test("the six presets are the ones the spec names", () => {
+  assert.deepEqual(PRESETS, ["default", "high-contrast", "midnight", "paper", "slate", "terminal"]);
+});
+
+for (const preset of PRESETS) {
+  test(`the committed outputs of the ${preset} theme are current (drift check)`, async () => {
+    const theme = JSON.parse(readFileSync(join(ROOT, "themes", `${preset}.theme.json`), "utf8"));
+    const result = await buildTheme(theme, { source: `themes/${preset}.theme.json` });
+    assert.equal(result.ok, true, JSON.stringify(result.diagnostics.filter((d) => d.severity === "error")));
+    assert.deepEqual([...result.files!.keys()], [...OUTPUT_FILES], "every output renders for every preset");
+    const committed = committedOutputs(preset);
+    const command = `pnpm --filter @byterygon/design-tokens tokens build --theme ${preset}`;
+    for (const name of committed) {
+      const path = join(ROOT, "generated", preset, name);
+      assert.ok(existsSync(path), `generated/${preset}/${name} is missing; run \`${command}\``);
+      assert.ok(readFileSync(path, "utf8") === result.files!.get(name), `generated/${preset}/${name} is stale; run \`${command}\` and commit the result`);
+    }
+    assert.deepEqual(readdirSync(join(ROOT, "generated", preset)).sort(), [...committed].sort(), "nothing else is committed");
+  });
+}
+
+test("the default theme commits all six outputs, the other presets the three CSS files", () => {
+  assert.deepEqual([...committedOutputs("default")], [...OUTPUT_FILES]);
+  for (const preset of PRESETS.filter((name) => name !== "default")) {
+    assert.deepEqual([...committedOutputs(preset)], ["tokens.css", "tailwind-theme.css", "shadcn-alias.css"]);
   }
-  assert.deepEqual(readdirSync(join(ROOT, "generated", "default")).sort(), [...OUTPUT_FILES].sort());
+  assert.deepEqual(readdirSync(join(ROOT, "generated")).sort(), PRESETS, "every preset has an output directory and every directory a preset");
 });
 
 test("the build is reproducible and renders nothing when a rule fails", async () => {
@@ -115,7 +135,35 @@ test("the variable names the first components were written against exist (TSK-42
   assert.equal(shadcn.get("--background"), "var(--by-color-bg-canvas)");
   assert.equal(shadcn.get("--primary-foreground"), "var(--by-color-fg-on-accent)");
   assert.equal(shadcn.get("--radius"), "var(--by-radius-md)");
-  assert.equal(shadcn.size, 19);
+  // The 19 names the first components use keep their targets; the catalogue only adds to them.
+  const pinned: Record<string, string> = {
+    "--background": "bg-canvas",
+    "--foreground": "fg-default",
+    "--card": "bg-surface",
+    "--card-foreground": "fg-default",
+    "--popover": "bg-overlay",
+    "--popover-foreground": "fg-default",
+    "--primary": "accent-bg",
+    "--primary-foreground": "fg-on-accent",
+    "--secondary": "bg-inset",
+    "--secondary-foreground": "fg-default",
+    "--muted": "bg-inset",
+    "--muted-foreground": "fg-muted",
+    "--accent": "interactive-hover",
+    "--accent-foreground": "fg-default",
+    "--destructive": "status-danger-solid",
+    "--border": "border-default",
+    "--input": "border-strong",
+    "--ring": "ring",
+    "--radius": "radius-md",
+  };
+  assert.equal(Object.keys(pinned).length, 19);
+  for (const [name, role] of Object.entries(pinned)) {
+    assert.equal(shadcn.get(name), name === "--radius" ? "var(--by-radius-md)" : `var(--by-color-${role})`, name);
+  }
+  for (const name of ["--destructive-foreground", "--chart-1", "--chart-5", "--sidebar", "--sidebar-primary-foreground", "--sidebar-ring"]) {
+    assert.ok(shadcn.has(name), `${name} is mapped too`);
+  }
   // Redeclared in every theme scope, or a nested scope would inherit the outer theme's value.
   assert.deepEqual(declarations(files.get("shadcn-alias.css")!, '[data-theme="dark"]'), shadcn);
 });
@@ -154,7 +202,16 @@ test("figma-variables.json groups variables into collections with modes", async 
   assert.deepEqual(variable("Density", "size/control/md").valuesByMode, { Comfortable: 36, Compact: 28 });
   assert.deepEqual(variable("Semantic", "radius/md").valuesByMode, { Value: 6 });
   assert.equal(variable("Semantic", "font/sans").valuesByMode.Value, "Inter");
-  assert.deepEqual(figma.skipped.map((s: { token: string }) => s.token), ["shadow.raised"]);
+  // Figma has no variable for a shadow or an easing curve; everything else is a variable.
+  const skipped = figma.skipped.map((s: { token: string }) => s.token);
+  assert.ok(skipped.includes("shadow.raised") && skipped.includes("shadow.3") && skipped.includes("elevation.modal.shadow") && skipped.includes("motion.easing.standard"));
+  assert.ok(skipped.every((token: string) => /^(shadow\.|elevation\..*\.shadow$|motion\.easing\.)/.test(token)), skipped.join(", "));
+  assert.deepEqual(variable("Density", "space/inline/md").valuesByMode, {
+    Comfortable: { type: "VARIABLE_ALIAS", collection: "Primitives", name: "space/2" },
+    Compact: { type: "VARIABLE_ALIAS", collection: "Primitives", name: "space/1-5" },
+  });
+  assert.deepEqual(variable("Primitives", "motion/duration/base").valuesByMode, { Value: 160 });
+  assert.deepEqual(variable("Primitives", "z/modal").valuesByMode, { Value: 400 });
   // Every alias points at a variable that exists.
   for (const c of figma.collections) {
     for (const v of c.variables) {

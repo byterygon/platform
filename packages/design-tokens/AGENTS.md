@@ -9,12 +9,13 @@ any point; the build fails when a rule is broken.
 theme file (seeds + overrides)
   -> OKLCH ramps, 12 steps per colour and scheme        src/color/ramp.ts
   -> primitive tokens (raw scales)                      src/generate.ts
-  -> semantic and component roles                       src/catalog/default.ts
+  -> semantic and component roles                       src/catalog/*.ts (default.ts assembles them)
   -> overrides from the theme                           src/generate.ts
   -> rules: aliases, tiers, raw colours, contrast       src/validate.ts
   -> Style Dictionary transforms and formats            src/outputs.ts
   -> generated/<theme>/{tokens.css, tailwind-theme.css, shadcn-alias.css,
                         tokens.ts, tokens.dtcg.json, figma-variables.json}
+     (the default theme commits all six, the other presets the three CSS files)
 ```
 
 ## Commands
@@ -24,7 +25,9 @@ command is non-interactive and takes `--json`.
 
 ```sh
 pnpm --filter @byterygon/design-tokens tokens build            # regenerate generated/default
+pnpm --filter @byterygon/design-tokens tokens build --theme paper    # a preset (see "Presets")
 pnpm --filter @byterygon/design-tokens tokens build --check    # exit 3 if generated/ is stale
+pnpm --filter @byterygon/design-tokens tokens build --theme paper --all   # all six files, not only the committed ones
 pnpm --filter @byterygon/design-tokens tokens validate         # rules only, writes nothing
 pnpm --filter @byterygon/design-tokens tokens explain color.bg.surface
 pnpm --filter @byterygon/design-tokens tokens search hover background
@@ -80,14 +83,48 @@ that role's failures. Command-line mistakes come back as `"error": { "code", "me
 
 - Every seed is optional; a missing one takes the default (`src/seeds.ts`). `by-tokens export
   theme` prints a theme with all of them spelled out.
-- `seeds.colors.<ramp>` is `{ hue, chroma, solid? }`. `neutral` follows the brand hue unless it
-  has its own. Any new name adds a ramp (`color.<name>.1..12`, `a1..a12`, `contrast`, and the
-  same under `color.<name>-dark`).
+- `seeds.colors.<ramp>` is `{ hue, chroma, solid?, tint? }`. `neutral` follows the brand hue unless
+  it has its own. Ramps that exist by default: `neutral`, `brand`, `red`, `amber`, `green`,
+  `blue` and the hues the domain tokens need, `violet`, `orange`, `teal`, `pink`. Any new name adds a
+  ramp (`color.<name>.1..12`, `a1..a12`, `contrast`, and the same under `color.<name>-dark`).
+- `tint` is the chroma of the background steps 1-5 of a ramp (`neutral` only, in practice). Without
+  it those steps follow `chroma`, which leaves a low-chroma neutral almost grey: Paper asks for a
+  warm cream with `"neutral": { "hue": 85, "chroma": 0.03, "tint": 0.011 }`, Midnight for a deep
+  blue the same way. Steps 6-12 ignore it.
+- `seeds.fontSize` (11 to 18, default 14) is the body size in px; `font.size.2xs` to `4xl` are
+  derived from it (14 gives 11, 12, 13, 14, 16, 18, 20, 24, 30).
 - An override is a value for every mode, or an object keyed by mode name to change some modes.
   A value is an alias in braces or a literal of the token's type (`oklch(L C H)`, `#rrggbb`,
   `12px`, `150ms`, a list of font families). A colour literal is only allowed on a primitive.
 - `seeds.contrast.level` is `AA` (4.5:1 text, 3:1 UI) or `AAA` (7:1, 4.5:1). `seeds.contrast.apca`
   (`{ text, ui }`, absolute Lc) adds an APCA minimum; without it APCA is reported, not enforced.
+
+## Presets
+
+Six themes ship in `themes/`. All six pass every contrast pair in both colour modes (and, because
+colour roles never depend on density, in both densities). The name in the first column is the
+theme name; the second is how the Theme Studio will label it.
+
+| Theme | Label | Look |
+| --- | --- | --- |
+| `default` | Byterygon | cool neutral, blue-teal brand (hue 230), light, comfortable. DBee sets `data-density="compact"` itself |
+| `slate` | Slate | near-greyscale, muted slate-blue accent, radius 4 |
+| `paper` | Paper | warm cream (neutral tint), rust accent, 15 px text with relaxed body leading, radius 8 |
+| `midnight` | Midnight | dark first, deep blue neutral, periwinkle accent |
+| `terminal` | Terminal | dark first, green accent, `font.sans` set to the mono stack, 13 px, radius 2, compact |
+| `high-contrast` | High contrast | WCAG AAA (7:1 text, 4.5:1 UI), pure grey, 3 px focus ring, `color.neutral.11` pushed to pass AAA |
+
+`generated/default/` holds all six outputs. The other presets commit `tokens.css`,
+`tailwind-theme.css` and `shadcn-alias.css`, which is what a project copies in: the other three are
+about 1.4 MB per theme together, change with every catalogue edit, and `tokens build --theme <name> --all`
+or `tokens export <format> --theme <name>` produce them on demand. The drift test renders all six for
+every preset and compares the committed ones byte for byte.
+
+A theme whose brand solid is light enough to take dark text (a yellow, a lime) needs overrides the
+catalogue cannot make for it: `color.accent.bg-active` points at step 11, a dark text step, so dark
+text on it fails (override it to `{ "light": "{color.brand.10}" }`), and `color.ring`,
+`color.accent.bg` and `grid.selection-border` are steps that are too light against a white page (alias
+them to step 8). `validate` reports each with its pair and mode.
 
 ## Three tiers, one direction
 
@@ -124,15 +161,24 @@ a translucent background is composited over the surface under it first.
 
 ## How to add things (data, not mechanism)
 
-- **A role**: add a `RoleDef` to `src/catalog/default.ts` with `path`, `type`, `value`, `use`
+- **A role**: add a `RoleDef` to the catalogue file it belongs to (`default.ts`: colour, shape, density,
+  assembly; `scales.ts`: primitive scales; `type.ts`: text roles; `space.ts`: density space;
+  `elevation.ts`: shadows, elevation, focus ring; `domain.ts`: syntax, editor, data, grid, chart,
+  diff) with `path`, `type`, `value`, `use`
   (when to use it), `avoid` (when not to, and what to use instead) and, if components need a
   utility, `tailwind`. Use `ramp()`, `byTheme()`, `byDensity()`, `ref()`, `px()`, `layer()` from
   `src/catalog/authoring.ts`. A value may be a function of the seeds.
 - **A contrast pair**: add it to `pairs` in the same file. Every text role needs a pair for each
   background it is used on; every control outline and focus ring needs a `ui` pair.
 - **A shadcn alias**: add it to `shadcn` in the same file.
-- **A preset**: add `themes/<name>.theme.json`, run `tokens build --theme <name>`, commit
-  `generated/<name>/`.
+- **A preset**: add `themes/<name>.theme.json`, run `tokens validate --theme <name>` (it prints each
+  failing pair with a fix that can be pasted into the theme file), then `tokens build --theme <name>`
+  and commit `generated/<name>/`. The drift test, the contrast test and the output-directory test
+  pick up every file in `themes/`.
+- **A text role**: five tokens, `text.<role>.{family,size,weight,leading,tracking}`, aliasing the
+  `font.*` scales (`type.ts`). It is five tokens and not a DTCG `typography` composite because the
+  engine handles every type it has in all six outputs and Figma has no typography variable.
+  Tracking is a px dimension (DTCG has no em).
 - **A token type**: add it to `ValueByType` in `src/model.ts` and to the switches in
   `src/values.ts` (parse, check, CSS) and `figmaTransform` in `src/outputs.ts`.
 - **A ramp recipe change** (lightness curve, chroma curve, which steps are solved): edit
@@ -154,6 +200,26 @@ test fails otherwise.
   `src/build.ts` and `src/cli/`. A test enforces this.
 - Never fetch anything at build or run time.
 
+## Catalogue notes
+
+- A half step of the space scale is written `0-5`, `1-5` (a path segment cannot hold a dot).
+- Shadows and colours vary by `theme`; size and space roles vary by `density`. A token never varies
+  by both (`mode-cross-axis`): an elevation role is an alias to a themed shadow, not a role that also
+  picks a density.
+- `shadow.0` to `shadow.5` are semantic, not primitive, because a shadow layer aliases the black and
+  white overlays. `shadow.raised` predates them and is kept as it was.
+- Status colours: `color.status.<name>.{bg,border,fg,solid,solid-hover,solid-fg}`. Put `solid-fg` on
+  `solid`, never `color.fg.on-accent`: the red solid takes white text where a yellow one takes ink.
+- `font.sans` and `font.mono` are the font family tokens (the spec calls them `font.family.*`).
+  Override them to change the fonts; `fonts/fonts.css` declares the vendored files.
+
+## Fonts
+
+`fonts/` holds Inter (variable, one file) and JetBrains Mono (400, 500, 600, 700), both SIL OFL 1.1,
+with their licence texts, `manifest.json` (version, source URL, sha256 of every file) and `fonts.css`
+(`@font-face`, hand-written, the same for every theme). `node scripts/check-licenses.mjs` fails on a
+missing licence text, a changed file or an unlisted font file. Nothing is fetched at build or run time.
+
 ## Exports
 
 | Import | What |
@@ -162,8 +228,10 @@ test fails otherwise.
 | `@byterygon/design-tokens/color` | the colour module alone: OKLCH conversion, sRGB gamut mapping, WCAG and APCA contrast, the lightness solver, `generateRamp` |
 | `@byterygon/design-tokens/build` | `buildTheme` and `renderOutputs` (Node, Style Dictionary) |
 | `@byterygon/design-tokens/default/*` | the committed outputs of the default theme (`tokens.css`, `tailwind-theme.css`, `shadcn-alias.css`, `tokens.dtcg.json`, `figma-variables.json`) |
+| `@byterygon/design-tokens/presets/<name>/*` | the committed outputs of a preset (the three CSS files; all six for `default`) |
+| `@byterygon/design-tokens/fonts/*` | `fonts.css` and the vendored font files |
 | `@byterygon/design-tokens/default/tokens` | `tokens.ts`: typed paths, CSS variables, descriptions and resolved values |
 
-In an app: import `tokens.css`, then `tailwind-theme.css` (after `@import "tailwindcss"`), then
+In an app: import `fonts/fonts.css`, then `tokens.css`, then `tailwind-theme.css` (after `@import "tailwindcss"`), then
 `shadcn-alias.css` if stock shadcn components are used. Components use the Tailwind utilities
 (`bg-surface`, `text-fg-muted`, `border-border-strong`, `h-control-md`, `rounded-md`).

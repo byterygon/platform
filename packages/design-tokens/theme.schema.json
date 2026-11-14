@@ -21,11 +21,12 @@
       "properties": {
         "colors": {
           "type": "object",
-          "description": "One ramp per entry. neutral, brand, red, amber, green and blue exist by default; any other name adds a ramp.",
+          "description": "One ramp per entry. neutral, brand, red, amber, green, blue, violet, orange, teal and pink exist by default; any other name adds a ramp.",
           "propertyNames": { "pattern": "^[a-z][a-z0-9]*$", "not": { "enum": ["base", "white", "black"] } },
           "additionalProperties": { "$ref": "#/$defs/ramp" }
         },
         "radius": { "type": "number", "minimum": 0, "maximum": 32, "description": "Corner radius of a standard control, in px." },
+        "fontSize": { "type": "number", "minimum": 11, "maximum": 18, "description": "Size of body text in px. The type scale (font.size.2xs to 4xl) is derived from it: 14 gives 11, 12, 13, 14, 16, 18, 20, 24, 30." },
         "colorScheme": { "enum": ["light", "dark"], "description": "The scheme :root gets." },
         "density": { "enum": ["comfortable", "compact"], "description": "The density :root gets." },
         "contrast": {
@@ -62,6 +63,7 @@
       "properties": {
         "hue": { "type": "number", "minimum": 0, "maximum": 360, "description": "OKLCH hue in degrees. Optional for neutral, which then follows the brand hue." },
         "chroma": { "type": "number", "minimum": 0, "maximum": 0.4, "description": "Chroma of the solid step, before gamut mapping." },
+        "tint": { "type": "number", "minimum": 0, "maximum": 0.1, "description": "Chroma of the background steps 1-5, for a warm or coloured neutral. Without it those steps follow the chroma, which keeps a low-chroma neutral almost grey." },
         "solid": {
           "type": "object",
           "description": "Lightness of the solid step (9) per scheme, for hues that need a light solid (amber, yellow, lime).",

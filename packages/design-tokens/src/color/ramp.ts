@@ -23,6 +23,13 @@ export interface RampSeed {
   readonly chroma: number;
   /** Optional lightness of the solid step (step 9) per scheme; the recipe decides when omitted. */
   readonly solid?: { readonly light?: number; readonly dark?: number };
+  /**
+   * Optional chroma of the background steps (1-5). The recipe's chroma fractions are relative to
+   * the seed chroma, which leaves a low-chroma neutral almost grey in its backgrounds; a tint
+   * replaces the seed chroma for those five steps (scaled by `SchemeRecipe.tint`) so a warm paper
+   * or a deep blue can be asked for directly.
+   */
+  readonly tint?: number;
 }
 
 export type ContrastKind = "text" | "ui";
@@ -46,6 +53,8 @@ export interface SchemeRecipe {
   readonly steps: readonly StepRecipe[];
   /** Lightness distance between the solid (9) and its hover state (10). */
   readonly solidHoverDelta: number;
+  /** Chroma of steps 1-5 as a multiple of the seed's `tint`; used only when the seed has one. */
+  readonly tint: readonly number[];
   /** The dark candidate for text on the solid: lightness, and chroma as a cap. */
   readonly ink: { readonly l: number; readonly c: number };
   /** What alpha variants are computed over: white, or a step of the reference ramp. */
@@ -96,6 +105,7 @@ export const DEFAULT_RECIPE: RampRecipe = {
       { l: 0.22, c: 0.45, job: "high-contrast text" },
     ],
     solidHoverDelta: 0.045,
+    tint: [0.6, 1, 1.4, 1.8, 2.2],
     ink: { l: 0.16, c: 0.03 },
     alphaBackdrop: "white",
   },
@@ -125,6 +135,7 @@ export const DEFAULT_RECIPE: RampRecipe = {
       { l: 0.955, c: 0.25, job: "high-contrast text" },
     ],
     solidHoverDelta: 0.05,
+    tint: [0.6, 1, 1.4, 1.8, 2.2],
     ink: { l: 0.16, c: 0.03 },
     alphaBackdrop: 2,
   },
@@ -195,7 +206,8 @@ export function generateRamp(seed: RampSeed, scheme: Scheme, options: RampOption
 
   const requested = recipe.steps.map((step, index): Oklch => {
     const solid = index === 8 ? seed.solid?.[scheme] : undefined;
-    return { l: solid ?? step.l, c: seed.chroma * step.c, h: seed.hue };
+    const tinted = seed.tint !== undefined && index < recipe.tint.length;
+    return { l: solid ?? step.l, c: tinted ? seed.tint! * recipe.tint[index]! : seed.chroma * step.c, h: seed.hue };
   });
   const colors: Oklch[] = requested.map((color) => settle(color));
   const solved: boolean[] = requested.map(() => false);

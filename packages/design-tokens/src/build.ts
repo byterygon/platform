@@ -6,11 +6,24 @@ import type { Catalog } from "./catalog/authoring.js";
 import { DEFAULT_CATALOG } from "./catalog/default.js";
 import { generateTokens } from "./generate.js";
 import { type Diagnostic, type TokenSet, hasErrors } from "./model.js";
-import { type OutputFile, renderOutputs } from "./outputs.js";
+import { OUTPUT_FILES, type OutputFile, renderOutputs } from "./outputs.js";
 import type { ResolvedSeeds } from "./seeds.js";
 import { type ContrastMeasurement, validate } from "./validate.js";
 
 export { OUTPUT_ALIASES, OUTPUT_FILES, type OutputFile, renderOutputs } from "./outputs.js";
+
+/**
+ * The files of a built-in preset that are committed under `generated/<theme>/`. The default theme
+ * commits all six (the component package imports them). The other presets commit the three CSS
+ * files, which is what a project copies in; `tokens.ts`, `tokens.dtcg.json` and
+ * `figma-variables.json` are about 1.4 MB per theme together, change with every catalogue edit, and are one
+ * `by-tokens export` away. The drift test still renders all six for every preset.
+ */
+export const PRESET_COMMITTED_OUTPUTS: readonly OutputFile[] = ["tokens.css", "tailwind-theme.css", "shadcn-alias.css"];
+
+export function committedOutputs(theme: string): readonly OutputFile[] {
+  return theme === "default" ? OUTPUT_FILES : PRESET_COMMITTED_OUTPUTS;
+}
 
 export interface BuildResult {
   /** False when any diagnostic is an error; `files` is then absent. */

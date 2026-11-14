@@ -1,0 +1,21 @@
+{
+  "$schema": "../theme.schema.json",
+  "schemaVersion": 1,
+  "name": "paper",
+  "description": "Paper: a warm light theme for reading. Cream backgrounds, a rust accent, larger text with relaxed line height, rounder corners, comfortable density.",
+  "seeds": {
+    "colors": {
+      "neutral": { "hue": 85, "chroma": 0.03, "tint": 0.011 },
+      "brand": { "hue": 40, "chroma": 0.13 }
+    },
+    "radius": 8,
+    "fontSize": 15,
+    "colorScheme": "light",
+    "density": "comfortable",
+    "contrast": { "level": "AA" }
+  },
+  "overrides": {
+    "text.body.leading": "{font.leading.relaxed}",
+    "text.body-strong.leading": "{font.leading.relaxed}"
+  }
+}

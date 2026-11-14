@@ -27,6 +27,8 @@
       "import": "./generated/default/tokens.ts"
     },
     "./default/*": "./generated/default/*",
+    "./presets/*": "./generated/*",
+    "./fonts/*": "./fonts/*",
     "./themes/*": "./themes/*",
     "./theme.schema.json": "./theme.schema.json"
   },
@@ -34,6 +36,7 @@
     "dist",
     "bin",
     "generated",
+    "fonts",
     "themes",
     "theme.schema.json",
     "AGENTS.md"

@@ -43,12 +43,13 @@ export interface CommandSpec {
 export const COMMANDS: readonly CommandSpec[] = [
   {
     name: "build",
-    usage: "by-tokens build [--theme <name|file>] [--out <dir>] [--check]",
+    usage: "by-tokens build [--theme <name|file>] [--out <dir>] [--check] [--all]",
     summary: "Generate, validate and write tokens.css, tailwind-theme.css, shadcn-alias.css, tokens.ts, tokens.dtcg.json and figma-variables.json. Writes nothing when a rule fails.",
     options: [
       THEME,
       { name: "--out", value: "<dir>", summary: "output directory (default: generated/<theme> in the package for presets, ./tokens/<theme> for theme files)" },
       { name: "--check", summary: "write nothing; exit 3 when the files on disk differ from what would be generated" },
+      { name: "--all", summary: "write all six files for a built-in preset other than default (only the three CSS files are committed for those)" },
       JSON_FLAG,
     ],
   },

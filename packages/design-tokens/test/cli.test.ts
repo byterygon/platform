@@ -164,7 +164,7 @@ test("diff compares resolved values mode by mode", async () => {
   assert.equal(result.code, EXIT.ok);
   assert.deepEqual([result.json.from, result.json.to, result.json.differs], ["default", "rounder", true]);
   const changed = Object.fromEntries(result.json.changed.map((c: { path: string; modes: unknown }) => [c.path, c.modes]));
-  assert.deepEqual(Object.keys(changed).sort(), ["color.fg.link", "radius.lg", "radius.md", "radius.sm"]);
+  assert.deepEqual(Object.keys(changed).sort(), ["color.fg.link", "radius.lg", "radius.md", "radius.sm", "radius.xl", "radius.xs"]);
   assert.deepEqual(changed["radius.md"], [{ mode: {}, from: "6px", to: "8px" }]);
   assert.equal(changed["color.fg.link"].length, 1);
   assert.deepEqual(changed["color.fg.link"][0].mode, { theme: "dark" });

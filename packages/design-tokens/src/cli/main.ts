@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { basename, dirname, join, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { type BuildResult, OUTPUT_ALIASES, OUTPUT_FILES, buildTheme } from "../build.js";
+import { type BuildResult, OUTPUT_ALIASES, OUTPUT_FILES, type OutputFile, buildTheme, committedOutputs } from "../build.js";
 import { generateTokens } from "../generate.js";
 import { type Diagnostic, type ModeContext, type Token, type TokenSet, SCHEMA_VERSION, TIERS, hasErrors } from "../model.js";
 import { dependentAxes, ownValues, referencedBy, resolve } from "../resolve.js";
@@ -156,6 +156,8 @@ async function build(args: ParsedArgs, io: Io): Promise<Outcome> {
   const outFlag = flag(args, "--out");
   const outDir = outFlag ? resolvePath(io.cwd, outFlag) : loaded.builtIn ? join(packageRoot(), "generated", result.set.name) : resolvePath(io.cwd, "tokens", result.set.name);
   const shown = display(io, outDir);
+  // A built-in preset other than default commits only its CSS files into the package (see build.ts).
+  const names: readonly OutputFile[] = loaded.builtIn && !outFlag && !args.flags.has("--all") ? committedOutputs(result.set.name) : OUTPUT_FILES;
   const common = { theme: result.set.name, outDir: shown, tokens: tokenCounts(result.set), contrast: contrastSummary(result, false), diagnostics: result.diagnostics };
 
   if (!result.files) {
@@ -167,7 +169,7 @@ async function build(args: ParsedArgs, io: Io): Promise<Outcome> {
   }
 
   const files: { name: string; bytes: number; status: "written" | "unchanged" | "stale" | "missing" }[] = [];
-  for (const name of OUTPUT_FILES) {
+  for (const name of names) {
     const content = result.files.get(name)!;
     const target = join(outDir, name);
     const current = existsSync(target) ? readFileSync(target, "utf8") : undefined;

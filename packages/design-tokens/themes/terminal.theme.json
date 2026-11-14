@@ -1,0 +1,20 @@
+{
+  "$schema": "../theme.schema.json",
+  "schemaVersion": 1,
+  "name": "terminal",
+  "description": "Terminal: dark first, a green accent on a green-black neutral, monospace for all interface text, 13 px text, square corners, compact density.",
+  "seeds": {
+    "colors": {
+      "neutral": { "hue": 150, "chroma": 0.02, "tint": 0.01 },
+      "brand": { "hue": 150, "chroma": 0.15 }
+    },
+    "radius": 2,
+    "fontSize": 13,
+    "colorScheme": "dark",
+    "density": "compact",
+    "contrast": { "level": "AA" }
+  },
+  "overrides": {
+    "font.sans": ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"]
+  }
+}

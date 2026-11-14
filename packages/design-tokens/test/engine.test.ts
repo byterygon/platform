@@ -25,8 +25,13 @@ test("the default theme generates a valid token set with no findings", () => {
   assert.equal(set.name, "default");
   const tiers = [...set.tokens.values()].map((t) => t.tier);
   assert.ok(tiers.includes("primitive") && tiers.includes("semantic"));
-  // Six ramps, two schemes, 12 steps + 12 alpha + contrast each; black and white with overlays.
-  assert.equal(tiers.filter((t) => t === "primitive").length, 6 * 2 * 25 + 2 + 24);
+  // Ten ramps, two schemes, 12 steps + 12 alpha + contrast each; black and white with overlays; and
+  // the scales that are not colours (space, type scale, icons, borders, z, motion, ...).
+  const ramps = Object.keys(DEFAULT_SEEDS.colors).length;
+  assert.equal(ramps, 10);
+  const primitives = [...set.tokens.values()].filter((t) => t.tier === "primitive");
+  assert.equal(primitives.filter((t) => t.ramp || t.path.startsWith("color.")).length, ramps * 2 * 25 + 2 + 24);
+  assert.ok(primitives.length > ramps * 2 * 25 + 26, "the non-colour scales are primitives too");
   assert.equal(set.tokens.get("color.bg.canvas")!.axis, "theme");
   assert.equal(set.tokens.get("size.control.md")!.axis, "density");
   assert.equal(set.tokens.get("radius.md")!.axis, undefined);
@@ -42,7 +47,7 @@ test("every token has a description that says when to use it and when not to", (
   for (const token of set.tokens.values()) {
     assert.ok(token.description.length >= 30, `${token.path}: "${token.description}"`);
     if (token.tier !== "primitive") assert.match(token.description, /\bNot\b|\bNever\b/, `${token.path} says when not to use it`);
-    else assert.match(token.description, /never from a component/, token.path);
+    else assert.match(token.description, /never from a component|\bNot\b/, token.path);
   }
   for (const role of DEFAULT_CATALOG.roles) {
     assert.ok(role.use.endsWith(".") && role.avoid.endsWith("."), `${role.path}: use and avoid are sentences`);
@@ -84,9 +89,9 @@ test("seeds drive the tokens", () => {
 });
 
 test("a theme can add a ramp; AAA raises every target", () => {
-  const extra = check(themeWith({}, { colors: { violet: { hue: 300, chroma: 0.2 } } }));
+  const extra = check(themeWith({}, { colors: { olive: { hue: 110, chroma: 0.12 } } }));
   assert.deepEqual(extra.errors, []);
-  assert.ok(extra.set.tokens.has("color.violet.9") && extra.set.tokens.has("color.violet-dark.a3"));
+  assert.ok(extra.set.tokens.has("color.olive.9") && extra.set.tokens.has("color.olive-dark.a3"));
 
   const aaa = check(themeWith({}, { contrast: { level: "AAA" } }));
   assert.equal(aaa.set.contrast.text, 7);
@@ -104,7 +109,7 @@ test("bad seeds and bad theme files are reported with the path and a hint", () =
     schemaVersion: 2,
     name: "Not A Slug",
     extra: true,
-    seeds: { colours: {}, radius: 99, density: "cosy", colors: { brand: { hue: 400 }, base: { hue: 1, chroma: 0.1 }, pink: { chroma: 0.1 } } },
+    seeds: { colours: {}, radius: 99, density: "cosy", colors: { brand: { hue: 400 }, base: { hue: 1, chroma: 0.1 }, olive: { chroma: 0.1 } } },
   });
   const found = (token: string) => bad.errors.find((d) => d.token === token);
   assert.equal(found("schemaVersion")?.required, 1);
@@ -115,7 +120,7 @@ test("bad seeds and bad theme files are reported with the path and a hint", () =
   assert.match(found("seeds.density")!.message, /comfortable, compact/);
   assert.ok(found("seeds.colors.brand.hue"));
   assert.ok(found("seeds.colors.base"));
-  assert.ok(found("seeds.colors.pink.hue"));
+  assert.ok(found("seeds.colors.olive.hue"));
   assert.deepEqual(rules(check("nope").errors).includes("theme-schema"), true);
 });
 
@@ -198,7 +203,7 @@ test("rule: a role pair below its target fails in the mode it fails in, with a f
   assert.match(failure.fix!.summary, /Change the lightness of color\.neutral\.7 from .* on all \d+ backgrounds it is paired with/);
   assert.equal(stillFails(failure.fix!.overrides!), false);
   // Every failure of the role in that mode carries the same fix, so applying it once clears them all.
-  assert.equal(new Set(errors.map((d) => JSON.stringify(d.fix))).size, 1);
+  assert.equal(new Set(errors.filter((d) => d.token === failure.token).map((d) => JSON.stringify(d.fix))).size, 1);
   assert.deepEqual(check(themeWith({ ...broken, ...failure.fix!.overrides })).errors.filter((d) => d.token === failure.token), []);
   const alternative = failure.fix!.alternatives![0]!;
   assert.match(alternative.summary, /Alias color\.fg\.subtle to \{color\.neutral\.\d+\}/);
