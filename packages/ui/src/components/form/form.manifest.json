@@ -1,0 +1,36 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "form",
+  "title": "Form",
+  "description": "A <form> laid out as a column of Fields and submitted through TanStack Form: no native validation, handleSubmit on submit, focus on the first invalid field.",
+  "usage": "Create the form with useForm from @tanstack/react-form (defaultValues, validators, onSubmit), pass it as form, and render each field with form.Field and a Field inside. For a native-like flow use validationLogic: revalidateLogic({ mode: \"submit\", modeAfterSubmission: \"change\" }); for per-field checks use validators.onBlur. Show the submit state with form.Subscribe and Button's loading. Without form, Form is only a styled <form>.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": ["@base-ui/react", "@tanstack/react-form"],
+  "props": [
+    { "name": "form", "type": "AnyFormApi (from useForm)", "description": "The TanStack Form instance: submitting calls form.handleSubmit() and focuses the first control whose field has errors." },
+    { "name": "noValidate", "type": "boolean", "description": "Turns off the browser's validation; true by default when form is set, since TanStack Form validates." },
+    { "name": "onSubmit", "type": "(event: SubmitEvent<HTMLFormElement>) => void", "description": "Called first on submit; with form, the native submission is then prevented." },
+    { "name": "aria-label", "type": "string", "description": "Names the form (it becomes a form landmark) when no heading labels it through aria-labelledby." },
+    { "name": "render", "type": "ReactElement | ((props, state) => ReactElement)", "description": "Base UI render prop: render another element with the form's props." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLFormElement>", "description": "Reaches the <form>." }
+  ],
+  "variants": {},
+  "slots": [
+    { "name": "root", "element": "form", "description": "The form, a column with space.stack.md between fields; data-slot=\"form\"." }
+  ],
+  "states": [],
+  "tokens": [
+    "space.stack.md"
+  ],
+  "examples": { "minimal": "FormMinimal", "realistic": "FormRealistic" },
+  "accessibility": [
+    "Renders a native <form>, so Enter in a text field submits it; keep a type=\"submit\" Button in it.",
+    "After a failed submit, focus moves to the first invalid control in document order, and its FieldError is read through aria-describedby.",
+    "Name the form with aria-label or aria-labelledby when the page has more than one.",
+    "Errors appear on submit and then follow each change (revalidateLogic) or on blur, never on the first keystroke of an untouched field.",
+    "Announce the outcome of a submission in a role=\"status\" region; the submit Button's loading sets aria-busy."
+  ]
+}

@@ -20,7 +20,8 @@ export const buttonVariants = {
   },
 } as const;
 
-const base = [
+/** The classes every size and variant shares; IconButton reuses them. */
+export const buttonBase = [
   "inline-flex shrink-0 select-none items-center justify-center gap-inline-sm whitespace-nowrap",
   "rounded-md border border-transparent font-sans",
   "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
@@ -59,7 +60,7 @@ export function Button({ variant = "primary", size = "md", loading = false, disa
       type={type}
       disabled={disabled || loading}
       focusableWhenDisabled={loading}
-      className={cn(base, buttonVariants.variant[variant], buttonVariants.size[size], className)}
+      className={cn(buttonBase, buttonVariants.variant[variant], buttonVariants.size[size], className)}
       {...props}
     />
   );

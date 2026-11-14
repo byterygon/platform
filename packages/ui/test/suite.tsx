@@ -23,6 +23,46 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
     const manifestText = readFileSync(join(dir, fileName(name, "component.manifest.json")), "utf8");
     const manifest = JSON.parse(manifestText) as Manifest;
     const source = readFileSync(join(dir, fileName(name, "component.tsx")), "utf8");
+    const parts = manifest.parts ?? [];
+    const ownSlots = new Set([name, ...parts.map((part) => part.slot)]);
+
+    /**
+     * For a component with parts: the classes the examples render inside this component's own
+     * slots (an element counts when its nearest data-slot is the component or one of its parts),
+     * and the slots seen. A part only renders inside the main component, so the examples are where
+     * its classes are found; other components in the examples (an Input in a Field) are skipped.
+     */
+    const exampleClasses = async () => {
+      const classes = new Set<string>();
+      const slots = new Set<string>();
+      if (parts.length === 0) return { classes, slots };
+      const { example } = await load();
+      for (const exportName of [manifest.examples.minimal, manifest.examples.realistic]) {
+        const { container, unmount } = render(createElement(example[exportName] as ComponentType));
+        for (const element of container.querySelectorAll("[data-slot]")) {
+          const slot = element.getAttribute("data-slot")!;
+          if (ownSlots.has(slot)) slots.add(slot);
+        }
+        for (const element of container.querySelectorAll("[class]")) {
+          const slot = element.closest("[data-slot]")?.getAttribute("data-slot");
+          if (!slot || !ownSlots.has(slot)) continue;
+          for (const c of element.getAttribute("class")!.split(/\s+/)) if (c) classes.add(c);
+        }
+        unmount();
+      }
+      return { classes, slots };
+    };
+
+    if (parts.length > 0) {
+      test("exports every part the manifest lists, and the examples render each one", async () => {
+        const { component } = await load();
+        const { slots } = await exampleClasses();
+        for (const part of parts) {
+          expect(typeof component[part.name], `component.tsx must export ${part.name}`).toBe("function");
+          expect(slots.has(part.slot), `no example renders ${part.name} (data-slot="${part.slot}")`).toBe(true);
+        }
+      });
+    }
 
     test("has exactly the four files of the layout", () => {
       expect(readdirSync(dir).sort()).toEqual(COMPONENT_FILES.map((kind) => fileName(name, kind)).sort());
@@ -55,6 +95,7 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
         for (const c of classesIn(container)) classes.add(c);
         unmount();
       }
+      for (const c of (await exampleClasses()).classes) classes.add(c);
       const report = await checkClasses(classes);
       expect(report.errors).toEqual([]);
       expect(manifest.tokens, `manifest.tokens must be exactly: ${JSON.stringify(report.tokens)}`).toEqual(report.tokens);
@@ -69,6 +110,7 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
         for (const c of classesIn(container)) all.add(c);
         unmount();
       }
+      for (const c of (await exampleClasses()).classes) all.add(c);
       const variants = stateVariants(all);
       for (const state of manifest.states) {
         expect(variants.has(state.variant), `state "${state.name}": no class uses the ${state.variant}: variant`).toBe(true);

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "form",
+  "type": "registry:ui",
+  "title": "Form",
+  "description": "A <form> laid out as a column of Fields and submitted through TanStack Form: no native validation, handleSubmit on submit, focus on the first invalid field.",
+  "dependencies": [
+    "@base-ui/react",
+    "@tanstack/react-form"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/form.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport type { AnyFormApi } from \"@tanstack/react-form\";\nimport type { SubmitEvent } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// The form element for TanStack Form (`useForm`): submitting calls `form.handleSubmit()` instead\n// of the browser's submission and native validation (TanStack Form validates), then moves focus\n// to the first control whose field has errors, in document order, so a keyboard or screen-reader\n// user lands on the problem. Base UI's own Form is not used: it validates through Base UI's\n// field validity, which TanStack Form replaces (Base UI's TanStack Form guide uses a plain form).\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const formVariants = {} as const;\n\nconst base = [\"flex min-w-0 flex-col gap-stack-md\"];\n\n/** Focuses the first control of `element` whose TanStack field has errors. Returns it, or null. */\nexport function focusFirstInvalid(element: HTMLFormElement, form: AnyFormApi): HTMLElement | null {\n  const fieldMeta = form.state.fieldMeta as Record<string, { errors?: readonly unknown[] } | undefined>;\n  for (const control of Array.from(element.elements)) {\n    const name = control.getAttribute(\"name\");\n    if (!name || !(control instanceof HTMLElement) || (fieldMeta[name]?.errors?.length ?? 0) === 0) continue;\n    control.focus();\n    return control;\n  }\n  return null;\n}\n\nexport interface FormProps extends Omit<useRender.ComponentProps<\"form\">, \"className\"> {\n  /**\n   * The TanStack Form instance from `useForm`. Submitting calls its `handleSubmit()` and focuses\n   * the first invalid control. Without it, Form is a styled `<form>` and submits as usual.\n   */\n  form?: AnyFormApi;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A form laid out as a column of Fields, submitted through TanStack Form. Built on Base UI's\n * useRender: `render` swaps the `<form>`, the ref reaches it.\n */\nexport function Form({ form, className, render, onSubmit, noValidate, ...props }: FormProps) {\n  const submit = (event: SubmitEvent<HTMLFormElement>) => {\n    onSubmit?.(event);\n    if (!form) return;\n    event.preventDefault();\n    event.stopPropagation();\n    const element = event.currentTarget;\n    void form.handleSubmit().then(() => {\n      focusFirstInvalid(element, form);\n    });\n  };\n  return useRender({\n    defaultTagName: \"form\",\n    render,\n    props: { \"data-slot\": \"form\", noValidate: noValidate ?? (form ? true : undefined), ...props, onSubmit: submit, className: cn(base, className) },\n  });\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "form",
+      "title": "Form",
+      "description": "A <form> laid out as a column of Fields and submitted through TanStack Form: no native validation, handleSubmit on submit, focus on the first invalid field.",
+      "usage": "Create the form with useForm from @tanstack/react-form (defaultValues, validators, onSubmit), pass it as form, and render each field with form.Field and a Field inside. For a native-like flow use validationLogic: revalidateLogic({ mode: \"submit\", modeAfterSubmission: \"change\" }); for per-field checks use validators.onBlur. Show the submit state with form.Subscribe and Button's loading. Without form, Form is only a styled <form>.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react",
+        "@tanstack/react-form"
+      ],
+      "props": [
+        {
+          "name": "form",
+          "type": "AnyFormApi (from useForm)",
+          "description": "The TanStack Form instance: submitting calls form.handleSubmit() and focuses the first control whose field has errors."
+        },
+        {
+          "name": "noValidate",
+          "type": "boolean",
+          "description": "Turns off the browser's validation; true by default when form is set, since TanStack Form validates."
+        },
+        {
+          "name": "onSubmit",
+          "type": "(event: SubmitEvent<HTMLFormElement>) => void",
+          "description": "Called first on submit; with form, the native submission is then prevented."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Names the form (it becomes a form landmark) when no heading labels it through aria-labelledby."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element with the form's props."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLFormElement>",
+          "description": "Reaches the <form>."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "form",
+          "description": "The form, a column with space.stack.md between fields; data-slot=\"form\"."
+        }
+      ],
+      "states": [],
+      "tokens": [
+        "space.stack.md"
+      ],
+      "examples": {
+        "minimal": "FormMinimal",
+        "realistic": "FormRealistic"
+      },
+      "accessibility": [
+        "Renders a native <form>, so Enter in a text field submits it; keep a type=\"submit\" Button in it.",
+        "After a failed submit, focus moves to the first invalid control in document order, and its FieldError is read through aria-describedby.",
+        "Name the form with aria-label or aria-labelledby when the page has more than one.",
+        "Errors appear on submit and then follow each change (revalidateLogic) or on blur, never on the first keystroke of an untouched field.",
+        "Announce the outcome of a submission in a role=\"status\" region; the submit Button's loading sets aria-busy."
+      ]
+    },
+    "example": "import { revalidateLogic, useForm } from \"@tanstack/react-form\";\nimport { useState } from \"react\";\nimport { Button } from \"@/components/button/button\";\nimport { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { Form } from \"@/components/form/form\";\nimport { Input } from \"@/components/input/input\";\nimport { Textarea } from \"@/components/textarea/textarea\";\n\n/** The smallest useful Form: one validated field and a submit button. */\nexport function FormMinimal() {\n  const [saved, setSaved] = useState(\"\");\n  const form = useForm({\n    defaultValues: { table: \"orders\" },\n    onSubmit: ({ value }) => setSaved(value.table),\n  });\n  return (\n    <Form form={form} aria-label=\"Rename table\">\n      <form.Field name=\"table\" validators={{ onBlur: ({ value }) => (/^[a-z_][a-z0-9_]*$/.test(value) ? undefined : \"Use lowercase letters, digits and underscores.\") }}>\n        {(field) => (\n          <Field field={field}>\n            <FieldLabel>New name</FieldLabel>\n            <Input value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} />\n            <FieldError />\n          </Field>\n        )}\n      </form.Field>\n      <div className=\"flex items-center gap-inline-md\">\n        <Button type=\"submit\">Rename</Button>\n        <p role=\"status\" className=\"text-caption text-fg-muted\">\n          {saved && `Renamed to ${saved}.`}\n        </p>\n      </div>\n    </Form>\n  );\n}\n\ninterface Connection {\n  name: string;\n  host: string;\n  port: string;\n  database: string;\n  user: string;\n  password: string;\n  notes: string;\n}\n\n/** The checks of the connection form: every message names what to do. */\nfunction validateConnection(value: Connection): Partial<Record<keyof Connection, string>> {\n  const errors: Partial<Record<keyof Connection, string>> = {};\n  if (!value.name.trim()) errors.name = \"Give the connection a name.\";\n  if (!value.host.trim()) errors.host = \"Enter the server's host name or address.\";\n  else if (/\\s/.test(value.host)) errors.host = \"A host name has no spaces.\";\n  const port = Number(value.port);\n  if (!/^\\d+$/.test(value.port) || port < 1 || port > 65535) errors.port = \"Use a port from 1 to 65535.\";\n  if (!value.database.trim()) errors.database = \"Enter the database to open.\";\n  if (!value.user.trim()) errors.user = \"Enter the user to sign in as.\";\n  if (value.notes.length > 200) errors.notes = `Keep notes to 200 characters (now ${value.notes.length}).`;\n  return errors;\n}\n\n/**\n * A database connection form: validated on submit, then on every change (revalidateLogic), each\n * error under its field, focus on the first invalid field, and a loading button while saving.\n */\nexport function FormRealistic() {\n  const [saved, setSaved] = useState(\"\");\n  const form = useForm({\n    defaultValues: { name: \"\", host: \"\", port: \"5432\", database: \"\", user: \"\", password: \"\", notes: \"\" } satisfies Connection as Connection,\n    validationLogic: revalidateLogic({ mode: \"submit\", modeAfterSubmission: \"change\" }),\n    validators: {\n      onDynamic: ({ value }) => {\n        const fields = validateConnection(value);\n        return Object.keys(fields).length > 0 ? { fields } : undefined;\n      },\n    },\n    onSubmit: async ({ value }) => {\n      await new Promise((resolve) => setTimeout(resolve, 300));\n      setSaved(`Saved ${value.name}.`);\n    },\n  });\n  return (\n    <Form form={form} aria-label=\"New connection\" className=\"w-full\">\n      <form.Field name=\"name\">\n        {(field) => (\n          <Field field={field}>\n            <FieldLabel>Name</FieldLabel>\n            <Input value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} placeholder=\"Analytics (production)\" />\n            <FieldError />\n          </Field>\n        )}\n      </form.Field>\n      <div className=\"flex flex-wrap items-start gap-inline-md\">\n        <form.Field name=\"host\">\n          {(field) => (\n            <Field field={field} className=\"flex-1\">\n              <FieldLabel>Host</FieldLabel>\n              <Input value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} placeholder=\"db.internal\" autoComplete=\"off\" spellCheck={false} />\n              <FieldDescription>A name or address on your network.</FieldDescription>\n              <FieldError />\n            </Field>\n          )}\n        </form.Field>\n        <form.Field name=\"port\">\n          {(field) => (\n            <Field field={field}>\n              <FieldLabel>Port</FieldLabel>\n              <Input value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} inputMode=\"numeric\" />\n              <FieldError />\n            </Field>\n          )}\n        </form.Field>\n      </div>\n      <form.Field name=\"database\">\n        {(field) => (\n          <Field field={field}>\n            <FieldLabel>Database</FieldLabel>\n            <Input value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} placeholder=\"analytics\" spellCheck={false} />\n            <FieldError />\n          </Field>\n        )}\n      </form.Field>\n      <div className=\"flex flex-wrap items-start gap-inline-md\">\n        <form.Field name=\"user\">\n          {(field) => (\n            <Field field={field} className=\"flex-1\">\n              <FieldLabel>User</FieldLabel>\n              <Input value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} autoComplete=\"username\" spellCheck={false} />\n              <FieldError />\n            </Field>\n          )}\n        </form.Field>\n        <form.Field name=\"password\">\n          {(field) => (\n            <Field field={field} className=\"flex-1\">\n              <FieldLabel>Password</FieldLabel>\n              <Input type=\"password\" value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} autoComplete=\"current-password\" />\n              <FieldDescription>Stored in the system keychain, never in the workspace file.</FieldDescription>\n            </Field>\n          )}\n        </form.Field>\n      </div>\n      <form.Field name=\"notes\">\n        {(field) => (\n          <Field field={field}>\n            <FieldLabel>Notes</FieldLabel>\n            <Textarea value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} rows={2} />\n            <FieldDescription>Optional, up to 200 characters.</FieldDescription>\n            <FieldError />\n          </Field>\n        )}\n      </form.Field>\n      <div className=\"flex items-center gap-inline-md\">\n        <form.Subscribe selector={(state) => state.isSubmitting}>{(submitting) => <Button type=\"submit\" loading={submitting}>Save connection</Button>}</form.Subscribe>\n        <Button variant=\"ghost\" onClick={() => form.reset()}>\n          Reset\n        </Button>\n        <p role=\"status\" className=\"text-caption text-fg-muted\">\n          {saved}\n        </p>\n      </div>\n    </Form>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0",
+      "@tanstack/react-form": "1.33.5"
+    }
+  }
+}

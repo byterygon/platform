@@ -27,6 +27,11 @@ const REGISTRY = join(PACKAGE_ROOT, "registry");
 const FIXTURES = join(PACKAGE_ROOT, "test", "fixtures", "shadcn-base-nova");
 const SHADCN = join(PACKAGE_ROOT, "node_modules", "shadcn", "dist", "index.js");
 const STOCK = ["button", "card", "input"];
+/**
+ * The Byterygon items named on the command line. Button comes in through the registry
+ * dependencies of icon-button and input-group as well; cn through every item.
+ */
+const ITEMS = ["button", "input", "field", "form", "textarea", "input-group", "icon-button", "kbd"];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
 const OFFLINE_ENV = {
@@ -60,7 +65,7 @@ function blankApp(dir: string, registryTemplate: string): void {
     name: "blank-vite-app",
     private: true,
     type: "module",
-    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "cn", "class-variance-authority"].map((n) => [n, version(n)])),
+    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority"].map((n) => [n, version(n)])),
     devDependencies: Object.fromEntries(["vite", "@tailwindcss/vite", "tailwindcss"].map((n) => [n, version(n)])),
   });
   write("tsconfig.json", { compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", jsx: "react-jsx", strict: true, baseUrl: ".", paths: { "@/*": ["./src/*"] } }, include: ["src"] });
@@ -127,7 +132,7 @@ function serve(dir: string): Promise<Server> {
 const itemContent = (name: string) => (JSON.parse(readFileSync(join(REGISTRY, `${name}.json`), "utf8")) as { files: { content: string }[] }).files[0]!.content;
 
 function checkInstalledFiles(app: string, label: string): void {
-  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/components/ui/button.tsx", "button"], ["src/components/ui/input.tsx", "input"]] as const) {
+  for (const [path, item] of [["src/lib/cn.ts", "cn"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
     const full = join(app, path);
     if (check(existsSync(full), `${label}: ${path} was not installed`)) {
       check(readFileSync(full, "utf8") === itemContent(item), `${label}: ${path} differs from the registry item ${item}`);
@@ -139,19 +144,52 @@ function checkInstalledFiles(app: string, label: string): void {
   check(/@theme inline\s*\{[\s\S]*--color-accent-solid: var\(--by-color-accent-bg\)/.test(css), `${label}: src/index.css has no Tailwind role names`);
 }
 
-const MAIN = `import { StrictMode } from "react";
+const MAIN = `import { useForm } from "@tanstack/react-form";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Form } from "@/components/ui/form";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { Textarea } from "@/components/ui/textarea";
 import { Button as StockButton } from "@/components/stock/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/stock/card";
 import { Input as StockInput } from "@/components/stock/input";
+
+function Connection() {
+  const form = useForm({ defaultValues: { host: "" } });
+  return (
+    <Form form={form} aria-label="Connection">
+      <form.Field name="host" validators={{ onBlur: ({ value }) => (value ? undefined : "Enter a host.") }}>
+        {(field) => (
+          <Field field={field}>
+            <FieldLabel>Host</FieldLabel>
+            <InputGroup>
+              <InputGroupAddon>postgres://</InputGroupAddon>
+              <InputGroupInput value={field.state.value} onValueChange={field.handleChange} onBlur={field.handleBlur} />
+              <InputGroupButton>Test</InputGroupButton>
+            </InputGroup>
+            <FieldDescription>A name on your network.</FieldDescription>
+            <FieldError />
+          </Field>
+        )}
+      </form.Field>
+      <Textarea aria-label="Notes" />
+      <IconButton aria-label="Copy"><svg aria-hidden="true" viewBox="0 0 16 16" /></IconButton>
+      <KbdGroup><Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd></KbdGroup>
+    </Form>
+  );
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Button>Byterygon</Button>
     <Input aria-label="Byterygon input" />
+    <Connection />
     <Card>
       <CardHeader><CardTitle>Stock card</CardTitle></CardHeader>
       <CardContent>
@@ -265,6 +303,10 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["h-control-md", "height", "size.control.md", "Byterygon Button md (density)"],
   ["bg-surface", "background-color", "color.bg.surface", "Byterygon Input"],
   ["border-border-strong", "border-color", "color.border.strong", "Byterygon Input"],
+  ["text-danger-fg", "color", "color.status.danger.fg", "Byterygon FieldError"],
+  ["has-[[data-slot=input-group-input]:focus-visible]:outline-ring", "outline-color", "color.ring", "Byterygon InputGroup focus"],
+  ["size-control-md", "width", "size.control.md", "Byterygon IconButton md (density)"],
+  ["bg-inset", "background-color", "color.bg.inset", "Byterygon Kbd"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {
@@ -313,7 +355,7 @@ async function main(argv: string[]): Promise<number> {
     // their dependencies (@byterygon/cn) resolve through the registries template to files.
     const local = join(work, "local");
     blankApp(local, join(REGISTRY, "{name}.json"));
-    if (await shadcnAdd(local, [join(REGISTRY, "theme-default.json"), join(REGISTRY, "button.json"), join(REGISTRY, "input.json"), ...stockItems(join(work, "stock"))])) {
+    if (await shadcnAdd(local, [join(REGISTRY, "theme-default.json"), ...ITEMS.map((name) => join(REGISTRY, `${name}.json`)), ...stockItems(join(work, "stock"))])) {
       checkInstalledFiles(local, "local path");
       for (const name of STOCK) check(existsSync(join(local, `src/components/stock/${name}.tsx`)), `stock ${name} was not installed`);
     }
@@ -323,7 +365,7 @@ async function main(argv: string[]): Promise<number> {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const http = join(work, "http");
     blankApp(http, `${base}/{name}.json`);
-    if (await shadcnAdd(http, [`${base}/theme-default.json`, "@byterygon/button", "@byterygon/input"])) {
+    if (await shadcnAdd(http, [`${base}/theme-default.json`, ...ITEMS.map((name) => `@byterygon/${name}`)])) {
       checkInstalledFiles(http, "static server");
       check(readFileSync(join(http, "src/index.css"), "utf8") === readFileSync(join(local, "src/index.css"), "utf8"), "the static-server install wrote a different src/index.css than the local-path install");
     }
@@ -337,7 +379,7 @@ async function main(argv: string[]): Promise<number> {
   }
   const ok = failures.length === 0;
   if (json) process.stdout.write(`${JSON.stringify({ schemaVersion: 1, command: "verify-install", ok, exitCode: ok ? 0 : 1, failures, ...(keep ? { kept: work } : {}) })}\n`);
-  else if (ok) process.stdout.write(`verify-install: ok. shadcn CLI installed theme-default, button and input offline from a folder and from a static server; stock base-nova Button, Card and Input and the Byterygon components resolve to the token values in light, dark and compact.${keep ? `\nkept ${work}` : ""}\n`);
+  else if (ok) process.stdout.write(`verify-install: ok. shadcn CLI installed theme-default, ${ITEMS.join(", ")} offline from a folder and from a static server; stock base-nova Button, Card and Input and the Byterygon components resolve to the token values in light, dark and compact.${keep ? `\nkept ${work}` : ""}\n`);
   else process.stdout.write(`${failures.map((f) => `FAIL ${f}`).join("\n")}\n\n${log.join("\n\n")}\n`);
   return ok ? 0 : 1;
 }

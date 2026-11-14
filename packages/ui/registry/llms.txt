@@ -21,6 +21,8 @@ Install (components.json: "registries": { "@byterygon": "<this folder or URL>/{n
 
 [button.json](button.json): An action button: primary, secondary, ghost and danger variants in three density-aware sizes, with disabled and loading states.
 
+Usage: Use one primary Button per view for the main action, secondary next to it, ghost in toolbars and dense rows, danger for destructive actions. Give it a visible text label; for an icon alone use IconButton. Set loading while the action runs instead of disabling it, and type="submit" inside a form.
+
 - Wraps: @base-ui/react/button
 - variant: primary, secondary, ghost, danger
 - size: sm, md, lg
@@ -29,9 +31,50 @@ Install (components.json: "registries": { "@byterygon": "<this folder or URL>/{n
 - Tokens: color.accent.bg, color.accent.bg-active, color.accent.bg-hover, color.accent.fg, color.fg.default, color.interactive.active, color.interactive.hover, color.neutral.bg, color.neutral.bg-active, color.neutral.bg-hover, color.neutral.fg, color.ring, color.status.danger.solid, color.status.danger.solid-fg, color.status.danger.solid-hover, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.icon.sm, space.control.x, space.inline.sm, space.inset.lg, space.inset.sm, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
 - Accessibility: Renders a native <button> with type="button" unless type is set, so Enter and Space activate it. An icon-only button needs aria-label. Disabled uses the native disabled attribute; loading keeps the button focusable (aria-disabled) so focus is not lost mid-action, and sets aria-busy. The focus ring shows for keyboard focus only (focus-visible) and meets 3:1 against every surface (token pair color.ring). Text and background pairs of every variant are contrast-checked by the token build in light and dark.
 
+### Field
+
+[field.json](field.json): A form field on Base UI's Field parts: label, control, description and error tied together, with invalid, touched, dirty and disabled state taken from TanStack Form or set by hand.
+
+Usage: Wrap every form control (Input, Textarea, InputGroup) in a Field with a FieldLabel; add FieldDescription for a hint and FieldError for the message. With TanStack Form, render it from form.Field and pass the field: <form.Field name="host">{(field) => <Field field={field}>…</Field>}</form.Field>, and wire the control's value, onValueChange and onBlur to the field. Without a form library, set invalid and FieldError's children yourself, or use Base UI's validate prop. Put the fields in a Form.
+
+- Wraps: @base-ui/react/field
+- Parts: FieldLabel (data-slot field-label): The visible label, tied to the control; danger-coloured while invalid, dimmed while disabled.; FieldDescription (data-slot field-description): A hint under the control, in color.fg.muted, named by aria-describedby.; FieldError (data-slot field-error): The validation message in color.status.danger.fg: its children, its errors prop, or the TanStack field's errors one per line.
+- Props: field (FieldState (a TanStack Form field: name and state.meta)); name (string); invalid (boolean); touched (boolean); dirty (boolean); disabled (boolean, default false); validate ((value, formValues) => string | string[] | null | Promise<…>); className (string); ref (Ref<HTMLDivElement>)
+- States: invalid (data-invalid), disabled (data-disabled)
+- Tokens: color.fg.default, color.fg.muted, color.status.danger.fg, font.sans, opacity.disabled, space.stack.xs, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: FieldLabel is a <label> tied to the control, so clicking it focuses the control and screen readers announce it as the control's name. FieldDescription and FieldError are named in the control's aria-describedby; the error is read when the control is focused. An invalid field sets aria-invalid on the control; the message, not the danger colour, carries the meaning. Show errors after the user leaves the field or submits (the default with a TanStack field: touched and invalid), not on the first keystroke. color.status.danger.fg and color.fg.muted are contrast-checked as text on every surface.
+
+### Form
+
+[form.json](form.json): A <form> laid out as a column of Fields and submitted through TanStack Form: no native validation, handleSubmit on submit, focus on the first invalid field.
+
+Usage: Create the form with useForm from @tanstack/react-form (defaultValues, validators, onSubmit), pass it as form, and render each field with form.Field and a Field inside. For a native-like flow use validationLogic: revalidateLogic({ mode: "submit", modeAfterSubmission: "change" }); for per-field checks use validators.onBlur. Show the submit state with form.Subscribe and Button's loading. Without form, Form is only a styled <form>.
+
+- Wraps: @base-ui/react/use-render
+- Props: form (AnyFormApi (from useForm)); noValidate (boolean); onSubmit ((event: SubmitEvent<HTMLFormElement>) => void); aria-label (string); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLFormElement>)
+- States: 
+- Tokens: space.stack.md
+- Accessibility: Renders a native <form>, so Enter in a text field submits it; keep a type="submit" Button in it. After a failed submit, focus moves to the first invalid control in document order, and its FieldError is read through aria-describedby. Name the form with aria-label or aria-labelledby when the page has more than one. Errors appear on submit and then follow each change (revalidateLogic) or on blur, never on the first keystroke of an untouched field. Announce the outcome of a submission in a role="status" region; the submit Button's loading sets aria-busy.
+
+### IconButton
+
+[icon-button.json](icon-button.json): A square, icon-only action button with Button's four variants in three density-aware sizes, disabled and loading states, and a required aria-label.
+
+Usage: Use IconButton where a familiar icon says enough and space is tight: toolbars, table rows, inside an InputGroup. Put an <svg aria-hidden> inside and describe the action in aria-label ("Copy connection string", not "Copy icon"); the type requires it. Ghost is the default; use primary for the one main action of a toolbar. When the icon is not obvious, use a Button with text instead.
+
+- Wraps: @base-ui/react/button
+- variant: primary, secondary, ghost, danger
+- size: sm, md, lg
+- Props: aria-label (string); variant ("primary" | "secondary" | "ghost" | "danger", default "ghost"); size ("sm" | "md" | "lg", default "md"); loading (boolean, default false); disabled (boolean, default false); type ("button" | "submit" | "reset", default "button"); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLButtonElement>)
+- States: hover (hover), active (active), focus-visible (focus-visible), disabled (data-disabled), loading (data-loading)
+- Tokens: color.accent.bg, color.accent.bg-active, color.accent.bg-hover, color.accent.fg, color.fg.default, color.interactive.active, color.interactive.hover, color.neutral.bg, color.neutral.bg-active, color.neutral.bg-hover, color.neutral.fg, color.ring, color.status.danger.solid, color.status.danger.solid-fg, color.status.danger.solid-hover, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.icon.md, size.icon.sm, space.inline.sm
+- Accessibility: Renders a native <button> with type="button" unless type is set, so Enter and Space activate it. aria-label is required by the type and names the action; mark the icon aria-hidden so it is not read twice. Disabled uses the native disabled attribute; loading keeps the button focusable so focus is not lost mid-action, and sets aria-busy. The smallest size (size.control.sm, 22 px in compact) passes WCAG 2.2 target size (minimum 24 px) only with spacing around it; keep IconButtons at least gap-inline-xs apart, or use md in dense toolbars. The focus ring shows for keyboard focus only and meets 3:1 against every surface; every variant's colours are contrast-checked by the token build.
+
 ### Input
 
 [input.json](input.json): A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.
+
+Usage: Put Input inside a Field with a FieldLabel (and FieldDescription and FieldError as needed); it takes the label, description and validity from it. Use Textarea for multi-line text and InputGroup for an icon, a unit or a button attached to the input. Match the size to the controls beside it.
 
 - Wraps: @base-ui/react/input
 - size: sm, md, lg
@@ -39,6 +82,46 @@ Install (components.json: "registries": { "@byterygon": "<this folder or URL>/{n
 - States: focus-visible (focus-visible), invalid (aria-invalid), invalid-in-field (data-invalid), disabled (data-disabled)
 - Tokens: color.bg.surface, color.border.strong, color.fg.default, color.fg.subtle, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, space.control.x, space.inset.lg, space.inset.sm, text.body.leading, text.body.size, text.body.tracking, text.body.weight
 - Accessibility: Renders a native <input>; give it a visible <label> (or a Base UI Field.Label), or aria-label when there is no room for one. Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface. Mark errors with aria-invalid and point aria-describedby at the message; the danger border is not the only signal. The border (color.border.strong) meets 3:1 against every surface, as WCAG 1.4.11 asks of a control's outline. Focus shows a ring of ring.width in color.ring.
+
+### InputGroup
+
+[input-group.json](input-group.json): A text input with prefixes and suffixes attached (icons, text such as a scheme or a unit, ghost buttons), in one frame that shows focus, invalid and disabled; works inside a Field.
+
+Usage: Use InputGroup when something belongs to the input: a search icon, a fixed prefix (postgres://), a unit (ms), or an action on the value (Copy, Test, Show). Put InputGroupAddon and InputGroupButton before or after InputGroupInput in the order they should appear, and wrap the group in a Field for its label and error. For an unrelated action next to an input, use a plain Input and a Button side by side.
+
+- Wraps: @base-ui/react/input
+- Parts: InputGroupInput (data-slot input-group-input): The text control (Base UI's Input): takes a Field's label and validity; its value, onValueChange and onBlur as Input's.; InputGroupAddon (data-slot input-group-addon): An icon or text in color.fg.muted; clicking it focuses the control.; InputGroupButton (data-slot input-group-button): A Button (ghost by default) one size smaller than the group, inset from the frame; Button's props.
+- size: sm, md, lg
+- Props: size ("sm" | "md" | "lg", default "md"); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLDivElement>)
+- States: focus-visible (has-[[data-slot=input-group-input]:focus-visible]), invalid (has-[[data-slot=input-group-input][aria-invalid=true]]), invalid-in-field (has-[[data-slot=input-group-input][data-invalid]]), disabled (has-[[data-slot=input-group-input][data-disabled]])
+- Tokens: color.bg.surface, color.border.strong, color.fg.default, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.control.xs, size.icon.sm, space.control.x, space.inline.md, space.inline.sm, space.inline.xs, space.inset.sm, space.inset.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: The control is a native <input>; give it a FieldLabel through a Field, or aria-label. Addon text is not part of its name: say in the label or description what a prefix means. Mark decorative addon icons aria-hidden; an icon-only InputGroupButton needs aria-label. Tab moves from the control to the button; the frame's ring follows the control, the button has its own focus ring. Clicking an addon focuses the control, so the whole frame is a click target. The frame border (color.border.strong) meets 3:1 against every surface; invalid uses color.status.danger.border and FieldError's message, not colour alone.
+
+### Kbd
+
+[kbd.json](kbd.json): A keyboard key or shortcut shown as text: a <kbd> in the code type role on an inset background, with KbdGroup for combinations.
+
+Usage: Use Kbd in help text, menus and tooltips to show a key (Esc) or, with KbdGroup, a shortcut (Ctrl + K). Write the separator between the keys as text (+, then). Kbd shows a shortcut; it does not bind one. For a symbol (⌘, ⇧) add hidden text that names the key.
+
+- Wraps: @base-ui/react/use-render
+- Parts: KbdGroup (data-slot kbd-group): Lines up the keys of one shortcut with their text separators, in text.caption and color.fg.muted.
+- Props: children (ReactNode); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: 
+- Tokens: color.bg.inset, color.border.default, color.fg.muted, font.mono, font.sans, radius.sm, size.control.xs, size.icon.xs, space.inline.sm, space.inline.xs, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight
+- Accessibility: Renders <kbd>, which marks keyboard input; KbdGroup is an outer <kbd>, as HTML nests the keys of a combination. Screen readers read the key labels and the text separators; write "Ctrl", not an icon alone. A <kbd> takes no aria-label: give a symbol (⌘) visually hidden text (sr-only) and mark the symbol aria-hidden. Not focusable and not interactive; nothing to operate. color.fg.muted on color.bg.inset is contrast-checked as text by the token build.
+
+### Textarea
+
+[textarea.json](textarea.json): A multi-line text input on Base UI's Input rendering a <textarea>, in Input's three sizes, with placeholder, invalid and disabled states; works inside a Field.
+
+Usage: Use Textarea for text that may span lines (descriptions, notes, filters, short SQL); use Input for one line and the SQL editor for real queries. Put it in a Field with a FieldLabel; set rows to the expected length (3 by default). It resizes vertically; pass className="resize-none" to stop that.
+
+- Wraps: @base-ui/react/input
+- size: sm, md, lg
+- Props: size ("sm" | "md" | "lg", default "md"); rows (number, default 3); value (string); defaultValue (string); onValueChange ((value: string, details) => void); disabled (boolean, default false); aria-invalid (boolean | "true" | "false"); className (string); ref (Ref<HTMLTextAreaElement>)
+- States: focus-visible (focus-visible), invalid (aria-invalid), invalid-in-field (data-invalid), disabled (data-disabled)
+- Tokens: color.bg.surface, color.border.strong, color.fg.default, color.fg.subtle, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, space.control.x, space.inline.md, space.inline.sm, space.inline.xs, space.inset.lg, space.inset.sm, text.body.leading, text.body.size, text.body.tracking, text.body.weight
+- Accessibility: Renders a native <textarea>; give it a FieldLabel (or a <label>), or aria-label when there is no room for one. Enter inserts a line break and Tab leaves the field, as in any textarea; do not trap Tab. Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface. Mark errors with a Field (aria-invalid and aria-describedby follow) or aria-invalid; the danger border is not the only signal. The border (color.border.strong) meets 3:1 against every surface; focus shows a ring of ring.width in color.ring.
 
 ## Helpers
 

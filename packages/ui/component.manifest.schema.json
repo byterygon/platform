@@ -4,13 +4,14 @@
   "description": "What a person, an agent or a tool needs to use a component without reading its source (spec section 9a.3). scripts/lib/manifest.ts validates the same shape in the tests and the registry build.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "name", "title", "description", "status", "base", "dependencies", "props", "variants", "slots", "states", "tokens", "examples", "accessibility"],
+  "required": ["schemaVersion", "name", "title", "description", "usage", "status", "base", "dependencies", "props", "variants", "slots", "states", "tokens", "examples", "accessibility"],
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
     "name": { "type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$", "description": "kebab-case; the folder, the file names and the registry item name." },
     "title": { "type": "string", "description": "PascalCase of the name; the exported component." },
     "description": { "type": "string", "minLength": 1 },
+    "usage": { "type": "string", "minLength": 1, "description": "A short usage note: when to use the component, how to compose it, what to use instead." },
     "status": { "enum": ["experimental", "stable"] },
     "base": { "type": ["string", "null"], "pattern": "^@base-ui/react/", "description": "The Base UI module the component wraps, or null." },
     "dependencies": { "type": "array", "items": { "type": "string" }, "description": "npm packages the component imports, besides React." },
@@ -53,6 +54,20 @@
           "name": { "type": "string" },
           "variant": { "type": "string", "description": "The Tailwind variant that styles the state (hover, focus-visible, data-disabled, aria-invalid)." },
           "props": { "type": "object", "description": "Props that put the component in the state." },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "parts": {
+      "type": "array",
+      "description": "Further components exported from component.tsx and used inside the main one (Field: FieldLabel, FieldError). The examples must render every part.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "slot", "description"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]+$", "description": "The export name: the title plus a suffix (FieldLabel)." },
+          "slot": { "type": "string", "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)+$", "description": "The data-slot the part renders: the name plus a suffix (field-label)." },
           "description": { "type": "string" }
         }
       }

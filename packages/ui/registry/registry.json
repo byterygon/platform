@@ -22,6 +22,62 @@
       ]
     },
     {
+      "name": "field",
+      "type": "registry:ui",
+      "title": "Field",
+      "description": "A form field on Base UI's Field parts: label, control, description and error tied together, with invalid, touched, dirty and disabled state taken from TanStack Form or set by hand.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/field.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "form",
+      "type": "registry:ui",
+      "title": "Form",
+      "description": "A <form> laid out as a column of Fields and submitted through TanStack Form: no native validation, handleSubmit on submit, focus on the first invalid field.",
+      "dependencies": [
+        "@base-ui/react",
+        "@tanstack/react-form"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/form.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "icon-button",
+      "type": "registry:ui",
+      "title": "IconButton",
+      "description": "A square, icon-only action button with Button's four variants in three density-aware sizes, disabled and loading states, and a required aria-label.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/icon-button.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "input",
       "type": "registry:ui",
       "title": "Input",
@@ -35,6 +91,61 @@
       "files": [
         {
           "path": "ui/input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "input-group",
+      "type": "registry:ui",
+      "title": "InputGroup",
+      "description": "A text input with prefixes and suffixes attached (icons, text such as a scheme or a unit, ghost buttons), in one frame that shows focus, invalid and disabled; works inside a Field.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/input-group.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "kbd",
+      "type": "registry:ui",
+      "title": "Kbd",
+      "description": "A keyboard key or shortcut shown as text: a <kbd> in the code type role on an inset background, with KbdGroup for combinations.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/kbd.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "textarea",
+      "type": "registry:ui",
+      "title": "Textarea",
+      "description": "A multi-line text input on Base UI's Input rendering a <textarea>, in Input's three sizes, with placeholder, invalid and disabled states; works inside a Field.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/textarea.tsx",
           "type": "registry:ui"
         }
       ]

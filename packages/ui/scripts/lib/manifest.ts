@@ -30,6 +30,14 @@ export interface ManifestState {
   readonly description: string;
 }
 
+export interface ManifestPart {
+  /** The export name, the component's title plus a suffix (`FieldLabel`). */
+  readonly name: string;
+  /** The `data-slot` the part renders, the component's name plus a suffix (`field-label`). */
+  readonly slot: string;
+  readonly description: string;
+}
+
 export interface Manifest {
   readonly $schema?: string;
   readonly schemaVersion: 1;
@@ -38,6 +46,10 @@ export interface Manifest {
   /** PascalCase; the exported component. */
   readonly title: string;
   readonly description: string;
+  /** A short usage note: when to use the component, how to compose it, what to use instead. */
+  readonly usage: string;
+  /** Further components exported from component.tsx and used inside the main one (Field: FieldLabel, FieldError). */
+  readonly parts?: readonly ManifestPart[];
   readonly status: "experimental" | "stable";
   /** The Base UI module the component wraps (`@base-ui/react/button`), or null for none. */
   readonly base: string | null;
@@ -66,8 +78,8 @@ export const camel = (name: string) => {
   return p[0]!.toLowerCase() + p.slice(1);
 };
 
-const KEYS = ["$schema", "schemaVersion", "name", "title", "description", "status", "base", "dependencies", "props", "variants", "slots", "states", "tokens", "examples", "accessibility"];
-export const REQUIRED_KEYS = KEYS.filter((key) => key !== "$schema");
+const KEYS = ["$schema", "schemaVersion", "name", "title", "description", "usage", "status", "base", "dependencies", "props", "variants", "slots", "states", "parts", "tokens", "examples", "accessibility"];
+export const REQUIRED_KEYS = KEYS.filter((key) => key !== "$schema" && key !== "parts");
 
 /** Returns every problem with `value` as a manifest; an empty list means it is valid. */
 export function validateManifest(value: unknown, folder?: string): string[] {
@@ -85,6 +97,7 @@ export function validateManifest(value: unknown, folder?: string): string[] {
     if (m.title !== pascal(m.name)) errors.push(`title must be "${pascal(m.name)}" (PascalCase of the name)`);
   }
   if (!isText(m.description)) errors.push(`description must be a sentence`);
+  if (!isText(m.usage)) errors.push(`usage must be a short note on when and how to use the component`);
   if (m.status !== "experimental" && m.status !== "stable") errors.push(`status must be "experimental" or "stable"`);
   if (m.base !== null && !(typeof m.base === "string" && m.base.startsWith("@base-ui/react/"))) errors.push(`base must be a @base-ui/react/<part> module or null`);
   const strings = (key: string, v: unknown) => {
@@ -122,6 +135,18 @@ export function validateManifest(value: unknown, folder?: string): string[] {
   });
   list("slots", m.slots, { name: isText, element: isText, description: isText });
   list("states", m.states, { name: isText, variant: isText, description: isText, props: optional(isObject) });
+  if (m.parts !== undefined) {
+    list("parts", m.parts, { name: isText, slot: isText, description: isText });
+    if (Array.isArray(m.parts) && typeof m.name === "string") {
+      m.parts.forEach((part, i) => {
+        if (!isObject(part)) return;
+        if (typeof part.name === "string" && !(part.name.startsWith(pascal(m.name as string)) && /^[A-Z][A-Za-z0-9]+$/.test(part.name) && part.name !== pascal(m.name as string))) {
+          errors.push(`parts[${i}].name must be "${pascal(m.name as string)}" plus a PascalCase suffix`);
+        }
+        if (typeof part.slot === "string" && !(part.slot.startsWith(`${m.name as string}-`) && KEBAB.test(part.slot))) errors.push(`parts[${i}].slot must be "${m.name as string}-" plus a kebab-case suffix`);
+      });
+    }
+  }
   if (!isObject(m.variants) || Object.values(m.variants).some((values) => !Array.isArray(values) || values.length === 0 || values.some((x) => !isText(x)))) {
     errors.push(`variants must map each variant prop to a non-empty list of values`);
   } else if (Array.isArray(m.props)) {

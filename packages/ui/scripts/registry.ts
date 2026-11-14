@@ -185,7 +185,9 @@ function llmsTxt(items: Item[]): string {
   for (const item of items.filter((i) => i.type === "registry:ui")) {
     const manifest = (item.meta as unknown as { manifest: Manifest }).manifest;
     lines.push(`### ${manifest.title}`, "", `[${item.name}.json](${item.name}.json): ${manifest.description}`, "");
+    lines.push(`Usage: ${manifest.usage}`, "");
     lines.push(`- Wraps: ${manifest.base ?? "no Base UI part"}`);
+    if (manifest.parts?.length) lines.push(`- Parts: ${manifest.parts.map((p) => `${p.name} (data-slot ${p.slot}): ${p.description}`).join("; ")}`);
     for (const [prop, values] of Object.entries(manifest.variants)) lines.push(`- ${prop}: ${values.join(", ")}`);
     lines.push(`- Props: ${manifest.props.map((p) => `${p.name} (${p.type}${p.default !== undefined ? `, default ${JSON.stringify(p.default)}` : ""})`).join("; ")}`);
     lines.push(`- States: ${manifest.states.map((s) => `${s.name} (${s.variant})`).join(", ")}`);

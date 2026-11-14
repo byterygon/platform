@@ -1,0 +1,54 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "kbd",
+  "title": "Kbd",
+  "description": "A keyboard key or shortcut shown as text: a <kbd> in the code type role on an inset background, with KbdGroup for combinations.",
+  "usage": "Use Kbd in help text, menus and tooltips to show a key (Esc) or, with KbdGroup, a shortcut (Ctrl + K). Write the separator between the keys as text (+, then). Kbd shows a shortcut; it does not bind one. For a symbol (⌘, ⇧) add hidden text that names the key.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "children", "type": "ReactNode", "description": "The key's label, as text or an <svg aria-hidden> with hidden text." },
+    { "name": "render", "type": "ReactElement | ((props, state) => ReactElement)", "description": "Base UI render prop: render another element with the key's props and classes." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLElement>", "description": "Reaches the rendered element." }
+  ],
+  "variants": {},
+  "slots": [
+    { "name": "root", "element": "kbd", "description": "The key; data-slot=\"kbd\"." },
+    { "name": "group", "element": "kbd", "description": "KbdGroup, the outer <kbd> of a combination; data-slot=\"kbd-group\"." }
+  ],
+  "parts": [
+    { "name": "KbdGroup", "slot": "kbd-group", "description": "Lines up the keys of one shortcut with their text separators, in text.caption and color.fg.muted." }
+  ],
+  "states": [],
+  "tokens": [
+    "color.bg.inset",
+    "color.border.default",
+    "color.fg.muted",
+    "font.mono",
+    "font.sans",
+    "radius.sm",
+    "size.control.xs",
+    "size.icon.xs",
+    "space.inline.sm",
+    "space.inline.xs",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight"
+  ],
+  "examples": { "minimal": "KbdMinimal", "realistic": "KbdRealistic" },
+  "accessibility": [
+    "Renders <kbd>, which marks keyboard input; KbdGroup is an outer <kbd>, as HTML nests the keys of a combination.",
+    "Screen readers read the key labels and the text separators; write \"Ctrl\", not an icon alone.",
+    "A <kbd> takes no aria-label: give a symbol (⌘) visually hidden text (sr-only) and mark the symbol aria-hidden.",
+    "Not focusable and not interactive; nothing to operate.",
+    "color.fg.muted on color.bg.inset is contrast-checked as text by the token build."
+  ]
+}

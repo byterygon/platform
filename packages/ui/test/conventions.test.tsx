@@ -64,6 +64,21 @@ describe("package", () => {
     }
   });
 
+  test("a manifest needs a usage note, and parts are named after the component", async () => {
+    const { readManifest, validateManifest } = await import("../scripts/lib/manifest.ts");
+    const { usage: _usage, ...noUsage } = readManifest(root, "button");
+    expect(validateManifest(noUsage, "button").join("\n")).toMatch(/usage/);
+    const field = readManifest(root, "field");
+    expect(validateManifest(field, "field")).toEqual([]);
+    const bad = [{ name: "Label", slot: "field-label", description: "x" }, { name: "FieldLabel", slot: "label", description: "x" }, { name: "Field", slot: "field", description: "x" }];
+    expect(validateManifest({ ...field, parts: bad }, "field")).toEqual([
+      'parts[0].name must be "Field" plus a PascalCase suffix',
+      'parts[1].slot must be "field-" plus a kebab-case suffix',
+      'parts[2].name must be "Field" plus a PascalCase suffix',
+      'parts[2].slot must be "field-" plus a kebab-case suffix',
+    ]);
+  });
+
   test("the manifest schema requires what the validator requires", async () => {
     const { REQUIRED_KEYS } = await import("../scripts/lib/manifest.ts");
     const schema = JSON.parse(readFileSync(join(root, "component.manifest.schema.json"), "utf8")) as { required: string[] };
