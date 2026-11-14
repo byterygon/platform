@@ -6,7 +6,7 @@ import { createElement, type ComponentType } from "react";
 import { afterEach, describe, expect, test } from "vitest";
 import { COMPONENT_FILES, camel, fileName, validateManifest, type Manifest } from "../scripts/lib/manifest.ts";
 import { checkClasses, checkImports, stateVariants, variantCombinations } from "./conventions.ts";
-import { act, axeViolations, classesIn, cleanup, render } from "./render.tsx";
+import { act, axeViolations, classesIn, cleanup, isLibraryClass, render } from "./render.tsx";
 
 type Module = Record<string, unknown>;
 
@@ -53,7 +53,7 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
           if (element.parentElement?.closest("[data-foreign-dom]")) continue;
           const slot = element.closest("[data-slot]")?.getAttribute("data-slot");
           if (!slot || !isOwnSlot(slot)) continue;
-          for (const c of element.getAttribute("class")!.split(/\s+/)) if (c) classes.add(c);
+          for (const c of element.getAttribute("class")!.split(/\s+/)) if (c && !isLibraryClass(c)) classes.add(c);
         }
       };
       for (const exportName of [manifest.examples.minimal, manifest.examples.realistic]) {

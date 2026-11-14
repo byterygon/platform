@@ -1,0 +1,190 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "collapsible",
+  "type": "registry:ui",
+  "title": "Collapsible",
+  "description": "One section that shows and hides its panel: a quiet text trigger with a turning chevron and a panel that fades in.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/collapsible.tsx",
+      "type": "registry:ui",
+      "content": "import { Collapsible as CollapsiblePrimitive } from \"@base-ui/react/collapsible\";\nimport { cn } from \"@/lib/cn\";\n\n// A section that shows and hides its panel, on Base UI's Collapsible: Collapsible > CollapsibleTrigger\n// + CollapsiblePanel. The trigger is a quiet text button with a chevron that turns when open (DBee's\n// \"3 notices\" under a result); render a Button through `render` for another look. The panel fades\n// in and out. Base UI's panel height is a run-time variable, not a token, so there is no height\n// animation; with reduced motion nothing moves at all.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const collapsibleVariants = {} as const;\n\nconst classes = {\n  root: \"flex min-w-0 flex-col\",\n  trigger: [\n    \"inline-flex min-h-control-sm max-w-full cursor-default items-center gap-inline-xs self-start rounded-sm px-inline-xs font-sans text-label text-fg-muted\",\n    \"hover:text-fg data-panel-open:text-fg\",\n    \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n    \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n    \"[&_svg]:size-icon-sm [&_svg]:shrink-0\",\n  ],\n  chevron: \"flex shrink-0 transition-transform duration-[var(--by-motion-duration-fast)] ease-standard motion-reduce:transition-none in-data-panel-open:rotate-90 rtl:rotate-180 rtl:in-data-panel-open:rotate-90\",\n  label: \"min-w-0 text-start wrap-break-word\",\n  panel: [\n    \"min-w-0 overflow-hidden\",\n    \"transition-opacity duration-[var(--by-motion-duration-fast)] ease-standard data-starting-style:opacity-0 data-ending-style:opacity-0\",\n  ],\n} as const;\n\nconst ChevronIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m6 4 4 4-4 4\" />\n  </svg>\n);\n\nexport interface CollapsibleProps extends Omit<CollapsiblePrimitive.Root.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The section. Open it with `open` and `onOpenChange`, or `defaultOpen`. The ref reaches the root `<div>`. */\nexport function Collapsible({ className, ...props }: CollapsibleProps) {\n  return <CollapsiblePrimitive.Root data-slot=\"collapsible\" className={cn(classes.root, className)} {...props} />;\n}\n\nexport interface CollapsibleTriggerProps extends Omit<CollapsiblePrimitive.Trigger.Props, \"className\"> {\n  /** Draws the chevron before the label (default true). */\n  chevron?: boolean;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The button that opens and closes the panel (aria-expanded, aria-controls). */\nexport function CollapsibleTrigger({ chevron = true, className, children, ...props }: CollapsibleTriggerProps) {\n  return (\n    <CollapsiblePrimitive.Trigger data-slot=\"collapsible-trigger\" className={cn(classes.trigger, className)} {...props}>\n      {chevron ? (\n        <span data-slot=\"collapsible-chevron\" className={cn(classes.chevron)}>\n          <ChevronIcon />\n        </span>\n      ) : null}\n      <span className={classes.label}>{children}</span>\n    </CollapsiblePrimitive.Trigger>\n  );\n}\n\nexport interface CollapsiblePanelProps extends Omit<CollapsiblePrimitive.Panel.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The content shown while open. `keepMounted` keeps it in the DOM while closed (hidden). */\nexport function CollapsiblePanel({ className, ...props }: CollapsiblePanelProps) {\n  return <CollapsiblePrimitive.Panel data-slot=\"collapsible-panel\" className={cn(classes.panel, className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "collapsible",
+      "title": "Collapsible",
+      "description": "One section that shows and hides its panel: a quiet text trigger with a turning chevron and a panel that fades in.",
+      "usage": "Use Collapsible for one optional block of detail under something else: server notices under a result, advanced connection options, a query plan. Compose Collapsible > CollapsibleTrigger + CollapsiblePanel; control it with open and onOpenChange or start it with defaultOpen. For a list of sections of which one or several open, use Accordion; for detail that only matters on hover, use HoverCard.",
+      "status": "experimental",
+      "base": "@base-ui/react/collapsible",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Open state (controlled)."
+        },
+        {
+          "name": "defaultOpen",
+          "type": "boolean",
+          "default": false,
+          "description": "Initial open state (uncontrolled)."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean, details) => void",
+          "description": "Called when the trigger opens or closes it."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "The trigger does nothing and is dimmed."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "CollapsibleTrigger and CollapsiblePanel."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes on the root, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root <div>."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The section; data-slot=\"collapsible\", data-open when open."
+        },
+        {
+          "name": "trigger",
+          "element": "button",
+          "description": "The toggle; data-slot=\"collapsible-trigger\", data-panel-open, aria-expanded, aria-controls."
+        },
+        {
+          "name": "chevron",
+          "element": "span",
+          "description": "The chevron, turned a quarter while open; data-slot=\"collapsible-chevron\"."
+        },
+        {
+          "name": "panel",
+          "element": "div",
+          "description": "The content; data-slot=\"collapsible-panel\", data-open, data-starting-style and data-ending-style while it fades."
+        }
+      ],
+      "parts": [
+        {
+          "name": "CollapsibleTrigger",
+          "slot": "collapsible-trigger",
+          "description": "The button that opens and closes the panel; chevron={false} drops the chevron."
+        },
+        {
+          "name": "CollapsiblePanel",
+          "slot": "collapsible-panel",
+          "description": "The content shown while open; keepMounted keeps it in the DOM while closed."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "data-panel-open",
+          "description": "Open: the trigger in color.fg.default and the chevron turned."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over the trigger: color.fg.default."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on the trigger: a ring of ring.width in color.ring."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "The trigger ignores interaction, at opacity.disabled."
+        },
+        {
+          "name": "entering",
+          "variant": "data-starting-style",
+          "description": "The panel fades in from opacity 0."
+        },
+        {
+          "name": "leaving",
+          "variant": "data-ending-style",
+          "description": "The panel fades out to opacity 0."
+        }
+      ],
+      "tokens": [
+        "color.bg.inset",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.ring",
+        "font.mono",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.sm",
+        "size.icon.sm",
+        "space.inline.xs",
+        "space.inset.sm",
+        "space.inset.xs",
+        "space.stack.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.code.leading",
+        "text.code.size",
+        "text.code.tracking",
+        "text.code.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "CollapsibleMinimal",
+        "realistic": "CollapsibleRealistic"
+      },
+      "accessibility": [
+        "The trigger is a <button> with aria-expanded and aria-controls naming the panel; Enter and Space toggle it.",
+        "The panel is removed from the DOM (or hidden with keepMounted) while closed, so its content is not read or reached by Tab.",
+        "The chevron is aria-hidden; the open state is announced through aria-expanded, not the icon.",
+        "Only opacity changes while opening, and the chevron's turn stops under prefers-reduced-motion."
+      ]
+    },
+    "example": "import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from \"@/components/collapsible/collapsible\";\n\n/** The smallest useful Collapsible: a trigger and a panel. */\nexport function CollapsibleMinimal() {\n  return (\n    <Collapsible>\n      <CollapsibleTrigger>Show details</CollapsibleTrigger>\n      <CollapsiblePanel>\n        <p className=\"p-inset-xs text-body text-fg\">Connected through the Plugin Host broker.</p>\n      </CollapsiblePanel>\n    </Collapsible>\n  );\n}\n\nconst notices = [\n  'NOTICE: table \"orders_tmp\" does not exist, skipping',\n  'NOTICE: relation \"orders_status_idx\" already exists, skipping',\n  \"WARNING: there is no transaction in progress\",\n];\n\n/** Server notices under a query result, open; a disabled section; a long label that wraps. */\nexport function CollapsibleRealistic() {\n  return (\n    <div className=\"flex max-w-panel-md flex-col gap-stack-sm\">\n      <Collapsible defaultOpen>\n        <CollapsibleTrigger>3 notices</CollapsibleTrigger>\n        <CollapsiblePanel>\n          <ul className=\"flex flex-col gap-stack-xs rounded-md bg-inset p-inset-sm font-mono text-code text-fg\">\n            {notices.map((notice) => (\n              <li key={notice}>{notice}</li>\n            ))}\n          </ul>\n        </CollapsiblePanel>\n      </Collapsible>\n      <Collapsible disabled>\n        <CollapsibleTrigger>Query plan (run EXPLAIN first)</CollapsibleTrigger>\n        <CollapsiblePanel>Plan</CollapsiblePanel>\n      </Collapsible>\n      <Collapsible>\n        <CollapsibleTrigger>Statement 2 of 2: insert into analytics.events_partitioned_by_day_with_a_very_long_name select * from staging.events</CollapsibleTrigger>\n        <CollapsiblePanel>\n          <p className=\"p-inset-xs text-body text-fg\">1,204 rows inserted.</p>\n        </CollapsiblePanel>\n      </Collapsible>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

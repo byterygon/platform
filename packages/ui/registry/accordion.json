@@ -1,0 +1,222 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "accordion",
+  "type": "registry:ui",
+  "title": "Accordion",
+  "description": "A stack of sections with heading triggers that open one at a time, or several with multiple; the panel fades in.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/accordion.tsx",
+      "type": "registry:ui",
+      "content": "import { Accordion as AccordionPrimitive } from \"@base-ui/react/accordion\";\nimport { cn } from \"@/lib/cn\";\n\n// A stack of sections that open one at a time (or several, with `multiple`), on Base UI's\n// Accordion: Accordion > AccordionItem > AccordionTrigger + AccordionPanel. Each trigger is a\n// full-width button inside a heading (Base UI's Header, an <h3>), with a chevron that turns\n// while open. Arrow keys move between triggers. The panel fades in; there is no height\n// animation (Base UI's panel height is a run-time variable, not a token).\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const accordionVariants = {\n  variant: {\n    plain: \"\",\n    outline: \"rounded-md border border-border bg-surface\",\n  },\n} as const;\n\nconst base = [\"flex w-full min-w-0 flex-col font-sans text-body text-fg\"];\n\nconst classes = {\n  // The outline variant pads the items inside its frame (in-data-[variant=outline]).\n  item: \"min-w-0 border-b border-border last:border-b-0 in-data-[variant=outline]:px-inset-sm\",\n  header: \"flex min-w-0\",\n  trigger: [\n    \"flex min-h-control-md min-w-0 flex-1 cursor-default items-center justify-between gap-inline-md py-inset-xs text-start text-body-strong text-fg\",\n    \"hover:text-fg-link\",\n    \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n    \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n    \"[&_svg]:size-icon-md [&_svg]:shrink-0\",\n  ],\n  label: \"min-w-0 wrap-break-word\",\n  chevron: \"flex shrink-0 text-fg-muted transition-transform duration-[var(--by-motion-duration-fast)] ease-standard motion-reduce:transition-none in-data-panel-open:rotate-180\",\n  panel: [\n    \"min-w-0 overflow-hidden text-body text-fg-muted\",\n    \"transition-opacity duration-[var(--by-motion-duration-fast)] ease-standard data-starting-style:opacity-0 data-ending-style:opacity-0\",\n  ],\n  panelInner: \"pb-inset-sm\",\n} as const;\n\nconst ChevronIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m4 6 4 4 4-4\" />\n  </svg>\n);\n\nexport interface AccordionProps extends Omit<AccordionPrimitive.Root.Props, \"className\"> {\n  /** `plain` separates sections by rules; `outline` puts them in a bordered frame. */\n  variant?: keyof typeof accordionVariants.variant;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * The stack of sections. `value`/`defaultValue` are arrays of open item values; `multiple` lets\n * several stay open. The ref reaches the root `<div>`.\n */\nexport function Accordion({ variant = \"plain\", className, ...props }: AccordionProps) {\n  return <AccordionPrimitive.Root data-slot=\"accordion\" data-variant={variant} className={cn(base, accordionVariants.variant[variant], className)} {...props} />;\n}\n\nexport interface AccordionItemProps extends Omit<AccordionPrimitive.Item.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** One section; give it a `value` to open it from `value`/`defaultValue`. */\nexport function AccordionItem({ className, ...props }: AccordionItemProps) {\n  return <AccordionPrimitive.Item data-slot=\"accordion-item\" className={cn(classes.item, className)} {...props} />;\n}\n\nexport interface AccordionTriggerProps extends Omit<AccordionPrimitive.Trigger.Props, \"className\"> {\n  /** Extra classes on the button, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The section's heading and toggle: an `<h3>` with a full-width button and a chevron. */\nexport function AccordionTrigger({ className, children, ...props }: AccordionTriggerProps) {\n  return (\n    <AccordionPrimitive.Header data-slot=\"accordion-header\" className={classes.header}>\n      <AccordionPrimitive.Trigger data-slot=\"accordion-trigger\" className={cn(classes.trigger, className)} {...props}>\n        <span className={classes.label}>{children}</span>\n        <span data-slot=\"accordion-chevron\" className={cn(classes.chevron)}>\n          <ChevronIcon />\n        </span>\n      </AccordionPrimitive.Trigger>\n    </AccordionPrimitive.Header>\n  );\n}\n\nexport interface AccordionPanelProps extends Omit<AccordionPrimitive.Panel.Props, \"className\"> {\n  /** Extra classes on the panel, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The section's content, shown while open. */\nexport function AccordionPanel({ className, children, ...props }: AccordionPanelProps) {\n  return (\n    <AccordionPrimitive.Panel data-slot=\"accordion-panel\" className={cn(classes.panel, className)} {...props}>\n      <div className={classes.panelInner}>{children}</div>\n    </AccordionPrimitive.Panel>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "accordion",
+      "title": "Accordion",
+      "description": "A stack of sections with heading triggers that open one at a time, or several with multiple; the panel fades in.",
+      "usage": "Use Accordion for a list of sections a user reads or edits one at a time: settings groups, FAQ-style help, the parts of a long connection form. Compose Accordion > AccordionItem (value) > AccordionTrigger + AccordionPanel. defaultValue and value are arrays of open values; multiple lets several stay open. For a single optional block use Collapsible; for views the user switches between, use Tabs.",
+      "status": "experimental",
+      "base": "@base-ui/react/accordion",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "variant",
+          "type": "\"plain\" | \"outline\"",
+          "default": "plain",
+          "description": "plain separates sections by rules; outline frames them in a bordered surface."
+        },
+        {
+          "name": "value",
+          "type": "unknown[]",
+          "description": "Open item values (controlled)."
+        },
+        {
+          "name": "defaultValue",
+          "type": "unknown[]",
+          "description": "Open item values at first (uncontrolled)."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: unknown[], details) => void",
+          "description": "Called with the open values when a section opens or closes."
+        },
+        {
+          "name": "multiple",
+          "type": "boolean",
+          "default": false,
+          "description": "Several sections may be open at once."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Disables every section (AccordionItem takes disabled for one)."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "AccordionItems."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes on the root, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root <div>."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "plain",
+          "outline"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The stack; data-slot=\"accordion\", data-variant."
+        },
+        {
+          "name": "item",
+          "element": "div",
+          "description": "One section, ruled off from the next; data-slot=\"accordion-item\", data-open, data-disabled."
+        },
+        {
+          "name": "header",
+          "element": "h3",
+          "description": "The heading around the trigger; data-slot=\"accordion-header\"."
+        },
+        {
+          "name": "trigger",
+          "element": "button",
+          "description": "The full-width toggle in text.body-strong; data-slot=\"accordion-trigger\", data-panel-open."
+        },
+        {
+          "name": "chevron",
+          "element": "span",
+          "description": "The chevron, turned while open; data-slot=\"accordion-chevron\"."
+        },
+        {
+          "name": "panel",
+          "element": "div",
+          "description": "The content; data-slot=\"accordion-panel\", data-open."
+        }
+      ],
+      "parts": [
+        {
+          "name": "AccordionItem",
+          "slot": "accordion-item",
+          "description": "One section; value identifies it, disabled turns it off."
+        },
+        {
+          "name": "AccordionTrigger",
+          "slot": "accordion-trigger",
+          "description": "The heading and toggle: an <h3> with a full-width button and a chevron."
+        },
+        {
+          "name": "AccordionPanel",
+          "slot": "accordion-panel",
+          "description": "The section's content, shown while open."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "in-data-panel-open",
+          "props": {
+            "defaultValue": [
+              "network"
+            ]
+          },
+          "description": "Open: the chevron points up."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over a trigger: color.fg.link."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on a trigger: a ring of ring.width in color.ring."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled."
+        },
+        {
+          "name": "entering",
+          "variant": "data-starting-style",
+          "description": "The panel fades in from opacity 0."
+        },
+        {
+          "name": "leaving",
+          "variant": "data-ending-style",
+          "description": "The panel fades out to opacity 0."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.link",
+        "color.fg.muted",
+        "color.ring",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.icon.md",
+        "size.panel.md",
+        "space.inline.md",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight"
+      ],
+      "examples": {
+        "minimal": "AccordionMinimal",
+        "realistic": "AccordionRealistic"
+      },
+      "accessibility": [
+        "Each trigger is a <button> inside an <h3>, with aria-expanded and aria-controls naming its panel; Enter and Space toggle it.",
+        "Triggers are native buttons in the tab order; Tab and Shift+Tab move between them. Base UI's Accordion has no arrow-key navigation between headers (optional in the ARIA accordion pattern).",
+        "The panel is a region labelled by its trigger and is removed from the DOM while closed.",
+        "The chevron is aria-hidden; the state is announced through aria-expanded. Its turn stops under prefers-reduced-motion."
+      ]
+    },
+    "example": "import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from \"@/components/accordion/accordion\";\n\n/** The smallest useful Accordion: two sections, one open at a time. */\nexport function AccordionMinimal() {\n  return (\n    <Accordion className=\"max-w-panel-md\">\n      <AccordionItem value=\"tls\">\n        <AccordionTrigger>TLS</AccordionTrigger>\n        <AccordionPanel>Verify the server certificate against the pinned CA.</AccordionPanel>\n      </AccordionItem>\n      <AccordionItem value=\"timeouts\">\n        <AccordionTrigger>Timeouts</AccordionTrigger>\n        <AccordionPanel>Statement timeout 30 s, idle session timeout 10 min.</AccordionPanel>\n      </AccordionItem>\n    </Accordion>\n  );\n}\n\n/** Connection settings in a sheet: outline frame, several open, a disabled section, a long heading. */\nexport function AccordionRealistic() {\n  return (\n    <Accordion variant=\"outline\" multiple defaultValue={[\"network\", \"grant\"]} className=\"max-w-panel-md\">\n      <AccordionItem value=\"network\">\n        <AccordionTrigger>Network</AccordionTrigger>\n        <AccordionPanel>db.internal:5432 through the Plugin Host broker; no other host is reachable.</AccordionPanel>\n      </AccordionItem>\n      <AccordionItem value=\"grant\">\n        <AccordionTrigger>Access grant</AccordionTrigger>\n        <AccordionPanel>Read-only, approved 14 Nov 2026 09:12, expires in 52 minutes.</AccordionPanel>\n      </AccordionItem>\n      <AccordionItem value=\"audit\" disabled>\n        <AccordionTrigger>Audit log (available after the first query)</AccordionTrigger>\n        <AccordionPanel>Entries</AccordionPanel>\n      </AccordionItem>\n      <AccordionItem value=\"advanced\">\n        <AccordionTrigger>Advanced: application_name, search_path, statement_timeout and other session parameters sent on connect</AccordionTrigger>\n        <AccordionPanel>application_name=dbee, search_path=public.</AccordionPanel>\n      </AccordionItem>\n    </Accordion>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

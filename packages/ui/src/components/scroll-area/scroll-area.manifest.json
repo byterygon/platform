@@ -1,0 +1,126 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "scroll-area",
+  "title": "ScrollArea",
+  "description": "A scroll container with thin themed overlay scrollbars that fade in while hovering or scrolling; the viewport scrolls natively.",
+  "usage": "Use ScrollArea for a panel, popover body or log that scrolls inside a fixed height (give it h-full in a sized panel or a max-h-panel-* class). scrollbars picks which bars are drawn; the content scrolls on both axes when it overflows. For long lists, put the virtualized component inside and read the viewport through viewportRef. The page itself should keep the browser's scrollbar.",
+  "status": "experimental",
+  "base": "@base-ui/react/scroll-area",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "The scrolling content."
+    },
+    {
+      "name": "scrollbars",
+      "type": "\"vertical\" | \"horizontal\" | \"both\"",
+      "default": "vertical",
+      "description": "Which overlay scrollbars to draw."
+    },
+    {
+      "name": "viewportRef",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the viewport, the element that scrolls."
+    },
+    {
+      "name": "onViewportScroll",
+      "type": "(event: UIEvent<HTMLDivElement>) => void",
+      "description": "Called when the viewport scrolls."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Names the scrolling region; the viewport gets role=\"region\"."
+    },
+    {
+      "name": "aria-labelledby",
+      "type": "string",
+      "description": "Names the region by another element's id."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes on the root; give it a height."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The frame; data-slot=\"scroll-area\", Base UI's data-has-overflow-x/y and data-scrolling."
+    },
+    {
+      "name": "viewport",
+      "element": "div",
+      "description": "The element that scrolls, focusable when its content overflows; data-slot=\"scroll-area-viewport\"."
+    },
+    {
+      "name": "content",
+      "element": "div",
+      "description": "Wraps the children, at least as wide as the viewport; data-slot=\"scroll-area-content\"."
+    },
+    {
+      "name": "scrollbar",
+      "element": "div",
+      "description": "An overlay scrollbar of size.track, shown while hovering or scrolling; data-slot=\"scroll-area-scrollbar\", data-orientation."
+    },
+    {
+      "name": "thumb",
+      "element": "div",
+      "description": "The thumb in color.border.strong; data-slot=\"scroll-area-thumb\"."
+    }
+  ],
+  "states": [
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the viewport: an inset ring of ring.width in color.ring."
+    },
+    {
+      "name": "hovering",
+      "variant": "data-hovering",
+      "description": "Pointer over the area: the scrollbars fade in."
+    },
+    {
+      "name": "scrolling",
+      "variant": "data-scrolling",
+      "description": "While scrolling: the scrollbars fade in."
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over the thumb: color.fg.subtle."
+    }
+  ],
+  "tokens": [
+    "border.width.1",
+    "color.border.strong",
+    "color.fg.subtle",
+    "color.ring",
+    "motion.duration.base",
+    "motion.easing.standard",
+    "ring.width",
+    "size.track"
+  ],
+  "examples": {
+    "minimal": "ScrollAreaMinimal",
+    "realistic": "ScrollAreaRealistic"
+  },
+  "accessibility": [
+    "The viewport scrolls natively, so wheel, touch, and the arrow, Page and Home/End keys work once it has focus.",
+    "When the content overflows the viewport is in the tab order (tabIndex 0) and shows a focus ring, so keyboard users can scroll it.",
+    "Pass aria-label or aria-labelledby when the region needs a name; the viewport then has role=\"region\".",
+    "The overlay scrollbars are pointer aids; they are not focusable and carry no information the keyboard lacks."
+  ]
+}

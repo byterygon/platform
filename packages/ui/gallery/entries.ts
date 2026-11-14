@@ -9,12 +9,15 @@ export interface GalleryEntry {
 
 export const gallery: GalleryEntry[] = [
   // ui:new entries start
+  { name: "accordion", load: () => import("@/components/accordion/accordion.example") },
   { name: "alert-dialog", load: () => import("@/components/alert-dialog/alert-dialog.example") },
   { name: "breadcrumb", load: () => import("@/components/breadcrumb/breadcrumb.example") },
   { name: "button", load: () => import("@/components/button/button.example") },
   { name: "calendar", load: () => import("@/components/calendar/calendar.example") },
+  { name: "card", load: () => import("@/components/card/card.example") },
   { name: "checkbox", load: () => import("@/components/checkbox/checkbox.example") },
   { name: "code-input", load: () => import("@/components/code-input/code-input.example") },
+  { name: "collapsible", load: () => import("@/components/collapsible/collapsible.example") },
   { name: "combobox", load: () => import("@/components/combobox/combobox.example") },
   { name: "command-palette", load: () => import("@/components/command-palette/command-palette.example") },
   { name: "context-menu", load: () => import("@/components/context-menu/context-menu.example") },
@@ -37,8 +40,10 @@ export const gallery: GalleryEntry[] = [
   { name: "password-input", load: () => import("@/components/password-input/password-input.example") },
   { name: "popover", load: () => import("@/components/popover/popover.example") },
   { name: "radio-group", load: () => import("@/components/radio-group/radio-group.example") },
+  { name: "scroll-area", load: () => import("@/components/scroll-area/scroll-area.example") },
   { name: "search-input", load: () => import("@/components/search-input/search-input.example") },
   { name: "select", load: () => import("@/components/select/select.example") },
+  { name: "separator", load: () => import("@/components/separator/separator.example") },
   { name: "sheet", load: () => import("@/components/sheet/sheet.example") },
   { name: "sidebar", load: () => import("@/components/sidebar/sidebar.example") },
   { name: "slider", load: () => import("@/components/slider/slider.example") },

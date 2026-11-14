@@ -1,0 +1,111 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "separator",
+  "type": "registry:ui",
+  "title": "Separator",
+  "description": "A thin rule between groups of content, horizontal or vertical, in a border role at border.width.1.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/separator.tsx",
+      "type": "registry:ui",
+      "content": "import { Separator as SeparatorPrimitive } from \"@base-ui/react/separator\";\nimport { cn } from \"@/lib/cn\";\n\n// A thin rule between groups of content, on Base UI's Separator (role=\"separator\" with\n// aria-orientation). Its thickness is border.width.1 and its colour a border role, so it matches\n// the borders around it in every theme. A purely visual rule inside a list of controls (a\n// toolbar, a menu) should be this component too: screen readers announce the grouping.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const separatorVariants = {\n  variant: {\n    default: \"bg-border\",\n    muted: \"bg-border-muted\",\n    strong: \"bg-border-strong\",\n  },\n} as const;\n\nconst base = [\n  \"shrink-0 self-stretch\",\n  \"data-[orientation=horizontal]:h-[var(--by-border-width-1)] data-[orientation=horizontal]:w-full\",\n  \"data-[orientation=vertical]:w-[var(--by-border-width-1)] data-[orientation=vertical]:h-auto\",\n];\n\nexport interface SeparatorProps extends Omit<SeparatorPrimitive.Props, \"className\"> {\n  /** The border role it takes: `default` between sections, `muted` inside a dense list, `strong` to divide panes. */\n  variant?: keyof typeof separatorVariants.variant;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A rule between groups of content: horizontal by default, `orientation=\"vertical\"` inside a row\n * (a toolbar, a status bar). Wraps Base UI's Separator; the ref reaches the `<div role=\"separator\">`.\n */\nexport function Separator({ variant = \"default\", orientation = \"horizontal\", className, ...props }: SeparatorProps) {\n  return (\n    <SeparatorPrimitive\n      data-slot=\"separator\"\n      data-variant={variant}\n      orientation={orientation}\n      className={cn(base, separatorVariants.variant[variant], className)}\n      {...props}\n    />\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "separator",
+      "title": "Separator",
+      "description": "A thin rule between groups of content, horizontal or vertical, in a border role at border.width.1.",
+      "usage": "Use Separator between sections of a panel, between groups of controls in a Toolbar or StatusBar (orientation=\"vertical\"), or between the facts of a summary line. It is announced as a separator; for pure decoration use a border on the container instead. Between resizable panes use Resizable's handle, not a Separator.",
+      "status": "experimental",
+      "base": "@base-ui/react/separator",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "variant",
+          "type": "\"default\" | \"muted\" | \"strong\"",
+          "default": "default",
+          "description": "The border role: default between sections, muted inside a dense list, strong between panes."
+        },
+        {
+          "name": "orientation",
+          "type": "\"horizontal\" | \"vertical\"",
+          "default": "horizontal",
+          "description": "Sets aria-orientation and data-orientation; a vertical rule stretches to its row's height."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element with the separator's props."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the rendered element."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "default",
+          "muted",
+          "strong"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The rule, role=\"separator\"; data-slot=\"separator\", data-variant, data-orientation."
+        }
+      ],
+      "states": [
+        {
+          "name": "horizontal",
+          "variant": "data-[orientation=horizontal]",
+          "description": "A full-width rule of border.width.1."
+        },
+        {
+          "name": "vertical",
+          "variant": "data-[orientation=vertical]",
+          "props": {
+            "orientation": "vertical"
+          },
+          "description": "A rule of border.width.1 that stretches to the row's height."
+        }
+      ],
+      "tokens": [
+        "border.width.1",
+        "color.border.default",
+        "color.border.muted",
+        "color.border.strong"
+      ],
+      "examples": {
+        "minimal": "SeparatorMinimal",
+        "realistic": "SeparatorRealistic"
+      },
+      "accessibility": [
+        "Renders a <div role=\"separator\"> with aria-orientation; screen readers announce the boundary between groups.",
+        "Not focusable and not interactive (a movable pane divider is Resizable's handle).",
+        "Thickness is border.width.1 and colour a border role, so it never carries information on its own."
+      ]
+    },
+    "example": "import { Separator } from \"@/components/separator/separator\";\n\n/** The smallest useful Separator: a rule between two blocks of text. */\nexport function SeparatorMinimal() {\n  return (\n    <div className=\"flex flex-col gap-stack-sm text-body text-fg\">\n      <p>Connection details</p>\n      <Separator />\n      <p>Access grant</p>\n    </div>\n  );\n}\n\n/** Separators in a connection summary: sections, a vertical rule between inline facts, and the three weights. */\nexport function SeparatorRealistic() {\n  return (\n    <div className=\"flex max-w-panel-md flex-col gap-stack-sm text-body text-fg\">\n      <div className=\"flex flex-col gap-stack-xs\">\n        <p className=\"text-body-strong\">orders-prod</p>\n        <div className=\"flex h-control-xs items-center gap-inline-md text-caption text-fg-muted\">\n          <span>PostgreSQL 17</span>\n          <Separator orientation=\"vertical\" />\n          <span>db.internal:5432</span>\n          <Separator orientation=\"vertical\" />\n          <span>TLS verified</span>\n        </div>\n      </div>\n      <Separator />\n      <p className=\"text-caption text-fg-muted\">Muted, inside a dense list</p>\n      <Separator variant=\"muted\" />\n      <p className=\"text-caption text-fg-muted\">Strong, between panes</p>\n      <Separator variant=\"strong\" />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

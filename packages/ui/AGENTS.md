@@ -173,6 +173,26 @@ What `test/conventions.test.tsx` enforces for every component:
   elements are named `<name>-<part>` (`popover-positioner`) so their classes count as the
   component's; list them under `slots`.
 
+## Layout and data display (wave 3, TSK-45)
+
+- Base UI's run-time lengths (`--collapsible-panel-height`, `--accordion-panel-height`,
+  `--scroll-area-thumb-height`) are not tokens, so they never appear in a class. Collapsible and
+  Accordion panels fade (opacity) instead of animating their height; ScrollArea sets the thumb
+  length in `style`.
+- ScrollArea keeps its scrollbars mounted (`keepMounted`) and hides a bar whose axis does not
+  overflow (`not-data-has-overflow-y:invisible`), so tests and browsers see the same DOM. The
+  viewport is the scroll container: a virtualized list inside reads it through `viewportRef`.
+- Base UI adds `base-ui-*` classes for its own injected styles (`base-ui-disable-scrollbar`);
+  `isLibraryClass` in `test/render.tsx` keeps them out of the token check. Never add one yourself.
+- `end-0` compiles to `calc(var(--by-space-1) * 0)` under the token theme and is rejected; use
+  `inset-e-0` (and `inset-s-0`). `top-0`, `inset-x-0` and `h-0` compile to `0px` and are fine.
+- Grid templates with arbitrary tracks (`grid-cols-[1fr_auto]`) are not token values; lay out
+  with flex (`order-*`, `basis-full`, `flex-1`) instead, as CardHeader does.
+- Base UI's Accordion has no arrow-key movement between headers (optional in the ARIA pattern);
+  its triggers are reached with Tab.
+- A component whose root may sit in a start-aligned flex parent takes `w-full` when it should
+  fill the width (Accordion); callers cap it with `max-w-*`.
+
 ## Editors (TSK-46)
 
 - SqlEditor is Monaco, never loaded from a CDN or through Monaco's AMD loader: `@/lib/monaco`
