@@ -24,13 +24,15 @@
     "registry": "node scripts/registry.ts",
     "registry:check": "node scripts/registry.ts --check",
     "new": "node scripts/new-component.ts",
-    "verify:install": "node scripts/verify-install.ts"
+    "verify:install": "node scripts/verify-install.ts",
+    "check:browser": "node scripts/browser-check.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
     "@tanstack/react-form": "1.33.5",
     "cn": "0.5.2",
     "date-fns": "4.4.0",
+    "monaco-editor": "0.57.0",
     "react-day-picker": "10.0.2"
   },
   "peerDependencies": {

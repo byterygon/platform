@@ -122,6 +122,21 @@ jobs:
             setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
               env PATH="$1" HOME="$2" sh -c "node scripts/registry.ts --check && node scripts/verify-install.ts"
           ' sh "$PATH" "$HOME"
+      # TSK-46: the editors in a real browser (the runner's Chrome): Monaco loads on demand from the
+      # app's own files with its worker, follows the tokens of every preset, mode and density at
+      # run time, works by keyboard and with a 1 MB document. Same network namespace.
+      - name: Byterygon UI editors in Chrome (network disconnected)
+        working-directory: packages/ui
+        run: |
+          sudo unshare --net -- sh -c '
+            set -e
+            ip link set lo up
+            if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+              echo "network is reachable"; exit 1
+            fi
+            setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
+              env PATH="$1" HOME="$2" BYTERYGON_REQUIRE_BROWSER=1 node scripts/browser-check.ts
+          ' sh "$PATH" "$HOME"
 
   licenses:
     name: License policy

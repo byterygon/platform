@@ -1,0 +1,71 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "sql-editor",
+  "title": "SqlEditor",
+  "description": "A SQL editor on Monaco, loaded lazily from the app's own bundle (no CDN, no network), themed from the editor.* and syntax.* tokens of its region in every preset, mode and density, with run-at-cursor, error markers and a read-only mode.",
+  "usage": "Use SqlEditor for real queries: a query tab (variant=\"ghost\", className=\"h-full\") or a bordered field (variant=\"outline\", the default, 240 px high; set the height with className). Ctrl+Enter (Cmd+Enter on macOS) calls onRun with the selection, or the statement under the cursor, and the statements it holds; markers take offsets into the text (a PostgreSQL error position minus one). Monaco loads on first mount; until then a textarea with the same text and keys stands in, so nothing waits. Monaco has one theme per page: the editor mounted, focused or rethemed last sets the colours of every editor. Use Textarea for short SQL in a form, CodeInput for one-line expressions, and CodeBlock to show code.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": ["monaco-editor"],
+  "props": [
+    { "name": "variant", "type": "\"outline\" | \"ghost\"", "default": "outline", "description": "outline: a bordered field with radius.md. ghost: no border, to fill a pane such as a query tab." },
+    { "name": "value", "type": "string", "description": "The text, when controlled; a new value replaces the text as one undoable edit." },
+    { "name": "defaultValue", "type": "string", "default": "", "description": "The initial text, when uncontrolled." },
+    { "name": "onValueChange", "type": "(value: string) => void", "description": "Called with the whole text after every change." },
+    { "name": "onRun", "type": "(run: SqlRun) => void", "description": "Ctrl+Enter (Cmd+Enter on macOS): { text, start, end, source: \"selection\" | \"statement\", statements }. With several statements in a selection, statements lists each (run the first)." },
+    { "name": "markers", "type": "SqlMarker[]", "description": "Underlined problems: { start, end?, message, severity? } with offsets into the text; without end, the word at start. A hover shows the message; F8 goes to the next." },
+    { "name": "readOnly", "type": "boolean", "default": false, "description": "Text can be selected, searched and copied but not changed; sets data-readonly." },
+    { "name": "language", "type": "\"pgsql\" | \"sql\"", "default": "pgsql", "description": "The Monaco grammar: PostgreSQL or generic SQL." },
+    { "name": "placeholder", "type": "string", "description": "Shown while the editor is empty." },
+    { "name": "lineNumbers", "type": "boolean", "default": true, "description": "Line numbers in the gutter, in editor.gutter." },
+    { "name": "tabMovesFocus", "type": "boolean", "default": false, "description": "Tab moves focus out instead of indenting; Ctrl+M (Ctrl+Shift+M on macOS) toggles this at any time." },
+    { "name": "screenReaderOptimized", "type": "boolean", "default": false, "description": "Monaco's screen reader mode (accessibilitySupport \"on\"); off means Monaco detects one." },
+    { "name": "aria-label", "type": "string", "default": "SQL editor", "description": "Accessible name of the text area; or pass aria-labelledby with the id of a visible label." },
+    { "name": "onEditorReady", "type": "(editor, monaco) => void", "description": "Called once Monaco has mounted, with the editor instance and the Monaco API, for features beyond these props (completions, extra actions)." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own; set the height here (h-full in a pane)." },
+    { "name": "ref", "type": "Ref<HTMLDivElement>", "description": "Reaches the root element." }
+  ],
+  "variants": {
+    "variant": ["outline", "ghost"]
+  },
+  "slots": [
+    { "name": "root", "element": "div", "description": "The frame: data-slot=\"sql-editor\", data-variant, and the state attributes. Monaco's tokens are read from its region." },
+    { "name": "fallback", "element": "textarea", "description": "data-slot=\"sql-editor-fallback\": the stand-in textarea while Monaco loads, with the same text, colours, Ctrl+Enter and accessible name." },
+    { "name": "surface", "element": "div", "description": "data-slot=\"sql-editor-surface\": where Monaco renders, hidden until it has loaded." }
+  ],
+  "states": [
+    { "name": "focused", "variant": "data-focused", "description": "The text area has focus: a ring of ring.width in color.ring around the frame." },
+    { "name": "loading", "variant": "data-loading", "description": "Monaco is loading (aria-busy); the fallback textarea works meanwhile and the pointer shows progress." },
+    { "name": "read-only", "variant": "data-readonly", "props": { "readOnly": true }, "description": "Read-only: the outline border lightens to color.border.default." }
+  ],
+  "tokens": [
+    "color.border.default",
+    "color.border.strong",
+    "color.ring",
+    "editor.bg",
+    "editor.cursor",
+    "editor.fg",
+    "editor.gutter",
+    "editor.selection",
+    "font.mono",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.panel.xs",
+    "space.inset.sm",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight"
+  ],
+  "examples": { "minimal": "SqlEditorMinimal", "realistic": "SqlEditorRealistic" },
+  "accessibility": [
+    "The text area is Monaco's own input (a textarea or an EditContext with role textbox), named by aria-label (\"SQL editor\" by default) or aria-labelledby; the stand-in textarea has the same name.",
+    "Tab indents inside the editor, as code editors do; Ctrl+M (Ctrl+Shift+M on macOS) switches Tab to move focus, and tabMovesFocus starts in that mode, so focus is never trapped.",
+    "Every action has a key: Ctrl+Enter runs, Ctrl+F finds, Ctrl+/ comments, F8 and Shift+F8 move between error markers, F1 opens Monaco's command list.",
+    "Error markers are announced through Monaco's hover and the F8 marker widget, not by colour alone; editor.* and syntax.* colours are contrast-checked by the token build in every mode.",
+    "screenReaderOptimized turns on Monaco's screen reader mode (offer it as a setting); otherwise Monaco detects a screen reader.",
+    "Focus shows a ring of ring.width in color.ring on the frame. Nothing is fetched: Monaco, its worker and its font come from the app's bundle."
+  ]
+}

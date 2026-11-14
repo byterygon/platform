@@ -14,6 +14,8 @@ export default defineConfig({
   build: {
     outDir: "../dist/gallery",
     emptyOutDir: true,
+    // Monaco's own chunks (SqlEditor, loaded on demand) are larger than Vite's 500 kB default.
+    chunkSizeWarningLimit: 1024,
     rolldownOptions: {
       // Base UI marks its modules "use client" for React Server Components; a client bundle drops it.
       onwarn(warning, warn) {
@@ -23,6 +25,9 @@ export default defineConfig({
   },
   test: {
     root: ".",
+    // jsdom cannot run Monaco; the component tests drive a small fake of the API it uses. The real
+    // editor is tested in Chromium by scripts/browser-check.ts.
+    alias: [{ find: /^monaco-editor\/.*$/, replacement: fileURLToPath(new URL("./test/fakes/monaco.ts", import.meta.url)) }],
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
     testTimeout: 30_000,

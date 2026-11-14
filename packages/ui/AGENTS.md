@@ -13,10 +13,12 @@ src/components/<name>/<name>.tsx            the component (Base UI part + token 
                      /<name>.test.tsx       behaviour tests (keyboard, events, ARIA)
 src/lib/cn.ts                               class merging that knows the role names
 src/lib/theme-scope.ts                      a popup in a portal takes its trigger's theme and density
+src/lib/monaco.ts                           Monaco loaded lazily and offline, and its theme from the tokens
 gallery/                                    every example in Light/Dark x Comfortable/Compact
 scripts/registry.ts                         writes registry/ (committed, drift-tested)
 scripts/new-component.ts                    pnpm ui:new
 scripts/verify-install.ts                   shadcn CLI install into a blank Vite app, offline
+scripts/browser-check.ts                    the editors in Chromium over the DevTools protocol (test/browser)
 registry/                                   <name>.json, cn.json, theme-scope.json, theme-<preset>.json, registry.json, llms.txt
 component.manifest.schema.json              the manifest schema (editors); scripts/lib/manifest.ts validates
 ```
@@ -30,6 +32,7 @@ pnpm --filter @byterygon/ui typecheck
 pnpm --filter @byterygon/ui registry                 # rewrite registry/ (commit it)
 pnpm --filter @byterygon/ui registry:check           # exit 3 if registry/ is stale
 pnpm --filter @byterygon/ui verify:install           # real shadcn CLI, offline, folder and static server
+pnpm --filter @byterygon/ui check:browser            # editors in Chromium: bundle, theme, keyboard, 1 MB, report
 pnpm --filter @byterygon/ui gallery                  # serve the gallery (vite)
 pnpm --filter @byterygon/ui build                    # build the gallery into dist/gallery
 ```
@@ -169,6 +172,33 @@ What `test/conventions.test.tsx` enforces for every component:
   by hover or focus (Tooltip, HoverCard) needs an example with `defaultOpen`. Inner
   elements are named `<name>-<part>` (`popover-positioner`) so their classes count as the
   component's; list them under `slots`.
+
+## Editors (TSK-46)
+
+- SqlEditor is Monaco, never loaded from a CDN or through Monaco's AMD loader: `@/lib/monaco`
+  (`loadMonaco`) dynamically imports the ESM editor core, the features it needs and the `pgsql`/`sql`
+  grammars, and creates the one editor worker through Vite's `?worker`. Vite puts all of it (CSS and
+  the codicon font included) in chunks that load on first mount; nothing is fetched from elsewhere.
+  With another bundler, set `self.MonacoEnvironment.getWorker` and replace the `?worker` import.
+- Until Monaco has loaded, a textarea with the same text, colours, name and Ctrl+Enter stands in
+  (`data-loading`, `aria-busy`); Monaco then takes over the text, the selection and the focus.
+- Theme: Monaco's `defineTheme` takes hex, so `monacoTheme` reads `editor.*`, `syntax.*` and the
+  overlay roles at the editor's element (the browser resolves the OKLCH variables there) and
+  converts them; `monacoMetrics` takes the font from `text.code.*` and the padding from
+  `space.inset.sm`. A MutationObserver rebuilds both when `data-theme`, `data-density` or a class
+  changes on the editor or an ancestor, or a stylesheet changes (a swapped preset).
+- Monaco has one theme per page, so `applyTheme` also writes scoped CSS: inside
+  `[data-monaco-scope]` (the SqlEditor root) Monaco's colour variables (`--vscode-*`) and token
+  classes (`.mtk<n>`) point at the `--by-*` variables, so editors in a Light and a Dark region side
+  by side are both right. Popups Monaco renders outside the editor (its context menu) use the theme
+  of the editor mounted, focused or rethemed last.
+- Never pass raw colours to Monaco; add a role to `MONACO_COLORS` / `MONACO_TOKENS` instead.
+- jsdom cannot run Monaco: in tests every `monaco-editor/*` import is aliased to
+  `test/fakes/monaco.ts`. The real editor is checked by `scripts/browser-check.ts` (CI runs it with
+  the runner's Chrome in a network namespace; `BYTERYGON_REQUIRE_BROWSER=1` makes a missing browser
+  a failure, `BYTERYGON_BROWSER` names one).
+- `test/licenses.test.ts` checks every npm package a registry item installs, transitively, against
+  the `allow` list of `deny.toml`.
 
 ## Styling rules
 

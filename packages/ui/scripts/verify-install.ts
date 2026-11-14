@@ -43,6 +43,7 @@ const ITEMS = [
   "tabs", "toast", "command-palette",
   "breadcrumb", "pagination", "stepper", "navigation-menu",
   "sidebar", "tree",
+  "sql-editor",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -77,7 +78,7 @@ function blankApp(dir: string, registryTemplate: string): void {
     name: "blank-vite-app",
     private: true,
     type: "module",
-    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority", "react-day-picker", "date-fns"].map((n) => [n, version(n)])),
+    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority", "react-day-picker", "date-fns", "monaco-editor"].map((n) => [n, version(n)])),
     devDependencies: Object.fromEntries(["vite", "@tailwindcss/vite", "tailwindcss"].map((n) => [n, version(n)])),
   });
   write("tsconfig.json", { compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", jsx: "react-jsx", strict: true, baseUrl: ".", paths: { "@/*": ["./src/*"] } }, include: ["src"] });
@@ -144,7 +145,7 @@ function serve(dir: string): Promise<Server> {
 const itemContent = (name: string) => (JSON.parse(readFileSync(join(REGISTRY, `${name}.json`), "utf8")) as { files: { content: string }[] }).files[0]!.content;
 
 function checkInstalledFiles(app: string, label: string): void {
-  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
+  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ["src/lib/monaco.ts", "monaco"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
     const full = join(app, path);
     if (check(existsSync(full), `${label}: ${path} was not installed`)) {
       check(readFileSync(full, "utf8") === itemContent(item), `${label}: ${path} differs from the registry item ${item}`);
@@ -172,6 +173,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Sidebar, SidebarContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Stepper } from "@/components/ui/stepper";
 import { Tree } from "@/components/ui/tree";
+import { SqlEditor } from "@/components/ui/sql-editor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toast } from "@/components/ui/toast";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -385,6 +387,7 @@ createRoot(document.getElementById("root")!).render(
     <Input aria-label="Byterygon input" />
     <Connection />
     <Overlays />
+    <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
     <Card>
       <CardHeader><CardTitle>Stock card</CardTitle></CardHeader>
       <CardContent>
@@ -416,9 +419,19 @@ async function buildApp(app: string): Promise<string> {
     },
   });
   const assets = join(app, "dist", "assets");
-  const css = readdirSync(assets).filter((f) => f.endsWith(".css"));
-  check(css.length === 1, `expected one CSS file in the build, found ${css.length}`);
-  return readFileSync(join(assets, css[0]!), "utf8");
+  // The page's own stylesheet is the one index.html links; Monaco's CSS comes with its lazy chunks.
+  const html = readFileSync(join(app, "dist", "index.html"), "utf8");
+  const linked = [...html.matchAll(/<link rel="stylesheet"[^>]*href="\/assets\/([^"]+\.css)"/g)].map((m) => m[1]!);
+  check(linked.length === 1, `expected index.html to link one stylesheet, found ${linked.length}`);
+  // SqlEditor (TSK-46): Monaco is not in the entry chunk, its worker is a bundled file, nothing names a CDN.
+  const files = readdirSync(assets);
+  const entry = [...html.matchAll(/<script type="module"[^>]*src="\/assets\/([^"]+\.js)"/g)].map((m) => m[1]!);
+  check(entry.length === 1 && !readFileSync(join(assets, entry[0]!), "utf8").includes("monaco-scrollable-element"), "Monaco is in the entry chunk; SqlEditor must load it on demand");
+  check(files.some((f) => /^editor\.worker-.*\.js$/.test(f) && readFileSync(join(assets, f)).length > 100_000), "no bundled Monaco editor worker in the build");
+  check(files.some((f) => f.endsWith(".ttf") && f.startsWith("codicon")), "Monaco's codicon font is not in the build");
+  const js = files.filter((f) => /\.(js|css)$/.test(f)).map((f) => readFileSync(join(assets, f), "utf8")).join("\n");
+  check(!/cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com|esm\.sh/.test(js), "the build names a CDN");
+  return readFileSync(join(assets, linked[0] ?? ""), "utf8");
 }
 
 const escapeClass = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
@@ -523,6 +536,8 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["data-[status=error]:text-danger-fg", "color", "color.status.danger.fg", "Byterygon Stepper failed step"],
   ["w-panel-xs", "width", "size.panel.xs", "Byterygon Sidebar width"],
   ["h-control-sm", "height", "size.control.sm", "Byterygon Tree row (density)"],
+  ["bg-editor", "background-color", "editor.bg", "Byterygon SqlEditor frame"],
+  ["p-inset-sm", "padding", "space.inset.sm", "Byterygon SqlEditor fallback (density)"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {
