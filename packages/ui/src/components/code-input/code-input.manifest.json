@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "code-input",
+  "title": "CodeInput",
+  "description": "A small code field on CodeMirror 6: one line (Enter submits) or several, PostgreSQL or JSON highlighting in the syntax.* colours, a read-only pretty viewer for JSON; themed through the token CSS variables and usable inside a Field.",
+  "usage": "Use CodeInput for code that fits in a form: one-line SQL conditions and filters (Enter calls onSubmit), short JSON or SQL values (multiline, rows), and showing a cell or JSON value read-only (pretty pretty-prints JSON). Put it in a Field with a FieldLabel, like Input; the value is also in a hidden form control (name, required). Use SqlEditor for whole queries and Textarea for prose.",
+  "status": "experimental",
+  "base": "@base-ui/react/input",
+  "dependencies": ["@base-ui/react", "@codemirror/commands", "@codemirror/lang-json", "@codemirror/lang-sql", "@codemirror/language", "@codemirror/state", "@codemirror/view", "@lezer/highlight"],
+  "props": [
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Height of a one-line field from size.control.* (density-aware); the padding of a multi-line one." },
+    { "name": "value", "type": "string", "description": "The text, when controlled." },
+    { "name": "defaultValue", "type": "string", "default": "", "description": "The initial text, when uncontrolled." },
+    { "name": "onValueChange", "type": "(value: string) => void", "description": "Called with the whole text after every change." },
+    { "name": "language", "type": "\"text\" | \"sql\" | \"json\"", "default": "text", "description": "Highlighting: none, PostgreSQL, or JSON." },
+    { "name": "multiline", "type": "boolean", "default": false, "description": "Several lines, wrapped; Enter inserts a line break. One line otherwise: pasted line breaks become spaces." },
+    { "name": "rows", "type": "number", "default": 3, "description": "Minimum visible lines of a multi-line field, from text.code size and leading." },
+    { "name": "pretty", "type": "boolean", "default": false, "description": "Read-only viewer: multi-line, JSON pretty-printed with two spaces (other text unchanged)." },
+    { "name": "readOnly", "type": "boolean", "default": false, "description": "Text can be selected and copied but not changed; sets data-readonly and aria-readonly." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction, leaves the tab order, sets data-disabled." },
+    { "name": "placeholder", "type": "string", "description": "Shown while the field is empty, in color.fg.subtle." },
+    { "name": "onSubmit", "type": "(value: string) => void", "description": "Enter in a one-line field; the text is not changed." },
+    { "name": "name", "type": "string", "description": "Form name of the hidden control that carries the value." },
+    { "name": "required", "type": "boolean", "description": "The value may not be empty; the Field validates it and the text area gets aria-required." },
+    { "name": "aria-label", "type": "string", "description": "Accessible name when there is no FieldLabel." },
+    { "name": "aria-invalid", "type": "boolean | \"true\" | \"false\"", "description": "Marks the value invalid outside a Field; inside a Field, its validation sets it." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLDivElement>", "description": "Reaches the root element." }
+  ],
+  "variants": {
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "div", "description": "The frame: data-slot=\"code-input\", data-size and the state attributes." },
+    { "name": "editor", "element": "div", "description": "data-slot=\"code-input-editor\": where CodeMirror renders its text area (role textbox, contenteditable); its cm-* classes are CodeMirror's." },
+    { "name": "control", "element": "input", "description": "data-slot=\"code-input-control\": the visually hidden Base UI Input (Field.Control) that carries the value, name and validity for forms and Fields." }
+  ],
+  "states": [
+    { "name": "focused", "variant": "data-focused", "description": "The text area has focus: a ring of ring.width in color.ring around the frame." },
+    { "name": "multiline", "variant": "data-multiline", "props": { "multiline": true }, "description": "Several lines: the height follows the content (at least rows lines) and the padding comes from space.inline.*." },
+    { "name": "read-only", "variant": "data-readonly", "props": { "readOnly": true }, "description": "Read-only (also in pretty mode): the inset background." },
+    { "name": "invalid", "variant": "data-invalid", "props": { "aria-invalid": true }, "description": "Invalid: the danger border; inside a Field, its validation sets it." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." }
+  ],
+  "tokens": [
+    "color.bg.inset",
+    "color.bg.surface",
+    "color.border.strong",
+    "color.ring",
+    "color.status.danger.border",
+    "editor.fg",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.lg",
+    "size.control.md",
+    "size.control.sm",
+    "space.control.x",
+    "space.inline.md",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.lg",
+    "space.inset.sm"
+  ],
+  "examples": { "minimal": "CodeInputMinimal", "realistic": "CodeInputRealistic" },
+  "accessibility": [
+    "The text area is CodeMirror's contenteditable with role textbox and aria-multiline; inside a Field it takes the FieldLabel (aria-labelledby), the description and error (aria-describedby) and aria-invalid from the Field; on its own, give it aria-label.",
+    "Tab and Shift+Tab always leave the field (no indentation with Tab), so focus is never trapped; a FieldLabel click focuses the text area.",
+    "Enter submits a one-line field (onSubmit), as in a text input; in a multi-line one it inserts a line break. Ctrl+Z and Ctrl+Shift+Z undo and redo.",
+    "Read-only and pretty fields stay focusable so the text can be read, selected and copied by keyboard (aria-readonly); disabled ones leave the tab order (aria-disabled).",
+    "Syntax colours are syntax.* roles, contrast-checked on the editor background in every mode; colour is never the only signal of an error (FieldError text, the danger border).",
+    "Focus shows a ring of ring.width in color.ring on the frame."
+  ]
+}

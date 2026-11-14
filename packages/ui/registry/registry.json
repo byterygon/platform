@@ -100,6 +100,31 @@
       ]
     },
     {
+      "name": "code-input",
+      "type": "registry:ui",
+      "title": "CodeInput",
+      "description": "A small code field on CodeMirror 6: one line (Enter submits) or several, PostgreSQL or JSON highlighting in the syntax.* colours, a read-only pretty viewer for JSON; themed through the token CSS variables and usable inside a Field.",
+      "dependencies": [
+        "@base-ui/react",
+        "@codemirror/commands",
+        "@codemirror/lang-json",
+        "@codemirror/lang-sql",
+        "@codemirror/language",
+        "@codemirror/state",
+        "@codemirror/view",
+        "@lezer/highlight"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/code-input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "combobox",
       "type": "registry:ui",
       "title": "Combobox",

@@ -11,6 +11,9 @@
 //   - keyboard: Tab reaches the editor, typing works, Ctrl+Enter (Cmd+Enter on macOS) runs the
 //     statement, Tab indents, and Ctrl+M (Ctrl+Shift+M on macOS) lets Tab and Shift+Tab leave;
 //   - a 1 MB document: load, a keystroke at the end and a run stay within bounds;
+//   - CodeInput: its colours, font and height follow the tokens in every preset, mode and density
+//     (beside one in the other mode); Tab in and out, Enter submits, a FieldLabel click focuses
+//     it; the pretty viewer shows a 1 MB JSON value and jumps to its end, rendering only what shows;
 //
 // and reports bundle sizes and the time to first keystroke (median of three cold loads).
 //
@@ -73,6 +76,7 @@ interface OutputFile {
   code?: string;
   source?: string | Uint8Array;
   viteMetadata?: { importedCss?: Set<string>; importedAssets?: Set<string> };
+  modules?: Record<string, { renderedLength?: number }>;
 }
 
 interface Size {
@@ -142,6 +146,12 @@ function bundleReport(files: OutputFile[], outDir: string) {
     lazy: { js: sum(lazy.filter((f) => kind(f) === "js")), css: sum(lazy.filter((f) => kind(f) === "css")), other: sum(lazy.filter((f) => kind(f) === "other")) },
     worker: sum(workers),
     workerFiles: workers.map((w) => w.fileName),
+    // CodeMirror's share of the chunks, from the bundler's per-module sizes before minification (null when not reported).
+    codemirror: (() => {
+      const modules = files.flatMap((f) => Object.entries(f.modules ?? {}));
+      if (modules.length === 0) return null;
+      return modules.filter(([id]) => /[\\/](?:@codemirror|@lezer|@marijn|style-mod|w3c-keyname|crelt)[\\/+@]/.test(id)).reduce((n, [, m]) => n + (m.renderedLength ?? 0), 0);
+    })(),
     // A class only Monaco's own scrollbar code uses: present in a chunk means Monaco is in it.
     monacoInInitial: files.some((f) => initial.has(f.fileName) && f.type === "chunk" && f.code!.includes("monaco-scrollable-element")),
     cdn,
@@ -259,6 +269,7 @@ interface Page {
   key: (key: string, options?: { modifiers?: number; text?: string }) => Promise<void>;
   insertText: (text: string) => Promise<void>;
   screenshot: (path: string) => Promise<void>;
+  click: (x: number, y: number) => Promise<void>;
   requests: string[];
   failed: string[];
   errors: string[];
@@ -316,6 +327,9 @@ async function openPage(cdp: Cdp): Promise<Page> {
     },
     async insertText(text) {
       await send("Input.insertText", { text });
+    },
+    async click(x, y) {
+      for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
     },
     async screenshot(path) {
       const { data } = (await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true })) as { data: string };
@@ -400,7 +414,7 @@ interface Sample {
 }
 
 async function themes(page: Page) {
-  if (!check(await producesFrames(page), "the browser produces no animation frames, so Monaco cannot render (headless Chrome on macOS with the display asleep does this; rerun with the display awake)")) return { checked: [], densities: {} };
+  if (!check(await producesFrames(page), "the browser produces no animation frames, so Monaco cannot render (headless Chrome on macOS with the display asleep does this; rerun with the display awake)")) return { checked: [], densities: {}, codeHeights: {} };
   const presets = await page.evaluate<string[]>("window.__check.presets");
   const checked: string[] = [];
   for (const preset of presets) {
@@ -421,19 +435,40 @@ async function themes(page: Page) {
         check(s.lineNumber !== null || index === 0, `theme ${where}: no line number to compare`);
         checked.push(where);
       }
+      // CodeInput: index 1 (the filter) is in `theme`, index 0 beside the second editor in the other.
+      for (const [index, mode] of [[1, theme], [0, theme === "light" ? "dark" : "light"]] as const) {
+        let c = await page.evaluate<CodeSample>(`window.__sampleCode(${index})`);
+        // The frame fades its colours (transition-colors), so wait for the background as well.
+        for (let tries = 0; tries < 40 && (c.keyword === null || !sameColor(c.keyword, c.expectedKeyword) || !sameColor(c.background, c.expectedBackground)); tries += 1) {
+          await new Promise((r) => setTimeout(r, 50));
+          c = await page.evaluate<CodeSample>(`window.__sampleCode(${index})`);
+        }
+        const where = `${preset}/${mode} CodeInput${index === 0 ? " (beside the other mode)" : ""}`;
+        check(sameColor(c.background, c.expectedBackground), `theme ${where}: background ${c.background}, expected color.bg.surface ${c.expectedBackground}`);
+        check(sameColor(c.keyword, c.expectedKeyword), `theme ${where}: keyword colour ${c.keyword}, expected syntax.keyword ${c.expectedKeyword}`);
+        check(sameColor(c.string, c.expectedString), `theme ${where}: string colour ${c.string}, expected syntax.string ${c.expectedString}`);
+        checked.push(where);
+      }
     }
   }
   const densities: Record<string, { fontSize: number; lineHeight: number; padding: number }> = {};
+  const codeHeights: Record<string, number> = {};
   for (const density of ["comfortable", "compact"] as const) {
     await page.evaluate(`window.__check.setPreset("default"), window.__check.setTheme("light"), window.__check.setDensity("${density}"), ${frames()}`);
     const s = await page.evaluate<Sample>("window.__sample()");
     check(s.fontSize === s.expectedFontSize, `density ${density}: font size ${s.fontSize}, expected text.code.size ${s.expectedFontSize}`);
     check(s.paddingTop === s.expectedPadding, `density ${density}: padding ${s.paddingTop}, expected space.inset.sm ${s.expectedPadding}`);
     densities[density] = { fontSize: s.fontSize, lineHeight: s.lineHeight, padding: s.paddingTop };
+    const c = await page.evaluate<CodeSample>("window.__sampleCode(1)");
+    check(c.fontSize === c.expectedFontSize, `density ${density}: CodeInput font size ${c.fontSize}, expected text.code.size ${c.expectedFontSize}`);
+    check(Math.abs(c.height - c.expectedHeight) < 0.5, `density ${density}: CodeInput height ${c.height}, expected size.control.md ${c.expectedHeight}`);
+    check(c.offCentre <= 1, `density ${density}: CodeInput's line is ${c.offCentre.toFixed(1)} px off the frame's centre`);
+    codeHeights[density] = c.height;
   }
   check(densities.comfortable!.padding !== densities.compact!.padding, "density: the editor's padding did not change between Comfortable and Compact");
+  check(codeHeights.comfortable !== codeHeights.compact, "density: CodeInput's height did not change between Comfortable and Compact");
   await page.evaluate(`window.__check.setDensity("comfortable"), ${frames()}`);
-  return { checked, densities };
+  return { checked, densities, codeHeights };
 }
 
 async function keyboard(page: Page) {
@@ -504,6 +539,76 @@ async function largeDocument(page: Page) {
   check(runMs < limits.runMs, `1 MB: finding the statement to run took ${Math.round(runMs)} ms (limit ${limits.runMs})`);
   await page.evaluate(`window.__check.setValue("select 1;"), ${frames(1)}`);
   return { bytes: size, loadMs: round(loadMs), keystrokeMs: round(keystrokeMs), runMs: round(runMs), limits };
+}
+
+interface CodeSample {
+  background: string;
+  expectedBackground: string;
+  keyword: string | null;
+  expectedKeyword: string;
+  string: string | null;
+  expectedString: string;
+  fontSize: number;
+  expectedFontSize: number;
+  height: number;
+  expectedHeight: number;
+  offCentre: number;
+  label: string | null;
+}
+
+async function codeKeyboard(page: Page) {
+  const where = () => page.evaluate<string>("(() => { const a = document.activeElement; if (a?.closest('[data-slot=code-input]')) return a.classList.contains('cm-content') ? 'filter' : 'code-input:' + a.tagName.toLowerCase(); return a?.id || a?.tagName.toLowerCase() || 'none'; })()");
+  await page.evaluate(`document.getElementById("before-code").scrollIntoView(), document.getElementById("before-code").focus(), ${frames(1)}`);
+  await page.key("Tab");
+  check((await where()) === "filter", `CodeInput keyboard: Tab did not reach the filter's text area (focus on ${await where()})`);
+  const sample = await page.evaluate<CodeSample>("window.__sampleCode(1)");
+  check(sample.label === "Filter rows", `CodeInput: the text area is named ${JSON.stringify(sample.label)}, expected the FieldLabel "Filter rows"`);
+  await page.evaluate("(() => { const v = window.__check.codeView(1); v.dispatch({ selection: { anchor: v.state.doc.length } }); return true; })()");
+  await page.insertText(" or id = 1");
+  const text = await page.evaluate<string>("window.__check.codeView(1).state.doc.toString()");
+  check(text.endsWith(" or id = 1"), `CodeInput keyboard: typed text did not arrive (${JSON.stringify(text)})`);
+  await page.key("Enter");
+  check(await waitFor(page, "window.__check.submits.length > 0"), "CodeInput keyboard: Enter did not call onSubmit");
+  check((await page.evaluate<string>("window.__check.submits.at(-1)")) === text, "CodeInput keyboard: onSubmit did not get the text");
+  check((await page.evaluate<number>("window.__check.codeView(1).state.doc.lines")) === 1, "CodeInput keyboard: Enter inserted a line break in a one-line field");
+  await page.key("Tab");
+  check((await where()) === "after-code", `CodeInput keyboard: Tab did not leave the filter (focus on ${await where()})`);
+  await page.key("Tab", { modifiers: MOD.shift });
+  check((await where()) === "filter", `CodeInput keyboard: Shift+Tab did not return to the filter (focus on ${await where()})`);
+  await page.evaluate("document.getElementById('after-code').focus(), true");
+  const label = await page.evaluate<{ x: number; y: number }>("(() => { const r = [...document.querySelectorAll('label')].find((l) => l.textContent === 'Filter rows').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()");
+  await page.click(label.x, label.y);
+  check(await waitFor(page, "document.activeElement?.classList.contains('cm-content') && !!document.activeElement.closest('[data-slot=code-input]')", 2000), `CodeInput: a FieldLabel click did not focus the text area (focus on ${await where()})`);
+  return { label: sample.label };
+}
+
+async function codeLargeDocument(page: Page) {
+  const size = await page.evaluate<number>(`(() => {
+    const rows = [];
+    for (let i = 0; JSON.stringify(rows).length < 1048576; i += 1) rows.push({ id: i, email: "user" + i + "@example.com", tags: ["a", "b"], active: i % 2 === 0, score: i * 1.5 });
+    window.__json = JSON.stringify(rows);
+    window.__pretty = JSON.stringify(rows, null, 2);
+    return window.__json.length;
+  })()`);
+  const t0 = await page.evaluate<number>("performance.now()");
+  await page.evaluate("window.__check.setViewer(window.__json), true");
+  const loaded = await waitFor(page, "window.__check.codeView(2).state.doc.length === window.__pretty.length", 30_000);
+  check(loaded, "CodeInput 1 MB: the pretty viewer did not show the value");
+  await page.evaluate(frames(2));
+  const loadMs = (await page.evaluate<number>("performance.now()")) - t0;
+  const t1 = await page.evaluate<number>("performance.now()");
+  await page.evaluate("(() => { const v = window.__check.codeView(2); v.focus(); v.dispatch({ selection: { anchor: v.state.doc.length }, scrollIntoView: true }); return true; })()");
+  const atEnd = await waitFor(page, "[...document.querySelectorAll('[data-slot=code-input]')[2].querySelectorAll('.cm-line')].some((l) => l.textContent === ']')", 5000);
+  const jumpMs = (await page.evaluate<number>("performance.now()")) - t1;
+  check(atEnd, "CodeInput 1 MB: the end of the document was not rendered after jumping there");
+  const rendered = await page.evaluate<number>("document.querySelectorAll('[data-slot=code-input]')[2].querySelectorAll('.cm-line').length");
+  const lines = await page.evaluate<number>("window.__check.codeView(2).state.doc.lines");
+  check(rendered < 2000, `CodeInput 1 MB: ${rendered} of ${lines} lines are in the DOM; only the visible ones should be`);
+  const limits = { loadMs: 5000, jumpMs: 1000 };
+  check(loadMs < limits.loadMs, `CodeInput 1 MB: showing the value took ${Math.round(loadMs)} ms (limit ${limits.loadMs})`);
+  check(jumpMs < limits.jumpMs, `CodeInput 1 MB: jumping to the end took ${Math.round(jumpMs)} ms (limit ${limits.jumpMs})`);
+  await page.evaluate("window.__check.setViewer('{}'), true");
+  return { bytes: size, lines, renderedLines: rendered, loadMs: round(loadMs), jumpMs: round(jumpMs), limits };
 }
 
 /** The bundled editor worker starts from the app's own files. */
@@ -580,6 +685,10 @@ async function main(argv: string[]): Promise<number> {
     report.keyboard = await within(60_000, "keyboard", keyboard(page));
     step("1 MB document");
     report.largeDocument = await within(90_000, "1 MB document", largeDocument(page));
+    step("CodeInput keyboard");
+    report.codeKeyboard = await within(60_000, "CodeInput keyboard", codeKeyboard(page));
+    step("CodeInput 1 MB");
+    report.codeLargeDocument = await within(90_000, "CodeInput 1 MB", codeLargeDocument(page));
     if (screenshotPath) {
       await page.evaluate(`window.__check.setPreset("default"), window.__check.setTheme("light"), window.__check.setValue("select id, email from users where id = 1;\\nselect count(*) from orders;\\n"), ${frames()}`);
       await page.screenshot(screenshotPath);
@@ -610,11 +719,14 @@ async function main(argv: string[]): Promise<number> {
   const b = report.bundle as ReturnType<typeof bundleReport> | undefined;
   const t = report.firstKeystroke as Awaited<ReturnType<typeof firstKeystroke>> | undefined;
   const big = report.largeDocument as Awaited<ReturnType<typeof largeDocument>> | undefined;
+  const codeBig = report.codeLargeDocument as Awaited<ReturnType<typeof codeLargeDocument>> | undefined;
   const lines = [
     `browser: ${String(report.browserVersion ?? binary)}`,
     b ? `bundle: page ${kb(b.initial)}; on demand: JS ${kb(b.lazy.js)}, CSS ${kb(b.lazy.css)}, fonts ${kb(b.lazy.other)}; worker ${kb(b.worker)}` : "",
     t ? `first keystroke: fallback textarea ready at ${t.fallbackInteractiveMs} ms, Monaco ready at ${t.monacoReadyMs} ms, first key in Monaco at ${t.firstKeystrokeMs} ms (latency ${t.keystrokeLatencyMs} ms), median of ${t.runs} cold loads` : "",
     big ? `1 MB document: load ${big.loadMs} ms, keystroke ${big.keystrokeMs} ms, run ${big.runMs} ms` : "",
+    codeBig ? `CodeInput 1 MB JSON (pretty viewer): ${codeBig.lines} lines shown in ${codeBig.loadMs} ms, end reached in ${codeBig.jumpMs} ms, ${codeBig.renderedLines} lines in the DOM` : "",
+    b?.codemirror ? `CodeInput: CodeMirror and its languages are ${(b.codemirror / 1024).toFixed(0)} kB of module code before minification, in the page's own chunks (not lazy)` : "",
     ok ? "browser check passed." : failures.map((f) => `error: ${f}`).join("\n"),
   ].filter(Boolean);
   print({ ok, exitCode: ok ? 0 : 1, ...report }, lines.join("\n"));

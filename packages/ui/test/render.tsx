@@ -59,10 +59,14 @@ export async function axeViolations(container: HTMLElement): Promise<string[]> {
   return result.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(" ")).join(", ")})`);
 }
 
-/** Every class name used in the rendered tree. */
+/**
+ * Every class name used in the rendered tree. Elements inside a `data-foreign-dom` element are
+ * skipped: a library renders them with its own classes (CodeMirror's `cm-*`), not token classes.
+ */
 export function classesIn(container: HTMLElement): Set<string> {
   const classes = new Set<string>();
   for (const element of container.querySelectorAll("[class]")) {
+    if (element.parentElement?.closest("[data-foreign-dom]")) continue;
     for (const name of element.getAttribute("class")!.split(/\s+/)) if (name) classes.add(name);
   }
   return classes;
