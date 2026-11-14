@@ -1,0 +1,282 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "menubar",
+  "type": "registry:ui",
+  "title": "Menubar",
+  "description": "A row of menus, as at the top of a desktop window, on Base UI's Menubar: titles that open DropdownMenu-style menus (shortcuts, danger, checkbox and radio items, groups, separators, submenus), moving between menus with the arrow keys or the pointer once one is open.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/dropdown-menu",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/menubar.tsx",
+      "type": "registry:ui",
+      "content": "import { Menu as MenuPrimitive } from \"@base-ui/react/menu\";\nimport { Menubar as MenubarPrimitive } from \"@base-ui/react/menubar\";\nimport { useContext, type ReactNode, type Ref } from \"react\";\nimport { createMenuParts, menuClasses, menuOffset, menuPopupStyle, MenuScopeContext, useMenuScope } from \"@/components/ui/dropdown-menu\";\nimport { cn } from \"@/lib/cn\";\nimport { useMergedRef } from \"@/lib/theme-scope\";\n\n// A row of menus, as at the top of a desktop window, on Base UI's Menubar: `Menubar` is the row\n// (role=\"menubar\"), MenubarMenu one menu (Base UI's Menu root), MenubarTrigger its title and\n// MenubarContent its popup. Once one menu is open, hovering or arrowing to another opens it. The\n// items are DropdownMenu's (createMenuParts), named Menubar*.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const menubarVariants = {} as const;\n\nconst classes = {\n  root: \"flex items-center gap-inline-xs rounded-md border border-border bg-surface p-inset-xs font-sans\",\n  trigger: [\n    \"flex h-control-sm cursor-default select-none items-center rounded-sm px-inset-sm text-label text-fg outline-none\",\n    \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n    \"hover:bg-hover data-popup-open:bg-hover\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n    \"data-disabled:pointer-events-none data-disabled:text-fg-disabled\",\n  ],\n} as const;\n\nconst parts = createMenuParts(\"menubar\");\n\nexport interface MenubarProps extends Omit<MenubarPrimitive.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the row element. */\n  ref?: Ref<HTMLDivElement>;\n}\n\n/** The menu row (role=\"menubar\"); put a MenubarMenu per menu inside. Arrow keys move between them. */\nexport function Menubar({ className, ...props }: MenubarProps) {\n  return <MenubarPrimitive data-slot=\"menubar\" className={cn(classes.root, className)} {...props} />;\n}\n\nexport type MenubarMenuProps = MenuPrimitive.Root.Props;\n\n/** One menu of the row (Base UI's Menu root); it renders no element: a MenubarTrigger and a MenubarContent go inside. */\nexport function MenubarMenu({ onOpenChange, ...props }: MenubarMenuProps) {\n  const { value, onOpenChange: handleOpenChange } = useMenuScope(onOpenChange);\n  return (\n    <MenuScopeContext value={value}>\n      <MenuPrimitive.Root onOpenChange={handleOpenChange} {...props} />\n    </MenuScopeContext>\n  );\n}\n\nexport interface MenubarTriggerProps extends Omit<MenuPrimitive.Trigger.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the trigger element. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** The menu's title in the row: color.interactive.hover while hovered or open. */\nexport function MenubarTrigger({ ref, className, ...props }: MenubarTriggerProps) {\n  const { anchorRef } = useContext(MenuScopeContext);\n  const merged = useMergedRef<HTMLButtonElement>(anchorRef, ref);\n  return <MenuPrimitive.Trigger data-slot=\"menubar-trigger\" ref={merged} className={cn(classes.trigger, className)} {...props} />;\n}\n\nexport interface MenubarContentProps extends Omit<MenuPrimitive.Popup.Props, \"className\" | \"children\"> {\n  /** How the menu lines up with its title. */\n  align?: MenuPrimitive.Positioner.Props[\"align\"];\n  /** The gap to the row in px; space.inline.xs by default. */\n  sideOffset?: number;\n  children?: ReactNode;\n  /** Extra classes for the menu, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The portal, the positioner under the title (z.popover, the row's theme) and the menu (role=\"menu\"). */\nexport function MenubarContent({ align = \"start\", sideOffset, className, style, children, ...props }: MenubarContentProps) {\n  const { anchor, scope } = useContext(MenuScopeContext);\n  return (\n    <MenuPrimitive.Portal>\n      <MenuPrimitive.Positioner {...scope} data-slot=\"menubar-positioner\" side=\"bottom\" align={align} sideOffset={sideOffset ?? (() => menuOffset(anchor.current))} className={cn(menuClasses.positioner)}>\n        <MenuPrimitive.Popup data-slot=\"menubar-content\" style={{ ...menuPopupStyle, ...style }} className={cn(menuClasses.popup, className)} {...props}>\n          {children}\n        </MenuPrimitive.Popup>\n      </MenuPrimitive.Positioner>\n    </MenuPrimitive.Portal>\n  );\n}\n\n/** An action: role=\"menuitem\"; `danger` for a destructive one. */\nexport const MenubarItem = parts.Item;\n/** An option that is on or off: role=\"menuitemcheckbox\". */\nexport const MenubarCheckboxItem = parts.CheckboxItem;\n/** One choice among MenubarRadioItems. */\nexport const MenubarRadioGroup = parts.RadioGroup;\n/** One option of a radio group: role=\"menuitemradio\". */\nexport const MenubarRadioItem = parts.RadioItem;\n/** A group of items, named by its MenubarLabel. */\nexport const MenubarGroup = parts.Group;\n/** A group's heading; not an item. */\nexport const MenubarLabel = parts.Label;\n/** A line between items or groups. */\nexport const MenubarSeparator = parts.Separator;\n/** The item's keyboard shortcut, at the end of the row. */\nexport const MenubarShortcut = parts.Shortcut;\n/** A submenu's root; it renders no element. */\nexport const MenubarSub = MenuPrimitive.SubmenuRoot;\n/** The item that opens a submenu. */\nexport const MenubarSubTrigger = parts.SubTrigger;\n/** The submenu's popup. */\nexport const MenubarSubContent = parts.SubContent;\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "menubar",
+      "title": "Menubar",
+      "description": "A row of menus, as at the top of a desktop window, on Base UI's Menubar: titles that open DropdownMenu-style menus (shortcuts, danger, checkbox and radio items, groups, separators, submenus), moving between menus with the arrow keys or the pointer once one is open.",
+      "usage": "Use Menubar for an application's menu row in a web build, where the window has no native menu: File, Query, View, Help. Compose it as Menubar > MenubarMenu (one per menu) > MenubarTrigger (the title) + MenubarContent > MenubarItem (MenubarShortcut at the end; danger for a destructive one), MenubarCheckboxItem, MenubarRadioGroup with MenubarRadioItem, MenubarGroup with MenubarLabel, MenubarSeparator, MenubarSub > MenubarSubTrigger + MenubarSubContent. Keep the commands also in the CommandPalette. On the desktop prefer the native menu; for one menu behind a button use DropdownMenu; for site navigation (links) use NavigationMenu.",
+      "status": "experimental",
+      "base": "@base-ui/react/menubar",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "orientation",
+          "type": "\"horizontal\" | \"vertical\"",
+          "default": "horizontal",
+          "description": "Menubar: the direction of the row, and of the arrow keys that move along it."
+        },
+        {
+          "name": "loopFocus",
+          "type": "boolean",
+          "default": true,
+          "description": "Menubar: the arrow keys wrap from the last title to the first."
+        },
+        {
+          "name": "modal",
+          "type": "boolean",
+          "default": true,
+          "description": "Menubar: while a menu is open the page ignores the pointer and does not scroll."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "MenubarMenu: controlled open state; defaultOpen when uncontrolled."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean, details) => void",
+          "description": "MenubarMenu: called when its title, an item, Escape or an outside press opens or closes it."
+        },
+        {
+          "name": "danger",
+          "type": "boolean",
+          "default": false,
+          "description": "MenubarItem: a destructive action in color.status.danger.fg."
+        },
+        {
+          "name": "closeOnClick",
+          "type": "boolean",
+          "default": true,
+          "description": "MenubarItem: closes the menu when chosen (false for checkbox and radio items by default)."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "On an item: shown in color.fg.disabled with aria-disabled; it cannot be chosen."
+        },
+        {
+          "name": "checked",
+          "type": "boolean",
+          "description": "MenubarCheckboxItem: controlled state; onCheckedChange reports changes."
+        },
+        {
+          "name": "value",
+          "type": "unknown",
+          "description": "MenubarRadioGroup: the chosen value (onValueChange); MenubarRadioItem: its value."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "role=\"menubar\", a row on color.bg.surface with a border; data-slot=\"menubar\"."
+        },
+        {
+          "name": "positioner",
+          "element": "div",
+          "description": "In a portal under the title, at z.popover, with the row's data-theme and data-density; data-slot=\"menubar-positioner\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "role=\"menu\", color.bg.overlay with elevation.overlay; data-slot=\"menubar-content\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "MenubarTrigger",
+          "slot": "menubar-trigger",
+          "description": "A menu's title in the row (role=\"menuitem\", aria-haspopup=\"menu\"), in type.label; color.interactive.hover while hovered or open."
+        },
+        {
+          "name": "MenubarContent",
+          "slot": "menubar-content",
+          "description": "The portal, the positioner under the title and the menu."
+        },
+        {
+          "name": "MenubarItem",
+          "slot": "menubar-item",
+          "description": "role=\"menuitem\"; color.interactive.hover while highlighted; data-danger for a destructive one."
+        },
+        {
+          "name": "MenubarCheckboxItem",
+          "slot": "menubar-checkbox-item",
+          "description": "role=\"menuitemcheckbox\" with aria-checked and a check mark."
+        },
+        {
+          "name": "MenubarRadioGroup",
+          "slot": "menubar-radio-group",
+          "description": "role=\"group\" holding the radio items; value and onValueChange."
+        },
+        {
+          "name": "MenubarRadioItem",
+          "slot": "menubar-radio-item",
+          "description": "role=\"menuitemradio\" with aria-checked and a dot."
+        },
+        {
+          "name": "MenubarGroup",
+          "slot": "menubar-group",
+          "description": "role=\"group\", named by its MenubarLabel."
+        },
+        {
+          "name": "MenubarLabel",
+          "slot": "menubar-label",
+          "description": "A group's heading in type.caption and color.fg.subtle."
+        },
+        {
+          "name": "MenubarSeparator",
+          "slot": "menubar-separator",
+          "description": "role=\"separator\", a 1 px line in color.border.default."
+        },
+        {
+          "name": "MenubarShortcut",
+          "slot": "menubar-shortcut",
+          "description": "The shortcut at the end of an item, in type.caption and color.fg.subtle."
+        },
+        {
+          "name": "MenubarSubTrigger",
+          "slot": "menubar-sub-trigger",
+          "description": "An item that opens a submenu (aria-haspopup), with a chevron; color.interactive.hover while its submenu is open."
+        },
+        {
+          "name": "MenubarSubContent",
+          "slot": "menubar-sub-content",
+          "description": "The submenu's popup, beside its trigger."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "A title under the pointer: color.interactive.hover."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on a title: a ring of ring.width in color.ring."
+        },
+        {
+          "name": "open",
+          "variant": "data-starting-style",
+          "description": "Opening: the menu grows from 95 % at the trigger and fades in over motion.duration.base with motion.easing.enter; reduced motion turns it off."
+        },
+        {
+          "name": "closing",
+          "variant": "data-ending-style",
+          "description": "Closing: the reverse, with motion.easing.exit."
+        },
+        {
+          "name": "highlighted",
+          "variant": "data-highlighted",
+          "description": "The item under the pointer or the keyboard: color.interactive.hover."
+        },
+        {
+          "name": "submenu-open",
+          "variant": "data-popup-open",
+          "description": "A title whose menu is open, or a sub-trigger whose submenu is open, keeps color.interactive.hover."
+        },
+        {
+          "name": "danger",
+          "variant": "data-danger",
+          "description": "A destructive item: color.status.danger.fg, color.status.danger.bg when highlighted."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "description": "A disabled item: color.fg.disabled and aria-disabled; reachable but not chosen."
+        }
+      ],
+      "tokens": [
+        "color.bg.overlay",
+        "color.bg.surface",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.bg",
+        "color.status.danger.fg",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.base",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "radius.md",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "space.inline.lg",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.popover"
+      ],
+      "examples": {
+        "minimal": "MenubarMinimal",
+        "realistic": "MenubarRealistic"
+      },
+      "accessibility": [
+        "The row is role=\"menubar\"; each title is role=\"menuitem\" with aria-haspopup=\"menu\" and aria-expanded; each popup is role=\"menu\" of menuitem, menuitemcheckbox and menuitemradio items.",
+        "One title is in the tab order; ArrowLeft and ArrowRight move between titles (wrapping), Enter, Space or ArrowDown opens a menu with its first item highlighted; while a menu is open ArrowLeft and ArrowRight open the neighbouring menu; Escape closes and returns focus to the title.",
+        "Inside a menu: arrows, Home, End and typing move, Enter chooses; ArrowRight on a sub-trigger opens its submenu. Disabled items stay reachable but have aria-disabled and cannot be chosen.",
+        "Once one menu is open, moving the pointer over another title opens that menu.",
+        "Titles have a visible focus ring; prefers-reduced-motion: reduce turns the menus' scale and fade off.",
+        "Every command is also in the CommandPalette with its shortcut."
+      ]
+    },
+    "example": "import {\n  Menubar,\n  MenubarCheckboxItem,\n  MenubarContent,\n  MenubarGroup,\n  MenubarItem,\n  MenubarLabel,\n  MenubarMenu,\n  MenubarRadioGroup,\n  MenubarRadioItem,\n  MenubarSeparator,\n  MenubarShortcut,\n  MenubarSub,\n  MenubarSubContent,\n  MenubarSubTrigger,\n  MenubarTrigger,\n} from \"@/components/menubar/menubar\";\n\n/** The smallest useful Menubar: two menus. */\nexport function MenubarMinimal() {\n  return (\n    <Menubar>\n      <MenubarMenu>\n        <MenubarTrigger>File</MenubarTrigger>\n        <MenubarContent>\n          <MenubarItem>New query tab</MenubarItem>\n          <MenubarItem>Close tab</MenubarItem>\n        </MenubarContent>\n      </MenubarMenu>\n      <MenubarMenu>\n        <MenubarTrigger>Help</MenubarTrigger>\n        <MenubarContent>\n          <MenubarItem>About DBee</MenubarItem>\n        </MenubarContent>\n      </MenubarMenu>\n    </Menubar>\n  );\n}\n\n/**\n * A web build's menu row (the desktop keeps the native one): shortcuts, a recent-files submenu,\n * view options as checkbox and radio items, a disabled and a destructive action.\n */\nexport function MenubarRealistic() {\n  return (\n    <Menubar>\n      <MenubarMenu>\n        <MenubarTrigger>File</MenubarTrigger>\n        <MenubarContent>\n          <MenubarItem>\n            New query tab <MenubarShortcut>Alt+Shift+T</MenubarShortcut>\n          </MenubarItem>\n          <MenubarItem>\n            Add connection <MenubarShortcut>Ctrl+Alt+N</MenubarShortcut>\n          </MenubarItem>\n          <MenubarSub>\n            <MenubarSubTrigger>Open recent</MenubarSubTrigger>\n            <MenubarSubContent>\n              <MenubarItem>orders-by-region.sql</MenubarItem>\n              <MenubarItem>vacuum-report.sql</MenubarItem>\n            </MenubarSubContent>\n          </MenubarSub>\n          <MenubarSeparator />\n          <MenubarItem>\n            Export result <MenubarShortcut>Ctrl+Shift+S</MenubarShortcut>\n          </MenubarItem>\n          <MenubarItem danger>\n            Close tab <MenubarShortcut>Alt+Shift+W</MenubarShortcut>\n          </MenubarItem>\n        </MenubarContent>\n      </MenubarMenu>\n      <MenubarMenu>\n        <MenubarTrigger>Query</MenubarTrigger>\n        <MenubarContent>\n          <MenubarItem>\n            Run statement <MenubarShortcut>Ctrl+Enter</MenubarShortcut>\n          </MenubarItem>\n          <MenubarItem disabled>\n            Cancel <MenubarShortcut>Shift+Escape</MenubarShortcut>\n          </MenubarItem>\n        </MenubarContent>\n      </MenubarMenu>\n      <MenubarMenu>\n        <MenubarTrigger>View</MenubarTrigger>\n        <MenubarContent>\n          <MenubarCheckboxItem defaultChecked>Sidebar</MenubarCheckboxItem>\n          <MenubarCheckboxItem>Status bar</MenubarCheckboxItem>\n          <MenubarSeparator />\n          <MenubarGroup>\n            <MenubarLabel>Density</MenubarLabel>\n            <MenubarRadioGroup defaultValue=\"compact\">\n              <MenubarRadioItem value=\"compact\">Compact</MenubarRadioItem>\n              <MenubarRadioItem value=\"comfortable\">Comfortable</MenubarRadioItem>\n            </MenubarRadioGroup>\n          </MenubarGroup>\n        </MenubarContent>\n      </MenubarMenu>\n    </Menubar>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

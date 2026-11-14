@@ -1,0 +1,83 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "hover-card",
+  "title": "HoverCard",
+  "description": "A preview of what a link points to, on Base UI's PreviewCard: shown while the pointer rests on the link or the link has keyboard focus, styled as a Popover, size.panel.sm wide.",
+  "usage": "Use HoverCard to preview the target of a link without leaving the page: a table name in a message, a foreign key, a connection in the status bar. Compose it as HoverCard > HoverCardTrigger (the link: href and the page's link classes) + HoverCardContent (side, align) with read-only content. The link must work without the card and the card must not hold anything the user needs to click: it disappears when the pointer leaves. For a label on an icon button use Tooltip; for controls the user clicks to open, Popover.",
+  "status": "experimental",
+  "base": "@base-ui/react/preview-card",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "open", "type": "boolean", "description": "Controlled open state; defaultOpen when uncontrolled." },
+    { "name": "onOpenChange", "type": "(open: boolean, details) => void", "description": "Called when hover, focus, Escape or a press opens or closes it." },
+    { "name": "delay", "type": "number", "default": 600, "description": "HoverCardTrigger: ms of hover before it opens." },
+    { "name": "closeDelay", "type": "number", "default": 300, "description": "HoverCardTrigger: ms before it closes after the pointer leaves (the pointer can move into the card)." },
+    { "name": "href", "type": "string", "description": "HoverCardTrigger: the link's target; the link works without the card." },
+    { "name": "side", "type": "\"top\" | \"right\" | \"bottom\" | \"left\" | \"inline-start\" | \"inline-end\"", "default": "bottom", "description": "HoverCardContent: the side of the link; it flips when there is no room." },
+    { "name": "align", "type": "\"start\" | \"center\" | \"end\"", "default": "start", "description": "HoverCardContent: how it lines up with the link." },
+    { "name": "className", "type": "string", "description": "On each part: extra classes, merged after the component's own." }
+  ],
+  "variants": {},
+  "slots": [
+    { "name": "positioner", "element": "div", "description": "In a portal, at z.popover, with the link's data-theme and data-density; data-slot=\"hover-card-positioner\"." },
+    { "name": "popup", "element": "div", "description": "The card: color.bg.overlay with elevation.overlay, size.panel.sm wide; data-slot=\"hover-card-content\"." }
+  ],
+  "parts": [
+    { "name": "HoverCardTrigger", "slot": "hover-card-trigger", "description": "The link (an <a>); give it href and the page's link classes." },
+    { "name": "HoverCardContent", "slot": "hover-card-content", "description": "The portal, the positioner and the card." }
+  ],
+  "states": [
+    { "name": "open", "variant": "data-starting-style", "description": "Opening: Popover's scale and fade over motion.duration.base; reduced motion turns it off." },
+    { "name": "closing", "variant": "data-ending-style", "description": "Closing: the reverse, with motion.easing.exit." }
+  ],
+  "tokens": [
+    "color.bg.overlay",
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.link",
+    "color.fg.muted",
+    "color.fg.subtle",
+    "color.ring",
+    "elevation.overlay.shadow",
+    "font.mono",
+    "font.sans",
+    "motion.duration.base",
+    "motion.easing.enter",
+    "motion.easing.exit",
+    "radius.md",
+    "radius.xs",
+    "ring.offset",
+    "ring.width",
+    "size.panel.sm",
+    "space.inline.sm",
+    "space.inset.md",
+    "space.stack.sm",
+    "space.stack.xs",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight",
+    "z.popover"
+  ],
+  "examples": { "minimal": "HoverCardMinimal", "realistic": "HoverCardRealistic" },
+  "accessibility": [
+    "The trigger is an ordinary link, named by its text; it works (Enter follows it) whether or not the card opens.",
+    "The card opens on hover after delay and on keyboard focus of the link; Escape closes it and focus stays on the link; leaving the link and the card closes it after closeDelay.",
+    "The card is supplementary and read-only: nothing in it is required to complete a task, so screen-reader users lose nothing when it is not announced.",
+    "prefers-reduced-motion: reduce turns the scale and fade transitions off.",
+    "The card takes the link's theme and density and sits at z.popover."
+  ]
+}

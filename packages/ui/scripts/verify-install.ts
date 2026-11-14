@@ -39,6 +39,7 @@ const ITEMS = [
   "select", "combobox", "multi-select",
   "calendar", "date-picker", "time-picker",
   "dialog", "alert-dialog", "sheet", "popover", "tooltip",
+  "hover-card", "dropdown-menu", "context-menu", "menubar", "split-button",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -161,6 +162,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarTrigger } from "@/components/ui/menubar";
+import { SplitButton } from "@/components/ui/split-button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
@@ -219,6 +225,30 @@ function Overlays() {
         <TooltipTrigger render={<IconButton aria-label="Run" />}><svg aria-hidden="true" viewBox="0 0 16 16" /></TooltipTrigger>
         <TooltipContent>Run <TooltipShortcut>Ctrl+Enter</TooltipShortcut></TooltipContent>
       </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="secondary" />}>Copy</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem>Copy cells <DropdownMenuShortcut>Ctrl+C</DropdownMenuShortcut></DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem defaultChecked>Include headers</DropdownMenuCheckboxItem>
+          <DropdownMenuItem danger>Clear</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ContextMenu>
+        <ContextMenuTrigger>orders</ContextMenuTrigger>
+        <ContextMenuContent><ContextMenuItem>Open query tab</ContextMenuItem></ContextMenuContent>
+      </ContextMenu>
+      <Menubar>
+        <MenubarMenu>
+          <MenubarTrigger>File</MenubarTrigger>
+          <MenubarContent><MenubarItem>New tab</MenubarItem></MenubarContent>
+        </MenubarMenu>
+      </Menubar>
+      <HoverCard>
+        <HoverCardTrigger href="#orders">public.orders</HoverCardTrigger>
+        <HoverCardContent>12 columns</HoverCardContent>
+      </HoverCard>
+      <SplitButton menuLabel="Run options" menu={<DropdownMenuItem>Run selection</DropdownMenuItem>}>Run</SplitButton>
     </TooltipProvider>
   );
 }
@@ -434,6 +464,9 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["bg-scrim", "background-color", "color.bg.scrim", "Byterygon Dialog, AlertDialog and Sheet scrim"],
   ["max-w-panel-lg", "max-width", "size.panel.lg", "Byterygon Dialog lg"],
   ["bg-neutral-solid", "background-color", "color.neutral.bg", "Byterygon Tooltip"],
+  ["data-highlighted:bg-hover", "background-color", "color.interactive.hover", "Byterygon menu item highlighted"],
+  ["data-danger:text-danger-fg", "color", "color.status.danger.fg", "Byterygon menu item danger"],
+  ["border-s-accent-solid-active", "border-inline-start-color", "color.accent.bg-active", "Byterygon SplitButton divider"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {

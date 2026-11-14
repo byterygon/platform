@@ -35,7 +35,9 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
      * and the slots seen. A part only renders inside the main component, so the examples are where
      * its classes are found; other components in the examples (an Input in a Field) are skipped.
      * The whole document is read, so popups in a portal count, and each closed popup trigger in the
-     * example (`aria-haspopup`) is clicked once so the parts inside its popup render too.
+     * example (`aria-haspopup`) is clicked once so the parts inside its popup render too, then each
+     * popup trigger inside that popup (a submenu). The component's own `<name>-trigger` without
+     * aria-haspopup gets a right-click (ContextMenu).
      */
     const exampleClasses = async () => {
       const classes = new Set<string>();
@@ -56,13 +58,43 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
       for (const exportName of [manifest.examples.minimal, manifest.examples.realistic]) {
         const { container, unmount } = render(createElement(example[exportName] as ComponentType));
         collect();
-        for (const trigger of container.querySelectorAll('[aria-haspopup]:not([aria-expanded="true"])')) {
+        const open = async (trigger: Element) => {
           await act(async () => {
             trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
           });
           collect();
+        };
+        for (const trigger of container.querySelectorAll('[aria-haspopup]:not([aria-expanded="true"])')) {
+          await open(trigger);
+          // Popup triggers inside the popup that opened (a submenu): open each once as well.
+          for (const inner of document.body.querySelectorAll('[aria-haspopup]:not([aria-expanded="true"])')) {
+            if (!container.contains(inner)) await open(inner);
+          }
+          // Escape until it is closed; a press outside when a submenu keeps it open.
+          for (let i = 0; i < 3 && trigger.getAttribute("aria-expanded") === "true"; i += 1) {
+            await act(async () => {
+              (document.activeElement ?? trigger).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+            });
+          }
+          if (trigger.getAttribute("aria-expanded") === "true") {
+            await act(async () => {
+              for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+                document.body.dispatchEvent(new (type.startsWith("pointer") ? PointerEvent : MouseEvent)(type, { bubbles: true, cancelable: true, button: 0 }));
+              }
+            });
+          }
+        }
+        // A trigger without aria-haspopup that opens on right-click (ContextMenu's area).
+        for (const area of container.querySelectorAll(`[data-slot="${name}-trigger"]:not([aria-haspopup])`)) {
           await act(async () => {
-            (document.activeElement ?? trigger).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+            area.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
+          });
+          collect();
+          for (const inner of document.body.querySelectorAll('[aria-haspopup]:not([aria-expanded="true"])')) {
+            if (!container.contains(inner)) await open(inner);
+          }
+          await act(async () => {
+            (document.activeElement ?? area).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
           });
         }
         unmount();

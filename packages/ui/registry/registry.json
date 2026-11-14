@@ -102,6 +102,26 @@
       ]
     },
     {
+      "name": "context-menu",
+      "type": "registry:ui",
+      "title": "ContextMenu",
+      "description": "A menu opened by a right-click or the context-menu key on an area, on Base UI's ContextMenu: DropdownMenu's items (shortcuts, danger, checkbox and radio items, groups, separators, submenus) at the pointer, on color.bg.overlay at z.popover.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/dropdown-menu",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/context-menu.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "date-picker",
       "type": "registry:ui",
       "title": "DatePicker",
@@ -140,6 +160,25 @@
       "files": [
         {
           "path": "ui/dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "dropdown-menu",
+      "type": "registry:ui",
+      "title": "DropdownMenu",
+      "description": "A menu of actions opened from a button, on Base UI's Menu: items with shortcuts and a danger tone, checkbox and radio items, groups with labels, separators and submenus, on color.bg.overlay at z.popover.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/dropdown-menu.tsx",
           "type": "registry:ui"
         }
       ]
@@ -196,6 +235,26 @@
       "files": [
         {
           "path": "ui/form.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "hover-card",
+      "type": "registry:ui",
+      "title": "HoverCard",
+      "description": "A preview of what a link points to, on Base UI's PreviewCard: shown while the pointer rests on the link or the link has keyboard focus, styled as a Popover, size.panel.sm wide.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/popover",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/hover-card.tsx",
           "type": "registry:ui"
         }
       ]
@@ -270,6 +329,26 @@
       "files": [
         {
           "path": "ui/kbd.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "menubar",
+      "type": "registry:ui",
+      "title": "Menubar",
+      "description": "A row of menus, as at the top of a desktop window, on Base UI's Menubar: titles that open DropdownMenu-style menus (shortcuts, danger, checkbox and radio items, groups, separators, submenus), moving between menus with the arrow keys or the pointer once one is open.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/dropdown-menu",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/menubar.tsx",
           "type": "registry:ui"
         }
       ]
@@ -442,6 +521,25 @@
       "files": [
         {
           "path": "ui/slider.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "split-button",
+      "type": "registry:ui",
+      "title": "SplitButton",
+      "description": "A primary action joined to a menu of its variants: a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in three variants and three sizes.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn",
+        "@byterygon/dropdown-menu",
+        "@byterygon/icon-button"
+      ],
+      "files": [
+        {
+          "path": "ui/split-button.tsx",
           "type": "registry:ui"
         }
       ]
