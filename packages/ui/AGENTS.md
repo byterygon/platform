@@ -86,6 +86,10 @@ What `test/conventions.test.tsx` enforces for every component:
   `FieldLabel` and optional `FieldDescription`. `FieldSet` with `FieldLegend` groups whole Fields.
   An invalid group colours its legend and the controls' borders, not every option's text.
 - FieldLabel and the other Field parts need a `Field` around them (Base UI throws otherwise).
+- Inputs composed from InputGroup (PasswordInput, SearchInput) and FileInput put `ref` on the
+  `<input>` and `className` on the frame; NumberInput and Slider keep Base UI's root ref (`inputRef`
+  reaches NumberInput's text control). FileInput is a native `<input type="file">` kept focusable
+  and visually hidden; files reach the app through `onFilesChange` and never leave the browser.
 - Form state and validation are TanStack Form: `useForm`, `<Form form={form}>`, `form.Field`, and
   `<Field field={field}>`, which maps `isTouched && !isValid`, `isTouched`, `isDirty` and `name`
   to Base UI's controlled `invalid`, `touched`, `dirty`, `name` and gives FieldError the errors.
@@ -100,7 +104,7 @@ What `test/conventions.test.tsx` enforces for every component:
   `border-border`, `border-border-strong`, `bg-hover`, `bg-pressed`, `bg-selected`, the status
   names (`bg-danger`, `text-danger-solid-fg`, `border-danger-border`, `text-danger-fg`). Size and
   space: `h-control-{xs,sm,md,lg}`, `px-control-x`, `p-inset-*`, `gap-inline-*`, `gap-stack-*`,
-  `size-icon-*`. Type: `text-body`, `text-label`, `text-caption`, `text-code`. Radius:
+  `size-icon-*`, `h-track` (a slider track or thin bar). Type: `text-body`, `text-label`, `text-caption`, `text-code`. Radius:
   `rounded-{xs..xl}`. Elevation: `shadow-raised`, `shadow-overlay`, `shadow-modal`.
 - The accent solid is `bg-accent-solid`, `hover:bg-accent-solid-hover`,
   `active:bg-accent-solid-active`, `text-accent-solid-fg`. Never bare `bg-accent`: in a project

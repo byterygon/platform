@@ -1,0 +1,76 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "slider",
+  "title": "Slider",
+  "description": "A slider on Base UI's Slider: one value or a range with two thumbs, horizontal or vertical, on a size.track track with an accent indicator, in three thumb sizes.",
+  "usage": "Use Slider for a value in a known range where the position matters more than the exact number (a sample percentage, a zoom level), or for a range with two thumbs. Put it in a Field with a FieldLabel, and show the current value in the label or next to it; name each thumb of a range with getAriaLabel. With TanStack Form wire value, onValueChange and onBlur (onValueCommitted for work that should run only when the user lets go). For an exact number, use NumberInput, or pair the two.",
+  "status": "experimental",
+  "base": "@base-ui/react/slider",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "value", "type": "number | number[]", "description": "Controlled value; an array of two for a range." },
+    { "name": "defaultValue", "type": "number | number[]", "description": "Initial value when uncontrolled; its length sets the number of thumbs." },
+    { "name": "onValueChange", "type": "(value: number | number[], details) => void", "description": "Called while the value changes (dragging, keys)." },
+    { "name": "onValueCommitted", "type": "(value: number | number[], details) => void", "description": "Called when the user lets go or a key step ends." },
+    { "name": "min", "type": "number", "default": 0, "description": "The lowest value." },
+    { "name": "max", "type": "number", "default": 100, "description": "The highest value." },
+    { "name": "step", "type": "number", "default": 1, "description": "The arrow-key step and the grid values snap to." },
+    { "name": "largeStep", "type": "number", "default": 10, "description": "The PageUp/PageDown and Shift+arrow step." },
+    { "name": "minStepsBetweenValues", "type": "number", "default": 0, "description": "The least distance between the thumbs of a range, in steps." },
+    { "name": "orientation", "type": "\"horizontal\" | \"vertical\"", "default": "horizontal", "description": "Vertical sliders take their height from the layout." },
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Thumb size from size.icon.sm, md or lg." },
+    { "name": "aria-label", "type": "string", "description": "The thumb's name when there is no FieldLabel." },
+    { "name": "getAriaLabel", "type": "(index: number) => string", "description": "Names each thumb of a range." },
+    { "name": "format", "type": "Intl.NumberFormatOptions", "description": "How the value is announced (aria-valuetext)." },
+    { "name": "name", "type": "string", "description": "The form field name; a Field's name wins." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction and dims the slider." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLDivElement>", "description": "Reaches the root <div>." }
+  ],
+  "variants": {
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "div", "description": "The root; data-slot=\"slider\", data-size, data-orientation." },
+    { "name": "control", "element": "div", "description": "The hit area, size.control.xs across; data-slot=\"slider-control\"." },
+    { "name": "track", "element": "div", "description": "The track, size.track thick in color.border.default; data-slot=\"slider-track\"." },
+    { "name": "indicator", "element": "div", "description": "The selected part of the track in the accent solid; data-slot=\"slider-indicator\"." },
+    { "name": "thumb", "element": "div", "description": "A thumb with a native <input type=\"range\"> inside; data-slot=\"slider-thumb\"." }
+  ],
+  "states": [
+    { "name": "hover", "variant": "hover", "description": "Pointer over a thumb: its border turns the accent solid." },
+    { "name": "dragging", "variant": "data-dragging", "description": "While dragging: the thumb's border is the accent solid." },
+    { "name": "focus-visible", "variant": "has-[:focus-visible]", "description": "Keyboard focus on a thumb: a ring of ring.width in color.ring." },
+    { "name": "invalid", "variant": "data-invalid", "description": "In an invalid Field: the thumbs' border is color.status.danger.border." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.bg.surface",
+    "color.border.default",
+    "color.border.strong",
+    "color.ring",
+    "color.status.danger.border",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "ring.offset",
+    "ring.width",
+    "shadow.raised",
+    "size.control.xs",
+    "size.icon.lg",
+    "size.icon.md",
+    "size.icon.sm",
+    "size.track"
+  ],
+  "examples": { "minimal": "SliderMinimal", "realistic": "SliderRealistic" },
+  "accessibility": [
+    "Each thumb holds a native <input type=\"range\">, so screen readers announce it as a slider with its value, and Tab reaches each thumb.",
+    "Arrow keys move by step, PageUp/PageDown and Shift+arrow by largeStep, Home and End to min and max.",
+    "A FieldLabel names a single thumb; name both thumbs of a range with getAriaLabel (\"Minimum length\", \"Maximum length\"). Use format so units are announced.",
+    "The thumb has a color.border.strong border (3:1 against the surface and the track); the selected part is the accent solid.",
+    "Focus shows a ring of ring.width in color.ring around the thumb (3:1 on every surface)."
+  ]
+}

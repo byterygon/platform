@@ -16,6 +16,7 @@
   --spacing-icon-sm: var(--by-size-icon-sm);
   --spacing-icon-md: var(--by-size-icon-md);
   --spacing-icon-lg: var(--by-size-icon-lg);
+  --spacing-track: var(--by-size-track);
 
   --ease-standard: var(--by-motion-easing-standard);
   --ease-enter: var(--by-motion-easing-enter);

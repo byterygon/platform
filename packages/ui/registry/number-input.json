@@ -1,0 +1,270 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "number-input",
+  "type": "registry:ui",
+  "title": "NumberInput",
+  "description": "A number input on Base UI's NumberField with decrement and increment buttons, bounds, steps, locale formatting, and three density-aware sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/number-input.tsx",
+      "type": "registry:ui",
+      "content": "import { NumberField as NumberFieldPrimitive } from \"@base-ui/react/number-field\";\nimport { cn } from \"@/lib/cn\";\n\n// A number input on Base UI's NumberField: the text control (inputmode decimal, formatted for the\n// locale) followed by decrement and increment buttons inside one frame. Arrow keys step by\n// `step`, Shift+arrow and PageUp/PageDown by `largeStep`, Home/End jump to min/max. The buttons\n// are out of the tab order (Base UI), so the frame's ring follows the text control only.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const numberInputVariants = {\n  size: {\n    sm: \"h-control-sm *:first:px-inset-sm\",\n    md: \"h-control-md\",\n    lg: \"h-control-lg *:first:px-inset-lg\",\n  },\n} as const;\n\nconst base = [\"flex w-full min-w-0 flex-col font-sans\"];\n\n// Written out in full (no template strings): Tailwind finds classes by scanning the source as text.\nconst groupClasses = [\n  \"flex w-full min-w-0 items-stretch overflow-hidden rounded-md border border-border-strong bg-surface text-body text-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"has-[[data-slot=number-input-input]:focus-visible]:outline-solid has-[[data-slot=number-input-input]:focus-visible]:outline-[length:var(--by-ring-width)]\",\n  \"has-[[data-slot=number-input-input]:focus-visible]:outline-offset-[var(--by-ring-offset)] has-[[data-slot=number-input-input]:focus-visible]:outline-ring\",\n  \"data-invalid:border-danger-border has-[[aria-invalid=true]]:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\nconst inputClasses = [\n  \"h-full min-w-0 flex-1 bg-transparent px-control-x text-body text-fg tabular-nums outline-none\",\n  \"placeholder:text-fg-subtle\",\n  \"data-disabled:cursor-not-allowed\",\n];\n\nconst stepClasses = [\n  \"flex h-full aspect-square shrink-0 select-none items-center justify-center border-s border-border text-fg-muted\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"hover:bg-hover hover:text-fg active:bg-pressed\",\n  \"data-disabled:pointer-events-none data-disabled:text-fg-disabled\",\n  \"[&_svg]:size-icon-sm\",\n];\n\nconst MinusIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"M3.5 8h9\" />\n  </svg>\n);\n\nconst PlusIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"M3.5 8h9M8 3.5v9\" />\n  </svg>\n);\n\nexport interface NumberInputProps extends Omit<NumberFieldPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof numberInputVariants.size;\n  /** Placeholder of the text control. */\n  placeholder?: string;\n  /** Accessible name when there is no FieldLabel; set on the text control. */\n  \"aria-label\"?: string;\n  /** The decrement button's accessible name. */\n  decrementLabel?: string;\n  /** The increment button's accessible name. */\n  incrementLabel?: string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A number input on Base UI's NumberField, with decrement and increment buttons. Use `value`\n * (a number, or null when empty) and `onValueChange`, `min`, `max`, `step` and `format`\n * (Intl.NumberFormat options). Inside a Field it takes the label, description and validity. The\n * ref reaches the root `<div>`; `inputRef` the `<input>`.\n */\nexport function NumberInput({\n  size = \"md\",\n  placeholder,\n  \"aria-label\": ariaLabel,\n  decrementLabel = \"Decrease\",\n  incrementLabel = \"Increase\",\n  className,\n  ...props\n}: NumberInputProps) {\n  return (\n    <NumberFieldPrimitive.Root data-slot=\"number-input\" data-size={size} className={cn(base, className)} {...props}>\n      <NumberFieldPrimitive.Group data-slot=\"number-input-group\" className={cn(groupClasses, numberInputVariants.size[size])}>\n        <NumberFieldPrimitive.Input data-slot=\"number-input-input\" placeholder={placeholder} aria-label={ariaLabel} className={cn(inputClasses)} />\n        <NumberFieldPrimitive.Decrement data-slot=\"number-input-decrement\" aria-label={decrementLabel} className={cn(stepClasses)}>\n          <MinusIcon />\n        </NumberFieldPrimitive.Decrement>\n        <NumberFieldPrimitive.Increment data-slot=\"number-input-increment\" aria-label={incrementLabel} className={cn(stepClasses)}>\n          <PlusIcon />\n        </NumberFieldPrimitive.Increment>\n      </NumberFieldPrimitive.Group>\n    </NumberFieldPrimitive.Root>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "number-input",
+      "title": "NumberInput",
+      "description": "A number input on Base UI's NumberField with decrement and increment buttons, bounds, steps, locale formatting, and three density-aware sizes.",
+      "usage": "Use NumberInput for a number the user types or nudges: a port, a pool size, a timeout. Put it in a Field with a FieldLabel; with TanStack Form wire value (a number, or null when empty), onValueChange and onBlur to the field. Set min, max and step, and format (Intl.NumberFormat options) for units or percentages; the value stays a plain number. Arrow keys step, Shift+arrow or PageUp/PageDown take largeStep. For a value in a range where the exact number matters less, use Slider; for identifiers that only look like numbers (an account number, a ZIP code), use Input.",
+      "status": "experimental",
+      "base": "@base-ui/react/number-field",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "number | null",
+          "description": "Controlled value; null when empty."
+        },
+        {
+          "name": "defaultValue",
+          "type": "number",
+          "description": "Initial value when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: number | null, details) => void",
+          "description": "Called on every change, typing or stepping."
+        },
+        {
+          "name": "onValueCommitted",
+          "type": "(value: number | null, details) => void",
+          "description": "Called when a change is committed (blur, a step, Enter)."
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "description": "The lowest value; stepping and blur clamp to it."
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "description": "The highest value."
+        },
+        {
+          "name": "step",
+          "type": "number",
+          "default": 1,
+          "description": "The arrow-key and button step."
+        },
+        {
+          "name": "largeStep",
+          "type": "number",
+          "default": 10,
+          "description": "The Shift+arrow and PageUp/PageDown step."
+        },
+        {
+          "name": "format",
+          "type": "Intl.NumberFormatOptions",
+          "description": "How the value is shown (unit, percent, fraction digits)."
+        },
+        {
+          "name": "locale",
+          "type": "Intl.LocalesArgument",
+          "description": "The locale for formatting and parsing; defaults to the user's."
+        },
+        {
+          "name": "allowOutOfRange",
+          "type": "boolean",
+          "default": false,
+          "description": "Keeps a typed value outside min and max instead of clamping it on blur."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "description": "Shown while empty."
+        },
+        {
+          "name": "decrementLabel",
+          "type": "string",
+          "default": "Decrease",
+          "description": "The decrement button's accessible name."
+        },
+        {
+          "name": "incrementLabel",
+          "type": "string",
+          "default": "Increase",
+          "description": "The increment button's accessible name."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "The form field name; a Field's name wins."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "default": false,
+          "description": "Must have a value before the form submits."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction and sets data-disabled."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Focusable but cannot change."
+        },
+        {
+          "name": "inputRef",
+          "type": "Ref<HTMLInputElement>",
+          "description": "Reaches the text control."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root <div>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The root; data-slot=\"number-input\" and data-size."
+        },
+        {
+          "name": "group",
+          "element": "div",
+          "description": "The frame around the input and the buttons; data-slot=\"number-input-group\"."
+        },
+        {
+          "name": "input",
+          "element": "input",
+          "description": "The text control, inputmode decimal, tabular figures; data-slot=\"number-input-input\"."
+        },
+        {
+          "name": "decrement",
+          "element": "button",
+          "description": "The decrement button; data-slot=\"number-input-decrement\"."
+        },
+        {
+          "name": "increment",
+          "element": "button",
+          "description": "The increment button; data-slot=\"number-input-increment\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over a step button: color.interactive.hover and color.fg.default."
+        },
+        {
+          "name": "active",
+          "variant": "active",
+          "description": "Pressing a step button: color.interactive.active."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "has-[[data-slot=number-input-input]:focus-visible]",
+          "description": "Keyboard focus in the input: a ring of ring.width in color.ring around the frame."
+        },
+        {
+          "name": "invalid",
+          "variant": "data-invalid",
+          "description": "In an invalid Field: the frame's border is color.status.danger.border."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction; the frame dims to opacity.disabled."
+        },
+        {
+          "name": "at-limit",
+          "variant": "data-disabled",
+          "description": "A step button at min or max is disabled and shows color.fg.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.default",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.border",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inset.lg",
+        "space.inset.sm",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight"
+      ],
+      "examples": {
+        "minimal": "NumberInputMinimal",
+        "realistic": "NumberInputRealistic"
+      },
+      "accessibility": [
+        "The text control is an <input> with inputmode=\"decimal\" (Base UI); inside a Field it takes the label, description and aria-invalid. Without a Field, give it an aria-label.",
+        "Arrow Up and Down change the value by step, Shift+arrow and PageUp/PageDown by largeStep, Home and End jump to min and max.",
+        "The step buttons are named Decrease and Increase and stay out of the tab order (the keyboard already steps); they disable at the limits.",
+        "A formatted value (\"30 seconds\") is read as shown; the form submits the plain number.",
+        "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+      ]
+    },
+    "example": "import { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { NumberInput } from \"@/components/number-input/number-input\";\n\n/** The smallest useful NumberInput: a labelled number with steppers. */\nexport function NumberInputMinimal() {\n  return (\n    <Field>\n      <FieldLabel>Port</FieldLabel>\n      <NumberInput defaultValue={5432} min={1} max={65535} />\n    </Field>\n  );\n}\n\n/**\n * Connection limits: a pool size with bounds, a timeout in seconds with a unit format, a port out\n * of range, a fetch size the policy fixes, and the small and large sizes.\n */\nexport function NumberInputRealistic() {\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <Field name=\"pool\">\n        <FieldLabel>Pool size</FieldLabel>\n        <NumberInput defaultValue={10} min={1} max={100} />\n        <FieldDescription>Between 1 and 100 connections.</FieldDescription>\n      </Field>\n      <Field name=\"timeout\">\n        <FieldLabel>Statement timeout</FieldLabel>\n        <NumberInput defaultValue={30} min={0} step={5} largeStep={60} format={{ style: \"unit\", unit: \"second\", unitDisplay: \"long\" }} />\n        <FieldDescription>0 waits forever. Shift+arrow steps by a minute.</FieldDescription>\n      </Field>\n      <Field name=\"port\" invalid>\n        <FieldLabel>Port</FieldLabel>\n        <NumberInput size=\"sm\" defaultValue={70000} allowOutOfRange />\n        <FieldError>The port must be between 1 and 65535.</FieldError>\n      </Field>\n      <Field name=\"fetch\" disabled>\n        <FieldLabel>Fetch size</FieldLabel>\n        <NumberInput defaultValue={1000} />\n        <FieldDescription>Set by the workspace administrator.</FieldDescription>\n      </Field>\n      <Field name=\"rows\">\n        <FieldLabel>Row limit</FieldLabel>\n        <NumberInput size=\"lg\" placeholder=\"No limit\" min={1} />\n      </Field>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

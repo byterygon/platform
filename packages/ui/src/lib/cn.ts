@@ -10,7 +10,7 @@ export const roleNames = {
   text: ["display", "heading-1", "heading-2", "heading-3", "heading-4", "body", "body-strong", "label", "caption", "code", "code-sm"],
   /** `h-<role>`, `p-<role>`, `gap-<role>`, `size-<role>`: the density-aware size and space roles. */
   spacing: [
-    "icon-xs", "icon-sm", "icon-md", "icon-lg",
+    "icon-xs", "icon-sm", "icon-md", "icon-lg", "track",
     "control-xs", "control-sm", "control-md", "control-lg", "control-x",
     "inline-xs", "inline-sm", "inline-md", "inline-lg", "inline-xl",
     "stack-xs", "stack-sm", "stack-md", "stack-lg", "stack-xl",

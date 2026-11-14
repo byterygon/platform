@@ -58,6 +58,20 @@ Usage: Wrap every form control (Input, Textarea, InputGroup) in a Field with a F
 - Tokens: color.fg.default, color.fg.muted, color.status.danger.fg, font.sans, opacity.disabled, space.inline.sm, space.stack.md, space.stack.xs, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
 - Accessibility: FieldLabel is a <label> tied to the control, so clicking it focuses the control and screen readers announce it as the control's name. FieldDescription and FieldError are named in the control's aria-describedby; the error is read when the control is focused. A FieldSet, RadioGroup or CheckboxGroup is named by its FieldLegend through aria-labelledby; a FieldDescription inside a FieldItem describes that option only. An invalid field sets aria-invalid on the control; the message, not the danger colour, carries the meaning. Show errors after the user leaves the field or submits (the default with a TanStack field: touched and invalid), not on the first keystroke. color.status.danger.fg and color.fg.muted are contrast-checked as text on every surface.
 
+### FileInput
+
+[file-input.json](file-input.json): A file picker on a native <input type="file"> (Base UI's Input), as one line like an Input or as a dashed dropzone, with a Clear button and accept filtering of dropped files.
+
+Usage: Use FileInput to pick local files the app reads in the browser or sends with the form: a CA certificate, a key, SQL scripts to import. Put it in a Field with a FieldLabel; set accept (".pem,.crt", "image/*") and multiple as on the native input. Read the files from onFilesChange ([] when cleared); with TanStack Form, keep File[] in the field and call field.handleChange from onFilesChange. The dropzone variant also takes dropped files (filtered by accept) and suits imports; the field variant suits settings forms. Nothing is uploaded by the component; it has no network code.
+
+- Wraps: @base-ui/react/input
+- variant: field, dropzone
+- size: sm, md, lg
+- Props: onFilesChange ((files: File[]) => void); accept (string); multiple (boolean, default false); variant ("field" | "dropzone", default "field"); size ("sm" | "md" | "lg", default "md"); chooseLabel (string, default "Choose file"); emptyLabel (string, default "No file chosen"); dropLabel (string, default "Drop a file here, or"); clearLabel (string, default "Clear file"); name (string); required (boolean, default false); disabled (boolean, default false); className (string); ref (Ref<HTMLInputElement>)
+- States: hover (hover), focus-visible (has-[[data-slot=file-input-input]:focus-visible]), dragging (data-dragging), empty (data-empty), invalid (has-[[data-slot=file-input-input][data-invalid]]), disabled (has-[[data-slot=file-input-input][data-disabled]])
+- Tokens: color.accent.bg, color.accent.subtle-bg, color.bg.surface, color.border.strong, color.fg.default, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.neutral.subtle-bg, color.neutral.subtle-fg, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, radius.sm, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.control.xs, size.icon.sm, space.inline.sm, space.inline.xs, space.inset.lg, space.inset.sm, space.inset.xs, space.stack.sm, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: The control is a native <input type="file">, visually hidden but focusable: Tab reaches it, Space or Enter opens the system picker, and screen readers announce its label and the chosen file. The chip and the file names repeat what the input announces, so they are aria-hidden; the FieldLabel names the input and clicking it opens the picker. Dropping files is a pointer shortcut only; the same files can always be chosen with the keyboard. Announce what was added in a role="status" element. The Clear button is named "Clear file" and returns focus to the input. Focus shows a ring of ring.width in color.ring around the frame (3:1 on every surface).
+
 ### Form
 
 [form.json](form.json): A <form> laid out as a column of Fields and submitted through TanStack Form: no native validation, handleSubmit on submit, focus on the first invalid field.
@@ -124,6 +138,32 @@ Usage: Use Kbd in help text, menus and tooltips to show a key (Esc) or, with Kbd
 - Tokens: color.bg.inset, color.border.default, color.fg.muted, font.mono, font.sans, radius.sm, size.control.xs, size.icon.xs, space.inline.sm, space.inline.xs, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight
 - Accessibility: Renders <kbd>, which marks keyboard input; KbdGroup is an outer <kbd>, as HTML nests the keys of a combination. Screen readers read the key labels and the text separators; write "Ctrl", not an icon alone. A <kbd> takes no aria-label: give a symbol (⌘) visually hidden text (sr-only) and mark the symbol aria-hidden. Not focusable and not interactive; nothing to operate. color.fg.muted on color.bg.inset is contrast-checked as text by the token build.
 
+### NumberInput
+
+[number-input.json](number-input.json): A number input on Base UI's NumberField with decrement and increment buttons, bounds, steps, locale formatting, and three density-aware sizes.
+
+Usage: Use NumberInput for a number the user types or nudges: a port, a pool size, a timeout. Put it in a Field with a FieldLabel; with TanStack Form wire value (a number, or null when empty), onValueChange and onBlur to the field. Set min, max and step, and format (Intl.NumberFormat options) for units or percentages; the value stays a plain number. Arrow keys step, Shift+arrow or PageUp/PageDown take largeStep. For a value in a range where the exact number matters less, use Slider; for identifiers that only look like numbers (an account number, a ZIP code), use Input.
+
+- Wraps: @base-ui/react/number-field
+- size: sm, md, lg
+- Props: value (number | null); defaultValue (number); onValueChange ((value: number | null, details) => void); onValueCommitted ((value: number | null, details) => void); min (number); max (number); step (number, default 1); largeStep (number, default 10); format (Intl.NumberFormatOptions); locale (Intl.LocalesArgument); allowOutOfRange (boolean, default false); size ("sm" | "md" | "lg", default "md"); placeholder (string); decrementLabel (string, default "Decrease"); incrementLabel (string, default "Increase"); name (string); required (boolean, default false); disabled (boolean, default false); readOnly (boolean, default false); inputRef (Ref<HTMLInputElement>); className (string); ref (Ref<HTMLDivElement>)
+- States: hover (hover), active (active), focus-visible (has-[[data-slot=number-input-input]:focus-visible]), invalid (data-invalid), disabled (data-disabled), at-limit (data-disabled)
+- Tokens: color.bg.surface, color.border.default, color.border.strong, color.fg.default, color.fg.disabled, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.icon.sm, space.control.x, space.inset.lg, space.inset.sm, text.body.leading, text.body.size, text.body.tracking, text.body.weight
+- Accessibility: The text control is an <input> with inputmode="decimal" (Base UI); inside a Field it takes the label, description and aria-invalid. Without a Field, give it an aria-label. Arrow Up and Down change the value by step, Shift+arrow and PageUp/PageDown by largeStep, Home and End jump to min and max. The step buttons are named Decrease and Increase and stay out of the tab order (the keyboard already steps); they disable at the limits. A formatted value ("30 seconds") is read as shown; the form submits the plain number. Focus shows a ring of ring.width in color.ring (3:1 on every surface).
+
+### PasswordInput
+
+[password-input.json](password-input.json): A password input with a show/hide button, on InputGroup and Base UI's Input, in three density-aware sizes.
+
+Usage: Use PasswordInput for any secret the user types: a database password, a key passphrase, a token. Put it in a Field with a FieldLabel; with TanStack Form wire value, onValueChange and onBlur to the field like Input. Set autoComplete="new-password" when the user chooses a new secret (the default, "current-password", lets password managers fill a saved one). The show button keeps the name "Show password" (toggleLabel) in both states. For a secret the user should not see at all, use a disabled PasswordInput or no input.
+
+- Wraps: @base-ui/react/input
+- size: sm, md, lg
+- Props: value (string); defaultValue (string); onValueChange ((value: string, details) => void); visible (boolean); defaultVisible (boolean, default false); onVisibleChange ((visible: boolean) => void); toggleLabel (string, default "Show password"); autoComplete (string, default "current-password"); size ("sm" | "md" | "lg", default "md"); disabled (boolean, default false); className (string); ref (Ref<HTMLInputElement>)
+- States: hover (hover), visible (aria-pressed), focus-visible (focus-visible), invalid (has-[[data-slot=input-group-input][data-invalid]]), disabled (has-[[data-slot=input-group-input][data-disabled]])
+- Tokens: color.bg.surface, color.border.strong, color.fg.default, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.control.xs, size.icon.sm, space.control.x, space.inline.md, space.inline.sm, space.inline.xs, space.inset.sm, space.inset.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: The text control is a native <input type="password"> (type="text" while shown), so password managers, paste and autofill work. The show button is a native <button> after the input in tab order, named "Show password" in both states and with aria-pressed telling whether the text is shown. Showing the text keeps focus where it was; the value and the caret do not change. Inside a Field the input takes the label, description and aria-invalid. Focus shows a ring of ring.width in color.ring (3:1 on every surface).
+
 ### RadioGroup
 
 [radio-group.json](radio-group.json): One choice out of several, on Base UI's RadioGroup and Radio: a fieldset of radios named by a FieldLegend, each option in a FieldItem with its own label and description, in three sizes.
@@ -137,6 +177,32 @@ Usage: Use RadioGroup when the user must pick exactly one of two to about six op
 - States: hover (hover), checked (data-checked), focus-visible (focus-visible), invalid (data-invalid), disabled (data-disabled)
 - Tokens: color.accent.bg, color.accent.bg-hover, color.accent.fg, color.bg.surface, color.border.strong, color.interactive.hover, color.ring, color.status.danger.border, motion.duration.fast, motion.easing.standard, opacity.disabled, ring.offset, ring.width, size.icon.lg, size.icon.md, size.icon.sm, space.stack.sm
 - Accessibility: Renders a <div role="radiogroup"> named by its FieldLegend (aria-labelledby), with a <span role="radio"> and aria-checked per option, and hidden native inputs for forms. Tab enters the group at the chosen radio (or the first) and leaves it; arrow keys move the choice, skipping disabled radios. Wrap each radio and its text in a FieldLabel: the text chooses it too, which enlarges the target beyond the 14 to 20 px circle (WCAG 2.2 target size). A FieldDescription inside the FieldItem describes that option only. The chosen radio shows a dot as well as the accent fill; the border is color.border.strong (3:1 against the surface). Focus shows a ring of ring.width in color.ring (3:1 on every surface).
+
+### SearchInput
+
+[search-input.json](search-input.json): A search box on InputGroup and Base UI's Input: a search icon, type="search", and a Clear button (and Escape) while there is text, in three density-aware sizes.
+
+Usage: Use SearchInput to filter or search a list as the user types: tables in a schema browser, rows of a result, settings. Name it with a FieldLabel or an aria-label ("Search tables"); the placeholder is not a name. Wire value and onValueChange (called with "" when cleared) and announce the result count in a role="status" element. Escape clears the text, and only passes through when there is nothing to clear. For a query that runs on Enter only, use it the same way and act in onKeyDown; for picking one option from a list, use Combobox.
+
+- Wraps: @base-ui/react/input
+- size: sm, md, lg
+- Props: value (string); defaultValue (string, default ""); onValueChange ((value: string) => void); clearLabel (string, default "Clear search"); size ("sm" | "md" | "lg", default "md"); placeholder (string); disabled (boolean, default false); readOnly (boolean, default false); className (string); ref (Ref<HTMLInputElement>)
+- States: hover (hover), focus-visible (has-[[data-slot=input-group-input]:focus-visible]), invalid (has-[[data-slot=input-group-input][data-invalid]]), disabled (has-[[data-slot=input-group-input][data-disabled]])
+- Tokens: color.bg.surface, color.border.strong, color.fg.default, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.control.xs, size.icon.sm, space.control.x, space.inline.md, space.inline.sm, space.inline.xs, space.inset.sm, space.inset.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: The text control is a native <input type="search"> (role searchbox); name it with a FieldLabel or aria-label, not only a placeholder. The Clear button is a native <button> named "Clear search"; it returns focus to the input. Escape clears as well, and is left to the page (a dialog) when the box is empty. Announce how many results match in a role="status" element next to it; the box itself does not. The search icon is decorative (aria-hidden) and clicking it focuses the input. Focus shows a ring of ring.width in color.ring (3:1 on every surface).
+
+### Slider
+
+[slider.json](slider.json): A slider on Base UI's Slider: one value or a range with two thumbs, horizontal or vertical, on a size.track track with an accent indicator, in three thumb sizes.
+
+Usage: Use Slider for a value in a known range where the position matters more than the exact number (a sample percentage, a zoom level), or for a range with two thumbs. Put it in a Field with a FieldLabel, and show the current value in the label or next to it; name each thumb of a range with getAriaLabel. With TanStack Form wire value, onValueChange and onBlur (onValueCommitted for work that should run only when the user lets go). For an exact number, use NumberInput, or pair the two.
+
+- Wraps: @base-ui/react/slider
+- size: sm, md, lg
+- Props: value (number | number[]); defaultValue (number | number[]); onValueChange ((value: number | number[], details) => void); onValueCommitted ((value: number | number[], details) => void); min (number, default 0); max (number, default 100); step (number, default 1); largeStep (number, default 10); minStepsBetweenValues (number, default 0); orientation ("horizontal" | "vertical", default "horizontal"); size ("sm" | "md" | "lg", default "md"); aria-label (string); getAriaLabel ((index: number) => string); format (Intl.NumberFormatOptions); name (string); disabled (boolean, default false); className (string); ref (Ref<HTMLDivElement>)
+- States: hover (hover), dragging (data-dragging), focus-visible (has-[:focus-visible]), invalid (data-invalid), disabled (data-disabled)
+- Tokens: color.accent.bg, color.bg.surface, color.border.default, color.border.strong, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, ring.offset, ring.width, shadow.raised, size.control.xs, size.icon.lg, size.icon.md, size.icon.sm, size.track
+- Accessibility: Each thumb holds a native <input type="range">, so screen readers announce it as a slider with its value, and Tab reaches each thumb. Arrow keys move by step, PageUp/PageDown and Shift+arrow by largeStep, Home and End to min and max. A FieldLabel names a single thumb; name both thumbs of a range with getAriaLabel ("Minimum length", "Maximum length"). Use format so units are announced. The thumb has a color.border.strong border (3:1 against the surface and the track); the selected part is the accent solid. Focus shows a ring of ring.width in color.ring around the thumb (3:1 on every surface).
 
 ### Switch
 
