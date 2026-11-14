@@ -37,7 +37,7 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
      * The whole document is read, so popups in a portal count, and each closed popup trigger in the
      * example (`aria-haspopup`) is clicked once so the parts inside its popup render too, then each
      * popup trigger inside that popup (a submenu). The component's own `<name>-trigger` without
-     * aria-haspopup gets a right-click (ContextMenu).
+     * aria-haspopup gets a click (NavigationMenu) and a right-click (ContextMenu).
      */
     const exampleClasses = async () => {
       const classes = new Set<string>();
@@ -84,8 +84,16 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
             });
           }
         }
-        // A trigger without aria-haspopup that opens on right-click (ContextMenu's area).
+        // The component's own trigger without aria-haspopup: NavigationMenu's opens on click (it has
+        // aria-expanded only), ContextMenu's area on right-click. Each is tried once.
         for (const area of container.querySelectorAll(`[data-slot="${name}-trigger"]:not([aria-haspopup])`)) {
+          await act(async () => {
+            area.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+          });
+          collect();
+          await act(async () => {
+            (document.activeElement ?? area).dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+          });
           await act(async () => {
             area.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
           });

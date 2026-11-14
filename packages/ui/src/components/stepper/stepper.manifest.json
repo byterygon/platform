@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "stepper",
+  "title": "Stepper",
+  "description": "The steps of a task done in order: an ordered list of numbered steps joined by lines, showing done (accent, check), current, upcoming and failed steps, horizontal or vertical, with completed steps optionally clickable to go back.",
+  "usage": "Use Stepper to show where the user is in a task of three to six ordered steps: add a connection, approve access, connect; a first-run guide. Pass steps ({ title, description?, error? }) and value (the current index; steps.length when all are done); pass onValueChange to let the user return to a completed step; name it with aria-label. It shows progress, it does not hold the steps' content: render the current step's form beside it. For a hierarchy use Breadcrumb; for views the user switches freely, Tabs.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    { "name": "steps", "type": "{ title: ReactNode; description?: ReactNode; error?: boolean }[]", "required": true, "description": "The steps, in order; error marks one that failed." },
+    { "name": "value", "type": "number", "required": true, "description": "The current step's index from 0; steps.length when all are done." },
+    { "name": "onValueChange", "type": "(index: number) => void", "description": "Makes completed steps buttons that go back to them." },
+    { "name": "orientation", "type": "\"horizontal\" | \"vertical\"", "default": "horizontal", "description": "A row of steps, or a column for a side panel." },
+    { "name": "aria-label", "type": "string", "default": "Progress", "description": "The list's accessible name: what the steps are for." },
+    { "name": "className", "type": "string", "description": "Extra classes for the list." }
+  ],
+  "variants": {
+    "orientation": ["horizontal", "vertical"]
+  },
+  "slots": [
+    { "name": "root", "element": "ol", "description": "The list; data-slot=\"stepper\", data-orientation." },
+    { "name": "indicator", "element": "span", "description": "The circle (size.control.sm) with the number, a check when done, or an alert mark when failed; aria-hidden; data-slot=\"stepper-indicator\"." },
+    { "name": "title", "element": "span", "description": "The step's name in type.label, with its status as visually hidden text; data-slot=\"stepper-title\"." },
+    { "name": "connector", "element": "span", "description": "The line to the next step, color.accent.bg once the step is done; data-slot=\"stepper-connector\"." },
+    { "name": "button", "element": "button", "description": "Wraps a completed step when onValueChange is given; data-slot=\"stepper-button\"." }
+  ],
+  "parts": [
+    { "name": "StepperItem", "slot": "stepper-item", "description": "One step, an <li> with aria-current=\"step\" when current and data-status; Stepper renders one per step." }
+  ],
+  "states": [
+    { "name": "complete", "variant": "data-[status=complete]", "description": "A step before the current one: accent circle with a check, accent connector." },
+    { "name": "current", "variant": "data-[status=current]", "description": "The current step: accent ring, aria-current=\"step\"." },
+    { "name": "upcoming", "variant": "data-[status=upcoming]", "description": "A step after the current one: color.border.strong ring, color.fg.muted number and title." },
+    { "name": "error", "variant": "data-[status=error]", "description": "A step that failed: color.status.danger border, background and text, an alert mark." },
+    { "name": "hover", "variant": "hover", "description": "A clickable completed step under the pointer: color.interactive.hover." },
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus on a clickable step: the focus ring." }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.accent.fg",
+    "color.border.default",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.interactive.hover",
+    "color.ring",
+    "color.status.danger.bg",
+    "color.status.danger.border",
+    "color.status.danger.fg",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "radius.sm",
+    "ring.offset",
+    "ring.width",
+    "size.control.sm",
+    "size.icon.sm",
+    "space.inline.sm",
+    "space.stack.md",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": { "minimal": "StepperMinimal", "realistic": "StepperRealistic" },
+  "accessibility": [
+    "An ordered list named by aria-label; the current step has aria-current=\"step\".",
+    "Each step's status is visually hidden text after its title (completed, current step, not started, failed), so it does not rest on the circle's colour or icon, which are aria-hidden.",
+    "With onValueChange, completed steps are buttons in the tab order with a focus ring; upcoming steps are not interactive.",
+    "Only colours transition; nothing moves."
+  ]
+}

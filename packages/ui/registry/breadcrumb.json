@@ -1,0 +1,149 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "breadcrumb",
+  "type": "registry:ui",
+  "title": "Breadcrumb",
+  "description": "Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list of links, the current place, separators and an ellipsis for collapsed items, on Base UI's useRender.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/breadcrumb.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport type { ComponentProps } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list, on Base UI's\n// useRender (no Base UI part exists). Breadcrumb > BreadcrumbList > BreadcrumbItem >\n// BreadcrumbLink (or BreadcrumbPage for the current place), with BreadcrumbSeparator between items\n// and BreadcrumbEllipsis for a collapsed middle. BreadcrumbLink takes `render` for a router link.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const breadcrumbVariants = {} as const;\n\nconst classes = {\n  list: \"flex min-w-0 flex-wrap items-center gap-inline-xs font-sans text-body text-fg-muted\",\n  item: \"inline-flex min-w-0 items-center gap-inline-xs\",\n  link: [\n    \"min-w-0 truncate rounded-xs text-fg-muted underline-offset-4 outline-none\",\n    \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:text-fg hover:underline\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  ],\n  page: \"min-w-0 truncate text-fg\",\n  separator: \"flex text-fg-subtle [&_svg]:size-icon-xs\",\n  ellipsis: \"flex size-icon-md items-center justify-center text-fg-subtle [&_svg]:size-icon-sm\",\n} as const;\n\nconst ChevronIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m6 4 4 4-4 4\" />\n  </svg>\n);\n\nconst MoreIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"currentColor\">\n    <circle cx=\"3.5\" cy=\"8\" r=\"1.25\" />\n    <circle cx=\"8\" cy=\"8\" r=\"1.25\" />\n    <circle cx=\"12.5\" cy=\"8\" r=\"1.25\" />\n  </svg>\n);\n\ntype WithClass<P> = Omit<P, \"className\"> & {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n};\n\nexport type BreadcrumbProps = WithClass<ComponentProps<\"nav\">>;\n\n/** The trail: a <nav> named \"Breadcrumb\" (aria-label) holding a BreadcrumbList. */\nexport function Breadcrumb({ className, \"aria-label\": label = \"Breadcrumb\", ...props }: BreadcrumbProps) {\n  return <nav data-slot=\"breadcrumb\" aria-label={label} className={cn(\"min-w-0\", className)} {...props} />;\n}\n\n/** The ordered list of places, from the root to the current one. */\nexport function BreadcrumbList({ className, ...props }: WithClass<ComponentProps<\"ol\">>) {\n  return <ol data-slot=\"breadcrumb-list\" className={cn(classes.list, className)} {...props} />;\n}\n\n/** One place in the trail. */\nexport function BreadcrumbItem({ className, ...props }: WithClass<ComponentProps<\"li\">>) {\n  return <li data-slot=\"breadcrumb-item\" className={cn(classes.item, className)} {...props} />;\n}\n\nexport type BreadcrumbLinkProps = WithClass<useRender.ComponentProps<\"a\">>;\n\n/** A link to a place above the current one; `render` swaps the `<a>` for a router link. */\nexport function BreadcrumbLink({ className, render, ...props }: BreadcrumbLinkProps) {\n  return useRender({ defaultTagName: \"a\", render, props: { \"data-slot\": \"breadcrumb-link\", ...props, className: cn(classes.link, className) } });\n}\n\n/** The current place: not a link, aria-current=\"page\". */\nexport function BreadcrumbPage({ className, ...props }: WithClass<ComponentProps<\"span\">>) {\n  return <span data-slot=\"breadcrumb-page\" aria-current=\"page\" className={cn(classes.page, className)} {...props} />;\n}\n\n/** The mark between two items (a chevron by default), hidden from assistive technology. */\nexport function BreadcrumbSeparator({ className, children, ...props }: WithClass<ComponentProps<\"li\">>) {\n  return (\n    <li data-slot=\"breadcrumb-separator\" role=\"presentation\" aria-hidden=\"true\" className={cn(classes.separator, className)} {...props}>\n      {children ?? <ChevronIcon />}\n    </li>\n  );\n}\n\n/** Stands for collapsed items; put it in a BreadcrumbItem, or render a DropdownMenuTrigger listing them. */\nexport function BreadcrumbEllipsis({ className, ...props }: WithClass<ComponentProps<\"span\">>) {\n  return (\n    <span data-slot=\"breadcrumb-ellipsis\" role=\"presentation\" className={cn(classes.ellipsis, className)} {...props}>\n      <MoreIcon />\n      <span className=\"sr-only\">More places</span>\n    </span>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "breadcrumb",
+      "title": "Breadcrumb",
+      "description": "Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list of links, the current place, separators and an ellipsis for collapsed items, on Base UI's useRender.",
+      "usage": "Use Breadcrumb to show and move up a path: connection, schema, table, column; a settings section. Compose it as Breadcrumb > BreadcrumbList > BreadcrumbItem (BreadcrumbLink with href, or render a router link) with BreadcrumbSeparator between items, and BreadcrumbPage for the last, current place. Collapse a long middle into BreadcrumbEllipsis inside a DropdownMenuTrigger listing the hidden places. It is not a substitute for navigation: use Sidebar or NavigationMenu for that; for steps of a task, Stepper.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "aria-label",
+          "type": "string",
+          "default": "Breadcrumb",
+          "description": "Breadcrumb: the name of the <nav> landmark."
+        },
+        {
+          "name": "href",
+          "type": "string",
+          "description": "BreadcrumbLink: the place's address."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | (props) => ReactElement",
+          "description": "BreadcrumbLink: a router link instead of <a>."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "BreadcrumbSeparator: a custom mark (\"/\"); a chevron by default."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "nav",
+          "description": "A navigation landmark named Breadcrumb; data-slot=\"breadcrumb\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "BreadcrumbList",
+          "slot": "breadcrumb-list",
+          "description": "An <ol> that wraps on narrow widths, in color.fg.muted."
+        },
+        {
+          "name": "BreadcrumbItem",
+          "slot": "breadcrumb-item",
+          "description": "An <li> holding a link, the page or an ellipsis."
+        },
+        {
+          "name": "BreadcrumbLink",
+          "slot": "breadcrumb-link",
+          "description": "An <a> (or render) in color.fg.muted, underlined and color.fg.default on hover, truncated when long."
+        },
+        {
+          "name": "BreadcrumbPage",
+          "slot": "breadcrumb-page",
+          "description": "The current place, a <span> with aria-current=\"page\" in color.fg.default."
+        },
+        {
+          "name": "BreadcrumbSeparator",
+          "slot": "breadcrumb-separator",
+          "description": "An aria-hidden <li> with a chevron or the given mark, in color.fg.subtle."
+        },
+        {
+          "name": "BreadcrumbEllipsis",
+          "slot": "breadcrumb-ellipsis",
+          "description": "Three dots for collapsed places, with visually hidden text \"More places\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "A link under the pointer: color.fg.default and underlined."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on a link: a ring of ring.width in color.ring."
+        }
+      ],
+      "tokens": [
+        "color.fg.default",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.ring",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "radius.xs",
+        "ring.offset",
+        "ring.width",
+        "size.icon.md",
+        "size.icon.sm",
+        "size.icon.xs",
+        "space.inline.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight"
+      ],
+      "examples": {
+        "minimal": "BreadcrumbMinimal",
+        "realistic": "BreadcrumbRealistic"
+      },
+      "accessibility": [
+        "The trail is a <nav> landmark named \"Breadcrumb\" holding an ordered list, so its length and order are announced.",
+        "The current place has aria-current=\"page\" and is not a link; the separators are aria-hidden, so they are not read between items.",
+        "Links are in the tab order with a visible focus ring; a collapsed middle is a menu button with an accessible name.",
+        "Long names are truncated visually but keep their full text for assistive technology.",
+        "Only colours transition; nothing moves."
+      ]
+    },
+    "example": "import { Breadcrumb, BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from \"@/components/breadcrumb/breadcrumb\";\nimport { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from \"@/components/dropdown-menu/dropdown-menu\";\n\n/** The smallest useful Breadcrumb: two links and the current place. */\nexport function BreadcrumbMinimal() {\n  return (\n    <Breadcrumb>\n      <BreadcrumbList>\n        <BreadcrumbItem>\n          <BreadcrumbLink href=\"#orders-prod\">orders-prod</BreadcrumbLink>\n        </BreadcrumbItem>\n        <BreadcrumbSeparator />\n        <BreadcrumbItem>\n          <BreadcrumbLink href=\"#public\">public</BreadcrumbLink>\n        </BreadcrumbItem>\n        <BreadcrumbSeparator />\n        <BreadcrumbItem>\n          <BreadcrumbPage>orders</BreadcrumbPage>\n        </BreadcrumbItem>\n      </BreadcrumbList>\n    </Breadcrumb>\n  );\n}\n\n/** A deep column path with the middle collapsed into a menu, and a slash separator. */\nexport function BreadcrumbRealistic() {\n  return (\n    <Breadcrumb>\n      <BreadcrumbList>\n        <BreadcrumbItem>\n          <BreadcrumbLink href=\"#workspace\">Workspace</BreadcrumbLink>\n        </BreadcrumbItem>\n        <BreadcrumbSeparator>/</BreadcrumbSeparator>\n        <BreadcrumbItem>\n          <DropdownMenu>\n            <DropdownMenuTrigger aria-label=\"Show collapsed places\" className=\"flex rounded-xs outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\">\n              <BreadcrumbEllipsis />\n            </DropdownMenuTrigger>\n            <DropdownMenuContent>\n              <DropdownMenuItem>orders-prod</DropdownMenuItem>\n              <DropdownMenuItem>public</DropdownMenuItem>\n              <DropdownMenuItem>Tables</DropdownMenuItem>\n            </DropdownMenuContent>\n          </DropdownMenu>\n        </BreadcrumbItem>\n        <BreadcrumbSeparator>/</BreadcrumbSeparator>\n        <BreadcrumbItem>\n          <BreadcrumbLink href=\"#orders\">orders</BreadcrumbLink>\n        </BreadcrumbItem>\n        <BreadcrumbSeparator>/</BreadcrumbSeparator>\n        <BreadcrumbItem>\n          <BreadcrumbPage>created_at</BreadcrumbPage>\n        </BreadcrumbItem>\n      </BreadcrumbList>\n    </Breadcrumb>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

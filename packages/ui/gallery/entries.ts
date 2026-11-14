@@ -10,6 +10,7 @@ export interface GalleryEntry {
 export const gallery: GalleryEntry[] = [
   // ui:new entries start
   { name: "alert-dialog", load: () => import("@/components/alert-dialog/alert-dialog.example") },
+  { name: "breadcrumb", load: () => import("@/components/breadcrumb/breadcrumb.example") },
   { name: "button", load: () => import("@/components/button/button.example") },
   { name: "calendar", load: () => import("@/components/calendar/calendar.example") },
   { name: "checkbox", load: () => import("@/components/checkbox/checkbox.example") },
@@ -29,7 +30,9 @@ export const gallery: GalleryEntry[] = [
   { name: "kbd", load: () => import("@/components/kbd/kbd.example") },
   { name: "menubar", load: () => import("@/components/menubar/menubar.example") },
   { name: "multi-select", load: () => import("@/components/multi-select/multi-select.example") },
+  { name: "navigation-menu", load: () => import("@/components/navigation-menu/navigation-menu.example") },
   { name: "number-input", load: () => import("@/components/number-input/number-input.example") },
+  { name: "pagination", load: () => import("@/components/pagination/pagination.example") },
   { name: "password-input", load: () => import("@/components/password-input/password-input.example") },
   { name: "popover", load: () => import("@/components/popover/popover.example") },
   { name: "radio-group", load: () => import("@/components/radio-group/radio-group.example") },
@@ -38,6 +41,7 @@ export const gallery: GalleryEntry[] = [
   { name: "sheet", load: () => import("@/components/sheet/sheet.example") },
   { name: "slider", load: () => import("@/components/slider/slider.example") },
   { name: "split-button", load: () => import("@/components/split-button/split-button.example") },
+  { name: "stepper", load: () => import("@/components/stepper/stepper.example") },
   { name: "switch", load: () => import("@/components/switch/switch.example") },
   { name: "tabs", load: () => import("@/components/tabs/tabs.example") },
   { name: "textarea", load: () => import("@/components/textarea/textarea.example") },

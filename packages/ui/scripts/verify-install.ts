@@ -41,6 +41,7 @@ const ITEMS = [
   "dialog", "alert-dialog", "sheet", "popover", "tooltip",
   "hover-card", "dropdown-menu", "context-menu", "menubar", "split-button",
   "tabs", "toast", "command-palette",
+  "breadcrumb", "pagination", "stepper", "navigation-menu",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -163,7 +164,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { CommandPalette } from "@/components/ui/command-palette";
+import { NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger } from "@/components/ui/navigation-menu";
+import { Pagination } from "@/components/ui/pagination";
+import { Stepper } from "@/components/ui/stepper";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toast } from "@/components/ui/toast";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -260,6 +265,23 @@ function Overlays() {
         <TabsContent value="q1">select 1;</TabsContent>
       </Tabs>
       <Toast placement="static" />
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem><BreadcrumbLink href="#db">orders-prod</BreadcrumbLink></BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem><BreadcrumbPage>orders</BreadcrumbPage></BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+      <Pagination page={3} pageCount={20} />
+      <Stepper steps={[{ title: "Details" }, { title: "Approve" }, { title: "Connect", error: true }]} value={1} />
+      <NavigationMenu>
+        <NavigationMenuList>
+          <NavigationMenuItem>
+            <NavigationMenuTrigger>Workspace</NavigationMenuTrigger>
+            <NavigationMenuContent><NavigationMenuLink href="#c" active>Connections</NavigationMenuLink></NavigationMenuContent>
+          </NavigationMenuItem>
+        </NavigationMenuList>
+      </NavigationMenu>
       <CommandPalette groups={[{ label: "Query", items: [{ id: "run", label: "Run statement", shortcut: "Ctrl+Enter", onSelect: () => {} }] }]} hotkeys={["Mod+K"]} />
       <SplitButton menuLabel="Run options" menu={<DropdownMenuItem>Run selection</DropdownMenuItem>}>Run</SplitButton>
     </TooltipProvider>
@@ -483,6 +505,8 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["data-active:border-accent-solid", "border-color", "color.accent.bg", "Byterygon Tabs line active"],
   ["data-active:bg-surface", "background-color", "color.bg.surface", "Byterygon Tabs enclosed active"],
   ["w-panel-sm", "width", "size.panel.sm", "Byterygon Toast region"],
+  ["data-current:bg-selected", "background-color", "color.interactive.selected", "Byterygon Pagination current page"],
+  ["data-[status=error]:text-danger-fg", "color", "color.status.danger.fg", "Byterygon Stepper failed step"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {

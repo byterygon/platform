@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "pagination",
+  "title": "Pagination",
+  "description": "Moving between pages of a long list: a <nav> with Previous, page numbers (first, last, current and its neighbours, gaps as an ellipsis) and Next, from Button and IconButton, in two sizes.",
+  "usage": "Use Pagination when a list is served in pages and the user needs to jump between them: the audit log, a list of saved queries. Pass page (from 1), pageCount and onPageChange; siblingCount sets how many pages show around the current one; name the landmark with labels.nav when there are several on a page. Results that stream (the data grid) scroll instead; for a few steps of a task use Stepper.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    { "name": "page", "type": "number", "required": true, "description": "The current page, from 1." },
+    { "name": "pageCount", "type": "number", "required": true, "description": "How many pages there are." },
+    { "name": "onPageChange", "type": "(page: number) => void", "description": "Called with the page the user picked." },
+    { "name": "siblingCount", "type": "number", "default": 1, "description": "Pages shown on each side of the current one." },
+    { "name": "size", "type": "\"sm\" | \"md\"", "default": "md", "description": "Button height from size.control.*." },
+    { "name": "labels", "type": "{ nav?, previous?, next?, page?: (n) => string }", "description": "Accessible names: the landmark (Pagination), the arrows (Previous page, Next page), each page (Page n)." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Disables every button, while a page loads." },
+    { "name": "className", "type": "string", "description": "Extra classes for the <nav>." }
+  ],
+  "variants": {
+    "size": ["sm", "md"]
+  },
+  "slots": [
+    { "name": "root", "element": "nav", "description": "A navigation landmark named by labels.nav; data-slot=\"pagination\"." },
+    { "name": "page", "element": "button", "description": "A ghost Button per page; the current one has aria-current=\"page\" and color.interactive.selected; data-slot=\"pagination-page\"." },
+    { "name": "ellipsis", "element": "li", "description": "An aria-hidden gap marker; data-slot=\"pagination-ellipsis\"." }
+  ],
+  "states": [
+    { "name": "current", "variant": "data-current", "props": { "page": 10, "pageCount": 20 }, "description": "The current page: color.interactive.selected background; around it the neighbours, the first and last pages and aria-hidden gaps in color.fg.subtle." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Every button at opacity.disabled; Previous on the first page and Next on the last are disabled too." }
+  ],
+  "tokens": [
+    "color.fg.default",
+    "color.fg.subtle",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.interactive.selected",
+    "color.interactive.selected-hover",
+    "color.ring",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.md",
+    "size.control.sm",
+    "size.icon.sm",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": { "minimal": "PaginationMinimal", "realistic": "PaginationRealistic" },
+  "accessibility": [
+    "A <nav> landmark (\"Pagination\", or labels.nav) holding a list of buttons; the current page has aria-current=\"page\" and its selected background, so the state does not rest on colour.",
+    "Every page button is named \"Page n\"; the arrows are IconButtons named Previous page and Next page and are disabled at the ends.",
+    "Tab moves through the buttons; Enter or Space picks a page. Gaps are aria-hidden.",
+    "Only colours transition; nothing moves."
+  ]
+}

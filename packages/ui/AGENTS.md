@@ -141,6 +141,10 @@ What `test/conventions.test.tsx` enforces for every component:
   around an inline Base UI Autocomplete (no cmdk: it pulls in Radix); the example's opener has
   `aria-haspopup="dialog"`, which is also correct for users. Toast's `placement="static"` puts the region
   in the page flow for previews and tests.
+- Navigation: Breadcrumb is a `<nav>` with an `<ol>` on `useRender` (BreadcrumbLink takes `render`
+  for a router link); Pagination and Stepper are data-driven (`page`/`pageCount`, `steps`/`value`)
+  and compose Button and IconButton; NavigationMenu renders its shared popup itself, and a link
+  placed straight in the row takes `className={navigationMenuTriggerStyle}`.
 - Layers: scrim `z.overlay`, dialogs and sheets `z.modal`, everything attached to a control
   (popovers, menus, the lists of Select and Combobox) `z.popover`, so they open above a dialog;
   toasts `z.toast`, tooltips `z.tooltip`.

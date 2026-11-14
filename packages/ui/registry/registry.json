@@ -25,6 +25,24 @@
       ]
     },
     {
+      "name": "breadcrumb",
+      "type": "registry:ui",
+      "title": "Breadcrumb",
+      "description": "Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list of links, the current place, separators and an ellipsis for collapsed items, on Base UI's useRender.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/breadcrumb.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "button",
       "type": "registry:ui",
       "title": "Button",
@@ -394,6 +412,25 @@
       ]
     },
     {
+      "name": "navigation-menu",
+      "type": "registry:ui",
+      "title": "NavigationMenu",
+      "description": "Site or app navigation with panels of links, on Base UI's NavigationMenu: a <nav> row of titles that open panels in one shared popup, links with descriptions and a current-page mark, and plain links in the row.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/navigation-menu.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "number-input",
       "type": "registry:ui",
       "title": "NumberInput",
@@ -407,6 +444,24 @@
       "files": [
         {
           "path": "ui/number-input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "pagination",
+      "type": "registry:ui",
+      "title": "Pagination",
+      "description": "Moving between pages of a long list: a <nav> with Previous, page numbers (first, last, current and its neighbours, gaps as an ellipsis) and Next, from Button and IconButton, in two sizes.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn",
+        "@byterygon/icon-button"
+      ],
+      "files": [
+        {
+          "path": "ui/pagination.tsx",
           "type": "registry:ui"
         }
       ]
@@ -560,6 +615,22 @@
       "files": [
         {
           "path": "ui/split-button.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "stepper",
+      "type": "registry:ui",
+      "title": "Stepper",
+      "description": "The steps of a task done in order: an ordered list of numbered steps joined by lines, showing done (accent, check), current, upcoming and failed steps, horizontal or vertical, with completed steps optionally clickable to go back.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/stepper.tsx",
           "type": "registry:ui"
         }
       ]

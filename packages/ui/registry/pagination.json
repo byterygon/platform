@@ -1,0 +1,163 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "pagination",
+  "type": "registry:ui",
+  "title": "Pagination",
+  "description": "Moving between pages of a long list: a <nav> with Previous, page numbers (first, last, current and its neighbours, gaps as an ellipsis) and Next, from Button and IconButton, in two sizes.",
+  "dependencies": [],
+  "registryDependencies": [
+    "@byterygon/button",
+    "@byterygon/cn",
+    "@byterygon/icon-button"
+  ],
+  "files": [
+    {
+      "path": "ui/pagination.tsx",
+      "type": "registry:ui",
+      "content": "import type { ComponentProps } from \"react\";\nimport { Button } from \"@/components/ui/button\";\nimport { IconButton } from \"@/components/ui/icon-button\";\nimport { cn } from \"@/lib/cn\";\n\n// Moving between pages of a long list: a <nav> with Previous, page numbers (the first, the last,\n// the current one and its neighbours, an ellipsis for the gaps) and Next, built from Button and\n// IconButton. Data-driven: `page`, `pageCount`, `onPageChange`. No Base UI part exists for it.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const paginationVariants = {\n  /** Button height, from `size.control.*`; page buttons are at least as wide as they are tall. */\n  size: {\n    sm: \"min-w-control-sm\",\n    md: \"min-w-control-md\",\n  },\n} as const;\n\nconst classes = {\n  list: \"flex flex-wrap items-center gap-inline-xs font-sans\",\n  page: \"px-inset-xs data-current:bg-selected data-current:text-fg data-current:hover:bg-selected-hover\",\n  ellipsis: \"flex min-w-control-sm items-center justify-center text-body text-fg-subtle select-none\",\n} as const;\n\n/** The items to show: page numbers and \"gap\" markers, for `page` of `pageCount` with `siblings` each side. */\nexport function pageItems(page: number, pageCount: number, siblings = 1): (number | \"gap\")[] {\n  if (pageCount <= 0) return [];\n  const window = siblings * 2 + 5; // first, last, current, two gaps\n  if (pageCount <= window) return Array.from({ length: pageCount }, (_, i) => i + 1);\n  const start = Math.max(2, Math.min(page - siblings, pageCount - siblings * 2 - 2));\n  const end = Math.min(pageCount - 1, Math.max(page + siblings, siblings * 2 + 3));\n  const items: (number | \"gap\")[] = [1];\n  if (start > 2) items.push(\"gap\");\n  for (let i = start; i <= end; i += 1) items.push(i);\n  if (end < pageCount - 1) items.push(\"gap\");\n  items.push(pageCount);\n  return items;\n}\n\nconst ChevronLeft = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m10 4-4 4 4 4\" />\n  </svg>\n);\n\nconst ChevronRight = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m6 4 4 4-4 4\" />\n  </svg>\n);\n\nexport interface PaginationProps extends Omit<ComponentProps<\"nav\">, \"className\" | \"onChange\"> {\n  /** The current page, from 1. */\n  page: number;\n  /** How many pages there are. */\n  pageCount: number;\n  /** Called with the page the user picked. */\n  onPageChange?: (page: number) => void;\n  /** Pages shown on each side of the current one. */\n  siblingCount?: number;\n  /** Button height. */\n  size?: keyof typeof paginationVariants.size;\n  /** Accessible names: the landmark, the arrows and each page (\"Page 3\"). */\n  labels?: { nav?: string; previous?: string; next?: string; page?: (page: number) => string };\n  /** Disables every button (while a page loads). */\n  disabled?: boolean;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** Previous, page numbers with gaps, and Next, in a <nav> named \"Pagination\". */\nexport function Pagination({ page, pageCount, onPageChange, siblingCount = 1, size = \"md\", labels = {}, disabled = false, className, ...props }: PaginationProps) {\n  const { nav = \"Pagination\", previous = \"Previous page\", next = \"Next page\", page: pageLabel = (n: number) => `Page ${n}` } = labels;\n  const go = (target: number) => {\n    if (target !== page && target >= 1 && target <= pageCount) onPageChange?.(target);\n  };\n  return (\n    <nav data-slot=\"pagination\" data-size={size} aria-label={nav} className={cn(className)} {...props}>\n      <ul className={cn(classes.list)}>\n        <li>\n          <IconButton aria-label={previous} size={size} disabled={disabled || page <= 1} onClick={() => go(page - 1)}>\n            <ChevronLeft />\n          </IconButton>\n        </li>\n        {pageItems(page, pageCount, siblingCount).map((item, index) =>\n          item === \"gap\" ? (\n            <li key={`gap-${index}`} data-slot=\"pagination-ellipsis\" aria-hidden=\"true\" className={cn(classes.ellipsis)}>\n              …\n            </li>\n          ) : (\n            <li key={item}>\n              <Button\n                data-slot=\"pagination-page\"\n                variant=\"ghost\"\n                size={size}\n                disabled={disabled}\n                aria-label={pageLabel(item)}\n                aria-current={item === page ? \"page\" : undefined}\n                data-current={item === page ? \"\" : undefined}\n                onClick={() => go(item)}\n                className={cn(classes.page, paginationVariants.size[size])}\n              >\n                {item}\n              </Button>\n            </li>\n          ),\n        )}\n        <li>\n          <IconButton aria-label={next} size={size} disabled={disabled || page >= pageCount} onClick={() => go(page + 1)}>\n            <ChevronRight />\n          </IconButton>\n        </li>\n      </ul>\n    </nav>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "pagination",
+      "title": "Pagination",
+      "description": "Moving between pages of a long list: a <nav> with Previous, page numbers (first, last, current and its neighbours, gaps as an ellipsis) and Next, from Button and IconButton, in two sizes.",
+      "usage": "Use Pagination when a list is served in pages and the user needs to jump between them: the audit log, a list of saved queries. Pass page (from 1), pageCount and onPageChange; siblingCount sets how many pages show around the current one; name the landmark with labels.nav when there are several on a page. Results that stream (the data grid) scroll instead; for a few steps of a task use Stepper.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [],
+      "props": [
+        {
+          "name": "page",
+          "type": "number",
+          "required": true,
+          "description": "The current page, from 1."
+        },
+        {
+          "name": "pageCount",
+          "type": "number",
+          "required": true,
+          "description": "How many pages there are."
+        },
+        {
+          "name": "onPageChange",
+          "type": "(page: number) => void",
+          "description": "Called with the page the user picked."
+        },
+        {
+          "name": "siblingCount",
+          "type": "number",
+          "default": 1,
+          "description": "Pages shown on each side of the current one."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\"",
+          "default": "md",
+          "description": "Button height from size.control.*."
+        },
+        {
+          "name": "labels",
+          "type": "{ nav?, previous?, next?, page?: (n) => string }",
+          "description": "Accessible names: the landmark (Pagination), the arrows (Previous page, Next page), each page (Page n)."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Disables every button, while a page loads."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the <nav>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "nav",
+          "description": "A navigation landmark named by labels.nav; data-slot=\"pagination\"."
+        },
+        {
+          "name": "page",
+          "element": "button",
+          "description": "A ghost Button per page; the current one has aria-current=\"page\" and color.interactive.selected; data-slot=\"pagination-page\"."
+        },
+        {
+          "name": "ellipsis",
+          "element": "li",
+          "description": "An aria-hidden gap marker; data-slot=\"pagination-ellipsis\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "current",
+          "variant": "data-current",
+          "props": {
+            "page": 10,
+            "pageCount": 20
+          },
+          "description": "The current page: color.interactive.selected background; around it the neighbours, the first and last pages and aria-hidden gaps in color.fg.subtle."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Every button at opacity.disabled; Previous on the first page and Next on the last are disabled too."
+        }
+      ],
+      "tokens": [
+        "color.fg.default",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.interactive.selected",
+        "color.interactive.selected-hover",
+        "color.ring",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.sm",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "PaginationMinimal",
+        "realistic": "PaginationRealistic"
+      },
+      "accessibility": [
+        "A <nav> landmark (\"Pagination\", or labels.nav) holding a list of buttons; the current page has aria-current=\"page\" and its selected background, so the state does not rest on colour.",
+        "Every page button is named \"Page n\"; the arrows are IconButtons named Previous page and Next page and are disabled at the ends.",
+        "Tab moves through the buttons; Enter or Space picks a page. Gaps are aria-hidden.",
+        "Only colours transition; nothing moves."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { Pagination } from \"@/components/pagination/pagination\";\n\n/** The smallest useful Pagination: five pages. */\nexport function PaginationMinimal() {\n  const [page, setPage] = useState(2);\n  return <Pagination page={page} pageCount={5} onPageChange={setPage} />;\n}\n\n/** The audit log browser: many pages with gaps, a small one in a toolbar, and one disabled while a page loads. */\nexport function PaginationRealistic() {\n  const [page, setPage] = useState(12);\n  return (\n    <div className=\"flex flex-col items-start gap-stack-md\">\n      <div className=\"flex flex-wrap items-center gap-inline-md\">\n        <Pagination page={page} pageCount={40} onPageChange={setPage} labels={{ nav: \"Audit log pages\" }} />\n        <span className=\"text-body text-fg-muted\">\n          Page {page} of 40, 50 records each\n        </span>\n      </div>\n      <Pagination size=\"sm\" page={1} pageCount={3} labels={{ nav: \"Result pages\" }} />\n      <Pagination page={3} pageCount={8} disabled labels={{ nav: \"Loading pages\" }} />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {}
+  }
+}
