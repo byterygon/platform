@@ -3972,6 +3972,13 @@ export const tokens = {
     description: "Edge of a lg icon (20 px): the size-icon-lg utility. Not for the size of a control: use size.control.*, which follows the density mode.",
     values: { "base": "20px" },
   },
+  "size.track": {
+    cssVar: "--by-size-track",
+    type: "dimension",
+    tier: "primitive",
+    description: "Thickness of a slider track or a thin progress bar (4 px): the h-track (w-track when vertical) utility. Not for borders or dividers: use border.width.*; not for a control or an icon: use size.control.* or size.icon.*.",
+    values: { "base": "4px" },
+  },
   "border.width.0": {
     cssVar: "--by-border-width-0",
     type: "dimension",

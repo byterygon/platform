@@ -34,6 +34,7 @@ const STOCK = ["button", "card", "input"];
 const ITEMS = [
   "button", "input", "field", "form", "textarea", "input-group", "icon-button", "kbd",
   "toggle-button", "toggle-group", "checkbox", "radio-group", "switch",
+  "number-input", "password-input", "search-input", "slider", "file-input",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -154,12 +155,17 @@ import "./index.css";
 import { Button } from "@/components/ui/button";
 import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { FileInput } from "@/components/ui/file-input";
 import { Form } from "@/components/ui/form";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { NumberInput } from "@/components/ui/number-input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SearchInput } from "@/components/ui/search-input";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleButton } from "@/components/ui/toggle-button";
@@ -206,6 +212,12 @@ function Connection() {
         </Field>
         <Field><FieldLabel><Switch defaultChecked />Auto-commit</FieldLabel></Field>
       </FieldSet>
+      <Field><FieldLabel>Port</FieldLabel><NumberInput defaultValue={5432} min={1} max={65535} /></Field>
+      <Field><FieldLabel>Password</FieldLabel><PasswordInput /></Field>
+      <SearchInput aria-label="Search tables" />
+      <Field><FieldLabel>Sample</FieldLabel><Slider defaultValue={25} /></Field>
+      <Field><FieldLabel>CA certificate</FieldLabel><FileInput accept=".pem" /></Field>
+      <FileInput aria-label="Scripts" variant="dropzone" multiple />
       <ToggleButton defaultPressed>Wrap</ToggleButton>
       <ToggleGroup aria-label="View" defaultValue={["grid"]}>
         <ToggleGroupItem value="grid">Grid</ToggleGroupItem>
@@ -340,6 +352,7 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["data-pressed:bg-selected", "background-color", "color.interactive.selected", "Byterygon ToggleButton pressed"],
   ["data-checked:bg-accent-solid", "background-color", "color.accent.bg", "Byterygon Checkbox, Radio and Switch checked"],
   ["bg-border-strong", "background-color", "color.border.strong", "Byterygon Switch off"],
+  ["h-track", "height", "size.track", "Byterygon Slider track"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {

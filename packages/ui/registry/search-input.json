@@ -1,0 +1,198 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "search-input",
+  "type": "registry:ui",
+  "title": "SearchInput",
+  "description": "A search box on InputGroup and Base UI's Input: a search icon, type=\"search\", and a Clear button (and Escape) while there is text, in three density-aware sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/input-group"
+  ],
+  "files": [
+    {
+      "path": "ui/search-input.tsx",
+      "type": "registry:ui",
+      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { useRef, useState } from \"react\";\nimport { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, inputGroupVariants } from \"@/components/ui/input-group\";\nimport { cn } from \"@/lib/cn\";\n\n// A search box: an InputGroup with a search icon, Base UI's Input as type=\"search\" (so it works\n// inside a Field and gets role searchbox), and a Clear button while there is text. Escape clears\n// too; with nothing to clear it lets Escape through, so a dialog around it still closes.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const searchInputVariants = {\n  /** InputGroup applies these; listed here so the manifest and the tests see every size. */\n  size: inputGroupVariants.size,\n} as const;\n\n// The browser's own clear button would duplicate ours. While Clear is hidden the input is the\n// last visible item but not :last-child, so it takes the end padding itself.\nconst inputClasses = [\"[&::-webkit-search-cancel-button]:appearance-none\", \"[&:has(+[hidden])]:pe-control-x\"];\n\nconst clearClasses = [\"text-fg-muted hover:text-fg\"];\n\nconst SearchIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <circle cx=\"7\" cy=\"7\" r=\"4.5\" />\n    <path d=\"m10.5 10.5 3.5 3.5\" />\n  </svg>\n);\n\nconst ClearIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"m4.5 4.5 7 7m0-7-7 7\" />\n  </svg>\n);\n\nexport interface SearchInputProps extends Omit<InputPrimitive.Props, \"className\" | \"size\" | \"type\" | \"value\" | \"defaultValue\" | \"onValueChange\"> {\n  /** Controlled text. */\n  value?: string;\n  /** Initial text when uncontrolled. */\n  defaultValue?: string;\n  /** Called on every change, with \"\" when the text is cleared. */\n  onValueChange?: (value: string) => void;\n  /** Height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof inputGroupVariants.size;\n  /** The Clear button's accessible name. */\n  clearLabel?: string;\n  /** Extra classes for the frame, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A search box on InputGroup and Base UI's Input (`type=\"search\"`): a search icon, the text, and a\n * Clear button while there is text. Escape clears. Name it with a FieldLabel or aria-label. The ref\n * reaches the `<input>`; className the frame.\n */\nexport function SearchInput({\n  value,\n  defaultValue = \"\",\n  onValueChange,\n  size = \"md\",\n  clearLabel = \"Clear search\",\n  disabled,\n  readOnly,\n  onKeyDown,\n  ref,\n  className,\n  ...props\n}: SearchInputProps) {\n  const [own, setOwn] = useState(defaultValue);\n  const text = value ?? own;\n  const input = useRef<HTMLInputElement | null>(null);\n  const change = (next: string) => {\n    setOwn(next);\n    onValueChange?.(next);\n  };\n  const clear = () => {\n    change(\"\");\n    input.current?.focus();\n  };\n  const keyDown = (event: Parameters<NonNullable<InputPrimitive.Props[\"onKeyDown\"]>>[0]) => {\n    onKeyDown?.(event);\n    if (event.defaultPrevented || event.key !== \"Escape\" || text === \"\" || disabled || readOnly) return;\n    event.preventDefault();\n    event.stopPropagation();\n    change(\"\");\n  };\n  const setRef = (element: HTMLInputElement | null) => {\n    input.current = element;\n    if (typeof ref === \"function\") ref(element);\n    else if (ref) ref.current = element;\n  };\n  return (\n    <InputGroup data-slot=\"search-input\" size={size} className={cn(className)}>\n      <InputGroupAddon>\n        <SearchIcon />\n      </InputGroupAddon>\n      <InputGroupInput\n        ref={setRef}\n        type=\"search\"\n        value={text}\n        onValueChange={change}\n        onKeyDown={keyDown}\n        disabled={disabled}\n        readOnly={readOnly}\n        className={cn(inputClasses)}\n        {...props}\n      />\n      {/* Always rendered (hidden while there is nothing to clear), so the DOM and tab order stay stable. */}\n      <InputGroupButton aria-label={clearLabel} hidden={text === \"\" || disabled || readOnly} onClick={clear} className={cn(clearClasses)}>\n        <ClearIcon />\n      </InputGroupButton>\n    </InputGroup>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "search-input",
+      "title": "SearchInput",
+      "description": "A search box on InputGroup and Base UI's Input: a search icon, type=\"search\", and a Clear button (and Escape) while there is text, in three density-aware sizes.",
+      "usage": "Use SearchInput to filter or search a list as the user types: tables in a schema browser, rows of a result, settings. Name it with a FieldLabel or an aria-label (\"Search tables\"); the placeholder is not a name. Wire value and onValueChange (called with \"\" when cleared) and announce the result count in a role=\"status\" element. Escape clears the text, and only passes through when there is nothing to clear. For a query that runs on Enter only, use it the same way and act in onKeyDown; for picking one option from a list, use Combobox.",
+      "status": "experimental",
+      "base": "@base-ui/react/input",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string",
+          "description": "Controlled text."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string",
+          "default": "",
+          "description": "Initial text when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: string) => void",
+          "description": "Called on every change, with \"\" when cleared."
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "default": "Clear search",
+          "description": "The Clear button's accessible name."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "description": "A hint shown while empty; not a label."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Disables the input and hides the Clear button."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Focusable, cannot be changed or cleared."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the frame, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLInputElement>",
+          "description": "Reaches the <input>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The InputGroup frame; data-slot=\"search-input\" and data-size."
+        },
+        {
+          "name": "icon",
+          "element": "div",
+          "description": "The search icon, an InputGroupAddon; clicking it focuses the input."
+        },
+        {
+          "name": "input",
+          "element": "input",
+          "description": "The text control, type=\"search\"; data-slot=\"input-group-input\"."
+        },
+        {
+          "name": "clear",
+          "element": "button",
+          "description": "The Clear button, hidden while there is nothing to clear; data-slot=\"input-group-button\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over the Clear button: color.interactive.hover and color.fg.default."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "has-[[data-slot=input-group-input]:focus-visible]",
+          "description": "Keyboard focus in the input: a ring of ring.width in color.ring around the frame."
+        },
+        {
+          "name": "invalid",
+          "variant": "has-[[data-slot=input-group-input][data-invalid]]",
+          "description": "In an invalid Field (or with aria-invalid): the frame's border is color.status.danger.border."
+        },
+        {
+          "name": "disabled",
+          "variant": "has-[[data-slot=input-group-input][data-disabled]]",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction; the frame dims to opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.border",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.md",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "SearchInputMinimal",
+        "realistic": "SearchInputRealistic"
+      },
+      "accessibility": [
+        "The text control is a native <input type=\"search\"> (role searchbox); name it with a FieldLabel or aria-label, not only a placeholder.",
+        "The Clear button is a native <button> named \"Clear search\"; it returns focus to the input. Escape clears as well, and is left to the page (a dialog) when the box is empty.",
+        "Announce how many results match in a role=\"status\" element next to it; the box itself does not.",
+        "The search icon is decorative (aria-hidden) and clicking it focuses the input.",
+        "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { Field, FieldDescription, FieldLabel } from \"@/components/field/field\";\nimport { SearchInput } from \"@/components/search-input/search-input\";\n\n/** The smallest useful SearchInput: a named search box. */\nexport function SearchInputMinimal() {\n  return <SearchInput aria-label=\"Search tables\" placeholder=\"Search tables\" />;\n}\n\nconst tables = [\"customers\", \"customer_addresses\", \"orders\", \"order_items\", \"invoices\"];\n\n/**\n * A schema browser filter: the list narrows as you type and a status line counts the matches. Also\n * a small toolbar search with text already in it, a large one, and a disabled one.\n */\nexport function SearchInputRealistic() {\n  const [query, setQuery] = useState(\"\");\n  const matches = tables.filter((table) => table.includes(query.trim().toLowerCase()));\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <Field>\n        <FieldLabel>Filter tables</FieldLabel>\n        <SearchInput value={query} onValueChange={setQuery} placeholder=\"Name contains…\" />\n        <FieldDescription>Escape clears the filter.</FieldDescription>\n      </Field>\n      <p role=\"status\" className=\"text-caption text-fg-muted\">\n        {matches.length} of {tables.length} tables\n      </p>\n      <ul className=\"flex flex-col gap-stack-xs text-body text-fg\">\n        {matches.map((table) => (\n          <li key={table} className=\"font-mono text-code\">\n            {table}\n          </li>\n        ))}\n      </ul>\n      <SearchInput aria-label=\"Search the result\" size=\"sm\" defaultValue=\"timeout\" />\n      <SearchInput aria-label=\"Search all workspaces\" size=\"lg\" placeholder=\"Search all workspaces\" />\n      <SearchInput aria-label=\"Search history\" disabled placeholder=\"History is off\" />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

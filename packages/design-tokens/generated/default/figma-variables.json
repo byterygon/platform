@@ -9988,6 +9988,19 @@
           }
         },
         {
+          "name": "size/track",
+          "type": "FLOAT",
+          "description": "Thickness of a slider track or a thin progress bar (4 px): the h-track (w-track when vertical) utility. Not for borders or dividers: use border.width.*; not for a control or an icon: use size.control.* or size.icon.*.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-track)"
+          },
+          "valuesByMode": {
+            "Value": 4
+          }
+        },
+        {
           "name": "border/width/0",
           "type": "FLOAT",
           "description": "A 0 px border. Primitive: reference it through a role, never from a component. Not for the focus ring: use ring.width.",

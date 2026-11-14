@@ -14352,6 +14352,20 @@
         }
       }
     },
+    "track": {
+      "$type": "dimension",
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      },
+      "$description": "Thickness of a slider track or a thin progress bar (4 px): the h-track (w-track when vertical) utility. Not for borders or dividers: use border.width.*; not for a control or an icon: use size.control.* or size.icon.*.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "primitive",
+          "tailwind": "--spacing-track"
+        }
+      }
+    },
     "control": {
       "xs": {
         "$type": "dimension",

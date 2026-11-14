@@ -58,6 +58,25 @@
       ]
     },
     {
+      "name": "file-input",
+      "type": "registry:ui",
+      "title": "FileInput",
+      "description": "A file picker on a native <input type=\"file\"> (Base UI's Input), as one line like an Input or as a dashed dropzone, with a Clear button and accept filtering of dropped files.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/file-input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "form",
       "type": "registry:ui",
       "title": "Form",
@@ -151,6 +170,43 @@
       ]
     },
     {
+      "name": "number-input",
+      "type": "registry:ui",
+      "title": "NumberInput",
+      "description": "A number input on Base UI's NumberField with decrement and increment buttons, bounds, steps, locale formatting, and three density-aware sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/number-input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "password-input",
+      "type": "registry:ui",
+      "title": "PasswordInput",
+      "description": "A password input with a show/hide button, on InputGroup and Base UI's Input, in three density-aware sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/input-group"
+      ],
+      "files": [
+        {
+          "path": "ui/password-input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "radio-group",
       "type": "registry:ui",
       "title": "RadioGroup",
@@ -164,6 +220,43 @@
       "files": [
         {
           "path": "ui/radio-group.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "search-input",
+      "type": "registry:ui",
+      "title": "SearchInput",
+      "description": "A search box on InputGroup and Base UI's Input: a search icon, type=\"search\", and a Clear button (and Escape) while there is text, in three density-aware sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/input-group"
+      ],
+      "files": [
+        {
+          "path": "ui/search-input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "slider",
+      "type": "registry:ui",
+      "title": "Slider",
+      "description": "A slider on Base UI's Slider: one value or a range with two thumbs, horizontal or vertical, on a size.track track with an accent indicator, in three thumb sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/slider.tsx",
           "type": "registry:ui"
         }
       ]

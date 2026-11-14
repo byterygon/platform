@@ -123,6 +123,18 @@ const iconSize: RoleDef[] = ICONS.map(([name, value]): RoleDef => ({
   avoid: "Not for the size of a control: use size.control.*, which follows the density mode.",
 }));
 
+const trackSize: RoleDef[] = [
+  {
+    path: "size.track",
+    type: "dimension",
+    tier: "primitive",
+    value: px(4),
+    tailwind: "--spacing-track",
+    use: "Thickness of a slider track or a thin progress bar (4 px): the h-track (w-track when vertical) utility.",
+    avoid: "Not for borders or dividers: use border.width.*; not for a control or an icon: use size.control.* or size.icon.*.",
+  },
+];
+
 const borderWidth: RoleDef[] = [0, 1, 2].map((value): RoleDef => ({
   path: `border.width.${value}`,
   type: "dimension",
@@ -212,6 +224,7 @@ export const SCALE_ROLES: readonly RoleDef[] = [
   ...fontLeading,
   ...fontTracking,
   ...iconSize,
+  ...trackSize,
   ...borderWidth,
   ...breakpoint,
   ...opacity,
