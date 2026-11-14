@@ -193,6 +193,19 @@ What `test/conventions.test.tsx` enforces for every component:
   by side are both right. Popups Monaco renders outside the editor (its context menu) use the theme
   of the editor mounted, focused or rethemed last.
 - Never pass raw colours to Monaco; add a role to `MONACO_COLORS` / `MONACO_TOKENS` instead.
+- CodeInput is CodeMirror 6, imported statically (small, and a form field must work at once). Its
+  `EditorView.theme` and `HighlightStyle` use the token variables directly (`var(--by-editor-fg)`,
+  `var(--by-syntax-keyword)`, `var(--by-text-code-size)`), so modes, density and presets apply with
+  no JavaScript. One line by default (Enter calls `onSubmit`, line breaks become spaces), `multiline`
+  with `rows`, `pretty` for a read-only JSON viewer; Tab always leaves. A multi-line frame is the
+  scroll container (set its height with `max-h-*`); CodeMirror renders only the visible lines.
+- CodeInput in a Field: a visually hidden Base UI `Input` (`code-input-control`, `tabIndex=-1`,
+  `aria-hidden`) carries the value, name and validity and takes the Field's label id, description
+  and `data-invalid`; CodeInput mirrors them onto CodeMirror's text area and its root (a
+  MutationObserver, because the Field updates its control without re-rendering CodeInput) and
+  forwards focus and blur to the control. A FieldLabel click focuses the text area.
+- A library's own DOM (CodeMirror's `cm-*` classes) goes inside an element with `data-foreign-dom`;
+  the conventions suite skips the classes of its descendants. Never put Byterygon classes there.
 - jsdom cannot run Monaco: in tests every `monaco-editor/*` import is aliased to
   `test/fakes/monaco.ts`. The real editor is checked by `scripts/browser-check.ts` (CI runs it with
   the runner's Chrome in a network namespace; `BYTERYGON_REQUIRE_BROWSER=1` makes a missing browser

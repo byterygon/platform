@@ -50,6 +50,7 @@ export function describeComponent({ name, dir, load }: ComponentUnderTest): void
           if (ownSlots.has(slot)) slots.add(slot);
         }
         for (const element of document.body.querySelectorAll("[class]")) {
+          if (element.parentElement?.closest("[data-foreign-dom]")) continue;
           const slot = element.closest("[data-slot]")?.getAttribute("data-slot");
           if (!slot || !isOwnSlot(slot)) continue;
           for (const c of element.getAttribute("class")!.split(/\s+/)) if (c) classes.add(c);

@@ -90,7 +90,8 @@ blank Vite app, offline (CI runs it in the network namespace).
 
 Editors (TSK-46): SqlEditor is Monaco through `packages/ui/src/lib/monaco.ts` (lazy ESM, the
 worker via Vite `?worker`, never a CDN or the AMD loader; theme built from the tokens at the
-editor). jsdom tests use `test/fakes/monaco.ts`; `pnpm --filter @byterygon/ui check:browser` runs
+editor); CodeInput is CodeMirror 6 themed by the token CSS variables (its DOM sits in a
+`data-foreign-dom` element the conventions suite skips). jsdom tests use `test/fakes/monaco.ts`; `pnpm --filter @byterygon/ui check:browser` runs
 the real editor in Chromium over CDP and reports bundle size and time to first keystroke (CI: the
 runner's Chrome, network namespace, `BYTERYGON_REQUIRE_BROWSER=1`; locally it skips without a
 browser, `BYTERYGON_BROWSER` names one).

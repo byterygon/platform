@@ -43,7 +43,7 @@ const ITEMS = [
   "tabs", "toast", "command-palette",
   "breadcrumb", "pagination", "stepper", "navigation-menu",
   "sidebar", "tree",
-  "sql-editor",
+  "sql-editor", "code-input",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -78,7 +78,7 @@ function blankApp(dir: string, registryTemplate: string): void {
     name: "blank-vite-app",
     private: true,
     type: "module",
-    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority", "react-day-picker", "date-fns", "monaco-editor"].map((n) => [n, version(n)])),
+    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority", "react-day-picker", "date-fns", "monaco-editor", "@codemirror/commands", "@codemirror/lang-json", "@codemirror/lang-sql", "@codemirror/language", "@codemirror/state", "@codemirror/view", "@lezer/highlight"].map((n) => [n, version(n)])),
     devDependencies: Object.fromEntries(["vite", "@tailwindcss/vite", "tailwindcss"].map((n) => [n, version(n)])),
   });
   write("tsconfig.json", { compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", jsx: "react-jsx", strict: true, baseUrl: ".", paths: { "@/*": ["./src/*"] } }, include: ["src"] });
@@ -174,6 +174,7 @@ import { Sidebar, SidebarContent, SidebarInset, SidebarMenu, SidebarMenuButton, 
 import { Stepper } from "@/components/ui/stepper";
 import { Tree } from "@/components/ui/tree";
 import { SqlEditor } from "@/components/ui/sql-editor";
+import { CodeInput } from "@/components/ui/code-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toast } from "@/components/ui/toast";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -388,6 +389,8 @@ createRoot(document.getElementById("root")!).render(
     <Connection />
     <Overlays />
     <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
+    <Field><FieldLabel>Filter</FieldLabel><CodeInput language="sql" defaultValue="id = 1" onSubmit={(v) => console.log(v)} /></Field>
+    <CodeInput aria-label="Cell value" language="json" pretty value='{"id":1}' />
     <Card>
       <CardHeader><CardTitle>Stock card</CardTitle></CardHeader>
       <CardContent>
@@ -538,6 +541,7 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["h-control-sm", "height", "size.control.sm", "Byterygon Tree row (density)"],
   ["bg-editor", "background-color", "editor.bg", "Byterygon SqlEditor frame"],
   ["p-inset-sm", "padding", "space.inset.sm", "Byterygon SqlEditor fallback (density)"],
+  ["data-readonly:bg-inset", "background-color", "color.bg.inset", "Byterygon CodeInput read-only and pretty"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {

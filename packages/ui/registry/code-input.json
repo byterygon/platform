@@ -1,0 +1,257 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "code-input",
+  "type": "registry:ui",
+  "title": "CodeInput",
+  "description": "A small code field on CodeMirror 6: one line (Enter submits) or several, PostgreSQL or JSON highlighting in the syntax.* colours, a read-only pretty viewer for JSON; themed through the token CSS variables and usable inside a Field.",
+  "dependencies": [
+    "@base-ui/react",
+    "@codemirror/commands",
+    "@codemirror/lang-json",
+    "@codemirror/lang-sql",
+    "@codemirror/language",
+    "@codemirror/state",
+    "@codemirror/view",
+    "@lezer/highlight"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/code-input.tsx",
+      "type": "registry:ui",
+      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { defaultKeymap, history, historyKeymap } from \"@codemirror/commands\";\nimport { json } from \"@codemirror/lang-json\";\nimport { PostgreSQL, sql } from \"@codemirror/lang-sql\";\nimport { bracketMatching, HighlightStyle, syntaxHighlighting } from \"@codemirror/language\";\nimport { Annotation, Compartment, EditorState, Prec, type Extension } from \"@codemirror/state\";\nimport { EditorView, keymap, placeholder as placeholderExtension } from \"@codemirror/view\";\nimport { tags as t } from \"@lezer/highlight\";\nimport { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// CodeInput is CodeMirror 6 (spec section 7) for small code fields: one-line expressions and\n// filters, short SQL, JSON values, and a read-only pretty viewer. CodeMirror is themed through the\n// token CSS variables directly, so Light/Dark, density and presets apply with no JavaScript. A\n// visually hidden Base UI Input (Field.Control) carries the value for forms and takes a Field's\n// label, description and validity; CodeMirror's text area mirrors its ARIA attributes.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const codeInputVariants = {\n  size: {\n    sm: \"h-control-sm px-inset-sm data-multiline:py-inline-xs\",\n    md: \"h-control-md px-control-x data-multiline:py-inline-sm\",\n    lg: \"h-control-lg px-inset-lg data-multiline:py-inline-md\",\n  },\n} as const;\n\nconst base = [\n  \"relative flex w-full min-w-0 items-center overflow-hidden rounded-md border border-border-strong bg-surface text-editor-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"outline-none data-focused:outline-solid data-focused:outline-[length:var(--by-ring-width)] data-focused:outline-offset-[var(--by-ring-offset)] data-focused:outline-ring\",\n  \"data-multiline:h-auto data-multiline:items-start data-multiline:overflow-auto\",\n  \"data-readonly:bg-inset\",\n  \"data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\n/**\n * CodeMirror's look, from the token variables only: the editor.* roles for text, caret and\n * selection, text.code.* for the font (density-aware), syntax.* for highlighting.\n */\nconst tokenTheme = EditorView.theme({\n  \"&\": {\n    flex: \"1 1 auto\",\n    minWidth: \"0\",\n    color: \"var(--by-editor-fg)\",\n    backgroundColor: \"transparent\",\n    fontFamily: \"var(--by-text-code-family)\",\n    fontSize: \"var(--by-text-code-size)\",\n    lineHeight: \"var(--by-text-code-leading)\",\n    letterSpacing: \"var(--by-text-code-tracking)\",\n  },\n  \"&.cm-focused\": { outline: \"none\" },\n  \".cm-scroller\": { fontFamily: \"inherit\", lineHeight: \"inherit\" },\n  \".cm-content\": { padding: \"0\", caretColor: \"var(--by-editor-cursor)\" },\n  \".cm-line\": { padding: \"0\" },\n  \".cm-content ::selection\": { backgroundColor: \"var(--by-editor-selection)\" },\n  \".cm-placeholder\": { color: \"var(--by-color-fg-subtle)\" },\n  \"&.cm-focused .cm-matchingBracket\": { backgroundColor: \"var(--by-editor-match)\", outline: \"none\" },\n  \"&.cm-focused .cm-nonmatchingBracket\": { color: \"var(--by-syntax-error)\" },\n});\n\nconst tokenHighlight = HighlightStyle.define([\n  { tag: [t.keyword, t.modifier, t.controlKeyword, t.operatorKeyword, t.definitionKeyword], color: \"var(--by-syntax-keyword)\" },\n  { tag: [t.string, t.regexp], color: \"var(--by-syntax-string)\" },\n  { tag: [t.number, t.integer, t.float], color: \"var(--by-syntax-number)\" },\n  { tag: [t.comment, t.lineComment, t.blockComment], color: \"var(--by-syntax-comment)\" },\n  { tag: [t.function(t.variableName), t.standard(t.name)], color: \"var(--by-syntax-function)\" },\n  { tag: [t.operator, t.punctuation, t.separator, t.bracket], color: \"var(--by-syntax-operator)\" },\n  { tag: [t.typeName, t.propertyName], color: \"var(--by-syntax-type)\" },\n  { tag: [t.name, t.variableName, t.special(t.name), t.special(t.string)], color: \"var(--by-syntax-identifier)\" },\n  { tag: [t.bool, t.null, t.atom, t.constant(t.name)], color: \"var(--by-syntax-constant)\" },\n  { tag: t.invalid, color: \"var(--by-syntax-error)\" },\n]);\n\n/** Languages CodeInput highlights. */\nexport type CodeInputLanguage = \"text\" | \"sql\" | \"json\";\n\nconst languageExtension = (language: CodeInputLanguage): Extension => (language === \"sql\" ? sql({ dialect: PostgreSQL }) : language === \"json\" ? json() : []);\n\n/** JSON pretty-printed with two spaces; anything that is not JSON comes back unchanged. */\nexport function prettyCode(value: string, language: CodeInputLanguage): string {\n  if (language !== \"json\") return value;\n  try {\n    return JSON.stringify(JSON.parse(value), null, 2);\n  } catch {\n    return value;\n  }\n}\n\n/** One line: pasted or typed line breaks become spaces. */\nconst singleLine = EditorState.transactionFilter.of((tr) =>\n  tr.docChanged && tr.newDoc.lines > 1 ? [tr, { changes: { from: 0, to: tr.newDoc.length, insert: tr.newDoc.sliceString(0, undefined, \" \") }, sequential: true }] : tr,\n);\n\n/** Marks a change made to follow the `value` prop, which must not be echoed to onValueChange. */\nconst fromProp = Annotation.define<boolean>();\n\nexport interface CodeInputProps extends Omit<ComponentProps<\"div\">, \"className\" | \"children\" | \"defaultValue\" | \"onChange\" | \"onSubmit\"> {\n  /** Height of a one-line field, from `size.control.*`; padding of a multi-line one. */\n  size?: keyof typeof codeInputVariants.size;\n  /** The text, when controlled. */\n  value?: string;\n  /** The initial text, when uncontrolled. */\n  defaultValue?: string;\n  /** Called with the whole text after every change. */\n  onValueChange?: (value: string) => void;\n  /** Highlighting: none, PostgreSQL, or JSON. */\n  language?: CodeInputLanguage;\n  /** Several lines (Enter inserts a line break) instead of one. */\n  multiline?: boolean;\n  /** Minimum visible lines of a multi-line field. */\n  rows?: number;\n  /** Read-only viewer: multi-line, and JSON pretty-printed. */\n  pretty?: boolean;\n  /** Text can be selected and copied but not changed. */\n  readOnly?: boolean;\n  /** Ignores interaction and leaves the tab order. */\n  disabled?: boolean;\n  /** Shown while the field is empty. */\n  placeholder?: string;\n  /** Enter in a one-line field (the text is not changed). */\n  onSubmit?: (value: string) => void;\n  /** Form field name of the hidden control that carries the value. */\n  name?: string;\n  /** The value may not be empty (validated by the Field or form). */\n  required?: boolean;\n  /** Accessible name; inside a Field the FieldLabel names it instead. */\n  \"aria-label\"?: string;\n  /** Marks the value invalid outside a Field. */\n  \"aria-invalid\"?: boolean | \"true\" | \"false\";\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\nconst MIRRORED = [\"aria-labelledby\", \"aria-describedby\", \"aria-invalid\", \"data-invalid\", \"data-disabled\", \"required\"] as const;\n\n/**\n * A small code field on CodeMirror: one line by default (Enter submits), or several with\n * `multiline`; SQL or JSON highlighting in the syntax.* colours; a read-only pretty viewer. Works\n * inside a Field like Input. The ref reaches the root element.\n */\nexport function CodeInput({\n  size = \"md\",\n  value,\n  defaultValue = \"\",\n  onValueChange,\n  language = \"text\",\n  multiline: multilineProp = false,\n  rows = 3,\n  pretty = false,\n  readOnly: readOnlyProp = false,\n  disabled = false,\n  placeholder,\n  onSubmit,\n  name,\n  required,\n  id,\n  \"aria-label\": ariaLabel,\n  \"aria-invalid\": ariaInvalid,\n  className,\n  ref,\n  ...props\n}: CodeInputProps) {\n  const multiline = multilineProp || pretty;\n  const readOnly = readOnlyProp || pretty;\n  const shown = (text: string) => (pretty ? prettyCode(text, language) : text);\n  const rootRef = useRef<HTMLDivElement | null>(null);\n  const mountRef = useRef<HTMLDivElement>(null);\n  const controlRef = useRef<HTMLInputElement>(null);\n  const viewRef = useRef<EditorView | null>(null);\n  const [text, setText] = useState(() => shown(value ?? defaultValue));\n  const [focused, setFocused] = useState(false);\n  const latest = useRef({ onValueChange, onSubmit, value });\n  latest.current = { onValueChange, onSubmit, value };\n  const compartments = useRef({ language: new Compartment(), lines: new Compartment(), edit: new Compartment(), placeholder: new Compartment(), attributes: new Compartment(), rows: new Compartment() });\n\n  const linesExtension = (isMultiline: boolean): Extension =>\n    isMultiline\n      ? EditorView.lineWrapping\n      : [singleLine, Prec.highest(keymap.of([{ key: \"Enter\", run: (view) => (latest.current.onSubmit?.(view.state.doc.toString()), true) }]))];\n  const editExtension = (isReadOnly: boolean, isDisabled: boolean): Extension => [EditorState.readOnly.of(isReadOnly || isDisabled), EditorView.editable.of(!isDisabled)];\n  const rowsExtension = (isMultiline: boolean, count: number): Extension =>\n    isMultiline ? EditorView.theme({ \".cm-content\": { minHeight: `calc(${count} * var(--by-text-code-size) * var(--by-text-code-leading))` } }) : [];\n  const propsRef = useRef({ ariaLabel, ariaInvalid, readOnly, disabled, required, multiline });\n  propsRef.current = { ariaLabel, ariaInvalid, readOnly, disabled, required, multiline };\n  const appliedKey = useRef(\"\");\n\n  /**\n   * The text area's ARIA attributes and the root's data-invalid and data-disabled, from the props\n   * and from what Base UI's Field set on the hidden control (label, description, validity). Written\n   * straight to the DOM and to CodeMirror: the Field updates its control without re-rendering us.\n   */\n  const applyMirror = () => {\n    const control = controlRef.current;\n    const root = rootRef.current;\n    const view = viewRef.current;\n    if (!control || !root) return;\n    const p = propsRef.current;\n    const read = (name: (typeof MIRRORED)[number]) => control.getAttribute(name);\n    const invalid = p.ariaInvalid === true || p.ariaInvalid === \"true\" || read(\"aria-invalid\") === \"true\" || read(\"data-invalid\") !== null;\n    root.toggleAttribute(\"data-invalid\", invalid);\n    root.toggleAttribute(\"data-disabled\", p.disabled || read(\"data-disabled\") !== null);\n    const out: Record<string, string> = { \"aria-multiline\": p.multiline ? \"true\" : \"false\", spellcheck: \"false\", autocapitalize: \"off\", autocorrect: \"off\" };\n    const labelledBy = read(\"aria-labelledby\");\n    const describedBy = read(\"aria-describedby\");\n    if (labelledBy) out[\"aria-labelledby\"] = labelledBy;\n    else if (p.ariaLabel) out[\"aria-label\"] = p.ariaLabel;\n    if (describedBy) out[\"aria-describedby\"] = describedBy;\n    if (invalid) out[\"aria-invalid\"] = \"true\";\n    if (p.readOnly) out[\"aria-readonly\"] = \"true\";\n    if (p.disabled) out[\"aria-disabled\"] = \"true\";\n    if (p.required || read(\"required\") !== null) out[\"aria-required\"] = \"true\";\n    const key = JSON.stringify(out);\n    if (!view || key === appliedKey.current) return;\n    appliedKey.current = key;\n    view.dispatch({ effects: compartments.current.attributes.reconfigure(EditorView.contentAttributes.of(out)) });\n  };\n\n  // Mount CodeMirror once; the effects below reconfigure it.\n  useEffect(() => {\n    const parent = mountRef.current;\n    if (!parent) return;\n    const c = compartments.current;\n    const view = new EditorView({\n      parent,\n      state: EditorState.create({\n        doc: text,\n        extensions: [\n          history(),\n          keymap.of([...defaultKeymap, ...historyKeymap]),\n          bracketMatching(),\n          tokenTheme,\n          syntaxHighlighting(tokenHighlight),\n          c.language.of(languageExtension(language)),\n          c.lines.of(linesExtension(multiline)),\n          c.edit.of(editExtension(readOnly, disabled)),\n          c.placeholder.of(placeholder ? placeholderExtension(placeholder) : []),\n          c.rows.of(rowsExtension(multiline, rows)),\n          c.attributes.of([]),\n          EditorView.updateListener.of((update) => {\n            if (update.docChanged) {\n              const next = update.state.doc.toString();\n              setText(next);\n              if (!update.transactions.some((tr) => tr.annotation(fromProp))) latest.current.onValueChange?.(next);\n            }\n            if (update.focusChanged) {\n              const hasFocus = update.view.hasFocus;\n              setFocused(hasFocus);\n              // Tell the Field (through its control) about focus and blur: focused, touched, validation on blur.\n              controlRef.current?.dispatchEvent(new FocusEvent(hasFocus ? \"focusin\" : \"focusout\", { bubbles: true }));\n            }\n          }),\n        ],\n      }),\n    });\n    viewRef.current = view;\n    // A FieldLabel click focuses the hidden control: move focus to the editor without the Field\n    // seeing a blur in between.\n    const control = controlRef.current;\n    const redirect = () => view.focus();\n    const keep = (event: FocusEvent) => {\n      if (event.relatedTarget instanceof Node && view.dom.contains(event.relatedTarget)) event.stopPropagation();\n    };\n    control?.addEventListener(\"focus\", redirect);\n    control?.addEventListener(\"focusout\", keep);\n    applyMirror();\n    const observer = new MutationObserver(applyMirror);\n    if (control) observer.observe(control, { attributes: true, attributeFilter: [...MIRRORED] });\n    return () => {\n      observer.disconnect();\n      control?.removeEventListener(\"focus\", redirect);\n      control?.removeEventListener(\"focusout\", keep);\n      view.destroy();\n      viewRef.current = null;\n    };\n    // Mounted once; later prop changes are applied by the effects below.\n  }, []);\n\n  const reconfigure = (compartment: Compartment, extension: Extension) => viewRef.current?.dispatch({ effects: compartment.reconfigure(extension) });\n  useEffect(() => reconfigure(compartments.current.language, languageExtension(language)), [language]);\n  useEffect(() => reconfigure(compartments.current.lines, linesExtension(multiline)), [multiline]);\n  useEffect(() => reconfigure(compartments.current.edit, editExtension(readOnly, disabled)), [readOnly, disabled]);\n  useEffect(() => reconfigure(compartments.current.placeholder, placeholder ? placeholderExtension(placeholder) : []), [placeholder]);\n  useEffect(() => reconfigure(compartments.current.rows, rowsExtension(multiline, rows)), [multiline, rows]);\n  // Props may have changed the attributes; cheap when nothing did.\n  useLayoutEffect(applyMirror);\n\n  // A controlled value (pretty-printed in pretty mode) that differs from the text replaces it.\n  useEffect(() => {\n    const view = viewRef.current;\n    if (!view || value === undefined) return;\n    const next = shown(value);\n    const current = view.state.doc.toString();\n    if (current === next) return;\n    view.dispatch({ changes: { from: 0, to: current.length, insert: next }, annotations: fromProp.of(true) });\n    // shown() depends on pretty and language, which are in the list.\n  }, [value, pretty, language]);\n\n  return (\n    <div\n      data-slot=\"code-input\"\n      data-size={size}\n      data-multiline={multiline ? \"\" : undefined}\n      data-readonly={readOnly ? \"\" : undefined}\n      data-focused={focused ? \"\" : undefined}\n      className={cn(base, codeInputVariants.size[size], className)}\n      ref={(node) => {\n        rootRef.current = node;\n        if (typeof ref === \"function\") return ref(node);\n        if (ref) ref.current = node;\n      }}\n      {...props}\n    >\n      {/* CodeMirror renders inside; its own cm-* classes are not token classes (data-foreign-dom). */}\n      <div ref={mountRef} data-slot=\"code-input-editor\" data-foreign-dom=\"\" className=\"flex min-w-0 flex-1 items-center self-stretch\" />\n      <InputPrimitive\n        ref={controlRef}\n        data-slot=\"code-input-control\"\n        id={id}\n        name={name}\n        required={required}\n        disabled={disabled}\n        readOnly={readOnly}\n        value={text}\n        onValueChange={() => {}}\n        tabIndex={-1}\n        aria-hidden\n        className=\"sr-only\"\n      />\n    </div>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "code-input",
+      "title": "CodeInput",
+      "description": "A small code field on CodeMirror 6: one line (Enter submits) or several, PostgreSQL or JSON highlighting in the syntax.* colours, a read-only pretty viewer for JSON; themed through the token CSS variables and usable inside a Field.",
+      "usage": "Use CodeInput for code that fits in a form: one-line SQL conditions and filters (Enter calls onSubmit), short JSON or SQL values (multiline, rows), and showing a cell or JSON value read-only (pretty pretty-prints JSON). Put it in a Field with a FieldLabel, like Input; the value is also in a hidden form control (name, required). Use SqlEditor for whole queries and Textarea for prose.",
+      "status": "experimental",
+      "base": "@base-ui/react/input",
+      "dependencies": [
+        "@base-ui/react",
+        "@codemirror/commands",
+        "@codemirror/lang-json",
+        "@codemirror/lang-sql",
+        "@codemirror/language",
+        "@codemirror/state",
+        "@codemirror/view",
+        "@lezer/highlight"
+      ],
+      "props": [
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Height of a one-line field from size.control.* (density-aware); the padding of a multi-line one."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "description": "The text, when controlled."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string",
+          "default": "",
+          "description": "The initial text, when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: string) => void",
+          "description": "Called with the whole text after every change."
+        },
+        {
+          "name": "language",
+          "type": "\"text\" | \"sql\" | \"json\"",
+          "default": "text",
+          "description": "Highlighting: none, PostgreSQL, or JSON."
+        },
+        {
+          "name": "multiline",
+          "type": "boolean",
+          "default": false,
+          "description": "Several lines, wrapped; Enter inserts a line break. One line otherwise: pasted line breaks become spaces."
+        },
+        {
+          "name": "rows",
+          "type": "number",
+          "default": 3,
+          "description": "Minimum visible lines of a multi-line field, from text.code size and leading."
+        },
+        {
+          "name": "pretty",
+          "type": "boolean",
+          "default": false,
+          "description": "Read-only viewer: multi-line, JSON pretty-printed with two spaces (other text unchanged)."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Text can be selected and copied but not changed; sets data-readonly and aria-readonly."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction, leaves the tab order, sets data-disabled."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "description": "Shown while the field is empty, in color.fg.subtle."
+        },
+        {
+          "name": "onSubmit",
+          "type": "(value: string) => void",
+          "description": "Enter in a one-line field; the text is not changed."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "Form name of the hidden control that carries the value."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "description": "The value may not be empty; the Field validates it and the text area gets aria-required."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Accessible name when there is no FieldLabel."
+        },
+        {
+          "name": "aria-invalid",
+          "type": "boolean | \"true\" | \"false\"",
+          "description": "Marks the value invalid outside a Field; inside a Field, its validation sets it."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root element."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The frame: data-slot=\"code-input\", data-size and the state attributes."
+        },
+        {
+          "name": "editor",
+          "element": "div",
+          "description": "data-slot=\"code-input-editor\": where CodeMirror renders its text area (role textbox, contenteditable); its cm-* classes are CodeMirror's."
+        },
+        {
+          "name": "control",
+          "element": "input",
+          "description": "data-slot=\"code-input-control\": the visually hidden Base UI Input (Field.Control) that carries the value, name and validity for forms and Fields."
+        }
+      ],
+      "states": [
+        {
+          "name": "focused",
+          "variant": "data-focused",
+          "description": "The text area has focus: a ring of ring.width in color.ring around the frame."
+        },
+        {
+          "name": "multiline",
+          "variant": "data-multiline",
+          "props": {
+            "multiline": true
+          },
+          "description": "Several lines: the height follows the content (at least rows lines) and the padding comes from space.inline.*."
+        },
+        {
+          "name": "read-only",
+          "variant": "data-readonly",
+          "props": {
+            "readOnly": true
+          },
+          "description": "Read-only (also in pretty mode): the inset background."
+        },
+        {
+          "name": "invalid",
+          "variant": "data-invalid",
+          "props": {
+            "aria-invalid": true
+          },
+          "description": "Invalid: the danger border; inside a Field, its validation sets it."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.inset",
+        "color.bg.surface",
+        "color.border.strong",
+        "color.ring",
+        "color.status.danger.border",
+        "editor.fg",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "space.control.x",
+        "space.inline.md",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.lg",
+        "space.inset.sm"
+      ],
+      "examples": {
+        "minimal": "CodeInputMinimal",
+        "realistic": "CodeInputRealistic"
+      },
+      "accessibility": [
+        "The text area is CodeMirror's contenteditable with role textbox and aria-multiline; inside a Field it takes the FieldLabel (aria-labelledby), the description and error (aria-describedby) and aria-invalid from the Field; on its own, give it aria-label.",
+        "Tab and Shift+Tab always leave the field (no indentation with Tab), so focus is never trapped; a FieldLabel click focuses the text area.",
+        "Enter submits a one-line field (onSubmit), as in a text input; in a multi-line one it inserts a line break. Ctrl+Z and Ctrl+Shift+Z undo and redo.",
+        "Read-only and pretty fields stay focusable so the text can be read, selected and copied by keyboard (aria-readonly); disabled ones leave the tab order (aria-disabled).",
+        "Syntax colours are syntax.* roles, contrast-checked on the editor background in every mode; colour is never the only signal of an error (FieldError text, the danger border).",
+        "Focus shows a ring of ring.width in color.ring on the frame."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { CodeInput } from \"@/components/code-input/code-input\";\nimport { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\n\n/** The smallest useful CodeInput: a one-line SQL expression. */\nexport function CodeInputMinimal() {\n  return <CodeInput aria-label=\"Filter\" language=\"sql\" defaultValue=\"status = 'active' and created_at > now() - interval '1 day'\" />;\n}\n\n/**\n * A results filter that applies on Enter, a JSON column value in a Field with an error, and the\n * read-only pretty viewer for a cell value.\n */\nexport function CodeInputRealistic() {\n  const [filter, setFilter] = useState(\"region = 'emea'\");\n  const [applied, setApplied] = useState(filter);\n  const [settings, setSettings] = useState('{\"retries\": 3, \"timeout\": }');\n  let settingsError: string | undefined;\n  try {\n    JSON.parse(settings);\n  } catch {\n    settingsError = \"Not valid JSON: a value is missing after \\\"timeout\\\".\";\n  }\n  return (\n    <div className=\"flex w-full flex-col gap-stack-md\">\n      <Field>\n        <FieldLabel>Filter rows</FieldLabel>\n        <CodeInput language=\"sql\" size=\"sm\" value={filter} onValueChange={setFilter} onSubmit={setApplied} placeholder=\"A SQL condition, then Enter\" />\n        <FieldDescription>Applied: {applied || \"nothing\"}</FieldDescription>\n      </Field>\n      <Field invalid={settingsError !== undefined}>\n        <FieldLabel>Connection settings</FieldLabel>\n        <CodeInput language=\"json\" multiline rows={2} value={settings} onValueChange={setSettings} />\n        <FieldError match={settingsError !== undefined}>{settingsError}</FieldError>\n      </Field>\n      <CodeInput aria-label=\"Cell value\" language=\"json\" pretty value={'{\"id\":42,\"tags\":[\"new\",\"vip\"],\"address\":{\"city\":\"Hanoi\",\"zip\":null},\"active\":true}'} />\n      <CodeInput aria-label=\"Disabled filter\" disabled defaultValue=\"id = 1\" />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0",
+      "@codemirror/commands": "6.11.1",
+      "@codemirror/lang-json": "6.0.2",
+      "@codemirror/lang-sql": "6.10.0",
+      "@codemirror/language": "6.13.1",
+      "@codemirror/state": "6.7.6",
+      "@codemirror/view": "6.43.15",
+      "@lezer/highlight": "1.2.5"
+    }
+  }
+}

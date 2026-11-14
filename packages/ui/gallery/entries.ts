@@ -14,6 +14,7 @@ export const gallery: GalleryEntry[] = [
   { name: "button", load: () => import("@/components/button/button.example") },
   { name: "calendar", load: () => import("@/components/calendar/calendar.example") },
   { name: "checkbox", load: () => import("@/components/checkbox/checkbox.example") },
+  { name: "code-input", load: () => import("@/components/code-input/code-input.example") },
   { name: "combobox", load: () => import("@/components/combobox/combobox.example") },
   { name: "command-palette", load: () => import("@/components/command-palette/command-palette.example") },
   { name: "context-menu", load: () => import("@/components/context-menu/context-menu.example") },

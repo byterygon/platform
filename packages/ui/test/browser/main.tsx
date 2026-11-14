@@ -1,9 +1,13 @@
-// The page scripts/browser-check.ts drives in a real browser: one SqlEditor between two buttons,
-// in a region whose data-theme and data-density the check flips, under a preset stylesheet it
-// swaps. `window.__check` is the check's handle; the measurements use performance.now(), which
+// The page scripts/browser-check.ts drives in a real browser: a SqlEditor between two buttons, in
+// a region whose data-theme and data-density the check flips, a second one beside it in the other
+// mode, and CodeInputs (a one-line filter in a Field, a pretty JSON viewer) in a third region, all
+// under a preset stylesheet the check swaps. `window.__check` is the check's handle; the measurements use performance.now(), which
 // starts at navigation.
 import { useState } from "react";
+import { EditorView } from "@codemirror/view";
 import { createRoot } from "react-dom/client";
+import { CodeInput } from "@/components/code-input/code-input";
+import { Field, FieldLabel } from "@/components/field/field";
 import { SqlEditor, type SqlRun } from "@/components/sql-editor/sql-editor";
 import { cssColorToHex, tokenReader, type Monaco, type MonacoEditor } from "@/lib/monaco";
 import presetDefault from "@byterygon/design-tokens/presets/default/tokens.css?raw";
@@ -40,6 +44,11 @@ interface Check {
   setDensity: (density: "comfortable" | "compact") => void;
   setPreset: (preset: string) => void;
   presets: string[];
+  /** CodeInput: Enter in the filter, and the viewer's value. */
+  submits: string[];
+  setViewer: (value: string) => void;
+  /** The CodeMirror view of the n-th CodeInput on the page. */
+  codeView: (index: number) => EditorView;
 }
 
 let resolveReady: () => void = () => {};
@@ -57,12 +66,18 @@ const check: Check = {
   setTheme: (theme) => {
     document.getElementById("region")!.setAttribute("data-theme", theme);
     document.getElementById("region-2")!.setAttribute("data-theme", theme === "light" ? "dark" : "light");
+    document.getElementById("region-3")!.setAttribute("data-theme", theme);
   },
-  setDensity: (density) => document.getElementById("region")!.setAttribute("data-density", density),
+  setDensity: (density) => {
+    for (const id of ["region", "region-3"]) document.getElementById(id)!.setAttribute("data-density", density);
+  },
   setPreset: (preset) => {
     tokens.textContent = PRESETS[preset]!;
   },
   presets: Object.keys(PRESETS),
+  submits: [],
+  setViewer: () => {},
+  codeView: (index) => EditorView.findFromDOM(document.querySelectorAll<HTMLElement>("[data-slot=code-input] .cm-editor")[index]!)!,
 };
 check.bothReady = Promise.all([check.ready, second]).then(() => {});
 (window as unknown as { __check: Check }).__check = check;
@@ -96,6 +111,51 @@ function sample(index = 0) {
 }
 (window as unknown as { __sample: typeof sample }).__sample = sample;
 
+/** What the n-th CodeInput shows, next to what the tokens of its region say. */
+function sampleCode(index: number) {
+  const root = document.querySelectorAll<HTMLElement>("[data-slot=code-input]")[index]!;
+  const reader = tokenReader(root);
+  const rgb = (value: string) => cssColorToHex(value) ?? value;
+  const spans = [...root.querySelectorAll<HTMLElement>(".cm-line span")];
+  const keyword = spans.find((s) => s.textContent === "and");
+  const string = spans.find((s) => s.textContent?.startsWith("'"));
+  const content = root.querySelector<HTMLElement>(".cm-content")!;
+  const result = {
+    background: rgb(getComputedStyle(root).backgroundColor),
+    expectedBackground: reader.color("--by-color-bg-surface"),
+    keyword: keyword ? rgb(getComputedStyle(keyword).color) : null,
+    expectedKeyword: reader.color("--by-syntax-keyword"),
+    string: string ? rgb(getComputedStyle(string).color) : null,
+    expectedString: reader.color("--by-syntax-string"),
+    fontSize: Number.parseFloat(getComputedStyle(content).fontSize),
+    expectedFontSize: Number.parseFloat(reader.value("--by-text-code-size")),
+    height: root.getBoundingClientRect().height,
+    // How far the first line's middle is from the frame's middle (one line should be centred).
+    offCentre: Math.abs((() => { const r = root.getBoundingClientRect(); const l = root.querySelector(".cm-line")!.getBoundingClientRect(); return l.top + l.height / 2 - (r.top + r.height / 2); })()),
+    expectedHeight: Number.parseFloat(reader.value("--by-size-control-md")),
+    label: content.getAttribute("aria-label") ?? (content.getAttribute("aria-labelledby") ? document.getElementById(content.getAttribute("aria-labelledby")!)?.textContent : null) ?? null,
+  };
+  reader.dispose();
+  return result;
+}
+(window as unknown as { __sampleCode: typeof sampleCode }).__sampleCode = sampleCode;
+
+function Codes() {
+  const [viewer, setViewer] = useState('{"id":42,"tags":["new","vip"],"active":true}');
+  check.setViewer = setViewer;
+  return (
+    <div id="region-3" data-theme="light" data-density="comfortable" className="flex flex-col gap-stack-md bg-surface p-inset-md">
+      <button id="before-code" type="button">Before code</button>
+      <Field>
+        <FieldLabel>Filter rows</FieldLabel>
+        <CodeInput language="sql" defaultValue="id > 10 and status = 'active'" onSubmit={(v) => check.submits.push(v)} />
+      </Field>
+      <button id="after-code" type="button">After code</button>
+      <CodeInput aria-label="Cell value" language="json" pretty value={viewer} className="max-h-panel-md" />
+    </div>
+  );
+}
+
 function App() {
   const [value, setValue] = useState(INITIAL);
   check.setValue = setValue;
@@ -123,7 +183,9 @@ function App() {
       <button id="after" type="button">After</button>
       <div id="region-2" data-theme="dark" data-density="comfortable" className="bg-surface p-inset-md">
         <SqlEditor aria-label="Second query" readOnly defaultValue={"select 2;\nselect 3;\n"} onEditorReady={() => resolveSecond()} />
+        <CodeInput aria-label="Second filter" language="sql" defaultValue="id > 10 and status = 'active'" className="mt-stack-md" />
       </div>
+      <Codes />
     </main>
   );
 }
