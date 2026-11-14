@@ -24,9 +24,9 @@ describe("registry", () => {
     expect(index.success, index.success ? "" : index.error.message).toBe(true);
   });
 
-  test("has one item per component, the cn helper and one theme per token preset", () => {
+  test("has one item per component, the lib helpers and one theme per token preset", () => {
     const names = [...files.keys()].filter((f) => f.endsWith(".json") && f !== "registry.json").map((f) => f.slice(0, -5)).sort();
-    expect(names).toEqual([...listComponents(PACKAGE_ROOT), "cn", ...presets().map((p) => `theme-${p}`)].sort());
+    expect(names).toEqual([...listComponents(PACKAGE_ROOT), "cn", "theme-scope", ...presets().map((p) => `theme-${p}`)].sort());
   });
 
   test("a component item ships its source, its pinned dependencies and its manifest", () => {
@@ -46,6 +46,8 @@ describe("registry", () => {
     expect(shipped.content).toBe(`import { Button } from "@/components/ui/button";\nimport { cn } from "@/lib/cn";\n`);
     expect(shipped.registryDependencies).toEqual(["@byterygon/button", "@byterygon/cn"]);
     expect(() => shipSource(`import x from "@/hooks/x";\n`, "toolbar")).toThrow(RegistryError);
+    expect(() => shipSource(`import x from "@/lib/other";\n`, "toolbar")).toThrow(RegistryError);
+    expect(shipSource(`import { useThemeScope } from "@/lib/theme-scope";\n`, "menu").registryDependencies).toEqual(["@byterygon/theme-scope"]);
   });
 
   test("a theme item carries every token variable, the shadcn aliases and both Tailwind vocabularies", () => {

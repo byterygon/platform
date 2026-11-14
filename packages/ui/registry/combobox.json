@@ -1,0 +1,326 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "combobox",
+  "type": "registry:ui",
+  "title": "Combobox",
+  "description": "One choice from a long list, typed to filter, on Base UI's Combobox: an input in an Input-like frame with clear and open buttons, and a popup of filtered items, groups, a no-results line and a status line, in three sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/select",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/combobox.tsx",
+      "type": "registry:ui",
+      "content": "import { Combobox as ComboboxPrimitive } from \"@base-ui/react/combobox\";\nimport type { ReactNode, Ref } from \"react\";\nimport { CheckIcon, popupClasses, popupOffset, popupStyle } from \"@/components/ui/select\";\nimport { cn } from \"@/lib/cn\";\nimport { useThemeScope } from \"@/lib/theme-scope\";\n\n// A text input that filters a list, on Base UI's Combobox: the frame holds the input, a clear\n// button (shown while there is a value) and a chevron that opens the list; the popup holds the\n// filtered items, a \"no results\" line and an optional status line (loading, an error) read out by\n// screen readers. Typing filters by the item labels; the first match is highlighted so Enter\n// takes it. The popup shares Select's surface, items and theme scope.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const comboboxVariants = {\n  size: {\n    sm: \"h-control-sm *:first:ps-inset-sm\",\n    md: \"h-control-md\",\n    lg: \"h-control-lg *:first:ps-inset-lg\",\n  },\n} as const;\n\n// Written out in full (no template strings): Tailwind finds classes by scanning the source as text.\nexport const frameClasses = [\n  \"flex w-full min-w-0 items-center gap-inline-xs rounded-md border border-border-strong bg-surface pe-inline-xs font-sans text-body text-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"has-[input:focus-visible]:outline-solid has-[input:focus-visible]:outline-[length:var(--by-ring-width)]\",\n  \"has-[input:focus-visible]:outline-offset-[var(--by-ring-offset)] has-[input:focus-visible]:outline-ring\",\n  \"data-popup-open:border-border-focus\",\n  \"data-invalid:border-danger-border has-[[aria-invalid=true]]:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\nconst inputClasses = [\n  \"h-full min-w-0 flex-1 bg-transparent ps-control-x text-body text-fg outline-none\",\n  \"placeholder:text-fg-subtle\",\n  \"data-disabled:cursor-not-allowed\",\n];\n\n/** The clear and chevron buttons inside the frame, and a chip's remove button. */\nexport const frameButtonClasses = [\n  \"flex size-control-xs shrink-0 cursor-default items-center justify-center rounded-sm text-fg-muted outline-none\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"hover:bg-hover hover:text-fg active:bg-pressed\",\n  \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-ring\",\n  \"data-disabled:pointer-events-none\",\n  \"[&_svg]:size-icon-sm\",\n];\n\n/** The \"no results\" and status lines; empty (and so hidden) while they have nothing to say. */\nexport const messageClasses = \"flex min-h-control-sm items-center px-inset-sm text-body text-fg-muted empty:hidden\";\n\nexport const ChevronIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m4 6 4 4 4-4\" />\n  </svg>\n);\n\nexport const ClearIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"m4.5 4.5 7 7m0-7-7 7\" />\n  </svg>\n);\n\nexport interface ComboboxProps<Value, Item = Value> extends Omit<ComboboxPrimitive.Root.Props<Value, false, Item>, \"multiple\" | \"children\"> {\n  /** Frame height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof comboboxVariants.size;\n  /** Placeholder of the text input. */\n  placeholder?: string;\n  /** Accessible name when there is no FieldLabel; set on the input. */\n  \"aria-label\"?: string;\n  /** Shown when no item matches the text. */\n  emptyMessage?: ReactNode;\n  /** A line above the items (loading, an error), announced politely; nothing when empty. */\n  status?: ReactNode;\n  /** The clear button's accessible name. */\n  clearLabel?: string;\n  /** The list: a function from each (filtered) item to a ComboboxItem, or ComboboxItem children. */\n  children?: ReactNode | ((item: Item, index: number) => ReactNode);\n  /** Extra classes for the frame, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the `<input>`. */\n  ref?: Ref<HTMLInputElement>;\n}\n\n/**\n * A combobox on Base UI's Combobox. Pass `items` (strings, `{ value, label }` objects, groups, or\n * a `Combobox.createItems` collection) and a function child that renders each one as a\n * ComboboxItem; Base UI filters them by label as the user types. Inside a Field it takes the\n * label, description and validity; the ref reaches the input.\n */\nexport function Combobox<Value, Item = Value>({\n  size = \"md\",\n  placeholder,\n  \"aria-label\": ariaLabel,\n  emptyMessage = \"No results.\",\n  status,\n  clearLabel = \"Clear\",\n  children,\n  className,\n  ref,\n  autoHighlight = true,\n  onOpenChange,\n  ...props\n}: ComboboxProps<Value, Item>) {\n  const { ref: anchorRef, anchor, scope, refresh } = useThemeScope<HTMLDivElement>();\n  return (\n    <ComboboxPrimitive.Root<Value, false, Item>\n      autoHighlight={autoHighlight}\n      onOpenChange={(open, details) => {\n        if (open) refresh();\n        onOpenChange?.(open, details);\n      }}\n      {...props}\n    >\n      <ComboboxPrimitive.InputGroup ref={anchorRef} data-slot=\"combobox\" data-size={size} className={cn(frameClasses, comboboxVariants.size[size], className)}>\n        <ComboboxPrimitive.Input ref={ref} data-slot=\"combobox-input\" placeholder={placeholder} aria-label={ariaLabel} className={cn(inputClasses)} />\n        <ComboboxPrimitive.Clear data-slot=\"combobox-clear\" keepMounted aria-label={clearLabel} className={cn(frameButtonClasses, \"not-data-visible:hidden data-disabled:hidden\")}>\n          <ClearIcon />\n        </ComboboxPrimitive.Clear>\n        <ComboboxPrimitive.Trigger data-slot=\"combobox-trigger\" className={cn(frameButtonClasses, \"data-popup-open:text-fg\")}>\n          <ChevronIcon />\n        </ComboboxPrimitive.Trigger>\n      </ComboboxPrimitive.InputGroup>\n      <ComboboxPopup scope={scope} anchor={anchor} emptyMessage={emptyMessage} status={status}>\n        {children}\n      </ComboboxPopup>\n    </ComboboxPrimitive.Root>\n  );\n}\n\nexport interface ComboboxPopupProps {\n  scope: ReturnType<typeof useThemeScope>[\"scope\"];\n  anchor: { current: Element | null };\n  emptyMessage: ReactNode;\n  status: ReactNode;\n  children: ReactNode | ((item: never, index: number) => ReactNode);\n}\n\n/** The portal, positioner and popup of a Combobox or MultiSelect, with its messages and list. */\nexport function ComboboxPopup({ scope, anchor, emptyMessage, status, children }: ComboboxPopupProps) {\n  return (\n    <ComboboxPrimitive.Portal>\n      <ComboboxPrimitive.Positioner {...scope} data-slot=\"combobox-positioner\" sideOffset={() => popupOffset(anchor.current)} className={cn(popupClasses.positioner)}>\n        <ComboboxPrimitive.Popup data-slot=\"combobox-popup\" style={popupStyle} className={cn(popupClasses.popup)}>\n          <ComboboxPrimitive.Status data-slot=\"combobox-status\" className={cn(messageClasses)}>\n            {status}\n          </ComboboxPrimitive.Status>\n          <ComboboxPrimitive.Empty data-slot=\"combobox-empty\" className={cn(messageClasses)}>\n            {emptyMessage}\n          </ComboboxPrimitive.Empty>\n          <ComboboxPrimitive.List data-slot=\"combobox-list\" className=\"flex flex-col outline-none empty:hidden\">\n            {children as ComboboxPrimitive.List.Props[\"children\"]}\n          </ComboboxPrimitive.List>\n        </ComboboxPrimitive.Popup>\n      </ComboboxPrimitive.Positioner>\n    </ComboboxPrimitive.Portal>\n  );\n}\n\nexport interface ComboboxItemProps extends Omit<ComboboxPrimitive.Item.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** One item: its content and, while chosen, a check mark at the end. */\nexport function ComboboxItem({ className, children, ...props }: ComboboxItemProps) {\n  return (\n    <ComboboxPrimitive.Item data-slot=\"combobox-item\" className={cn(popupClasses.item, className)} {...props}>\n      <span className=\"min-w-0 flex-1 truncate\">{children}</span>\n      <ComboboxPrimitive.ItemIndicator className={cn(popupClasses.indicator)}>\n        <CheckIcon />\n      </ComboboxPrimitive.ItemIndicator>\n    </ComboboxPrimitive.Item>\n  );\n}\n\nexport interface ComboboxGroupProps extends Omit<ComboboxPrimitive.Group.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A group of items named by the ComboboxGroupLabel inside it. With grouped `items`, pass the\n * group's items as `items` and render them in a ComboboxCollection.\n */\nexport function ComboboxGroup({ className, ...props }: ComboboxGroupProps) {\n  return <ComboboxPrimitive.Group data-slot=\"combobox-group\" className={cn(\"flex flex-col\", className)} {...props} />;\n}\n\nexport interface ComboboxGroupLabelProps extends Omit<ComboboxPrimitive.GroupLabel.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The heading of a ComboboxGroup, in the caption role; not an item. */\nexport function ComboboxGroupLabel({ className, ...props }: ComboboxGroupLabelProps) {\n  return <ComboboxPrimitive.GroupLabel data-slot=\"combobox-group-label\" className={cn(popupClasses.groupLabel, className)} {...props} />;\n}\n\nexport interface ComboboxSeparatorProps extends Omit<ComboboxPrimitive.Separator.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A line between items or groups. */\nexport function ComboboxSeparator({ className, ...props }: ComboboxSeparatorProps) {\n  return <ComboboxPrimitive.Separator data-slot=\"combobox-separator\" className={cn(popupClasses.separator, className)} {...props} />;\n}\n\n/** Renders a ComboboxGroup's filtered items with a function child, as ComboboxPrimitive.List does. */\nexport const ComboboxCollection = ComboboxPrimitive.Collection;\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "combobox",
+      "title": "Combobox",
+      "description": "One choice from a long list, typed to filter, on Base UI's Combobox: an input in an Input-like frame with clear and open buttons, and a popup of filtered items, groups, a no-results line and a status line, in three sizes.",
+      "usage": "Use Combobox when the user picks one value from a list too long to scan (tables, roles, time zones) or knows what to type. Put it in a Field after a FieldLabel, pass items (strings, { value, label } objects, groups of { value, items }, or a Combobox.createItems collection to store ids) and a function child that renders each item as a ComboboxItem; Base UI filters by label as the user types and the first match is highlighted, so Enter takes it. Show loading or an error of an async search with status, and say what was searched for with emptyMessage. With TanStack Form wire value, onValueChange and onOpenChange (blur on close) to the field. For a short fixed list use Select; for several values, MultiSelect; for free text with suggestions, an Input.",
+      "status": "experimental",
+      "base": "@base-ui/react/combobox",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "items",
+          "type": "Item[] | { value, items: Item[] }[] | ComboboxItemCollection",
+          "description": "The items to filter and list; the function child renders each one."
+        },
+        {
+          "name": "value",
+          "type": "Value | null",
+          "description": "Controlled chosen value; null when nothing is chosen."
+        },
+        {
+          "name": "defaultValue",
+          "type": "Value | null",
+          "description": "Initially chosen value when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: Value | null, details) => void",
+          "description": "Called when the user chooses or clears."
+        },
+        {
+          "name": "inputValue",
+          "type": "string",
+          "description": "Controlled text of the input (with onInputValueChange), for an async search."
+        },
+        {
+          "name": "filter",
+          "type": "(item, query) => boolean | null",
+          "description": "Custom matching; null keeps every item (the server already filtered)."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "description": "Placeholder of the input, in color.fg.subtle."
+        },
+        {
+          "name": "emptyMessage",
+          "type": "ReactNode",
+          "default": "\"No results.\"",
+          "description": "Shown when no item matches the text."
+        },
+        {
+          "name": "status",
+          "type": "ReactNode",
+          "description": "A polite live line above the items (loading, an error); nothing when empty."
+        },
+        {
+          "name": "autoHighlight",
+          "type": "boolean",
+          "default": true,
+          "description": "Highlight the first match while filtering, so Enter takes it."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Frame height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "default": "\"Clear\"",
+          "description": "The clear button's accessible name."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "The form field name of the hidden input; a Field's name wins."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "default": false,
+          "description": "A value must be chosen before the form submits."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction; a Field's disabled sets it too."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Focusable but the value cannot change."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Accessible name when there is no FieldLabel."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the frame, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLInputElement>",
+          "description": "Reaches the <input>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "frame",
+          "element": "div",
+          "description": "The Input-like frame, role=\"group\"; data-slot=\"combobox\", data-size and data-popup-open name it."
+        },
+        {
+          "name": "input",
+          "element": "input",
+          "description": "role=\"combobox\" with aria-autocomplete=\"list\"; data-slot=\"combobox-input\". A hidden <input> follows the frame for forms."
+        },
+        {
+          "name": "clear",
+          "element": "button",
+          "description": "Clears the value, shown while there is one; data-slot=\"combobox-clear\" and data-visible."
+        },
+        {
+          "name": "trigger",
+          "element": "button",
+          "description": "The chevron that opens the list, out of the tab order; data-slot=\"combobox-trigger\"."
+        },
+        {
+          "name": "positioner",
+          "element": "div",
+          "description": "In a portal at the end of <body>, at z.dropdown, with the frame's data-theme and data-density; data-slot=\"combobox-positioner\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "Select's surface; data-slot=\"combobox-popup\"."
+        },
+        {
+          "name": "status",
+          "element": "div",
+          "description": "The status line, aria-live=\"polite\"; data-slot=\"combobox-status\"."
+        },
+        {
+          "name": "empty",
+          "element": "div",
+          "description": "The no-results line; data-slot=\"combobox-empty\"."
+        },
+        {
+          "name": "list",
+          "element": "div",
+          "description": "role=\"listbox\"; data-slot=\"combobox-list\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "ComboboxItem",
+          "slot": "combobox-item",
+          "description": "One item, role=\"option\": its content, and a check mark while chosen; color.interactive.hover while highlighted."
+        },
+        {
+          "name": "ComboboxGroup",
+          "slot": "combobox-group",
+          "description": "A group of items, role=\"group\", named by its ComboboxGroupLabel; render its items in a ComboboxCollection."
+        },
+        {
+          "name": "ComboboxGroupLabel",
+          "slot": "combobox-group-label",
+          "description": "A group's heading in type.caption and color.fg.subtle."
+        },
+        {
+          "name": "ComboboxSeparator",
+          "slot": "combobox-separator",
+          "description": "A 1 px line in color.border.default between items or groups."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "has-[input:focus-visible]",
+          "description": "Keyboard focus in the input: a ring of ring.width in color.ring around the frame."
+        },
+        {
+          "name": "open",
+          "variant": "data-popup-open",
+          "props": {
+            "defaultOpen": true
+          },
+          "description": "While the popup is open the frame border is color.border.focus."
+        },
+        {
+          "name": "entering",
+          "variant": "data-starting-style",
+          "description": "The popup fades in over motion.duration.fast with motion.easing.enter, and out with motion.easing.exit."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over the clear or chevron button: color.interactive.hover."
+        },
+        {
+          "name": "highlighted",
+          "variant": "data-highlighted",
+          "description": "The item under the pointer or the keyboard: color.interactive.hover."
+        },
+        {
+          "name": "no value",
+          "variant": "not-data-visible",
+          "description": "The clear button is hidden while there is nothing to clear."
+        },
+        {
+          "name": "invalid",
+          "variant": "data-invalid",
+          "description": "In an invalid Field, or with aria-invalid: color.status.danger.border borders."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled, with the clear button hidden; a disabled item is color.fg.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.overlay",
+        "color.bg.surface",
+        "color.border.default",
+        "color.border.focus",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.border",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.lg",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "z.dropdown"
+      ],
+      "examples": {
+        "minimal": "ComboboxMinimal",
+        "realistic": "ComboboxRealistic"
+      },
+      "accessibility": [
+        "The input is role=\"combobox\" with aria-autocomplete=\"list\", aria-expanded and aria-controls, named by its FieldLabel (aria-labelledby) or aria-label; the popup is a role=\"listbox\" of role=\"option\" items with aria-selected, in role=\"group\"s named by their labels.",
+        "Typing filters and opens the list; ArrowDown and ArrowUp move the highlight while focus stays in the input (aria-activedescendant), Enter chooses, Escape closes and then clears, and Tab leaves.",
+        "The chevron button is out of the tab order and hidden from assistive technology, as the input already opens the list; the clear button is reachable by pointer and is named by clearLabel.",
+        "The status line is aria-live=\"polite\", so loading and errors of an async search are announced without moving focus; the no-results line is announced the same way.",
+        "The chosen item shows a check mark, so the state does not rest on colour; the frame border is color.border.strong (3:1 against the surface).",
+        "The popup takes the frame's theme and density even when they are set on a region rather than <html>."
+      ]
+    },
+    "example": "import { Combobox, ComboboxCollection, ComboboxGroup, ComboboxGroupLabel, ComboboxItem, ComboboxSeparator } from \"@/components/combobox/combobox\";\nimport { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\n\nconst schemas = [\"public\", \"analytics\", \"audit\", \"billing\", \"inventory\", \"staging\"];\n\n/** The smallest useful Combobox: a labelled list of strings, filtered as you type. */\nexport function ComboboxMinimal() {\n  return (\n    <Field className=\"w-full\">\n      <FieldLabel>Schema</FieldLabel>\n      <Combobox items={schemas} defaultValue=\"public\" placeholder=\"Search schemas\">\n        {(schema: string) => (\n          <ComboboxItem key={schema} value={schema}>\n            {schema}\n          </ComboboxItem>\n        )}\n      </Combobox>\n    </Field>\n  );\n}\n\ninterface Table {\n  value: string;\n  label: string;\n}\n\nconst tables: { value: string; items: Table[] }[] = [\n  {\n    value: \"public\",\n    items: [\n      { value: \"public.customers\", label: \"customers\" },\n      { value: \"public.orders\", label: \"orders\" },\n      { value: \"public.order_items\", label: \"order_items\" },\n    ],\n  },\n  {\n    value: \"audit\",\n    items: [\n      { value: \"audit.events\", label: \"events\" },\n      { value: \"audit.sessions\", label: \"sessions\" },\n    ],\n  },\n];\n\nconst roles = [\"dbee_reader\", \"dbee_writer\", \"dbee_admin\"];\n\n/**\n * Query targets: tables grouped by schema with a separator, a role that is still loading from the\n * server (status line), a time zone nobody has chosen (invalid), a database the connection fixes,\n * and the small and large sizes.\n */\nexport function ComboboxRealistic() {\n  return (\n    <div className=\"flex w-full flex-col gap-stack-md\">\n      <Field name=\"table\">\n        <FieldLabel>Table</FieldLabel>\n        <Combobox items={tables} defaultValue={tables[0]!.items[1]!} placeholder=\"Search tables\" emptyMessage=\"No table matches.\">\n          {(group: (typeof tables)[number], index: number) => (\n            <ComboboxGroup key={group.value} items={group.items}>\n              {index > 0 && <ComboboxSeparator />}\n              <ComboboxGroupLabel>{group.value}</ComboboxGroupLabel>\n              <ComboboxCollection>\n                {(table: Table) => (\n                  <ComboboxItem key={table.value} value={table}>\n                    {table.label}\n                  </ComboboxItem>\n                )}\n              </ComboboxCollection>\n            </ComboboxGroup>\n          )}\n        </Combobox>\n        <FieldDescription>Only tables this connection can read are listed.</FieldDescription>\n      </Field>\n      <Field name=\"role\">\n        <FieldLabel>Run as role</FieldLabel>\n        <Combobox items={roles} placeholder=\"Search roles\" status=\"Loading roles…\" size=\"sm\">\n          {(role: string) => (\n            <ComboboxItem key={role} value={role}>\n              {role}\n            </ComboboxItem>\n          )}\n        </Combobox>\n      </Field>\n      <Field name=\"timezone\" invalid>\n        <FieldLabel>Session time zone</FieldLabel>\n        <Combobox items={[\"UTC\", \"Europe/Berlin\", \"Asia/Ho_Chi_Minh\"]} placeholder=\"Search time zones\">\n          {(zone: string) => (\n            <ComboboxItem key={zone} value={zone}>\n              {zone}\n            </ComboboxItem>\n          )}\n        </Combobox>\n        <FieldError>Choose the time zone timestamps are shown in.</FieldError>\n      </Field>\n      <Field name=\"database\" disabled>\n        <FieldLabel>Database</FieldLabel>\n        <Combobox items={[\"warehouse\"]} defaultValue=\"warehouse\">\n          {(name: string) => (\n            <ComboboxItem key={name} value={name}>\n              {name}\n            </ComboboxItem>\n          )}\n        </Combobox>\n        <FieldDescription>Fixed by the connection.</FieldDescription>\n      </Field>\n      <Field name=\"search-path\">\n        <FieldLabel>Search path</FieldLabel>\n        <Combobox items={schemas} defaultValue=\"analytics\" size=\"lg\">\n          {(schema: string) => (\n            <ComboboxItem key={schema} value={schema}>\n              {schema}\n            </ComboboxItem>\n          )}\n        </Combobox>\n      </Field>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

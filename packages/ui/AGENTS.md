@@ -12,11 +12,12 @@ src/components/<name>/<name>.tsx            the component (Base UI part + token 
                      /<name>.example.tsx    a minimal and a realistic example (rendered by tests)
                      /<name>.test.tsx       behaviour tests (keyboard, events, ARIA)
 src/lib/cn.ts                               class merging that knows the role names
+src/lib/theme-scope.ts                      a popup in a portal takes its trigger's theme and density
 gallery/                                    every example in Light/Dark x Comfortable/Compact
 scripts/registry.ts                         writes registry/ (committed, drift-tested)
 scripts/new-component.ts                    pnpm ui:new
 scripts/verify-install.ts                   shadcn CLI install into a blank Vite app, offline
-registry/                                   <name>.json, cn.json, theme-<preset>.json, registry.json, llms.txt
+registry/                                   <name>.json, cn.json, theme-scope.json, theme-<preset>.json, registry.json, llms.txt
 component.manifest.schema.json              the manifest schema (editors); scripts/lib/manifest.ts validates
 ```
 
@@ -62,14 +63,18 @@ pnpm --filter @byterygon/ui build                    # build the gallery into di
 What `test/conventions.test.tsx` enforces for every component:
 
 - exactly the four files; the manifest is valid and its name, title and variants match the code;
-- imports: React, `@base-ui/react/*`, the manifest's `dependencies`, and `@/lib/cn` or
-  `@/components/<other>/<other>` only; no URLs, `fetch` or sockets;
+- imports: React, `@base-ui/react/*`, the manifest's `dependencies`, and `@/lib/cn`,
+  `@/lib/theme-scope` or `@/components/<other>/<other>` only (`LIBS` in scripts/registry.ts lists
+  the lib items); no URLs, `fetch` or sockets;
 - every class of every variant and state compiles under the token theme alone (Tailwind's default
   theme is not loaded, so `bg-blue-500`, `font-medium` or `max-w-sm` fail), arbitrary values are
   token variables only (`opacity-[var(--by-opacity-disabled)]`), no colour primitive and no raw
   space step (`p-2` resolves to `space.1`: use `p-inset-sm`), and `manifest.tokens` is exactly the
   set of tokens the classes resolve to;
-- every listed state is styled (a class uses its variant) and its props set its attribute;
+- every listed state is styled (a class uses its variant) and its props set its attribute; classes
+  are read from the whole document, so popups in a portal count: give a popup component an
+  `open` state with `{ "defaultOpen": true }`, and the suite also clicks each closed
+  `aria-haspopup` trigger in the examples so the parts inside the popup are checked;
 - the examples render without axe violations (WCAG 2.x A/AA) in Light and Dark, Comfortable and
   Compact. Colour contrast is not measured in jsdom: the token build checks every pair.
 
@@ -90,6 +95,11 @@ What `test/conventions.test.tsx` enforces for every component:
   `<input>` and `className` on the frame; NumberInput and Slider keep Base UI's root ref (`inputRef`
   reaches NumberInput's text control). FileInput is a native `<input type="file">` kept focusable
   and visually hidden; files reach the app through `onFilesChange` and never leave the browser.
+- Select, Combobox and MultiSelect render their trigger or frame and their popup themselves; the
+  children are the popup's content (SelectItem, or a function from each item to a ComboboxItem).
+  Pass Select `items` so the trigger shows the chosen label before the popup has opened. Wire
+  TanStack Form's blur to `onOpenChange` (on close). MultiSelect keeps its list open after a
+  choice and uses Combobox's items and popup.
 - Form state and validation are TanStack Form: `useForm`, `<Form form={form}>`, `form.Field`, and
   `<Field field={field}>`, which maps `isTouched && !isValid`, `isTouched`, `isDirty` and `name`
   to Base UI's controlled `invalid`, `touched`, `dirty`, `name` and gives FieldError the errors.
@@ -121,6 +131,12 @@ What `test/conventions.test.tsx` enforces for every component:
 - When no role fits, add one to `@byterygon/design-tokens` (its AGENTS.md), never a raw value here.
 - Write every class out in full in the source, never assembled from template strings: Tailwind
   finds classes by scanning the installed files as text.
+- Popups (Select, Combobox, menus later) render in a portal: put `useThemeScope`'s `ref` on the
+  trigger, spread its `scope` on the positioner and call `refresh` when it opens, so a popup opened
+  in a dark or compact region is dark or compact too. Base UI's run-time variables
+  (`--anchor-width`, `--available-height`, `--transform-origin`) are not tokens: set them in
+  `style` (`popupStyle` in select.tsx), not as arbitrary classes. Numeric props that stand for a
+  length (`sideOffset`) read the token at the trigger with `tokenPx`.
 - `cn` must know every Tailwind role name (`roleNames` in `src/lib/cn.ts`); a test fails when the
   tokens add one it does not know.
 
@@ -146,7 +162,7 @@ shadcn add /path/to/registry/theme-default.json /path/to/registry/button.json   
 - `baseColor: ""` stops the CLI from downloading a base colour; the theme item supplies colours.
 - On the command line a namespaced name (`@byterygon/button`) is fetched over HTTP; from a folder,
   pass the file path. Dependencies between items (`@byterygon/cn`) resolve through `registries`
-  either way.
+  either way, and so does `@byterygon/theme-scope`, which the popup components depend on.
 - Items list npm dependencies by bare name; the CLI installs only those missing from the project's
   package.json, so provision them from your mirror first (`meta.dependencyVersions` gives the
   versions tested here). A versioned name would make the CLI reinstall it, and fail offline.

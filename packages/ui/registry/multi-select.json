@@ -1,0 +1,304 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "multi-select",
+  "type": "registry:ui",
+  "title": "MultiSelect",
+  "description": "Several choices from a list, typed to filter, on Base UI's Combobox with multiple: each chosen item is a removable chip before the input, with Combobox's popup and items, in three sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/combobox",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/multi-select.tsx",
+      "type": "registry:ui",
+      "content": "import { Combobox as ComboboxPrimitive } from \"@base-ui/react/combobox\";\nimport type { ReactNode, Ref } from \"react\";\nimport { ChevronIcon, ClearIcon, ComboboxPopup, frameButtonClasses } from \"@/components/ui/combobox\";\nimport { cn } from \"@/lib/cn\";\nimport { useThemeScope } from \"@/lib/theme-scope\";\n\n// Several choices from a list, on Base UI's Combobox with `multiple`: each chosen item is a chip\n// (with a remove button) before the text input, which filters the list as in Combobox. The list\n// stays open after a choice so several can be picked in a row; Backspace in the empty input\n// removes the last chip, and ArrowLeft from the start of the input moves onto the chips. The\n// popup and items are Combobox's (ComboboxItem, ComboboxGroup, ComboboxGroupLabel).\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const multiSelectVariants = {\n  size: {\n    sm: \"min-h-control-sm\",\n    md: \"min-h-control-md\",\n    lg: \"min-h-control-lg\",\n  },\n} as const;\n\n// Written out in full (no template strings): Tailwind finds classes by scanning the source as text.\nconst frameClasses = [\n  \"flex w-full min-w-0 cursor-text items-center gap-inline-xs rounded-md border border-border-strong bg-surface ps-control-x pe-inline-xs font-sans text-body text-fg\",\n  \"has-[[data-slot=multi-select-chip]]:ps-inline-xs\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"has-[input:focus-visible]:outline-solid has-[input:focus-visible]:outline-[length:var(--by-ring-width)]\",\n  \"has-[input:focus-visible]:outline-offset-[var(--by-ring-offset)] has-[input:focus-visible]:outline-ring\",\n  \"data-popup-open:border-border-focus\",\n  \"data-invalid:border-danger-border has-[[aria-invalid=true]]:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\nconst chipsClasses = \"flex min-w-0 flex-1 flex-wrap items-center gap-inline-xs py-inset-xs\";\n\nconst chipClasses = [\n  \"flex h-control-xs min-w-0 max-w-full cursor-default items-center gap-inline-xs rounded-sm bg-neutral-subtle ps-inset-xs text-label text-neutral-subtle-fg outline-none\",\n  \"has-[[data-slot=multi-select-chip-remove][data-disabled]]:pe-inset-xs\",\n  \"data-highlighted:bg-selected\",\n  \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-ring\",\n];\n\nconst chipRemoveClasses = [\n  \"flex h-full aspect-square shrink-0 items-center justify-center rounded-sm text-fg-muted outline-none\",\n  \"hover:bg-hover hover:text-fg\",\n  \"data-disabled:hidden\",\n  \"[&_svg]:size-icon-xs\",\n];\n\nconst inputClasses = [\n  \"h-control-xs min-w-control-lg flex-1 bg-transparent text-body text-fg outline-none\",\n  \"placeholder:text-fg-subtle\",\n  \"data-disabled:cursor-not-allowed\",\n];\n\n/** A chosen value's text: `itemToStringLabel`, else a `{ label }` object's label, else the value. */\nfunction labelOf<Value>(value: Value, itemToStringLabel?: (value: Value) => string): string {\n  if (itemToStringLabel) return itemToStringLabel(value);\n  if (value && typeof value === \"object\" && \"label\" in value) return String(value.label);\n  return String(value);\n}\n\n/** A chosen value's React key: a `{ value }` object's value, else the value. */\nfunction keyOf(value: unknown): string {\n  if (value && typeof value === \"object\" && \"value\" in value) return String(value.value);\n  return String(value);\n}\n\nexport interface MultiSelectProps<Value, Item = Value> extends Omit<ComboboxPrimitive.Root.Props<Value, true, Item>, \"multiple\" | \"children\"> {\n  /** Minimum frame height, from the density-aware `size.control.*` roles; chips wrap below. */\n  size?: keyof typeof multiSelectVariants.size;\n  /** Placeholder of the text input while nothing is chosen. */\n  placeholder?: string;\n  /** Accessible name when there is no FieldLabel; set on the input. */\n  \"aria-label\"?: string;\n  /** Shown when no item matches the text. */\n  emptyMessage?: ReactNode;\n  /** A line above the items (loading, an error), announced politely; nothing when empty. */\n  status?: ReactNode;\n  /** The clear button's accessible name (it removes every value). */\n  clearLabel?: string;\n  /** A chip's remove button name, from the chip's text. */\n  removeLabel?: (label: string) => string;\n  /** The list: a function from each (filtered) item to a ComboboxItem, or ComboboxItem children. */\n  children?: ReactNode | ((item: Item, index: number) => ReactNode);\n  /** Extra classes for the frame, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the `<input>`. */\n  ref?: Ref<HTMLInputElement>;\n}\n\n/**\n * A multi-select on Base UI's Combobox. Pass `items` and a function child that renders each one\n * as a ComboboxItem, as for Combobox; `value` is an array. Inside a Field it takes the label,\n * description and validity; the ref reaches the input.\n */\nexport function MultiSelect<Value, Item = Value>({\n  size = \"md\",\n  placeholder,\n  \"aria-label\": ariaLabel,\n  emptyMessage = \"No results.\",\n  status,\n  clearLabel = \"Clear all\",\n  removeLabel = (label) => `Remove ${label}`,\n  children,\n  className,\n  ref,\n  autoHighlight = true,\n  itemToStringLabel,\n  onOpenChange,\n  ...props\n}: MultiSelectProps<Value, Item>) {\n  const { ref: anchorRef, anchor, scope, refresh } = useThemeScope<HTMLDivElement>();\n  return (\n    <ComboboxPrimitive.Root<Value, true, Item>\n      multiple\n      autoHighlight={autoHighlight}\n      {...(itemToStringLabel ? { itemToStringLabel } : {})}\n      onOpenChange={(open, details) => {\n        // Keep the list open after a choice, so several can be picked in a row.\n        if (!open && details.reason === \"item-press\") {\n          details.cancel();\n          return;\n        }\n        if (open) refresh();\n        onOpenChange?.(open, details);\n      }}\n      {...props}\n    >\n      <ComboboxPrimitive.InputGroup ref={anchorRef} data-slot=\"multi-select\" data-size={size} className={cn(frameClasses, multiSelectVariants.size[size], className)}>\n        <ComboboxPrimitive.Chips data-slot=\"multi-select-chips\" className={chipsClasses}>\n          <ComboboxPrimitive.Value>\n            {(values: Value[]) => (\n              <>\n                {values.map((value) => {\n                  const label = labelOf(value, itemToStringLabel);\n                  return (\n                    <ComboboxPrimitive.Chip key={keyOf(value)} data-slot=\"multi-select-chip\" aria-label={label} className={cn(chipClasses)}>\n                      <span className=\"truncate\">{label}</span>\n                      <ComboboxPrimitive.ChipRemove data-slot=\"multi-select-chip-remove\" aria-label={removeLabel(label)} className={cn(chipRemoveClasses)}>\n                        <ClearIcon />\n                      </ComboboxPrimitive.ChipRemove>\n                    </ComboboxPrimitive.Chip>\n                  );\n                })}\n                <ComboboxPrimitive.Input\n                  ref={ref}\n                  data-slot=\"multi-select-input\"\n                  placeholder={values.length > 0 ? undefined : placeholder}\n                  aria-label={ariaLabel}\n                  className={cn(inputClasses)}\n                />\n              </>\n            )}\n          </ComboboxPrimitive.Value>\n        </ComboboxPrimitive.Chips>\n        <ComboboxPrimitive.Clear data-slot=\"multi-select-clear\" keepMounted aria-label={clearLabel} className={cn(frameButtonClasses, \"not-data-visible:hidden data-disabled:hidden\")}>\n          <ClearIcon />\n        </ComboboxPrimitive.Clear>\n        <ComboboxPrimitive.Trigger data-slot=\"multi-select-trigger\" className={cn(frameButtonClasses, \"data-popup-open:text-fg\")}>\n          <ChevronIcon />\n        </ComboboxPrimitive.Trigger>\n      </ComboboxPrimitive.InputGroup>\n      <ComboboxPopup scope={scope} anchor={anchor} emptyMessage={emptyMessage} status={status}>\n        {children}\n      </ComboboxPopup>\n    </ComboboxPrimitive.Root>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "multi-select",
+      "title": "MultiSelect",
+      "description": "Several choices from a list, typed to filter, on Base UI's Combobox with multiple: each chosen item is a removable chip before the input, with Combobox's popup and items, in three sizes.",
+      "usage": "Use MultiSelect when the user picks any number of values from a list (columns, privileges, schemas, tags). Put it in a Field after a FieldLabel, pass items and a function child that renders each one as a ComboboxItem, as for Combobox; value is an array. Items that are { value, label } objects show their label on the chip; for ids from a Combobox.createItems collection pass itemToStringLabel. The list stays open after each choice; Backspace in the empty input removes the last chip. With TanStack Form wire value, onValueChange and onOpenChange (blur on close) to the field. For one value use Combobox or Select; for a few always-visible options, a CheckboxGroup.",
+      "status": "experimental",
+      "base": "@base-ui/react/combobox",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "items",
+          "type": "Item[] | { value, items: Item[] }[] | ComboboxItemCollection",
+          "description": "The items to filter and list; the function child renders each one."
+        },
+        {
+          "name": "value",
+          "type": "Value[]",
+          "description": "Controlled chosen values."
+        },
+        {
+          "name": "defaultValue",
+          "type": "Value[]",
+          "description": "Initially chosen values when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: Value[], details) => void",
+          "description": "Called when the user adds, removes or clears values."
+        },
+        {
+          "name": "itemToStringLabel",
+          "type": "(value: Value) => string",
+          "description": "A value's text on its chip and in the input; { value, label } objects need none."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "description": "Placeholder of the input while nothing is chosen."
+        },
+        {
+          "name": "emptyMessage",
+          "type": "ReactNode",
+          "default": "\"No results.\"",
+          "description": "Shown when no item matches the text."
+        },
+        {
+          "name": "status",
+          "type": "ReactNode",
+          "description": "A polite live line above the items (loading, an error); nothing when empty."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Minimum frame height from size.control.*; chips wrap onto more lines."
+        },
+        {
+          "name": "clearLabel",
+          "type": "string",
+          "default": "\"Clear all\"",
+          "description": "The clear button's accessible name."
+        },
+        {
+          "name": "removeLabel",
+          "type": "(label: string) => string",
+          "default": "label => `Remove ${label}`",
+          "description": "A chip's remove button name."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "The form field name of the hidden inputs; a Field's name wins."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "default": false,
+          "description": "A value must be chosen before the form submits."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction; a Field's disabled sets it too."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Focusable but the values cannot change."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Accessible name when there is no FieldLabel."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the frame, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLInputElement>",
+          "description": "Reaches the <input>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "frame",
+          "element": "div",
+          "description": "The Input-like frame, role=\"group\"; data-slot=\"multi-select\", data-size and data-popup-open name it."
+        },
+        {
+          "name": "chips",
+          "element": "div",
+          "description": "The chips and the input, wrapping; data-slot=\"multi-select-chips\"."
+        },
+        {
+          "name": "chip",
+          "element": "div",
+          "description": "One chosen value in color.neutral.subtle, named by its text; data-slot=\"multi-select-chip\" and data-highlighted when reached with ArrowLeft."
+        },
+        {
+          "name": "chip-remove",
+          "element": "button",
+          "description": "Removes that value; data-slot=\"multi-select-chip-remove\"."
+        },
+        {
+          "name": "input",
+          "element": "input",
+          "description": "role=\"combobox\"; data-slot=\"multi-select-input\"."
+        },
+        {
+          "name": "clear",
+          "element": "button",
+          "description": "Removes every value, shown while there is one; data-slot=\"multi-select-clear\"."
+        },
+        {
+          "name": "trigger",
+          "element": "button",
+          "description": "The chevron that opens the list, out of the tab order; data-slot=\"multi-select-trigger\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "Combobox's positioner, popup, status, empty line and list (data-slot=\"combobox-*\")."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "has-[input:focus-visible]",
+          "description": "Keyboard focus in the input: a ring of ring.width in color.ring around the frame."
+        },
+        {
+          "name": "has values",
+          "variant": "has-[[data-slot=multi-select-chip]]",
+          "props": {
+            "defaultValue": [
+              "public"
+            ]
+          },
+          "description": "With chips the frame's start padding drops to space.inline.xs, so the first chip sits close to the border."
+        },
+        {
+          "name": "open",
+          "variant": "data-popup-open",
+          "props": {
+            "defaultOpen": true
+          },
+          "description": "While the popup is open the frame border is color.border.focus."
+        },
+        {
+          "name": "entering",
+          "variant": "data-starting-style",
+          "description": "The popup fades in over motion.duration.fast with motion.easing.enter, and out with motion.easing.exit."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over a button: color.interactive.hover."
+        },
+        {
+          "name": "chip highlighted",
+          "variant": "data-highlighted",
+          "description": "The chip reached with ArrowLeft, or the item under the pointer or the keyboard: color.interactive.selected or hover."
+        },
+        {
+          "name": "no value",
+          "variant": "not-data-visible",
+          "description": "The clear button is hidden while there is nothing to clear."
+        },
+        {
+          "name": "invalid",
+          "variant": "data-invalid",
+          "description": "In an invalid Field, or with aria-invalid: color.status.danger.border borders."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled; the clear and chip remove buttons are hidden."
+        }
+      ],
+      "tokens": [
+        "color.bg.overlay",
+        "color.bg.surface",
+        "color.border.default",
+        "color.border.focus",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.interactive.selected",
+        "color.neutral.subtle-bg",
+        "color.neutral.subtle-fg",
+        "color.ring",
+        "color.status.danger.border",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "size.icon.xs",
+        "space.control.x",
+        "space.inline.xs",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.dropdown"
+      ],
+      "examples": {
+        "minimal": "MultiSelectMinimal",
+        "realistic": "MultiSelectRealistic"
+      },
+      "accessibility": [
+        "The input is role=\"combobox\" with aria-autocomplete=\"list\", named by its FieldLabel (aria-labelledby) or aria-label; the popup is a role=\"listbox\" with aria-multiselectable, and chosen items have aria-selected and a check mark.",
+        "Typing filters; ArrowDown and ArrowUp move the highlight, Enter adds or removes the highlighted item and the list stays open. Backspace in the empty input removes the last chip; ArrowLeft at the start of the input moves onto the chips, where Backspace or Delete removes one.",
+        "Each chip is named by its text and its remove button by removeLabel (\"Remove SELECT\"); the clear button is named by clearLabel. The chevron is out of the tab order and hidden from assistive technology.",
+        "Chips use color.neutral.subtle with color.neutral.subtle-fg (4.5:1), and the highlighted chip color.interactive.selected, with a focus ring as well.",
+        "The popup takes the frame's theme and density even when they are set on a region rather than <html>."
+      ]
+    },
+    "example": "import { ComboboxItem } from \"@/components/combobox/combobox\";\nimport { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { MultiSelect } from \"@/components/multi-select/multi-select\";\n\nconst columns = [\"id\", \"customer_id\", \"status\", \"total\", \"created_at\", \"updated_at\"];\n\n/** The smallest useful MultiSelect: labelled columns, two already chosen. */\nexport function MultiSelectMinimal() {\n  return (\n    <Field className=\"w-full\">\n      <FieldLabel>Columns</FieldLabel>\n      <MultiSelect items={columns} defaultValue={[\"id\", \"status\"]} placeholder=\"Search columns\">\n        {(column: string) => (\n          <ComboboxItem key={column} value={column}>\n            {column}\n          </ComboboxItem>\n        )}\n      </MultiSelect>\n    </Field>\n  );\n}\n\ninterface Privilege {\n  value: string;\n  label: string;\n}\n\nconst privileges: Privilege[] = [\n  { value: \"select\", label: \"SELECT\" },\n  { value: \"insert\", label: \"INSERT\" },\n  { value: \"update\", label: \"UPDATE\" },\n  { value: \"delete\", label: \"DELETE\" },\n  { value: \"truncate\", label: \"TRUNCATE\" },\n];\n\nconst schemas = [\"public\", \"analytics\", \"audit\", \"billing\", \"inventory\"];\n\n/**\n * A grant: privileges as `{ value, label }` objects, schemas with an empty-state message, tags\n * nobody has added yet (invalid), owners the policy fixes, and the small and large sizes.\n */\nexport function MultiSelectRealistic() {\n  return (\n    <div className=\"flex w-full flex-col gap-stack-md\">\n      <Field name=\"privileges\">\n        <FieldLabel>Privileges</FieldLabel>\n        <MultiSelect items={privileges} defaultValue={[privileges[0]!, privileges[1]!]} placeholder=\"Add privileges\">\n          {(privilege: Privilege) => (\n            <ComboboxItem key={privilege.value} value={privilege}>\n              {privilege.label}\n            </ComboboxItem>\n          )}\n        </MultiSelect>\n        <FieldDescription>Backspace removes the last one.</FieldDescription>\n      </Field>\n      <Field name=\"schemas\">\n        <FieldLabel>Schemas</FieldLabel>\n        <MultiSelect items={schemas} placeholder=\"Search schemas\" emptyMessage=\"No schema matches.\" size=\"sm\">\n          {(schema: string) => (\n            <ComboboxItem key={schema} value={schema}>\n              {schema}\n            </ComboboxItem>\n          )}\n        </MultiSelect>\n      </Field>\n      <Field name=\"tags\" invalid>\n        <FieldLabel>Tags</FieldLabel>\n        <MultiSelect items={[\"production\", \"pii\", \"reporting\"]} placeholder=\"Add tags\">\n          {(tag: string) => (\n            <ComboboxItem key={tag} value={tag}>\n              {tag}\n            </ComboboxItem>\n          )}\n        </MultiSelect>\n        <FieldError>Add at least one tag.</FieldError>\n      </Field>\n      <Field name=\"owners\" disabled>\n        <FieldLabel>Owners</FieldLabel>\n        <MultiSelect items={[\"dba\", \"platform\"]} defaultValue={[\"dba\"]}>\n          {(owner: string) => (\n            <ComboboxItem key={owner} value={owner}>\n              {owner}\n            </ComboboxItem>\n          )}\n        </MultiSelect>\n        <FieldDescription>Set by the workspace administrator.</FieldDescription>\n      </Field>\n      <Field name=\"notify\">\n        <FieldLabel>Notify</FieldLabel>\n        <MultiSelect items={[\"on-call\", \"data-team\", \"security\"]} defaultValue={[\"on-call\"]} size=\"lg\">\n          {(team: string) => (\n            <ComboboxItem key={team} value={team}>\n              {team}\n            </ComboboxItem>\n          )}\n        </MultiSelect>\n      </Field>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

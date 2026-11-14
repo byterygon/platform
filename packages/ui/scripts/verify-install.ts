@@ -29,12 +29,14 @@ const SHADCN = join(PACKAGE_ROOT, "node_modules", "shadcn", "dist", "index.js");
 const STOCK = ["button", "card", "input"];
 /**
  * The Byterygon items named on the command line. Button comes in through the registry
- * dependencies of icon-button and input-group as well; cn through every item.
+ * dependencies of icon-button and input-group as well; cn through every item, and theme-scope
+ * through select, combobox and multi-select.
  */
 const ITEMS = [
   "button", "input", "field", "form", "textarea", "input-group", "icon-button", "kbd",
   "toggle-button", "toggle-group", "checkbox", "radio-group", "switch",
   "number-input", "password-input", "search-input", "slider", "file-input",
+  "select", "combobox", "multi-select",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -136,7 +138,7 @@ function serve(dir: string): Promise<Server> {
 const itemContent = (name: string) => (JSON.parse(readFileSync(join(REGISTRY, `${name}.json`), "utf8")) as { files: { content: string }[] }).files[0]!.content;
 
 function checkInstalledFiles(app: string, label: string): void {
-  for (const [path, item] of [["src/lib/cn.ts", "cn"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
+  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
     const full = join(app, path);
     if (check(existsSync(full), `${label}: ${path} was not installed`)) {
       check(readFileSync(full, "utf8") === itemContent(item), `${label}: ${path} differs from the registry item ${item}`);
@@ -154,6 +156,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import { Button } from "@/components/ui/button";
 import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
+import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { FileInput } from "@/components/ui/file-input";
 import { Form } from "@/components/ui/form";
@@ -161,10 +164,12 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { NumberInput } from "@/components/ui/number-input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { SearchInput } from "@/components/ui/search-input";
+import { Select, SelectGroup, SelectGroupLabel, SelectItem, SelectSeparator } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -218,6 +223,26 @@ function Connection() {
       <Field><FieldLabel>Sample</FieldLabel><Slider defaultValue={25} /></Field>
       <Field><FieldLabel>CA certificate</FieldLabel><FileInput accept=".pem" /></Field>
       <FileInput aria-label="Scripts" variant="dropzone" multiple />
+      <Field>
+        <FieldLabel>Engine</FieldLabel>
+        <Select items={{ pg: "PostgreSQL", duck: "DuckDB" }} defaultValue="pg">
+          <SelectGroup><SelectGroupLabel>Engines</SelectGroupLabel><SelectItem value="pg">PostgreSQL</SelectItem></SelectGroup>
+          <SelectSeparator />
+          <SelectItem value="duck">DuckDB</SelectItem>
+        </Select>
+      </Field>
+      <Field>
+        <FieldLabel>Schema</FieldLabel>
+        <Combobox items={["public", "audit"]} status="">
+          {(schema: string) => <ComboboxItem key={schema} value={schema}>{schema}</ComboboxItem>}
+        </Combobox>
+      </Field>
+      <Field>
+        <FieldLabel>Columns</FieldLabel>
+        <MultiSelect items={["id", "status"]} defaultValue={["id"]}>
+          {(column: string) => <ComboboxItem key={column} value={column}>{column}</ComboboxItem>}
+        </MultiSelect>
+      </Field>
       <ToggleButton defaultPressed>Wrap</ToggleButton>
       <ToggleGroup aria-label="View" defaultValue={["grid"]}>
         <ToggleGroupItem value="grid">Grid</ToggleGroupItem>
@@ -353,6 +378,8 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["data-checked:bg-accent-solid", "background-color", "color.accent.bg", "Byterygon Checkbox, Radio and Switch checked"],
   ["bg-border-strong", "background-color", "color.border.strong", "Byterygon Switch off"],
   ["h-track", "height", "size.track", "Byterygon Slider track"],
+  ["bg-overlay", "background-color", "color.bg.overlay", "Byterygon Select, Combobox and MultiSelect popup"],
+  ["bg-neutral-subtle", "background-color", "color.neutral.subtle-bg", "Byterygon MultiSelect chip"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {

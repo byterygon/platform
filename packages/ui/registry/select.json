@@ -1,0 +1,275 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "select",
+  "type": "registry:ui",
+  "title": "Select",
+  "description": "One choice from a list, on Base UI's Select: a trigger that looks like an Input and shows the chosen label, and a listbox popup with items, groups and separators, in three sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/input",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/select.tsx",
+      "type": "registry:ui",
+      "content": "import { Select as SelectPrimitive } from \"@base-ui/react/select\";\nimport type { ReactNode, Ref } from \"react\";\nimport { inputVariants } from \"@/components/ui/input\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenPx, useThemeScope } from \"@/lib/theme-scope\";\n\n// One choice from a list, on Base UI's Select: a trigger that looks like an Input and shows the\n// chosen item's label, and a listbox popup below it. `Select` renders the trigger and the popup;\n// its children are the popup's content (SelectItem, SelectGroup with SelectGroupLabel,\n// SelectSeparator). The popup is placed under the trigger (not over it, as a native macOS menu\n// would be), so long lists scroll inside it like a Combobox's.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const selectVariants = {\n  size: inputVariants.size,\n} as const;\n\nconst triggerClasses = [\n  \"flex w-full min-w-0 cursor-default select-none items-center gap-inline-sm rounded-md border border-border-strong bg-surface text-start font-sans text-body text-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"data-popup-open:border-border-focus\",\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\nconst valueClasses = [\"min-w-0 flex-1 truncate data-placeholder:text-fg-subtle\"];\n\nconst iconClasses = [\"flex shrink-0 text-fg-muted [&_svg]:size-icon-sm\"];\n\n/**\n * The popup's positioner and popup. Shared with Combobox and MultiSelect through the class\n * names only; each wraps its own Base UI parts.\n */\nexport const popupClasses = {\n  positioner: \"z-[var(--by-z-dropdown)] outline-none\",\n  popup: [\n    \"flex flex-col overflow-y-auto overscroll-contain rounded-md border border-border bg-overlay p-inset-xs font-sans text-body text-fg shadow-overlay outline-none\",\n    \"transition-opacity duration-[var(--by-motion-duration-fast)] ease-enter\",\n    \"data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit\",\n  ],\n  item: [\n    \"flex min-h-control-sm cursor-default select-none items-center gap-inline-sm rounded-sm px-inset-sm text-body text-fg outline-none\",\n    \"data-highlighted:bg-hover\",\n    \"data-disabled:pointer-events-none data-disabled:text-fg-disabled\",\n  ],\n  indicator: \"ms-auto flex shrink-0 [&_svg]:size-icon-sm\",\n  groupLabel: \"flex min-h-control-xs select-none items-center px-inset-sm text-caption text-fg-subtle\",\n  separator: \"-mx-inset-xs my-inset-xs h-px shrink-0 bg-border\",\n} as const;\n\n/**\n * Base UI sets these variables on the positioner at run time: the trigger's width, the room left\n * in the viewport, and the side the popup grows from. They are not tokens, so they go in `style`.\n */\nexport const popupStyle = {\n  minWidth: \"var(--anchor-width)\",\n  maxHeight: \"var(--available-height)\",\n  transformOrigin: \"var(--transform-origin)\",\n} as const;\n\n/** The gap between the trigger and the popup: space.inline.xs where the trigger is. */\nexport const popupOffset = (anchor: Element | null) => tokenPx(anchor, \"--by-space-inline-xs\", 4);\n\nconst ChevronIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m4 6 4 4 4-4\" />\n  </svg>\n);\n\nexport const CheckIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m3.5 8.5 3 3 6-7\" />\n  </svg>\n);\n\nexport interface SelectProps<Value> extends Omit<SelectPrimitive.Root.Props<Value, false>, \"multiple\" | \"children\"> {\n  /** Trigger height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof selectVariants.size;\n  /** Shown in the trigger while nothing is chosen. */\n  placeholder?: ReactNode;\n  /** Accessible name when there is no FieldLabel; set on the trigger. */\n  \"aria-label\"?: string;\n  /** The popup's content: SelectItem, SelectGroup, SelectGroupLabel, SelectSeparator. */\n  children?: ReactNode;\n  /** Extra classes for the trigger, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the trigger `<button>`. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/**\n * A select on Base UI's Select. Pass `items` (a record of value to label, or `{ value, label }`\n * objects) so the trigger can show the chosen label before the popup has ever opened. Inside a\n * Field it takes the label, description and validity; the ref reaches the trigger.\n */\nexport function Select<Value>({ size = \"md\", placeholder, \"aria-label\": ariaLabel, children, className, ref, onOpenChange, ...props }: SelectProps<Value>) {\n  const { ref: anchorRef, anchor, scope, refresh } = useThemeScope<HTMLButtonElement>(ref);\n  return (\n    <SelectPrimitive.Root<Value>\n      onOpenChange={(open, details) => {\n        if (open) refresh();\n        onOpenChange?.(open, details);\n      }}\n      {...props}\n    >\n      <SelectPrimitive.Trigger ref={anchorRef} data-slot=\"select\" data-size={size} aria-label={ariaLabel} className={cn(triggerClasses, selectVariants.size[size], className)}>\n        <SelectPrimitive.Value data-slot=\"select-value\" placeholder={placeholder} className={cn(valueClasses)} />\n        <SelectPrimitive.Icon data-slot=\"select-icon\" className={cn(iconClasses)}>\n          <ChevronIcon />\n        </SelectPrimitive.Icon>\n      </SelectPrimitive.Trigger>\n      <SelectPrimitive.Portal>\n        <SelectPrimitive.Positioner {...scope} data-slot=\"select-positioner\" sideOffset={() => popupOffset(anchor.current)} alignItemWithTrigger={false} className={cn(popupClasses.positioner)}>\n          <SelectPrimitive.Popup data-slot=\"select-popup\" style={popupStyle} className={cn(popupClasses.popup)}>\n            <SelectPrimitive.List data-slot=\"select-list\" className=\"flex flex-col outline-none\">\n              {children}\n            </SelectPrimitive.List>\n          </SelectPrimitive.Popup>\n        </SelectPrimitive.Positioner>\n      </SelectPrimitive.Portal>\n    </SelectPrimitive.Root>\n  );\n}\n\nexport interface SelectItemProps extends Omit<SelectPrimitive.Item.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** One option: its text and, while chosen, a check mark at the end. */\nexport function SelectItem({ className, children, ...props }: SelectItemProps) {\n  return (\n    <SelectPrimitive.Item data-slot=\"select-item\" className={cn(popupClasses.item, className)} {...props}>\n      <SelectPrimitive.ItemText className=\"min-w-0 flex-1 truncate\">{children}</SelectPrimitive.ItemText>\n      <SelectPrimitive.ItemIndicator className={cn(popupClasses.indicator)}>\n        <CheckIcon />\n      </SelectPrimitive.ItemIndicator>\n    </SelectPrimitive.Item>\n  );\n}\n\nexport interface SelectGroupProps extends Omit<SelectPrimitive.Group.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A group of options, named by the SelectGroupLabel inside it. */\nexport function SelectGroup({ className, ...props }: SelectGroupProps) {\n  return <SelectPrimitive.Group data-slot=\"select-group\" className={cn(\"flex flex-col\", className)} {...props} />;\n}\n\nexport interface SelectGroupLabelProps extends Omit<SelectPrimitive.GroupLabel.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The heading of a SelectGroup, in the caption role; not an option. */\nexport function SelectGroupLabel({ className, ...props }: SelectGroupLabelProps) {\n  return <SelectPrimitive.GroupLabel data-slot=\"select-group-label\" className={cn(popupClasses.groupLabel, className)} {...props} />;\n}\n\nexport interface SelectSeparatorProps extends Omit<SelectPrimitive.Separator.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A line between options or groups. */\nexport function SelectSeparator({ className, ...props }: SelectSeparatorProps) {\n  return <SelectPrimitive.Separator data-slot=\"select-separator\" className={cn(popupClasses.separator, className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "select",
+      "title": "Select",
+      "description": "One choice from a list, on Base UI's Select: a trigger that looks like an Input and shows the chosen label, and a listbox popup with items, groups and separators, in three sizes.",
+      "usage": "Use Select when the user picks one value from a fixed list of about five to thirty options they need not type (SSL mode, engine, isolation level). Put it in a Field after a FieldLabel, pass items (a record of value to label, or { value, label } objects) so the trigger shows the label before the popup opens, and list the options as SelectItem children, grouped with SelectGroup and SelectGroupLabel when that helps. With TanStack Form wire value, onValueChange and onOpenChange (blur on close) to the field; null means nothing is chosen. For two to six options that should all be visible use RadioGroup; for long or searchable lists, Combobox; for several values, MultiSelect.",
+      "status": "experimental",
+      "base": "@base-ui/react/select",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "items",
+          "type": "Record<string, ReactNode> | { value, label }[]",
+          "description": "Value-to-label data for the trigger; the options themselves are the children."
+        },
+        {
+          "name": "value",
+          "type": "Value | null",
+          "description": "Controlled chosen value; null when nothing is chosen."
+        },
+        {
+          "name": "defaultValue",
+          "type": "Value | null",
+          "description": "Initially chosen value when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: Value | null, details) => void",
+          "description": "Called when the user chooses an option."
+        },
+        {
+          "name": "placeholder",
+          "type": "ReactNode",
+          "description": "Shown in the trigger, in color.fg.subtle, while nothing is chosen."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Trigger height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state of the popup; defaultOpen and onOpenChange as in Base UI."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "The form field name of the hidden input; a Field's name wins."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "default": false,
+          "description": "An option must be chosen before the form submits."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction; a Field's disabled sets it too."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Focusable but the popup does not open."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Accessible name when there is no FieldLabel."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the trigger, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLButtonElement>",
+          "description": "Reaches the trigger <button>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "trigger",
+          "element": "button",
+          "description": "role=\"combobox\" with aria-haspopup=\"listbox\"; data-slot=\"select\", data-size and data-popup-open name it. A hidden <input> follows it for forms."
+        },
+        {
+          "name": "value",
+          "element": "span",
+          "description": "The chosen label, or the placeholder with data-placeholder; data-slot=\"select-value\"."
+        },
+        {
+          "name": "icon",
+          "element": "span",
+          "description": "The chevron, aria-hidden; data-slot=\"select-icon\"."
+        },
+        {
+          "name": "positioner",
+          "element": "div",
+          "description": "In a portal at the end of <body>, at z.dropdown, with the trigger's data-theme and data-density; data-slot=\"select-positioner\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "The surface, color.bg.overlay with elevation.overlay; at least the trigger's width and at most the height left in the viewport; data-slot=\"select-popup\"."
+        },
+        {
+          "name": "list",
+          "element": "div",
+          "description": "role=\"listbox\"; data-slot=\"select-list\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "SelectItem",
+          "slot": "select-item",
+          "description": "One option, role=\"option\": its text, and a check mark while chosen; color.interactive.hover while highlighted."
+        },
+        {
+          "name": "SelectGroup",
+          "slot": "select-group",
+          "description": "A group of options, role=\"group\", named by its SelectGroupLabel."
+        },
+        {
+          "name": "SelectGroupLabel",
+          "slot": "select-group-label",
+          "description": "A group's heading in type.caption and color.fg.subtle."
+        },
+        {
+          "name": "SelectSeparator",
+          "slot": "select-separator",
+          "description": "A 1 px line in color.border.default between options or groups."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on the trigger: a ring of ring.width in color.ring."
+        },
+        {
+          "name": "open",
+          "variant": "data-popup-open",
+          "props": {
+            "defaultOpen": true
+          },
+          "description": "While the popup is open the trigger border is color.border.focus."
+        },
+        {
+          "name": "entering",
+          "variant": "data-starting-style",
+          "description": "The popup fades in over motion.duration.fast with motion.easing.enter, and out with motion.easing.exit (data-ending-style)."
+        },
+        {
+          "name": "placeholder",
+          "variant": "data-placeholder",
+          "description": "Nothing chosen: the placeholder in color.fg.subtle."
+        },
+        {
+          "name": "highlighted",
+          "variant": "data-highlighted",
+          "description": "The option under the pointer or the keyboard: color.interactive.hover."
+        },
+        {
+          "name": "invalid",
+          "variant": "data-invalid",
+          "description": "In an invalid Field, or with aria-invalid: color.status.danger.border borders."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled; a disabled option is color.fg.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.overlay",
+        "color.bg.surface",
+        "color.border.default",
+        "color.border.focus",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.border",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inset.lg",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "z.dropdown"
+      ],
+      "examples": {
+        "minimal": "SelectMinimal",
+        "realistic": "SelectRealistic"
+      },
+      "accessibility": [
+        "The trigger is a <button role=\"combobox\"> with aria-haspopup=\"listbox\" and aria-expanded, named by its FieldLabel (aria-labelledby) or aria-label; the popup is a role=\"listbox\" of role=\"option\" items with aria-selected.",
+        "Enter, Space, ArrowDown and ArrowUp open the popup; arrow keys, Home and End move the highlight, typing jumps to the option that starts with the text, Enter chooses and Escape closes, and focus returns to the trigger.",
+        "Disabled options are skipped by the keyboard and shown in color.fg.disabled; a group's label names the group (aria-labelledby).",
+        "The chosen option shows a check mark as well as its place in the trigger, so the state does not rest on colour; the trigger border is color.border.strong (3:1 against the surface).",
+        "The popup takes the trigger's theme and density even when they are set on a region rather than <html>, so its contrast matches the page it opened from."
+      ]
+    },
+    "example": "import { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { Select, SelectGroup, SelectGroupLabel, SelectItem, SelectSeparator } from \"@/components/select/select\";\n\nconst sslModes = [\n  { value: \"disable\", label: \"Disable\" },\n  { value: \"prefer\", label: \"Prefer\" },\n  { value: \"require\", label: \"Require\" },\n  { value: \"verify-full\", label: \"Verify full\" },\n];\n\n/** The smallest useful Select: a labelled choice with a default. */\nexport function SelectMinimal() {\n  return (\n    <Field className=\"w-full\">\n      <FieldLabel>SSL mode</FieldLabel>\n      <Select items={sslModes} defaultValue=\"prefer\">\n        {sslModes.map((mode) => (\n          <SelectItem key={mode.value} value={mode.value}>\n            {mode.label}\n          </SelectItem>\n        ))}\n      </Select>\n    </Field>\n  );\n}\n\nconst engines = {\n  postgres: \"PostgreSQL\",\n  mysql: \"MySQL\",\n  sqlite: \"SQLite\",\n  clickhouse: \"ClickHouse\",\n  duckdb: \"DuckDB\",\n  oracle: \"Oracle\",\n};\n\n/**\n * A new connection: the engine in groups with a separator and an option the licence does not\n * cover, an encoding nobody has chosen yet (invalid), a schema the policy fixes, and the small\n * and large sizes.\n */\nexport function SelectRealistic() {\n  return (\n    <div className=\"flex w-full flex-col gap-stack-md\">\n      <Field name=\"engine\">\n        <FieldLabel>Engine</FieldLabel>\n        <Select items={engines} defaultValue=\"postgres\">\n          <SelectGroup>\n            <SelectGroupLabel>Transactional</SelectGroupLabel>\n            <SelectItem value=\"postgres\">PostgreSQL</SelectItem>\n            <SelectItem value=\"mysql\">MySQL</SelectItem>\n            <SelectItem value=\"sqlite\">SQLite</SelectItem>\n          </SelectGroup>\n          <SelectSeparator />\n          <SelectGroup>\n            <SelectGroupLabel>Analytical</SelectGroupLabel>\n            <SelectItem value=\"clickhouse\">ClickHouse</SelectItem>\n            <SelectItem value=\"duckdb\">DuckDB</SelectItem>\n          </SelectGroup>\n          <SelectSeparator />\n          <SelectItem value=\"oracle\" disabled>\n            Oracle (not in this licence)\n          </SelectItem>\n        </Select>\n        <FieldDescription>The driver is bundled; nothing is downloaded.</FieldDescription>\n      </Field>\n      <Field name=\"encoding\" invalid>\n        <FieldLabel>Client encoding</FieldLabel>\n        <Select items={{ utf8: \"UTF-8\", latin1: \"LATIN1\" }} placeholder=\"Choose an encoding\" size=\"sm\">\n          <SelectItem value=\"utf8\">UTF-8</SelectItem>\n          <SelectItem value=\"latin1\">LATIN1</SelectItem>\n        </Select>\n        <FieldError>Choose the encoding the server expects.</FieldError>\n      </Field>\n      <Field name=\"schema\" disabled>\n        <FieldLabel>Default schema</FieldLabel>\n        <Select items={{ public: \"public\" }} defaultValue=\"public\">\n          <SelectItem value=\"public\">public</SelectItem>\n        </Select>\n        <FieldDescription>Set by the workspace administrator.</FieldDescription>\n      </Field>\n      <Field name=\"isolation\">\n        <FieldLabel>Isolation level</FieldLabel>\n        <Select items={{ \"read-committed\": \"Read committed\", \"repeatable-read\": \"Repeatable read\", serializable: \"Serializable\" }} defaultValue=\"read-committed\" size=\"lg\">\n          <SelectItem value=\"read-committed\">Read committed</SelectItem>\n          <SelectItem value=\"repeatable-read\">Repeatable read</SelectItem>\n          <SelectItem value=\"serializable\">Serializable</SelectItem>\n        </Select>\n      </Field>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}
