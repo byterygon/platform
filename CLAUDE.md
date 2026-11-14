@@ -88,6 +88,14 @@ rewrites it, so rerun it after changing tokens too). `pnpm ui:new <name>` scaffo
 `pnpm --filter @byterygon/ui verify:install` installs the registry with the real shadcn CLI into a
 blank Vite app, offline (CI runs it in the network namespace).
 
+**Base UI only (Uy Son, 2026-11-14).** Every Byterygon UI component, example, fixture and app
+(`packages/ui`, `packages/theme-studio`, DBee screens) is built on Base UI (`@base-ui/react`).
+Never Radix (`radix-ui`, `@radix-ui/*`) or another primitive library. When a stock shadcn/ui item
+is needed as a reference or a test fixture, take it from a Base UI style
+(`https://ui.shadcn.com/r/styles/base-nova/<name>.json`), never `new-york` (Radix). Where Base UI
+has no part (calendar, date and time pickers), build on Base UI's `useRender` and its parts rather
+than bringing in another component library, and record the choice in the spec's Open questions.
+
 ## Offline builds
 
 On a connected machine, run `cargo vendor --locked vendor` and copy its printed source

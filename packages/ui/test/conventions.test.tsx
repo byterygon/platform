@@ -56,6 +56,14 @@ describe("package", () => {
     expect((await checkClasses(["bg-surface", "hover:bg-accent-solid", "p-inset-md", "z-[var(--by-z-modal)]"])).errors).toEqual([]);
   });
 
+  test("a manifest that depends on Radix is invalid (Base UI only)", async () => {
+    const { readManifest, validateManifest } = await import("../scripts/lib/manifest.ts");
+    const manifest = readManifest(root, "button");
+    for (const dep of ["radix-ui", "@radix-ui/react-slot"]) {
+      expect(validateManifest({ ...manifest, dependencies: [...manifest.dependencies, dep] }, "button").join("\n")).toMatch(/Base UI only/);
+    }
+  });
+
   test("the manifest schema requires what the validator requires", async () => {
     const { REQUIRED_KEYS } = await import("../scripts/lib/manifest.ts");
     const schema = JSON.parse(readFileSync(join(root, "component.manifest.schema.json"), "utf8")) as { required: string[] };

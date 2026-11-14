@@ -131,6 +131,9 @@ components. See `gallery/gallery.css`.
 
 ## Never
 
+- Never use Radix (`radix-ui`, `@radix-ui/*`) or another primitive library: Base UI only. Stock
+  shadcn references and fixtures come from the `base-nova` style, never `new-york`. Where Base UI
+  has no part, build on `useRender` and the existing parts.
 - Never use a raw colour, a raw length, a Tailwind palette class or a default-theme scale.
 - Never use bare `accent` colour utilities; use the `accent-solid` names.
 - Never edit `registry/` by hand; change the component or the manifest and run `registry`.
