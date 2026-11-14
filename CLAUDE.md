@@ -92,9 +92,13 @@ blank Vite app, offline (CI runs it in the network namespace).
 (`packages/ui`, `packages/theme-studio`, DBee screens) is built on Base UI (`@base-ui/react`).
 Never Radix (`radix-ui`, `@radix-ui/*`) or another primitive library. When a stock shadcn/ui item
 is needed as a reference or a test fixture, take it from a Base UI style
-(`https://ui.shadcn.com/r/styles/base-nova/<name>.json`), never `new-york` (Radix). Where Base UI
-has no part (calendar, date and time pickers), build on Base UI's `useRender` and its parts rather
-than bringing in another component library, and record the choice in the spec's Open questions.
+(`https://ui.shadcn.com/r/styles/base-nova/<name>.json`), never `new-york` (Radix). Two libraries
+fill the gaps, also Uy Son's decision: dates and times (Calendar, DatePicker, TimePicker) use
+`react-day-picker` with `date-fns`, as shadcn's Calendar does, styled with token roles; form state,
+fields and validation (Field/Form and the inputs wired to it) use TanStack Form
+(`@tanstack/react-form`), with Base UI's Field parts for labels, descriptions and errors. Anything
+else Base UI lacks is built on `useRender` and its parts; record the choice in the spec's Open
+questions.
 
 ## Offline builds
 
