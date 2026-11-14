@@ -301,7 +301,7 @@ Usage: Use Textarea for text that may span lines (descriptions, notes, filters, 
 
 [time-picker.json](time-picker.json): A time of day typed into hour, minute, optional second and AM/PM segments, on Base UI's Input: the arrow keys step a segment and digits fill it, in three sizes.
 
-Usage: Use TimePicker for a time of day (a backup schedule, a maintenance window). Put it in a Field after a FieldLabel. The value is "HH:mm" ("HH:mm:ss" with seconds) on the 24-hour clock whatever hourCycle shows, and null until every segment is set; with TanStack Form wire value, onValueChange and onBlur to the field. A native form submits the text shown, which is the value on the 24-hour clock. hourCycle={12} adds an AM/PM segment (A and P set it). For a date use DatePicker; for a duration or a number of seconds, NumberInput.
+Usage: Use TimePicker for a time of day (a backup schedule, a maintenance window). Put it in a Field after a FieldLabel. The value is "HH:mm" ("HH:mm:ss" with seconds) on the 24-hour clock whatever hourCycle shows, and null until every segment is set; with TanStack Form wire value, onValueChange and onBlur to the field. A native form submits the text shown: the value itself on the 24-hour clock, "02:05 PM" with hourCycle={12}. hourCycle={12} adds an AM/PM segment (A and P set it). For a date use DatePicker; for a duration or a number of seconds, NumberInput.
 
 - Wraps: @base-ui/react/input
 - size: sm, md, lg
