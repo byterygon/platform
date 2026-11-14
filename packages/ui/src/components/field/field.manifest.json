@@ -1,0 +1,62 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "field",
+  "title": "Field",
+  "description": "A form field on Base UI's Field parts: label, control, description and error tied together, with invalid, touched, dirty and disabled state taken from TanStack Form or set by hand.",
+  "usage": "Wrap every form control (Input, Textarea, InputGroup) in a Field with a FieldLabel; add FieldDescription for a hint and FieldError for the message. With TanStack Form, render it from form.Field and pass the field: <form.Field name=\"host\">{(field) => <Field field={field}>…</Field>}</form.Field>, and wire the control's value, onValueChange and onBlur to the field. Without a form library, set invalid and FieldError's children yourself, or use Base UI's validate prop. Put the fields in a Form.",
+  "status": "experimental",
+  "base": "@base-ui/react/field",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "field", "type": "FieldState (a TanStack Form field: name and state.meta)", "description": "Takes name, touched, dirty and invalid (touched and not valid) from a TanStack Form field, and gives FieldError its errors." },
+    { "name": "name", "type": "string", "description": "The control's name; defaults to field.name." },
+    { "name": "invalid", "type": "boolean", "description": "Marks the field invalid (data-invalid, aria-invalid on the control) and shows FieldError; overrides the TanStack field." },
+    { "name": "touched", "type": "boolean", "description": "Controlled touched state (data-touched); defaults to the TanStack field's." },
+    { "name": "dirty", "type": "boolean", "description": "Controlled dirty state (data-dirty); defaults to the TanStack field's." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Disables the control and dims the label (data-disabled on every part)." },
+    { "name": "validate", "type": "(value, formValues) => string | string[] | null | Promise<…>", "description": "Base UI's own validation, for a field without a form library." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLDivElement>", "description": "Reaches the root <div>." }
+  ],
+  "variants": {},
+  "slots": [
+    { "name": "root", "element": "div", "description": "The column that holds the parts; data-slot=\"field\" and Base UI's data-invalid, data-touched, data-dirty, data-disabled." },
+    { "name": "label", "element": "label", "description": "FieldLabel; data-slot=\"field-label\"." },
+    { "name": "description", "element": "p", "description": "FieldDescription; data-slot=\"field-description\"." },
+    { "name": "error", "element": "div", "description": "FieldError, rendered only while the field is invalid; data-slot=\"field-error\"." }
+  ],
+  "parts": [
+    { "name": "FieldLabel", "slot": "field-label", "description": "The visible label, tied to the control; danger-coloured while invalid, dimmed while disabled." },
+    { "name": "FieldDescription", "slot": "field-description", "description": "A hint under the control, in color.fg.muted, named by aria-describedby." },
+    { "name": "FieldError", "slot": "field-error", "description": "The validation message in color.status.danger.fg: its children, its errors prop, or the TanStack field's errors one per line." }
+  ],
+  "states": [
+    { "name": "invalid", "variant": "data-invalid", "props": { "invalid": true }, "description": "Invalid: the label turns color.status.danger.fg, the control shows its danger border, FieldError appears." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "The control is disabled and the label dims to opacity.disabled." }
+  ],
+  "tokens": [
+    "color.fg.default",
+    "color.fg.muted",
+    "color.status.danger.fg",
+    "font.sans",
+    "opacity.disabled",
+    "space.stack.xs",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": { "minimal": "FieldMinimal", "realistic": "FieldRealistic" },
+  "accessibility": [
+    "FieldLabel is a <label> tied to the control, so clicking it focuses the control and screen readers announce it as the control's name.",
+    "FieldDescription and FieldError are named in the control's aria-describedby; the error is read when the control is focused.",
+    "An invalid field sets aria-invalid on the control; the message, not the danger colour, carries the meaning.",
+    "Show errors after the user leaves the field or submits (the default with a TanStack field: touched and invalid), not on the first keystroke.",
+    "color.status.danger.fg and color.fg.muted are contrast-checked as text on every surface."
+  ]
+}

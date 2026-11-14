@@ -1,0 +1,191 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "icon-button",
+  "type": "registry:ui",
+  "title": "IconButton",
+  "description": "A square, icon-only action button with Button's four variants in three density-aware sizes, disabled and loading states, and a required aria-label.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/button",
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/icon-button.tsx",
+      "type": "registry:ui",
+      "content": "import { Button as ButtonPrimitive } from \"@base-ui/react/button\";\nimport { buttonBase, buttonVariants } from \"@/components/ui/button\";\nimport { cn } from \"@/lib/cn\";\n\n// A square Button holding only an icon. The colours are Button's (`buttonVariants.variant`), so\n// the two always match; the size is a square of the control height. The accessible name has to\n// come from `aria-label`, which the type requires: an icon alone says nothing to a screen reader.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const iconButtonVariants = {\n  variant: buttonVariants.variant,\n  size: {\n    sm: \"size-control-sm [&_svg]:size-icon-sm\",\n    md: \"size-control-md [&_svg]:size-icon-sm\",\n    lg: \"size-control-lg [&_svg]:size-icon-md\",\n  },\n} as const;\n\nexport interface IconButtonProps extends Omit<ButtonPrimitive.Props, \"className\" | \"aria-label\"> {\n  /** The accessible name, required: what the button does (\"Copy connection string\"), not the icon's name. */\n  \"aria-label\": string;\n  /** Visual weight, as Button's. Ghost by default: icon buttons mostly sit in toolbars and inputs. */\n  variant?: keyof typeof iconButtonVariants.variant;\n  /** A square of the density-aware `size.control.*` height. */\n  size?: keyof typeof iconButtonVariants.size;\n  /** Shows that the action is running: stays focusable, ignores clicks, sets `aria-busy` and `data-loading`. */\n  loading?: boolean;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * An icon-only action button on Base UI's Button. Pass the icon (an `<svg aria-hidden>`) as the\n * child and say what the button does in `aria-label`. The ref reaches the `<button>`.\n */\nexport function IconButton({ variant = \"ghost\", size = \"md\", loading = false, disabled, className, type = \"button\", ...props }: IconButtonProps) {\n  return (\n    <ButtonPrimitive\n      data-slot=\"icon-button\"\n      data-variant={variant}\n      data-size={size}\n      data-loading={loading ? \"\" : undefined}\n      aria-busy={loading || undefined}\n      type={type}\n      disabled={disabled || loading}\n      focusableWhenDisabled={loading}\n      className={cn(buttonBase, iconButtonVariants.variant[variant], iconButtonVariants.size[size], className)}\n      {...props}\n    />\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "icon-button",
+      "title": "IconButton",
+      "description": "A square, icon-only action button with Button's four variants in three density-aware sizes, disabled and loading states, and a required aria-label.",
+      "usage": "Use IconButton where a familiar icon says enough and space is tight: toolbars, table rows, inside an InputGroup. Put an <svg aria-hidden> inside and describe the action in aria-label (\"Copy connection string\", not \"Copy icon\"); the type requires it. Ghost is the default; use primary for the one main action of a toolbar. When the icon is not obvious, use a Button with text instead.",
+      "status": "experimental",
+      "base": "@base-ui/react/button",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "aria-label",
+          "type": "string",
+          "required": true,
+          "description": "The accessible name: what the button does. Required by the type."
+        },
+        {
+          "name": "variant",
+          "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"",
+          "default": "ghost",
+          "description": "Visual weight, the same colours as Button's variants."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "A square of size.control.*, which follows data-density; the icon is size.icon.sm (md at lg)."
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "default": false,
+          "description": "Running: aria-busy and data-loading, ignores clicks, stays focusable."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction and sets data-disabled."
+        },
+        {
+          "name": "type",
+          "type": "\"button\" | \"submit\" | \"reset\"",
+          "default": "button",
+          "description": "The native button type."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element (a link) with the button's props."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLButtonElement>",
+          "description": "Reaches the rendered element."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "primary",
+          "secondary",
+          "ghost",
+          "danger"
+        ],
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "button",
+          "description": "The button; data-slot=\"icon-button\", data-variant, data-size and data-loading name it."
+        },
+        {
+          "name": "icon",
+          "element": "svg",
+          "description": "The child icon, sized to size.icon.sm (size.icon.md at lg)."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over the button: the variant's hover colour."
+        },
+        {
+          "name": "active",
+          "variant": "active",
+          "description": "Pressed: the variant's pressed colour."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: a ring of ring.width in color.ring, offset by ring.offset."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled."
+        },
+        {
+          "name": "loading",
+          "variant": "data-loading",
+          "props": {
+            "loading": true
+          },
+          "description": "Running: aria-busy, ignores clicks, stays focusable."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-active",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.fg.default",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.neutral.bg",
+        "color.neutral.bg-active",
+        "color.neutral.bg-hover",
+        "color.neutral.fg",
+        "color.ring",
+        "color.status.danger.solid",
+        "color.status.danger.solid-fg",
+        "color.status.danger.solid-hover",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.md",
+        "size.icon.sm",
+        "space.inline.sm"
+      ],
+      "examples": {
+        "minimal": "IconButtonMinimal",
+        "realistic": "IconButtonRealistic"
+      },
+      "accessibility": [
+        "Renders a native <button> with type=\"button\" unless type is set, so Enter and Space activate it.",
+        "aria-label is required by the type and names the action; mark the icon aria-hidden so it is not read twice.",
+        "Disabled uses the native disabled attribute; loading keeps the button focusable so focus is not lost mid-action, and sets aria-busy.",
+        "The smallest size (size.control.sm, 22 px in compact) passes WCAG 2.2 target size (minimum 24 px) only with spacing around it; keep IconButtons at least gap-inline-xs apart, or use md in dense toolbars.",
+        "The focus ring shows for keyboard focus only and meets 3:1 against every surface; every variant's colours are contrast-checked by the token build."
+      ]
+    },
+    "example": "import { IconButton } from \"@/components/icon-button/icon-button\";\n\n// Inline icons, so the examples need no icon package; any 16 x 16 `<svg aria-hidden>` works.\nconst icon = { \"aria-hidden\": true, viewBox: \"0 0 16 16\", fill: \"none\", stroke: \"currentColor\", strokeWidth: 1.5, strokeLinecap: \"round\", strokeLinejoin: \"round\" } as const;\n\nfunction CopyIcon() {\n  return (\n    <svg {...icon}>\n      <rect x=\"5.5\" y=\"5.5\" width=\"8\" height=\"8\" rx=\"1.5\" />\n      <path d=\"M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2\" />\n    </svg>\n  );\n}\n\nfunction PlayIcon() {\n  return (\n    <svg {...icon}>\n      <path d=\"M5 3.5v9l7-4.5z\" />\n    </svg>\n  );\n}\n\nfunction RefreshIcon() {\n  return (\n    <svg {...icon}>\n      <path d=\"M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3\" />\n    </svg>\n  );\n}\n\nfunction TrashIcon() {\n  return (\n    <svg {...icon}>\n      <path d=\"M3 4.5h10M6.5 4.5v-2h3v2M4.5 4.5l.5 9h6l.5-9\" />\n    </svg>\n  );\n}\n\nfunction MoreIcon() {\n  return (\n    <svg {...icon}>\n      <path d=\"M3.5 8h.01M8 8h.01M12.5 8h.01\" strokeWidth={2.5} />\n    </svg>\n  );\n}\n\n/** The smallest useful IconButton: an icon and the label a screen reader announces. */\nexport function IconButtonMinimal() {\n  return (\n    <IconButton aria-label=\"Copy connection string\">\n      <CopyIcon />\n    </IconButton>\n  );\n}\n\n/** A query editor's toolbar: run, refresh while loading, a disabled delete, more actions, in every size. */\nexport function IconButtonRealistic() {\n  return (\n    <div className=\"flex flex-col gap-stack-sm\">\n      <div role=\"toolbar\" aria-label=\"Query\" className=\"flex items-center gap-inline-xs\">\n        <IconButton variant=\"primary\" aria-label=\"Run query\">\n          <PlayIcon />\n        </IconButton>\n        <IconButton aria-label=\"Refresh results\" loading>\n          <RefreshIcon />\n        </IconButton>\n        <IconButton variant=\"danger\" aria-label=\"Delete query\" disabled>\n          <TrashIcon />\n        </IconButton>\n        <IconButton variant=\"secondary\" aria-label=\"More actions\">\n          <MoreIcon />\n        </IconButton>\n      </div>\n      <div className=\"flex items-center gap-inline-xs\">\n        <IconButton size=\"sm\" aria-label=\"Copy, small\">\n          <CopyIcon />\n        </IconButton>\n        <IconButton size=\"md\" aria-label=\"Copy, medium\">\n          <CopyIcon />\n        </IconButton>\n        <IconButton size=\"lg\" aria-label=\"Copy, large\">\n          <CopyIcon />\n        </IconButton>\n      </div>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

@@ -5,6 +5,9 @@ import { createRoot } from "react-dom/client";
 import "./gallery.css";
 import { gallery } from "./entries.ts";
 
+const manifests = import.meta.glob<{ usage: string }>("../src/components/*/*.manifest.json", { eager: true, import: "default" });
+const usage = (name: string) => manifests[`../src/components/${name}/${name}.manifest.json`]?.usage;
+
 const modes = [
   { theme: "light", density: "comfortable" },
   { theme: "dark", density: "comfortable" },
@@ -20,6 +23,7 @@ function Entry({ name, load }: (typeof gallery)[number]) {
   return (
     <section className="flex flex-col gap-stack-sm">
       <h2 className="text-heading-3 text-fg">{name}</h2>
+      <p className="text-body text-fg-muted">{usage(name)}</p>
       <div className="grid grid-cols-2 gap-gap-md">
         {modes.map((mode) => (
           <div key={`${mode.theme}-${mode.density}`} data-theme={mode.theme} data-density={mode.density} className="flex flex-col items-start gap-stack-md rounded-lg border border-border bg-canvas p-inset-lg text-fg">

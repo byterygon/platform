@@ -1,0 +1,82 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "input-group",
+  "title": "InputGroup",
+  "description": "A text input with prefixes and suffixes attached (icons, text such as a scheme or a unit, ghost buttons), in one frame that shows focus, invalid and disabled; works inside a Field.",
+  "usage": "Use InputGroup when something belongs to the input: a search icon, a fixed prefix (postgres://), a unit (ms), or an action on the value (Copy, Test, Show). Put InputGroupAddon and InputGroupButton before or after InputGroupInput in the order they should appear, and wrap the group in a Field for its label and error. For an unrelated action next to an input, use a plain Input and a Button side by side.",
+  "status": "experimental",
+  "base": "@base-ui/react/input",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Frame height from size.control.*, which follows data-density; InputGroupButton is one size smaller." },
+    { "name": "render", "type": "ReactElement | ((props, state) => ReactElement)", "description": "Base UI render prop: render another element as the frame." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLDivElement>", "description": "Reaches the frame <div>." }
+  ],
+  "variants": {
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "div", "description": "The frame; data-slot=\"input-group\" and data-size." },
+    { "name": "input", "element": "input", "description": "InputGroupInput, Base UI's Input without its own frame; data-slot=\"input-group-input\"." },
+    { "name": "addon", "element": "div", "description": "InputGroupAddon, an icon or text; data-slot=\"input-group-addon\"." },
+    { "name": "button", "element": "button", "description": "InputGroupButton, a ghost Button; data-slot=\"input-group-button\"." }
+  ],
+  "parts": [
+    { "name": "InputGroupInput", "slot": "input-group-input", "description": "The text control (Base UI's Input): takes a Field's label and validity; its value, onValueChange and onBlur as Input's." },
+    { "name": "InputGroupAddon", "slot": "input-group-addon", "description": "An icon or text in color.fg.muted; clicking it focuses the control." },
+    { "name": "InputGroupButton", "slot": "input-group-button", "description": "A Button (ghost by default) one size smaller than the group, inset from the frame; Button's props." }
+  ],
+  "states": [
+    { "name": "focus-visible", "variant": "has-[[data-slot=input-group-input]:focus-visible]", "description": "The control has focus: the frame shows a ring of ring.width in color.ring. The button shows its own ring instead." },
+    { "name": "invalid", "variant": "has-[[data-slot=input-group-input][aria-invalid=true]]", "description": "The control is invalid (aria-invalid): the frame takes the danger border." },
+    { "name": "invalid-in-field", "variant": "has-[[data-slot=input-group-input][data-invalid]]", "description": "Invalid inside a Field (data-invalid on the control): the danger border." },
+    { "name": "disabled", "variant": "has-[[data-slot=input-group-input][data-disabled]]", "description": "The control is disabled: the whole frame dims to opacity.disabled." }
+  ],
+  "tokens": [
+    "color.bg.surface",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.fg.subtle",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.ring",
+    "color.status.danger.border",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.lg",
+    "size.control.md",
+    "size.control.sm",
+    "size.control.xs",
+    "size.icon.sm",
+    "space.control.x",
+    "space.inline.md",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.sm",
+    "space.inset.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": { "minimal": "InputGroupMinimal", "realistic": "InputGroupRealistic" },
+  "accessibility": [
+    "The control is a native <input>; give it a FieldLabel through a Field, or aria-label. Addon text is not part of its name: say in the label or description what a prefix means.",
+    "Mark decorative addon icons aria-hidden; an icon-only InputGroupButton needs aria-label.",
+    "Tab moves from the control to the button; the frame's ring follows the control, the button has its own focus ring.",
+    "Clicking an addon focuses the control, so the whole frame is a click target.",
+    "The frame border (color.border.strong) meets 3:1 against every surface; invalid uses color.status.danger.border and FieldError's message, not colour alone."
+  ]
+}

@@ -164,6 +164,7 @@ function manifest(name: string, part: string | undefined): Manifest {
     name,
     title: pascal(name),
     description: `TODO: what ${pascal(name)} is for, in one sentence.`,
+    usage: `TODO: when to use ${pascal(name)}, how to compose it, and what to use instead.`,
     status: "experimental",
     base: part ? `@base-ui/react/${part}` : "@base-ui/react/use-render",
     dependencies: ["@base-ui/react"],

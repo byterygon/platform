@@ -1,0 +1,67 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "textarea",
+  "title": "Textarea",
+  "description": "A multi-line text input on Base UI's Input rendering a <textarea>, in Input's three sizes, with placeholder, invalid and disabled states; works inside a Field.",
+  "usage": "Use Textarea for text that may span lines (descriptions, notes, filters, short SQL); use Input for one line and the SQL editor for real queries. Put it in a Field with a FieldLabel; set rows to the expected length (3 by default). It resizes vertically; pass className=\"resize-none\" to stop that.",
+  "status": "experimental",
+  "base": "@base-ui/react/input",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Padding matched to Input's sizes, from the density-aware space roles; the height follows rows." },
+    { "name": "rows", "type": "number", "default": 3, "description": "Visible lines of text." },
+    { "name": "value", "type": "string", "description": "The value, when controlled." },
+    { "name": "defaultValue", "type": "string", "description": "The initial value, when uncontrolled." },
+    { "name": "onValueChange", "type": "(value: string, details) => void", "description": "Called with the new value on every change." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction, stops resizing and sets data-disabled." },
+    { "name": "aria-invalid", "type": "boolean | \"true\" | \"false\"", "description": "Marks the value invalid outside a Field; inside a Field, data-invalid comes from its validation." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLTextAreaElement>", "description": "Reaches the <textarea>." }
+  ],
+  "variants": {
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "textarea", "description": "The textarea; data-slot=\"textarea\" and data-size name it." }
+  ],
+  "states": [
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Focused: a ring of ring.width in color.ring, offset by ring.offset." },
+    { "name": "invalid", "variant": "aria-invalid", "props": { "aria-invalid": true }, "description": "Invalid value: the danger border. Inside a Field the same style follows data-invalid." },
+    { "name": "invalid-in-field", "variant": "data-invalid", "description": "Invalid inside a Field (its validation or its invalid prop sets data-invalid)." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction and resizing, at opacity.disabled." }
+  ],
+  "tokens": [
+    "color.bg.surface",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.subtle",
+    "color.ring",
+    "color.status.danger.border",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "space.control.x",
+    "space.inline.md",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.lg",
+    "space.inset.sm",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight"
+  ],
+  "examples": { "minimal": "TextareaMinimal", "realistic": "TextareaRealistic" },
+  "accessibility": [
+    "Renders a native <textarea>; give it a FieldLabel (or a <label>), or aria-label when there is no room for one.",
+    "Enter inserts a line break and Tab leaves the field, as in any textarea; do not trap Tab.",
+    "Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface.",
+    "Mark errors with a Field (aria-invalid and aria-describedby follow) or aria-invalid; the danger border is not the only signal.",
+    "The border (color.border.strong) meets 3:1 against every surface; focus shows a ring of ring.width in color.ring."
+  ]
+}

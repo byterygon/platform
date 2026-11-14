@@ -23,6 +23,7 @@
       "name": "input",
       "title": "Input",
       "description": "A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.",
+      "usage": "Put Input inside a Field with a FieldLabel (and FieldDescription and FieldError as needed); it takes the label, description and validity from it. Use Textarea for multi-line text and InputGroup for an icon, a unit or a button attached to the input. Match the size to the controls beside it.",
       "status": "experimental",
       "base": "@base-ui/react/input",
       "dependencies": [

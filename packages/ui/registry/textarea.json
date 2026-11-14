@@ -1,0 +1,166 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "textarea",
+  "type": "registry:ui",
+  "title": "Textarea",
+  "description": "A multi-line text input on Base UI's Input rendering a <textarea>, in Input's three sizes, with placeholder, invalid and disabled states; works inside a Field.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/textarea.tsx",
+      "type": "registry:ui",
+      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport type { ComponentProps } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// Base UI has no textarea part: its Input (Field.Control) renders a <textarea> through `render`,\n// so a Textarea inside a Field takes the label, the description and the validity like Input does.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const textareaVariants = {\n  size: {\n    sm: \"px-inset-sm py-inline-xs\",\n    md: \"px-control-x py-inline-sm\",\n    lg: \"px-inset-lg py-inline-md\",\n  },\n} as const;\n\nconst base = [\n  \"block w-full min-w-0 resize-y rounded-md border border-border-strong bg-surface font-sans text-body text-fg\",\n  \"placeholder:text-fg-subtle\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:resize-none data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\nexport interface TextareaProps extends Omit<ComponentProps<\"textarea\">, \"className\" | \"onChange\"> {\n  /** Padding, matched to Input's sizes; the height follows `rows`. */\n  size?: keyof typeof textareaVariants.size;\n  /** Called with the new value on every change (Base UI's Field.Control). */\n  onValueChange?: (value: string, details: unknown) => void;\n  /** The native change event, if you need it; prefer onValueChange. */\n  onChange?: ComponentProps<\"textarea\">[\"onChange\"];\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A multi-line text input. Inside a Base UI Field it takes the field's label, description and\n * validity; on its own, set `aria-invalid`. Three rows by default, resizable vertically. The ref\n * reaches the `<textarea>`.\n */\nexport function Textarea({ size = \"md\", rows = 3, className, ref, ...props }: TextareaProps) {\n  return (\n    <InputPrimitive\n      data-slot=\"textarea\"\n      data-size={size}\n      render={<textarea ref={ref} rows={rows} />}\n      className={cn(base, textareaVariants.size[size], className)}\n      {...(props as Omit<InputPrimitive.Props, \"size\">)}\n    />\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "textarea",
+      "title": "Textarea",
+      "description": "A multi-line text input on Base UI's Input rendering a <textarea>, in Input's three sizes, with placeholder, invalid and disabled states; works inside a Field.",
+      "usage": "Use Textarea for text that may span lines (descriptions, notes, filters, short SQL); use Input for one line and the SQL editor for real queries. Put it in a Field with a FieldLabel; set rows to the expected length (3 by default). It resizes vertically; pass className=\"resize-none\" to stop that.",
+      "status": "experimental",
+      "base": "@base-ui/react/input",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Padding matched to Input's sizes, from the density-aware space roles; the height follows rows."
+        },
+        {
+          "name": "rows",
+          "type": "number",
+          "default": 3,
+          "description": "Visible lines of text."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "description": "The value, when controlled."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string",
+          "description": "The initial value, when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: string, details) => void",
+          "description": "Called with the new value on every change."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction, stops resizing and sets data-disabled."
+        },
+        {
+          "name": "aria-invalid",
+          "type": "boolean | \"true\" | \"false\"",
+          "description": "Marks the value invalid outside a Field; inside a Field, data-invalid comes from its validation."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLTextAreaElement>",
+          "description": "Reaches the <textarea>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "textarea",
+          "description": "The textarea; data-slot=\"textarea\" and data-size name it."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Focused: a ring of ring.width in color.ring, offset by ring.offset."
+        },
+        {
+          "name": "invalid",
+          "variant": "aria-invalid",
+          "props": {
+            "aria-invalid": true
+          },
+          "description": "Invalid value: the danger border. Inside a Field the same style follows data-invalid."
+        },
+        {
+          "name": "invalid-in-field",
+          "variant": "data-invalid",
+          "description": "Invalid inside a Field (its validation or its invalid prop sets data-invalid)."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction and resizing, at opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.subtle",
+        "color.ring",
+        "color.status.danger.border",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "space.control.x",
+        "space.inline.md",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.lg",
+        "space.inset.sm",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight"
+      ],
+      "examples": {
+        "minimal": "TextareaMinimal",
+        "realistic": "TextareaRealistic"
+      },
+      "accessibility": [
+        "Renders a native <textarea>; give it a FieldLabel (or a <label>), or aria-label when there is no room for one.",
+        "Enter inserts a line break and Tab leaves the field, as in any textarea; do not trap Tab.",
+        "Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface.",
+        "Mark errors with a Field (aria-invalid and aria-describedby follow) or aria-invalid; the danger border is not the only signal.",
+        "The border (color.border.strong) meets 3:1 against every surface; focus shows a ring of ring.width in color.ring."
+      ]
+    },
+    "example": "import { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { Textarea } from \"@/components/textarea/textarea\";\n\n/** The smallest useful Textarea: a labelled multi-line field. */\nexport function TextareaMinimal() {\n  return <Textarea aria-label=\"Notes\" placeholder=\"What this connection is for\" />;\n}\n\n/** A saved query's description in a Field, an invalid filter, and a read-only disabled one. */\nexport function TextareaRealistic() {\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <Field>\n        <FieldLabel>Description</FieldLabel>\n        <Textarea rows={4} defaultValue=\"Daily active users per region, for the Monday report.\" />\n        <FieldDescription>Shown in the query library. Markdown is not rendered.</FieldDescription>\n      </Field>\n      <Field invalid>\n        <FieldLabel>Filter</FieldLabel>\n        <Textarea size=\"sm\" rows={2} defaultValue=\"region = 'emea' AND\" className=\"font-mono\" />\n        <FieldError>The filter ends with AND; add a condition or remove it.</FieldError>\n      </Field>\n      <Field disabled>\n        <FieldLabel>Generated SQL</FieldLabel>\n        <Textarea size=\"lg\" rows={2} defaultValue=\"SELECT region, count(*) FROM sessions GROUP BY region;\" />\n      </Field>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

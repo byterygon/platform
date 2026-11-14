@@ -46,9 +46,16 @@ pnpm --filter @byterygon/ui build                    # build the gallery into di
    `<name>Variants` (one key per variant prop) or the `base` list, style states with the Base UI
    data attributes (`data-disabled:`, `data-pressed:`, `data-open:`) and `aria-invalid:`.
    React 19 passes `ref` as a prop: spread `...props` onto the Base UI part and the ref arrives.
-3. Fill in the manifest: every prop with its type, default and a sentence; the variants exactly as
-   `<name>Variants`; each state with the variant that styles it and the props that cause it; the
-   accessibility checklist. Run the tests: the token test prints the exact `tokens` list.
+3. Fill in the manifest: every prop with its type, default and a sentence; `usage`, a short note
+   on when to use it, how to compose it and what to use instead (the gallery and `llms.txt` show
+   it); the variants exactly as `<name>Variants`; each state with the variant that styles it and
+   the props that cause it; the accessibility checklist. Run the tests: the token test prints the
+   exact `tokens` list.
+   A component with parts (Field: FieldLabel, FieldDescription, FieldError) keeps the four files
+   and exports every part from `<name>.tsx`; list them in `parts` (export name = title + suffix,
+   `data-slot` = name + suffix). Parts only render inside the main component, so the examples must
+   render each one: the tests take part classes, tokens and states from the elements of the
+   examples whose nearest `data-slot` is the component's or a part's. Parts have no variant props.
 4. Write behaviour tests in `<name>.test.tsx` (keyboard, events, ARIA, ref).
 5. `pnpm --filter @byterygon/ui registry`, then commit the component and `registry/`.
 
@@ -65,6 +72,20 @@ What `test/conventions.test.tsx` enforces for every component:
 - every listed state is styled (a class uses its variant) and its props set its attribute;
 - the examples render without axe violations (WCAG 2.x A/AA) in Light and Dark, Comfortable and
   Compact. Colour contrast is not measured in jsdom: the token build checks every pair.
+
+## Forms
+
+- Every control goes in a `Field` (`FieldLabel`, the control, `FieldDescription`, `FieldError`) on
+  Base UI's Field parts; controls are Base UI `Input` (Field.Control), so Input, Textarea and
+  InputGroupInput take the label, description and validity. A new input must work inside Field
+  (test it: label, `aria-invalid`, `aria-describedby`).
+- Form state and validation are TanStack Form: `useForm`, `<Form form={form}>`, `form.Field`, and
+  `<Field field={field}>`, which maps `isTouched && !isValid`, `isTouched`, `isDirty` and `name`
+  to Base UI's controlled `invalid`, `touched`, `dirty`, `name` and gives FieldError the errors.
+  Wire the control's `value`, `onValueChange` and `onBlur` to the field. `Form` submits through
+  `form.handleSubmit()` (no native validation) and focuses the first invalid control.
+- Field itself does not import TanStack Form (a structural `FieldState` type), so it also works
+  with Base UI's `validate` or a hand-set `invalid`.
 
 ## Styling rules
 
@@ -87,6 +108,8 @@ What `test/conventions.test.tsx` enforces for every component:
 - Focus: `outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)]
   focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring`.
 - When no role fits, add one to `@byterygon/design-tokens` (its AGENTS.md), never a raw value here.
+- Write every class out in full in the source, never assembled from template strings: Tailwind
+  finds classes by scanning the installed files as text.
 - `cn` must know every Tailwind role name (`roleNames` in `src/lib/cn.ts`); a test fails when the
   tokens add one it does not know.
 

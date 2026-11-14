@@ -1,0 +1,178 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "input-group",
+  "type": "registry:ui",
+  "title": "InputGroup",
+  "description": "A text input with prefixes and suffixes attached (icons, text such as a scheme or a unit, ghost buttons), in one frame that shows focus, invalid and disabled; works inside a Field.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/button",
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/input-group.tsx",
+      "type": "registry:ui",
+      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { useRender } from \"@base-ui/react/use-render\";\nimport { createContext, use, type MouseEvent } from \"react\";\nimport { Button, type ButtonProps } from \"@/components/ui/button\";\nimport { cn } from \"@/lib/cn\";\n\n// An input with things attached: InputGroup draws the border, the focus ring and the invalid and\n// disabled looks around InputGroupInput (Base UI's Input, so it works inside a Field) and any\n// InputGroupAddon (an icon or text: a scheme, a unit) and InputGroupButton (a ghost Button) placed\n// before or after it, in DOM order. The ring shows when the text control has focus, not when the\n// button has (the button shows its own), so there is never a ring inside a ring.\n\nconst CONTROL = \"[data-slot=input-group-input]\";\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const inputGroupVariants = {\n  size: {\n    sm: \"h-control-sm\",\n    md: \"h-control-md\",\n    lg: \"h-control-lg\",\n  },\n} as const;\n\n// Written out in full (no template strings): Tailwind finds classes by scanning the source as text.\nconst base = [\n  \"flex w-full min-w-0 items-center gap-inline-md rounded-md border border-border-strong bg-surface font-sans text-body text-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"has-[[data-slot=input-group-input]:focus-visible]:outline-solid has-[[data-slot=input-group-input]:focus-visible]:outline-[length:var(--by-ring-width)]\",\n  \"has-[[data-slot=input-group-input]:focus-visible]:outline-offset-[var(--by-ring-offset)] has-[[data-slot=input-group-input]:focus-visible]:outline-ring\",\n  \"has-[[data-slot=input-group-input][aria-invalid=true]]:border-danger-border has-[[data-slot=input-group-input][data-invalid]]:border-danger-border\",\n  \"has-[[data-slot=input-group-input][data-disabled]]:cursor-not-allowed has-[[data-slot=input-group-input][data-disabled]]:opacity-[var(--by-opacity-disabled)]\",\n];\n\nconst inputClasses = [\n  \"h-full min-w-0 flex-1 bg-transparent text-body text-fg outline-none\",\n  \"first:ps-control-x last:pe-control-x\",\n  \"placeholder:text-fg-subtle\",\n  \"data-disabled:cursor-not-allowed\",\n];\n\nconst addonClasses = [\n  \"flex h-full shrink-0 cursor-text select-none items-center gap-inline-sm text-body text-fg-muted\",\n  \"first:ps-control-x last:pe-control-x\",\n  \"[&_svg]:size-icon-sm [&_svg]:shrink-0\",\n];\n\n// A button one control size smaller than the group, so it fits inside the border with a small inset.\nconst buttonClasses = {\n  sm: \"h-control-xs px-inset-xs\",\n  md: \"\",\n  lg: \"\",\n} as const;\nconst buttonSizes = { sm: \"sm\", md: \"sm\", lg: \"md\" } as const;\nconst buttonInset = \"first:ms-inline-xs last:me-inline-xs\";\n\nconst SizeContext = createContext<keyof typeof inputGroupVariants.size>(\"md\");\n\nexport interface InputGroupProps extends Omit<useRender.ComponentProps<\"div\">, \"className\"> {\n  /** Height, from the density-aware `size.control.*` roles; InputGroupButton follows it. */\n  size?: keyof typeof inputGroupVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * The frame around an InputGroupInput and its addons and buttons. Built on Base UI's useRender:\n * `render` swaps the `<div>`, the ref reaches it.\n */\nexport function InputGroup({ size = \"md\", className, render, ...props }: InputGroupProps) {\n  const element = useRender({\n    defaultTagName: \"div\",\n    render,\n    props: { \"data-slot\": \"input-group\", \"data-size\": size, ...props, className: cn(base, inputGroupVariants.size[size], className) },\n  });\n  return <SizeContext value={size}>{element}</SizeContext>;\n}\n\nexport interface InputGroupInputProps extends Omit<InputPrimitive.Props, \"className\" | \"size\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * The text control of an InputGroup, Base UI's Input without a frame of its own: inside a Field\n * it takes the label, description and validity. The ref reaches the `<input>`.\n */\nexport function InputGroupInput({ className, ...props }: InputGroupInputProps) {\n  return <InputPrimitive data-slot=\"input-group-input\" className={cn(inputClasses, className)} {...props} />;\n}\n\nexport interface InputGroupAddonProps extends Omit<useRender.ComponentProps<\"div\">, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * An icon or text before or after the control (a scheme, a unit, a search icon). Clicking it\n * focuses the control, as clicking a label would. Mark a decorative icon aria-hidden.\n */\nexport function InputGroupAddon({ className, render, onMouseDown, ...props }: InputGroupAddonProps) {\n  const focusControl = (event: MouseEvent<HTMLDivElement>) => {\n    onMouseDown?.(event);\n    if (event.defaultPrevented || (event.target as Element).closest(\"button, a, input, select, textarea\")) return;\n    const control = event.currentTarget.parentElement?.querySelector<HTMLElement>(CONTROL);\n    if (!control) return;\n    event.preventDefault();\n    control.focus();\n  };\n  return useRender({\n    defaultTagName: \"div\",\n    render,\n    props: { \"data-slot\": \"input-group-addon\", ...props, onMouseDown: focusControl, className: cn(addonClasses, className) },\n  });\n}\n\nexport interface InputGroupButtonProps extends Omit<ButtonProps, \"size\"> {}\n\n/**\n * A Button inside the group (Copy, Test, Show), ghost by default and one size smaller than the\n * group. For an icon alone, give it an aria-label.\n */\nexport function InputGroupButton({ variant = \"ghost\", className, ...props }: InputGroupButtonProps) {\n  const size = use(SizeContext);\n  return <Button data-slot=\"input-group-button\" variant={variant} size={buttonSizes[size]} className={cn(buttonInset, buttonClasses[size], className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "input-group",
+      "title": "InputGroup",
+      "description": "A text input with prefixes and suffixes attached (icons, text such as a scheme or a unit, ghost buttons), in one frame that shows focus, invalid and disabled; works inside a Field.",
+      "usage": "Use InputGroup when something belongs to the input: a search icon, a fixed prefix (postgres://), a unit (ms), or an action on the value (Copy, Test, Show). Put InputGroupAddon and InputGroupButton before or after InputGroupInput in the order they should appear, and wrap the group in a Field for its label and error. For an unrelated action next to an input, use a plain Input and a Button side by side.",
+      "status": "experimental",
+      "base": "@base-ui/react/input",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Frame height from size.control.*, which follows data-density; InputGroupButton is one size smaller."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element as the frame."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the frame <div>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The frame; data-slot=\"input-group\" and data-size."
+        },
+        {
+          "name": "input",
+          "element": "input",
+          "description": "InputGroupInput, Base UI's Input without its own frame; data-slot=\"input-group-input\"."
+        },
+        {
+          "name": "addon",
+          "element": "div",
+          "description": "InputGroupAddon, an icon or text; data-slot=\"input-group-addon\"."
+        },
+        {
+          "name": "button",
+          "element": "button",
+          "description": "InputGroupButton, a ghost Button; data-slot=\"input-group-button\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "InputGroupInput",
+          "slot": "input-group-input",
+          "description": "The text control (Base UI's Input): takes a Field's label and validity; its value, onValueChange and onBlur as Input's."
+        },
+        {
+          "name": "InputGroupAddon",
+          "slot": "input-group-addon",
+          "description": "An icon or text in color.fg.muted; clicking it focuses the control."
+        },
+        {
+          "name": "InputGroupButton",
+          "slot": "input-group-button",
+          "description": "A Button (ghost by default) one size smaller than the group, inset from the frame; Button's props."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-visible",
+          "variant": "has-[[data-slot=input-group-input]:focus-visible]",
+          "description": "The control has focus: the frame shows a ring of ring.width in color.ring. The button shows its own ring instead."
+        },
+        {
+          "name": "invalid",
+          "variant": "has-[[data-slot=input-group-input][aria-invalid=true]]",
+          "description": "The control is invalid (aria-invalid): the frame takes the danger border."
+        },
+        {
+          "name": "invalid-in-field",
+          "variant": "has-[[data-slot=input-group-input][data-invalid]]",
+          "description": "Invalid inside a Field (data-invalid on the control): the danger border."
+        },
+        {
+          "name": "disabled",
+          "variant": "has-[[data-slot=input-group-input][data-disabled]]",
+          "description": "The control is disabled: the whole frame dims to opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.border",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.md",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "InputGroupMinimal",
+        "realistic": "InputGroupRealistic"
+      },
+      "accessibility": [
+        "The control is a native <input>; give it a FieldLabel through a Field, or aria-label. Addon text is not part of its name: say in the label or description what a prefix means.",
+        "Mark decorative addon icons aria-hidden; an icon-only InputGroupButton needs aria-label.",
+        "Tab moves from the control to the button; the frame's ring follows the control, the button has its own focus ring.",
+        "Clicking an addon focuses the control, so the whole frame is a click target.",
+        "The frame border (color.border.strong) meets 3:1 against every surface; invalid uses color.status.danger.border and FieldError's message, not colour alone."
+      ]
+    },
+    "example": "import { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from \"@/components/input-group/input-group\";\n\nfunction SearchIcon() {\n  return (\n    <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth={1.5} strokeLinecap=\"round\">\n      <circle cx=\"7\" cy=\"7\" r=\"4.5\" />\n      <path d=\"m10.5 10.5 3 3\" />\n    </svg>\n  );\n}\n\n/** The smallest useful InputGroup: a search field with an icon. */\nexport function InputGroupMinimal() {\n  return (\n    <InputGroup>\n      <InputGroupAddon>\n        <SearchIcon />\n      </InputGroupAddon>\n      <InputGroupInput aria-label=\"Search tables\" placeholder=\"Search tables\" />\n    </InputGroup>\n  );\n}\n\n/** Connection settings: a scheme prefix with a Test button, an invalid value with a unit and a Reset button, a disabled path. */\nexport function InputGroupRealistic() {\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <Field>\n        <FieldLabel>Server</FieldLabel>\n        <InputGroup>\n          <InputGroupAddon>postgres://</InputGroupAddon>\n          <InputGroupInput defaultValue=\"db.internal:5432/analytics\" />\n          <InputGroupButton>Test</InputGroupButton>\n        </InputGroup>\n        <FieldDescription>Host, port and database.</FieldDescription>\n      </Field>\n      <Field invalid>\n        <FieldLabel>Statement timeout</FieldLabel>\n        <InputGroup size=\"sm\">\n          <InputGroupInput defaultValue=\"-5\" inputMode=\"numeric\" />\n          <InputGroupAddon>ms</InputGroupAddon>\n          <InputGroupButton>Reset</InputGroupButton>\n        </InputGroup>\n        <FieldError>Use 0 (no limit) or a positive number.</FieldError>\n      </Field>\n      <Field disabled>\n        <FieldLabel>Socket directory</FieldLabel>\n        <InputGroup size=\"lg\">\n          <InputGroupAddon>unix:</InputGroupAddon>\n          <InputGroupInput defaultValue=\"/var/run/postgresql\" />\n        </InputGroup>\n      </Field>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

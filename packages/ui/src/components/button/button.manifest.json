@@ -4,6 +4,7 @@
   "name": "button",
   "title": "Button",
   "description": "An action button: primary, secondary, ghost and danger variants in three density-aware sizes, with disabled and loading states.",
+  "usage": "Use one primary Button per view for the main action, secondary next to it, ghost in toolbars and dense rows, danger for destructive actions. Give it a visible text label; for an icon alone use IconButton. Set loading while the action runs instead of disabling it, and type=\"submit\" inside a form.",
   "status": "experimental",
   "base": "@base-ui/react/button",
   "dependencies": ["@base-ui/react"],
