@@ -137,7 +137,8 @@ describe("SqlEditor", () => {
     expect(fallback.getAttribute("aria-label")).toBe("Query");
     await settle();
     expect(root.hasAttribute("data-loading")).toBe(false);
-    expect(container.querySelector("[data-slot=sql-editor-fallback]")).toBeNull();
+    const hidden = container.querySelector<HTMLTextAreaElement>("[data-slot=sql-editor-fallback]")!;
+    expect([hidden.hidden, hidden.value, hidden.tabIndex, hidden.getAttribute("aria-hidden")]).toEqual([true, "", -1, "true"]);
     expect(fake.editors).toHaveLength(1);
     expect(fake.editors[0]!.model.getValue()).toBe("select 1;");
     expect(fake.editors[0]!.model.language).toBe("pgsql");

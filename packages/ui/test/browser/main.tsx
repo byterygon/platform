@@ -74,7 +74,7 @@ function sample(index = 0) {
   const rgb = (value: string) => cssColorToHex(value) ?? value;
   const keyword = [...root.querySelectorAll<HTMLElement>(".view-line span span")].find((s) => s.textContent === "select");
   const inactiveLine = root.querySelector(".line-numbers:not(.active-line-number)");
-  const input = root.querySelector<HTMLElement>(".native-edit-context, textarea.inputarea, textarea");
+  const input = root.querySelector(".monaco-editor")?.querySelector<HTMLElement>(".native-edit-context, textarea") ?? null;
   const options = check.monaco!.editor.EditorOption;
   const result = {
     background: rgb(getComputedStyle(root.querySelector(".monaco-editor-background")!).backgroundColor),

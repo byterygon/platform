@@ -22,7 +22,7 @@ const base = [
 ];
 
 const fallbackClasses =
-  "block size-full flex-1 resize-none bg-editor p-inset-sm font-mono text-code text-editor-fg caret-editor-cursor outline-none selection:bg-editor-selection placeholder:text-editor-gutter";
+  "size-full flex-1 resize-none bg-editor p-inset-sm font-mono text-code text-editor-fg caret-editor-cursor outline-none selection:bg-editor-selection placeholder:text-editor-gutter";
 
 /** A statement in the editor's text: offsets (UTF-16, end exclusive, no `;`) and its text. */
 export interface SqlStatement {
@@ -275,7 +275,7 @@ export function SqlEditor({
         const surface = surfaceRef.current;
         if (disposed || !root || !surface) return;
         const reader = tokenReader(root);
-        const fallback = fallbackRef.current;
+        const fallback = fallbackRef.current && !fallbackRef.current.hidden ? fallbackRef.current : null;
         const hadFocus = fallback !== null && fallback.ownerDocument.activeElement === fallback;
         const selection = fallback ? [fallback.selectionStart, fallback.selectionEnd] : [0, 0];
         const o = optionsRef.current;
@@ -455,30 +455,33 @@ export function SqlEditor({
       }}
       {...props}
     >
-      {editor ? null : (
-        <textarea
-          ref={fallbackRef}
-          data-slot="sql-editor-fallback"
-          aria-label={ariaLabelledBy ? undefined : (ariaLabel ?? "SQL editor")}
-          aria-labelledby={ariaLabelledBy}
-          spellCheck={false}
-          autoCapitalize="off"
-          autoComplete="off"
-          autoCorrect="off"
-          readOnly={readOnly}
-          placeholder={placeholder}
-          value={text}
-          onChange={(event) => {
-            const next = event.currentTarget.value;
-            if (value === undefined) setFallbackText(next);
-            onValueChange?.(next);
-          }}
-          onKeyDown={onFallbackKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          className={fallbackClasses}
-        />
-      )}
+      {/* Kept in the document, hidden and empty, once Monaco has taken over, so the element and
+          its classes are stable whatever the timing of the load. */}
+      <textarea
+        ref={fallbackRef}
+        data-slot="sql-editor-fallback"
+        hidden={editor !== null}
+        aria-hidden={editor ? true : undefined}
+        tabIndex={editor ? -1 : undefined}
+        aria-label={ariaLabelledBy ? undefined : (ariaLabel ?? "SQL editor")}
+        aria-labelledby={ariaLabelledBy}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoComplete="off"
+        autoCorrect="off"
+        readOnly={readOnly || editor !== null}
+        placeholder={placeholder}
+        value={editor ? "" : text}
+        onChange={(event) => {
+          const next = event.currentTarget.value;
+          if (value === undefined) setFallbackText(next);
+          onValueChange?.(next);
+        }}
+        onKeyDown={onFallbackKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        className={fallbackClasses}
+      />
       <div ref={surfaceRef} data-slot="sql-editor-surface" hidden={!editor} className="min-h-0 flex-1" />
     </div>
   );
