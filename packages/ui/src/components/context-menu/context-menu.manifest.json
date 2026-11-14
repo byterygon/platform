@@ -1,0 +1,220 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "context-menu",
+  "title": "ContextMenu",
+  "description": "A menu opened by a right-click or the context-menu key on an area, on Base UI's ContextMenu: DropdownMenu's items (shortcuts, danger, checkbox and radio items, groups, separators, submenus) at the pointer, on color.bg.overlay at z.popover.",
+  "usage": "Use ContextMenu for the actions of the thing under the pointer: a tree node, a grid cell, a tab. Compose it as ContextMenu > ContextMenuTrigger (the area; give it its own classes) + ContextMenuContent > ContextMenuItem, ContextMenuCheckboxItem, ContextMenuRadioGroup with ContextMenuRadioItem, ContextMenuGroup with ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut, and ContextMenuSub > ContextMenuSubTrigger + ContextMenuSubContent. A right-click is not discoverable and not available to everyone: every action in it must also be reachable another way (a toolbar, a DropdownMenu, the CommandPalette, a shortcut). For a menu behind a visible button use DropdownMenu.",
+  "status": "experimental",
+  "base": "@base-ui/react/context-menu",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "open",
+      "type": "boolean",
+      "description": "Controlled open state; defaultOpen when uncontrolled."
+    },
+    {
+      "name": "onOpenChange",
+      "type": "(open: boolean, details) => void",
+      "description": "Called when a right-click, an item, Escape or an outside press opens or closes it."
+    },
+    {
+      "name": "modal",
+      "type": "boolean",
+      "default": true,
+      "description": "As Base UI: the page ignores the pointer and does not scroll while the menu is open."
+    },
+    {
+      "name": "danger",
+      "type": "boolean",
+      "default": false,
+      "description": "ContextMenuItem: a destructive action in color.status.danger.fg."
+    },
+    {
+      "name": "closeOnClick",
+      "type": "boolean",
+      "default": true,
+      "description": "ContextMenuItem: closes the menu when chosen (false for checkbox and radio items by default)."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "On an item: shown in color.fg.disabled with aria-disabled; it cannot be chosen."
+    },
+    {
+      "name": "checked",
+      "type": "boolean",
+      "description": "ContextMenuCheckboxItem: controlled state; onCheckedChange reports changes."
+    },
+    {
+      "name": "value",
+      "type": "unknown",
+      "description": "ContextMenuRadioGroup: the chosen value (onValueChange); ContextMenuRadioItem: its value."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "On each part: extra classes, merged after the component's own."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "positioner",
+      "element": "div",
+      "description": "In a portal, at the pointer, at z.popover, with the area's data-theme and data-density; data-slot=\"context-menu-positioner\"."
+    },
+    {
+      "name": "popup",
+      "element": "div",
+      "description": "role=\"menu\", color.bg.overlay with elevation.overlay; data-slot=\"context-menu-content\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "ContextMenuTrigger",
+      "slot": "context-menu-trigger",
+      "description": "The area that opens the menu on right-click or the context-menu key; a <div>, unstyled."
+    },
+    {
+      "name": "ContextMenuContent",
+      "slot": "context-menu-content",
+      "description": "The portal, the positioner at the pointer and the menu."
+    },
+    {
+      "name": "ContextMenuItem",
+      "slot": "context-menu-item",
+      "description": "role=\"menuitem\"; color.interactive.hover while highlighted; data-danger for a destructive one."
+    },
+    {
+      "name": "ContextMenuCheckboxItem",
+      "slot": "context-menu-checkbox-item",
+      "description": "role=\"menuitemcheckbox\" with aria-checked and a check mark."
+    },
+    {
+      "name": "ContextMenuRadioGroup",
+      "slot": "context-menu-radio-group",
+      "description": "role=\"group\" holding the radio items; value and onValueChange."
+    },
+    {
+      "name": "ContextMenuRadioItem",
+      "slot": "context-menu-radio-item",
+      "description": "role=\"menuitemradio\" with aria-checked and a dot."
+    },
+    {
+      "name": "ContextMenuGroup",
+      "slot": "context-menu-group",
+      "description": "role=\"group\", named by its ContextMenuLabel."
+    },
+    {
+      "name": "ContextMenuLabel",
+      "slot": "context-menu-label",
+      "description": "A group's heading in type.caption and color.fg.subtle."
+    },
+    {
+      "name": "ContextMenuSeparator",
+      "slot": "context-menu-separator",
+      "description": "role=\"separator\", a 1 px line in color.border.default."
+    },
+    {
+      "name": "ContextMenuShortcut",
+      "slot": "context-menu-shortcut",
+      "description": "The shortcut at the end of an item, in type.caption and color.fg.subtle."
+    },
+    {
+      "name": "ContextMenuSubTrigger",
+      "slot": "context-menu-sub-trigger",
+      "description": "An item that opens a submenu (aria-haspopup), with a chevron; color.interactive.hover while its submenu is open."
+    },
+    {
+      "name": "ContextMenuSubContent",
+      "slot": "context-menu-sub-content",
+      "description": "The submenu's popup, beside its trigger."
+    }
+  ],
+  "states": [
+    {
+      "name": "open",
+      "variant": "data-starting-style",
+      "description": "Opening: the menu grows from 95 % and fades in over motion.duration.base with motion.easing.enter; reduced motion turns it off."
+    },
+    {
+      "name": "closing",
+      "variant": "data-ending-style",
+      "description": "Closing: the reverse, with motion.easing.exit."
+    },
+    {
+      "name": "highlighted",
+      "variant": "data-highlighted",
+      "description": "The item under the pointer or the keyboard: color.interactive.hover."
+    },
+    {
+      "name": "submenu-open",
+      "variant": "data-popup-open",
+      "description": "A sub-trigger whose submenu is open keeps color.interactive.hover."
+    },
+    {
+      "name": "danger",
+      "variant": "data-danger",
+      "description": "A destructive item: color.status.danger.fg, color.status.danger.bg when highlighted."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "description": "A disabled item: color.fg.disabled and aria-disabled; reachable but not chosen."
+    }
+  ],
+  "tokens": [
+    "color.bg.overlay",
+    "color.border.default",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.disabled",
+    "color.fg.muted",
+    "color.fg.subtle",
+    "color.interactive.hover",
+    "color.status.danger.bg",
+    "color.status.danger.fg",
+    "elevation.overlay.shadow",
+    "font.sans",
+    "motion.duration.base",
+    "motion.easing.enter",
+    "motion.easing.exit",
+    "radius.md",
+    "radius.sm",
+    "size.control.lg",
+    "size.control.sm",
+    "size.control.xs",
+    "size.icon.sm",
+    "space.inline.lg",
+    "space.inline.sm",
+    "space.inset.md",
+    "space.inset.sm",
+    "space.inset.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "z.popover"
+  ],
+  "examples": {
+    "minimal": "ContextMenuMinimal",
+    "realistic": "ContextMenuRealistic"
+  },
+  "accessibility": [
+    "The popup is role=\"menu\" of role=\"menuitem\", \"menuitemcheckbox\" and \"menuitemradio\" items with aria-checked; groups are role=\"group\" named by their label.",
+    "A right-click opens the menu at the pointer; on a focused area the context-menu key or Shift+F10 opens it (the browser sends the same contextmenu event). Focus moves into the menu; arrows, Home, End and typing move, Enter chooses, Escape closes and returns focus.",
+    "ArrowRight on a sub-trigger opens its submenu, ArrowLeft closes it. Disabled items stay reachable but have aria-disabled and cannot be chosen.",
+    "Every action in a context menu is also available elsewhere (toolbar, DropdownMenu, CommandPalette, shortcut), because right-click is not discoverable.",
+    "prefers-reduced-motion: reduce turns the scale and fade transitions off.",
+    "The menu takes the area's theme and density and sits at z.popover."
+  ]
+}

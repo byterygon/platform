@@ -125,6 +125,11 @@ What `test/conventions.test.tsx` enforces for every component:
   `side`) is a prop of the root, which its parts read from context; parts take no variant props.
 - AlertDialog and Sheet reuse `dialogClasses` and `useDialogScope` from dialog.tsx; HoverCard reuses
   `popoverClasses`. A new overlay reuses them too rather than restyling a scrim or a popup.
+- Menus: DropdownMenu, ContextMenu and Menubar build their items with `createMenuParts(prefix)` and
+  `menuClasses` from dropdown-menu.tsx (same look, `data-slot` under each prefix) and share a
+  theme scope through `MenuScopeContext`, so submenus match their root. SplitButton composes Button,
+  IconButton and DropdownMenu; its menu content is DropdownMenu's items. Disabled menu items stay
+  focusable with `aria-disabled` (ARIA menu pattern), as Base UI does.
 - A dialog may open without a trigger, so its content renders a hidden anchor where it sits in
   the JSX and the popup takes that region's theme and density. Popover-like roots put
   `useThemeScope`'s ref on the trigger through `useMergedRef` (the caller's `ref` still arrives).
@@ -138,7 +143,9 @@ What `test/conventions.test.tsx` enforces for every component:
   open, keyboard, Escape and outside press, focus moving in and back to the trigger, ARIA roles,
   the theme scope and reduced motion. Base UI moves focus asynchronously: wait for it.
 - The conventions suite opens every closed `aria-haspopup` trigger in the examples to read the
-  popup's classes. A popup without one (Tooltip) needs an example with `defaultOpen`. Inner
+  popup's classes, then each popup trigger inside that popup (submenus), and right-clicks the
+  component's own `<name>-trigger` when it has no `aria-haspopup` (ContextMenu). A popup opened only
+  by hover or focus (Tooltip, HoverCard) needs an example with `defaultOpen`. Inner
   elements are named `<name>-<part>` (`popover-positioner`) so their classes count as the
   component's; list them under `slots`.
 

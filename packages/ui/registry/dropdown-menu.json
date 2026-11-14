@@ -1,0 +1,271 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "dropdown-menu",
+  "type": "registry:ui",
+  "title": "DropdownMenu",
+  "description": "A menu of actions opened from a button, on Base UI's Menu: items with shortcuts and a danger tone, checkbox and radio items, groups with labels, separators and submenus, on color.bg.overlay at z.popover.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/dropdown-menu.tsx",
+      "type": "registry:ui",
+      "content": "import { Menu as MenuPrimitive } from \"@base-ui/react/menu\";\nimport { createContext, useContext, type ComponentProps, type CSSProperties, type ReactNode, type Ref, type RefObject } from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenPx, useMergedRef, useThemeScope, type ThemeScope } from \"@/lib/theme-scope\";\n\n// A menu of actions opened from a button, on Base UI's Menu: `DropdownMenu` is the root, the\n// parts are shadcn's (DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, CheckboxItem,\n// RadioGroup and RadioItem, Group and Label, Separator, Shortcut, Sub with SubTrigger and\n// SubContent). ContextMenu and Menubar build the same parts with `createMenuParts` and style\n// them with `menuClasses`, so the three menus look and behave alike.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const dropdownMenuVariants = {} as const;\n\n/** The classes DropdownMenu, ContextMenu, Menubar and SplitButton share. */\nexport const menuClasses = {\n  positioner: \"z-[var(--by-z-popover)] outline-none\",\n  popup: [\n    \"flex flex-col overflow-y-auto overscroll-contain rounded-md border border-border bg-overlay p-inset-xs font-sans text-body text-fg shadow-overlay outline-none\",\n    \"transition duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none\",\n    \"data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit\",\n  ],\n  item: [\n    \"flex min-h-control-sm cursor-default select-none items-center gap-inline-sm whitespace-nowrap rounded-sm px-inset-sm text-body text-fg outline-none\",\n    \"data-highlighted:bg-hover data-popup-open:bg-hover\",\n    \"data-disabled:pointer-events-none data-disabled:text-fg-disabled\",\n    \"data-danger:text-danger-fg data-danger:data-highlighted:bg-danger-subtle\",\n    \"[&_svg]:size-icon-sm [&_svg]:shrink-0\",\n  ],\n  indicator: \"flex size-icon-sm shrink-0 items-center justify-center\",\n  label: \"flex min-h-control-xs select-none items-center px-inset-sm text-caption text-fg-subtle\",\n  separator: \"-mx-inset-xs my-inset-xs h-px shrink-0 bg-border\",\n  shortcut: \"ms-auto ps-inline-lg text-caption text-fg-subtle\",\n  chevron: \"ms-auto flex shrink-0 text-fg-muted\",\n} as const;\n\n/** Base UI's run-time variables for the popup: not tokens, so they go in `style`. */\nexport const menuPopupStyle: CSSProperties = {\n  maxHeight: \"var(--available-height)\",\n  transformOrigin: \"var(--transform-origin)\",\n};\n\n/** The gap between a trigger and its menu: space.inline.xs where the trigger is. */\nexport const menuOffset = (anchor: Element | null) => tokenPx(anchor, \"--by-space-inline-xs\", 4);\n\nexport const CheckIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m3.5 8.5 3 3 6-7\" />\n  </svg>\n);\n\nconst DotIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"currentColor\">\n    <circle cx=\"8\" cy=\"8\" r=\"3\" />\n  </svg>\n);\n\nexport const ChevronRightIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m6 4 4 4-4 4\" />\n  </svg>\n);\n\nexport interface MenuScope {\n  anchorRef: (element: Element | null) => void;\n  anchor: RefObject<Element | null>;\n  scope: ThemeScope;\n}\n\n/** The theme scope of the open menu tree: its root sets it, every popup in it (submenus too) reads it. */\nexport const MenuScopeContext = createContext<MenuScope>({ anchorRef: () => {}, anchor: { current: null }, scope: {} });\n\n/** A menu root's theme scope and the `onOpenChange` that refreshes it. */\nexport function useMenuScope<Details>(onOpenChange?: (open: boolean, details: Details) => void) {\n  const { ref, anchor, scope, refresh } = useThemeScope<Element>();\n  return {\n    value: { anchorRef: ref, anchor, scope } satisfies MenuScope,\n    onOpenChange: (open: boolean, details: Details) => {\n      if (open) refresh();\n      onOpenChange?.(open, details);\n    },\n  };\n}\n\ntype WithClass<P> = Omit<P, \"className\"> & {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n};\n\nexport type MenuItemProps = WithClass<MenuPrimitive.Item.Props> & {\n  /** A destructive action: color.status.danger.fg text. */\n  danger?: boolean;\n};\nexport type MenuCheckboxItemProps = WithClass<MenuPrimitive.CheckboxItem.Props>;\nexport type MenuRadioGroupProps = WithClass<MenuPrimitive.RadioGroup.Props>;\nexport type MenuRadioItemProps = WithClass<MenuPrimitive.RadioItem.Props>;\nexport type MenuGroupProps = WithClass<MenuPrimitive.Group.Props>;\nexport type MenuLabelProps = WithClass<MenuPrimitive.GroupLabel.Props>;\nexport type MenuSeparatorProps = WithClass<MenuPrimitive.Separator.Props>;\nexport type MenuShortcutProps = WithClass<ComponentProps<\"span\">>;\nexport type MenuSubTriggerProps = WithClass<MenuPrimitive.SubmenuTrigger.Props>;\nexport type MenuSubContentProps = WithClass<Omit<MenuPrimitive.Popup.Props, \"children\">> & {\n  /** The gap to the parent menu in px. */\n  sideOffset?: number;\n  children?: ReactNode;\n};\n\n/**\n * The items of a menu, with `data-slot` names under `prefix` (`dropdown-menu-item`,\n * `context-menu-item`, `menubar-item`). ContextMenu and Menubar export them under their own names.\n */\nexport function createMenuParts<Prefix extends string>(prefix: Prefix) {\n  function Item({ className, danger = false, ...props }: MenuItemProps) {\n    return <MenuPrimitive.Item data-slot={`${prefix}-item`} data-danger={danger ? \"\" : undefined} className={cn(menuClasses.item, className)} {...props} />;\n  }\n  function CheckboxItem({ className, children, ...props }: MenuCheckboxItemProps) {\n    return (\n      <MenuPrimitive.CheckboxItem data-slot={`${prefix}-checkbox-item`} className={cn(menuClasses.item, className)} {...props}>\n        <span className={menuClasses.indicator}>\n          <MenuPrimitive.CheckboxItemIndicator>\n            <CheckIcon />\n          </MenuPrimitive.CheckboxItemIndicator>\n        </span>\n        {children}\n      </MenuPrimitive.CheckboxItem>\n    );\n  }\n  function RadioGroup({ className, ...props }: MenuRadioGroupProps) {\n    return <MenuPrimitive.RadioGroup data-slot={`${prefix}-radio-group`} className={cn(\"flex flex-col\", className)} {...props} />;\n  }\n  function RadioItem({ className, children, ...props }: MenuRadioItemProps) {\n    return (\n      <MenuPrimitive.RadioItem data-slot={`${prefix}-radio-item`} className={cn(menuClasses.item, className)} {...props}>\n        <span className={menuClasses.indicator}>\n          <MenuPrimitive.RadioItemIndicator>\n            <DotIcon />\n          </MenuPrimitive.RadioItemIndicator>\n        </span>\n        {children}\n      </MenuPrimitive.RadioItem>\n    );\n  }\n  function Group({ className, ...props }: MenuGroupProps) {\n    return <MenuPrimitive.Group data-slot={`${prefix}-group`} className={cn(\"flex flex-col\", className)} {...props} />;\n  }\n  function Label({ className, ...props }: MenuLabelProps) {\n    return <MenuPrimitive.GroupLabel data-slot={`${prefix}-label`} className={cn(menuClasses.label, className)} {...props} />;\n  }\n  function Separator({ className, ...props }: MenuSeparatorProps) {\n    return <MenuPrimitive.Separator data-slot={`${prefix}-separator`} className={cn(menuClasses.separator, className)} {...props} />;\n  }\n  function Shortcut({ className, ...props }: MenuShortcutProps) {\n    return <span data-slot={`${prefix}-shortcut`} className={cn(menuClasses.shortcut, className)} {...props} />;\n  }\n  function SubTrigger({ className, children, ...props }: MenuSubTriggerProps) {\n    return (\n      <MenuPrimitive.SubmenuTrigger data-slot={`${prefix}-sub-trigger`} className={cn(menuClasses.item, className)} {...props}>\n        {children}\n        <span className={menuClasses.chevron}>\n          <ChevronRightIcon />\n        </span>\n      </MenuPrimitive.SubmenuTrigger>\n    );\n  }\n  function SubContent({ className, style, sideOffset, children, ...props }: MenuSubContentProps) {\n    const { scope } = useContext(MenuScopeContext);\n    return (\n      <MenuPrimitive.Portal>\n        <MenuPrimitive.Positioner {...scope} data-slot={`${prefix}-positioner`} side=\"inline-end\" align=\"start\" sideOffset={sideOffset ?? 0} className={cn(menuClasses.positioner)}>\n          <MenuPrimitive.Popup data-slot={`${prefix}-sub-content`} style={{ ...menuPopupStyle, ...style }} className={cn(menuClasses.popup, className)} {...props}>\n            {children}\n          </MenuPrimitive.Popup>\n        </MenuPrimitive.Positioner>\n      </MenuPrimitive.Portal>\n    );\n  }\n  return { Item, CheckboxItem, RadioGroup, RadioItem, Group, Label, Separator, Shortcut, SubTrigger, SubContent };\n}\n\nconst parts = createMenuParts(\"dropdown-menu\");\n\nexport type DropdownMenuProps = MenuPrimitive.Root.Props;\n\n/** A dropdown menu on Base UI's Menu. It renders no element: put a DropdownMenuTrigger and a DropdownMenuContent inside. */\nexport function DropdownMenu({ onOpenChange, ...props }: DropdownMenuProps) {\n  const { value, onOpenChange: handleOpenChange } = useMenuScope(onOpenChange);\n  return (\n    <MenuScopeContext value={value}>\n      <MenuPrimitive.Root onOpenChange={handleOpenChange} {...props} />\n    </MenuScopeContext>\n  );\n}\n\nexport interface DropdownMenuTriggerProps extends MenuPrimitive.Trigger.Props {\n  /** Reaches the trigger element. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** Opens the menu. Unstyled: render a Button or an IconButton through `render`. */\nexport function DropdownMenuTrigger({ ref, ...props }: DropdownMenuTriggerProps) {\n  const { anchorRef } = useContext(MenuScopeContext);\n  const merged = useMergedRef<HTMLButtonElement>(anchorRef, ref);\n  return <MenuPrimitive.Trigger data-slot=\"dropdown-menu-trigger\" ref={merged} {...props} />;\n}\n\nexport interface DropdownMenuContentProps extends WithClass<Omit<MenuPrimitive.Popup.Props, \"children\">> {\n  /** The side of the trigger the menu opens on. */\n  side?: MenuPrimitive.Positioner.Props[\"side\"];\n  /** How the menu lines up with the trigger. */\n  align?: MenuPrimitive.Positioner.Props[\"align\"];\n  /** The gap to the trigger in px; space.inline.xs by default. */\n  sideOffset?: number;\n  children?: ReactNode;\n}\n\n/** The portal, the positioner (at z.popover, with the trigger's theme) and the menu (role=\"menu\"). */\nexport function DropdownMenuContent({ side = \"bottom\", align = \"start\", sideOffset, className, style, children, ...props }: DropdownMenuContentProps) {\n  const { anchor, scope } = useContext(MenuScopeContext);\n  return (\n    <MenuPrimitive.Portal>\n      <MenuPrimitive.Positioner {...scope} data-slot=\"dropdown-menu-positioner\" side={side} align={align} sideOffset={sideOffset ?? (() => menuOffset(anchor.current))} className={cn(menuClasses.positioner)}>\n        <MenuPrimitive.Popup data-slot=\"dropdown-menu-content\" style={{ ...menuPopupStyle, ...style }} className={cn(menuClasses.popup, className)} {...props}>\n          {children}\n        </MenuPrimitive.Popup>\n      </MenuPrimitive.Positioner>\n    </MenuPrimitive.Portal>\n  );\n}\n\n/** An action: role=\"menuitem\". `danger` for one that destroys data; `closeOnClick` (default true) as Base UI. */\nexport const DropdownMenuItem = parts.Item;\n/** An option that is on or off: role=\"menuitemcheckbox\", a check mark while checked. */\nexport const DropdownMenuCheckboxItem = parts.CheckboxItem;\n/** One choice among DropdownMenuRadioItems: `value` and `onValueChange`. */\nexport const DropdownMenuRadioGroup = parts.RadioGroup;\n/** One option of a radio group: role=\"menuitemradio\", a dot while chosen. */\nexport const DropdownMenuRadioItem = parts.RadioItem;\n/** A group of items, named by the DropdownMenuLabel inside it. */\nexport const DropdownMenuGroup = parts.Group;\n/** A group's heading, in type.caption; not an item. */\nexport const DropdownMenuLabel = parts.Label;\n/** A line between items or groups. */\nexport const DropdownMenuSeparator = parts.Separator;\n/** The item's keyboard shortcut, at the end of the row. */\nexport const DropdownMenuShortcut = parts.Shortcut;\n/** A submenu's root (Base UI's SubmenuRoot); it renders no element. */\nexport const DropdownMenuSub = MenuPrimitive.SubmenuRoot;\n/** The item that opens a submenu, with a chevron; ArrowRight opens it. */\nexport const DropdownMenuSubTrigger = parts.SubTrigger;\n/** The submenu's popup, beside its trigger. */\nexport const DropdownMenuSubContent = parts.SubContent;\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "dropdown-menu",
+      "title": "DropdownMenu",
+      "description": "A menu of actions opened from a button, on Base UI's Menu: items with shortcuts and a danger tone, checkbox and radio items, groups with labels, separators and submenus, on color.bg.overlay at z.popover.",
+      "usage": "Use DropdownMenu for a list of actions or options behind one button: tab actions under a \"more\" IconButton, copy formats, view options. Compose it as DropdownMenu > DropdownMenuTrigger (render a Button or IconButton) + DropdownMenuContent > DropdownMenuItem (onClick; danger for a destructive one; DropdownMenuShortcut at the end), DropdownMenuCheckboxItem (checked, onCheckedChange), DropdownMenuRadioGroup (value, onValueChange) with DropdownMenuRadioItem, DropdownMenuGroup with DropdownMenuLabel, DropdownMenuSeparator, and DropdownMenuSub > DropdownMenuSubTrigger + DropdownMenuSubContent for a submenu. For a menu on right-click use ContextMenu; for an app's menu row, Menubar; for a primary action with variants, SplitButton; for picking a form value, Select; for a searchable list of every command, CommandPalette.",
+      "status": "experimental",
+      "base": "@base-ui/react/menu",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state; defaultOpen when uncontrolled."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean, details) => void",
+          "description": "Called when the trigger, an item, Escape or an outside press opens or closes it."
+        },
+        {
+          "name": "modal",
+          "type": "boolean",
+          "default": true,
+          "description": "As Base UI: the page ignores the pointer and does not scroll while the menu is open."
+        },
+        {
+          "name": "side",
+          "type": "\"top\" | \"right\" | \"bottom\" | \"left\" | \"inline-start\" | \"inline-end\"",
+          "default": "bottom",
+          "description": "DropdownMenuContent: the side of the trigger; it flips when there is no room."
+        },
+        {
+          "name": "align",
+          "type": "\"start\" | \"center\" | \"end\"",
+          "default": "start",
+          "description": "DropdownMenuContent: how it lines up with the trigger."
+        },
+        {
+          "name": "danger",
+          "type": "boolean",
+          "default": false,
+          "description": "DropdownMenuItem: a destructive action in color.status.danger.fg."
+        },
+        {
+          "name": "closeOnClick",
+          "type": "boolean",
+          "default": true,
+          "description": "DropdownMenuItem: closes the menu when chosen (false for checkbox and radio items by default)."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "On an item: shown in color.fg.disabled with aria-disabled; it cannot be chosen."
+        },
+        {
+          "name": "checked",
+          "type": "boolean",
+          "description": "DropdownMenuCheckboxItem: controlled state; onCheckedChange reports changes."
+        },
+        {
+          "name": "value",
+          "type": "unknown",
+          "description": "DropdownMenuRadioGroup: the chosen value (onValueChange); DropdownMenuRadioItem: its value."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "positioner",
+          "element": "div",
+          "description": "In a portal, at z.popover, with the trigger's data-theme and data-density; data-slot=\"dropdown-menu-positioner\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "role=\"menu\", color.bg.overlay with elevation.overlay, at most the viewport's free height; data-slot=\"dropdown-menu-content\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "DropdownMenuTrigger",
+          "slot": "dropdown-menu-trigger",
+          "description": "Opens the menu; unstyled, render a Button or IconButton. aria-haspopup=\"menu\" and aria-expanded."
+        },
+        {
+          "name": "DropdownMenuContent",
+          "slot": "dropdown-menu-content",
+          "description": "The portal, the positioner and the menu."
+        },
+        {
+          "name": "DropdownMenuItem",
+          "slot": "dropdown-menu-item",
+          "description": "role=\"menuitem\"; color.interactive.hover while highlighted; data-danger for a destructive one."
+        },
+        {
+          "name": "DropdownMenuCheckboxItem",
+          "slot": "dropdown-menu-checkbox-item",
+          "description": "role=\"menuitemcheckbox\" with aria-checked and a check mark."
+        },
+        {
+          "name": "DropdownMenuRadioGroup",
+          "slot": "dropdown-menu-radio-group",
+          "description": "role=\"group\" holding the radio items; value and onValueChange."
+        },
+        {
+          "name": "DropdownMenuRadioItem",
+          "slot": "dropdown-menu-radio-item",
+          "description": "role=\"menuitemradio\" with aria-checked and a dot."
+        },
+        {
+          "name": "DropdownMenuGroup",
+          "slot": "dropdown-menu-group",
+          "description": "role=\"group\", named by its DropdownMenuLabel."
+        },
+        {
+          "name": "DropdownMenuLabel",
+          "slot": "dropdown-menu-label",
+          "description": "A group's heading in type.caption and color.fg.subtle."
+        },
+        {
+          "name": "DropdownMenuSeparator",
+          "slot": "dropdown-menu-separator",
+          "description": "role=\"separator\", a 1 px line in color.border.default."
+        },
+        {
+          "name": "DropdownMenuShortcut",
+          "slot": "dropdown-menu-shortcut",
+          "description": "The shortcut at the end of an item, in type.caption and color.fg.subtle."
+        },
+        {
+          "name": "DropdownMenuSubTrigger",
+          "slot": "dropdown-menu-sub-trigger",
+          "description": "An item that opens a submenu (aria-haspopup), with a chevron; color.interactive.hover while its submenu is open."
+        },
+        {
+          "name": "DropdownMenuSubContent",
+          "slot": "dropdown-menu-sub-content",
+          "description": "The submenu's popup, beside its trigger."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "data-starting-style",
+          "description": "Opening: the menu grows from 95 % at the trigger and fades in over motion.duration.base with motion.easing.enter; reduced motion turns it off."
+        },
+        {
+          "name": "closing",
+          "variant": "data-ending-style",
+          "description": "Closing: the reverse, with motion.easing.exit."
+        },
+        {
+          "name": "highlighted",
+          "variant": "data-highlighted",
+          "description": "The item under the pointer or the keyboard: color.interactive.hover."
+        },
+        {
+          "name": "submenu-open",
+          "variant": "data-popup-open",
+          "description": "A sub-trigger whose submenu is open keeps color.interactive.hover."
+        },
+        {
+          "name": "danger",
+          "variant": "data-danger",
+          "description": "A destructive item: color.status.danger.fg, color.status.danger.bg when highlighted."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "description": "A disabled item: color.fg.disabled and aria-disabled; reachable but not chosen."
+        }
+      ],
+      "tokens": [
+        "color.bg.overlay",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.neutral.bg",
+        "color.neutral.bg-active",
+        "color.neutral.bg-hover",
+        "color.neutral.fg",
+        "color.ring",
+        "color.status.danger.bg",
+        "color.status.danger.fg",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.base",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "space.inline.lg",
+        "space.inline.sm",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.popover"
+      ],
+      "examples": {
+        "minimal": "DropdownMenuMinimal",
+        "realistic": "DropdownMenuRealistic"
+      },
+      "accessibility": [
+        "The trigger has aria-haspopup=\"menu\" and aria-expanded; the popup is role=\"menu\" of role=\"menuitem\", \"menuitemcheckbox\" (aria-checked) and \"menuitemradio\" items; groups are role=\"group\" named by their label.",
+        "Enter, Space or ArrowDown on the trigger opens the menu with the first item highlighted (ArrowUp: the last); arrow keys, Home and End move, typing jumps to an item, Enter or Space chooses, Escape closes and returns focus to the trigger.",
+        "ArrowRight (inline-end) on a sub-trigger opens its submenu, ArrowLeft closes it. Disabled items stay reachable by the keyboard, as the ARIA menu pattern recommends, but have aria-disabled and cannot be chosen.",
+        "A press outside closes the menu. A destructive item has danger and a clear label, so the meaning does not rest on colour; checked state shows a check mark or dot as well as aria-checked.",
+        "prefers-reduced-motion: reduce turns the scale and fade transitions off.",
+        "The menu and its submenus take the trigger's theme and density, and sit at z.popover so a menu opened from a dialog is above it."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { Button } from \"@/components/button/button\";\nimport {\n  DropdownMenu,\n  DropdownMenuCheckboxItem,\n  DropdownMenuContent,\n  DropdownMenuGroup,\n  DropdownMenuItem,\n  DropdownMenuLabel,\n  DropdownMenuRadioGroup,\n  DropdownMenuRadioItem,\n  DropdownMenuSeparator,\n  DropdownMenuShortcut,\n  DropdownMenuSub,\n  DropdownMenuSubContent,\n  DropdownMenuSubTrigger,\n  DropdownMenuTrigger,\n} from \"@/components/dropdown-menu/dropdown-menu\";\nimport { IconButton } from \"@/components/icon-button/icon-button\";\n\nconst MoreIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\">\n    <circle cx=\"3.5\" cy=\"8\" r=\"1.25\" />\n    <circle cx=\"8\" cy=\"8\" r=\"1.25\" />\n    <circle cx=\"12.5\" cy=\"8\" r=\"1.25\" />\n  </svg>\n);\n\n/** The smallest useful DropdownMenu: a few actions under an icon button. */\nexport function DropdownMenuMinimal() {\n  return (\n    <DropdownMenu>\n      <DropdownMenuTrigger render={<IconButton aria-label=\"Tab actions\" variant=\"ghost\" />}>\n        <MoreIcon />\n      </DropdownMenuTrigger>\n      <DropdownMenuContent>\n        <DropdownMenuItem>Rename</DropdownMenuItem>\n        <DropdownMenuItem>Duplicate</DropdownMenuItem>\n        <DropdownMenuSeparator />\n        <DropdownMenuItem danger>Close tab</DropdownMenuItem>\n      </DropdownMenuContent>\n    </DropdownMenu>\n  );\n}\n\n/**\n * The results toolbar's copy menu: actions with shortcuts, a \"Copy as\" submenu, a radio group for\n * the delimiter, checkbox options, a disabled action and a group label.\n */\nexport function DropdownMenuRealistic() {\n  const [delimiter, setDelimiter] = useState(\"tab\");\n  const [headers, setHeaders] = useState(true);\n  return (\n    <DropdownMenu>\n      <DropdownMenuTrigger render={<Button variant=\"secondary\" size=\"sm\" />}>Copy</DropdownMenuTrigger>\n      <DropdownMenuContent>\n        <DropdownMenuGroup>\n          <DropdownMenuLabel>Selection</DropdownMenuLabel>\n          <DropdownMenuItem>\n            Copy cells\n            <DropdownMenuShortcut>Ctrl+C</DropdownMenuShortcut>\n          </DropdownMenuItem>\n          <DropdownMenuItem>\n            Copy with headers\n            <DropdownMenuShortcut>Ctrl+Shift+C</DropdownMenuShortcut>\n          </DropdownMenuItem>\n          <DropdownMenuSub>\n            <DropdownMenuSubTrigger>Copy as</DropdownMenuSubTrigger>\n            <DropdownMenuSubContent>\n              <DropdownMenuItem>CSV</DropdownMenuItem>\n              <DropdownMenuItem>JSON</DropdownMenuItem>\n              <DropdownMenuItem>SQL INSERT statements</DropdownMenuItem>\n            </DropdownMenuSubContent>\n          </DropdownMenuSub>\n          <DropdownMenuItem disabled>Copy column statistics</DropdownMenuItem>\n        </DropdownMenuGroup>\n        <DropdownMenuSeparator />\n        <DropdownMenuGroup>\n          <DropdownMenuLabel>Delimiter</DropdownMenuLabel>\n          <DropdownMenuRadioGroup value={delimiter} onValueChange={(value) => setDelimiter(value as string)}>\n            <DropdownMenuRadioItem value=\"tab\">Tab</DropdownMenuRadioItem>\n            <DropdownMenuRadioItem value=\"comma\">Comma</DropdownMenuRadioItem>\n            <DropdownMenuRadioItem value=\"semicolon\">Semicolon</DropdownMenuRadioItem>\n          </DropdownMenuRadioGroup>\n        </DropdownMenuGroup>\n        <DropdownMenuSeparator />\n        <DropdownMenuCheckboxItem checked={headers} onCheckedChange={setHeaders}>\n          Include headers\n        </DropdownMenuCheckboxItem>\n      </DropdownMenuContent>\n    </DropdownMenu>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

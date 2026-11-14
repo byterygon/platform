@@ -1,0 +1,255 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "menubar",
+  "title": "Menubar",
+  "description": "A row of menus, as at the top of a desktop window, on Base UI's Menubar: titles that open DropdownMenu-style menus (shortcuts, danger, checkbox and radio items, groups, separators, submenus), moving between menus with the arrow keys or the pointer once one is open.",
+  "usage": "Use Menubar for an application's menu row in a web build, where the window has no native menu: File, Query, View, Help. Compose it as Menubar > MenubarMenu (one per menu) > MenubarTrigger (the title) + MenubarContent > MenubarItem (MenubarShortcut at the end; danger for a destructive one), MenubarCheckboxItem, MenubarRadioGroup with MenubarRadioItem, MenubarGroup with MenubarLabel, MenubarSeparator, MenubarSub > MenubarSubTrigger + MenubarSubContent. Keep the commands also in the CommandPalette. On the desktop prefer the native menu; for one menu behind a button use DropdownMenu; for site navigation (links) use NavigationMenu.",
+  "status": "experimental",
+  "base": "@base-ui/react/menubar",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "orientation",
+      "type": "\"horizontal\" | \"vertical\"",
+      "default": "horizontal",
+      "description": "Menubar: the direction of the row, and of the arrow keys that move along it."
+    },
+    {
+      "name": "loopFocus",
+      "type": "boolean",
+      "default": true,
+      "description": "Menubar: the arrow keys wrap from the last title to the first."
+    },
+    {
+      "name": "modal",
+      "type": "boolean",
+      "default": true,
+      "description": "Menubar: while a menu is open the page ignores the pointer and does not scroll."
+    },
+    {
+      "name": "open",
+      "type": "boolean",
+      "description": "MenubarMenu: controlled open state; defaultOpen when uncontrolled."
+    },
+    {
+      "name": "onOpenChange",
+      "type": "(open: boolean, details) => void",
+      "description": "MenubarMenu: called when its title, an item, Escape or an outside press opens or closes it."
+    },
+    {
+      "name": "danger",
+      "type": "boolean",
+      "default": false,
+      "description": "MenubarItem: a destructive action in color.status.danger.fg."
+    },
+    {
+      "name": "closeOnClick",
+      "type": "boolean",
+      "default": true,
+      "description": "MenubarItem: closes the menu when chosen (false for checkbox and radio items by default)."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "On an item: shown in color.fg.disabled with aria-disabled; it cannot be chosen."
+    },
+    {
+      "name": "checked",
+      "type": "boolean",
+      "description": "MenubarCheckboxItem: controlled state; onCheckedChange reports changes."
+    },
+    {
+      "name": "value",
+      "type": "unknown",
+      "description": "MenubarRadioGroup: the chosen value (onValueChange); MenubarRadioItem: its value."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "On each part: extra classes, merged after the component's own."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "role=\"menubar\", a row on color.bg.surface with a border; data-slot=\"menubar\"."
+    },
+    {
+      "name": "positioner",
+      "element": "div",
+      "description": "In a portal under the title, at z.popover, with the row's data-theme and data-density; data-slot=\"menubar-positioner\"."
+    },
+    {
+      "name": "popup",
+      "element": "div",
+      "description": "role=\"menu\", color.bg.overlay with elevation.overlay; data-slot=\"menubar-content\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "MenubarTrigger",
+      "slot": "menubar-trigger",
+      "description": "A menu's title in the row (role=\"menuitem\", aria-haspopup=\"menu\"), in type.label; color.interactive.hover while hovered or open."
+    },
+    {
+      "name": "MenubarContent",
+      "slot": "menubar-content",
+      "description": "The portal, the positioner under the title and the menu."
+    },
+    {
+      "name": "MenubarItem",
+      "slot": "menubar-item",
+      "description": "role=\"menuitem\"; color.interactive.hover while highlighted; data-danger for a destructive one."
+    },
+    {
+      "name": "MenubarCheckboxItem",
+      "slot": "menubar-checkbox-item",
+      "description": "role=\"menuitemcheckbox\" with aria-checked and a check mark."
+    },
+    {
+      "name": "MenubarRadioGroup",
+      "slot": "menubar-radio-group",
+      "description": "role=\"group\" holding the radio items; value and onValueChange."
+    },
+    {
+      "name": "MenubarRadioItem",
+      "slot": "menubar-radio-item",
+      "description": "role=\"menuitemradio\" with aria-checked and a dot."
+    },
+    {
+      "name": "MenubarGroup",
+      "slot": "menubar-group",
+      "description": "role=\"group\", named by its MenubarLabel."
+    },
+    {
+      "name": "MenubarLabel",
+      "slot": "menubar-label",
+      "description": "A group's heading in type.caption and color.fg.subtle."
+    },
+    {
+      "name": "MenubarSeparator",
+      "slot": "menubar-separator",
+      "description": "role=\"separator\", a 1 px line in color.border.default."
+    },
+    {
+      "name": "MenubarShortcut",
+      "slot": "menubar-shortcut",
+      "description": "The shortcut at the end of an item, in type.caption and color.fg.subtle."
+    },
+    {
+      "name": "MenubarSubTrigger",
+      "slot": "menubar-sub-trigger",
+      "description": "An item that opens a submenu (aria-haspopup), with a chevron; color.interactive.hover while its submenu is open."
+    },
+    {
+      "name": "MenubarSubContent",
+      "slot": "menubar-sub-content",
+      "description": "The submenu's popup, beside its trigger."
+    }
+  ],
+  "states": [
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "A title under the pointer: color.interactive.hover."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on a title: a ring of ring.width in color.ring."
+    },
+    {
+      "name": "open",
+      "variant": "data-starting-style",
+      "description": "Opening: the menu grows from 95 % at the trigger and fades in over motion.duration.base with motion.easing.enter; reduced motion turns it off."
+    },
+    {
+      "name": "closing",
+      "variant": "data-ending-style",
+      "description": "Closing: the reverse, with motion.easing.exit."
+    },
+    {
+      "name": "highlighted",
+      "variant": "data-highlighted",
+      "description": "The item under the pointer or the keyboard: color.interactive.hover."
+    },
+    {
+      "name": "submenu-open",
+      "variant": "data-popup-open",
+      "description": "A title whose menu is open, or a sub-trigger whose submenu is open, keeps color.interactive.hover."
+    },
+    {
+      "name": "danger",
+      "variant": "data-danger",
+      "description": "A destructive item: color.status.danger.fg, color.status.danger.bg when highlighted."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "description": "A disabled item: color.fg.disabled and aria-disabled; reachable but not chosen."
+    }
+  ],
+  "tokens": [
+    "color.bg.overlay",
+    "color.bg.surface",
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.disabled",
+    "color.fg.muted",
+    "color.fg.subtle",
+    "color.interactive.hover",
+    "color.ring",
+    "color.status.danger.bg",
+    "color.status.danger.fg",
+    "elevation.overlay.shadow",
+    "font.sans",
+    "motion.duration.base",
+    "motion.duration.fast",
+    "motion.easing.enter",
+    "motion.easing.exit",
+    "motion.easing.standard",
+    "radius.md",
+    "radius.sm",
+    "ring.offset",
+    "ring.width",
+    "size.control.sm",
+    "size.control.xs",
+    "size.icon.sm",
+    "space.inline.lg",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.sm",
+    "space.inset.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight",
+    "z.popover"
+  ],
+  "examples": {
+    "minimal": "MenubarMinimal",
+    "realistic": "MenubarRealistic"
+  },
+  "accessibility": [
+    "The row is role=\"menubar\"; each title is role=\"menuitem\" with aria-haspopup=\"menu\" and aria-expanded; each popup is role=\"menu\" of menuitem, menuitemcheckbox and menuitemradio items.",
+    "One title is in the tab order; ArrowLeft and ArrowRight move between titles (wrapping), Enter, Space or ArrowDown opens a menu with its first item highlighted; while a menu is open ArrowLeft and ArrowRight open the neighbouring menu; Escape closes and returns focus to the title.",
+    "Inside a menu: arrows, Home, End and typing move, Enter chooses; ArrowRight on a sub-trigger opens its submenu. Disabled items stay reachable but have aria-disabled and cannot be chosen.",
+    "Once one menu is open, moving the pointer over another title opens that menu.",
+    "Titles have a visible focus ring; prefers-reduced-motion: reduce turns the menus' scale and fade off.",
+    "Every command is also in the CommandPalette with its shortcut."
+  ]
+}

@@ -1,0 +1,234 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "split-button",
+  "type": "registry:ui",
+  "title": "SplitButton",
+  "description": "A primary action joined to a menu of its variants: a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in three variants and three sizes.",
+  "dependencies": [],
+  "registryDependencies": [
+    "@byterygon/button",
+    "@byterygon/cn",
+    "@byterygon/dropdown-menu",
+    "@byterygon/icon-button"
+  ],
+  "files": [
+    {
+      "path": "ui/split-button.tsx",
+      "type": "registry:ui",
+      "content": "import type { ComponentProps, MouseEventHandler, ReactNode, Ref } from \"react\";\nimport { Button } from \"@/components/ui/button\";\nimport { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, type DropdownMenuProps } from \"@/components/ui/dropdown-menu\";\nimport { IconButton } from \"@/components/ui/icon-button\";\nimport { cn } from \"@/lib/cn\";\n\n// A primary action with a menu of its variants, joined into one control: a Button and an\n// IconButton that opens a DropdownMenu (Base UI's Menu). DBee's Run is one: Run, with \"Run\n// selection\" and \"Run statement\" in the menu. The menu's content is DropdownMenu's parts.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const splitButtonVariants = {\n  /** The Button variant of both halves; the classes are the divider and the open menu button. */\n  variant: {\n    primary: \"border-s-accent-solid-active data-popup-open:bg-accent-solid-active\",\n    secondary: \"border-s-neutral-solid-active data-popup-open:bg-neutral-solid-active\",\n    ghost: \"border-s-border data-popup-open:bg-pressed\",\n  },\n  /** The height of both halves, from `size.control.*`; the menu button is square. */\n  size: {\n    sm: \"border-s\",\n    md: \"border-s\",\n    lg: \"border-s\",\n  },\n} as const;\n\nconst ChevronDownIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m4 6 4 4 4-4\" />\n  </svg>\n);\n\nexport interface SplitButtonProps extends Omit<ComponentProps<\"div\">, \"className\" | \"onClick\" | \"children\" | \"ref\"> {\n  /** The main action's label. */\n  children?: ReactNode;\n  /** Runs the main action. */\n  onClick?: MouseEventHandler<HTMLButtonElement>;\n  /** The menu's items: DropdownMenuItem, DropdownMenuGroup, DropdownMenuSeparator. */\n  menu?: ReactNode;\n  /** The accessible name of the menu button. */\n  menuLabel?: string;\n  /** Button variant of both halves. */\n  variant?: keyof typeof splitButtonVariants.variant;\n  /** Height of both halves. */\n  size?: keyof typeof splitButtonVariants.size;\n  /** Disables both halves. */\n  disabled?: boolean;\n  /** The main action is running: its Button shows loading; the menu stays usable. */\n  loading?: boolean;\n  /** How the menu lines up with the control. */\n  align?: \"start\" | \"center\" | \"end\";\n  /** Controlled open state of the menu; `defaultOpen` and `onOpenChange` as DropdownMenu's. */\n  open?: boolean;\n  defaultOpen?: boolean;\n  onOpenChange?: DropdownMenuProps[\"onOpenChange\"];\n  /** Extra classes for the group, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the main action's `<button>`. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** A Button joined to a menu button that opens a DropdownMenu of related actions. */\nexport function SplitButton({\n  children,\n  onClick,\n  menu,\n  menuLabel = \"More options\",\n  variant = \"primary\",\n  size = \"md\",\n  disabled = false,\n  loading = false,\n  align = \"end\",\n  open,\n  defaultOpen,\n  onOpenChange,\n  className,\n  ref,\n  ...props\n}: SplitButtonProps) {\n  const menuState = { ...(open === undefined ? {} : { open }), ...(defaultOpen === undefined ? {} : { defaultOpen }), ...(onOpenChange ? { onOpenChange } : {}) };\n  return (\n    <div data-slot=\"split-button\" data-variant={variant} data-size={size} role=\"group\" className={cn(\"inline-flex items-stretch\", className)} {...props}>\n      <Button ref={ref} variant={variant} size={size} disabled={disabled} loading={loading} className=\"rounded-e-none\" {...(onClick ? { onClick } : {})}>\n        {children}\n      </Button>\n      <DropdownMenu {...menuState}>\n        <DropdownMenuTrigger\n          disabled={disabled}\n          render={<IconButton aria-label={menuLabel} variant={variant} size={size} />}\n          className={cn(\"rounded-s-none\", splitButtonVariants.variant[variant], splitButtonVariants.size[size])}\n        >\n          <ChevronDownIcon />\n        </DropdownMenuTrigger>\n        <DropdownMenuContent align={align}>{menu}</DropdownMenuContent>\n      </DropdownMenu>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "split-button",
+      "title": "SplitButton",
+      "description": "A primary action joined to a menu of its variants: a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in three variants and three sizes.",
+      "usage": "Use SplitButton when one action is the usual choice and a few close variants should stay one click away: Run (statement under cursor) with Run selection and Explain in the menu, Export CSV with other formats. Put the action's label in children and its handler in onClick, and the menu's DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel and DropdownMenuSeparator in menu; name the menu button with menuLabel. loading shows the action running while the menu stays usable. When there is no usual choice, use a DropdownMenu behind a plain Button; for unrelated actions, separate Buttons.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [],
+      "props": [
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "The main action's label."
+        },
+        {
+          "name": "onClick",
+          "type": "MouseEventHandler<HTMLButtonElement>",
+          "description": "Runs the main action."
+        },
+        {
+          "name": "menu",
+          "type": "ReactNode",
+          "description": "The menu's content: DropdownMenu items, groups, labels, separators."
+        },
+        {
+          "name": "menuLabel",
+          "type": "string",
+          "default": "More options",
+          "description": "The accessible name of the menu button; say what it holds (\"Run options\")."
+        },
+        {
+          "name": "variant",
+          "type": "\"primary\" | \"secondary\" | \"ghost\"",
+          "default": "primary",
+          "description": "Button variant of both halves."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Height of both halves, from size.control.*."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Disables both halves."
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "default": false,
+          "description": "The main action is running: its Button shows loading (aria-busy); the menu stays usable."
+        },
+        {
+          "name": "align",
+          "type": "\"start\" | \"center\" | \"end\"",
+          "default": "end",
+          "description": "How the menu lines up with the control."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state of the menu; defaultOpen and onOpenChange as DropdownMenu's."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes for the group."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLButtonElement>",
+          "description": "Reaches the main action's <button>."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "primary",
+          "secondary",
+          "ghost"
+        ],
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "role=\"group\" joining the halves; data-slot=\"split-button\", data-variant, data-size."
+        },
+        {
+          "name": "action",
+          "element": "button",
+          "description": "The main action, a Button with square inner corners."
+        },
+        {
+          "name": "menu-button",
+          "element": "button",
+          "description": "The chevron IconButton (aria-haspopup=\"menu\"), with a divider on its inner edge; data-slot=\"dropdown-menu-trigger\"."
+        },
+        {
+          "name": "menu",
+          "element": "div",
+          "description": "DropdownMenu's popup (role=\"menu\") in a portal, aligned to the end of the control."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Each half takes its Button variant's hover colour."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Each half shows its own focus ring."
+        },
+        {
+          "name": "open",
+          "variant": "data-popup-open",
+          "props": {
+            "defaultOpen": true
+          },
+          "description": "While the menu is open the menu button keeps its active colour."
+        },
+        {
+          "name": "loading",
+          "variant": "data-loading",
+          "props": {
+            "loading": true
+          },
+          "description": "The main action ignores clicks and sets aria-busy while it runs."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Both halves at opacity.disabled, ignoring interaction."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-active",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.bg.overlay",
+        "color.border.default",
+        "color.fg.default",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.neutral.bg",
+        "color.neutral.bg-active",
+        "color.neutral.bg-hover",
+        "color.neutral.fg",
+        "color.ring",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.base",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.md",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inset.lg",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.popover"
+      ],
+      "examples": {
+        "minimal": "SplitButtonMinimal",
+        "realistic": "SplitButtonRealistic"
+      },
+      "accessibility": [
+        "The control is a role=\"group\" of two buttons, each in the tab order: the action, named by its label, and the menu button, named by menuLabel, with aria-haspopup=\"menu\" and aria-expanded.",
+        "Enter or Space on the action runs it; on the menu button, Enter, Space or ArrowDown opens the menu with the first item highlighted; Escape closes it and returns focus to the menu button.",
+        "The menu follows DropdownMenu: arrows, Home, End and typing move, Enter chooses; a press outside closes it.",
+        "loading keeps the action focusable and sets aria-busy; the divider is a border colour, and the halves are separate buttons, so the split does not rest on colour alone.",
+        "The menu takes the control's theme and density and sits at z.popover."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut } from \"@/components/dropdown-menu/dropdown-menu\";\nimport { SplitButton } from \"@/components/split-button/split-button\";\n\n/** The smallest useful SplitButton: an action and one variant of it. */\nexport function SplitButtonMinimal() {\n  return (\n    <SplitButton menuLabel=\"More export options\" variant=\"secondary\" menu={<DropdownMenuItem>Export as JSON Lines</DropdownMenuItem>}>\n      Export CSV\n    </SplitButton>\n  );\n}\n\n/** DBee's Run: the statement under the cursor, the selection in the menu; loading while it runs; the three sizes. */\nexport function SplitButtonRealistic() {\n  const [running, setRunning] = useState(false);\n  const run = () => {\n    setRunning(true);\n    setTimeout(() => setRunning(false), 800);\n  };\n  const runMenu = (\n    <>\n      <DropdownMenuGroup>\n        <DropdownMenuLabel>Run</DropdownMenuLabel>\n        <DropdownMenuItem onClick={run}>\n          Run statement under cursor <DropdownMenuShortcut>Ctrl+Enter</DropdownMenuShortcut>\n        </DropdownMenuItem>\n        <DropdownMenuItem onClick={run}>Run selection</DropdownMenuItem>\n      </DropdownMenuGroup>\n      <DropdownMenuSeparator />\n      <DropdownMenuItem>Explain</DropdownMenuItem>\n    </>\n  );\n  return (\n    <div className=\"flex flex-wrap items-center gap-inline-md\">\n      <SplitButton menuLabel=\"Run options\" loading={running} onClick={run} menu={runMenu}>\n        Run\n      </SplitButton>\n      <SplitButton size=\"sm\" variant=\"ghost\" menuLabel=\"More copy options\" menu={<DropdownMenuItem>Copy as JSON</DropdownMenuItem>}>\n        Copy\n      </SplitButton>\n      <SplitButton size=\"lg\" menuLabel=\"More save options\" menu={<DropdownMenuItem>Save as…</DropdownMenuItem>}>\n        Save\n      </SplitButton>\n      <SplitButton disabled menuLabel=\"More run options\" menu={<DropdownMenuItem>Run selection</DropdownMenuItem>}>\n        Run (no connection)\n      </SplitButton>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {}
+  }
+}
