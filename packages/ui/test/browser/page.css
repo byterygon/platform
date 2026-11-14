@@ -1,0 +1,15 @@
+/* The browser check's page (scripts/browser-check.ts). The token variables are not imported here:
+   main.tsx puts a preset's tokens.css in <style id="tokens"> so the check can swap presets at run
+   time, as the Theme Studio does. */
+@import "@byterygon/design-tokens/fonts/fonts.css";
+@import "tailwindcss";
+@import "@byterygon/design-tokens/default/tailwind-theme.css";
+
+@source "../../src";
+@source "./";
+
+body {
+  margin: 0;
+  background: var(--by-color-bg-canvas);
+  color: var(--by-color-fg-default);
+}

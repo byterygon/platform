@@ -64,6 +64,11 @@ export const LIBS: Record<string, { dependencies: string[]; description: string;
     description: "Gives a popup in a portal the data-theme and data-density of the control that opened it, and reads length tokens in px. Select, Combobox and MultiSelect import it from @/lib/theme-scope.",
     llms: "gives popups in a portal the theme and density of their trigger; the popup components depend on it.",
   },
+  monaco: {
+    dependencies: ["monaco-editor"],
+    description: "Loads Monaco lazily from the app's own bundle (ESM, its editor worker through Vite's ?worker, no CDN or AMD loader) and builds a Monaco theme from the design tokens in scope at the editor. SqlEditor imports it from @/lib/monaco; with a bundler other than Vite, set MonacoEnvironment.getWorker and replace the ?worker import.",
+    llms: "loads Monaco lazily and offline (Vite ?worker) and turns the token roles in scope into a Monaco theme; SqlEditor depends on it.",
+  },
 };
 
 /**

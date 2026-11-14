@@ -6,11 +6,11 @@ import { join } from "node:path";
 import { registryItemSchema } from "shadcn/schema";
 import { afterAll, describe, expect, test } from "vitest";
 import { addGalleryEntry, scaffold, ScaffoldError } from "../scripts/new-component.ts";
-import { PACKAGE_ROOT } from "../scripts/registry.ts";
+import { LIBS, PACKAGE_ROOT } from "../scripts/registry.ts";
 import { describeComponent } from "./suite.tsx";
 
 const temp = mkdtempSync(join(PACKAGE_ROOT, ".scaffold-test-"));
-for (const path of ["package.json", "src/lib/cn.ts", "src/lib/theme-scope.ts", "gallery/entries.ts"]) {
+for (const path of ["package.json", ...Object.keys(LIBS).map((lib) => `src/lib/${lib}.ts`), "gallery/entries.ts"]) {
   mkdirSync(join(temp, path, ".."), { recursive: true });
   cpSync(join(PACKAGE_ROOT, path), join(temp, path));
 }

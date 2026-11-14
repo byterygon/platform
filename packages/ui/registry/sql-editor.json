@@ -1,0 +1,204 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "sql-editor",
+  "type": "registry:ui",
+  "title": "SqlEditor",
+  "description": "A SQL editor on Monaco, loaded lazily from the app's own bundle (no CDN, no network), themed from the editor.* and syntax.* tokens of its region in every preset, mode and density, with run-at-cursor, error markers and a read-only mode.",
+  "dependencies": [
+    "monaco-editor"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/monaco"
+  ],
+  "files": [
+    {
+      "path": "ui/sql-editor.tsx",
+      "type": "registry:ui",
+      "content": "import { useEffect, useRef, useState, type ComponentProps, type KeyboardEvent } from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { applyTheme, isEditorStylesheet, loadMonaco, MONACO_SCOPE_ATTRIBUTE, monacoMetrics, monacoTheme, tokenReader, type Monaco, type MonacoEditor, type MonacoThemeData } from \"@/lib/monaco\";\n\n// SqlEditor is Monaco (spec section 7; Uy Son, 2026-11-13), loaded lazily through @/lib/monaco.\n// Until Monaco has loaded, a plain textarea with the same value, colours and keys stands in, so\n// the first keystroke never waits for the editor bundle; Monaco then takes over the text, the\n// selection and the focus. Base UI has no editor part, so this is a plain element.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const sqlEditorVariants = {\n  variant: {\n    outline: \"rounded-md border border-border-strong data-readonly:border-border\",\n    ghost: \"\",\n  },\n} as const;\n\nconst base = [\n  \"relative flex h-panel-xs w-full min-h-0 min-w-0 flex-col overflow-hidden bg-editor text-editor-fg\",\n  \"outline-none data-focused:outline-solid data-focused:outline-[length:var(--by-ring-width)] data-focused:outline-offset-[var(--by-ring-offset)] data-focused:outline-ring\",\n  \"data-loading:cursor-progress\",\n];\n\nconst fallbackClasses =\n  \"size-full flex-1 resize-none bg-editor p-inset-sm font-mono text-code text-editor-fg caret-editor-cursor outline-none selection:bg-editor-selection placeholder:text-editor-gutter\";\n\n/** A statement in the editor's text: offsets (UTF-16, end exclusive, no `;`) and its text. */\nexport interface SqlStatement {\n  start: number;\n  end: number;\n  text: string;\n}\n\n/** What Ctrl/Cmd+Enter asks to run. */\nexport interface SqlRun extends SqlStatement {\n  /** \"selection\" when text was selected, else the statement under the cursor. */\n  source: \"selection\" | \"statement\";\n  /** The statements inside `text` (one for \"statement\"; any number for a selection). */\n  statements: SqlStatement[];\n}\n\n/** A problem to underline, by offsets in the text (a PostgreSQL error position minus one). */\nexport interface SqlMarker {\n  start: number;\n  /** Exclusive end; without it, the word at `start` (or one character) is marked. */\n  end?: number;\n  message: string;\n  severity?: \"error\" | \"warning\" | \"info\";\n}\n\nconst WORD = /[\\p{L}\\p{N}_$]/u;\n\n/**\n * Splits SQL on top-level semicolons, the way PostgreSQL reads it: quotes ('' escapes), E'' strings\n * (backslash escapes), \"identifiers\", $tag$ dollar quotes, -- line comments and nested block\n * comments hide their semicolons. Returns every non-blank statement, trimmed of whitespace.\n */\nexport function splitSqlStatements(sql: string): SqlStatement[] {\n  return segments(sql).filter((s) => !s.blank).map(({ start, end }) => ({ start, end, text: sql.slice(start, end) }));\n}\n\ninterface Segment {\n  start: number;\n  end: number;\n  /** The offset just past the `;` (or the end of the text). */\n  limit: number;\n  blank: boolean;\n}\n\nfunction segments(sql: string): Segment[] {\n  const out: Segment[] = [];\n  let segmentStart = 0;\n  let firstCode = -1;\n  let lastCode = -1;\n  const code = (from: number, to: number) => {\n    if (firstCode < 0) firstCode = from;\n    lastCode = to;\n  };\n  const close = (end: number, limit: number) => {\n    out.push(firstCode < 0 ? { start: segmentStart, end: segmentStart, limit, blank: true } : { start: firstCode, end: trimEnd(sql, firstCode, Math.max(lastCode, end)), limit, blank: false });\n    segmentStart = limit;\n    firstCode = -1;\n    lastCode = -1;\n  };\n  let i = 0;\n  while (i < sql.length) {\n    const ch = sql[i]!;\n    const next = sql[i + 1];\n    if (ch === \"-\" && next === \"-\") {\n      const nl = sql.indexOf(\"\\n\", i);\n      i = nl < 0 ? sql.length : nl;\n      continue;\n    }\n    if (ch === \"/\" && next === \"*\") {\n      let depth = 1;\n      let j = i + 2;\n      while (j < sql.length && depth > 0) {\n        if (sql[j] === \"/\" && sql[j + 1] === \"*\") (depth += 1), (j += 2);\n        else if (sql[j] === \"*\" && sql[j + 1] === \"/\") (depth -= 1), (j += 2);\n        else j += 1;\n      }\n      i = j;\n      continue;\n    }\n    if (ch === \"'\") {\n      const escapes = (sql[i - 1] === \"E\" || sql[i - 1] === \"e\") && !WORD.test(sql[i - 2] ?? \"\");\n      let j = i + 1;\n      while (j < sql.length) {\n        if (escapes && sql[j] === \"\\\\\") j += 2;\n        else if (sql[j] === \"'\" && sql[j + 1] === \"'\") j += 2;\n        else if (sql[j] === \"'\") break;\n        else j += 1;\n      }\n      code(escapes ? i - 1 : i, Math.min(j + 1, sql.length));\n      i = j + 1;\n      continue;\n    }\n    if (ch === '\"') {\n      let j = i + 1;\n      while (j < sql.length) {\n        if (sql[j] === '\"' && sql[j + 1] === '\"') j += 2;\n        else if (sql[j] === '\"') break;\n        else j += 1;\n      }\n      code(i, Math.min(j + 1, sql.length));\n      i = j + 1;\n      continue;\n    }\n    if (ch === \"$\" && !WORD.test(sql[i - 1] ?? \"\")) {\n      const tag = /^\\$(?:[A-Za-z_\\u0080-￿][A-Za-z0-9_\\u0080-￿]*)?\\$/.exec(sql.slice(i, i + 64));\n      if (tag) {\n        const endTag = sql.indexOf(tag[0], i + tag[0].length);\n        const stop = endTag < 0 ? sql.length : endTag + tag[0].length;\n        code(i, stop);\n        i = stop;\n        continue;\n      }\n    }\n    if (ch === \";\") {\n      close(i, i + 1);\n      i += 1;\n      continue;\n    }\n    if (!/\\s/.test(ch)) code(i, i + 1);\n    i += 1;\n  }\n  if (segmentStart < sql.length || out.length === 0) close(sql.length, sql.length);\n  return out;\n}\n\nconst trimEnd = (sql: string, start: number, end: number) => {\n  let e = end;\n  while (e > start && /\\s/.test(sql[e - 1]!)) e -= 1;\n  return e;\n};\n\n/**\n * The statement at a cursor offset: the one whose text, or the gap up to its `;`, holds the\n * cursor. A cursor in blank space or comments between statements takes the statement before it,\n * else the next one; null when the text has no statement.\n */\nexport function sqlStatementAt(sql: string, offset: number): SqlStatement | null {\n  const all = segments(sql);\n  const index = all.findIndex((s, i) => offset <= s.limit || i === all.length - 1);\n  const at = all[index];\n  if (!at) return null;\n  const pick = (s: Segment | undefined) => (s && !s.blank ? { start: s.start, end: s.end, text: sql.slice(s.start, s.end) } : null);\n  if (!at.blank && offset >= (all[index - 1]?.limit ?? 0)) {\n    // In a segment's leading blank space, before its first token: the previous statement wins\n    // when the cursor sits on the line it ended on.\n    const previous = all.slice(0, index).reverse().find((s) => !s.blank);\n    if (previous && offset < at.start && !sql.slice(previous.limit, offset).includes(\"\\n\")) return pick(previous);\n    return pick(at);\n  }\n  for (let i = index - 1; i >= 0; i -= 1) if (!all[i]!.blank) return pick(all[i]);\n  for (let i = index + 1; i < all.length; i += 1) if (!all[i]!.blank) return pick(all[i]);\n  return null;\n}\n\n/** What to run for a selection (start === end: none) and cursor, or null when there is nothing. */\nexport function sqlRunFor(sql: string, selectionStart: number, selectionEnd: number): SqlRun | null {\n  if (selectionEnd > selectionStart) {\n    const text = sql.slice(selectionStart, selectionEnd);\n    if (text.trim() === \"\") return null;\n    const statements = splitSqlStatements(text).map((s) => ({ start: s.start + selectionStart, end: s.end + selectionStart, text: s.text }));\n    if (statements.length === 0) return null;\n    return { start: selectionStart, end: selectionEnd, text, source: \"selection\", statements };\n  }\n  const statement = sqlStatementAt(sql, selectionStart);\n  return statement ? { ...statement, source: \"statement\", statements: [statement] } : null;\n}\n\nexport interface SqlEditorProps extends Omit<ComponentProps<\"div\">, \"className\" | \"children\" | \"defaultValue\" | \"onChange\"> {\n  /** `outline`: a bordered field. `ghost`: no border, to fill a pane (a query tab). */\n  variant?: keyof typeof sqlEditorVariants.variant;\n  /** The text, when controlled. */\n  value?: string;\n  /** The initial text, when uncontrolled. */\n  defaultValue?: string;\n  /** Called with the whole text after every change. */\n  onValueChange?: (value: string) => void;\n  /** Ctrl+Enter (Cmd+Enter on macOS): the selection, or the statement under the cursor. */\n  onRun?: (run: SqlRun) => void;\n  /** Problems to underline (a hover shows the message; F8 moves to the next one). */\n  markers?: readonly SqlMarker[];\n  /** Text can be selected and copied but not changed. */\n  readOnly?: boolean;\n  /** Monaco grammar: PostgreSQL (default) or generic SQL. */\n  language?: \"pgsql\" | \"sql\";\n  /** Shown while the editor is empty. */\n  placeholder?: string;\n  /** Line numbers in the gutter. */\n  lineNumbers?: boolean;\n  /** Tab moves focus instead of indenting (Ctrl+M toggles it at any time). */\n  tabMovesFocus?: boolean;\n  /** Tells Monaco a screen reader is in use (its optimised mode); off means \"detect\". */\n  screenReaderOptimized?: boolean;\n  /** Accessible name of the text area; use it, or aria-labelledby on a visible label. */\n  \"aria-label\"?: string;\n  /** Called once Monaco has mounted, with the editor and the Monaco API, for features beyond these props. */\n  onEditorReady?: (editor: MonacoEditor, monaco: Monaco) => void;\n  /** Extra classes, merged after the component's own so they win; set the height here. */\n  className?: string;\n}\n\nconst SEVERITY = { error: 8, warning: 4, info: 2 } as const;\n\n/**\n * A SQL editor on Monaco, themed by the design tokens of its region (Light/Dark, density, preset)\n * and loaded lazily from the app's bundle, with no network. Ctrl+Enter reports the selection or\n * the statement under the cursor; markers underline errors. The ref reaches the root element.\n */\nexport function SqlEditor({\n  variant = \"outline\",\n  value,\n  defaultValue = \"\",\n  onValueChange,\n  onRun,\n  markers,\n  readOnly = false,\n  language = \"pgsql\",\n  placeholder,\n  lineNumbers = true,\n  tabMovesFocus = false,\n  screenReaderOptimized = false,\n  \"aria-label\": ariaLabel,\n  \"aria-labelledby\": ariaLabelledBy,\n  onEditorReady,\n  className,\n  ref,\n  ...props\n}: SqlEditorProps) {\n  const rootRef = useRef<HTMLDivElement | null>(null);\n  const surfaceRef = useRef<HTMLDivElement>(null);\n  const fallbackRef = useRef<HTMLTextAreaElement>(null);\n  const [editor, setEditor] = useState<{ editor: MonacoEditor; monaco: Monaco } | null>(null);\n  const [focused, setFocused] = useState(false);\n  const pendingFocus = useRef(false);\n  const [fallbackText, setFallbackText] = useState(value ?? defaultValue);\n  const latest = useRef({ onValueChange, onRun, value, onEditorReady });\n  latest.current = { onValueChange, onRun, value, onEditorReady };\n  const text = value ?? fallbackText;\n  const textRef = useRef(text);\n  textRef.current = text;\n  const optionsRef = useRef({ readOnly, language, placeholder, lineNumbers, tabMovesFocus, screenReaderOptimized, ariaLabel });\n  optionsRef.current = { readOnly, language, placeholder, lineNumbers, tabMovesFocus, screenReaderOptimized, ariaLabel };\n\n  // Mount Monaco once, after the first paint; the fallback textarea serves until then.\n  useEffect(() => {\n    let disposed = false;\n    let cleanup = () => {};\n    loadMonaco().then(\n      (monaco) => {\n        const root = rootRef.current;\n        const surface = surfaceRef.current;\n        if (disposed || !root || !surface) return;\n        const reader = tokenReader(root);\n        const fallback = fallbackRef.current && !fallbackRef.current.hidden ? fallbackRef.current : null;\n        const hadFocus = fallback !== null && fallback.ownerDocument.activeElement === fallback;\n        const selection = fallback ? [fallback.selectionStart, fallback.selectionEnd] : [0, 0];\n        const o = optionsRef.current;\n        const doc = root.ownerDocument;\n        let theme: MonacoThemeData = monacoTheme(reader);\n        applyTheme(monaco, theme, doc);\n        const model = monaco.editor.createModel(fallback?.value ?? textRef.current, o.language);\n        const instance = monaco.editor.create(surface, {\n          model,\n          ...monacoMetrics(reader),\n          ariaLabel: o.ariaLabel ?? \"SQL editor\",\n          readOnly: o.readOnly,\n          placeholder: o.placeholder,\n          lineNumbers: o.lineNumbers ? \"on\" : \"off\",\n          tabFocusMode: o.tabMovesFocus,\n          accessibilitySupport: o.screenReaderOptimized ? \"on\" : \"auto\",\n          automaticLayout: true,\n          minimap: { enabled: false },\n          scrollBeyondLastLine: false,\n          renderLineHighlight: \"line\",\n          fixedOverflowWidgets: true,\n          contextmenu: true,\n          fontLigatures: false,\n          bracketPairColorization: { enabled: false },\n          guides: { indentation: false },\n          overviewRulerLanes: 1,\n          stickyScroll: { enabled: false },\n          wordBasedSuggestions: \"off\",\n          quickSuggestions: false,\n          links: false,\n        });\n        // Monaco writes its stylesheet when the first editor mounts; map its colour classes now.\n        applyTheme(monaco, theme, doc);\n        const start = model.getPositionAt(selection[0] ?? 0);\n        const end = model.getPositionAt(selection[1] ?? 0);\n        instance.setSelection({ startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: end.lineNumber, endColumn: end.column });\n        pendingFocus.current = hadFocus;\n        if (ariaLabelledBy) instance.getDomNode()?.querySelector(\"textarea, [role='textbox']\")?.setAttribute(\"aria-labelledby\", ariaLabelledBy);\n\n        const run = () => {\n          const current = instance.getSelection();\n          const sql = model.getValue();\n          if (!current) return;\n          const a = model.getOffsetAt(current.getStartPosition());\n          const b = model.getOffsetAt(current.getEndPosition());\n          const request = sqlRunFor(sql, a, b);\n          if (request) latest.current.onRun?.(request);\n        };\n        instance.addAction({ id: \"byterygon.sql-editor.run\", label: \"Run selection or statement\", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run });\n\n        const changes = model.onDidChangeContent(() => {\n          const next = model.getValue();\n          if (next !== latest.current.value) latest.current.onValueChange?.(next);\n        });\n        // Retheme when this editor's tokens may have changed: an attribute on the root or an\n        // ancestor (data-theme, data-density, a class), a stylesheet added or edited (a preset),\n        // or focus moving here from an editor in another region.\n        let frame = 0;\n        const retheme = () => {\n          frame = 0;\n          if (disposed) return;\n          theme = monacoTheme(reader);\n          applyTheme(monaco, theme, doc);\n          instance.updateOptions(monacoMetrics(reader));\n        };\n        const schedule = () => {\n          if (!frame) frame = requestAnimationFrame(retheme);\n        };\n        const observer = new MutationObserver((records) => {\n          for (const r of records) {\n            const target = r.target as Node;\n            const own = (n: Node | null) => n !== null && (isEditorStylesheet(n) || (n.parentNode !== null && isEditorStylesheet(n.parentNode)));\n            const sheet = (n: Node) => (n.nodeName === \"STYLE\" || n.nodeName === \"LINK\") && !isEditorStylesheet(n);\n            if (own(target)) continue;\n            if ((r.type === \"attributes\" && target.contains(root)) || doc.head.contains(target) || sheet(target) || [...r.addedNodes, ...r.removedNodes].some(sheet)) {\n              schedule();\n              return;\n            }\n          }\n        });\n        observer.observe(doc.documentElement, { attributes: true, attributeFilter: [\"class\", \"style\", \"data-theme\", \"data-density\"], subtree: true, childList: true, characterData: true });\n        const focus = instance.onDidFocusEditorWidget(() => {\n          setFocused(true);\n          applyTheme(monaco, theme, doc);\n        });\n        const blur = instance.onDidBlurEditorWidget(() => setFocused(false));\n\n        setEditor({ editor: instance, monaco });\n        latest.current.onEditorReady?.(instance, monaco);\n        cleanup = () => {\n          if (frame) cancelAnimationFrame(frame);\n          observer.disconnect();\n          changes.dispose();\n          focus.dispose();\n          blur.dispose();\n          instance.dispose();\n          model.dispose();\n          reader.dispose();\n        };\n      },\n      () => {\n        // Monaco could not load (a blocked chunk or worker): the textarea stays and keeps working.\n      },\n    );\n    return () => {\n      disposed = true;\n      cleanup();\n    };\n    // Mounted once; later prop changes are applied by the effects below.\n  }, []);\n\n  // The surface is hidden until Monaco is set, so focus moves over once it shows.\n  useEffect(() => {\n    if (!editor || !pendingFocus.current) return;\n    pendingFocus.current = false;\n    editor.editor.focus();\n  }, [editor]);\n\n  // Options after mount.\n  useEffect(() => {\n    editor?.editor.updateOptions({ readOnly, placeholder, lineNumbers: lineNumbers ? \"on\" : \"off\", tabFocusMode: tabMovesFocus, accessibilitySupport: screenReaderOptimized ? \"on\" : \"auto\", ariaLabel: ariaLabel ?? \"SQL editor\" });\n  }, [editor, readOnly, placeholder, lineNumbers, tabMovesFocus, screenReaderOptimized, ariaLabel]);\n\n  useEffect(() => {\n    const model = editor?.editor.getModel();\n    if (model && editor) editor.monaco.editor.setModelLanguage(model, language);\n  }, [editor, language]);\n\n  // A controlled value that differs from the model replaces the text as one undoable edit.\n  useEffect(() => {\n    const model = editor?.editor.getModel();\n    if (!model || !editor || value === undefined || model.getValue() === value) return;\n    editor.editor.executeEdits(\"byterygon.sql-editor.value\", [{ range: model.getFullModelRange(), text: value, forceMoveMarkers: true }]);\n  }, [editor, value]);\n\n  useEffect(() => {\n    const model = editor?.editor.getModel();\n    if (!model || !editor) return;\n    const sql = model.getValue();\n    editor.monaco.editor.setModelMarkers(\n      model,\n      \"byterygon\",\n      (markers ?? []).map((m) => {\n        const startOffset = Math.max(0, Math.min(m.start, sql.length));\n        let endOffset = m.end ?? startOffset;\n        if (m.end === undefined) while (endOffset < sql.length && WORD.test(sql[endOffset]!)) endOffset += 1;\n        if (endOffset <= startOffset) endOffset = Math.min(sql.length, startOffset + 1);\n        const s = model.getPositionAt(startOffset);\n        const e = model.getPositionAt(endOffset);\n        return { startLineNumber: s.lineNumber, startColumn: s.column, endLineNumber: e.lineNumber, endColumn: e.column, message: m.message, severity: SEVERITY[m.severity ?? \"error\"] };\n      }),\n    );\n  }, [editor, markers, value]);\n\n  const onFallbackKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {\n    if (event.key !== \"Enter\" || !(event.ctrlKey || event.metaKey)) return;\n    event.preventDefault();\n    const target = event.currentTarget;\n    const request = sqlRunFor(target.value, target.selectionStart, target.selectionEnd);\n    if (request) onRun?.(request);\n  };\n\n  return (\n    <div\n      data-slot=\"sql-editor\"\n      data-variant={variant}\n      {...{ [MONACO_SCOPE_ATTRIBUTE]: \"\" }}\n      data-loading={editor ? undefined : \"\"}\n      data-readonly={readOnly ? \"\" : undefined}\n      data-focused={focused ? \"\" : undefined}\n      aria-busy={editor ? undefined : true}\n      className={cn(base, sqlEditorVariants.variant[variant], className)}\n      ref={(node) => {\n        rootRef.current = node;\n        if (typeof ref === \"function\") return ref(node);\n        if (ref) ref.current = node;\n      }}\n      {...props}\n    >\n      {/* Kept in the document, hidden and empty, once Monaco has taken over, so the element and\n          its classes are stable whatever the timing of the load. */}\n      <textarea\n        ref={fallbackRef}\n        data-slot=\"sql-editor-fallback\"\n        hidden={editor !== null}\n        aria-hidden={editor ? true : undefined}\n        tabIndex={editor ? -1 : undefined}\n        aria-label={ariaLabelledBy ? undefined : (ariaLabel ?? \"SQL editor\")}\n        aria-labelledby={ariaLabelledBy}\n        spellCheck={false}\n        autoCapitalize=\"off\"\n        autoComplete=\"off\"\n        autoCorrect=\"off\"\n        readOnly={readOnly || editor !== null}\n        placeholder={placeholder}\n        value={editor ? \"\" : text}\n        onChange={(event) => {\n          const next = event.currentTarget.value;\n          if (value === undefined) setFallbackText(next);\n          onValueChange?.(next);\n        }}\n        onKeyDown={onFallbackKeyDown}\n        onFocus={() => setFocused(true)}\n        onBlur={() => setFocused(false)}\n        className={fallbackClasses}\n      />\n      <div ref={surfaceRef} data-slot=\"sql-editor-surface\" hidden={!editor} className=\"min-h-0 flex-1\" />\n    </div>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "sql-editor",
+      "title": "SqlEditor",
+      "description": "A SQL editor on Monaco, loaded lazily from the app's own bundle (no CDN, no network), themed from the editor.* and syntax.* tokens of its region in every preset, mode and density, with run-at-cursor, error markers and a read-only mode.",
+      "usage": "Use SqlEditor for real queries: a query tab (variant=\"ghost\", className=\"h-full\") or a bordered field (variant=\"outline\", the default, 240 px high; set the height with className). Ctrl+Enter (Cmd+Enter on macOS) calls onRun with the selection, or the statement under the cursor, and the statements it holds; markers take offsets into the text (a PostgreSQL error position minus one). Monaco loads on first mount; until then a textarea with the same text and keys stands in, so nothing waits. Monaco has one theme per page: the editor mounted, focused or rethemed last sets the colours of every editor. Use Textarea for short SQL in a form, CodeInput for one-line expressions, and CodeBlock to show code.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [
+        "monaco-editor"
+      ],
+      "props": [
+        {
+          "name": "variant",
+          "type": "\"outline\" | \"ghost\"",
+          "default": "outline",
+          "description": "outline: a bordered field with radius.md. ghost: no border, to fill a pane such as a query tab."
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "description": "The text, when controlled; a new value replaces the text as one undoable edit."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string",
+          "default": "",
+          "description": "The initial text, when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: string) => void",
+          "description": "Called with the whole text after every change."
+        },
+        {
+          "name": "onRun",
+          "type": "(run: SqlRun) => void",
+          "description": "Ctrl+Enter (Cmd+Enter on macOS): { text, start, end, source: \"selection\" | \"statement\", statements }. With several statements in a selection, statements lists each (run the first)."
+        },
+        {
+          "name": "markers",
+          "type": "SqlMarker[]",
+          "description": "Underlined problems: { start, end?, message, severity? } with offsets into the text; without end, the word at start. A hover shows the message; F8 goes to the next."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Text can be selected, searched and copied but not changed; sets data-readonly."
+        },
+        {
+          "name": "language",
+          "type": "\"pgsql\" | \"sql\"",
+          "default": "pgsql",
+          "description": "The Monaco grammar: PostgreSQL or generic SQL."
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "description": "Shown while the editor is empty."
+        },
+        {
+          "name": "lineNumbers",
+          "type": "boolean",
+          "default": true,
+          "description": "Line numbers in the gutter, in editor.gutter."
+        },
+        {
+          "name": "tabMovesFocus",
+          "type": "boolean",
+          "default": false,
+          "description": "Tab moves focus out instead of indenting; Ctrl+M (Ctrl+Shift+M on macOS) toggles this at any time."
+        },
+        {
+          "name": "screenReaderOptimized",
+          "type": "boolean",
+          "default": false,
+          "description": "Monaco's screen reader mode (accessibilitySupport \"on\"); off means Monaco detects one."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "default": "SQL editor",
+          "description": "Accessible name of the text area; or pass aria-labelledby with the id of a visible label."
+        },
+        {
+          "name": "onEditorReady",
+          "type": "(editor, monaco) => void",
+          "description": "Called once Monaco has mounted, with the editor instance and the Monaco API, for features beyond these props (completions, extra actions)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own; set the height here (h-full in a pane)."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root element."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "outline",
+          "ghost"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The frame: data-slot=\"sql-editor\", data-variant, and the state attributes. Monaco's tokens are read from its region."
+        },
+        {
+          "name": "fallback",
+          "element": "textarea",
+          "description": "data-slot=\"sql-editor-fallback\": the stand-in textarea while Monaco loads, with the same text, colours, Ctrl+Enter and accessible name."
+        },
+        {
+          "name": "surface",
+          "element": "div",
+          "description": "data-slot=\"sql-editor-surface\": where Monaco renders, hidden until it has loaded."
+        }
+      ],
+      "states": [
+        {
+          "name": "focused",
+          "variant": "data-focused",
+          "description": "The text area has focus: a ring of ring.width in color.ring around the frame."
+        },
+        {
+          "name": "loading",
+          "variant": "data-loading",
+          "description": "Monaco is loading (aria-busy); the fallback textarea works meanwhile and the pointer shows progress."
+        },
+        {
+          "name": "read-only",
+          "variant": "data-readonly",
+          "props": {
+            "readOnly": true
+          },
+          "description": "Read-only: the outline border lightens to color.border.default."
+        }
+      ],
+      "tokens": [
+        "color.border.default",
+        "color.border.strong",
+        "color.ring",
+        "editor.bg",
+        "editor.cursor",
+        "editor.fg",
+        "editor.gutter",
+        "editor.selection",
+        "font.mono",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.panel.xs",
+        "space.inset.sm",
+        "text.code.leading",
+        "text.code.size",
+        "text.code.tracking",
+        "text.code.weight"
+      ],
+      "examples": {
+        "minimal": "SqlEditorMinimal",
+        "realistic": "SqlEditorRealistic"
+      },
+      "accessibility": [
+        "The text area is Monaco's own input (a textarea or an EditContext with role textbox), named by aria-label (\"SQL editor\" by default) or aria-labelledby; the stand-in textarea has the same name.",
+        "Tab indents inside the editor, as code editors do; Ctrl+M (Ctrl+Shift+M on macOS) switches Tab to move focus, and tabMovesFocus starts in that mode, so focus is never trapped.",
+        "Every action has a key: Ctrl+Enter runs, Ctrl+F finds, Ctrl+/ comments, F8 and Shift+F8 move between error markers, F1 opens Monaco's command list.",
+        "Error markers are announced through Monaco's hover and the F8 marker widget, not by colour alone; editor.* and syntax.* colours are contrast-checked by the token build in every mode.",
+        "screenReaderOptimized turns on Monaco's screen reader mode (offer it as a setting); otherwise Monaco detects a screen reader.",
+        "Focus shows a ring of ring.width in color.ring on the frame. Nothing is fetched: Monaco, its worker and its font come from the app's bundle."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { SqlEditor, type SqlMarker, type SqlRun } from \"@/components/sql-editor/sql-editor\";\n\n/** The smallest useful SqlEditor: a bordered editor with a query in it. */\nexport function SqlEditorMinimal() {\n  return <SqlEditor aria-label=\"Query\" defaultValue={\"select id, email\\nfrom users\\nwhere created_at > now() - interval '7 days';\\n\"} />;\n}\n\nconst QUERY = `-- Orders per region this week\nselect region, count(*) as orders, sum(total) as revenue\nfrom orders\nwhere placed_at >= date_trunc('week', now())\ngroup by region\norder by revenue desc;\n\nselect * from order_lines where order_id = $1;\n`;\n\n/**\n * A query tab: Ctrl+Enter reports the statement under the cursor, an error from the server is\n * underlined at its position, and the last result's SQL is shown read-only below.\n */\nexport function SqlEditorRealistic() {\n  const [sql, setSql] = useState(QUERY);\n  const [last, setLast] = useState<SqlRun | null>(null);\n  const position = sql.indexOf(\"$1\");\n  const markers: SqlMarker[] = position >= 0 ? [{ start: position, end: position + 2, message: \"there is no parameter $1\", severity: \"error\" }] : [];\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <SqlEditor aria-label=\"Query 1\" value={sql} onValueChange={setSql} onRun={setLast} markers={markers} placeholder=\"Write a query, then press Ctrl+Enter\" />\n      <p className=\"text-caption text-fg-muted\" aria-live=\"polite\">\n        {last ? `Would run ${last.source === \"selection\" ? \"the selection\" : \"the statement\"} at ${last.start}–${last.end} (${last.statements.length} statement${last.statements.length === 1 ? \"\" : \"s\"}).` : \"Press Ctrl+Enter in the editor to run the statement under the cursor.\"}\n      </p>\n      <SqlEditor aria-label=\"Last run statement\" readOnly lineNumbers={false} className=\"h-control-lg\" value={last?.text ?? \"select 1;\"} />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "monaco-editor": "0.57.0"
+    }
+  }
+}

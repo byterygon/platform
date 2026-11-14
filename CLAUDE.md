@@ -88,6 +88,13 @@ rewrites it, so rerun it after changing tokens too). `pnpm ui:new <name>` scaffo
 `pnpm --filter @byterygon/ui verify:install` installs the registry with the real shadcn CLI into a
 blank Vite app, offline (CI runs it in the network namespace).
 
+Editors (TSK-46): SqlEditor is Monaco through `packages/ui/src/lib/monaco.ts` (lazy ESM, the
+worker via Vite `?worker`, never a CDN or the AMD loader; theme built from the tokens at the
+editor). jsdom tests use `test/fakes/monaco.ts`; `pnpm --filter @byterygon/ui check:browser` runs
+the real editor in Chromium over CDP and reports bundle size and time to first keystroke (CI: the
+runner's Chrome, network namespace, `BYTERYGON_REQUIRE_BROWSER=1`; locally it skips without a
+browser, `BYTERYGON_BROWSER` names one).
+
 **Base UI only (Uy Son, 2026-11-14).** Every Byterygon UI component, example, fixture and app
 (`packages/ui`, `packages/theme-studio`, DBee screens) is built on Base UI (`@base-ui/react`).
 Never Radix (`radix-ui`, `@radix-ui/*`) or another primitive library. When a stock shadcn/ui item

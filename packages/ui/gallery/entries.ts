@@ -42,6 +42,7 @@ export const gallery: GalleryEntry[] = [
   { name: "sidebar", load: () => import("@/components/sidebar/sidebar.example") },
   { name: "slider", load: () => import("@/components/slider/slider.example") },
   { name: "split-button", load: () => import("@/components/split-button/split-button.example") },
+  { name: "sql-editor", load: () => import("@/components/sql-editor/sql-editor.example") },
   { name: "stepper", load: () => import("@/components/stepper/stepper.example") },
   { name: "switch", load: () => import("@/components/switch/switch.example") },
   { name: "tabs", load: () => import("@/components/tabs/tabs.example") },

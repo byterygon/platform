@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { registryItemSchema, registrySchema } from "shadcn/schema";
 import { describe, expect, test } from "vitest";
 import { listComponents } from "../scripts/lib/manifest.ts";
-import { buildRegistry, presets, RegistryError, shipSource, syncRegistry, PACKAGE_ROOT } from "../scripts/registry.ts";
+import { buildRegistry, LIBS, presets, RegistryError, shipSource, syncRegistry, PACKAGE_ROOT } from "../scripts/registry.ts";
 
 const files = buildRegistry();
 const item = (name: string) => JSON.parse(files.get(`${name}.json`)!) as Record<string, any>;
@@ -26,7 +26,7 @@ describe("registry", () => {
 
   test("has one item per component, the lib helpers and one theme per token preset", () => {
     const names = [...files.keys()].filter((f) => f.endsWith(".json") && f !== "registry.json").map((f) => f.slice(0, -5)).sort();
-    expect(names).toEqual([...listComponents(PACKAGE_ROOT), "cn", "theme-scope", ...presets().map((p) => `theme-${p}`)].sort());
+    expect(names).toEqual([...listComponents(PACKAGE_ROOT), ...Object.keys(LIBS), ...presets().map((p) => `theme-${p}`)].sort());
   });
 
   test("a component item ships its source, its pinned dependencies and its manifest", () => {

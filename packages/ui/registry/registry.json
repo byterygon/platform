@@ -640,6 +640,25 @@
       ]
     },
     {
+      "name": "sql-editor",
+      "type": "registry:ui",
+      "title": "SqlEditor",
+      "description": "A SQL editor on Monaco, loaded lazily from the app's own bundle (no CDN, no network), themed from the editor.* and syntax.* tokens of its region in every preset, mode and density, with run-at-cursor, error markers and a read-only mode.",
+      "dependencies": [
+        "monaco-editor"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/monaco"
+      ],
+      "files": [
+        {
+          "path": "ui/sql-editor.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "stepper",
       "type": "registry:ui",
       "title": "Stepper",
@@ -847,6 +866,21 @@
       "files": [
         {
           "path": "lib/theme-scope.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
+      "name": "monaco",
+      "type": "registry:lib",
+      "title": "monaco",
+      "description": "Loads Monaco lazily from the app's own bundle (ESM, its editor worker through Vite's ?worker, no CDN or AMD loader) and builds a Monaco theme from the design tokens in scope at the editor. SqlEditor imports it from @/lib/monaco; with a bundler other than Vite, set MonacoEnvironment.getWorker and replace the ?worker import.",
+      "dependencies": [
+        "monaco-editor"
+      ],
+      "files": [
+        {
+          "path": "lib/monaco.ts",
           "type": "registry:lib"
         }
       ]
