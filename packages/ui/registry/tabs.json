@@ -1,0 +1,248 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "tabs",
+  "type": "registry:ui",
+  "title": "Tabs",
+  "description": "Tabs on Base UI's Tabs: a strip of tabs (underline or enclosed, two sizes, horizontal or vertical) with panels; tabs can carry a status icon, be closed with a button or Delete, and be reordered by drag or Alt+Shift+Arrow.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/tabs.tsx",
+      "type": "registry:ui",
+      "content": "import { Tabs as TabsPrimitive } from \"@base-ui/react/tabs\";\nimport { createContext, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode, type Ref } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// Tabs on Base UI's Tabs: `Tabs` is the root, TabsList the tab strip, TabsTrigger a tab, TabsContent\n// its panel. For DBee's query tabs a tab can also be closed (onClose: a close button outside the\n// tab order, and Delete on the focused tab) and reordered (TabsList onReorder: drag a tab, or\n// Alt+Shift+Arrow on the focused one), and it takes a leading status icon (a spinner, a dot).\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const tabsVariants = {\n  /** The look of the strip: an underline under the active tab, or editor-style enclosed tabs. */\n  variant: {\n    line: [\n      \"-mb-px border-b-2 border-transparent text-fg-muted hover:text-fg data-active:border-accent-solid data-active:text-fg\",\n      \"data-[orientation=vertical]:mb-0 data-[orientation=vertical]:-me-px data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e-2\",\n    ],\n    enclosed: \"border-e border-border bg-inset text-fg-muted hover:bg-hover hover:text-fg data-active:bg-surface data-active:text-fg\",\n  },\n  /** Tab height, from the density-aware `size.control.*` roles. */\n  size: {\n    sm: \"h-control-sm px-inset-sm\",\n    md: \"h-control-md px-control-x\",\n  },\n} as const;\n\nexport type TabsVariant = keyof typeof tabsVariants.variant;\nexport type TabsSize = keyof typeof tabsVariants.size;\ntype TabValue = string | number;\n\nconst listVariants = {\n  line: \"border-b border-border data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e\",\n  enclosed: \"border-b border-border bg-inset\",\n} as const;\n\nconst classes = {\n  root: \"flex flex-col gap-stack-sm data-[orientation=vertical]:flex-row\",\n  list: \"flex min-w-0 items-stretch overflow-x-auto data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible\",\n  item: [\n    \"relative flex shrink-0\",\n    \"before:absolute before:inset-y-0 before:left-0 before:z-[var(--by-z-sticky)] before:hidden before:w-px before:bg-accent-solid data-[drop=before]:before:block\",\n    \"after:absolute after:inset-y-0 after:right-0 after:z-[var(--by-z-sticky)] after:hidden after:w-px after:bg-accent-solid data-[drop=after]:after:block\",\n    \"data-dragging:opacity-[var(--by-opacity-disabled)]\",\n  ],\n  trigger: [\n    \"flex min-w-0 max-w-panel-xs cursor-default select-none items-center gap-inline-sm whitespace-nowrap font-sans text-label outline-none\",\n    \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n    \"focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n    \"data-disabled:pointer-events-none data-disabled:text-fg-disabled\",\n    \"data-closable:pe-control-sm [&_svg]:size-icon-sm [&_svg]:shrink-0\",\n  ],\n  label: \"min-w-0 truncate\",\n  close: [\n    \"absolute top-1/2 right-inset-xs flex size-control-xs -translate-y-1/2 items-center justify-center rounded-sm text-fg-muted\",\n    \"hover:bg-hover hover:text-fg [&_svg]:size-icon-xs\",\n  ],\n  panel: \"min-h-0 flex-1 outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n} as const;\n\nconst XIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"m4.5 4.5 7 7m0-7-7 7\" />\n  </svg>\n);\n\ninterface Drop {\n  value: TabValue;\n  side: \"before\" | \"after\";\n}\n\ninterface TabsContextValue {\n  variant: TabsVariant;\n  size: TabsSize;\n  orientation: \"horizontal\" | \"vertical\";\n  /** Set by TabsList: moves `value` to `index` among the tabs. */\n  reorder?: ((value: TabValue, index: number) => void) | undefined;\n  /** The tab values in strip order, read from the DOM. */\n  order: () => TabValue[];\n  dragging: TabValue | null;\n  setDragging: (value: TabValue | null) => void;\n  drop: Drop | null;\n  setDrop: (drop: Drop | null) => void;\n}\n\nconst TabsContext = createContext<TabsContextValue>({\n  variant: \"line\",\n  size: \"md\",\n  orientation: \"horizontal\",\n  order: () => [],\n  dragging: null,\n  setDragging: () => {},\n  drop: null,\n  setDrop: () => {},\n});\n\nexport interface TabsProps extends Omit<TabsPrimitive.Root.Props, \"className\"> {\n  /** The look of the strip. */\n  variant?: TabsVariant;\n  /** Tab height. */\n  size?: TabsSize;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** Tabs on Base UI's Tabs: a TabsList of TabsTriggers and a TabsContent per tab. Closable tabs are controlled (`value`, `onValueChange`). */\nexport function Tabs({ variant = \"line\", size = \"md\", orientation = \"horizontal\", className, ...props }: TabsProps) {\n  const values = useRef(new Map<string, TabValue>());\n  const listRef = useRef<HTMLDivElement | null>(null);\n  const [dragging, setDragging] = useState<TabValue | null>(null);\n  const [drop, setDrop] = useState<Drop | null>(null);\n  const [reorder, setReorder] = useState<TabsContextValue[\"reorder\"]>(undefined);\n  const order = useCallback(() => {\n    const list = listRef.current;\n    if (!list) return [];\n    return [...list.querySelectorAll<HTMLElement>('[data-slot=\"tabs-item\"]')].map((item) => values.current.get(item.dataset.value!) ?? item.dataset.value!);\n  }, []);\n  return (\n    <TabsListRegistry value={{ listRef, values: values.current, setReorder }}>\n      <TabsContext value={{ variant, size, orientation, reorder, order, dragging, setDragging, drop, setDrop }}>\n        <TabsPrimitive.Root data-slot=\"tabs\" data-variant={variant} data-size={size} orientation={orientation} className={cn(classes.root, className)} {...props} />\n      </TabsContext>\n    </TabsListRegistry>\n  );\n}\n\ninterface Registry {\n  listRef: { current: HTMLDivElement | null };\n  values: Map<string, TabValue>;\n  setReorder: (reorder: TabsContextValue[\"reorder\"]) => void;\n}\n\nconst RegistryContext = createContext<Registry | null>(null);\nconst TabsListRegistry = RegistryContext.Provider;\n\nexport interface TabsListProps extends Omit<TabsPrimitive.List.Props, \"className\"> {\n  /**\n   * Makes the tabs reorderable: called with a tab's value and its new index when the user drops it\n   * elsewhere or presses Alt+Shift+Arrow on it. Apply the move to your list of tabs.\n   */\n  onReorder?: (value: TabValue, index: number) => void;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the strip element. */\n  ref?: Ref<HTMLDivElement>;\n}\n\n/** The tab strip (role=\"tablist\"); it scrolls when the tabs do not fit. */\nexport function TabsList({ onReorder, className, ref, ...props }: TabsListProps) {\n  const registry = useContext(RegistryContext);\n  const { variant } = useContext(TabsContext);\n  const setRef = useCallback(\n    (element: HTMLDivElement | null) => {\n      if (registry) registry.listRef.current = element;\n      if (typeof ref === \"function\") ref(element);\n      else if (ref) ref.current = element;\n    },\n    [registry, ref],\n  );\n  const latest = useRef(onReorder);\n  latest.current = onReorder;\n  const stable = useCallback((value: TabValue, index: number) => latest.current?.(value, index), []);\n  const reorderable = onReorder !== undefined;\n  const setReorder = registry?.setReorder;\n  useEffect(() => {\n    setReorder?.(reorderable ? () => stable : undefined);\n  }, [setReorder, reorderable, stable]);\n  return <TabsPrimitive.List data-slot=\"tabs-list\" ref={setRef} className={cn(classes.list, listVariants[variant], className)} {...props} />;\n}\n\nexport interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, \"className\" | \"value\" | \"children\"> {\n  /** The tab's value, matching its TabsContent. */\n  value: TabValue;\n  /** The tab's title; long titles are truncated. */\n  children?: ReactNode;\n  /** A leading status: a Spinner while running, a dot when modified. */\n  icon?: ReactNode;\n  /** Makes the tab closable: a close button at its end, and Delete on the focused tab. */\n  onClose?: () => void;\n  /** The close button's tooltip text. */\n  closeLabel?: string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A tab (role=\"tab\"): its icon, its title and, when closable, a close button. */\nexport function TabsTrigger({ value, icon, children, onClose, closeLabel = \"Close tab\", className, onKeyDown, ...props }: TabsTriggerProps) {\n  const { variant, size, orientation, reorder, order, dragging, setDragging, drop, setDrop } = useContext(TabsContext);\n  const registry = useContext(RegistryContext);\n  registry?.values.set(String(value), value);\n  const itemRef = useRef<HTMLDivElement | null>(null);\n\n  const tabs = () => [...(itemRef.current?.parentElement?.querySelectorAll<HTMLElement>('[data-slot=\"tabs-trigger\"]') ?? [])];\n\n  const close = () => {\n    if (!onClose) return;\n    const all = tabs();\n    const own = itemRef.current?.querySelector<HTMLElement>('[data-slot=\"tabs-trigger\"]');\n    const index = own ? all.indexOf(own) : -1;\n    const neighbour = all[index + 1] ?? all[index - 1];\n    onClose();\n    // The tab is gone after the caller's update: keep focus in the strip, on its neighbour.\n    if (own && own === document.activeElement && neighbour) setTimeout(() => neighbour.focus(), 0);\n  };\n\n  const keyDown = (event: KeyboardEvent<HTMLButtonElement>) => {\n    onKeyDown?.(event as never);\n    if (event.defaultPrevented) return;\n    if (onClose && event.key === \"Delete\") {\n      event.preventDefault();\n      close();\n      return;\n    }\n    const back = orientation === \"horizontal\" ? \"ArrowLeft\" : \"ArrowUp\";\n    const forward = orientation === \"horizontal\" ? \"ArrowRight\" : \"ArrowDown\";\n    if (reorder && event.altKey && event.shiftKey && (event.key === back || event.key === forward)) {\n      event.preventDefault();\n      event.stopPropagation();\n      const values = order();\n      const from = values.indexOf(value);\n      const to = from + (event.key === forward ? 1 : -1);\n      if (from >= 0 && to >= 0 && to < values.length) reorder(value, to);\n    }\n  };\n\n  const dragProps = reorder\n    ? {\n        draggable: true,\n        onDragStart: (event: DragEvent<HTMLDivElement>) => {\n          event.dataTransfer.effectAllowed = \"move\";\n          event.dataTransfer.setData(\"text/plain\", String(value));\n          setDragging(value);\n        },\n        onDragOver: (event: DragEvent<HTMLDivElement>) => {\n          if (dragging === null || dragging === value) return;\n          event.preventDefault();\n          event.dataTransfer.dropEffect = \"move\";\n          const rect = event.currentTarget.getBoundingClientRect();\n          const before = orientation === \"horizontal\" ? event.clientX < rect.left + rect.width / 2 : event.clientY < rect.top + rect.height / 2;\n          const side = before ? \"before\" : \"after\";\n          if (drop?.value !== value || drop.side !== side) setDrop({ value, side });\n        },\n        onDragLeave: () => {\n          if (drop?.value === value) setDrop(null);\n        },\n        onDrop: (event: DragEvent<HTMLDivElement>) => {\n          event.preventDefault();\n          if (dragging !== null && drop) {\n            const values = order().filter((v) => v !== dragging);\n            const target = values.indexOf(drop.value);\n            if (target >= 0) reorder(dragging, target + (drop.side === \"after\" ? 1 : 0));\n          }\n          setDragging(null);\n          setDrop(null);\n        },\n        onDragEnd: () => {\n          setDragging(null);\n          setDrop(null);\n        },\n      }\n    : {};\n\n  return (\n    <div\n      ref={itemRef}\n      data-slot=\"tabs-item\"\n      data-value={String(value)}\n      data-dragging={dragging === value ? \"\" : undefined}\n      data-drop={drop?.value === value ? drop.side : undefined}\n      className={cn(classes.item)}\n      {...dragProps}\n    >\n      <TabsPrimitive.Tab\n        data-slot=\"tabs-trigger\"\n        data-closable={onClose ? \"\" : undefined}\n        value={value}\n        aria-keyshortcuts={[onClose ? \"Delete\" : \"\", reorder ? (orientation === \"horizontal\" ? \"Alt+Shift+ArrowLeft Alt+Shift+ArrowRight\" : \"Alt+Shift+ArrowUp Alt+Shift+ArrowDown\") : \"\"].filter(Boolean).join(\" \") || undefined}\n        onKeyDown={keyDown}\n        className={cn(classes.trigger, tabsVariants.variant[variant], tabsVariants.size[size], className)}\n        {...props}\n      >\n        {icon}\n        <span className={classes.label}>{children}</span>\n      </TabsPrimitive.Tab>\n      {onClose ? (\n        // Out of the tab order and hidden from assistive technology: keyboard and screen-reader\n        // users close the focused tab with Delete (aria-keyshortcuts), so the tablist holds only tabs.\n        <button type=\"button\" data-slot=\"tabs-close\" tabIndex={-1} aria-hidden=\"true\" title={closeLabel} onClick={close} className={cn(classes.close)}>\n          <XIcon />\n        </button>\n      ) : null}\n    </div>\n  );\n}\n\nexport interface TabsContentProps extends Omit<TabsPrimitive.Panel.Props, \"className\" | \"value\"> {\n  /** The value of the tab this panel belongs to. */\n  value: TabValue;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A tab's panel (role=\"tabpanel\"), labelled by its tab; only the active one is shown unless keepMounted. */\nexport function TabsContent({ className, ...props }: TabsContentProps) {\n  return <TabsPrimitive.Panel data-slot=\"tabs-content\" className={cn(classes.panel, className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "tabs",
+      "title": "Tabs",
+      "description": "Tabs on Base UI's Tabs: a strip of tabs (underline or enclosed, two sizes, horizontal or vertical) with panels; tabs can carry a status icon, be closed with a button or Delete, and be reordered by drag or Alt+Shift+Arrow.",
+      "usage": "Use Tabs to switch between views of the same place: the sections of a Settings dialog (variant line), or DBee's query tabs (variant enclosed, size sm). Compose it as Tabs (value, onValueChange) > TabsList > TabsTrigger per tab (value, icon for a status, children for the title) + TabsContent per tab. For closable tabs pass onClose on each TabsTrigger and keep the tabs in state (Tabs controlled): when the active tab closes, choose the next one. For reorderable tabs pass onReorder(value, index) on TabsList and move the tab in your array. For navigation between pages use NavigationMenu or Sidebar; for a choice that filters content in place, ToggleGroup.",
+      "status": "experimental",
+      "base": "@base-ui/react/tabs",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string | number",
+          "description": "Tabs: the active tab (controlled); defaultValue when uncontrolled. TabsTrigger and TabsContent: the tab they belong to."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value, details) => void",
+          "description": "Tabs: called when the user activates another tab."
+        },
+        {
+          "name": "variant",
+          "type": "\"line\" | \"enclosed\"",
+          "default": "line",
+          "description": "Tabs: an underline under the active tab, or editor-style enclosed tabs."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\"",
+          "default": "md",
+          "description": "Tabs: tab height from size.control.*."
+        },
+        {
+          "name": "orientation",
+          "type": "\"horizontal\" | \"vertical\"",
+          "default": "horizontal",
+          "description": "Tabs: the direction of the strip and of its arrow keys."
+        },
+        {
+          "name": "onReorder",
+          "type": "(value, index: number) => void",
+          "description": "TabsList: makes the tabs reorderable by drag and Alt+Shift+Arrow; move the tab to index."
+        },
+        {
+          "name": "activateOnFocus",
+          "type": "boolean",
+          "default": false,
+          "description": "TabsList: as Base UI, activate a tab as soon as the arrow keys focus it."
+        },
+        {
+          "name": "icon",
+          "type": "ReactNode",
+          "description": "TabsTrigger: a leading status (running spinner, modified dot); give it a text alternative."
+        },
+        {
+          "name": "onClose",
+          "type": "() => void",
+          "description": "TabsTrigger: makes the tab closable (close button and Delete); focus moves to the neighbouring tab."
+        },
+        {
+          "name": "closeLabel",
+          "type": "string",
+          "default": "Close tab",
+          "description": "TabsTrigger: the close button's title."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "TabsTrigger: cannot be activated; shown in color.fg.disabled."
+        },
+        {
+          "name": "keepMounted",
+          "type": "boolean",
+          "default": false,
+          "description": "TabsContent: keep the panel in the DOM while hidden (an editor's state)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "line",
+          "enclosed"
+        ],
+        "size": [
+          "sm",
+          "md"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "data-slot=\"tabs\", data-variant, data-size, data-orientation."
+        },
+        {
+          "name": "item",
+          "element": "div",
+          "description": "Wraps a tab and its close button; draggable when reorderable, with an accent line on the side a dragged tab will drop; data-slot=\"tabs-item\"."
+        },
+        {
+          "name": "close",
+          "element": "button",
+          "description": "The close button at a closable tab's end, out of the tab order and aria-hidden; data-slot=\"tabs-close\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "TabsList",
+          "slot": "tabs-list",
+          "description": "role=\"tablist\"; scrolls when the tabs do not fit; onReorder makes the tabs movable."
+        },
+        {
+          "name": "TabsTrigger",
+          "slot": "tabs-trigger",
+          "description": "role=\"tab\" with aria-selected and aria-controls: icon, truncated title, and a close button when closable."
+        },
+        {
+          "name": "TabsContent",
+          "slot": "tabs-content",
+          "description": "role=\"tabpanel\", labelled by its tab."
+        }
+      ],
+      "states": [
+        {
+          "name": "active",
+          "variant": "data-active",
+          "description": "The active tab: color.fg.default, an accent underline (line) or color.bg.surface (enclosed)."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "A tab under the pointer: color.fg.default (line) or color.interactive.hover (enclosed)."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: a ring of ring.width inside the tab."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "description": "A disabled tab: color.fg.disabled."
+        },
+        {
+          "name": "closable",
+          "variant": "data-closable",
+          "description": "A closable tab leaves room for its close button."
+        },
+        {
+          "name": "dragging",
+          "variant": "data-dragging",
+          "description": "The tab being dragged, at opacity.disabled."
+        },
+        {
+          "name": "drop-target",
+          "variant": "data-[drop=before]",
+          "description": "The tab a dragged tab will drop next to shows an accent line on that side."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.bg.inset",
+        "color.bg.surface",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.interactive.hover",
+        "color.ring",
+        "font.mono",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.sm",
+        "size.icon.xs",
+        "size.panel.xs",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inset.sm",
+        "space.inset.xs",
+        "space.stack.sm",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.code.leading",
+        "text.code.size",
+        "text.code.tracking",
+        "text.code.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.sticky"
+      ],
+      "examples": {
+        "minimal": "TabsMinimal",
+        "realistic": "TabsRealistic"
+      },
+      "accessibility": [
+        "The strip is role=\"tablist\" of role=\"tab\" elements with aria-selected and aria-controls; each panel is role=\"tabpanel\" labelled by its tab. Only the active tab is in the tab order.",
+        "ArrowLeft and ArrowRight (ArrowUp and ArrowDown when vertical), Home and End move between tabs; Enter or Space activates the focused tab (or focus activates it with activateOnFocus).",
+        "A closable tab closes with Delete when focused (aria-keyshortcuts=\"Delete\"); its close button is for the pointer, out of the tab order and hidden from assistive technology so the tablist holds only tabs. Focus moves to the neighbouring tab.",
+        "A reorderable tab moves with Alt+Shift+ArrowLeft and Alt+Shift+ArrowRight (Up and Down when vertical), announced through aria-keyshortcuts, as well as by drag, so reordering does not need a pointer.",
+        "A status icon needs a text alternative (role=\"img\" with aria-label, or visually hidden text), since a coloured dot alone carries no meaning.",
+        "Only colours transition; nothing moves, so reduced motion needs no change."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { IconButton } from \"@/components/icon-button/icon-button\";\nimport { Tabs, TabsContent, TabsList, TabsTrigger } from \"@/components/tabs/tabs\";\n\n/** The smallest useful Tabs: the sections of the Settings dialog. */\nexport function TabsMinimal() {\n  return (\n    <Tabs defaultValue=\"appearance\" className=\"w-full\">\n      <TabsList>\n        <TabsTrigger value=\"appearance\">Appearance</TabsTrigger>\n        <TabsTrigger value=\"editor\">Editor</TabsTrigger>\n        <TabsTrigger value=\"advanced\">Advanced</TabsTrigger>\n      </TabsList>\n      <TabsContent value=\"appearance\" className=\"text-body text-fg\">\n        Theme preset, colour scheme and density.\n      </TabsContent>\n      <TabsContent value=\"editor\" className=\"text-body text-fg\">\n        Tab size, word wrap.\n      </TabsContent>\n      <TabsContent value=\"advanced\" className=\"text-body text-fg\">\n        Workspace and audit log paths.\n      </TabsContent>\n    </Tabs>\n  );\n}\n\ninterface QueryTab {\n  id: string;\n  title: string;\n  modified?: boolean;\n  running?: boolean;\n}\n\nconst ModifiedDot = () => <span aria-label=\"modified\" role=\"img\" className=\"size-icon-xs shrink-0 rounded-full bg-fg-muted\" />;\nconst RunningDot = () => <span aria-label=\"running\" role=\"img\" className=\"size-icon-xs shrink-0 rounded-full bg-accent-solid\" />;\n\nconst PlusIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" aria-hidden=\"true\">\n    <path d=\"M8 3.5v9M3.5 8h9\" />\n  </svg>\n);\n\n/**\n * DBee's query tabs: enclosed and small, each closable (the button, or Delete) and reorderable\n * (drag, or Alt+Shift+Arrow), with a status before the title and a disabled tab.\n */\nexport function TabsRealistic() {\n  const [tabs, setTabs] = useState<QueryTab[]>([\n    { id: \"q1\", title: \"select * from orders limit 1000;\", running: true },\n    { id: \"q2\", title: \"Orders by region\", modified: true },\n    { id: \"q3\", title: \"Query 3\" },\n  ]);\n  const [active, setActive] = useState<string>(\"q1\");\n  const [next, setNext] = useState(4);\n\n  const close = (id: string) => {\n    setTabs((current) => {\n      const index = current.findIndex((tab) => tab.id === id);\n      const rest = current.filter((tab) => tab.id !== id);\n      if (id === active && rest.length > 0) setActive(rest[Math.min(index, rest.length - 1)]!.id);\n      return rest;\n    });\n  };\n  const reorder = (id: string | number, index: number) => {\n    setTabs((current) => {\n      const moving = current.find((tab) => tab.id === id)!;\n      const rest = current.filter((tab) => tab.id !== id);\n      return [...rest.slice(0, index), moving, ...rest.slice(index)];\n    });\n  };\n  const add = () => {\n    const id = `q${next}`;\n    setTabs((current) => [...current, { id, title: `Query ${next}` }]);\n    setActive(id);\n    setNext(next + 1);\n  };\n\n  return (\n    <Tabs variant=\"enclosed\" size=\"sm\" value={active} onValueChange={(value) => setActive(value as string)} className=\"w-full\">\n      <div className=\"flex items-stretch\">\n        <TabsList onReorder={reorder} className=\"min-w-0 flex-1\">\n          {tabs.map((tab) => (\n            <TabsTrigger key={tab.id} value={tab.id} icon={tab.running ? <RunningDot /> : tab.modified ? <ModifiedDot /> : undefined} onClose={() => close(tab.id)}>\n              {tab.title}\n            </TabsTrigger>\n          ))}\n          <TabsTrigger value=\"locked\" disabled>\n            Read-only\n          </TabsTrigger>\n        </TabsList>\n        <IconButton aria-label=\"New query tab\" size=\"sm\" onClick={add}>\n          <PlusIcon />\n        </IconButton>\n      </div>\n      {tabs.map((tab) => (\n        <TabsContent key={tab.id} value={tab.id} className=\"font-mono text-code text-fg\">\n          {tab.title}\n        </TabsContent>\n      ))}\n    </Tabs>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

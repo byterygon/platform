@@ -40,6 +40,7 @@ const ITEMS = [
   "calendar", "date-picker", "time-picker",
   "dialog", "alert-dialog", "sheet", "popover", "tooltip",
   "hover-card", "dropdown-menu", "context-menu", "menubar", "split-button",
+  "tabs", "toast", "command-palette",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -162,6 +163,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { CommandPalette } from "@/components/ui/command-palette";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Toast } from "@/components/ui/toast";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -248,6 +252,15 @@ function Overlays() {
         <HoverCardTrigger href="#orders">public.orders</HoverCardTrigger>
         <HoverCardContent>12 columns</HoverCardContent>
       </HoverCard>
+      <Tabs variant="enclosed" size="sm" defaultValue="q1">
+        <TabsList onReorder={() => {}}>
+          <TabsTrigger value="q1" onClose={() => {}}>Query 1</TabsTrigger>
+          <TabsTrigger value="q2">Query 2</TabsTrigger>
+        </TabsList>
+        <TabsContent value="q1">select 1;</TabsContent>
+      </Tabs>
+      <Toast placement="static" />
+      <CommandPalette groups={[{ label: "Query", items: [{ id: "run", label: "Run statement", shortcut: "Ctrl+Enter", onSelect: () => {} }] }]} hotkeys={["Mod+K"]} />
       <SplitButton menuLabel="Run options" menu={<DropdownMenuItem>Run selection</DropdownMenuItem>}>Run</SplitButton>
     </TooltipProvider>
   );
@@ -467,6 +480,9 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["data-highlighted:bg-hover", "background-color", "color.interactive.hover", "Byterygon menu item highlighted"],
   ["data-danger:text-danger-fg", "color", "color.status.danger.fg", "Byterygon menu item danger"],
   ["border-s-accent-solid-active", "border-inline-start-color", "color.accent.bg-active", "Byterygon SplitButton divider"],
+  ["data-active:border-accent-solid", "border-color", "color.accent.bg", "Byterygon Tabs line active"],
+  ["data-active:bg-surface", "background-color", "color.bg.surface", "Byterygon Tabs enclosed active"],
+  ["w-panel-sm", "width", "size.panel.sm", "Byterygon Toast region"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {
