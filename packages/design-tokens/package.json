@@ -1,0 +1,55 @@
+{
+  "name": "@byterygon/design-tokens",
+  "version": "0.0.0",
+  "description": "Byterygon design tokens: seeds plus overrides to DTCG tokens (OKLCH ramps, contrast-checked roles) and CSS, Tailwind, shadcn, TypeScript and Figma outputs.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "private": true,
+  "sideEffects": false,
+  "bin": {
+    "by-tokens": "./bin/by-tokens.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./color": {
+      "types": "./dist/color/index.d.ts",
+      "import": "./dist/color/index.js"
+    },
+    "./build": {
+      "types": "./dist/build.d.ts",
+      "import": "./dist/build.js"
+    },
+    "./default/tokens": {
+      "types": "./generated/default/tokens.ts",
+      "import": "./generated/default/tokens.ts"
+    },
+    "./default/*": "./generated/default/*",
+    "./themes/*": "./themes/*",
+    "./theme.schema.json": "./theme.schema.json"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "generated",
+    "themes",
+    "theme.schema.json",
+    "AGENTS.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.test.json && node --test \".test-build/test/**/*.test.js\"",
+    "tokens": "node bin/by-tokens.js",
+    "tokens:build": "node bin/by-tokens.js build",
+    "tokens:check": "node bin/by-tokens.js build --check"
+  },
+  "dependencies": {
+    "style-dictionary": "5.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2"
+  }
+}
