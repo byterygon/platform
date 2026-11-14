@@ -180,6 +180,7 @@ export function generateTokens(theme: unknown, catalog: Catalog = DEFAULT_CATALO
       tier: role.tier ?? "semantic",
       description: `${role.use} ${role.avoid}`.trim(),
       ...(role.tailwind ? { tailwind: role.tailwind } : {}),
+      ...(role.tailwindAliases?.length ? { tailwindAliases: role.tailwindAliases } : {}),
     } as const;
     add(isModed(authored) ? { ...base, axis: authored.axis, modes: { ...authored.values } } : { ...base, value: authored });
   }

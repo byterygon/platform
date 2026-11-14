@@ -1,0 +1,65 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "input",
+  "title": "Input",
+  "description": "A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.",
+  "status": "experimental",
+  "base": "@base-ui/react/input",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Control height from size.control.*, which follows data-density." },
+    { "name": "value", "type": "string", "description": "The value, when controlled." },
+    { "name": "defaultValue", "type": "string", "description": "The initial value, when uncontrolled." },
+    { "name": "onValueChange", "type": "(value: string, details) => void", "description": "Called with the new value on every change." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction and sets data-disabled." },
+    { "name": "aria-invalid", "type": "boolean | \"true\" | \"false\"", "description": "Marks the value invalid outside a Field; inside a Field, data-invalid comes from its validation." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLInputElement>", "description": "Reaches the <input>." }
+  ],
+  "variants": {
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "input", "description": "The input; data-slot=\"input\" and data-size name it." }
+  ],
+  "states": [
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Focused: a ring of ring.width in color.ring, offset by ring.offset." },
+    { "name": "invalid", "variant": "aria-invalid", "props": { "aria-invalid": true }, "description": "Invalid value: the danger border. Inside a Field the same style follows data-invalid." },
+    { "name": "invalid-in-field", "variant": "data-invalid", "description": "Invalid inside a Base UI Field (its validation sets data-invalid)." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." }
+  ],
+  "tokens": [
+    "color.bg.surface",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.subtle",
+    "color.ring",
+    "color.status.danger.border",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.lg",
+    "size.control.md",
+    "size.control.sm",
+    "space.control.x",
+    "space.inset.lg",
+    "space.inset.sm",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight"
+  ],
+  "examples": { "minimal": "InputMinimal", "realistic": "InputRealistic" },
+  "accessibility": [
+    "Renders a native <input>; give it a visible <label> (or a Base UI Field.Label), or aria-label when there is no room for one.",
+    "Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface.",
+    "Mark errors with aria-invalid and point aria-describedby at the message; the danger border is not the only signal.",
+    "The border (color.border.strong) meets 3:1 against every surface, as WCAG 1.4.11 asks of a control's outline.",
+    "Focus shows a ring of ring.width in color.ring."
+  ]
+}

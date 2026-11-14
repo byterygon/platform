@@ -127,7 +127,8 @@ test("the variable names the first components were written against exist (TSK-42
   const tailwind = files.get("tailwind-theme.css")!;
   assert.match(tailwind, /@custom-variant dark \(&:where\(\[data-theme="dark"\], \[data-theme="dark"\] \*, \.dark, \.dark \*\)\);/);
   assert.match(tailwind, /@theme inline \{/);
-  for (const line of ["--color-surface: var(--by-color-bg-surface);", "--color-fg-muted: var(--by-color-fg-muted);", "--color-pressed: var(--by-color-interactive-active);", "--color-danger-subtle: var(--by-color-status-danger-bg);", "--radius-md: var(--by-radius-md);", "--spacing-control-md: var(--by-size-control-md);", "--shadow-raised: var(--by-shadow-raised);"]) {
+  // TSK-42: Byterygon components use accent-solid*, because shadcn's bg-accent is a hover colour.
+  for (const line of ["--color-accent-solid: var(--by-color-accent-bg);", "--color-accent-solid-hover: var(--by-color-accent-bg-hover);", "--color-accent-solid-active: var(--by-color-accent-bg-active);", "--color-accent-solid-fg: var(--by-color-accent-fg);", "--color-surface: var(--by-color-bg-surface);", "--color-fg-muted: var(--by-color-fg-muted);", "--color-pressed: var(--by-color-interactive-active);", "--color-danger-subtle: var(--by-color-status-danger-bg);", "--radius-md: var(--by-radius-md);", "--spacing-control-md: var(--by-size-control-md);", "--shadow-raised: var(--by-shadow-raised);"]) {
     assert.ok(tailwind.includes(line), line);
   }
 

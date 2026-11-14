@@ -246,6 +246,7 @@ test("rules on the catalogue: tiers, types, cycles, modes, paths, mappings, pair
       role("size.themed", byTheme(px(1), px(2)), { type: "dimension" }),
       role("color.one", ramp("brand", 1), { tailwind: "--color-x" }),
       role("color.two", ramp("brand", 2), { tailwind: "--color-x" }),
+      role("color.three", ramp("brand", 3), { tailwind: "--color-y", tailwindAliases: ["--color-x"] }),
       role("color.silent", ramp("brand", 2), { use: "", avoid: "" }),
     ],
     pairs: [{ fg: "color.nope", bg: "color.one", over: "color.one", kind: "text" }],
@@ -259,7 +260,7 @@ test("rules on the catalogue: tiers, types, cycles, modes, paths, mappings, pair
   assert.deepEqual(by("mode-invalid").sort(), ["color.half", "color.where"]);
   assert.deepEqual(by("path-collision"), ["color.deep.er"]);
   assert.deepEqual(by("mode-cross-axis"), ["size.mixed"]);
-  assert.deepEqual(by("output-mapping").sort(), ["color.gone", "color.two"]);
+  assert.deepEqual(by("output-mapping").sort(), ["color.gone", "color.three", "color.two"]);
   assert.deepEqual(by("contrast-pair-unknown-token"), ["color.nope"]);
   assert.deepEqual(by("description-missing"), ["color.silent"]);
   assert.ok(hasErrors(errors));

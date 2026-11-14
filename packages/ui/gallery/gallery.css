@@ -1,0 +1,12 @@
+/* The import order an app uses: fonts, tokens, Tailwind, the Tailwind theme of the roles. */
+@import "@byterygon/design-tokens/fonts/fonts.css";
+@import "@byterygon/design-tokens/default/tokens.css";
+@import "tailwindcss";
+@import "@byterygon/design-tokens/default/tailwind-theme.css";
+
+@source "../src";
+
+body {
+  margin: 0;
+  background: var(--by-color-bg-canvas);
+}

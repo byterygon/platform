@@ -50,6 +50,8 @@ export interface RoleDef {
   readonly avoid: string;
   /** Tailwind v4 theme variable that exposes the role as a utility, for example `--color-surface`. */
   readonly tailwind?: string;
+  /** More Tailwind variables for the role, when `tailwind` collides with another library's name. */
+  readonly tailwindAliases?: readonly string[];
 }
 
 export interface Catalog {

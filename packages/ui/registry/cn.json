@@ -1,0 +1,22 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "cn",
+  "type": "registry:lib",
+  "title": "cn",
+  "description": "Class-name merging that knows the Tailwind names of the Byterygon token roles. Every Byterygon component imports it from @/lib/cn.",
+  "dependencies": [
+    "cn"
+  ],
+  "files": [
+    {
+      "path": "lib/cn.ts",
+      "type": "registry:lib",
+      "content": "import { createCn } from \"cn/config\";\n\n/**\n * The Tailwind names of the design-token roles, which the `cn` package (what shadcn/ui's Base UI\n * styles use) does not know by default. Without them `cn(\"text-body\", \"text-fg-muted\")` drops the\n * type role as if both were colours. A test fails when the tokens add a name missing here.\n */\nexport const roleNames = {\n  /** `text-<role>`: the type roles (size, weight, leading, tracking together). */\n  text: [\"display\", \"heading-1\", \"heading-2\", \"heading-3\", \"heading-4\", \"body\", \"body-strong\", \"label\", \"caption\", \"code\", \"code-sm\"],\n  /** `h-<role>`, `p-<role>`, `gap-<role>`, `size-<role>`: the density-aware size and space roles. */\n  spacing: [\n    \"icon-xs\", \"icon-sm\", \"icon-md\", \"icon-lg\",\n    \"control-xs\", \"control-sm\", \"control-md\", \"control-lg\", \"control-x\",\n    \"inline-xs\", \"inline-sm\", \"inline-md\", \"inline-lg\", \"inline-xl\",\n    \"stack-xs\", \"stack-sm\", \"stack-md\", \"stack-lg\", \"stack-xl\",\n    \"inset-xs\", \"inset-sm\", \"inset-md\", \"inset-lg\", \"inset-xl\",\n    \"gap-xs\", \"gap-sm\", \"gap-md\", \"gap-lg\", \"gap-xl\",\n    \"grid-row\", \"grid-cell-x\",\n  ],\n  /** `shadow-<role>`: elevation. */\n  shadow: [\"raised\", \"overlay\", \"modal\"],\n  /** `ease-<role>`: motion curves. */\n  ease: [\"standard\", \"enter\", \"exit\", \"emphasized\"],\n} as const;\n\n/** Joins class names (strings, arrays, objects, falsy values) and lets later Tailwind classes win. */\nexport const cn = createCn({\n  extend: {\n    theme: {\n      text: [...roleNames.text],\n      spacing: [...roleNames.spacing],\n      shadow: [...roleNames.shadow],\n      ease: [...roleNames.ease],\n    },\n  },\n});\n"
+    }
+  ],
+  "meta": {
+    "dependencyVersions": {
+      "cn": "0.5.2"
+    }
+  }
+}

@@ -166,7 +166,8 @@ a translucent background is composited over the surface under it first.
   `elevation.ts`: shadows, elevation, focus ring; `domain.ts`: syntax, editor, data, grid, chart,
   diff) with `path`, `type`, `value`, `use`
   (when to use it), `avoid` (when not to, and what to use instead) and, if components need a
-  utility, `tailwind`. Use `ramp()`, `byTheme()`, `byDensity()`, `ref()`, `px()`, `layer()` from
+  utility, `tailwind` (plus `tailwindAliases` for more names of the same role, when the first one
+  collides with another library's). Use `ramp()`, `byTheme()`, `byDensity()`, `ref()`, `px()`, `layer()` from
   `src/catalog/authoring.ts`. A value may be a function of the seeds.
 - **A contrast pair**: add it to `pairs` in the same file. Every text role needs a pair for each
   background it is used on; every control outline and focus ring needs a `ui` pair.
@@ -210,6 +211,10 @@ test fails otherwise.
   white overlays. `shadow.raised` predates them and is kept as it was.
 - Status colours: `color.status.<name>.{bg,border,fg,solid,solid-hover,solid-fg}`. Put `solid-fg` on
   `solid`, never `color.fg.on-accent`: the red solid takes white text where a yellow one takes ink.
+- `color.accent.{bg,bg-hover,bg-active,fg}` are also `accent-solid`, `accent-solid-hover`,
+  `accent-solid-active` and `accent-solid-fg` in Tailwind (`tailwindAliases`). shadcn/ui's
+  `bg-accent` is a hover background (its `--accent`), so Byterygon components use the
+  `accent-solid` names and a project with stock shadcn components keeps shadcn's meaning.
 - `font.sans` and `font.mono` are the font family tokens (the spec calls them `font.family.*`).
   Override them to change the fonts; `fonts/fonts.css` declares the vendored files.
 

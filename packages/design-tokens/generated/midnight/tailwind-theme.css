@@ -40,9 +40,13 @@
   --color-border-focus: var(--by-color-border-focus);
   --color-ring: var(--by-color-ring);
   --color-accent-fg: var(--by-color-accent-fg);
+  --color-accent-solid-fg: var(--by-color-accent-fg);
   --color-accent: var(--by-color-accent-bg);
+  --color-accent-solid: var(--by-color-accent-bg);
   --color-accent-hover: var(--by-color-accent-bg-hover);
+  --color-accent-solid-hover: var(--by-color-accent-bg-hover);
   --color-accent-active: var(--by-color-accent-bg-active);
+  --color-accent-solid-active: var(--by-color-accent-bg-active);
   --color-accent-subtle: var(--by-color-accent-subtle-bg);
   --color-accent-subtle-fg: var(--by-color-accent-subtle-fg);
   --color-neutral-solid: var(--by-color-neutral-bg);

@@ -34,6 +34,7 @@ summarises what a session needs when Notion is unavailable.
 | `crates/db-driver-postgres` | First-party native PostgreSQL driver (sans-IO `postgres-protocol`, all I/O via the broker) | MIT OR Apache-2.0 |
 | `packages/ambidex` | `@byterygon/ambidex` TypeScript runtime: `createClient`, WebSocket and Tauri transports, `autoTransport`, stream calls with credits, Worker Arrow decoding (`./arrow`, optional peer `apache-arrow`) | MIT OR Apache-2.0 |
 | `packages/design-tokens` | `@byterygon/design-tokens`: seeds plus overrides to DTCG tokens (OKLCH ramps, the full catalogue of type, space, size, elevation, motion and domain tokens, Light/Dark and Comfortable/Compact modes, contrast checks), six presets in `themes/`, vendored Inter and JetBrains Mono (`fonts/`, OFL), Style Dictionary outputs (`generated/<theme>/`), `by-tokens` CLI; see its `AGENTS.md` | MIT OR Apache-2.0 |
+| `packages/ui` | `@byterygon/ui`: Base UI components styled with token roles only (`src/components/<name>/`, four files each, manifest validated), a static shadcn registry (`registry/`: components, `cn`, a theme item per preset, `llms.txt`), `pnpm ui:new`, gallery; see its `AGENTS.md` | MIT OR Apache-2.0 |
 | `apps/dbee` | DBee product (placeholder) | AGPL-3.0-only |
 
 - Every `Cargo.toml` and `package.json` declares `license` explicitly. New crates/packages in
@@ -80,6 +81,12 @@ Design tokens (TSK-40, TSK-41): `packages/design-tokens/generated/<theme>/` is g
 presets); its drift test fails when any is stale. Regenerate with
 `pnpm --filter @byterygon/design-tokens build && pnpm --filter @byterygon/design-tokens tokens build --theme <name>`
 (`default` when omitted). `scripts/check-licenses.mjs` also checks the vendored fonts' licences and checksums.
+
+Byterygon UI (TSK-42): `packages/ui/registry/` is generated from the components and the token
+presets and committed; its drift test fails when stale (`pnpm --filter @byterygon/ui registry`
+rewrites it, so rerun it after changing tokens too). `pnpm ui:new <name>` scaffolds a component;
+`pnpm --filter @byterygon/ui verify:install` installs the registry with the real shadcn CLI into a
+blank Vite app, offline (CI runs it in the network namespace).
 
 ## Offline builds
 

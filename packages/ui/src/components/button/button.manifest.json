@@ -1,0 +1,82 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "button",
+  "title": "Button",
+  "description": "An action button: primary, secondary, ghost and danger variants in three density-aware sizes, with disabled and loading states.",
+  "status": "experimental",
+  "base": "@base-ui/react/button",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "variant", "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"", "default": "primary", "description": "Visual weight. One primary action per view; danger for actions that destroy data." },
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Control height from size.control.*, which follows data-density." },
+    { "name": "loading", "type": "boolean", "default": false, "description": "The action is running: focusable, ignores clicks, sets aria-busy and data-loading." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction and sets data-disabled." },
+    { "name": "type", "type": "\"button\" | \"submit\" | \"reset\"", "default": "button", "description": "The native button type. Defaults to button so a Button inside a form does not submit it." },
+    { "name": "render", "type": "ReactElement | ((props, state) => ReactElement)", "description": "Base UI render prop: render another element (a link) with the button's props and behaviour." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLButtonElement>", "description": "Reaches the rendered element." }
+  ],
+  "variants": {
+    "variant": ["primary", "secondary", "ghost", "danger"],
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "button", "description": "The button; data-slot=\"button\", data-variant and data-size name its variant." }
+  ],
+  "states": [
+    { "name": "hover", "variant": "hover", "description": "Pointer over the button: the variant's hover colour." },
+    { "name": "active", "variant": "active", "description": "Pressed: the variant's pressed colour." },
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus: a ring of ring.width in color.ring, offset by ring.offset." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." },
+    { "name": "loading", "variant": "data-loading", "props": { "loading": true }, "description": "Running: aria-busy, ignores clicks, stays focusable." }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.accent.bg-active",
+    "color.accent.bg-hover",
+    "color.accent.fg",
+    "color.fg.default",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.neutral.bg",
+    "color.neutral.bg-active",
+    "color.neutral.bg-hover",
+    "color.neutral.fg",
+    "color.ring",
+    "color.status.danger.solid",
+    "color.status.danger.solid-fg",
+    "color.status.danger.solid-hover",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.lg",
+    "size.control.md",
+    "size.control.sm",
+    "size.icon.sm",
+    "space.control.x",
+    "space.inline.sm",
+    "space.inset.lg",
+    "space.inset.sm",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": { "minimal": "ButtonMinimal", "realistic": "ButtonRealistic" },
+  "accessibility": [
+    "Renders a native <button> with type=\"button\" unless type is set, so Enter and Space activate it.",
+    "An icon-only button needs aria-label.",
+    "Disabled uses the native disabled attribute; loading keeps the button focusable (aria-disabled) so focus is not lost mid-action, and sets aria-busy.",
+    "The focus ring shows for keyboard focus only (focus-visible) and meets 3:1 against every surface (token pair color.ring).",
+    "Text and background pairs of every variant are contrast-checked by the token build in light and dark."
+  ]
+}
