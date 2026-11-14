@@ -1,0 +1,214 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "toggle-group",
+  "type": "registry:ui",
+  "title": "ToggleGroup",
+  "description": "Toggle buttons with one shared value, on Base UI's ToggleGroup: a segmented outline track or quiet ghost items, single or multiple selection, horizontal or vertical, in three density-aware sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/toggle-button"
+  ],
+  "files": [
+    {
+      "path": "ui/toggle-group.tsx",
+      "type": "registry:ui",
+      "content": "import { Toggle as TogglePrimitive } from \"@base-ui/react/toggle\";\nimport { ToggleGroup as ToggleGroupPrimitive } from \"@base-ui/react/toggle-group\";\nimport { toggleButtonBase, toggleButtonVariants } from \"@/components/ui/toggle-button\";\nimport { cn } from \"@/lib/cn\";\n\n// A row (or column) of toggles with shared state, on Base UI's ToggleGroup: one pressed value by\n// default, several with `multiple`; arrow keys move focus between the items. The items are\n// ToggleButton's look; the group sets their size (`*:` classes) and, in the outline variant,\n// joins them into one bordered track with dividers.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const toggleGroupVariants = {\n  variant: {\n    /** One bordered track with a divider between items: a segmented control. */\n    outline: [\n      \"rounded-md border border-border-strong bg-surface\",\n      \"*:rounded-none *:not-first:border-s-border\",\n      \"data-[orientation=horizontal]:*:first:rounded-s-md data-[orientation=horizontal]:*:last:rounded-e-md\",\n      \"data-[orientation=vertical]:*:not-first:border-s-transparent data-[orientation=vertical]:*:not-first:border-t-border\",\n      \"data-[orientation=vertical]:*:first:rounded-t-md data-[orientation=vertical]:*:last:rounded-b-md\",\n    ].join(\" \"),\n    /** Separate quiet items with a small gap: toolbars. */\n    ghost: \"gap-inline-xs\",\n  },\n  size: {\n    sm: \"*:h-control-sm *:px-inset-sm *:text-label\",\n    md: \"*:h-control-md *:px-control-x *:text-label\",\n    lg: \"*:h-control-lg *:px-inset-lg *:text-body-strong\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex w-fit items-stretch font-sans\",\n  \"data-[orientation=vertical]:flex-col\",\n  \"data-disabled:pointer-events-none\",\n];\n\nexport interface ToggleGroupProps extends Omit<ToggleGroupPrimitive.Props, \"className\"> {\n  /** A segmented track or separate quiet items. */\n  variant?: keyof typeof toggleGroupVariants.variant;\n  /** Item height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof toggleGroupVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * Toggles that share one value, on Base UI's ToggleGroup (a `<div role=\"group\">`): `value` is the\n * array of pressed items' values; without `multiple`, pressing one releases the others. Name the\n * group with aria-label. Put ToggleGroupItems inside. The ref reaches the `<div>`.\n */\nexport function ToggleGroup({ variant = \"outline\", size = \"md\", orientation = \"horizontal\", className, ...props }: ToggleGroupProps) {\n  return (\n    <ToggleGroupPrimitive\n      data-slot=\"toggle-group\"\n      data-variant={variant}\n      data-size={size}\n      orientation={orientation}\n      className={cn(base, toggleGroupVariants.variant[variant], toggleGroupVariants.size[size], className)}\n      {...props}\n    />\n  );\n}\n\nexport interface ToggleGroupItemProps extends Omit<TogglePrimitive.Props, \"className\" | \"value\"> {\n  /** Identifies the item in the group's `value`. */\n  value: string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** One toggle of a ToggleGroup, a native `<button>` with aria-pressed. Icon-only items need an aria-label. */\nexport function ToggleGroupItem({ className, ...props }: ToggleGroupItemProps) {\n  return <TogglePrimitive data-slot=\"toggle-group-item\" className={cn(toggleButtonBase, toggleButtonVariants.variant.ghost, className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "toggle-group",
+      "title": "ToggleGroup",
+      "description": "Toggle buttons with one shared value, on Base UI's ToggleGroup: a segmented outline track or quiet ghost items, single or multiple selection, horizontal or vertical, in three density-aware sizes.",
+      "usage": "Use ToggleGroup for a small set of options that apply at once and stay visible: the result view (grid, JSON, chart), cell alignment, which columns to show. Name the group with aria-label and give each ToggleGroupItem a value; without multiple, one item is pressed at a time (the user can release it, so check for an empty value), with multiple any number. Wire value and onValueChange for controlled state. Outline is a segmented control; ghost suits toolbars. For a choice inside a form that must have exactly one answer, use RadioGroup; for one on/off setting, ToggleButton or Switch.",
+      "status": "experimental",
+      "base": "@base-ui/react/toggle-group",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string[]",
+          "description": "Controlled values of the pressed items."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string[]",
+          "description": "Initially pressed values when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: string[], details) => void",
+          "description": "Called when an item is pressed or released."
+        },
+        {
+          "name": "multiple",
+          "type": "boolean",
+          "default": false,
+          "description": "Lets several items be pressed at once."
+        },
+        {
+          "name": "orientation",
+          "type": "\"horizontal\" | \"vertical\"",
+          "default": "horizontal",
+          "description": "Lays the items out in a row or a column and sets which arrow keys move focus."
+        },
+        {
+          "name": "variant",
+          "type": "\"outline\" | \"ghost\"",
+          "default": "outline",
+          "description": "Outline joins the items in one bordered track with dividers; ghost keeps them apart."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Item height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Disables every item."
+        },
+        {
+          "name": "loopFocus",
+          "type": "boolean",
+          "default": true,
+          "description": "Arrow keys wrap from the last item to the first."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "The group's accessible name."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the group's <div>."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "outline",
+          "ghost"
+        ],
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The group, role=\"group\"; data-slot=\"toggle-group\", data-variant, data-size, data-orientation and data-multiple name it."
+        },
+        {
+          "name": "item",
+          "element": "button",
+          "description": "ToggleGroupItem; data-slot=\"toggle-group-item\" and data-pressed."
+        }
+      ],
+      "parts": [
+        {
+          "name": "ToggleGroupItem",
+          "slot": "toggle-group-item",
+          "description": "One toggle of the group, with ToggleButton's look; value identifies it, aria-label names an icon-only one."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over an item: color.interactive.hover and color.fg.default."
+        },
+        {
+          "name": "active",
+          "variant": "active",
+          "description": "While pressing an item: color.interactive.active."
+        },
+        {
+          "name": "pressed",
+          "variant": "data-pressed",
+          "description": "A pressed item: color.interactive.selected and color.fg.default, aria-pressed=\"true\"."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on an item: a ring of ring.width in color.ring."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Every item ignores interaction, at opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.default",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.interactive.selected",
+        "color.interactive.selected-hover",
+        "color.ring",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inline.xs",
+        "space.inset.lg",
+        "space.inset.sm",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "ToggleGroupMinimal",
+        "realistic": "ToggleGroupRealistic"
+      },
+      "accessibility": [
+        "The group is a <div role=\"group\">; name it with aria-label (or aria-labelledby). Each item is a native <button> with aria-pressed.",
+        "Tab reaches the group once; arrow keys move between items (left and right, or up and down when vertical), Enter and Space press.",
+        "Pressed is shown by color.interactive.selected and color.fg.default, and announced by aria-pressed, not by colour alone.",
+        "Icon-only items need an aria-label each.",
+        "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+      ]
+    },
+    "example": "import { ToggleGroup, ToggleGroupItem } from \"@/components/toggle-group/toggle-group\";\n\nconst AlignIcon = ({ d }: { d: string }) => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d={d} />\n  </svg>\n);\n\n/** The smallest useful ToggleGroup: one view out of three. */\nexport function ToggleGroupMinimal() {\n  return (\n    <ToggleGroup aria-label=\"Result view\" defaultValue={[\"grid\"]}>\n      <ToggleGroupItem value=\"grid\">Grid</ToggleGroupItem>\n      <ToggleGroupItem value=\"json\">JSON</ToggleGroupItem>\n      <ToggleGroupItem value=\"chart\">Chart</ToggleGroupItem>\n    </ToggleGroup>\n  );\n}\n\n/**\n * A result toolbar: cell alignment (one of three, icon-only, ghost), visible columns (several at\n * once, small), a vertical panel picker (large) and a disabled group.\n */\nexport function ToggleGroupRealistic() {\n  return (\n    <div className=\"flex flex-wrap items-start gap-inline-lg\">\n      <ToggleGroup aria-label=\"Cell alignment\" variant=\"ghost\" defaultValue={[\"start\"]}>\n        <ToggleGroupItem value=\"start\" aria-label=\"Align start\">\n          <AlignIcon d=\"M2 4h12M2 8h7M2 12h10\" />\n        </ToggleGroupItem>\n        <ToggleGroupItem value=\"center\" aria-label=\"Align center\">\n          <AlignIcon d=\"M2 4h12M4.5 8h7M3 12h10\" />\n        </ToggleGroupItem>\n        <ToggleGroupItem value=\"end\" aria-label=\"Align end\">\n          <AlignIcon d=\"M2 4h12M7 8h7M4 12h10\" />\n        </ToggleGroupItem>\n      </ToggleGroup>\n      <ToggleGroup aria-label=\"Visible columns\" size=\"sm\" multiple defaultValue={[\"type\", \"nullable\"]}>\n        <ToggleGroupItem value=\"type\">Type</ToggleGroupItem>\n        <ToggleGroupItem value=\"nullable\">Nullable</ToggleGroupItem>\n        <ToggleGroupItem value=\"default\">Default</ToggleGroupItem>\n      </ToggleGroup>\n      <ToggleGroup aria-label=\"Side panel\" size=\"lg\" orientation=\"vertical\" defaultValue={[\"schema\"]}>\n        <ToggleGroupItem value=\"schema\">Schema</ToggleGroupItem>\n        <ToggleGroupItem value=\"history\">History</ToggleGroupItem>\n      </ToggleGroup>\n      <ToggleGroup aria-label=\"Isolation level\" disabled defaultValue={[\"read-committed\"]}>\n        <ToggleGroupItem value=\"read-committed\">Read committed</ToggleGroupItem>\n        <ToggleGroupItem value=\"serializable\">Serializable</ToggleGroupItem>\n      </ToggleGroup>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

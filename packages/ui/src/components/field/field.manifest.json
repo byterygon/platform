@@ -4,7 +4,7 @@
   "name": "field",
   "title": "Field",
   "description": "A form field on Base UI's Field parts: label, control, description and error tied together, with invalid, touched, dirty and disabled state taken from TanStack Form or set by hand.",
-  "usage": "Wrap every form control (Input, Textarea, InputGroup) in a Field with a FieldLabel; add FieldDescription for a hint and FieldError for the message. With TanStack Form, render it from form.Field and pass the field: <form.Field name=\"host\">{(field) => <Field field={field}>…</Field>}</form.Field>, and wire the control's value, onValueChange and onBlur to the field. Without a form library, set invalid and FieldError's children yourself, or use Base UI's validate prop. Put the fields in a Form.",
+  "usage": "Wrap every form control (Input, Textarea, InputGroup) in a Field with a FieldLabel; add FieldDescription for a hint and FieldError for the message. A Checkbox or Switch goes inside its FieldLabel, next to the text. A group of options (RadioGroup, CheckboxGroup) is one Field: a FieldLegend first inside the group, then a FieldItem per option with its FieldLabel and, if needed, its own FieldDescription. Group related Fields under a heading with FieldSet and FieldLegend. With TanStack Form, render it from form.Field and pass the field: <form.Field name=\"host\">{(field) => <Field field={field}>…</Field>}</form.Field>, and wire the control's value, onValueChange and onBlur to the field. Without a form library, set invalid and FieldError's children yourself, or use Base UI's validate prop. Put the fields in a Form.",
   "status": "experimental",
   "base": "@base-ui/react/field",
   "dependencies": ["@base-ui/react"],
@@ -22,17 +22,23 @@
   "variants": {},
   "slots": [
     { "name": "root", "element": "div", "description": "The column that holds the parts; data-slot=\"field\" and Base UI's data-invalid, data-touched, data-dirty, data-disabled." },
-    { "name": "label", "element": "label", "description": "FieldLabel; data-slot=\"field-label\"." },
+    { "name": "label", "element": "label", "description": "FieldLabel, an inline row that can wrap a Checkbox, Radio or Switch; data-slot=\"field-label\"." },
     { "name": "description", "element": "p", "description": "FieldDescription; data-slot=\"field-description\"." },
-    { "name": "error", "element": "div", "description": "FieldError, rendered only while the field is invalid; data-slot=\"field-error\"." }
+    { "name": "error", "element": "div", "description": "FieldError, rendered only while the field is invalid; data-slot=\"field-error\"." },
+    { "name": "item", "element": "div", "description": "FieldItem, one option of a group; data-slot=\"field-item\"." },
+    { "name": "set", "element": "fieldset", "description": "FieldSet; data-slot=\"field-set\"." },
+    { "name": "legend", "element": "div", "description": "FieldLegend, the name of a FieldSet, RadioGroup or CheckboxGroup; data-slot=\"field-legend\"." }
   ],
   "parts": [
-    { "name": "FieldLabel", "slot": "field-label", "description": "The visible label, tied to the control; danger-coloured while invalid, dimmed while disabled." },
+    { "name": "FieldLabel", "slot": "field-label", "description": "The visible label, tied to the control; an inline row with gap space.inline.sm, so it can wrap a Checkbox, Radio or Switch and its text; danger-coloured while invalid, dimmed while disabled." },
     { "name": "FieldDescription", "slot": "field-description", "description": "A hint under the control, in color.fg.muted, named by aria-describedby." },
-    { "name": "FieldError", "slot": "field-error", "description": "The validation message in color.status.danger.fg: its children, its errors prop, or the TanStack field's errors one per line." }
+    { "name": "FieldError", "slot": "field-error", "description": "The validation message in color.status.danger.fg: its children, its errors prop, or the TanStack field's errors one per line." },
+    { "name": "FieldItem", "slot": "field-item", "description": "One option of a RadioGroup or CheckboxGroup: its FieldLabel and FieldDescription in a column with gap space.stack.xs; disabled disables that option." },
+    { "name": "FieldSet", "slot": "field-set", "description": "A <fieldset> grouping related Fields under a FieldLegend, a column with gap space.stack.md; disabled disables every control inside." },
+    { "name": "FieldLegend", "slot": "field-legend", "description": "The name of a FieldSet, RadioGroup or CheckboxGroup, placed first inside it, in text.label; the group's aria-labelledby points to it." }
   ],
   "states": [
-    { "name": "invalid", "variant": "data-invalid", "props": { "invalid": true }, "description": "Invalid: the label turns color.status.danger.fg, the control shows its danger border, FieldError appears." },
+    { "name": "invalid", "variant": "data-invalid", "props": { "invalid": true }, "description": "Invalid: the label (or a group's FieldLegend; options keep their colour) turns color.status.danger.fg, the control shows its danger border, FieldError appears." },
     { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "The control is disabled and the label dims to opacity.disabled." }
   ],
   "tokens": [
@@ -41,6 +47,8 @@
     "color.status.danger.fg",
     "font.sans",
     "opacity.disabled",
+    "space.inline.sm",
+    "space.stack.md",
     "space.stack.xs",
     "text.caption.leading",
     "text.caption.size",
@@ -55,6 +63,7 @@
   "accessibility": [
     "FieldLabel is a <label> tied to the control, so clicking it focuses the control and screen readers announce it as the control's name.",
     "FieldDescription and FieldError are named in the control's aria-describedby; the error is read when the control is focused.",
+    "A FieldSet, RadioGroup or CheckboxGroup is named by its FieldLegend through aria-labelledby; a FieldDescription inside a FieldItem describes that option only.",
     "An invalid field sets aria-invalid on the control; the message, not the danger colour, carries the meaning.",
     "Show errors after the user leaves the field or submits (the default with a TanStack field: touched and invalid), not on the first keystroke.",
     "color.status.danger.fg and color.fg.muted are contrast-checked as text on every surface."

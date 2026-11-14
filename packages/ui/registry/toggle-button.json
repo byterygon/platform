@@ -1,0 +1,194 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "toggle-button",
+  "type": "registry:ui",
+  "title": "ToggleButton",
+  "description": "A button that stays pressed or unpressed, on Base UI's Toggle, in a ghost or outline variant and three density-aware sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/toggle-button.tsx",
+      "type": "registry:ui",
+      "content": "import { Toggle as TogglePrimitive } from \"@base-ui/react/toggle\";\nimport { cn } from \"@/lib/cn\";\n\n// A two-state button on Base UI's Toggle: aria-pressed and data-pressed follow `pressed`. Unpressed\n// it is quiet (color.fg.muted); pressed it takes color.interactive.selected and color.fg.default,\n// so the state does not rest on colour alone. ToggleGroup reuses the base and the variants.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const toggleButtonVariants = {\n  variant: {\n    /** No border: toolbars and dense rows. */\n    ghost: \"border-transparent\",\n    /** A strong border, for a toggle that stands alone next to inputs. */\n    outline: \"border-border-strong bg-surface\",\n  },\n  size: {\n    sm: \"h-control-sm px-inset-sm text-label\",\n    md: \"h-control-md px-control-x text-label\",\n    lg: \"h-control-lg px-inset-lg text-body-strong\",\n  },\n} as const;\n\n/** The classes every variant and size shares; ToggleGroupItem reuses them. */\nexport const toggleButtonBase = [\n  \"inline-flex shrink-0 select-none items-center justify-center gap-inline-sm whitespace-nowrap\",\n  \"rounded-md border font-sans text-fg-muted\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"hover:bg-hover hover:text-fg active:bg-pressed\",\n  \"data-pressed:bg-selected data-pressed:text-fg data-pressed:hover:bg-selected-hover\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"data-disabled:pointer-events-none data-disabled:opacity-[var(--by-opacity-disabled)]\",\n  \"[&_svg]:size-icon-sm [&_svg]:shrink-0\",\n];\n\nexport interface ToggleButtonProps extends Omit<TogglePrimitive.Props, \"className\" | \"value\"> {\n  /** Border or none. */\n  variant?: keyof typeof toggleButtonVariants.variant;\n  /** Control height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof toggleButtonVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A button that stays on or off (bold, word wrap, \"show nulls\"), on Base UI's Toggle: a native\n * `<button>` with aria-pressed. Use `pressed` and `onPressedChange`, or `defaultPressed`. For one\n * of several options use ToggleGroup. The ref reaches the `<button>`.\n */\nexport function ToggleButton({ variant = \"ghost\", size = \"md\", className, ...props }: ToggleButtonProps) {\n  return (\n    <TogglePrimitive\n      data-slot=\"toggle-button\"\n      data-variant={variant}\n      data-size={size}\n      className={cn(toggleButtonBase, toggleButtonVariants.variant[variant], toggleButtonVariants.size[size], className)}\n      {...props}\n    />\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "toggle-button",
+      "title": "ToggleButton",
+      "description": "A button that stays pressed or unpressed, on Base UI's Toggle, in a ghost or outline variant and three density-aware sizes.",
+      "usage": "Use ToggleButton for a setting that is on or off and takes effect at once, in a toolbar or next to what it changes: word wrap in an editor, \"show nulls\" over a grid. Give an icon-only toggle an aria-label naming the setting (\"Word wrap\"), not the action; the pressed state is announced. For one choice out of several, or several related toggles, use ToggleGroup; for a setting in a form, use Switch or Checkbox.",
+      "status": "experimental",
+      "base": "@base-ui/react/toggle",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "pressed",
+          "type": "boolean",
+          "description": "Controlled pressed state (aria-pressed, data-pressed)."
+        },
+        {
+          "name": "defaultPressed",
+          "type": "boolean",
+          "default": false,
+          "description": "Initial pressed state when uncontrolled."
+        },
+        {
+          "name": "onPressedChange",
+          "type": "(pressed: boolean, details) => void",
+          "description": "Called when the user presses or releases the toggle."
+        },
+        {
+          "name": "variant",
+          "type": "\"ghost\" | \"outline\"",
+          "default": "ghost",
+          "description": "Ghost for toolbars; outline for a toggle that stands next to inputs."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Control height from size.control.*, which follows data-density."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Ignores interaction and sets data-disabled."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "The accessible name of an icon-only toggle: the setting it turns on."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element with the toggle's props (state.pressed swaps an icon)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLButtonElement>",
+          "description": "Reaches the <button>."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "ghost",
+          "outline"
+        ],
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "button",
+          "description": "The toggle; data-slot=\"toggle-button\", data-variant, data-size and data-pressed name it."
+        },
+        {
+          "name": "icon",
+          "element": "svg",
+          "description": "An optional child icon, sized to size.icon.sm."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over it: color.interactive.hover and color.fg.default."
+        },
+        {
+          "name": "active",
+          "variant": "active",
+          "description": "While pressing: color.interactive.active."
+        },
+        {
+          "name": "pressed",
+          "variant": "data-pressed",
+          "props": {
+            "defaultPressed": true
+          },
+          "description": "On: color.interactive.selected and color.fg.default, aria-pressed=\"true\"."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: a ring of ring.width in color.ring."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.interactive.selected",
+        "color.interactive.selected-hover",
+        "color.ring",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.sm",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inset.lg",
+        "space.inset.sm",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "ToggleButtonMinimal",
+        "realistic": "ToggleButtonRealistic"
+      },
+      "accessibility": [
+        "Renders a native <button> with aria-pressed, so Enter and Space toggle it and screen readers announce \"toggle button, pressed\".",
+        "Icon-only toggles need an aria-label naming the setting (\"Word wrap\"); keep the name the same in both states, the pressed state carries the change.",
+        "Pressed is shown by color.interactive.selected and a change from color.fg.muted to color.fg.default, and announced by aria-pressed, not by colour alone.",
+        "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+      ]
+    },
+    "example": "import { ToggleButton } from \"@/components/toggle-button/toggle-button\";\n\nconst WrapIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"M2 4h12M2 8h9a2.5 2.5 0 0 1 0 5H8m1.5-1.5L8 13l1.5 1.5M2 12h3\" />\n  </svg>\n);\n\n/** The smallest useful ToggleButton: a setting with a visible name. */\nexport function ToggleButtonMinimal() {\n  return <ToggleButton>Show nulls</ToggleButton>;\n}\n\n/** An editor toolbar: an icon-only toggle, a pressed one with text, an outline toggle and a disabled one, in each size. */\nexport function ToggleButtonRealistic() {\n  return (\n    <div className=\"flex flex-wrap items-center gap-inline-sm\">\n      <ToggleButton size=\"sm\" aria-label=\"Word wrap\">\n        <WrapIcon />\n      </ToggleButton>\n      <ToggleButton defaultPressed>\n        <WrapIcon />\n        Word wrap\n      </ToggleButton>\n      <ToggleButton variant=\"outline\" size=\"lg\">\n        Read only\n      </ToggleButton>\n      <ToggleButton disabled>Auto-commit</ToggleButton>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

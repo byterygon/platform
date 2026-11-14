@@ -1,0 +1,68 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "radio-group",
+  "title": "RadioGroup",
+  "description": "One choice out of several, on Base UI's RadioGroup and Radio: a fieldset of radios named by a FieldLegend, each option in a FieldItem with its own label and description, in three sizes.",
+  "usage": "Use RadioGroup when the user must pick exactly one of two to about six options and should see them all at once (TLS mode, line endings). Put it in a Field, a FieldLegend first, then a FieldItem per option with a FieldLabel around a RadioGroupItem and its text, and a FieldDescription when the option needs explaining. With TanStack Form wire value, onValueChange and onBlur to the field; an empty value means nothing is chosen yet. For more options use Select; for a choice that applies at once in a toolbar, ToggleGroup; for yes/no, Checkbox or Switch.",
+  "status": "experimental",
+  "base": "@base-ui/react/radio-group",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "value", "type": "string", "description": "Controlled value of the chosen radio." },
+    { "name": "defaultValue", "type": "string", "description": "Initially chosen value when uncontrolled." },
+    { "name": "onValueChange", "type": "(value: string, details) => void", "description": "Called when the user chooses another radio." },
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Radio size from size.icon.sm, md or lg." },
+    { "name": "name", "type": "string", "description": "The form field name of the radios' hidden inputs; a Field's name wins." },
+    { "name": "required", "type": "boolean", "default": false, "description": "A radio must be chosen before the form submits." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Disables every radio; FieldItem's disabled disables one." },
+    { "name": "readOnly", "type": "boolean", "default": false, "description": "Focusable but the choice cannot change." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLDivElement>", "description": "Reaches the group's <div>." }
+  ],
+  "variants": {
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "div", "description": "The group, role=\"radiogroup\", a column with gap space.stack.sm; data-slot=\"radio-group\" and data-size name it." },
+    { "name": "item", "element": "span", "description": "RadioGroupItem, role=\"radio\"; data-slot=\"radio-group-item\" and data-checked. A hidden <input type=\"radio\"> follows it." },
+    { "name": "indicator", "element": "span", "description": "The dot, rendered while the radio is chosen." }
+  ],
+  "parts": [
+    { "name": "RadioGroupItem", "slot": "radio-group-item", "description": "One radio, a circle with color.border.strong that fills with the accent solid and a dot in color.accent.fg when chosen." }
+  ],
+  "states": [
+    { "name": "hover", "variant": "hover", "description": "Pointer over a radio: color.interactive.hover, or the accent solid's hover colour when chosen." },
+    { "name": "checked", "variant": "data-checked", "description": "The chosen radio: the accent solid with a dot." },
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus: a ring of ring.width in color.ring." },
+    { "name": "invalid", "variant": "data-invalid", "description": "In an invalid Field: color.status.danger.border borders." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.accent.bg-hover",
+    "color.accent.fg",
+    "color.bg.surface",
+    "color.border.strong",
+    "color.interactive.hover",
+    "color.ring",
+    "color.status.danger.border",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "ring.offset",
+    "ring.width",
+    "size.icon.lg",
+    "size.icon.md",
+    "size.icon.sm",
+    "space.stack.sm"
+  ],
+  "examples": { "minimal": "RadioGroupMinimal", "realistic": "RadioGroupRealistic" },
+  "accessibility": [
+    "Renders a <div role=\"radiogroup\"> named by its FieldLegend (aria-labelledby), with a <span role=\"radio\"> and aria-checked per option, and hidden native inputs for forms.",
+    "Tab enters the group at the chosen radio (or the first) and leaves it; arrow keys move the choice, skipping disabled radios.",
+    "Wrap each radio and its text in a FieldLabel: the text chooses it too, which enlarges the target beyond the 14 to 20 px circle (WCAG 2.2 target size). A FieldDescription inside the FieldItem describes that option only.",
+    "The chosen radio shows a dot as well as the accent fill; the border is color.border.strong (3:1 against the surface).",
+    "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+  ]
+}

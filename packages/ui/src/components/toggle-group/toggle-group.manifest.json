@@ -1,0 +1,87 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "toggle-group",
+  "title": "ToggleGroup",
+  "description": "Toggle buttons with one shared value, on Base UI's ToggleGroup: a segmented outline track or quiet ghost items, single or multiple selection, horizontal or vertical, in three density-aware sizes.",
+  "usage": "Use ToggleGroup for a small set of options that apply at once and stay visible: the result view (grid, JSON, chart), cell alignment, which columns to show. Name the group with aria-label and give each ToggleGroupItem a value; without multiple, one item is pressed at a time (the user can release it, so check for an empty value), with multiple any number. Wire value and onValueChange for controlled state. Outline is a segmented control; ghost suits toolbars. For a choice inside a form that must have exactly one answer, use RadioGroup; for one on/off setting, ToggleButton or Switch.",
+  "status": "experimental",
+  "base": "@base-ui/react/toggle-group",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "value", "type": "string[]", "description": "Controlled values of the pressed items." },
+    { "name": "defaultValue", "type": "string[]", "description": "Initially pressed values when uncontrolled." },
+    { "name": "onValueChange", "type": "(value: string[], details) => void", "description": "Called when an item is pressed or released." },
+    { "name": "multiple", "type": "boolean", "default": false, "description": "Lets several items be pressed at once." },
+    { "name": "orientation", "type": "\"horizontal\" | \"vertical\"", "default": "horizontal", "description": "Lays the items out in a row or a column and sets which arrow keys move focus." },
+    { "name": "variant", "type": "\"outline\" | \"ghost\"", "default": "outline", "description": "Outline joins the items in one bordered track with dividers; ghost keeps them apart." },
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Item height from size.control.*, which follows data-density." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Disables every item." },
+    { "name": "loopFocus", "type": "boolean", "default": true, "description": "Arrow keys wrap from the last item to the first." },
+    { "name": "aria-label", "type": "string", "description": "The group's accessible name." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLDivElement>", "description": "Reaches the group's <div>." }
+  ],
+  "variants": {
+    "variant": ["outline", "ghost"],
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "div", "description": "The group, role=\"group\"; data-slot=\"toggle-group\", data-variant, data-size, data-orientation and data-multiple name it." },
+    { "name": "item", "element": "button", "description": "ToggleGroupItem; data-slot=\"toggle-group-item\" and data-pressed." }
+  ],
+  "parts": [
+    { "name": "ToggleGroupItem", "slot": "toggle-group-item", "description": "One toggle of the group, with ToggleButton's look; value identifies it, aria-label names an icon-only one." }
+  ],
+  "states": [
+    { "name": "hover", "variant": "hover", "description": "Pointer over an item: color.interactive.hover and color.fg.default." },
+    { "name": "active", "variant": "active", "description": "While pressing an item: color.interactive.active." },
+    { "name": "pressed", "variant": "data-pressed", "description": "A pressed item: color.interactive.selected and color.fg.default, aria-pressed=\"true\"." },
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus on an item: a ring of ring.width in color.ring." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Every item ignores interaction, at opacity.disabled." }
+  ],
+  "tokens": [
+    "color.bg.surface",
+    "color.border.default",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.interactive.selected",
+    "color.interactive.selected-hover",
+    "color.ring",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.lg",
+    "size.control.md",
+    "size.control.sm",
+    "size.icon.sm",
+    "space.control.x",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.lg",
+    "space.inset.sm",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": { "minimal": "ToggleGroupMinimal", "realistic": "ToggleGroupRealistic" },
+  "accessibility": [
+    "The group is a <div role=\"group\">; name it with aria-label (or aria-labelledby). Each item is a native <button> with aria-pressed.",
+    "Tab reaches the group once; arrow keys move between items (left and right, or up and down when vertical), Enter and Space press.",
+    "Pressed is shown by color.interactive.selected and color.fg.default, and announced by aria-pressed, not by colour alone.",
+    "Icon-only items need an aria-label each.",
+    "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+  ]
+}

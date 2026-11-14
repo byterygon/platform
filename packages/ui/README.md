@@ -3,7 +3,7 @@
 Byterygon UI components: Base UI primitives styled with the roles of `@byterygon/design-tokens`,
 shipped as a self-hostable shadcn registry (`registry/`). Works offline end to end.
 
-- Components: Button, IconButton, Input, Textarea, InputGroup, Field, Form (TanStack Form), Kbd (more in waves 1 to 3 of the spec).
+- Components: Button, IconButton, ToggleButton, ToggleGroup, Input, Textarea, InputGroup, Checkbox, RadioGroup, Switch, Field, Form (TanStack Form), Kbd (more in waves 1 to 3 of the spec).
 - Theme items: `theme-default`, `theme-slate`, `theme-paper`, `theme-midnight`, `theme-terminal`,
   `theme-high-contrast`. Installed into a shadcn project, they theme stock shadcn components too.
 - `pnpm ui:new <name>` scaffolds a component that passes every convention test.

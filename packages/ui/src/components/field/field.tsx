@@ -1,4 +1,5 @@
 import { Field as FieldPrimitive } from "@base-ui/react/field";
+import { Fieldset as FieldsetPrimitive } from "@base-ui/react/fieldset";
 import { createContext, use } from "react";
 import { cn } from "@/lib/cn";
 
@@ -7,6 +8,9 @@ import { cn } from "@/lib/cn";
 // data-invalid, data-touched, data-dirty, data-disabled on every part. Form state comes from
 // TanStack Form: pass the render argument of `form.Field` as `field`, and Field maps its meta to
 // Base UI's controlled `invalid`, `touched` and `dirty`, and FieldError shows its errors.
+// A group of options (RadioGroup, CheckboxGroup) is one Field: FieldLegend names the group and
+// each option is a FieldItem whose FieldLabel wraps the control. FieldSet groups whole Fields
+// under a FieldLegend.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const fieldVariants = {} as const;
@@ -14,12 +18,23 @@ export const fieldVariants = {} as const;
 const base = ["flex min-w-0 flex-col gap-stack-xs font-sans"];
 
 const labelClasses = [
-  "text-label text-fg",
-  "data-invalid:text-danger-fg",
+  "inline-flex w-fit items-center gap-inline-sm text-label text-fg",
+  // An option of a group keeps its colour; the group says it is invalid through FieldLegend.
+  "not-in-data-[slot=field-item]:data-invalid:text-danger-fg",
   "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
 ];
 
 const descriptionClasses = ["text-caption text-fg-muted"];
+
+const itemClasses = ["flex min-w-0 flex-col gap-stack-xs"];
+
+const setClasses = ["flex min-w-0 flex-col gap-stack-md"];
+
+const legendClasses = [
+  "text-label text-fg",
+  "in-data-invalid:text-danger-fg",
+  "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
+];
 
 const errorClasses = ["text-caption text-danger-fg"];
 
@@ -92,7 +107,11 @@ export interface FieldLabelProps extends Omit<FieldPrimitive.Label.Props, "class
   className?: string;
 }
 
-/** The field's visible label, a `<label>` tied to the control. Turns danger-coloured when the field is invalid. */
+/**
+ * The field's visible label, a `<label>` tied to the control. Turns danger-coloured when the field
+ * is invalid. Wrap a Checkbox, Radio or Switch in it to label it: the control and the text sit in
+ * a row, and clicking the text toggles the control.
+ */
 export function FieldLabel({ className, ...props }: FieldLabelProps) {
   return <FieldPrimitive.Label data-slot="field-label" className={cn(labelClasses, className)} {...props} />;
 }
@@ -124,4 +143,43 @@ export function FieldError({ errors, match, children, className, ...props }: Fie
   const messages = errorMessages(errors ?? context?.errors ?? []);
   const content = children ?? (messages.length > 1 ? messages.map((message) => <span key={message} className="block">{message}</span>) : messages[0]);
   return <FieldPrimitive.Error data-slot="field-error" match={match ?? context?.invalid} className={cn(errorClasses, className)} {...props}>{content}</FieldPrimitive.Error>;
+}
+
+export interface FieldItemProps extends Omit<FieldPrimitive.Item.Props, "className"> {
+  /** Extra classes, merged after the component's own so they win. */
+  className?: string;
+}
+
+/**
+ * One option of a group inside a Field (a radio, a checkbox of a CheckboxGroup): a column of its
+ * FieldLabel, which wraps the control, and an optional FieldDescription tied to that option.
+ */
+export function FieldItem({ className, ...props }: FieldItemProps) {
+  return <FieldPrimitive.Item data-slot="field-item" className={cn(itemClasses, className)} {...props} />;
+}
+
+export interface FieldSetProps extends Omit<FieldsetPrimitive.Root.Props, "className"> {
+  /** Extra classes, merged after the component's own so they win. */
+  className?: string;
+}
+
+/**
+ * A `<fieldset>` that groups related Fields under a FieldLegend ("Connection", "Authentication");
+ * `disabled` disables every control inside. RadioGroup and CheckboxGroup are fieldsets themselves.
+ */
+export function FieldSet({ className, ...props }: FieldSetProps) {
+  return <FieldsetPrimitive.Root data-slot="field-set" className={cn(setClasses, className)} {...props} />;
+}
+
+export interface FieldLegendProps extends Omit<FieldsetPrimitive.Legend.Props, "className"> {
+  /** Extra classes, merged after the component's own so they win. */
+  className?: string;
+}
+
+/**
+ * The name of a FieldSet, RadioGroup or CheckboxGroup, placed first inside it; the group's
+ * aria-labelledby points to it. Only valid inside one of those.
+ */
+export function FieldLegend({ className, ...props }: FieldLegendProps) {
+  return <FieldsetPrimitive.Legend data-slot="field-legend" className={cn(legendClasses, className)} {...props} />;
 }
