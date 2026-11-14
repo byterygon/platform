@@ -1,0 +1,203 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "popover",
+  "type": "registry:ui",
+  "title": "Popover",
+  "description": "A small non-modal panel attached to a control, on Base UI's Popover: a trigger, and a popup on color.bg.overlay with an optional title, description, controls and a close action, placed on any side of the trigger.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/popover.tsx",
+      "type": "registry:ui",
+      "content": "import { Popover as PopoverPrimitive } from \"@base-ui/react/popover\";\nimport { createContext, useContext, type ReactNode, type Ref, type RefObject } from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenPx, useMergedRef, useThemeScope, type ThemeScope } from \"@/lib/theme-scope\";\n\n// A small non-modal panel attached to a control, on Base UI's Popover: `Popover` is the root, the\n// parts are PopoverTrigger, PopoverContent (portal, positioner and popup), PopoverTitle,\n// PopoverDescription and PopoverClose. The popup takes the trigger's theme and density.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const popoverVariants = {} as const;\n\n/** The classes Popover shares with HoverCard. */\nexport const popoverClasses = {\n  positioner: \"z-[var(--by-z-popover)] outline-none\",\n  popup: [\n    \"flex max-w-panel-sm flex-col gap-stack-sm rounded-md border border-border bg-overlay p-inset-md font-sans text-body text-fg shadow-overlay outline-none\",\n    \"transition duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none\",\n    \"data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit\",\n  ],\n  title: \"text-body-strong text-fg\",\n  description: \"text-body text-fg-muted\",\n} as const;\n\n/** Base UI's run-time variables for the popup: they are not tokens, so they go in `style`. */\nexport const popoverStyle = {\n  transformOrigin: \"var(--transform-origin)\",\n  maxHeight: \"var(--available-height)\",\n} as const;\n\n/** The gap between the trigger and the popup: space.inline.xs where the trigger is. */\nexport const popoverOffset = (anchor: Element | null) => tokenPx(anchor, \"--by-space-inline-xs\", 4);\n\ninterface PopoverContextValue {\n  anchorRef: (element: Element | null) => void;\n  anchor: RefObject<Element | null>;\n  scope: ThemeScope;\n}\n\nconst PopoverContext = createContext<PopoverContextValue>({ anchorRef: () => {}, anchor: { current: null }, scope: {} });\n\nexport type PopoverProps = PopoverPrimitive.Root.Props;\n\n/**\n * A popover on Base UI's Popover. It renders no element: put a PopoverTrigger and a PopoverContent\n * inside. It is not modal: focus moves into the popup, Tab leaves it, Escape and a click outside\n * close it, and focus returns to the trigger.\n */\nexport function Popover({ onOpenChange, ...props }: PopoverProps) {\n  const { ref, anchor, scope, refresh } = useThemeScope<Element>();\n  return (\n    <PopoverContext value={{ anchorRef: ref, anchor, scope }}>\n      <PopoverPrimitive.Root\n        onOpenChange={(open, details) => {\n          if (open) refresh();\n          onOpenChange?.(open, details);\n        }}\n        {...props}\n      />\n    </PopoverContext>\n  );\n}\n\nexport interface PopoverTriggerProps extends PopoverPrimitive.Trigger.Props {\n  /** Reaches the trigger element. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** Opens and closes the popover. Unstyled: render a Button or an IconButton through `render`. */\nexport function PopoverTrigger({ ref, ...props }: PopoverTriggerProps) {\n  const { anchorRef } = useContext(PopoverContext);\n  return <PopoverPrimitive.Trigger data-slot=\"popover-trigger\" ref={useMergedRef<HTMLButtonElement>(anchorRef, ref)} {...props} />;\n}\n\nexport interface PopoverContentProps extends Omit<PopoverPrimitive.Popup.Props, \"className\" | \"children\"> {\n  /** The side of the trigger the popup opens on. */\n  side?: PopoverPrimitive.Positioner.Props[\"side\"];\n  /** How the popup lines up with the trigger along that side. */\n  align?: PopoverPrimitive.Positioner.Props[\"align\"];\n  /** The gap to the trigger in px; space.inline.xs by default. */\n  sideOffset?: number;\n  children?: ReactNode;\n  /** Extra classes for the popup, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The portal, the positioner (at z.popover, with the trigger's theme) and the popup. */\nexport function PopoverContent({ side = \"bottom\", align = \"center\", sideOffset, className, style, children, ...props }: PopoverContentProps) {\n  const { anchor, scope } = useContext(PopoverContext);\n  return (\n    <PopoverPrimitive.Portal>\n      <PopoverPrimitive.Positioner {...scope} data-slot=\"popover-positioner\" side={side} align={align} sideOffset={sideOffset ?? (() => popoverOffset(anchor.current))} className={cn(popoverClasses.positioner)}>\n        <PopoverPrimitive.Popup data-slot=\"popover-content\" style={{ ...popoverStyle, ...style }} className={cn(popoverClasses.popup, className)} {...props}>\n          {children}\n        </PopoverPrimitive.Popup>\n      </PopoverPrimitive.Positioner>\n    </PopoverPrimitive.Portal>\n  );\n}\n\nexport interface PopoverTitleProps extends Omit<PopoverPrimitive.Title.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The popover's heading (an `<h2>`), in type.body-strong; it names the popup. */\nexport function PopoverTitle({ className, ...props }: PopoverTitleProps) {\n  return <PopoverPrimitive.Title data-slot=\"popover-title\" className={cn(popoverClasses.title, className)} {...props} />;\n}\n\nexport interface PopoverDescriptionProps extends Omit<PopoverPrimitive.Description.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A sentence in color.fg.muted; it describes the popup. */\nexport function PopoverDescription({ className, ...props }: PopoverDescriptionProps) {\n  return <PopoverPrimitive.Description data-slot=\"popover-description\" className={cn(popoverClasses.description, className)} {...props} />;\n}\n\nexport interface PopoverCloseProps extends PopoverPrimitive.Close.Props {\n  /** Reaches the button. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** Closes the popover. Unstyled: render a Button through `render`. */\nexport function PopoverClose(props: PopoverCloseProps) {\n  return <PopoverPrimitive.Close data-slot=\"popover-close\" {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "popover",
+      "title": "Popover",
+      "description": "A small non-modal panel attached to a control, on Base UI's Popover: a trigger, and a popup on color.bg.overlay with an optional title, description, controls and a close action, placed on any side of the trigger.",
+      "usage": "Use Popover for a few controls or a short explanation that belongs to one control and should not block the page: run options under an icon button, the details of a status badge, a colour picker. Compose it as Popover > PopoverTrigger (render a Button or an IconButton) + PopoverContent (side, align) > PopoverTitle, PopoverDescription, Fields, PopoverClose rendering a Button. It is not modal: the user can click elsewhere and it closes. For text that only names or explains a control on hover, use Tooltip; for a preview of a link on hover, HoverCard; for a list of actions, DropdownMenu; for a task that must be finished or cancelled, Dialog.",
+      "status": "experimental",
+      "base": "@base-ui/react/popover",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state; defaultOpen when uncontrolled."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean, details) => void",
+          "description": "Called when the trigger, a PopoverClose, Escape or an outside press opens or closes it."
+        },
+        {
+          "name": "modal",
+          "type": "boolean | \"trap-focus\"",
+          "default": false,
+          "description": "As Base UI: false lets the page be used while it is open."
+        },
+        {
+          "name": "openOnHover",
+          "type": "boolean",
+          "default": false,
+          "description": "PopoverTrigger: opens on hover as well as on press."
+        },
+        {
+          "name": "side",
+          "type": "\"top\" | \"right\" | \"bottom\" | \"left\" | \"inline-start\" | \"inline-end\"",
+          "default": "bottom",
+          "description": "PopoverContent: the side of the trigger it opens on; it flips when there is no room."
+        },
+        {
+          "name": "align",
+          "type": "\"start\" | \"center\" | \"end\"",
+          "default": "center",
+          "description": "PopoverContent: how it lines up with the trigger."
+        },
+        {
+          "name": "sideOffset",
+          "type": "number",
+          "description": "PopoverContent: the gap to the trigger in px; space.inline.xs at the trigger by default."
+        },
+        {
+          "name": "initialFocus",
+          "type": "RefObject<HTMLElement> | boolean",
+          "description": "PopoverContent: the element focused on open (default: the popup)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own (PopoverContent: w-panel-sm for a fixed width)."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "positioner",
+          "element": "div",
+          "description": "In a portal at the end of <body>, at z.popover, with the trigger's data-theme and data-density, data-side and data-align; data-slot=\"popover-positioner\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "role=\"dialog\", color.bg.overlay with elevation.overlay, at most size.panel.sm wide and the viewport's free height; data-slot=\"popover-content\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "PopoverTrigger",
+          "slot": "popover-trigger",
+          "description": "Opens and closes the popover; unstyled, render a Button or IconButton through render. aria-haspopup=\"dialog\" and aria-expanded."
+        },
+        {
+          "name": "PopoverContent",
+          "slot": "popover-content",
+          "description": "The portal, the positioner and the popup."
+        },
+        {
+          "name": "PopoverTitle",
+          "slot": "popover-title",
+          "description": "An <h2> in type.body-strong that names the popup."
+        },
+        {
+          "name": "PopoverDescription",
+          "slot": "popover-description",
+          "description": "A <p> in color.fg.muted that describes the popup."
+        },
+        {
+          "name": "PopoverClose",
+          "slot": "popover-close",
+          "description": "Closes the popover; unstyled, render a Button through render."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "data-starting-style",
+          "description": "Opening: the popup grows from 95 % at the trigger and fades in over motion.duration.base with motion.easing.enter; reduced motion turns it off."
+        },
+        {
+          "name": "closing",
+          "variant": "data-ending-style",
+          "description": "Closing: the reverse, with motion.easing.exit."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-active",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.bg.overlay",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.neutral.bg",
+        "color.neutral.bg-active",
+        "color.neutral.bg-hover",
+        "color.neutral.fg",
+        "color.ring",
+        "elevation.overlay.shadow",
+        "font.sans",
+        "motion.duration.base",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.sm",
+        "size.panel.sm",
+        "space.inline.sm",
+        "space.inset.md",
+        "space.inset.sm",
+        "space.stack.sm",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.popover"
+      ],
+      "examples": {
+        "minimal": "PopoverMinimal",
+        "realistic": "PopoverRealistic"
+      },
+      "accessibility": [
+        "The trigger has aria-haspopup=\"dialog\" and aria-expanded; the popup is role=\"dialog\", named by PopoverTitle and described by PopoverDescription when they are there.",
+        "Enter or Space on the trigger opens it and moves focus into the popup; Tab moves through its controls and out of it, which closes it; Escape closes it and returns focus to the trigger.",
+        "A press outside closes it; it is not modal, so the page stays usable and is not hidden from assistive technology.",
+        "An icon trigger is an IconButton with an aria-label.",
+        "prefers-reduced-motion: reduce turns the scale and fade transitions off.",
+        "The popup takes the trigger's theme and density even in a scoped region, and sits at z.popover, so a popover opened from a dialog is above it."
+      ]
+    },
+    "example": "import { Button } from \"@/components/button/button\";\nimport { Field, FieldDescription, FieldLabel } from \"@/components/field/field\";\nimport { IconButton } from \"@/components/icon-button/icon-button\";\nimport { NumberInput } from \"@/components/number-input/number-input\";\nimport { Popover, PopoverClose, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from \"@/components/popover/popover\";\nimport { Switch } from \"@/components/switch/switch\";\n\n/** The smallest useful Popover: a few words about a status, attached to it. */\nexport function PopoverMinimal() {\n  return (\n    <Popover>\n      <PopoverTrigger render={<Button variant=\"ghost\" size=\"sm\" />}>Expires in 14 min</PopoverTrigger>\n      <PopoverContent>\n        <PopoverTitle>Access expires at 14:02</PopoverTitle>\n        <PopoverDescription>Sessions drop at expiry. Renew access to keep working on orders-prod.</PopoverDescription>\n      </PopoverContent>\n    </Popover>\n  );\n}\n\nconst SlidersIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" aria-hidden=\"true\">\n    <path d=\"M3 4h10M3 8h10M3 12h10\" />\n    <circle cx=\"6\" cy=\"4\" r=\"1.5\" fill=\"currentColor\" />\n    <circle cx=\"10\" cy=\"8\" r=\"1.5\" fill=\"currentColor\" />\n    <circle cx=\"5\" cy=\"12\" r=\"1.5\" fill=\"currentColor\" />\n  </svg>\n);\n\n/** The query toolbar's run options: a small form under an icon button, with its own actions. */\nexport function PopoverRealistic() {\n  return (\n    <div className=\"flex items-center gap-inline-sm\">\n      <Popover>\n        <PopoverTrigger render={<IconButton aria-label=\"Run options\" variant=\"ghost\" />}>\n          <SlidersIcon />\n        </PopoverTrigger>\n        <PopoverContent align=\"start\">\n          <PopoverTitle>Run options</PopoverTitle>\n          <Field>\n            <FieldLabel>Row limit</FieldLabel>\n            <NumberInput defaultValue={1000} min={1} />\n            <FieldDescription>Blank means no limit.</FieldDescription>\n          </Field>\n          <Field>\n            <FieldLabel>\n              <Switch defaultChecked />\n              Confirm destructive statements\n            </FieldLabel>\n          </Field>\n          <div className=\"flex justify-end gap-inline-sm\">\n            <PopoverClose render={<Button variant=\"ghost\" size=\"sm\" />}>Cancel</PopoverClose>\n            <PopoverClose render={<Button size=\"sm\" />}>Apply</PopoverClose>\n          </div>\n        </PopoverContent>\n      </Popover>\n      <Popover>\n        <PopoverTrigger render={<Button variant=\"secondary\" size=\"sm\" />}>Grant</PopoverTrigger>\n        <PopoverContent side=\"right\">\n          <PopoverDescription>TLS required, verified against the deployment CA bundle.</PopoverDescription>\n        </PopoverContent>\n      </Popover>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

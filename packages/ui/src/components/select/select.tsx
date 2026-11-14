@@ -33,7 +33,7 @@ const iconClasses = ["flex shrink-0 text-fg-muted [&_svg]:size-icon-sm"];
  * names only; each wraps its own Base UI parts.
  */
 export const popupClasses = {
-  positioner: "z-[var(--by-z-dropdown)] outline-none",
+  positioner: "z-[var(--by-z-popover)] outline-none",
   popup: [
     "flex flex-col overflow-y-auto overscroll-contain rounded-md border border-border bg-overlay p-inset-xs font-sans text-body text-fg shadow-overlay outline-none",
     "transition-opacity duration-[var(--by-motion-duration-fast)] ease-enter",

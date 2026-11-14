@@ -4,6 +4,27 @@
   "homepage": "",
   "items": [
     {
+      "name": "alert-dialog",
+      "type": "registry:ui",
+      "title": "AlertDialog",
+      "description": "A decision the user must make before going on, on Base UI's AlertDialog: Dialog's scrim and popup with role=\"alertdialog\", no close button and no dismissal by an outside click, a Cancel and an Action in the footer.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn",
+        "@byterygon/dialog",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/alert-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "button",
       "type": "registry:ui",
       "title": "Button",
@@ -99,6 +120,26 @@
       "files": [
         {
           "path": "ui/date-picker.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "dialog",
+      "type": "registry:ui",
+      "title": "Dialog",
+      "description": "A modal dialog on Base UI's Dialog: a trigger, a scrim, a centred popup in four widths with a title, a description, a scrolling body, a footer of actions and a close button.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/icon-button",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/dialog.tsx",
           "type": "registry:ui"
         }
       ]
@@ -291,6 +332,25 @@
       ]
     },
     {
+      "name": "popover",
+      "type": "registry:ui",
+      "title": "Popover",
+      "description": "A small non-modal panel attached to a control, on Base UI's Popover: a trigger, and a popup on color.bg.overlay with an optional title, description, controls and a close action, placed on any side of the trigger.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/popover.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "radio-group",
       "type": "registry:ui",
       "title": "RadioGroup",
@@ -343,6 +403,27 @@
       "files": [
         {
           "path": "ui/select.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "sheet",
+      "type": "registry:ui",
+      "title": "Sheet",
+      "description": "A modal panel that slides in from an edge of the window over a scrim, on Base UI's Dialog: right, left, top or bottom, three widths, a header, a scrolling body, a pinned footer and a close button.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/dialog",
+        "@byterygon/icon-button",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/sheet.tsx",
           "type": "registry:ui"
         }
       ]
@@ -453,6 +534,25 @@
       "files": [
         {
           "path": "ui/toggle-group.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "tooltip",
+      "type": "registry:ui",
+      "title": "Tooltip",
+      "description": "A short label for a control, shown on hover and keyboard focus, on Base UI's Tooltip: a neutral-solid bubble at z.tooltip on any side of the trigger, with an optional keyboard shortcut.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/tooltip.tsx",
           "type": "registry:ui"
         }
       ]

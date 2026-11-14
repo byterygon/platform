@@ -1,0 +1,255 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "alert-dialog",
+  "type": "registry:ui",
+  "title": "AlertDialog",
+  "description": "A decision the user must make before going on, on Base UI's AlertDialog: Dialog's scrim and popup with role=\"alertdialog\", no close button and no dismissal by an outside click, a Cancel and an Action in the footer.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/button",
+    "@byterygon/cn",
+    "@byterygon/dialog",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/alert-dialog.tsx",
+      "type": "registry:ui",
+      "content": "import { AlertDialog as AlertDialogPrimitive } from \"@base-ui/react/alert-dialog\";\nimport { createContext, useContext, type ComponentProps, type ReactNode, type Ref } from \"react\";\nimport { Button, type ButtonProps } from \"@/components/ui/button\";\nimport { dialogClasses, dialogVariants, ScopeAnchor, useDialogScope, type DialogSize } from \"@/components/ui/dialog\";\nimport { cn } from \"@/lib/cn\";\nimport type { ThemeScope } from \"@/lib/theme-scope\";\n\n// A decision the user must make before going on, on Base UI's AlertDialog: like Dialog (and\n// styled by the same classes) but role=\"alertdialog\", with no close button, and a click outside\n// does not dismiss it. The footer holds AlertDialogCancel (closes, focused first) and\n// AlertDialogAction (runs the action; the caller closes the dialog when it is done).\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const alertDialogVariants = {\n  /** The popup's maximum width, from `size.panel.*`, as Dialog's. */\n  size: dialogVariants.size,\n} as const;\n\ninterface AlertDialogContextValue {\n  size: DialogSize;\n  scope: ThemeScope;\n  anchorRef: (element: Element | null) => void;\n}\n\nconst AlertDialogContext = createContext<AlertDialogContextValue>({ size: \"md\", scope: {}, anchorRef: () => {} });\n\nexport interface AlertDialogProps extends AlertDialogPrimitive.Root.Props {\n  /** The popup's maximum width, from `size.panel.*`. */\n  size?: DialogSize;\n}\n\n/**\n * An alert dialog on Base UI's AlertDialog. It renders no element: put an AlertDialogTrigger (or\n * open it through `open`) and an AlertDialogContent inside. Only Escape, AlertDialogCancel or the\n * caller close it.\n */\nexport function AlertDialog({ size = \"md\", onOpenChange, ...props }: AlertDialogProps) {\n  const { anchorRef, scope, refresh } = useDialogScope(props.open);\n  return (\n    <AlertDialogContext value={{ size, scope, anchorRef }}>\n      <AlertDialogPrimitive.Root\n        onOpenChange={(open, details) => {\n          if (open) refresh();\n          onOpenChange?.(open, details);\n        }}\n        {...props}\n      />\n    </AlertDialogContext>\n  );\n}\n\nexport interface AlertDialogTriggerProps extends AlertDialogPrimitive.Trigger.Props {\n  /** Reaches the trigger element. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** Opens the alert dialog. Unstyled: render a Button through `render`. */\nexport function AlertDialogTrigger(props: AlertDialogTriggerProps) {\n  return <AlertDialogPrimitive.Trigger data-slot=\"alert-dialog-trigger\" {...props} />;\n}\n\nexport interface AlertDialogBackdropProps extends Omit<AlertDialogPrimitive.Backdrop.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The scrim, as Dialog's. AlertDialogContent renders it. */\nexport function AlertDialogBackdrop({ className, ...props }: AlertDialogBackdropProps) {\n  const { scope } = useContext(AlertDialogContext);\n  return <AlertDialogPrimitive.Backdrop {...scope} data-slot=\"alert-dialog-backdrop\" className={cn(dialogClasses.backdrop, className)} {...props} />;\n}\n\nexport interface AlertDialogViewportProps extends Omit<AlertDialogPrimitive.Viewport.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The centring layer at z.modal, as Dialog's. AlertDialogContent renders it. */\nexport function AlertDialogViewport({ className, ...props }: AlertDialogViewportProps) {\n  const { scope } = useContext(AlertDialogContext);\n  return <AlertDialogPrimitive.Viewport {...scope} data-slot=\"alert-dialog-viewport\" className={cn(dialogClasses.viewport, className)} {...props} />;\n}\n\nexport interface AlertDialogContentProps extends Omit<AlertDialogPrimitive.Popup.Props, \"className\" | \"children\"> {\n  children?: ReactNode;\n  /** Extra classes for the popup, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The portal with the scrim, the viewport and the popup (role=\"alertdialog\"). */\nexport function AlertDialogContent({ className, children, ...props }: AlertDialogContentProps) {\n  const { size, anchorRef } = useContext(AlertDialogContext);\n  return (\n    <>\n      <ScopeAnchor anchorRef={anchorRef} />\n      <AlertDialogPrimitive.Portal>\n        <AlertDialogBackdrop />\n        <AlertDialogViewport>\n          <AlertDialogPrimitive.Popup data-slot=\"alert-dialog-content\" data-size={size} className={cn(dialogClasses.popup, alertDialogVariants.size[size], className)} {...props}>\n            {children}\n          </AlertDialogPrimitive.Popup>\n        </AlertDialogViewport>\n      </AlertDialogPrimitive.Portal>\n    </>\n  );\n}\n\nexport interface AlertDialogSectionProps extends Omit<ComponentProps<\"div\">, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The title and description, stacked. */\nexport function AlertDialogHeader({ className, ...props }: AlertDialogSectionProps) {\n  return <div data-slot=\"alert-dialog-header\" className={cn(dialogClasses.header, className)} {...props} />;\n}\n\n/** What the decision is about (the statement, the target), between header and footer; it scrolls when long. */\nexport function AlertDialogBody({ className, ...props }: AlertDialogSectionProps) {\n  return <div data-slot=\"alert-dialog-body\" className={cn(dialogClasses.body, className)} {...props} />;\n}\n\n/** AlertDialogCancel, then AlertDialogAction, at the end of the row. */\nexport function AlertDialogFooter({ className, ...props }: AlertDialogSectionProps) {\n  return <div data-slot=\"alert-dialog-footer\" className={cn(dialogClasses.footer, className)} {...props} />;\n}\n\nexport interface AlertDialogTitleProps extends Omit<AlertDialogPrimitive.Title.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The question or the consequence, as an `<h2>` in type.heading-4; it names the dialog. */\nexport function AlertDialogTitle({ className, ...props }: AlertDialogTitleProps) {\n  return <AlertDialogPrimitive.Title data-slot=\"alert-dialog-title\" className={cn(dialogClasses.title, className)} {...props} />;\n}\n\nexport interface AlertDialogDescriptionProps extends Omit<AlertDialogPrimitive.Description.Props, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** What happens if the user goes on, in color.fg.muted; it describes the dialog. */\nexport function AlertDialogDescription({ className, ...props }: AlertDialogDescriptionProps) {\n  return <AlertDialogPrimitive.Description data-slot=\"alert-dialog-description\" className={cn(dialogClasses.description, className)} {...props} />;\n}\n\nexport interface AlertDialogCancelProps extends Omit<ButtonProps, \"render\"> {\n  /** Reaches the button. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** Closes the dialog without acting: a ghost Button by default. Focused when the dialog opens. */\nexport function AlertDialogCancel({ variant = \"ghost\", size = \"md\", loading = false, ...props }: AlertDialogCancelProps) {\n  return <AlertDialogPrimitive.Close data-slot=\"alert-dialog-cancel\" render={<Button variant={variant} size={size} loading={loading} />} {...props} />;\n}\n\nexport interface AlertDialogActionProps extends ButtonProps {\n  /** Reaches the button. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/**\n * The action the dialog asks for: a primary Button by default, `variant=\"danger\"` when it destroys\n * data. It does not close the dialog: do the work (show `loading`), then set `open` to false.\n */\nexport function AlertDialogAction(props: AlertDialogActionProps) {\n  return <Button data-slot=\"alert-dialog-action\" {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "alert-dialog",
+      "title": "AlertDialog",
+      "description": "A decision the user must make before going on, on Base UI's AlertDialog: Dialog's scrim and popup with role=\"alertdialog\", no close button and no dismissal by an outside click, a Cancel and an Action in the footer.",
+      "usage": "Use AlertDialog to confirm an action that destroys data or cannot be undone (delete a connection, run a destructive statement) or to approve something with consequences (grant access). Compose it as AlertDialog > AlertDialogTrigger (render a Button; or open it through open) + AlertDialogContent > AlertDialogHeader (AlertDialogTitle: the question or consequence; AlertDialogDescription), an optional AlertDialogBody (the statement, the target), AlertDialogFooter (AlertDialogCancel, then the action). An action that finishes at once can be an AlertDialogCancel with variant=\"danger\" (it closes); an action that waits for the core is an AlertDialogAction with loading, and the caller closes the dialog through open when it succeeds. Name the action after what it does (\"Delete\", \"Approve and save\"), not \"OK\". For a task that may be dismissed freely use Dialog.",
+      "status": "experimental",
+      "base": "@base-ui/react/alert-dialog",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\" | \"xl\"",
+          "default": "md",
+          "description": "The popup's maximum width, from size.panel.*, as Dialog's."
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state; defaultOpen when uncontrolled."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean, details) => void",
+          "description": "Called when the trigger, an AlertDialogCancel or Escape opens or closes it."
+        },
+        {
+          "name": "variant",
+          "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"",
+          "description": "AlertDialogAction (default primary) and AlertDialogCancel (default ghost): the Button's variant."
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "default": false,
+          "description": "AlertDialogAction: the action is running; the Button ignores clicks and sets aria-busy."
+        },
+        {
+          "name": "initialFocus",
+          "type": "RefObject<HTMLElement> | boolean",
+          "description": "AlertDialogContent: the element focused on open (default: the first focusable, usually Cancel)."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg",
+          "xl"
+        ]
+      },
+      "slots": [
+        {
+          "name": "backdrop",
+          "element": "div",
+          "description": "The scrim, color.bg.scrim at z.overlay; data-slot=\"alert-dialog-backdrop\"."
+        },
+        {
+          "name": "viewport",
+          "element": "div",
+          "description": "The fixed centring layer at z.modal with the region's data-theme and data-density; data-slot=\"alert-dialog-viewport\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "role=\"alertdialog\", color.bg.overlay with elevation.modal; data-slot=\"alert-dialog-content\", data-size."
+        }
+      ],
+      "parts": [
+        {
+          "name": "AlertDialogTrigger",
+          "slot": "alert-dialog-trigger",
+          "description": "Opens the dialog; unstyled, render a Button through render."
+        },
+        {
+          "name": "AlertDialogContent",
+          "slot": "alert-dialog-content",
+          "description": "The portal with the scrim, the viewport and the popup; no close button."
+        },
+        {
+          "name": "AlertDialogBackdrop",
+          "slot": "alert-dialog-backdrop",
+          "description": "The scrim; AlertDialogContent renders it."
+        },
+        {
+          "name": "AlertDialogViewport",
+          "slot": "alert-dialog-viewport",
+          "description": "The centring layer; AlertDialogContent renders it."
+        },
+        {
+          "name": "AlertDialogHeader",
+          "slot": "alert-dialog-header",
+          "description": "The title and description, stacked."
+        },
+        {
+          "name": "AlertDialogTitle",
+          "slot": "alert-dialog-title",
+          "description": "An <h2> in type.heading-4 that names the dialog."
+        },
+        {
+          "name": "AlertDialogDescription",
+          "slot": "alert-dialog-description",
+          "description": "A <p> in color.fg.muted that describes the dialog."
+        },
+        {
+          "name": "AlertDialogBody",
+          "slot": "alert-dialog-body",
+          "description": "What the decision is about; scrolls when long."
+        },
+        {
+          "name": "AlertDialogFooter",
+          "slot": "alert-dialog-footer",
+          "description": "Cancel, then the action, at the end of the row."
+        },
+        {
+          "name": "AlertDialogCancel",
+          "slot": "alert-dialog-cancel",
+          "description": "A Button (ghost by default) that closes the dialog."
+        },
+        {
+          "name": "AlertDialogAction",
+          "slot": "alert-dialog-action",
+          "description": "A Button (primary by default) that runs the action and does not close the dialog by itself."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "data-starting-style",
+          "description": "Opening: Dialog's scale and fade over motion.duration.slow; reduced motion turns them off."
+        },
+        {
+          "name": "closing",
+          "variant": "data-ending-style",
+          "description": "Closing: the reverse, with motion.easing.exit."
+        },
+        {
+          "name": "loading",
+          "variant": "data-loading",
+          "description": "AlertDialogAction with loading: the Button ignores clicks while the action runs."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-active",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.bg.inset",
+        "color.bg.overlay",
+        "color.bg.scrim",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.neutral.bg",
+        "color.neutral.bg-active",
+        "color.neutral.bg-hover",
+        "color.neutral.fg",
+        "color.ring",
+        "color.status.danger.solid",
+        "color.status.danger.solid-fg",
+        "color.status.danger.solid-hover",
+        "elevation.modal.shadow",
+        "font.mono",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.duration.slow",
+        "motion.easing.emphasized",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.lg",
+        "radius.md",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.icon.sm",
+        "size.panel.lg",
+        "size.panel.md",
+        "size.panel.sm",
+        "space.control.x",
+        "space.inline.md",
+        "space.inline.sm",
+        "space.inset.lg",
+        "space.inset.sm",
+        "space.stack.md",
+        "space.stack.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.code.leading",
+        "text.code.size",
+        "text.code.tracking",
+        "text.code.weight",
+        "text.heading-4.leading",
+        "text.heading-4.size",
+        "text.heading-4.tracking",
+        "text.heading-4.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.modal",
+        "z.overlay"
+      ],
+      "examples": {
+        "minimal": "AlertDialogMinimal",
+        "realistic": "AlertDialogRealistic"
+      },
+      "accessibility": [
+        "The popup is role=\"alertdialog\", named by AlertDialogTitle and described by AlertDialogDescription; while it is open the rest of the page is inert and hidden from assistive technology.",
+        "Opening moves focus to the first focusable element (Cancel in the usual footer order, so Enter does not confirm by accident); Tab stays inside; closing returns focus to the trigger.",
+        "Escape closes it (as Cancel); a press outside does not.",
+        "The action names what it does; a destructive one uses the danger variant and its text, so the meaning does not rest on colour.",
+        "prefers-reduced-motion: reduce turns the scale and fade transitions off."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport {\n  AlertDialog,\n  AlertDialogAction,\n  AlertDialogBody,\n  AlertDialogCancel,\n  AlertDialogContent,\n  AlertDialogDescription,\n  AlertDialogFooter,\n  AlertDialogHeader,\n  AlertDialogTitle,\n  AlertDialogTrigger,\n} from \"@/components/alert-dialog/alert-dialog\";\nimport { Button } from \"@/components/button/button\";\n\n/** The smallest useful AlertDialog: confirm deleting a connection. */\nexport function AlertDialogMinimal() {\n  return (\n    <AlertDialog size=\"sm\">\n      <AlertDialogTrigger render={<Button variant=\"danger\" />}>Delete connection</AlertDialogTrigger>\n      <AlertDialogContent>\n        <AlertDialogHeader>\n          <AlertDialogTitle>Delete “orders-prod”?</AlertDialogTitle>\n          <AlertDialogDescription>Its grant and the password in the keychain are removed. Query tabs on it are closed.</AlertDialogDescription>\n        </AlertDialogHeader>\n        <AlertDialogFooter>\n          <AlertDialogCancel>Cancel</AlertDialogCancel>\n          <AlertDialogCancel variant=\"danger\">Delete</AlertDialogCancel>\n        </AlertDialogFooter>\n      </AlertDialogContent>\n    </AlertDialog>\n  );\n}\n\n/**\n * DBee's two decisions: a destructive statement (the statement shown, a danger action) and the\n * access approval, whose action shows loading while the core creates the grant and then closes it.\n */\nexport function AlertDialogRealistic() {\n  const [approving, setApproving] = useState(false);\n  const [open, setOpen] = useState(false);\n  const approve = () => {\n    setApproving(true);\n    setTimeout(() => {\n      setApproving(false);\n      setOpen(false);\n    }, 600);\n  };\n  return (\n    <div className=\"flex flex-wrap items-center gap-inline-sm\">\n      <AlertDialog>\n        <AlertDialogTrigger render={<Button variant=\"secondary\" />}>Run TRUNCATE</AlertDialogTrigger>\n        <AlertDialogContent>\n          <AlertDialogHeader>\n            <AlertDialogTitle>This statement can destroy data</AlertDialogTitle>\n            <AlertDialogDescription>It removes every row of the table. Run it?</AlertDialogDescription>\n          </AlertDialogHeader>\n          <AlertDialogBody>\n            <pre className=\"overflow-x-auto rounded-md bg-inset p-inset-sm font-mono text-code text-fg\">truncate table orders;</pre>\n          </AlertDialogBody>\n          <AlertDialogFooter>\n            <AlertDialogCancel>Back</AlertDialogCancel>\n            <AlertDialogCancel variant=\"danger\">Run it</AlertDialogCancel>\n          </AlertDialogFooter>\n        </AlertDialogContent>\n      </AlertDialog>\n\n      <AlertDialog size=\"lg\" open={open} onOpenChange={setOpen}>\n        <AlertDialogTrigger render={<Button />}>Approve access</AlertDialogTrigger>\n        <AlertDialogContent>\n          <AlertDialogHeader>\n            <AlertDialogTitle>Approve access to orders-prod</AlertDialogTitle>\n            <AlertDialogDescription>DBee may connect only to this target, with this policy.</AlertDialogDescription>\n          </AlertDialogHeader>\n          <AlertDialogBody>\n            <dl className=\"flex flex-col gap-stack-xs text-body\">\n              {[\n                [\"Driver\", \"PostgreSQL (built in, Byterygon, native)\"],\n                [\"Target\", \"db.internal:5432, addresses 10.1.2.3\"],\n                [\"TLS\", \"Required, verified against the deployment CA bundle\"],\n              ].map(([term, description]) => (\n                <div key={term} className=\"flex flex-wrap gap-inline-md\">\n                  <dt className=\"text-fg-muted\">{term}</dt>\n                  <dd className=\"text-fg\">{description}</dd>\n                </div>\n              ))}\n            </dl>\n          </AlertDialogBody>\n          <AlertDialogFooter>\n            <AlertDialogCancel disabled={approving}>Back</AlertDialogCancel>\n            <AlertDialogAction loading={approving} onClick={approve}>\n              Approve and save\n            </AlertDialogAction>\n          </AlertDialogFooter>\n        </AlertDialogContent>\n      </AlertDialog>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

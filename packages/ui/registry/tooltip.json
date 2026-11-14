@@ -1,0 +1,190 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "tooltip",
+  "type": "registry:ui",
+  "title": "Tooltip",
+  "description": "A short label for a control, shown on hover and keyboard focus, on Base UI's Tooltip: a neutral-solid bubble at z.tooltip on any side of the trigger, with an optional keyboard shortcut.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/tooltip.tsx",
+      "type": "registry:ui",
+      "content": "import { Tooltip as TooltipPrimitive } from \"@base-ui/react/tooltip\";\nimport { createContext, useContext, type ComponentProps, type ReactNode, type Ref, type RefObject } from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenPx, useMergedRef, useThemeScope, type ThemeScope } from \"@/lib/theme-scope\";\n\n// A short label for a control, shown on hover and on keyboard focus, on Base UI's Tooltip:\n// `Tooltip` is the root, TooltipTrigger the control, TooltipContent the bubble (neutral solid, at\n// z.tooltip). Like Base UI's, the tooltip is visual: the trigger keeps its own accessible name\n// (aria-label on an IconButton), so screen readers do not depend on it. TooltipProvider (Base UI's\n// Provider) shares the delay across a toolbar so moving between buttons shows the next at once.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const tooltipVariants = {} as const;\n\nconst classes = {\n  positioner: \"z-[var(--by-z-tooltip)] outline-none\",\n  popup: [\n    \"flex max-w-panel-xs items-center gap-inline-sm rounded-sm bg-neutral-solid px-inset-sm py-inset-xs font-sans text-caption text-neutral-solid-fg shadow-overlay\",\n    \"transition-opacity duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none\",\n    \"data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit data-instant:transition-none\",\n  ],\n  shortcut: \"font-mono text-caption text-neutral-solid-fg\",\n} as const;\n\n/** The gap between the trigger and the tooltip: space.inline.xs where the trigger is. */\nconst tooltipOffset = (anchor: Element | null) => tokenPx(anchor, \"--by-space-inline-xs\", 4);\n\ninterface TooltipContextValue {\n  anchorRef: (element: Element | null) => void;\n  anchor: RefObject<Element | null>;\n  scope: ThemeScope;\n}\n\nconst TooltipContext = createContext<TooltipContextValue>({ anchorRef: () => {}, anchor: { current: null }, scope: {} });\n\n/** Shares the open delay across several tooltips (a toolbar); Base UI's Tooltip.Provider. */\nexport const TooltipProvider = TooltipPrimitive.Provider;\n\nexport type TooltipProps = TooltipPrimitive.Root.Props;\n\n/** A tooltip on Base UI's Tooltip. It renders no element: put a TooltipTrigger and a TooltipContent inside. */\nexport function Tooltip({ onOpenChange, ...props }: TooltipProps) {\n  const { ref, anchor, scope, refresh } = useThemeScope<Element>();\n  return (\n    <TooltipContext value={{ anchorRef: ref, anchor, scope }}>\n      <TooltipPrimitive.Root\n        onOpenChange={(open, details) => {\n          if (open) refresh();\n          onOpenChange?.(open, details);\n        }}\n        {...props}\n      />\n    </TooltipContext>\n  );\n}\n\nexport interface TooltipTriggerProps extends TooltipPrimitive.Trigger.Props {\n  /** Reaches the trigger element. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/**\n * The control the tooltip describes; unstyled, render an IconButton or a Button through `render`.\n * `delay` (ms before it opens, 600 by default) and `closeDelay` are set here, as in Base UI.\n */\nexport function TooltipTrigger({ ref, ...props }: TooltipTriggerProps) {\n  const { anchorRef } = useContext(TooltipContext);\n  const merged = useMergedRef<HTMLButtonElement>(anchorRef, ref);\n  return <TooltipPrimitive.Trigger data-slot=\"tooltip-trigger\" ref={merged} {...props} />;\n}\n\nexport interface TooltipContentProps extends Omit<TooltipPrimitive.Popup.Props, \"className\" | \"children\"> {\n  /** The side of the trigger it opens on. */\n  side?: TooltipPrimitive.Positioner.Props[\"side\"];\n  /** How it lines up with the trigger along that side. */\n  align?: TooltipPrimitive.Positioner.Props[\"align\"];\n  /** The gap to the trigger in px; space.inline.xs by default. */\n  sideOffset?: number;\n  children?: ReactNode;\n  /** Extra classes for the bubble, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The portal, the positioner (at z.tooltip, with the trigger's theme) and the bubble. */\nexport function TooltipContent({ side = \"top\", align = \"center\", sideOffset, className, children, ...props }: TooltipContentProps) {\n  const { anchor, scope } = useContext(TooltipContext);\n  return (\n    <TooltipPrimitive.Portal>\n      <TooltipPrimitive.Positioner {...scope} data-slot=\"tooltip-positioner\" side={side} align={align} sideOffset={sideOffset ?? (() => tooltipOffset(anchor.current))} className={cn(classes.positioner)}>\n        <TooltipPrimitive.Popup data-slot=\"tooltip-content\" className={cn(classes.popup, className)} {...props}>\n          {children}\n        </TooltipPrimitive.Popup>\n      </TooltipPrimitive.Positioner>\n    </TooltipPrimitive.Portal>\n  );\n}\n\nexport interface TooltipShortcutProps extends Omit<ComponentProps<\"kbd\">, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The keyboard shortcut of the action, after its name, in the code font. */\nexport function TooltipShortcut({ className, ...props }: TooltipShortcutProps) {\n  return <kbd data-slot=\"tooltip-shortcut\" className={cn(classes.shortcut, className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "tooltip",
+      "title": "Tooltip",
+      "description": "A short label for a control, shown on hover and keyboard focus, on Base UI's Tooltip: a neutral-solid bubble at z.tooltip on any side of the trigger, with an optional keyboard shortcut.",
+      "usage": "Use Tooltip to name an icon button or add a few words to a control, never for anything the user must read to act (put that on the page) and never on a disabled control (it cannot be focused). Compose it as Tooltip > TooltipTrigger (render the IconButton; it keeps its own aria-label) + TooltipContent (side, align) with the text and an optional TooltipShortcut. Wrap a toolbar in TooltipProvider (delay) so moving between its buttons shows each tooltip at once. Keep it to one line where possible. For a richer preview on hover use HoverCard; for controls or text the user clicks to open, Popover.",
+      "status": "experimental",
+      "base": "@base-ui/react/tooltip",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "description": "Controlled open state; defaultOpen when uncontrolled."
+        },
+        {
+          "name": "onOpenChange",
+          "type": "(open: boolean, details) => void",
+          "description": "Called when hover, focus, Escape or a press opens or closes it."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Never opens (the trigger stays usable)."
+        },
+        {
+          "name": "delay",
+          "type": "number",
+          "default": 600,
+          "description": "TooltipTrigger and TooltipProvider: ms of hover before it opens."
+        },
+        {
+          "name": "closeDelay",
+          "type": "number",
+          "default": 0,
+          "description": "TooltipTrigger and TooltipProvider: ms before it closes after the pointer leaves."
+        },
+        {
+          "name": "side",
+          "type": "\"top\" | \"right\" | \"bottom\" | \"left\" | \"inline-start\" | \"inline-end\"",
+          "default": "top",
+          "description": "TooltipContent: the side of the trigger; it flips when there is no room."
+        },
+        {
+          "name": "align",
+          "type": "\"start\" | \"center\" | \"end\"",
+          "default": "center",
+          "description": "TooltipContent: how it lines up with the trigger."
+        },
+        {
+          "name": "sideOffset",
+          "type": "number",
+          "description": "TooltipContent: the gap in px; space.inline.xs at the trigger by default."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "On each part: extra classes, merged after the component's own."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "positioner",
+          "element": "div",
+          "description": "In a portal at the end of <body>, at z.tooltip, with the trigger's data-theme and data-density; data-slot=\"tooltip-positioner\"."
+        },
+        {
+          "name": "popup",
+          "element": "div",
+          "description": "The bubble: color.neutral.bg with color.neutral.fg text in type.caption, at most size.panel.xs wide; data-slot=\"tooltip-content\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "TooltipTrigger",
+          "slot": "tooltip-trigger",
+          "description": "The control; unstyled, render an IconButton or Button through render."
+        },
+        {
+          "name": "TooltipContent",
+          "slot": "tooltip-content",
+          "description": "The portal, the positioner and the bubble."
+        },
+        {
+          "name": "TooltipShortcut",
+          "slot": "tooltip-shortcut",
+          "description": "A <kbd> with the action's shortcut, in the code font, after the text."
+        }
+      ],
+      "states": [
+        {
+          "name": "open",
+          "variant": "data-starting-style",
+          "description": "Opening: a fade over motion.duration.base with motion.easing.enter; moving within a TooltipProvider shows the next one at once (data-instant); reduced motion turns the fade off."
+        },
+        {
+          "name": "closing",
+          "variant": "data-ending-style",
+          "description": "Closing: a fade with motion.easing.exit."
+        },
+        {
+          "name": "instant",
+          "variant": "data-instant",
+          "description": "Opened right after another tooltip of the same provider, or by focus: no transition."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-active",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.fg.default",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.neutral.bg",
+        "color.neutral.fg",
+        "color.ring",
+        "elevation.overlay.shadow",
+        "font.mono",
+        "font.sans",
+        "motion.duration.base",
+        "motion.duration.fast",
+        "motion.easing.enter",
+        "motion.easing.exit",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "radius.sm",
+        "ring.offset",
+        "ring.width",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.sm",
+        "size.panel.xs",
+        "space.inline.sm",
+        "space.inset.sm",
+        "space.inset.xs",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.tooltip"
+      ],
+      "examples": {
+        "minimal": "TooltipMinimal",
+        "realistic": "TooltipRealistic"
+      },
+      "accessibility": [
+        "The tooltip is visual, as Base UI's: the trigger must have its own accessible name (an IconButton's aria-label says the same as the tooltip), so nothing depends on the tooltip being announced.",
+        "It opens on hover after delay and at once on keyboard focus, and closes on Escape, when the pointer leaves or when focus moves away; the trigger keeps focus throughout.",
+        "It holds no interactive content (a link or button inside cannot be reached); use Popover for that.",
+        "The bubble pairs color.neutral.fg on color.neutral.bg, which the token build checks for contrast in every mode.",
+        "prefers-reduced-motion: reduce turns the fade off."
+      ]
+    },
+    "example": "import { Button } from \"@/components/button/button\";\nimport { IconButton } from \"@/components/icon-button/icon-button\";\nimport { Tooltip, TooltipContent, TooltipProvider, TooltipShortcut, TooltipTrigger } from \"@/components/tooltip/tooltip\";\n\nconst PlayIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\">\n    <path d=\"M5 3.5v9l7-4.5z\" />\n  </svg>\n);\n\nconst StopIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"currentColor\" aria-hidden=\"true\">\n    <rect x=\"4\" y=\"4\" width=\"8\" height=\"8\" rx=\"1\" />\n  </svg>\n);\n\nconst DownloadIcon = () => (\n  <svg viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\" aria-hidden=\"true\">\n    <path d=\"M8 3v7m-3-3 3 3 3-3M3 13h10\" />\n  </svg>\n);\n\n/** The smallest useful Tooltip: the name of an icon button. */\nexport function TooltipMinimal() {\n  return (\n    <Tooltip>\n      <TooltipTrigger render={<IconButton aria-label=\"Run statement\" />}>\n        <PlayIcon />\n      </TooltipTrigger>\n      <TooltipContent>Run statement</TooltipContent>\n    </Tooltip>\n  );\n}\n\n/**\n * The query toolbar: one Provider so moving along the buttons shows each tooltip at once, the\n * shortcut after each name, one tooltip below, and one on a text button explaining why it waits\n * (open from the start, so the gallery shows the bubble).\n */\nexport function TooltipRealistic() {\n  return (\n    <TooltipProvider delay={400}>\n      <div className=\"flex items-center gap-inline-xs\">\n        <Tooltip>\n          <TooltipTrigger render={<IconButton aria-label=\"Run statement\" variant=\"primary\" />}>\n            <PlayIcon />\n          </TooltipTrigger>\n          <TooltipContent>\n            Run statement <TooltipShortcut>Ctrl+Enter</TooltipShortcut>\n          </TooltipContent>\n        </Tooltip>\n        <Tooltip>\n          <TooltipTrigger render={<IconButton aria-label=\"Cancel\" />}>\n            <StopIcon />\n          </TooltipTrigger>\n          <TooltipContent>\n            Cancel <TooltipShortcut>Shift+Escape</TooltipShortcut>\n          </TooltipContent>\n        </Tooltip>\n        <Tooltip>\n          <TooltipTrigger render={<IconButton aria-label=\"Export result\" />}>\n            <DownloadIcon />\n          </TooltipTrigger>\n          <TooltipContent side=\"bottom\">\n            Export result <TooltipShortcut>Ctrl+Shift+S</TooltipShortcut>\n          </TooltipContent>\n        </Tooltip>\n        <Tooltip defaultOpen>\n          <TooltipTrigger render={<Button variant=\"ghost\" size=\"sm\" />}>Run first statement</TooltipTrigger>\n          <TooltipContent side=\"bottom\">\n            The selection holds three statements; one run takes one. <TooltipShortcut>Ctrl+Enter</TooltipShortcut>\n          </TooltipContent>\n        </Tooltip>\n      </div>\n    </TooltipProvider>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

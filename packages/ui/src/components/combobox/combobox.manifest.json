@@ -37,7 +37,7 @@
     { "name": "input", "element": "input", "description": "role=\"combobox\" with aria-autocomplete=\"list\"; data-slot=\"combobox-input\". A hidden <input> follows the frame for forms." },
     { "name": "clear", "element": "button", "description": "Clears the value, shown while there is one; data-slot=\"combobox-clear\" and data-visible." },
     { "name": "trigger", "element": "button", "description": "The chevron that opens the list, out of the tab order; data-slot=\"combobox-trigger\"." },
-    { "name": "positioner", "element": "div", "description": "In a portal at the end of <body>, at z.dropdown, with the frame's data-theme and data-density; data-slot=\"combobox-positioner\"." },
+    { "name": "positioner", "element": "div", "description": "In a portal at the end of <body>, at z.popover (above dialogs), with the frame's data-theme and data-density; data-slot=\"combobox-positioner\"." },
     { "name": "popup", "element": "div", "description": "Select's surface; data-slot=\"combobox-popup\"." },
     { "name": "status", "element": "div", "description": "The status line, aria-live=\"polite\"; data-slot=\"combobox-status\"." },
     { "name": "empty", "element": "div", "description": "The no-results line; data-slot=\"combobox-empty\"." },
@@ -103,7 +103,7 @@
     "text.caption.size",
     "text.caption.tracking",
     "text.caption.weight",
-    "z.dropdown"
+    "z.popover"
   ],
   "examples": { "minimal": "ComboboxMinimal", "realistic": "ComboboxRealistic" },
   "accessibility": [

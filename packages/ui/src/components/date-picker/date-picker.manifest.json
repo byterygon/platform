@@ -39,7 +39,7 @@
     { "name": "root", "element": "div", "description": "The InputGroup frame; data-slot=\"date-picker\" and data-size. The popup is placed against it." },
     { "name": "input", "element": "input", "description": "The text field, Base UI's Input; data-slot=\"input-group-input\", aria-invalid while its text is not a date." },
     { "name": "trigger", "element": "button", "description": "The calendar button, a ghost InputGroupButton with aria-haspopup=\"dialog\"; data-slot=\"date-picker-trigger\" and data-popup-open." },
-    { "name": "positioner", "element": "div", "description": "In a portal at the end of <body>, at z.dropdown, with the frame's data-theme and data-density; data-slot=\"date-picker-positioner\"." },
+    { "name": "positioner", "element": "div", "description": "In a portal at the end of <body>, at z.popover (above dialogs), with the frame's data-theme and data-density; data-slot=\"date-picker-positioner\"." },
     { "name": "popup", "element": "div", "description": "role=\"dialog\" holding the Calendar, color.bg.overlay with elevation.overlay; data-slot=\"date-picker-popup\"." }
   ],
   "states": [
@@ -107,7 +107,7 @@
     "text.label.size",
     "text.label.tracking",
     "text.label.weight",
-    "z.dropdown"
+    "z.popover"
   ],
   "examples": { "minimal": "DatePickerMinimal", "realistic": "DatePickerRealistic" },
   "accessibility": [
