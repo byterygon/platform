@@ -22,6 +22,24 @@
       ]
     },
     {
+      "name": "checkbox",
+      "type": "registry:ui",
+      "title": "Checkbox",
+      "description": "A checkbox on Base UI's Checkbox, ticked, unticked or mixed, in three sizes, with CheckboxGroup for several checkboxes sharing one value and a parent \"select all\".",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/checkbox.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "field",
       "type": "registry:ui",
       "title": "Field",
@@ -133,6 +151,42 @@
       ]
     },
     {
+      "name": "radio-group",
+      "type": "registry:ui",
+      "title": "RadioGroup",
+      "description": "One choice out of several, on Base UI's RadioGroup and Radio: a fieldset of radios named by a FieldLegend, each option in a FieldItem with its own label and description, in three sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/radio-group.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "switch",
+      "type": "registry:ui",
+      "title": "Switch",
+      "description": "An on/off switch on Base UI's Switch: a track that fills with the accent solid and a sliding thumb, in three sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/switch.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "textarea",
       "type": "registry:ui",
       "title": "Textarea",
@@ -146,6 +200,43 @@
       "files": [
         {
           "path": "ui/textarea.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "toggle-button",
+      "type": "registry:ui",
+      "title": "ToggleButton",
+      "description": "A button that stays pressed or unpressed, on Base UI's Toggle, in a ghost or outline variant and three density-aware sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/toggle-button.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "toggle-group",
+      "type": "registry:ui",
+      "title": "ToggleGroup",
+      "description": "Toggle buttons with one shared value, on Base UI's ToggleGroup: a segmented outline track or quiet ghost items, single or multiple selection, horizontal or vertical, in three density-aware sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/toggle-button"
+      ],
+      "files": [
+        {
+          "path": "ui/toggle-group.tsx",
           "type": "registry:ui"
         }
       ]

@@ -79,6 +79,13 @@ What `test/conventions.test.tsx` enforces for every component:
   Base UI's Field parts; controls are Base UI `Input` (Field.Control), so Input, Textarea and
   InputGroupInput take the label, description and validity. A new input must work inside Field
   (test it: label, `aria-invalid`, `aria-describedby`).
+- Checkbox and Switch go inside their `FieldLabel` with the text (Base UI renders them as a
+  `<span role>` beside a hidden input, made to be wrapped by a label). A group of options is one
+  Field: RadioGroup and CheckboxGroup are fieldsets (Base UI's `Fieldset.Root` rendered as the
+  group), so `FieldLegend` goes first inside them, then a `FieldItem` per option with its
+  `FieldLabel` and optional `FieldDescription`. `FieldSet` with `FieldLegend` groups whole Fields.
+  An invalid group colours its legend and the controls' borders, not every option's text.
+- FieldLabel and the other Field parts need a `Field` around them (Base UI throws otherwise).
 - Form state and validation are TanStack Form: `useForm`, `<Form form={form}>`, `form.Field`, and
   `<Field field={field}>`, which maps `isTouched && !isValid`, `isTouched`, `isDirty` and `name`
   to Base UI's controlled `invalid`, `touched`, `dirty`, `name` and gives FieldError the errors.

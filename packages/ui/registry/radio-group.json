@@ -1,0 +1,185 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "radio-group",
+  "type": "registry:ui",
+  "title": "RadioGroup",
+  "description": "One choice out of several, on Base UI's RadioGroup and Radio: a fieldset of radios named by a FieldLegend, each option in a FieldItem with its own label and description, in three sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/radio-group.tsx",
+      "type": "registry:ui",
+      "content": "import { Fieldset as FieldsetPrimitive } from \"@base-ui/react/fieldset\";\nimport { Radio as RadioPrimitive } from \"@base-ui/react/radio\";\nimport { RadioGroup as RadioGroupPrimitive } from \"@base-ui/react/radio-group\";\nimport { cn } from \"@/lib/cn\";\n\n// One choice out of several, on Base UI's RadioGroup and Radio: a <div role=\"radiogroup\"> of\n// focusable <span role=\"radio\">s with hidden inputs for forms. Arrow keys move the selection,\n// Tab leaves the group. The group is a fieldset (Base UI's pattern), so a FieldLegend inside\n// names it; each option is a FieldItem whose FieldLabel wraps a RadioGroupItem.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const radioGroupVariants = {\n  size: {\n    sm: \"[&_[role=radio]]:size-icon-sm\",\n    md: \"[&_[role=radio]]:size-icon-md\",\n    lg: \"[&_[role=radio]]:size-icon-lg\",\n  },\n} as const;\n\nconst base = [\"flex min-w-0 flex-col gap-stack-sm\"];\n\nconst itemClasses = [\n  \"inline-flex shrink-0 items-center justify-center rounded-full border border-border-strong bg-surface text-accent-solid-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"hover:bg-hover\",\n  \"data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n  \"[&_svg]:block [&_svg]:size-full\",\n];\n\nconst Dot = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"currentColor\">\n    <circle cx=\"8\" cy=\"8\" r=\"3\" />\n  </svg>\n);\n\nexport interface RadioGroupProps extends Omit<RadioGroupPrimitive.Props<string>, \"className\" | \"render\"> {\n  /** Size of every radio in the group, from the `size.icon.*` roles. */\n  size?: keyof typeof radioGroupVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A set of options of which exactly one is chosen, on Base UI's RadioGroup. Use `value` and\n * `onValueChange`, or `defaultValue`. Put a FieldLegend first, then a FieldItem per option with a\n * FieldLabel around a RadioGroupItem and its text. The ref reaches the group's `<div>`.\n */\nexport function RadioGroup({ size = \"md\", className, disabled, ref, children, ...props }: RadioGroupProps) {\n  // Base UI's pattern for a labelled group: a Fieldset.Root rendered as the RadioGroup.\n  return (\n    <FieldsetPrimitive.Root\n      data-slot=\"radio-group\"\n      data-size={size}\n      ref={ref}\n      disabled={disabled}\n      className={cn(base, radioGroupVariants.size[size], className)}\n      render={<RadioGroupPrimitive disabled={disabled} {...props} />}\n    >\n      {children}\n    </FieldsetPrimitive.Root>\n  );\n}\n\nexport interface RadioGroupItemProps extends Omit<RadioPrimitive.Root.Props<string>, \"className\" | \"children\"> {\n  /** The value the group takes when this radio is chosen. */\n  value: string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** One radio of a RadioGroup, a `<span role=\"radio\">`; wrap it in a FieldLabel with its text. */\nexport function RadioGroupItem({ className, ...props }: RadioGroupItemProps) {\n  return (\n    <RadioPrimitive.Root data-slot=\"radio-group-item\" className={cn(itemClasses, className)} {...props}>\n      <RadioPrimitive.Indicator className=\"size-full\">\n        <Dot />\n      </RadioPrimitive.Indicator>\n    </RadioPrimitive.Root>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "radio-group",
+      "title": "RadioGroup",
+      "description": "One choice out of several, on Base UI's RadioGroup and Radio: a fieldset of radios named by a FieldLegend, each option in a FieldItem with its own label and description, in three sizes.",
+      "usage": "Use RadioGroup when the user must pick exactly one of two to about six options and should see them all at once (TLS mode, line endings). Put it in a Field, a FieldLegend first, then a FieldItem per option with a FieldLabel around a RadioGroupItem and its text, and a FieldDescription when the option needs explaining. With TanStack Form wire value, onValueChange and onBlur to the field; an empty value means nothing is chosen yet. For more options use Select; for a choice that applies at once in a toolbar, ToggleGroup; for yes/no, Checkbox or Switch.",
+      "status": "experimental",
+      "base": "@base-ui/react/radio-group",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "string",
+          "description": "Controlled value of the chosen radio."
+        },
+        {
+          "name": "defaultValue",
+          "type": "string",
+          "description": "Initially chosen value when uncontrolled."
+        },
+        {
+          "name": "onValueChange",
+          "type": "(value: string, details) => void",
+          "description": "Called when the user chooses another radio."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "Radio size from size.icon.sm, md or lg."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "The form field name of the radios' hidden inputs; a Field's name wins."
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "default": false,
+          "description": "A radio must be chosen before the form submits."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Disables every radio; FieldItem's disabled disables one."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Focusable but the choice cannot change."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the group's <div>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The group, role=\"radiogroup\", a column with gap space.stack.sm; data-slot=\"radio-group\" and data-size name it."
+        },
+        {
+          "name": "item",
+          "element": "span",
+          "description": "RadioGroupItem, role=\"radio\"; data-slot=\"radio-group-item\" and data-checked. A hidden <input type=\"radio\"> follows it."
+        },
+        {
+          "name": "indicator",
+          "element": "span",
+          "description": "The dot, rendered while the radio is chosen."
+        }
+      ],
+      "parts": [
+        {
+          "name": "RadioGroupItem",
+          "slot": "radio-group-item",
+          "description": "One radio, a circle with color.border.strong that fills with the accent solid and a dot in color.accent.fg when chosen."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over a radio: color.interactive.hover, or the accent solid's hover colour when chosen."
+        },
+        {
+          "name": "checked",
+          "variant": "data-checked",
+          "description": "The chosen radio: the accent solid with a dot."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: a ring of ring.width in color.ring."
+        },
+        {
+          "name": "invalid",
+          "variant": "data-invalid",
+          "description": "In an invalid Field: color.status.danger.border borders."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Ignores interaction, at opacity.disabled."
+        }
+      ],
+      "tokens": [
+        "color.accent.bg",
+        "color.accent.bg-hover",
+        "color.accent.fg",
+        "color.bg.surface",
+        "color.border.strong",
+        "color.interactive.hover",
+        "color.ring",
+        "color.status.danger.border",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "ring.offset",
+        "ring.width",
+        "size.icon.lg",
+        "size.icon.md",
+        "size.icon.sm",
+        "space.stack.sm"
+      ],
+      "examples": {
+        "minimal": "RadioGroupMinimal",
+        "realistic": "RadioGroupRealistic"
+      },
+      "accessibility": [
+        "Renders a <div role=\"radiogroup\"> named by its FieldLegend (aria-labelledby), with a <span role=\"radio\"> and aria-checked per option, and hidden native inputs for forms.",
+        "Tab enters the group at the chosen radio (or the first) and leaves it; arrow keys move the choice, skipping disabled radios.",
+        "Wrap each radio and its text in a FieldLabel: the text chooses it too, which enlarges the target beyond the 14 to 20 px circle (WCAG 2.2 target size). A FieldDescription inside the FieldItem describes that option only.",
+        "The chosen radio shows a dot as well as the accent fill; the border is color.border.strong (3:1 against the surface).",
+        "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend } from \"@/components/field/field\";\nimport { RadioGroup, RadioGroupItem } from \"@/components/radio-group/radio-group\";\n\n/** The smallest useful RadioGroup: a named choice of two. */\nexport function RadioGroupMinimal() {\n  return (\n    <Field>\n      <RadioGroup defaultValue=\"ssd\">\n        <FieldLegend>Storage</FieldLegend>\n        <FieldItem>\n          <FieldLabel>\n            <RadioGroupItem value=\"ssd\" />\n            SSD\n          </FieldLabel>\n        </FieldItem>\n        <FieldItem>\n          <FieldLabel>\n            <RadioGroupItem value=\"hdd\" />\n            HDD\n          </FieldLabel>\n        </FieldItem>\n      </RadioGroup>\n    </Field>\n  );\n}\n\nconst modes = [\n  { value: \"require\", label: \"Require\", hint: \"Encrypt, and fail if the server does not support TLS.\" },\n  { value: \"verify-full\", label: \"Verify full\", hint: \"Encrypt, and check the certificate and host name.\" },\n  { value: \"disable\", label: \"Disable\", hint: \"Send everything in clear text.\" },\n];\n\n/**\n * The TLS mode of a connection: a description per option, an option the policy forbids, an error\n * until one is chosen, and the small and large sizes.\n */\nexport function RadioGroupRealistic() {\n  const [mode, setMode] = useState(\"\");\n  return (\n    <div className=\"flex flex-col gap-stack-lg\">\n      <Field name=\"sslmode\" invalid={mode === \"\"}>\n        <RadioGroup value={mode} onValueChange={setMode}>\n          <FieldLegend>TLS mode</FieldLegend>\n          {modes.map((option) => (\n            <FieldItem key={option.value} disabled={option.value === \"disable\"}>\n              <FieldLabel>\n                <RadioGroupItem value={option.value} />\n                {option.label}\n              </FieldLabel>\n              <FieldDescription className=\"ps-inset-lg\">{option.hint}</FieldDescription>\n            </FieldItem>\n          ))}\n        </RadioGroup>\n        <FieldError>Choose how the connection is encrypted.</FieldError>\n      </Field>\n      <div className=\"flex flex-wrap gap-inline-xl\">\n        <Field>\n          <RadioGroup size=\"sm\" defaultValue=\"lf\">\n            <FieldLegend>Line endings</FieldLegend>\n            <FieldItem>\n              <FieldLabel className=\"text-caption\">\n                <RadioGroupItem value=\"lf\" />\n                LF\n              </FieldLabel>\n            </FieldItem>\n            <FieldItem>\n              <FieldLabel className=\"text-caption\">\n                <RadioGroupItem value=\"crlf\" />\n                CRLF\n              </FieldLabel>\n            </FieldItem>\n          </RadioGroup>\n        </Field>\n        <Field>\n          <RadioGroup size=\"lg\" defaultValue=\"utf8\">\n            <FieldLegend>Encoding</FieldLegend>\n            <FieldItem>\n              <FieldLabel className=\"text-body\">\n                <RadioGroupItem value=\"utf8\" />\n                UTF-8\n              </FieldLabel>\n            </FieldItem>\n            <FieldItem>\n              <FieldLabel className=\"text-body\">\n                <RadioGroupItem value=\"latin1\" />\n                Latin-1\n              </FieldLabel>\n            </FieldItem>\n          </RadioGroup>\n        </Field>\n      </div>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

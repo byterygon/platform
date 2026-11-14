@@ -31,7 +31,10 @@ const STOCK = ["button", "card", "input"];
  * The Byterygon items named on the command line. Button comes in through the registry
  * dependencies of icon-button and input-group as well; cn through every item.
  */
-const ITEMS = ["button", "input", "field", "form", "textarea", "input-group", "icon-button", "kbd"];
+const ITEMS = [
+  "button", "input", "field", "form", "textarea", "input-group", "icon-button", "kbd",
+  "toggle-button", "toggle-group", "checkbox", "radio-group", "switch",
+];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
 const OFFLINE_ENV = {
@@ -149,13 +152,18 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
+import { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Form } from "@/components/ui/form";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleButton } from "@/components/ui/toggle-button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button as StockButton } from "@/components/stock/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/stock/card";
 import { Input as StockInput } from "@/components/stock/input";
@@ -181,6 +189,28 @@ function Connection() {
       <Textarea aria-label="Notes" />
       <IconButton aria-label="Copy"><svg aria-hidden="true" viewBox="0 0 16 16" /></IconButton>
       <KbdGroup><Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd></KbdGroup>
+      <FieldSet>
+        <FieldLegend>Options</FieldLegend>
+        <Field name="tls">
+          <RadioGroup defaultValue="require">
+            <FieldLegend>TLS</FieldLegend>
+            <FieldItem><FieldLabel><RadioGroupItem value="require" />Require</FieldLabel></FieldItem>
+            <FieldItem><FieldLabel><RadioGroupItem value="disable" />Disable</FieldLabel></FieldItem>
+          </RadioGroup>
+        </Field>
+        <Field name="tables">
+          <CheckboxGroup defaultValue={["orders"]}>
+            <FieldLegend>Tables</FieldLegend>
+            <FieldItem><FieldLabel><Checkbox value="orders" />orders</FieldLabel></FieldItem>
+          </CheckboxGroup>
+        </Field>
+        <Field><FieldLabel><Switch defaultChecked />Auto-commit</FieldLabel></Field>
+      </FieldSet>
+      <ToggleButton defaultPressed>Wrap</ToggleButton>
+      <ToggleGroup aria-label="View" defaultValue={["grid"]}>
+        <ToggleGroupItem value="grid">Grid</ToggleGroupItem>
+        <ToggleGroupItem value="json">JSON</ToggleGroupItem>
+      </ToggleGroup>
     </Form>
   );
 }
@@ -307,6 +337,9 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["has-[[data-slot=input-group-input]:focus-visible]:outline-ring", "outline-color", "color.ring", "Byterygon InputGroup focus"],
   ["size-control-md", "width", "size.control.md", "Byterygon IconButton md (density)"],
   ["bg-inset", "background-color", "color.bg.inset", "Byterygon Kbd"],
+  ["data-pressed:bg-selected", "background-color", "color.interactive.selected", "Byterygon ToggleButton pressed"],
+  ["data-checked:bg-accent-solid", "background-color", "color.accent.bg", "Byterygon Checkbox, Radio and Switch checked"],
+  ["bg-border-strong", "background-color", "color.border.strong", "Byterygon Switch off"],
 ];
 
 function expected(path: TokenPath, mode: Mode): string {

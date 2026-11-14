@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "switch",
+  "title": "Switch",
+  "description": "An on/off switch on Base UI's Switch: a track that fills with the accent solid and a sliding thumb, in three sizes.",
+  "usage": "Use Switch for a setting that takes effect as soon as it is flipped (\"Auto-commit\", \"Read-only connection\"), in settings panels and side panels. Wrap it in a FieldLabel with its text (the text may come first) inside a Field, and add a FieldDescription for what it does; group related switches in a FieldSet with a FieldLegend. With TanStack Form wire checked, onCheckedChange and onBlur to the field. For a choice that only applies when a form is submitted, use Checkbox; for a toolbar toggle, ToggleButton.",
+  "status": "experimental",
+  "base": "@base-ui/react/switch",
+  "dependencies": ["@base-ui/react"],
+  "props": [
+    { "name": "checked", "type": "boolean", "description": "Controlled on state." },
+    { "name": "defaultChecked", "type": "boolean", "default": false, "description": "Initial state when uncontrolled." },
+    { "name": "onCheckedChange", "type": "(checked: boolean, details) => void", "description": "Called when the user flips it." },
+    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Thumb size from size.icon.xs, sm or md; the track is two thumbs wide." },
+    { "name": "name", "type": "string", "description": "The form field name of the hidden input; a Field's name wins." },
+    { "name": "value", "type": "string", "description": "Submitted while on (default \"on\")." },
+    { "name": "uncheckedValue", "type": "string", "description": "Submitted while off (default: nothing)." },
+    { "name": "required", "type": "boolean", "default": false, "description": "Must be on before the form submits." },
+    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction and sets data-disabled." },
+    { "name": "readOnly", "type": "boolean", "default": false, "description": "Focusable but cannot be flipped." },
+    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
+    { "name": "ref", "type": "Ref<HTMLSpanElement>", "description": "Reaches the <span role=\"switch\">." }
+  ],
+  "variants": {
+    "size": ["sm", "md", "lg"]
+  },
+  "slots": [
+    { "name": "root", "element": "span", "description": "The track, role=\"switch\"; data-slot=\"switch\", data-size, data-checked. A hidden <input type=\"checkbox\"> follows it." },
+    { "name": "thumb", "element": "span", "description": "The sliding thumb in color.bg.surface with elevation; data-slot=\"switch-thumb\"." }
+  ],
+  "states": [
+    { "name": "hover", "variant": "hover", "description": "Pointer over an on switch: the accent solid's hover colour." },
+    { "name": "checked", "variant": "data-checked", "props": { "defaultChecked": true }, "description": "On: the accent solid track, the thumb at the end." },
+    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus: a ring of ring.width in color.ring." },
+    { "name": "invalid", "variant": "data-invalid", "description": "In an invalid Field, while off: a color.status.danger.border track." },
+    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.accent.bg-hover",
+    "color.bg.surface",
+    "color.border.strong",
+    "color.ring",
+    "color.status.danger.border",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "ring.offset",
+    "ring.width",
+    "shadow.raised",
+    "size.icon.md",
+    "size.icon.sm",
+    "size.icon.xs"
+  ],
+  "examples": { "minimal": "SwitchMinimal", "realistic": "SwitchRealistic" },
+  "accessibility": [
+    "Renders a <span role=\"switch\"> with aria-checked and a hidden native input for forms; Tab reaches it, Space and Enter flip it.",
+    "Label it by wrapping it in a FieldLabel with its text; the text flips it too and enlarges the target beyond the track (WCAG 2.2 target size). Name the setting, not the state (\"Auto-commit\", not \"Auto-commit on\").",
+    "On and off differ by the thumb's position as well as the track colour; the off track is color.border.strong (3:1 against the surface).",
+    "The thumb slides in the reading direction (right in LTR, left in RTL).",
+    "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+  ]
+}
