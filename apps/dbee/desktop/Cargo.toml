@@ -1,0 +1,35 @@
+[package]
+name = "dbee-desktop"
+version = "0.0.0"
+description = "DBee desktop app: Tauri 2 shell around dbee-core with the ambidex-tauri IPC transport, a capability for the main window only, a strict CSP, no network listener and the native save dialog."
+license = "AGPL-3.0-only"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "dbee-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+ambidex = { path = "../../../crates/ambidex" }
+ambidex-tauri = { path = "../../../crates/ambidex-tauri" }
+dbee-core = { path = "../core" }
+security-types = { path = "../../../crates/security-types" }
+serde_json = "1.0.154"
+tauri = { version = "2.12.5", features = [] }
+tauri-plugin-dialog = "2"
+tokio = { version = "1.54.1", default-features = false, features = ["macros", "rt-multi-thread", "sync"] }
+
+[dev-dependencies]
+ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false, features = ["tauri"] }
+tauri = { version = "2.12.5", features = ["test"] }
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["time"] }

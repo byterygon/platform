@@ -41,6 +41,15 @@ jobs:
         env:
           BYTERYGON_REQUIRE_POSTGRES: "1"
           BYTERYGON_REQUIRE_WRITER_GATE: "1"
+      # DBee spec §14 (TSK-38): the desktop app's cold start is measured on Linux. The real app
+      # (WebKitGTK, the bundled page) starts under Xvfb, prints the time from process start to
+      # the core being ready, the window being ready and the first page load, and exits.
+      - name: DBee desktop cold start (Xvfb)
+        run: |
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends xvfb
+          cargo build -p dbee-desktop --locked
+          DBEE_WORKSPACE="$RUNNER_TEMP/dbee-workspace" DBEE_COLD_START_EXIT=1 \
+            timeout 180 xvfb-run -a target/debug/dbee-desktop
       # Ambidex spec §12: the conformance suite must pass on a network-disconnected runner. It
       # runs again in a fresh network namespace with only loopback, as the runner user, offline.
       # It includes the rpc-gen drift test (tests/codegen.rs), so this also shows that generation

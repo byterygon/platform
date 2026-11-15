@@ -8,8 +8,8 @@ this directory.
 
 The product is specified in the Notion Docs page **"DBee: UX and app spec for the first usable
 version"** (TSK-37), summarised below; TSK-38 (app skeleton) and TSK-39 (data grid) implement it.
-The spec is the source of truth; this file only orients a reader. `core/`, `rpc-gen/` and
-`server/` exist (TSK-38, batches 1 and 2); the desktop shell and the UI follow in the next batches.
+The spec is the source of truth; this file only orients a reader. `core/`, `rpc-gen/`,
+`server/` and `desktop/` exist (TSK-38, batches 1 to 3); the UI follows in the last batch.
 
 ## The first usable version
 
@@ -51,7 +51,7 @@ login method the specs allow.
 ```
 apps/dbee/core      dbee-core      router + procedures, connection manager, workspace, secret store, audit sink  (done)
 apps/dbee/rpc-gen   dbee-rpc-gen   writes ui/src/gen/api.ts and api.manifest.json (committed, drift-checked)   (done)
-apps/dbee/desktop   dbee-desktop   Tauri 2 app (ambidex-tauri, capability, CSP, native dialogs)               (next)
+apps/dbee/desktop   dbee-desktop   Tauri 2 app (ambidex-tauri, capability, CSP, native save dialog)           (done)
 apps/dbee/server    dbee-server    axum binary (ambidex-axum, static UI, TLS, Host/Origin config, audit verify) (done)
 apps/dbee/ui        @byterygon/dbee React + Vite; @byterygon/ambidex, Byterygon UI registry items, @byterygon/data-grid (next)
 packages/data-grid  @byterygon/data-grid  the virtualized Arrow grid (MIT OR Apache-2.0, TSK-39)
@@ -118,6 +118,28 @@ PostgreSQL; CI runs it in a network namespace with only loopback. The server run
 `server` mode with the session-only secret store (spec §11: no per-user secret storage before a
 logged-in user exists; a headless host's keychain is never touched) and the audit log on its own
 workspace path, the same hash-chained sink as the desktop until M3.
+
+### dbee-desktop
+
+The Tauri 2 app: the same core behind the `ambidex-tauri` plugin (`plugin:ambidex|connect`,
+`send`, `close`; one Tauri `Channel` per connection carrying raw frames). `capabilities/main.json`
+grants the plugin to the bundled `main` window only (`local: true`, no `remote` section) and the
+hub refuses other webviews; `tauri.conf.json` carries `ambidex_tauri::CSP` verbatim (`'self'`, the
+IPC origins, `worker-src 'self'` for the Arrow Worker, nothing remote) and no `devUrl`, so the app
+opens no network listener and loads only bundled content. The principal is
+`human:local:<os-user>` from the process environment, tenant `local`, through the same Authorizer
+and audit sink as the web shell. `files.chooseSavePath` opens the native save dialog
+(`tauri-plugin-dialog`) from the core and hands the webview a one-time handle, never a path.
+
+```sh
+cargo run -p dbee-desktop                      # DBEE_WORKSPACE overrides the workspace directory
+DBEE_COLD_START_EXIT=1 cargo run -p dbee-desktop   # print the cold-start times and exit (CI runs this under Xvfb)
+cargo test -p dbee-desktop                     # the app on Tauri's mock runtime; config and capability pinned
+```
+
+`build.frontendDist` points at `ui-placeholder/` until the UI batch replaces it with
+`../ui/dist`. Secrets go to the OS keychain where one exists; otherwise the core asks per
+session and persists nothing (the note is printed at start and shown by `app.info`).
 
 ## Ambidex procedures the skeleton builds
 
