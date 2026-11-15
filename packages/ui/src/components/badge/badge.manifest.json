@@ -1,0 +1,143 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "badge",
+  "title": "Badge",
+  "description": "A short, non-interactive label for status or a count, in six tones and four appearances, including a coloured dot before plain text.",
+  "usage": "Use Badge for a word or a number that describes something next to it: a connection's state (appearance=\"dot\"), a grant's mode (read-only, plaintext), a count. variant picks the tone (neutral, accent, danger, warning, success, info), appearance the weight: subtle in lists, solid for what must stand out, outline on busy surfaces, dot for live state. Keep it to one or two words; the text must say the status, never the colour alone. For a removable or clickable label use Tag; for a column's data type use TypeBadge; for a message use Alert.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"neutral\" | \"accent\" | \"danger\" | \"warning\" | \"success\" | \"info\"",
+      "default": "neutral",
+      "description": "The tone."
+    },
+    {
+      "name": "appearance",
+      "type": "\"subtle\" | \"solid\" | \"outline\" | \"dot\"",
+      "default": "subtle",
+      "description": "subtle tinted, solid filled, outline bordered, dot a coloured dot before plain text."
+    },
+    {
+      "name": "size",
+      "type": "\"sm\" | \"md\"",
+      "default": "sm",
+      "description": "sm (text.caption) in tables and trees, md (text.label) beside headings."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "The label; truncates with an ellipsis when it does not fit."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "neutral",
+      "accent",
+      "danger",
+      "warning",
+      "success",
+      "info"
+    ],
+    "appearance": [
+      "subtle",
+      "solid",
+      "outline",
+      "dot"
+    ],
+    "size": [
+      "sm",
+      "md"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "span",
+      "description": "The pill; data-slot=\"badge\", data-variant, data-appearance, data-size."
+    },
+    {
+      "name": "dot",
+      "element": "span",
+      "description": "The coloured dot of the dot appearance, aria-hidden; data-slot=\"badge-dot\"."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.accent.bg",
+    "color.accent.fg",
+    "color.accent.subtle-bg",
+    "color.accent.subtle-fg",
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.neutral.bg",
+    "color.neutral.fg",
+    "color.neutral.subtle-bg",
+    "color.neutral.subtle-fg",
+    "color.status.danger.bg",
+    "color.status.danger.border",
+    "color.status.danger.fg",
+    "color.status.danger.solid",
+    "color.status.danger.solid-fg",
+    "color.status.info.bg",
+    "color.status.info.border",
+    "color.status.info.fg",
+    "color.status.info.solid",
+    "color.status.info.solid-fg",
+    "color.status.success.bg",
+    "color.status.success.border",
+    "color.status.success.fg",
+    "color.status.success.solid",
+    "color.status.success.solid-fg",
+    "color.status.warning.bg",
+    "color.status.warning.border",
+    "color.status.warning.fg",
+    "color.status.warning.solid",
+    "color.status.warning.solid-fg",
+    "font.sans",
+    "size.control.sm",
+    "size.control.xs",
+    "size.icon.xs",
+    "space.inline.sm",
+    "space.inline.xs",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "BadgeMinimal",
+    "realistic": "BadgeRealistic"
+  },
+  "accessibility": [
+    "A <span> of text, read in place; not focusable and not interactive.",
+    "The status is in the words (\"connected\", \"plaintext\"); colour and the dot only repeat it, so nothing is conveyed by colour alone. The dot is aria-hidden.",
+    "Solid and subtle text colours are the status solid-fg and fg roles, which the token build checks for contrast on their backgrounds.",
+    "For a count, add context for screen readers when the number alone is ambiguous (\"3 notices\", or visually hidden text)."
+  ]
+}

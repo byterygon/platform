@@ -1,0 +1,174 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "tag",
+  "title": "Tag",
+  "description": "A label the user applied and can remove: a chip with an optional categorical colour swatch and a remove button; TagGroup wraps them in a row.",
+  "usage": "Use Tag for labels a user adds and removes (a saved query's labels, applied filters). onRemove adds a remove button; swatch (1 to 8) adds a colour dot from the colour-blind-safe chart.cat roles so tags of different categories can be told apart. Put tags in a TagGroup (role=\"list\") with role=\"listitem\" on each. For a read-only status word use Badge; for choosing several values in a field use MultiSelect, which has its own chips.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "The label; truncates when it does not fit (full text in title)."
+    },
+    {
+      "name": "variant",
+      "type": "\"neutral\" | \"accent\"",
+      "default": "neutral",
+      "description": "neutral for labels, accent for an active filter."
+    },
+    {
+      "name": "size",
+      "type": "\"sm\" | \"md\"",
+      "default": "sm",
+      "description": "sm (size.control.xs) in dense lists, md (size.control.sm) in forms."
+    },
+    {
+      "name": "swatch",
+      "type": "1 | 2 | 3 | 4 | 5 | 6 | 7 | 8",
+      "description": "A categorical colour dot, chart.cat.1..8."
+    },
+    {
+      "name": "onRemove",
+      "type": "() => void",
+      "description": "Shows a remove button that calls it."
+    },
+    {
+      "name": "removeLabel",
+      "type": "string",
+      "description": "Accessible name of the remove button; default \"Remove <label>\"."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Dims the tag and disables its remove button."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the tag."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "neutral",
+      "accent"
+    ],
+    "size": [
+      "sm",
+      "md"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "span",
+      "description": "The chip; data-slot=\"tag\", data-variant, data-size, data-disabled."
+    },
+    {
+      "name": "swatch",
+      "element": "span",
+      "description": "The colour dot, aria-hidden; data-slot=\"tag-swatch\"."
+    },
+    {
+      "name": "remove",
+      "element": "button",
+      "description": "The remove button; data-slot=\"tag-remove\"."
+    },
+    {
+      "name": "group",
+      "element": "div",
+      "description": "TagGroup, role=\"list\", a wrapping row; data-slot=\"tag-group\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "TagGroup",
+      "slot": "tag-group",
+      "description": "Tags in a wrapping row, role=\"list\"."
+    }
+  ],
+  "states": [
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over the remove button: color.interactive.hover."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the remove button: an inset ring of ring.width in color.ring."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "props": {
+        "disabled": true
+      },
+      "description": "Dimmed to opacity.disabled; the remove button does nothing."
+    }
+  ],
+  "tokens": [
+    "chart.cat.1",
+    "chart.cat.2",
+    "chart.cat.3",
+    "chart.cat.4",
+    "chart.cat.5",
+    "chart.cat.6",
+    "chart.cat.7",
+    "chart.cat.8",
+    "color.accent.subtle-bg",
+    "color.accent.subtle-fg",
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.interactive.hover",
+    "color.neutral.subtle-bg",
+    "color.neutral.subtle-fg",
+    "color.ring",
+    "font.sans",
+    "opacity.disabled",
+    "radius.sm",
+    "ring.width",
+    "size.control.sm",
+    "size.control.xs",
+    "size.icon.xs",
+    "space.inline.md",
+    "space.inline.sm",
+    "space.inline.xs",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "TagMinimal",
+    "realistic": "TagRealistic"
+  },
+  "accessibility": [
+    "The label is text; the remove button is a native <button> named \"Remove <label>\" (or removeLabel) in the tab order.",
+    "TagGroup is role=\"list\"; give each Tag role=\"listitem\" so screen readers count them.",
+    "The swatch is aria-hidden and the chart.cat palette is colour-blind safe; the label always carries the meaning.",
+    "When removing a tag moves focus, move it to the next tag's remove button or the group's input; the app owns that."
+  ]
+}

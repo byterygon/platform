@@ -1,0 +1,161 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "resizable",
+  "title": "Resizable",
+  "description": "Panes the user resizes by dragging or with the keyboard: a group of panels with focusable separator handles between them (ARIA window splitter).",
+  "usage": "Use Resizable for an app layout whose panes the user sizes: DBee's sidebar beside the editor, the editor above the results. Compose Resizable (orientation) > ResizablePanel, ResizableHandle, ResizablePanel …; panels and handles are direct children; nest a vertical group inside a panel for a grid of panes. Sizes are percentages: defaultSize, minSize, maxSize per panel, or sizes and onSizesChange on the group to persist them. collapsible lets Enter on the handle collapse the panel before it. Give the group a sized parent (it fills it). For a fixed rule between sections use Separator; for a collapsible app sidebar with an icon rail use Sidebar.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    {
+      "name": "orientation",
+      "type": "\"horizontal\" | \"vertical\"",
+      "default": "horizontal",
+      "description": "horizontal: panels side by side; vertical: stacked."
+    },
+    {
+      "name": "sizes",
+      "type": "number[]",
+      "description": "Panel sizes in percent (controlled)."
+    },
+    {
+      "name": "onSizesChange",
+      "type": "(sizes: number[]) => void",
+      "description": "Called with the new sizes while dragging or pressing keys."
+    },
+    {
+      "name": "keyboardStep",
+      "type": "number",
+      "default": 5,
+      "description": "Percent an arrow key moves a handle."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "ResizablePanel and ResizableHandle elements, alternating."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Names the group."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the group element."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The group, a flex row or column filling its parent; data-slot=\"resizable\", data-orientation."
+    },
+    {
+      "name": "panel",
+      "element": "div",
+      "description": "A pane sized by flex basis; data-slot=\"resizable-panel\", data-collapsed."
+    },
+    {
+      "name": "handle",
+      "element": "div",
+      "description": "role=\"separator\", a border.width.1 rule with a size.track hit area on each side; data-slot=\"resizable-handle\", data-orientation, data-dragging, data-disabled."
+    },
+    {
+      "name": "grip",
+      "element": "span",
+      "description": "The optional grip in the middle of the rule; data-slot=\"resizable-grip\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "ResizablePanel",
+      "slot": "resizable-panel",
+      "description": "One pane: defaultSize, minSize, maxSize, collapsible, collapsedSize (percent)."
+    },
+    {
+      "name": "ResizableHandle",
+      "slot": "resizable-handle",
+      "description": "The boundary between two panels; withGrip draws a grip, disabled fixes it, aria-label names it."
+    }
+  ],
+  "states": [
+    {
+      "name": "vertical",
+      "variant": "data-[orientation=vertical]",
+      "props": {
+        "orientation": "vertical"
+      },
+      "description": "Panels stacked; handles are horizontal rules moved with Up and Down."
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over a handle: color.border.focus."
+    },
+    {
+      "name": "dragging",
+      "variant": "data-dragging",
+      "description": "While a handle is dragged: color.border.focus."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on a handle: color.border.focus and a ring of ring.width in color.ring."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "description": "A handle that cannot move: no pointer events, out of the tab order."
+    }
+  ],
+  "tokens": [
+    "border.width.1",
+    "color.bg.inset",
+    "color.border.default",
+    "color.border.focus",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.ring",
+    "font.mono",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "ring.width",
+    "size.control.xs",
+    "size.track",
+    "space.inset.sm",
+    "space.stack.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight",
+    "z.base"
+  ],
+  "examples": {
+    "minimal": "ResizableMinimal",
+    "realistic": "ResizableRealistic"
+  },
+  "accessibility": [
+    "Each handle is a focusable role=\"separator\" (window splitter pattern) with aria-valuenow, aria-valuemin and aria-valuemax giving the size of the panel before it, and aria-controls naming that panel.",
+    "Arrow keys move the handle by keyboardStep percent (Left/Right in a horizontal group, mirrored in right-to-left; Up/Down in a vertical one); Home and End take the panel to its minimum and maximum; Enter collapses and restores a collapsible panel.",
+    "Name each handle with aria-label (\"Resize sidebar\"); aria-orientation is that of the rule (vertical in a horizontal group).",
+    "Dragging moves focus to the handle, so keyboard and pointer use the same element. The hit area is wider than the rule (size.track on each side)."
+  ]
+}

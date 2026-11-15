@@ -43,6 +43,24 @@
       ]
     },
     {
+      "name": "badge",
+      "type": "registry:ui",
+      "title": "Badge",
+      "description": "A short, non-interactive label for status or a count, in six tones and four appearances, including a coloured dot before plain text.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/badge.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "breadcrumb",
       "type": "registry:ui",
       "title": "Breadcrumb",
@@ -602,6 +620,22 @@
       ]
     },
     {
+      "name": "resizable",
+      "type": "registry:ui",
+      "title": "Resizable",
+      "description": "Panes the user resizes by dragging or with the keyboard: a group of panels with focusable separator handles between them (ARIA window splitter).",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/resizable.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "scroll-area",
       "type": "registry:ui",
       "title": "ScrollArea",
@@ -774,6 +808,24 @@
       ]
     },
     {
+      "name": "status-bar",
+      "type": "registry:ui",
+      "title": "StatusBar",
+      "description": "The thin bar at the bottom of an app or pane: one-line status items that truncate, buttons, a spacer, and live items announced politely.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/status-bar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "stepper",
       "type": "registry:ui",
       "title": "Stepper",
@@ -821,6 +873,24 @@
       "files": [
         {
           "path": "ui/tabs.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "tag",
+      "type": "registry:ui",
+      "title": "Tag",
+      "description": "A label the user applied and can remove: a chip with an optional categorical colour swatch and a remove button; TagGroup wraps them in a row.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/tag.tsx",
           "type": "registry:ui"
         }
       ]
@@ -917,6 +987,24 @@
       "files": [
         {
           "path": "ui/toggle-group.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "toolbar",
+      "type": "registry:ui",
+      "title": "Toolbar",
+      "description": "A row of quiet controls with one tab stop and arrow-key movement (role=\"toolbar\"), with groups, separators, links and a compact field.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/toolbar.tsx",
           "type": "registry:ui"
         }
       ]
