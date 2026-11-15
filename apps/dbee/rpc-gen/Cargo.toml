@@ -1,0 +1,20 @@
+[package]
+name = "dbee-rpc-gen"
+version = "0.0.0"
+description = "Writes DBee's generated api.ts and api.manifest.json from the dbee-core router (Ambidex spec §2)."
+license = "AGPL-3.0-only"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "dbee-rpc-gen"
+path = "src/main.rs"
+
+[dependencies]
+ambidex = { path = "../../../crates/ambidex" }
+dbee-core = { path = "../core" }

@@ -6,9 +6,10 @@ Host, the db-driver contract, Byterygon UI). Licensed under AGPL-3.0-only (see `
 the permissively licensed libraries in `crates/` and `packages/`. Permissive code never depends on
 this directory.
 
-This directory is still a placeholder. The product is specified in the Notion Docs page **"DBee: UX
-and app spec for the first usable version"** (TSK-37), summarised below; TSK-38 (app skeleton) and
-TSK-39 (data grid) implement it. The spec is the source of truth; this file only orients a reader.
+The product is specified in the Notion Docs page **"DBee: UX and app spec for the first usable
+version"** (TSK-37), summarised below; TSK-38 (app skeleton) and TSK-39 (data grid) implement it.
+The spec is the source of truth; this file only orients a reader. `core/` and `rpc-gen/` exist
+(TSK-38, first batch); the shells and the UI follow in the next batches.
 
 ## The first usable version
 
@@ -45,15 +46,51 @@ checks) builds, serves the same UI over the same Ambidex API and passes an autom
 test with a server-issued session, but has no human login until Ambidex M3 delivers OIDC, the only
 login method the specs allow.
 
-## Layout (planned by the spec)
+## Layout
 
 ```
-apps/dbee/core      dbee-core      router + procedures, connection manager, workspace, secret store, audit sink
-apps/dbee/desktop   dbee-desktop   Tauri 2 app (ambidex-tauri, capability, CSP, native dialogs)
-apps/dbee/server    dbee-server    axum binary (ambidex-axum, static UI, TLS, Host/Origin config)
-apps/dbee/rpc-gen   dbee-rpc-gen   writes ui/src/gen/api.ts and api.manifest.json (committed, drift-checked)
-apps/dbee/ui        @byterygon/dbee React + Vite; @byterygon/ambidex, Byterygon UI registry items, @byterygon/data-grid
-packages/data-grid  @byterygon/data-grid  the virtualized Arrow grid (MIT OR Apache-2.0)
+apps/dbee/core      dbee-core      router + procedures, connection manager, workspace, secret store, audit sink  (done)
+apps/dbee/rpc-gen   dbee-rpc-gen   writes ui/src/gen/api.ts and api.manifest.json (committed, drift-checked)   (done)
+apps/dbee/desktop   dbee-desktop   Tauri 2 app (ambidex-tauri, capability, CSP, native dialogs)               (next)
+apps/dbee/server    dbee-server    axum binary (ambidex-axum, static UI, TLS, Host/Origin config)              (next)
+apps/dbee/ui        @byterygon/dbee React + Vite; @byterygon/ambidex, Byterygon UI registry items, @byterygon/data-grid (next)
+packages/data-grid  @byterygon/data-grid  the virtualized Arrow grid (MIT OR Apache-2.0, TSK-39)
+```
+
+### dbee-core
+
+One crate, linked by both shells, so there is exactly one router, Authorizer, audit sink and
+connection manager. A shell calls `Core::start(CoreConfig)` and serves `Core::router()` with
+`Core::server_config()` through `ambidex-tauri` or `ambidex-axum`.
+
+- **Workspace** (`workspace.rs`): `DBEE_WORKSPACE` or `dirs::data_dir()/dbee/workspace`;
+  `connections.json` (grants as approved, driver settings, a secret *reference*, never a value),
+  `settings.json`, `tabs.json`, written atomically. The audit log is `audit/log.jsonl`.
+- **Secrets** (`secrets.rs`): the OS keychain through `keyring` (service `dbee`, account = the
+  secret reference), probed at startup. Without a keychain nothing is persisted: creating a
+  connection with a password fails with `SecretStoreUnavailable`, and a password given later
+  through `connections.setSecret` lives in memory for this process only (spec Open question 2).
+- **Audit** (`audit.rs`): append-only, hash-chained JSON Lines, fsync per entry, verified on open;
+  Plugin Host grant and broker entries carry the `parent_correlation_id` of the DBee call. A log
+  that cannot be opened fails closed: every recorded call answers `Unavailable`. `audit::verify` is
+  the checker behind `dbee-server audit verify`.
+- **Authorizer** (`authz.rs`): static; the local human holds every DBee permission, any chain with
+  an agent or plugin is denied, unknown permissions are denied.
+- **Connections** (`manager.rs`): `connections.prepare` resolves the host and builds the
+  `GrantPreview` with its digest; `connections.create` rebuilds it from the draft, refuses a stale
+  preview, stores the password, then creates the grant with the caller as approver (a chain with
+  `on_behalf_of` is refused) and only then writes the record. Grants are rebuilt at startup from
+  the records (audit detail `origin = workspace_restore`). Sessions open through a broker scope
+  bound to the calling principal; a connection's browser session is reused.
+- **Queries** (`api.rs`, `classify.rs`): `query.execute` classifies the SQL fail-closed,
+  re-authorizes with the connection target at the escalated risk, forwards the driver's Arrow IPC
+  chunks only when the client has a credit, and on Cancel calls the driver's
+  `ResultStream::cancel`. `export.run` decodes the chunks and encodes CSV, TSV or JSON Lines.
+
+```sh
+cargo test -p dbee-core                      # unit, router and engine tests (fake driver)
+BYTERYGON_REQUIRE_POSTGRES=1 cargo test -p dbee-core --test postgres   # throwaway cluster, non-root
+cargo run -p dbee-rpc-gen -- --check         # the committed ui/src/gen is current
 ```
 
 ## Ambidex procedures the skeleton builds

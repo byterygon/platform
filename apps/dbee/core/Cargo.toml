@@ -1,0 +1,50 @@
+[package]
+name = "dbee-core"
+version = "0.0.0"
+description = "DBee core: the Ambidex router and procedures, connection manager, workspace store, secret store, audit sink, SQL classifier and export encoders shared by the desktop and web shells."
+license = "AGPL-3.0-only"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["driver-postgres", "keychain"]
+# The first-party native PostgreSQL driver, compiled in (DBee spec §2).
+driver-postgres = ["dep:db-driver-postgres"]
+# The OS keychain through `keyring` (DBee spec §4). Without it the core only has the per-session
+# store and asks for the password at every connect.
+keychain = ["dep:keyring"]
+
+[dependencies]
+ambidex = { path = "../../../crates/ambidex", features = ["arrow"] }
+arrow-array = { version = "60.1.0", default-features = false }
+arrow-buffer = { version = "60.1.0", default-features = false }
+arrow-ipc = { version = "60.1.0", default-features = false }
+arrow-schema = { version = "60.1.0", default-features = false }
+base64 = { version = "0.22.1", default-features = false, features = ["std"] }
+db-driver = { path = "../../../crates/db-driver" }
+db-driver-postgres = { path = "../../../crates/db-driver-postgres", optional = true }
+dirs = "7.0.0"
+getrandom = "0.4.3"
+keyring = { version = "4.2.0", optional = true }
+plugin-host = { path = "../../../crates/plugin-host" }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
+security-types = { path = "../../../crates/security-types", features = ["tokio"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11"
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "sync", "macros", "time", "net"] }
+ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
+zeroize = "1.8"
+
+[dev-dependencies]
+ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false }
+db-driver = { path = "../../../crates/db-driver", features = ["conformance"] }
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time", "test-util"] }
