@@ -8,8 +8,8 @@ this directory.
 
 The product is specified in the Notion Docs page **"DBee: UX and app spec for the first usable
 version"** (TSK-37), summarised below; TSK-38 (app skeleton) and TSK-39 (data grid) implement it.
-The spec is the source of truth; this file only orients a reader. `core/` and `rpc-gen/` exist
-(TSK-38, first batch); the shells and the UI follow in the next batches.
+The spec is the source of truth; this file only orients a reader. `core/`, `rpc-gen/` and
+`server/` exist (TSK-38, batches 1 and 2); the desktop shell and the UI follow in the next batches.
 
 ## The first usable version
 
@@ -52,7 +52,7 @@ login method the specs allow.
 apps/dbee/core      dbee-core      router + procedures, connection manager, workspace, secret store, audit sink  (done)
 apps/dbee/rpc-gen   dbee-rpc-gen   writes ui/src/gen/api.ts and api.manifest.json (committed, drift-checked)   (done)
 apps/dbee/desktop   dbee-desktop   Tauri 2 app (ambidex-tauri, capability, CSP, native dialogs)               (next)
-apps/dbee/server    dbee-server    axum binary (ambidex-axum, static UI, TLS, Host/Origin config)              (next)
+apps/dbee/server    dbee-server    axum binary (ambidex-axum, static UI, TLS, Host/Origin config, audit verify) (done)
 apps/dbee/ui        @byterygon/dbee React + Vite; @byterygon/ambidex, Byterygon UI registry items, @byterygon/data-grid (next)
 packages/data-grid  @byterygon/data-grid  the virtualized Arrow grid (MIT OR Apache-2.0, TSK-39)
 ```
@@ -92,6 +92,32 @@ cargo test -p dbee-core                      # unit, router and engine tests (fa
 BYTERYGON_REQUIRE_POSTGRES=1 cargo test -p dbee-core --test postgres   # throwaway cluster, non-root
 cargo run -p dbee-rpc-gen -- --check         # the committed ui/src/gen is current
 ```
+
+### dbee-server
+
+The self-hosted web shell: the same core behind `ambidex-axum`. One binary WebSocket per tab at
+`/rpc/ws` over rustls TLS (PEM certificate and key from `--tls-cert`/`--tls-key`), every request
+behind the `--allowed-host` list (DNS rebinding), the upgrade behind the exact `--public-origin`
+(cross-site WebSocket hijacking) and a server-side session whose anti-CSRF token the Hello must
+carry. The built UI (`--ui DIR`, batch 4) is served next to it with a strict
+Content-Security-Policy (`'self'`, the WebSocket to the public origin, `worker-src 'self'` for the
+Arrow Worker, no frames), resolved only inside that directory. Plain HTTP is never served.
+
+```sh
+cargo run -p dbee-server -- serve --tls-cert cert.pem --tls-key key.pem \
+  --allowed-host dbee.example.com --public-origin https://dbee.example.com \
+  --bind 0.0.0.0:443 --workspace /var/lib/dbee --ui apps/dbee/ui/dist
+cargo run -p dbee-server -- audit verify /var/lib/dbee/audit/log.jsonl   # exit 0 when the chain verifies
+```
+
+**No human can log in before Ambidex M3** (spec Open question 1, Decision 2): the specs allow no
+login method but OIDC, so the server starts with an empty session table and refuses every
+`/rpc/ws` upgrade. `tests/e2e.rs` issues a session server-side and runs the whole flow (add a
+connection, approve it, run a query, receive Arrow chunks over the WebSocket) against a throwaway
+PostgreSQL; CI runs it in a network namespace with only loopback. The server runs the core in
+`server` mode with the session-only secret store (spec §11: no per-user secret storage before a
+logged-in user exists; a headless host's keychain is never touched) and the audit log on its own
+workspace path, the same hash-chained sink as the desktop until M3.
 
 ## Ambidex procedures the skeleton builds
 

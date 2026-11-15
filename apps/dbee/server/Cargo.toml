@@ -1,0 +1,37 @@
+[package]
+name = "dbee-server"
+version = "0.0.0"
+description = "DBee self-hosted web server: the DBee core behind ambidex-axum at /rpc/ws over rustls TLS with a Host allowlist and a public origin, the static UI, and `audit verify`."
+license = "AGPL-3.0-only"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "dbee-server"
+path = "src/main.rs"
+
+[dependencies]
+ambidex = { path = "../../../crates/ambidex" }
+ambidex-axum = { path = "../../../crates/ambidex-axum" }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
+dbee-core = { path = "../core" }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = { version = "1.15.1", features = ["std"] }
+security-types = { path = "../../../crates/security-types" }
+tokio = { version = "1.54.1", default-features = false, features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync"] }
+
+[dev-dependencies]
+ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
+serde_json = "1.0.154"
+sha2 = "0.11"
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["io-util", "process"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+tokio-tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"] }

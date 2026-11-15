@@ -4,6 +4,8 @@
 
 #![allow(dead_code)]
 
+pub mod cluster;
+
 use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
