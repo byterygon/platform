@@ -1,0 +1,178 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "json-viewer",
+  "title": "JsonViewer",
+  "description": "A JSON value as a keyboard-navigable, virtualized tree in the editor's syntax colours; objects and arrays expand and collapse.",
+  "usage": "Use JsonViewer to explore a JSON value: DBee's value viewer for json and jsonb cells, a plugin manifest, an API response in diagnostics. Pass value (parsed) or text (parsed here; invalid JSON shows an alert with the parser's message). defaultExpandDepth sets how much is open at first. Give it a height (h-panel-sm, h-full in a sized panel): it renders only the rows in view, so large arrays stay fast. onActiveChange gives the JSON Pointer of the row the keyboard is on. To show JSON as text, use CodeBlock with language=\"json\"; to edit it, CodeInput. Pass a stable value (memoize it): a new value object resets what is open.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    {
+      "name": "value",
+      "type": "unknown",
+      "description": "The value, already parsed."
+    },
+    {
+      "name": "text",
+      "type": "string",
+      "description": "JSON text to parse (instead of value)."
+    },
+    {
+      "name": "defaultExpandDepth",
+      "type": "number",
+      "default": 1,
+      "description": "Levels open at first; Infinity opens everything."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "default": "\"JSON\"",
+      "description": "The tree's accessible name."
+    },
+    {
+      "name": "onActiveChange",
+      "type": "(path: string, value: unknown) => void",
+      "description": "Called with the active row's JSON Pointer and value."
+    },
+    {
+      "name": "maxStringLength",
+      "type": "number",
+      "default": 1000,
+      "description": "Characters of a string shown in its row."
+    },
+    {
+      "name": "overscan",
+      "type": "number",
+      "default": 10,
+      "description": "Rows rendered above and below the visible ones."
+    },
+    {
+      "name": "invalidText",
+      "type": "ReactNode",
+      "default": "\"Not valid JSON:\"",
+      "description": "Shown before the parser's message for invalid text."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes; give it a height."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the tree element."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "role=\"tree\", the scroll container in editor.bg; data-slot=\"json-viewer\", data-invalid."
+    },
+    {
+      "name": "row",
+      "element": "div",
+      "description": "role=\"treeitem\" of size.control.xs; data-slot=\"json-viewer-row\", data-kind, data-active."
+    },
+    {
+      "name": "chevron",
+      "element": "span",
+      "description": "Turns when a container opens; data-slot=\"json-viewer-chevron\", data-expanded."
+    }
+  ],
+  "states": [
+    {
+      "name": "active",
+      "variant": "data-active",
+      "props": {
+        "defaultExpandDepth": 3,
+        "value": {
+          "id": 1,
+          "name": "Ana",
+          "tags": [
+            "vip",
+            "eu"
+          ],
+          "paid": true,
+          "note": null,
+          "nested": {
+            "total": 12.5
+          }
+        }
+      },
+      "description": "The row the keyboard is on: editor.line-highlight, and a ring while the tree has keyboard focus."
+    },
+    {
+      "name": "expanded",
+      "variant": "data-expanded",
+      "description": "An open container's chevron, turned a quarter."
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over a row: color.interactive.hover."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the tree: an inset ring of ring.width in color.ring."
+    },
+    {
+      "name": "invalid",
+      "variant": "data-invalid",
+      "props": {
+        "text": "{oops"
+      },
+      "description": "Invalid text: a color.status.danger.border frame and the parser's message in color.status.danger.fg."
+    }
+  ],
+  "tokens": [
+    "color.border.default",
+    "color.interactive.hover",
+    "color.ring",
+    "color.status.danger.border",
+    "color.status.danger.fg",
+    "editor.bg",
+    "editor.fg",
+    "editor.gutter",
+    "editor.line-highlight",
+    "font.mono",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "radius.md",
+    "ring.width",
+    "size.control.xs",
+    "size.icon.sm",
+    "size.icon.xs",
+    "space.inline.xs",
+    "space.inset.sm",
+    "syntax.constant",
+    "syntax.identifier",
+    "syntax.number",
+    "syntax.operator",
+    "syntax.string",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.code-sm.leading",
+    "text.code-sm.size",
+    "text.code-sm.tracking",
+    "text.code-sm.weight"
+  ],
+  "examples": {
+    "minimal": "JsonViewerMinimal",
+    "realistic": "JsonViewerRealistic"
+  },
+  "accessibility": [
+    "The ARIA treeview pattern: one tab stop (role=\"tree\") with aria-activedescendant naming the active row (always rendered, even outside the window); rows are role=\"treeitem\" with aria-level, aria-setsize, aria-posinset and aria-expanded on containers.",
+    "Keys: Up and Down move, Right opens a container then enters it, Left closes it then goes to its parent, Home and End go to the ends, Enter and Space toggle.",
+    "Keys, indices and values are text; colour (syntax.*) only repeats the kind, and strings keep their quotes.",
+    "Invalid text renders role=\"alert\" with the parser's message.",
+    "Virtualized: only rows in view are in the DOM, so screen readers move row by row with the keys rather than reading the whole value."
+  ]
+}

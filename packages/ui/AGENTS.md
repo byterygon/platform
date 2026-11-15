@@ -216,6 +216,17 @@ What `test/conventions.test.tsx` enforces for every component:
   serves up to ~900k rows (comfortable) or ~1.5M (compact); beyond that, the DataGrid.
 - Anything that can show more than ~1,000 rows or items is virtualized (Tree, Table's virtual
   body, CodeBlock and JsonViewer); state the limit in the manifest.
+- CodeBlock highlights without an editor: the CodeMirror grammars (`PostgreSQL.language.parser`,
+  `jsonLanguage.parser`) parse once and `@lezer/highlight`'s `highlightCode` colours only the lines
+  rendered, through a `tagHighlighter` that maps tags to `text-syntax-*` classes (the same roles
+  as CodeInput and SqlEditor). Above 1,000 lines it renders a window between spacers.
+- JsonViewer follows Tree (ARIA treeview, `aria-activedescendant`, rows of `size.control.xs`
+  rendered only in view). Paths are JSON Pointers. A new `value` object resets what is open.
+- Charts are SVG built here (Base UI has none; the project rule is to build what it lacks rather
+  than add a library, so no Recharts). Series take `chart.cat.1..8`, and lines/areas also get a
+  dash pattern and a marker shape so colour is never the only cue; long series are decimated to
+  min/max per pixel column; the data is in a visually hidden table (a summary above 1,000 rows).
+  Numbered colour classes are written out (`strokeClass`, `fillClass`, `softFillClass`).
 - A boolean prop is never a variant key (the suite passes variant values as strings, so
   `"false"` would be truthy): style it through a `data-*` attribute and list it as a state.
 - Part names start with the title (`DescriptionListItem`, slot `description-list-item`).
