@@ -1,0 +1,88 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "spinner",
+  "title": "Spinner",
+  "description": "An indeterminate activity indicator: a ring with a turning arc in size.icon.*, a polite status region that names what is loading.",
+  "usage": "Use Spinner when something is loading and the wait is short or unknown: a tree node's children, a running query in its tab, a connection opening. Give it a label that says what loads; inside a control that already says so (a Button with loading), pass label={null}. For a wait with known progress use Progress; for content whose shape is known use Skeleton.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "label",
+      "type": "ReactNode | null",
+      "default": "\"Loading\"",
+      "description": "Hidden text for screen readers; null hides the spinner from them."
+    },
+    {
+      "name": "variant",
+      "type": "\"current\" | \"accent\" | \"muted\"",
+      "default": "current",
+      "description": "currentColor, the accent solid, or color.fg.muted."
+    },
+    {
+      "name": "size",
+      "type": "\"sm\" | \"md\" | \"lg\"",
+      "default": "md",
+      "description": "size.icon.sm, md or lg."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "current",
+      "accent",
+      "muted"
+    ],
+    "size": [
+      "sm",
+      "md",
+      "lg"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "span",
+      "description": "role=\"status\" (aria-hidden when unlabelled); data-slot=\"spinner\", data-variant, data-size."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.accent.bg",
+    "color.border.default",
+    "color.fg.muted",
+    "opacity.overlay",
+    "size.icon.lg",
+    "size.icon.md",
+    "size.icon.sm",
+    "space.inline.xs"
+  ],
+  "examples": {
+    "minimal": "SpinnerMinimal",
+    "realistic": "SpinnerRealistic"
+  },
+  "accessibility": [
+    "A labelled spinner is role=\"status\" with visually hidden text, so screen readers announce what is loading; the SVG is aria-hidden.",
+    "label={null} sets aria-hidden for a spinner inside a control that already reports busy (aria-busy on a loading Button).",
+    "It turns through the Web Animations API, once per three motion.duration.slow, and never under prefers-reduced-motion; the still arc keeps its meaning.",
+    "Not focusable."
+  ]
+}

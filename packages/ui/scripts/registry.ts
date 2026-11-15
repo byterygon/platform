@@ -69,6 +69,11 @@ export const LIBS: Record<string, { dependencies: string[]; description: string;
     description: "Loads Monaco lazily from the app's own bundle (ESM, its editor worker through Vite's ?worker, no CDN or AMD loader) and builds a Monaco theme from the design tokens in scope at the editor. SqlEditor imports it from @/lib/monaco; with a bundler other than Vite, set MonacoEnvironment.getWorker and replace the ?worker import.",
     llms: "loads Monaco lazily and offline (Vite ?worker) and turns the token roles in scope into a Monaco theme; SqlEditor depends on it.",
   },
+  motion: {
+    dependencies: [],
+    description: "Looping animations without CSS keyframes (the token theme has none): the Web Animations API, periods derived from the motion tokens, never started under prefers-reduced-motion. Spinner, Progress and Skeleton import it from @/lib/motion.",
+    llms: "looping animations through the Web Animations API, off under reduced motion; Spinner, Progress and Skeleton depend on it.",
+  },
 };
 
 /**

@@ -31,6 +31,21 @@ Usage: Use Accordion for a list of sections a user reads or edits one at a time:
 - Tokens: color.bg.surface, color.border.default, color.fg.default, color.fg.link, color.fg.muted, color.ring, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.md, size.icon.md, size.panel.md, space.inline.md, space.inset.sm, space.inset.xs, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight
 - Accessibility: Each trigger is a <button> inside an <h3>, with aria-expanded and aria-controls naming its panel; Enter and Space toggle it. Triggers are native buttons in the tab order; Tab and Shift+Tab move between them. Base UI's Accordion has no arrow-key navigation between headers (optional in the ARIA accordion pattern). The panel is a region labelled by its trigger and is removed from the DOM while closed. The chevron is aria-hidden; the state is announced through aria-expanded. Its turn stops under prefers-reduced-motion.
 
+### Alert
+
+[alert.json](alert.json): A message in the page flow, in five tones with a status icon, a title, a description, actions and an optional close button; inline box or full-width banner.
+
+Usage: Use Alert for a message that belongs to a place on the page and stays until the condition changes: a query error under the editor (with SQLSTATE in <code>), a plaintext warning in the connection form, a grant about to expire across the top (layout="banner"). Compose Alert > AlertTitle, AlertDescription, AlertActions. Render it when the condition occurs: danger and warning are role="alert" and are announced at once. For a transient confirmation use Toast; for a decision the user must make, AlertDialog; for an empty view, EmptyState.
+
+- Wraps: @base-ui/react/use-render
+- Parts: AlertTitle (data-slot alert-title): The message in a few words.; AlertDescription (data-slot alert-description): What happened and what to do.; AlertActions (data-slot alert-actions): Buttons that act on the message.
+- variant: neutral, info, success, warning, danger
+- layout: inline, banner
+- Props: variant ("neutral" | "info" | "success" | "warning" | "danger", default "neutral"); layout ("inline" | "banner", default "inline"); icon (ReactNode | false); onDismiss (() => void); dismissLabel (string, default "\"Dismiss\""); children (ReactNode); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: 
+- Tokens: color.bg.surface, color.border.default, color.fg.default, color.fg.muted, color.status.danger.bg, color.status.danger.border, color.status.danger.fg, color.status.info.bg, color.status.info.border, color.status.info.fg, color.status.success.bg, color.status.success.border, color.status.success.fg, color.status.warning.bg, color.status.warning.border, color.status.warning.fg, font.mono, font.sans, radius.md, size.icon.md, space.inline.sm, space.inset.md, space.inset.sm, space.inset.xs, space.stack.xs, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight
+- Accessibility: Danger and warning alerts are role="alert" (assertive), the others role="status" (polite). Insert the alert when the condition occurs so it is announced; one already on the page at load may not be. The icon is aria-hidden; the title and description say the status in words, not by colour alone. The close button is an IconButton named by dismissLabel; move focus to a sensible place after dismissing if it was inside the alert. Text colours are the status fg roles on the status subtle backgrounds, which the token build checks for contrast; long identifiers wrap.
+
 ### AlertDialog
 
 [alert-dialog.json](alert-dialog.json): A decision the user must make before going on, on Base UI's AlertDialog: Dialog's scrim and popup with role="alertdialog", no close button and no dismissal by an outside click, a Cancel and an Action in the footer.
@@ -44,6 +59,20 @@ Usage: Use AlertDialog to confirm an action that destroys data or cannot be undo
 - States: open (data-starting-style), closing (data-ending-style), loading (data-loading)
 - Tokens: color.accent.bg, color.accent.bg-active, color.accent.bg-hover, color.accent.fg, color.bg.inset, color.bg.overlay, color.bg.scrim, color.border.default, color.fg.default, color.fg.muted, color.interactive.active, color.interactive.hover, color.neutral.bg, color.neutral.bg-active, color.neutral.bg-hover, color.neutral.fg, color.ring, color.status.danger.solid, color.status.danger.solid-fg, color.status.danger.solid-hover, elevation.modal.shadow, font.mono, font.sans, motion.duration.fast, motion.duration.slow, motion.easing.emphasized, motion.easing.exit, motion.easing.standard, opacity.disabled, radius.lg, radius.md, ring.offset, ring.width, size.control.md, size.icon.sm, size.panel.lg, size.panel.md, size.panel.sm, space.control.x, space.inline.md, space.inline.sm, space.inset.lg, space.inset.sm, space.stack.md, space.stack.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight, text.heading-4.leading, text.heading-4.size, text.heading-4.tracking, text.heading-4.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight, z.modal, z.overlay
 - Accessibility: The popup is role="alertdialog", named by AlertDialogTitle and described by AlertDialogDescription; while it is open the rest of the page is inert and hidden from assistive technology. Opening moves focus to the first focusable element (Cancel in the usual footer order, so Enter does not confirm by accident); Tab stays inside; closing returns focus to the trigger. Escape closes it (as Cancel); a press outside does not. The action names what it does; a destructive one uses the danger variant and its text, so the meaning does not rest on colour. prefers-reduced-motion: reduce turns the scale and fade transitions off.
+
+### Avatar
+
+[avatar.json](avatar.json): A person's or a service's picture, with initials (or another fallback) while it loads or when there is none; circle or square in three sizes.
+
+Usage: Use Avatar beside a name: the signed-in user, who approved a grant, a connection in a list (shape="square"). name is the accessible name and the source of the initials; src is a local or data: URL, never a remote service in an air-gapped app. fallback replaces the initials (an icon). The picture shows only once loaded. For a status next to a name use Badge.
+
+- Wraps: @base-ui/react/avatar
+- size: sm, md, lg
+- shape: circle, square
+- Props: name (string); src (string); fallback (ReactNode); size ("sm" | "md" | "lg", default "md"); shape ("circle" | "square", default "circle"); fallbackDelay (number); className (string); ref (Ref<HTMLSpanElement>)
+- States: 
+- Tokens: color.neutral.subtle-bg, color.neutral.subtle-fg, font.sans, radius.md, size.control.lg, size.control.sm, size.control.xs, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: The root is role="img" with aria-label from name; the picture has alt="" and the initials are aria-hidden, so the name is read once. When the avatar sits next to the same name in text, it repeats it; that is acceptable, or pass aria-hidden on the Avatar to skip it. Initials are color.neutral.subtle-fg on color.neutral.subtle-bg, contrast-checked by the token build. Not focusable.
 
 ### Badge
 
@@ -233,6 +262,20 @@ Usage: Use DropdownMenu for a list of actions or options behind one button: tab 
 - States: open (data-starting-style), closing (data-ending-style), highlighted (data-highlighted), submenu-open (data-popup-open), danger (data-danger), disabled (data-disabled)
 - Tokens: color.bg.overlay, color.border.default, color.fg.default, color.fg.disabled, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.neutral.bg, color.neutral.bg-active, color.neutral.bg-hover, color.neutral.fg, color.ring, color.status.danger.bg, color.status.danger.fg, elevation.overlay.shadow, font.sans, motion.duration.base, motion.duration.fast, motion.easing.enter, motion.easing.exit, motion.easing.standard, opacity.disabled, radius.md, radius.sm, ring.offset, ring.width, size.control.md, size.control.sm, size.control.xs, size.icon.sm, space.inline.lg, space.inline.sm, space.inset.sm, space.inset.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight, z.popover
 - Accessibility: The trigger has aria-haspopup="menu" and aria-expanded; the popup is role="menu" of role="menuitem", "menuitemcheckbox" (aria-checked) and "menuitemradio" items; groups are role="group" named by their label. Enter, Space or ArrowDown on the trigger opens the menu with the first item highlighted (ArrowUp: the last); arrow keys, Home and End move, typing jumps to an item, Enter or Space chooses, Escape closes and returns focus to the trigger. ArrowRight (inline-end) on a sub-trigger opens its submenu, ArrowLeft closes it. Disabled items stay reachable by the keyboard, as the ARIA menu pattern recommends, but have aria-disabled and cannot be chosen. A press outside closes the menu. A destructive item has danger and a clear label, so the meaning does not rest on colour; checked state shows a check mark or dot as well as aria-checked. prefers-reduced-motion: reduce turns the scale and fade transitions off. The menu and its submenus take the trigger's theme and density, and sit at z.popover so a menu opened from a dialog is above it.
+
+### EmptyState
+
+[empty-state.json](empty-state.json): What a view shows when it has nothing to show yet: an icon, a title, a sentence and the way forward; centered for a panel, inline for small places.
+
+Usage: Use EmptyState wherever a list, tree, grid or panel can be empty: first run ("No connections yet" with Add connection), a query with no rows, a filter with no matches. Say what is missing and what to do; offer one primary action. Compose EmptyState > EmptyStateIcon, EmptyStateTitle, EmptyStateDescription, EmptyStateActions; all optional. variant="inline" for a tree or a narrow list. For an error use Alert; for loading use Skeleton or Spinner.
+
+- Wraps: @base-ui/react/use-render
+- Parts: EmptyStateIcon (data-slot empty-state-icon): A decorative icon in a soft circle.; EmptyStateTitle (data-slot empty-state-title): What is missing, an <h3> by default.; EmptyStateDescription (data-slot empty-state-description): Why it is empty and what to do.; EmptyStateActions (data-slot empty-state-actions): The way forward: one primary Button, maybe a secondary one.
+- variant: centered, inline
+- Props: variant ("centered" | "inline", default "centered"); children (ReactNode); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: 
+- Tokens: color.bg.inset, color.border.default, color.fg.default, color.fg.muted, font.sans, radius.lg, radius.md, size.control.lg, size.control.sm, size.icon.lg, size.icon.sm, size.panel.md, size.panel.xs, space.inline.md, space.inline.sm, space.inset.sm, space.inset.xl, space.inset.xs, space.stack.sm, space.stack.xs, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.heading-4.leading, text.heading-4.size, text.heading-4.tracking, text.heading-4.weight
+- Accessibility: The title is a heading (<h3>) so screen-reader users find the empty view; render a <p> inside small places (a tree) where a heading would be noise. The icon is aria-hidden; the title and description carry the meaning. Actions are ordinary buttons in reading order; put the primary action first. Long titles and descriptions wrap.
 
 ### Field
 
@@ -431,6 +474,21 @@ Usage: Use Popover for a few controls or a short explanation that belongs to one
 - Tokens: color.accent.bg, color.accent.bg-active, color.accent.bg-hover, color.accent.fg, color.bg.overlay, color.border.default, color.fg.default, color.fg.muted, color.interactive.active, color.interactive.hover, color.neutral.bg, color.neutral.bg-active, color.neutral.bg-hover, color.neutral.fg, color.ring, elevation.overlay.shadow, font.sans, motion.duration.base, motion.duration.fast, motion.easing.enter, motion.easing.exit, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.md, size.control.sm, size.icon.sm, size.panel.sm, space.inline.sm, space.inset.md, space.inset.sm, space.stack.sm, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight, z.popover
 - Accessibility: The trigger has aria-haspopup="dialog" and aria-expanded; the popup is role="dialog", named by PopoverTitle and described by PopoverDescription when they are there. Enter or Space on the trigger opens it and moves focus into the popup; Tab moves through its controls and out of it, which closes it; Escape closes it and returns focus to the trigger. A press outside closes it; it is not modal, so the page stays usable and is not hidden from assistive technology. An icon trigger is an IconButton with an aria-label. prefers-reduced-motion: reduce turns the scale and fade transitions off. The popup takes the trigger's theme and density even in a scoped region, and sits at z.popover, so a popover opened from a dialog is above it.
 
+### Progress
+
+[progress.json](progress.json): A bar that shows how far a task has got, with an optional label and formatted value; value={null} is indeterminate.
+
+Usage: Use Progress for a task with measurable progress: an export, a large fetch, a memory budget. Pass value and max, or value={null} while the total is unknown. label names the task (and the bar); showValue prints the formatted value (format, getAriaValueText for "412,000 of 1,000,000 rows"). variant shows the outcome: success, warning, danger. For a short unknown wait use Spinner; for loading content with a known shape use Skeleton.
+
+- Wraps: @base-ui/react/progress
+- Parts: ProgressLabel (data-slot progress-label): The task's name; Progress renders it from label.; ProgressValue (data-slot progress-value): The formatted value; Progress renders it with showValue.
+- variant: accent, success, warning, danger
+- size: sm, md
+- Props: value (number | null); max (number, default 100); min (number, default 0); label (ReactNode); showValue (boolean, default false); format (Intl.NumberFormatOptions); getAriaValueText ((formatted: string, value: number | null) => string); variant ("accent" | "success" | "warning" | "danger", default "accent"); size ("sm" | "md", default "sm"); aria-label (string); className (string); ref (Ref<HTMLDivElement>)
+- States: indeterminate (data-indeterminate)
+- Tokens: color.accent.bg, color.bg.inset, color.fg.default, color.fg.muted, color.status.danger.solid, color.status.success.solid, color.status.warning.solid, font.sans, motion.duration.base, motion.easing.standard, size.panel.sm, size.panel.xs, size.track, space.inline.md, space.inline.sm, space.stack.xs, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: role="progressbar" with aria-valuenow, aria-valuemin, aria-valuemax and a formatted aria-valuetext (getAriaValueText for units such as rows); no aria-valuenow while indeterminate. label is the bar's accessible name (aria-labelledby); without one, pass aria-label. The outcome is in the label text ("Export failed at row 180,224"), not only the indicator colour. The width change and the indeterminate slide stop under prefers-reduced-motion.
+
 ### RadioGroup
 
 [radio-group.json](radio-group.json): One choice out of several, on Base UI's RadioGroup and Radio: a fieldset of radios named by a FieldLegend, each option in a FieldItem with its own label and description, in three sizes.
@@ -539,6 +597,19 @@ Usage: Use Sidebar for the persistent side panel of an application: DBee's conne
 - Tokens: color.bg.surface, color.border.default, color.fg.default, color.fg.disabled, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.interactive.selected, color.interactive.selected-hover, color.ring, font.sans, motion.duration.base, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.xs, size.icon.md, size.icon.sm, size.panel.sm, size.panel.xs, space.inline.sm, space.inset.sm, space.inset.xs, space.stack.sm, space.stack.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
 - Accessibility: The panel is an <aside> landmark named by aria-label; the main area is a <main>; sections are role="group" named by their labels; entries are buttons or links in a list, the current one with aria-current="page". SidebarTrigger is an IconButton named "Toggle sidebar" with aria-expanded and aria-controls pointing at the panel; Ctrl+B (Cmd+B on macOS) toggles it too (aria-keyshortcuts). In the icon rail the labels stay in the accessibility tree (visually hidden) and show as tooltips on hover and focus, so entries keep their names. An off-canvas sidebar that is closed is display:none, so its content leaves the tab order. The width change transitions over motion.duration.base; prefers-reduced-motion: reduce turns it off.
 
+### Skeleton
+
+[skeleton.json](skeleton.json): An aria-hidden placeholder in the shape of loading content (a text line, a block, a circle) that pulses slowly.
+
+Usage: Use Skeleton while content with a known shape loads: tree rows, a card, a line of text. Size blocks and circles with classes (h-control-sm w-panel-xs, size-control-md); text lines take the body text size. Mark the loading region aria-busy and name it (aria-label "Loading tables") or add a labelled Spinner. Keep the skeleton's layout close to the real content so nothing jumps. For an unknown shape use Spinner; for measurable progress use Progress.
+
+- Wraps: @base-ui/react/use-render
+- variant: text, block, circle
+- Props: variant ("text" | "block" | "circle", default "block"); animated (boolean, default true); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: 
+- Tokens: color.bg.inset, radius.md, radius.xs, text.body.size
+- Accessibility: Every skeleton is aria-hidden; the loading region carries aria-busy and a name (or a labelled Spinner), so screen readers announce loading once. Remove aria-busy when the content arrives so the region is read again. The pulse runs through the Web Animations API at eight motion.duration.slow per beat and never under prefers-reduced-motion. Not focusable.
+
 ### Slider
 
 [slider.json](slider.json): A slider on Base UI's Slider: one value or a range with two thumbs, horizontal or vertical, on a size.track track with an accent indicator, in three thumb sizes.
@@ -551,6 +622,20 @@ Usage: Use Slider for a value in a known range where the position matters more t
 - States: hover (hover), dragging (data-dragging), focus-visible (has-[:focus-visible]), invalid (data-invalid), disabled (data-disabled)
 - Tokens: color.accent.bg, color.bg.surface, color.border.default, color.border.strong, color.ring, color.status.danger.border, font.sans, motion.duration.fast, motion.easing.standard, opacity.disabled, ring.offset, ring.width, shadow.raised, size.control.xs, size.icon.lg, size.icon.md, size.icon.sm, size.track
 - Accessibility: Each thumb holds a native <input type="range">, so screen readers announce it as a slider with its value, and Tab reaches each thumb. Arrow keys move by step, PageUp/PageDown and Shift+arrow by largeStep, Home and End to min and max. A FieldLabel names a single thumb; name both thumbs of a range with getAriaLabel ("Minimum length", "Maximum length"). Use format so units are announced. The thumb has a color.border.strong border (3:1 against the surface and the track); the selected part is the accent solid. Focus shows a ring of ring.width in color.ring around the thumb (3:1 on every surface).
+
+### Spinner
+
+[spinner.json](spinner.json): An indeterminate activity indicator: a ring with a turning arc in size.icon.*, a polite status region that names what is loading.
+
+Usage: Use Spinner when something is loading and the wait is short or unknown: a tree node's children, a running query in its tab, a connection opening. Give it a label that says what loads; inside a control that already says so (a Button with loading), pass label={null}. For a wait with known progress use Progress; for content whose shape is known use Skeleton.
+
+- Wraps: @base-ui/react/use-render
+- variant: current, accent, muted
+- size: sm, md, lg
+- Props: label (ReactNode | null, default "\"Loading\""); variant ("current" | "accent" | "muted", default "current"); size ("sm" | "md" | "lg", default "md"); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: 
+- Tokens: color.accent.bg, color.border.default, color.fg.muted, opacity.overlay, size.icon.lg, size.icon.md, size.icon.sm, space.inline.xs
+- Accessibility: A labelled spinner is role="status" with visually hidden text, so screen readers announce what is loading; the SVG is aria-hidden. label={null} sets aria-hidden for a spinner inside a control that already reports busy (aria-busy on a loading Button). It turns through the Web Animations API, once per three motion.duration.slow, and never under prefers-reduced-motion; the still arc keeps its meaning. Not focusable.
 
 ### SplitButton
 
@@ -764,3 +849,4 @@ Usage: Use Tree for a hierarchy the user browses and opens: DBee's connections a
 - [cn.json](cn.json): class-name merging that knows the role names; every component depends on it.
 - [theme-scope.json](theme-scope.json): gives popups in a portal the theme and density of their trigger; the popup components depend on it.
 - [monaco.json](monaco.json): loads Monaco lazily and offline (Vite ?worker) and turns the token roles in scope into a Monaco theme; SqlEditor depends on it.
+- [motion.json](motion.json): looping animations through the Web Animations API, off under reduced motion; Spinner, Progress and Skeleton depend on it.

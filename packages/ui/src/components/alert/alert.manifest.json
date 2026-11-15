@@ -1,0 +1,170 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "alert",
+  "title": "Alert",
+  "description": "A message in the page flow, in five tones with a status icon, a title, a description, actions and an optional close button; inline box or full-width banner.",
+  "usage": "Use Alert for a message that belongs to a place on the page and stays until the condition changes: a query error under the editor (with SQLSTATE in <code>), a plaintext warning in the connection form, a grant about to expire across the top (layout=\"banner\"). Compose Alert > AlertTitle, AlertDescription, AlertActions. Render it when the condition occurs: danger and warning are role=\"alert\" and are announced at once. For a transient confirmation use Toast; for a decision the user must make, AlertDialog; for an empty view, EmptyState.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\"",
+      "default": "neutral",
+      "description": "Colours, icon and role (alert for danger and warning, status otherwise)."
+    },
+    {
+      "name": "layout",
+      "type": "\"inline\" | \"banner\"",
+      "default": "inline",
+      "description": "inline: a bordered box; banner: full width with a bottom border."
+    },
+    {
+      "name": "icon",
+      "type": "ReactNode | false",
+      "description": "Replaces the status icon; false shows none."
+    },
+    {
+      "name": "onDismiss",
+      "type": "() => void",
+      "description": "Shows a close button that calls it."
+    },
+    {
+      "name": "dismissLabel",
+      "type": "string",
+      "default": "\"Dismiss\"",
+      "description": "Accessible name of the close button."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "AlertTitle, AlertDescription, AlertActions."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "neutral",
+      "info",
+      "success",
+      "warning",
+      "danger"
+    ],
+    "layout": [
+      "inline",
+      "banner"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "role=\"alert\" or \"status\"; data-slot=\"alert\", data-variant, data-layout."
+    },
+    {
+      "name": "icon",
+      "element": "span",
+      "description": "The status icon, aria-hidden; data-slot=\"alert-icon\"."
+    },
+    {
+      "name": "title",
+      "element": "p",
+      "description": "text.body-strong in the status fg; data-slot=\"alert-title\"."
+    },
+    {
+      "name": "description",
+      "element": "div",
+      "description": "The detail; <code> in the code font; data-slot=\"alert-description\"."
+    },
+    {
+      "name": "actions",
+      "element": "div",
+      "description": "A wrapping row of buttons; data-slot=\"alert-actions\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "AlertTitle",
+      "slot": "alert-title",
+      "description": "The message in a few words."
+    },
+    {
+      "name": "AlertDescription",
+      "slot": "alert-description",
+      "description": "What happened and what to do."
+    },
+    {
+      "name": "AlertActions",
+      "slot": "alert-actions",
+      "description": "Buttons that act on the message."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.bg.surface",
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.status.danger.bg",
+    "color.status.danger.border",
+    "color.status.danger.fg",
+    "color.status.info.bg",
+    "color.status.info.border",
+    "color.status.info.fg",
+    "color.status.success.bg",
+    "color.status.success.border",
+    "color.status.success.fg",
+    "color.status.warning.bg",
+    "color.status.warning.border",
+    "color.status.warning.fg",
+    "font.mono",
+    "font.sans",
+    "radius.md",
+    "size.icon.md",
+    "space.inline.sm",
+    "space.inset.md",
+    "space.inset.sm",
+    "space.inset.xs",
+    "space.stack.xs",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight"
+  ],
+  "examples": {
+    "minimal": "AlertMinimal",
+    "realistic": "AlertRealistic"
+  },
+  "accessibility": [
+    "Danger and warning alerts are role=\"alert\" (assertive), the others role=\"status\" (polite). Insert the alert when the condition occurs so it is announced; one already on the page at load may not be.",
+    "The icon is aria-hidden; the title and description say the status in words, not by colour alone.",
+    "The close button is an IconButton named by dismissLabel; move focus to a sensible place after dismissing if it was inside the alert.",
+    "Text colours are the status fg roles on the status subtle backgrounds, which the token build checks for contrast; long identifiers wrap."
+  ]
+}

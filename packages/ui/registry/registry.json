@@ -22,6 +22,25 @@
       ]
     },
     {
+      "name": "alert",
+      "type": "registry:ui",
+      "title": "Alert",
+      "description": "A message in the page flow, in five tones with a status icon, a title, a description, actions and an optional close button; inline box or full-width banner.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/icon-button"
+      ],
+      "files": [
+        {
+          "path": "ui/alert.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "alert-dialog",
       "type": "registry:ui",
       "title": "AlertDialog",
@@ -38,6 +57,24 @@
       "files": [
         {
           "path": "ui/alert-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "avatar",
+      "type": "registry:ui",
+      "title": "Avatar",
+      "description": "A person's or a service's picture, with initials (or another fallback) while it loads or when there is none; circle or square in three sizes.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/avatar.tsx",
           "type": "registry:ui"
         }
       ]
@@ -314,6 +351,24 @@
       "files": [
         {
           "path": "ui/dropdown-menu.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "empty-state",
+      "type": "registry:ui",
+      "title": "EmptyState",
+      "description": "What a view shows when it has nothing to show yet: an icon, a title, a sentence and the way forward; centered for a panel, inline for small places.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/empty-state.tsx",
           "type": "registry:ui"
         }
       ]
@@ -602,6 +657,25 @@
       ]
     },
     {
+      "name": "progress",
+      "type": "registry:ui",
+      "title": "Progress",
+      "description": "A bar that shows how far a task has got, with an optional label and formatted value; value={null} is indeterminate.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/motion"
+      ],
+      "files": [
+        {
+          "path": "ui/progress.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "radio-group",
       "type": "registry:ui",
       "title": "RadioGroup",
@@ -752,6 +826,25 @@
       ]
     },
     {
+      "name": "skeleton",
+      "type": "registry:ui",
+      "title": "Skeleton",
+      "description": "An aria-hidden placeholder in the shape of loading content (a text line, a block, a circle) that pulses slowly.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/motion"
+      ],
+      "files": [
+        {
+          "path": "ui/skeleton.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "slider",
       "type": "registry:ui",
       "title": "Slider",
@@ -765,6 +858,25 @@
       "files": [
         {
           "path": "ui/slider.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "spinner",
+      "type": "registry:ui",
+      "title": "Spinner",
+      "description": "An indeterminate activity indicator: a ring with a turning arc in size.icon.*, a polite status region that names what is loading.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/motion"
+      ],
+      "files": [
+        {
+          "path": "ui/spinner.tsx",
           "type": "registry:ui"
         }
       ]
@@ -1084,6 +1196,19 @@
       "files": [
         {
           "path": "lib/monaco.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
+      "name": "motion",
+      "type": "registry:lib",
+      "title": "motion",
+      "description": "Looping animations without CSS keyframes (the token theme has none): the Web Animations API, periods derived from the motion tokens, never started under prefers-reduced-motion. Spinner, Progress and Skeleton import it from @/lib/motion.",
+      "dependencies": [],
+      "files": [
+        {
+          "path": "lib/motion.ts",
           "type": "registry:lib"
         }
       ]

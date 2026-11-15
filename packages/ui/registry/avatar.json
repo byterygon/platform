@@ -1,0 +1,143 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "avatar",
+  "type": "registry:ui",
+  "title": "Avatar",
+  "description": "A person's or a service's picture, with initials (or another fallback) while it loads or when there is none; circle or square in three sizes.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/avatar.tsx",
+      "type": "registry:ui",
+      "content": "import { Avatar as AvatarPrimitive } from \"@base-ui/react/avatar\";\nimport type { ReactNode } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// A person's or a service's picture, with initials while it loads or when there is none, on Base\n// UI's Avatar. The image only shows once it has loaded; until then (and if it fails) the fallback\n// shows. Air-gapped apps pass a local or data: URL for `src`, never a remote service; most of the\n// time there is no picture and the initials are the avatar. Squares (`shape=\"square\"`) suit\n// services and connections, circles people.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const avatarVariants = {\n  size: {\n    sm: \"size-control-xs text-caption\",\n    md: \"size-control-sm text-label\",\n    lg: \"size-control-lg text-body-strong\",\n  },\n  shape: {\n    circle: \"rounded-full\",\n    square: \"rounded-md\",\n  },\n} as const;\n\nconst base = [\"relative inline-flex shrink-0 select-none items-center justify-center overflow-hidden bg-neutral-subtle align-middle font-sans text-neutral-subtle-fg\"];\n\nconst classes = {\n  image: \"size-full object-cover\",\n  fallback: \"flex size-full items-center justify-center uppercase\",\n} as const;\n\n/** Up to two initials from a name: \"Uy Son\" → \"US\", \"orders-prod\" → \"OP\". */\nexport function initials(name: string | undefined): string {\n  const words = (name ?? \"\").trim().split(/[\\s._-]+/).filter(Boolean);\n  const letters = words.length > 1 ? [words[0]![0], words[words.length - 1]![0]] : [...(words[0] ?? \"\")].slice(0, 2);\n  return letters.join(\"\").toUpperCase();\n}\n\nexport interface AvatarProps extends Omit<AvatarPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Who or what it shows; the accessible name (alt) and the source of the initials. */\n  name: string;\n  /** A local or data: URL of the picture. */\n  src?: string;\n  /** Replaces the initials (an icon, a different text). */\n  fallback?: ReactNode;\n  /** size.control.xs, sm or lg. */\n  size?: keyof typeof avatarVariants.size;\n  /** circle for people, square for services and connections. */\n  shape?: keyof typeof avatarVariants.shape;\n  /** Wait this many ms before showing the fallback, so a fast image does not flash initials. */\n  fallbackDelay?: number;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The avatar: the picture once loaded, the initials otherwise. role=\"img\" named by `name`. The ref reaches the root `<span>`. */\nexport function Avatar({ name, src, fallback, size = \"md\", shape = \"circle\", fallbackDelay, className, ...props }: AvatarProps) {\n  return (\n    <AvatarPrimitive.Root role=\"img\" aria-label={name} data-slot=\"avatar\" data-size={size} data-shape={shape} className={cn(base, avatarVariants.size[size], avatarVariants.shape[shape], className)} {...props}>\n      {src ? <AvatarPrimitive.Image data-slot=\"avatar-image\" src={src} alt=\"\" className={classes.image} /> : null}\n      <AvatarPrimitive.Fallback data-slot=\"avatar-fallback\" delay={fallbackDelay} aria-hidden=\"true\" className={classes.fallback}>\n        {fallback ?? initials(name)}\n      </AvatarPrimitive.Fallback>\n    </AvatarPrimitive.Root>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "avatar",
+      "title": "Avatar",
+      "description": "A person's or a service's picture, with initials (or another fallback) while it loads or when there is none; circle or square in three sizes.",
+      "usage": "Use Avatar beside a name: the signed-in user, who approved a grant, a connection in a list (shape=\"square\"). name is the accessible name and the source of the initials; src is a local or data: URL, never a remote service in an air-gapped app. fallback replaces the initials (an icon). The picture shows only once loaded. For a status next to a name use Badge.",
+      "status": "experimental",
+      "base": "@base-ui/react/avatar",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Accessible name and source of the initials."
+        },
+        {
+          "name": "src",
+          "type": "string",
+          "description": "A local or data: URL of the picture."
+        },
+        {
+          "name": "fallback",
+          "type": "ReactNode",
+          "description": "Replaces the initials."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\" | \"lg\"",
+          "default": "md",
+          "description": "size.control.xs, sm or lg."
+        },
+        {
+          "name": "shape",
+          "type": "\"circle\" | \"square\"",
+          "default": "circle",
+          "description": "circle for people, square for services."
+        },
+        {
+          "name": "fallbackDelay",
+          "type": "number",
+          "description": "ms to wait before showing the fallback."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLSpanElement>",
+          "description": "Reaches the root <span>."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md",
+          "lg"
+        ],
+        "shape": [
+          "circle",
+          "square"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "span",
+          "description": "role=\"img\" named by name; data-slot=\"avatar\", data-size, data-shape."
+        },
+        {
+          "name": "image",
+          "element": "img",
+          "description": "The picture, alt=\"\" (the root carries the name); data-slot=\"avatar-image\"."
+        },
+        {
+          "name": "fallback",
+          "element": "span",
+          "description": "Initials or the fallback, aria-hidden; data-slot=\"avatar-fallback\"."
+        }
+      ],
+      "states": [],
+      "tokens": [
+        "color.neutral.subtle-bg",
+        "color.neutral.subtle-fg",
+        "font.sans",
+        "radius.md",
+        "size.control.lg",
+        "size.control.sm",
+        "size.control.xs",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "AvatarMinimal",
+        "realistic": "AvatarRealistic"
+      },
+      "accessibility": [
+        "The root is role=\"img\" with aria-label from name; the picture has alt=\"\" and the initials are aria-hidden, so the name is read once.",
+        "When the avatar sits next to the same name in text, it repeats it; that is acceptable, or pass aria-hidden on the Avatar to skip it.",
+        "Initials are color.neutral.subtle-fg on color.neutral.subtle-bg, contrast-checked by the token build.",
+        "Not focusable."
+      ]
+    },
+    "example": "import { Avatar } from \"@/components/avatar/avatar\";\n\n/** The smallest useful Avatar: initials from a name. */\nexport function AvatarMinimal() {\n  return <Avatar name=\"Uy Son\" />;\n}\n\nconst DbIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" className=\"size-icon-sm\">\n    <ellipse cx=\"8\" cy=\"4\" rx=\"5\" ry=\"2\" />\n    <path d=\"M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4\" />\n  </svg>\n);\n\n/** People and connections in DBee: the three sizes, a square service avatar with an icon, a long name. */\nexport function AvatarRealistic() {\n  return (\n    <div className=\"flex flex-col gap-stack-sm text-body text-fg\">\n      <div className=\"flex items-center gap-inline-sm\">\n        <Avatar name=\"Uy Son\" size=\"sm\" />\n        <Avatar name=\"Analyst Two\" size=\"md\" />\n        <Avatar name=\"Database Administrator\" size=\"lg\" />\n      </div>\n      <div className=\"flex items-center gap-inline-sm\">\n        <Avatar name=\"orders-prod\" shape=\"square\" />\n        <Avatar name=\"analytics warehouse\" shape=\"square\" fallback={<DbIcon />} />\n        <span className=\"truncate\">analytics_warehouse_replica_eu_central_1</span>\n      </div>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

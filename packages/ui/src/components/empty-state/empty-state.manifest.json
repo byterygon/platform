@@ -1,0 +1,141 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "empty-state",
+  "title": "EmptyState",
+  "description": "What a view shows when it has nothing to show yet: an icon, a title, a sentence and the way forward; centered for a panel, inline for small places.",
+  "usage": "Use EmptyState wherever a list, tree, grid or panel can be empty: first run (\"No connections yet\" with Add connection), a query with no rows, a filter with no matches. Say what is missing and what to do; offer one primary action. Compose EmptyState > EmptyStateIcon, EmptyStateTitle, EmptyStateDescription, EmptyStateActions; all optional. variant=\"inline\" for a tree or a narrow list. For an error use Alert; for loading use Skeleton or Spinner.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"centered\" | \"inline\"",
+      "default": "centered",
+      "description": "centered fills a panel; inline is a compact, start-aligned row."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "The parts."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "centered",
+      "inline"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "data-slot=\"empty-state\", data-variant."
+    },
+    {
+      "name": "icon",
+      "element": "div",
+      "description": "A soft circle in color.bg.inset with the icon, aria-hidden; data-slot=\"empty-state-icon\"."
+    },
+    {
+      "name": "title",
+      "element": "h3",
+      "description": "text.heading-4 (text.body-strong inline); data-slot=\"empty-state-title\"."
+    },
+    {
+      "name": "description",
+      "element": "p",
+      "description": "color.fg.muted; data-slot=\"empty-state-description\"."
+    },
+    {
+      "name": "actions",
+      "element": "div",
+      "description": "A wrapping row of buttons; data-slot=\"empty-state-actions\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "EmptyStateIcon",
+      "slot": "empty-state-icon",
+      "description": "A decorative icon in a soft circle."
+    },
+    {
+      "name": "EmptyStateTitle",
+      "slot": "empty-state-title",
+      "description": "What is missing, an <h3> by default."
+    },
+    {
+      "name": "EmptyStateDescription",
+      "slot": "empty-state-description",
+      "description": "Why it is empty and what to do."
+    },
+    {
+      "name": "EmptyStateActions",
+      "slot": "empty-state-actions",
+      "description": "The way forward: one primary Button, maybe a secondary one."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.bg.inset",
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.muted",
+    "font.sans",
+    "radius.lg",
+    "radius.md",
+    "size.control.lg",
+    "size.control.sm",
+    "size.icon.lg",
+    "size.icon.sm",
+    "size.panel.md",
+    "size.panel.xs",
+    "space.inline.md",
+    "space.inline.sm",
+    "space.inset.sm",
+    "space.inset.xl",
+    "space.inset.xs",
+    "space.stack.sm",
+    "space.stack.xs",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.heading-4.leading",
+    "text.heading-4.size",
+    "text.heading-4.tracking",
+    "text.heading-4.weight"
+  ],
+  "examples": {
+    "minimal": "EmptyStateMinimal",
+    "realistic": "EmptyStateRealistic"
+  },
+  "accessibility": [
+    "The title is a heading (<h3>) so screen-reader users find the empty view; render a <p> inside small places (a tree) where a heading would be noise.",
+    "The icon is aria-hidden; the title and description carry the meaning.",
+    "Actions are ordinary buttons in reading order; put the primary action first.",
+    "Long titles and descriptions wrap."
+  ]
+}
