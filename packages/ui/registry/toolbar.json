@@ -1,0 +1,226 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "toolbar",
+  "type": "registry:ui",
+  "title": "Toolbar",
+  "description": "A row of quiet controls with one tab stop and arrow-key movement (role=\"toolbar\"), with groups, separators, links and a compact field.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/toolbar.tsx",
+      "type": "registry:ui",
+      "content": "import { Toolbar as ToolbarPrimitive } from \"@base-ui/react/toolbar\";\nimport { cn } from \"@/lib/cn\";\n\n// A row of controls with one tab stop, on Base UI's Toolbar (role=\"toolbar\"; arrow keys move\n// between items): DBee's query tab bar (Run, Cancel, connection, row limit).\n// Toolbar > ToolbarGroup, ToolbarButton, ToolbarSeparator, ToolbarLink, ToolbarInput. A\n// ToolbarButton is a ghost button of size.control.sm; render a SplitButton, a Select or a\n// ToggleButton through `render` to keep them in the toolbar's focus order. A row wider than its\n// container scrolls sideways instead of wrapping, so the bar keeps its height.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const toolbarVariants = {\n  variant: {\n    bar: \"border-b border-border bg-surface px-inset-xs\",\n    plain: \"\",\n  },\n} as const;\n\nconst base = [\n  \"flex min-h-control-md min-w-0 items-center gap-inline-xs overflow-x-auto font-sans text-label text-fg\",\n  \"data-[orientation=vertical]:min-h-0 data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:overflow-x-visible\",\n];\n\nconst classes = {\n  group: \"flex shrink-0 items-center gap-inline-xs in-data-[orientation=vertical]:flex-col in-data-[orientation=vertical]:items-stretch\",\n  button: [\n    \"inline-flex h-control-sm shrink-0 cursor-default select-none items-center justify-center gap-inline-xs whitespace-nowrap rounded-md px-inset-xs text-label text-fg\",\n    \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n    \"hover:bg-hover active:bg-pressed data-pressed:bg-selected\",\n    \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n    \"data-disabled:pointer-events-none data-disabled:opacity-[var(--by-opacity-disabled)]\",\n    \"[&_svg]:size-icon-sm [&_svg]:shrink-0\",\n  ],\n  link: [\n    \"inline-flex h-control-sm shrink-0 items-center rounded-md px-inset-xs text-label text-fg-link underline-offset-4 hover:underline\",\n    \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n  ],\n  input: [\n    \"h-control-sm min-w-0 rounded-md border border-border-strong bg-surface px-inset-xs text-label text-fg placeholder:text-fg-subtle\",\n    \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n    \"data-disabled:opacity-[var(--by-opacity-disabled)]\",\n  ],\n  separator: [\n    \"shrink-0 self-stretch bg-border\",\n    \"data-[orientation=vertical]:my-inset-xs data-[orientation=vertical]:w-[var(--by-border-width-1)]\",\n    \"data-[orientation=horizontal]:mx-inset-xs data-[orientation=horizontal]:h-[var(--by-border-width-1)]\",\n  ],\n} as const;\n\nexport interface ToolbarProps extends Omit<ToolbarPrimitive.Root.Props, \"className\"> {\n  /** `bar` is a surface with a bottom border (a tab's tool row); `plain` has no frame. */\n  variant?: keyof typeof toolbarVariants.variant;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The toolbar, role=\"toolbar\"; give it an aria-label. The ref reaches the root `<div>`. */\nexport function Toolbar({ variant = \"bar\", className, ...props }: ToolbarProps) {\n  return <ToolbarPrimitive.Root data-slot=\"toolbar\" data-variant={variant} className={cn(base, toolbarVariants.variant[variant], className)} {...props} />;\n}\n\nexport interface ToolbarGroupProps extends Omit<ToolbarPrimitive.Group.Props, \"className\"> {\n  className?: string;\n}\n\n/** Items that belong together (Run and Cancel); `disabled` disables all of them. */\nexport function ToolbarGroup({ className, ...props }: ToolbarGroupProps) {\n  return <ToolbarPrimitive.Group data-slot=\"toolbar-group\" className={cn(classes.group, className)} {...props} />;\n}\n\nexport interface ToolbarButtonProps extends Omit<ToolbarPrimitive.Button.Props, \"className\"> {\n  className?: string;\n}\n\n/**\n * A quiet button in the toolbar's focus order. An icon-only one needs an aria-label. `render`\n * puts another control in its place (`render={<ToggleButton />}`); a disabled one stays\n * focusable (focusableWhenDisabled) so arrow keys do not skip it.\n */\nexport function ToolbarButton({ className, ...props }: ToolbarButtonProps) {\n  return <ToolbarPrimitive.Button data-slot=\"toolbar-button\" className={cn(classes.button, className)} {...props} />;\n}\n\nexport interface ToolbarLinkProps extends Omit<ToolbarPrimitive.Link.Props, \"className\"> {\n  className?: string;\n}\n\n/** A link in the toolbar's focus order (Docs, the audit log). */\nexport function ToolbarLink({ className, ...props }: ToolbarLinkProps) {\n  return <ToolbarPrimitive.Link data-slot=\"toolbar-link\" className={cn(classes.link, className)} {...props} />;\n}\n\nexport interface ToolbarInputProps extends Omit<ToolbarPrimitive.Input.Props, \"className\"> {\n  className?: string;\n}\n\n/** A compact text field in the toolbar (a filter); arrow keys at its ends leave it. Give it an aria-label. */\nexport function ToolbarInput({ className, ...props }: ToolbarInputProps) {\n  return <ToolbarPrimitive.Input data-slot=\"toolbar-input\" className={cn(classes.input, className)} {...props} />;\n}\n\nexport interface ToolbarSeparatorProps extends Omit<ToolbarPrimitive.Separator.Props, \"className\"> {\n  className?: string;\n}\n\n/** A rule between groups, perpendicular to the toolbar. */\nexport function ToolbarSeparator({ className, ...props }: ToolbarSeparatorProps) {\n  return <ToolbarPrimitive.Separator data-slot=\"toolbar-separator\" className={cn(classes.separator, className)} {...props} />;\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "toolbar",
+      "title": "Toolbar",
+      "description": "A row of quiet controls with one tab stop and arrow-key movement (role=\"toolbar\"), with groups, separators, links and a compact field.",
+      "usage": "Use Toolbar for a set of related commands above a surface: a query tab's Run, Cancel, Format and row limit; an editor's formatting row. Compose Toolbar > ToolbarGroup (ToolbarButton …), ToolbarSeparator, ToolbarLink, ToolbarInput. Give it an aria-label and icon-only buttons an aria-label. Put another control in the focus order with render (render={<ToggleButton />}); keep disabled buttons focusable with focusableWhenDisabled. For the app's bottom status line use StatusBar; for a menu bar of menus use Menubar.",
+      "status": "experimental",
+      "base": "@base-ui/react/toolbar",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "variant",
+          "type": "\"bar\" | \"plain\"",
+          "default": "bar",
+          "description": "bar: a surface with a bottom border; plain: no frame."
+        },
+        {
+          "name": "orientation",
+          "type": "\"horizontal\" | \"vertical\"",
+          "default": "horizontal",
+          "description": "Direction of the items and of the arrow keys that move between them."
+        },
+        {
+          "name": "loopFocus",
+          "type": "boolean",
+          "default": true,
+          "description": "Arrow keys wrap from the last item to the first."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Disables every item."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "required": true,
+          "description": "Names the toolbar."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "Groups, buttons, separators, links and inputs."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root <div>."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "bar",
+          "plain"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "role=\"toolbar\"; data-slot=\"toolbar\", data-variant, data-orientation. Scrolls sideways when too wide."
+        },
+        {
+          "name": "group",
+          "element": "div",
+          "description": "role=\"group\"; data-slot=\"toolbar-group\"."
+        },
+        {
+          "name": "button",
+          "element": "button",
+          "description": "A ghost button of size.control.sm; data-slot=\"toolbar-button\", data-pressed, data-disabled."
+        },
+        {
+          "name": "link",
+          "element": "a",
+          "description": "A link in color.fg.link; data-slot=\"toolbar-link\"."
+        },
+        {
+          "name": "input",
+          "element": "input",
+          "description": "A compact text field; data-slot=\"toolbar-input\"."
+        },
+        {
+          "name": "separator",
+          "element": "div",
+          "description": "A rule perpendicular to the toolbar; data-slot=\"toolbar-separator\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "ToolbarGroup",
+          "slot": "toolbar-group",
+          "description": "Items that belong together; disabled disables them all."
+        },
+        {
+          "name": "ToolbarButton",
+          "slot": "toolbar-button",
+          "description": "A quiet button in the focus order; render swaps the control."
+        },
+        {
+          "name": "ToolbarLink",
+          "slot": "toolbar-link",
+          "description": "A link in the focus order."
+        },
+        {
+          "name": "ToolbarInput",
+          "slot": "toolbar-input",
+          "description": "A compact text field; arrow keys at its ends leave it."
+        },
+        {
+          "name": "ToolbarSeparator",
+          "slot": "toolbar-separator",
+          "description": "A rule between groups."
+        }
+      ],
+      "states": [
+        {
+          "name": "vertical",
+          "variant": "data-[orientation=vertical]",
+          "props": {
+            "orientation": "vertical"
+          },
+          "description": "Items stacked; Up and Down move between them."
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over a button: color.interactive.hover."
+        },
+        {
+          "name": "active",
+          "variant": "active",
+          "description": "Pressing a button: color.interactive.active."
+        },
+        {
+          "name": "pressed",
+          "variant": "data-pressed",
+          "description": "A toggle rendered as a ToolbarButton, on: color.interactive.selected."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: an inset ring of ring.width in color.ring."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "description": "Dimmed to opacity.disabled; still focusable with focusableWhenDisabled."
+        }
+      ],
+      "tokens": [
+        "border.width.1",
+        "color.bg.surface",
+        "color.border.default",
+        "color.border.strong",
+        "color.fg.default",
+        "color.fg.link",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.interactive.selected",
+        "color.ring",
+        "font.sans",
+        "motion.duration.fast",
+        "motion.easing.standard",
+        "opacity.disabled",
+        "radius.md",
+        "ring.width",
+        "size.control.lg",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.sm",
+        "size.panel.xs",
+        "space.inline.xs",
+        "space.inset.xs",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "ToolbarMinimal",
+        "realistic": "ToolbarRealistic"
+      },
+      "accessibility": [
+        "role=\"toolbar\" with aria-orientation; the whole toolbar is one tab stop and the arrow keys move between items, wrapping at the ends with loopFocus (Base UI's roving focus; it has no Home/End).",
+        "Name the toolbar with aria-label and each icon-only button with aria-label.",
+        "Disabled buttons can stay focusable (focusableWhenDisabled) with aria-disabled, so arrow-key users still find them.",
+        "ToolbarInput keeps the arrow keys while the caret is inside the text and leaves at its ends.",
+        "Focus rings are inset so the toolbar's sideways scroll does not clip them."
+      ]
+    },
+    "example": "import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarInput, ToolbarLink, ToolbarSeparator } from \"@/components/toolbar/toolbar\";\n\nconst PlayIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"currentColor\">\n    <path d=\"M5 3.5v9l7-4.5z\" />\n  </svg>\n);\nconst StopIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"currentColor\">\n    <rect x=\"4\" y=\"4\" width=\"8\" height=\"8\" rx=\"1\" />\n  </svg>\n);\n\n/** The smallest useful Toolbar: two buttons. */\nexport function ToolbarMinimal() {\n  return (\n    <Toolbar aria-label=\"Query\">\n      <ToolbarButton>\n        <PlayIcon />\n        Run\n      </ToolbarButton>\n      <ToolbarButton>Format</ToolbarButton>\n    </Toolbar>\n  );\n}\n\n/** A query tab's tool row: run group with a disabled Cancel, a filter field, a link, and a plain vertical toolbar. */\nexport function ToolbarRealistic() {\n  return (\n    <div className=\"flex max-w-panel-lg flex-col gap-stack-md\">\n      <Toolbar aria-label=\"Query tools\">\n        <ToolbarGroup aria-label=\"Execution\">\n          <ToolbarButton>\n            <PlayIcon />\n            Run statement\n          </ToolbarButton>\n          <ToolbarButton disabled focusableWhenDisabled aria-label=\"Cancel\">\n            <StopIcon />\n          </ToolbarButton>\n        </ToolbarGroup>\n        <ToolbarSeparator />\n        <ToolbarGroup aria-label=\"Editor\">\n          <ToolbarButton>Format</ToolbarButton>\n          <ToolbarButton>Explain</ToolbarButton>\n        </ToolbarGroup>\n        <ToolbarSeparator />\n        <ToolbarInput aria-label=\"Row limit\" defaultValue=\"1000\" className=\"w-control-lg\" />\n        <ToolbarLink href=\"#audit\">Audit log</ToolbarLink>\n      </Toolbar>\n      <Toolbar aria-label=\"Panel\" orientation=\"vertical\" variant=\"plain\" className=\"w-panel-xs\">\n        <ToolbarButton>Connections</ToolbarButton>\n        <ToolbarSeparator />\n        <ToolbarButton>History</ToolbarButton>\n      </Toolbar>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

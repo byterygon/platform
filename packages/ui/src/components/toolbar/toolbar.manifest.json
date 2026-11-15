@@ -1,0 +1,201 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "toolbar",
+  "title": "Toolbar",
+  "description": "A row of quiet controls with one tab stop and arrow-key movement (role=\"toolbar\"), with groups, separators, links and a compact field.",
+  "usage": "Use Toolbar for a set of related commands above a surface: a query tab's Run, Cancel, Format and row limit; an editor's formatting row. Compose Toolbar > ToolbarGroup (ToolbarButton …), ToolbarSeparator, ToolbarLink, ToolbarInput. Give it an aria-label and icon-only buttons an aria-label. Put another control in the focus order with render (render={<ToggleButton />}); keep disabled buttons focusable with focusableWhenDisabled. For the app's bottom status line use StatusBar; for a menu bar of menus use Menubar.",
+  "status": "experimental",
+  "base": "@base-ui/react/toolbar",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"bar\" | \"plain\"",
+      "default": "bar",
+      "description": "bar: a surface with a bottom border; plain: no frame."
+    },
+    {
+      "name": "orientation",
+      "type": "\"horizontal\" | \"vertical\"",
+      "default": "horizontal",
+      "description": "Direction of the items and of the arrow keys that move between them."
+    },
+    {
+      "name": "loopFocus",
+      "type": "boolean",
+      "default": true,
+      "description": "Arrow keys wrap from the last item to the first."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Disables every item."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "required": true,
+      "description": "Names the toolbar."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "Groups, buttons, separators, links and inputs."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root <div>."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "bar",
+      "plain"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "role=\"toolbar\"; data-slot=\"toolbar\", data-variant, data-orientation. Scrolls sideways when too wide."
+    },
+    {
+      "name": "group",
+      "element": "div",
+      "description": "role=\"group\"; data-slot=\"toolbar-group\"."
+    },
+    {
+      "name": "button",
+      "element": "button",
+      "description": "A ghost button of size.control.sm; data-slot=\"toolbar-button\", data-pressed, data-disabled."
+    },
+    {
+      "name": "link",
+      "element": "a",
+      "description": "A link in color.fg.link; data-slot=\"toolbar-link\"."
+    },
+    {
+      "name": "input",
+      "element": "input",
+      "description": "A compact text field; data-slot=\"toolbar-input\"."
+    },
+    {
+      "name": "separator",
+      "element": "div",
+      "description": "A rule perpendicular to the toolbar; data-slot=\"toolbar-separator\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "ToolbarGroup",
+      "slot": "toolbar-group",
+      "description": "Items that belong together; disabled disables them all."
+    },
+    {
+      "name": "ToolbarButton",
+      "slot": "toolbar-button",
+      "description": "A quiet button in the focus order; render swaps the control."
+    },
+    {
+      "name": "ToolbarLink",
+      "slot": "toolbar-link",
+      "description": "A link in the focus order."
+    },
+    {
+      "name": "ToolbarInput",
+      "slot": "toolbar-input",
+      "description": "A compact text field; arrow keys at its ends leave it."
+    },
+    {
+      "name": "ToolbarSeparator",
+      "slot": "toolbar-separator",
+      "description": "A rule between groups."
+    }
+  ],
+  "states": [
+    {
+      "name": "vertical",
+      "variant": "data-[orientation=vertical]",
+      "props": {
+        "orientation": "vertical"
+      },
+      "description": "Items stacked; Up and Down move between them."
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over a button: color.interactive.hover."
+    },
+    {
+      "name": "active",
+      "variant": "active",
+      "description": "Pressing a button: color.interactive.active."
+    },
+    {
+      "name": "pressed",
+      "variant": "data-pressed",
+      "description": "A toggle rendered as a ToolbarButton, on: color.interactive.selected."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus: an inset ring of ring.width in color.ring."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "description": "Dimmed to opacity.disabled; still focusable with focusableWhenDisabled."
+    }
+  ],
+  "tokens": [
+    "border.width.1",
+    "color.bg.surface",
+    "color.border.default",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.link",
+    "color.fg.subtle",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.interactive.selected",
+    "color.ring",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.width",
+    "size.control.lg",
+    "size.control.md",
+    "size.control.sm",
+    "size.icon.sm",
+    "size.panel.xs",
+    "space.inline.xs",
+    "space.inset.xs",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "ToolbarMinimal",
+    "realistic": "ToolbarRealistic"
+  },
+  "accessibility": [
+    "role=\"toolbar\" with aria-orientation; the whole toolbar is one tab stop and the arrow keys move between items, wrapping at the ends with loopFocus (Base UI's roving focus; it has no Home/End).",
+    "Name the toolbar with aria-label and each icon-only button with aria-label.",
+    "Disabled buttons can stay focusable (focusableWhenDisabled) with aria-disabled, so arrow-key users still find them.",
+    "ToolbarInput keeps the arrow keys while the caret is inside the text and leaves at its ends.",
+    "Focus rings are inset so the toolbar's sideways scroll does not clip them."
+  ]
+}

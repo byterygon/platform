@@ -1,0 +1,199 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "tag",
+  "type": "registry:ui",
+  "title": "Tag",
+  "description": "A label the user applied and can remove: a chip with an optional categorical colour swatch and a remove button; TagGroup wraps them in a row.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/tag.tsx",
+      "type": "registry:ui",
+      "content": "import { Button as ButtonPrimitive } from \"@base-ui/react/button\";\nimport { useRender } from \"@base-ui/react/use-render\";\nimport type { ReactNode } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// A label the user applied and can remove (a saved query's labels, a filter chip), on Base UI's\n// useRender with a Base UI Button for removal. `swatch` adds a categorical colour dot from the\n// colour-blind-safe chart.cat.1..8 roles, so tags can be told apart beyond their text. TagGroup\n// lays tags out in a wrapping row. Long labels truncate; the full label stays the accessible name.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const tagVariants = {\n  variant: {\n    neutral: \"border-border bg-neutral-subtle text-neutral-subtle-fg\",\n    accent: \"border-transparent bg-accent-subtle text-accent-subtle-fg\",\n  },\n  size: {\n    sm: \"h-control-xs ps-inline-sm text-caption\",\n    md: \"h-control-sm ps-inline-md text-label\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex max-w-full min-w-0 shrink-0 items-center gap-inline-xs rounded-sm border pe-inline-sm font-sans whitespace-nowrap\",\n  \"has-data-[slot=tag-remove]:pe-0\",\n  \"data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\n/** The swatch colours, written out so Tailwind finds them: chart.cat.1..8. */\nconst swatchClasses = {\n  1: \"bg-chart-1\",\n  2: \"bg-chart-2\",\n  3: \"bg-chart-3\",\n  4: \"bg-chart-4\",\n  5: \"bg-chart-5\",\n  6: \"bg-chart-6\",\n  7: \"bg-chart-7\",\n  8: \"bg-chart-8\",\n} as const;\n\nconst classes = {\n  label: \"min-w-0 truncate\",\n  swatch: \"size-inline-sm shrink-0 rounded-full\",\n  remove: [\n    \"inline-flex aspect-square h-full shrink-0 cursor-default items-center justify-center rounded-e-sm text-fg-muted\",\n    \"hover:bg-hover hover:text-fg\",\n    \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n    \"data-disabled:pointer-events-none\",\n    \"[&_svg]:size-icon-xs\",\n  ],\n  group: \"flex min-w-0 flex-wrap items-center gap-inline-xs\",\n} as const;\n\nconst XIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"m4.5 4.5 7 7m0-7-7 7\" />\n  </svg>\n);\n\nexport interface TagProps extends Omit<useRender.ComponentProps<\"span\">, \"className\" | \"children\"> {\n  /** The tag's text. */\n  children?: ReactNode;\n  /** neutral (default) or accent. */\n  variant?: keyof typeof tagVariants.variant;\n  /** sm in dense lists, md in forms. */\n  size?: keyof typeof tagVariants.size;\n  /** A categorical colour dot, chart.cat.1..8. */\n  swatch?: keyof typeof swatchClasses;\n  /** Shows a remove button that calls this. */\n  onRemove?: () => void;\n  /** Accessible name of the remove button; defaults to \"Remove\" and the label when it is a string. */\n  removeLabel?: string;\n  /** Dims the tag and disables its remove button. */\n  disabled?: boolean;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** One tag: a `<span>` with the label, an optional swatch and an optional remove button. The ref reaches the span. */\nexport function Tag({ variant = \"neutral\", size = \"sm\", swatch, onRemove, removeLabel, disabled = false, className, render, children, ...props }: TagProps) {\n  const name = removeLabel ?? (typeof children === \"string\" ? `Remove ${children}` : \"Remove\");\n  return useRender({\n    defaultTagName: \"span\",\n    render,\n    props: {\n      \"data-slot\": \"tag\",\n      \"data-variant\": variant,\n      \"data-size\": size,\n      \"data-disabled\": disabled ? \"\" : undefined,\n      ...props,\n      className: cn(base, tagVariants.variant[variant], tagVariants.size[size], className),\n      children: (\n        <>\n          {swatch ? <span data-slot=\"tag-swatch\" aria-hidden=\"true\" className={cn(classes.swatch, swatchClasses[swatch])} /> : null}\n          <span className={classes.label} title={typeof children === \"string\" ? children : undefined}>\n            {children}\n          </span>\n          {onRemove ? (\n            <ButtonPrimitive data-slot=\"tag-remove\" type=\"button\" aria-label={name} disabled={disabled} onClick={onRemove} className={cn(classes.remove)}>\n              <XIcon />\n            </ButtonPrimitive>\n          ) : null}\n        </>\n      ),\n    },\n  });\n}\n\nexport interface TagGroupProps extends Omit<useRender.ComponentProps<\"div\">, \"className\"> {\n  className?: string;\n}\n\n/** Tags in a wrapping row, a `role=\"list\"`; put each Tag in a `role=\"listitem\"` or render it as one (`render={<span role=\"listitem\" />}`). */\nexport function TagGroup({ className, render, ...props }: TagGroupProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { role: \"list\", \"data-slot\": \"tag-group\", ...props, className: cn(classes.group, className) } });\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "tag",
+      "title": "Tag",
+      "description": "A label the user applied and can remove: a chip with an optional categorical colour swatch and a remove button; TagGroup wraps them in a row.",
+      "usage": "Use Tag for labels a user adds and removes (a saved query's labels, applied filters). onRemove adds a remove button; swatch (1 to 8) adds a colour dot from the colour-blind-safe chart.cat roles so tags of different categories can be told apart. Put tags in a TagGroup (role=\"list\") with role=\"listitem\" on each. For a read-only status word use Badge; for choosing several values in a field use MultiSelect, which has its own chips.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "The label; truncates when it does not fit (full text in title)."
+        },
+        {
+          "name": "variant",
+          "type": "\"neutral\" | \"accent\"",
+          "default": "neutral",
+          "description": "neutral for labels, accent for an active filter."
+        },
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\"",
+          "default": "sm",
+          "description": "sm (size.control.xs) in dense lists, md (size.control.sm) in forms."
+        },
+        {
+          "name": "swatch",
+          "type": "1 | 2 | 3 | 4 | 5 | 6 | 7 | 8",
+          "description": "A categorical colour dot, chart.cat.1..8."
+        },
+        {
+          "name": "onRemove",
+          "type": "() => void",
+          "description": "Shows a remove button that calls it."
+        },
+        {
+          "name": "removeLabel",
+          "type": "string",
+          "description": "Accessible name of the remove button; default \"Remove <label>\"."
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "default": false,
+          "description": "Dims the tag and disables its remove button."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLElement>",
+          "description": "Reaches the tag."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "neutral",
+          "accent"
+        ],
+        "size": [
+          "sm",
+          "md"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "span",
+          "description": "The chip; data-slot=\"tag\", data-variant, data-size, data-disabled."
+        },
+        {
+          "name": "swatch",
+          "element": "span",
+          "description": "The colour dot, aria-hidden; data-slot=\"tag-swatch\"."
+        },
+        {
+          "name": "remove",
+          "element": "button",
+          "description": "The remove button; data-slot=\"tag-remove\"."
+        },
+        {
+          "name": "group",
+          "element": "div",
+          "description": "TagGroup, role=\"list\", a wrapping row; data-slot=\"tag-group\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "TagGroup",
+          "slot": "tag-group",
+          "description": "Tags in a wrapping row, role=\"list\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over the remove button: color.interactive.hover."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on the remove button: an inset ring of ring.width in color.ring."
+        },
+        {
+          "name": "disabled",
+          "variant": "data-disabled",
+          "props": {
+            "disabled": true
+          },
+          "description": "Dimmed to opacity.disabled; the remove button does nothing."
+        }
+      ],
+      "tokens": [
+        "chart.cat.1",
+        "chart.cat.2",
+        "chart.cat.3",
+        "chart.cat.4",
+        "chart.cat.5",
+        "chart.cat.6",
+        "chart.cat.7",
+        "chart.cat.8",
+        "color.accent.subtle-bg",
+        "color.accent.subtle-fg",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.interactive.hover",
+        "color.neutral.subtle-bg",
+        "color.neutral.subtle-fg",
+        "color.ring",
+        "font.sans",
+        "opacity.disabled",
+        "radius.sm",
+        "ring.width",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.xs",
+        "space.inline.md",
+        "space.inline.sm",
+        "space.inline.xs",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "TagMinimal",
+        "realistic": "TagRealistic"
+      },
+      "accessibility": [
+        "The label is text; the remove button is a native <button> named \"Remove <label>\" (or removeLabel) in the tab order.",
+        "TagGroup is role=\"list\"; give each Tag role=\"listitem\" so screen readers count them.",
+        "The swatch is aria-hidden and the chart.cat palette is colour-blind safe; the label always carries the meaning.",
+        "When removing a tag moves focus, move it to the next tag's remove button or the group's input; the app owns that."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { Tag, TagGroup } from \"@/components/tag/tag\";\n\n/** The smallest useful Tag. */\nexport function TagMinimal() {\n  return <Tag>reporting</Tag>;\n}\n\nconst initial = [\n  { label: \"reporting\", swatch: 1 },\n  { label: \"finance\", swatch: 2 },\n  { label: \"nightly\", swatch: 3 },\n  { label: \"customer_lifetime_value_by_region\", swatch: 4 },\n] as const;\n\n/** A saved query's labels: removable with swatches, an accent tag, a disabled one, a long label that truncates. */\nexport function TagRealistic() {\n  const [tags, setTags] = useState<readonly { label: string; swatch: 1 | 2 | 3 | 4 }[]>(initial);\n  return (\n    <div className=\"flex max-w-panel-sm flex-col gap-stack-sm\">\n      <TagGroup aria-label=\"Labels\">\n        {tags.map((tag) => (\n          <Tag key={tag.label} role=\"listitem\" swatch={tag.swatch} onRemove={() => setTags((list) => list.filter((t) => t.label !== tag.label))}>\n            {tag.label}\n          </Tag>\n        ))}\n      </TagGroup>\n      <TagGroup aria-label=\"Categories\">\n        {([1, 2, 3, 4, 5, 6, 7, 8] as const).map((swatch) => (\n          <Tag key={swatch} role=\"listitem\" swatch={swatch}>\n            {`team ${swatch}`}\n          </Tag>\n        ))}\n      </TagGroup>\n      <TagGroup aria-label=\"Filters\">\n        <Tag role=\"listitem\" variant=\"accent\" size=\"md\" onRemove={() => {}}>\n          status = open\n        </Tag>\n        <Tag role=\"listitem\" size=\"md\" disabled onRemove={() => {}}>\n          owner = me\n        </Tag>\n        <Tag role=\"listitem\" size=\"md\">\n          read-only\n        </Tag>\n      </TagGroup>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

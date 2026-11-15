@@ -1,0 +1,140 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "status-bar",
+  "title": "StatusBar",
+  "description": "The thin bar at the bottom of an app or pane: one-line status items that truncate, buttons, a spacer, and live items announced politely.",
+  "usage": "Use StatusBar at the bottom of the app shell or of a results pane for passive status: connection, row count, elapsed time, cursor position, encoding. Compose StatusBar (aria-label) > StatusBarItem / StatusBarButton, StatusBarSpacer, then the items for the end. Wrap item text in a <span> so it truncates, and put the full text in title. Mark the item that changes after an action (row count) live. For commands use Toolbar; for messages that need attention use Toast or Alert.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"default\" | \"accent\"",
+      "default": "default",
+      "description": "default on the surface with a top border; accent filled with the accent solid."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Names the bar (\"Status\")."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "Items, buttons and spacers."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render a <footer> instead of the <div>."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the bar."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "default",
+      "accent"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "role=\"group\", size.control.xs high, text.caption; data-slot=\"status-bar\", data-variant."
+    },
+    {
+      "name": "item",
+      "element": "div",
+      "description": "One line of status that truncates its <span>; data-slot=\"status-bar-item\"; role=\"status\" when live."
+    },
+    {
+      "name": "button",
+      "element": "button",
+      "description": "A pressable item; data-slot=\"status-bar-button\"."
+    },
+    {
+      "name": "spacer",
+      "element": "div",
+      "description": "Takes the free space; data-slot=\"status-bar-spacer\", aria-hidden."
+    }
+  ],
+  "parts": [
+    {
+      "name": "StatusBarItem",
+      "slot": "status-bar-item",
+      "description": "Status text with an optional icon; live makes it a polite live region."
+    },
+    {
+      "name": "StatusBarButton",
+      "slot": "status-bar-button",
+      "description": "An item that does something when pressed."
+    },
+    {
+      "name": "StatusBarSpacer",
+      "slot": "status-bar-spacer",
+      "description": "Pushes the following items to the end."
+    }
+  ],
+  "states": [
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over a button: color.interactive.hover (accent solid hover in the accent bar)."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on a button: an inset ring of ring.width in color.ring."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "description": "A button that cannot be pressed, at opacity.disabled."
+    }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.accent.bg-hover",
+    "color.accent.fg",
+    "color.bg.surface",
+    "color.border.default",
+    "color.fg.muted",
+    "color.interactive.hover",
+    "color.ring",
+    "font.sans",
+    "opacity.disabled",
+    "radius.xs",
+    "ring.width",
+    "size.control.xs",
+    "size.icon.xs",
+    "size.panel.sm",
+    "space.inline.xs",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight"
+  ],
+  "examples": {
+    "minimal": "StatusBarMinimal",
+    "realistic": "StatusBarRealistic"
+  },
+  "accessibility": [
+    "The bar is a role=\"group\" named by aria-label; plain items are text in reading order and not focusable.",
+    "A live item is role=\"status\" with aria-live=\"polite\": a row count that changes when a query ends is announced without moving focus. Mark only the items that change after an action.",
+    "StatusBarButton is a native <button> in the tab order with a focus ring.",
+    "Truncated text keeps the full value in title; prefer short labels so nothing important is cut."
+  ]
+}

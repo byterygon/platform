@@ -45,6 +45,7 @@ const ITEMS = [
   "sidebar", "tree",
   "sql-editor", "code-input",
   "separator", "scroll-area", "card", "collapsible", "accordion",
+  "resizable", "toolbar", "status-bar", "badge", "tag",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -179,6 +180,11 @@ import { Card as ByCard, CardAction, CardDescription, CardFooter, CardContent as
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
+import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/components/ui/status-bar";
+import { Tag, TagGroup } from "@/components/ui/tag";
+import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarInput, ToolbarLink, ToolbarSeparator } from "@/components/ui/toolbar";
 import { SqlEditor } from "@/components/ui/sql-editor";
 import { CodeInput } from "@/components/ui/code-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -329,6 +335,31 @@ function Layout() {
   );
 }
 
+function Shell() {
+  return (
+    <Resizable aria-label="Workspace">
+      <ResizablePanel defaultSize={25} minSize={15} collapsible><TagGroup aria-label="Labels"><Tag role="listitem" swatch={2} onRemove={() => {}}>finance</Tag></TagGroup></ResizablePanel>
+      <ResizableHandle withGrip aria-label="Resize sidebar" />
+      <ResizablePanel>
+        <Toolbar aria-label="Query tools">
+          <ToolbarGroup><ToolbarButton>Run</ToolbarButton></ToolbarGroup>
+          <ToolbarSeparator />
+          <ToolbarInput aria-label="Row limit" defaultValue="1000" />
+          <ToolbarLink href="#audit">Audit</ToolbarLink>
+        </Toolbar>
+        <Badge variant="success" appearance="dot">connected</Badge>
+        <Badge variant="danger" appearance="solid">plaintext</Badge>
+        <StatusBar aria-label="Status">
+          <StatusBarButton><span>orders-prod</span></StatusBarButton>
+          <StatusBarItem live><span>12 rows</span></StatusBarItem>
+          <StatusBarSpacer />
+          <StatusBarItem><span>Ln 1</span></StatusBarItem>
+        </StatusBar>
+      </ResizablePanel>
+    </Resizable>
+  );
+}
+
 function Connection() {
   const form = useForm({ defaultValues: { host: "" } });
   return (
@@ -413,6 +444,7 @@ createRoot(document.getElementById("root")!).render(
     <Connection />
     <Overlays />
     <Layout />
+    <Shell />
     <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
     <Field><FieldLabel>Filter</FieldLabel><CodeInput language="sql" defaultValue="id = 1" onSubmit={(v) => console.log(v)} /></Field>
     <CodeInput aria-label="Cell value" language="json" pretty value='{"id":1}' />
@@ -567,6 +599,10 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["py-inset-md", "padding-block", "space.inset.md", "Byterygon Card padding (density)"],
   ["data-[orientation=vertical]:w-track", "width", "size.track", "Byterygon ScrollArea scrollbar"],
   ["data-[orientation=horizontal]:h-[var(--by-border-width-1)]", "height", "border.width.1", "Byterygon Separator"],
+  ["hover:bg-border-focus", "background-color", "color.border.focus", "Byterygon ResizableHandle hover"],
+  ["h-control-xs", "height", "size.control.xs", "Byterygon StatusBar (density)"],
+  ["[&>[data-slot=badge-dot]]:bg-success", "background-color", "color.status.success.solid", "Byterygon Badge dot"],
+  ["bg-chart-2", "background-color", "chart.cat.2", "Byterygon Tag swatch"],
   ["bg-editor", "background-color", "editor.bg", "Byterygon SqlEditor frame"],
   ["p-inset-sm", "padding", "space.inset.sm", "Byterygon SqlEditor fallback (density)"],
   ["data-readonly:bg-inset", "background-color", "color.bg.inset", "Byterygon CodeInput read-only and pretty"],

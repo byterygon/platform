@@ -192,6 +192,16 @@ What `test/conventions.test.tsx` enforces for every component:
   its triggers are reached with Tab.
 - A component whose root may sit in a start-aligned flex parent takes `w-full` when it should
   fill the width (Accordion); callers cap it with `max-w-*`.
+- Resizable is the ARIA window splitter built here (Base UI has none): panels and handles are
+  direct children of `Resizable` (it reads their props and gives each its index); sizes are
+  percentages, controlled through `sizes`/`onSizesChange` to persist them. `ResizablePanelGroup`
+  is an alias. Style a part by its own `data-orientation`, not `in-data-[orientation=…]`: groups
+  nest, so an ancestor of the other orientation matches too.
+- Base UI's Toolbar moves focus with the arrow keys and wraps (`loopFocus`); it has no Home/End.
+- Two-axis looks (Badge: tone × appearance) put every appearance's classes in each tone behind
+  `data-[appearance=…]:`, so `<name>Variants` keeps one key per prop without compound variants.
+- A prop that picks a colour from a numbered role (Tag `swatch` → `bg-chart-1..8`) maps to class
+  strings written out in full, and the example shows every value so the token test checks them.
 
 ## Editors (TSK-46)
 
