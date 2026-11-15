@@ -1162,6 +1162,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "dbee-server"
+version = "0.0.0"
+dependencies = [
+ "ambidex",
+ "ambidex-axum",
+ "ambidex-conformance",
+ "axum",
+ "dbee-core",
+ "futures-util",
+ "rcgen",
+ "rustls",
+ "rustls-pki-types",
+ "security-types",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "defmt"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4408,6 +4430,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
