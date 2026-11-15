@@ -48,6 +48,7 @@ const ITEMS = [
   "resizable", "toolbar", "status-bar", "badge", "tag",
   "avatar", "progress", "spinner", "skeleton", "empty-state", "alert",
   "table", "description-list", "stat", "code", "type-badge", "relative-time",
+  "code-block", "json-viewer", "chart",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -195,6 +196,9 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { Stat, StatDelta, StatLabel, StatValue } from "@/components/ui/stat";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableNull, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { TypeBadge } from "@/components/ui/type-badge";
+import { Chart, ChartSparkline } from "@/components/ui/chart";
+import { CodeBlock } from "@/components/ui/code-block";
+import { JsonViewer } from "@/components/ui/json-viewer";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/components/ui/status-bar";
 import { Tag, TagGroup } from "@/components/ui/tag";
@@ -421,6 +425,17 @@ function Data() {
   );
 }
 
+function Viewers() {
+  return (
+    <div>
+      <CodeBlock title="q.sql" language="sql" code="select 1; select 'a';" highlightLines={[1]} />
+      <JsonViewer aria-label="Value" value={{ id: 1, tags: ["vip"], note: null }} defaultExpandDepth={2} />
+      <Chart type="line" aria-label="Reads" data={[{ h: "00", r: 1 }, { h: "03", r: 4 }]} x="h" series={[{ key: "r", label: "Reads" }]} />
+      <ChartSparkline aria-label="Inserts" values={[1, 3, 2]} area color={3} />
+    </div>
+  );
+}
+
 function Connection() {
   const form = useForm({ defaultValues: { host: "" } });
   return (
@@ -508,6 +523,7 @@ createRoot(document.getElementById("root")!).render(
     <Shell />
     <Feedback />
     <Data />
+    <Viewers />
     <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
     <Field><FieldLabel>Filter</FieldLabel><CodeInput language="sql" defaultValue="id = 1" onSubmit={(v) => console.log(v)} /></Field>
     <CodeInput aria-label="Cell value" language="json" pretty value='{"id":1}' />
@@ -674,6 +690,9 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["bg-grid-header", "background-color", "grid.header-bg", "Byterygon Table header"],
   ["text-grid-null", "color", "grid.null-fg", "Byterygon TableNull"],
   ["text-type-integer", "color", "data.type.integer", "Byterygon TypeBadge integer"],
+  ["bg-editor", "background-color", "editor.bg", "Byterygon CodeBlock and JsonViewer"],
+  ["text-syntax-keyword", "color", "syntax.keyword", "Byterygon CodeBlock keyword"],
+  ["stroke-chart-1", "stroke", "chart.cat.1", "Byterygon Chart line"],
   ["bg-editor", "background-color", "editor.bg", "Byterygon SqlEditor frame"],
   ["p-inset-sm", "padding", "space.inset.sm", "Byterygon SqlEditor fallback (density)"],
   ["data-readonly:bg-inset", "background-color", "color.bg.inset", "Byterygon CodeInput read-only and pretty"],

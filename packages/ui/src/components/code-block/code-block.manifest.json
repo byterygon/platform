@@ -1,0 +1,201 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "code-block",
+  "title": "CodeBlock",
+  "description": "Read-only, highlighted code in editor.* and syntax.* colours, with line numbers, highlighted lines, a title bar and copy; virtualized above 1,000 lines.",
+  "usage": "Use CodeBlock to show code the user reads or copies but does not edit: a statement in the history, a table's DDL, a plugin manifest, diagnostics. language highlights sql (PostgreSQL) or json with the same grammars and colours as CodeInput and SqlEditor; highlightLines marks an error's line; title adds a bar (copy sits there). Give it a height or max-h-* class to scroll. Above virtualizeAfter (1,000) lines only the lines in view are rendered and lines stay on one line. For a single token in a sentence use Code; to edit, SqlEditor or CodeInput; for a JSON value to explore, JsonViewer.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [
+    "@codemirror/lang-json",
+    "@codemirror/lang-sql",
+    "@lezer/highlight"
+  ],
+  "props": [
+    {
+      "name": "code",
+      "type": "string",
+      "required": true,
+      "description": "The text."
+    },
+    {
+      "name": "language",
+      "type": "\"text\" | \"sql\" | \"json\"",
+      "default": "text",
+      "description": "Grammar for highlighting."
+    },
+    {
+      "name": "lineNumbers",
+      "type": "boolean",
+      "description": "Line numbers in a gutter; on for more than one line."
+    },
+    {
+      "name": "startLine",
+      "type": "number",
+      "default": 1,
+      "description": "Number of the first line."
+    },
+    {
+      "name": "highlightLines",
+      "type": "number[]",
+      "description": "1-based line numbers to highlight in editor.line-highlight."
+    },
+    {
+      "name": "wrap",
+      "type": "boolean",
+      "default": false,
+      "description": "Wrap long lines (ignored when virtualized)."
+    },
+    {
+      "name": "title",
+      "type": "ReactNode",
+      "description": "A title bar above the code."
+    },
+    {
+      "name": "copyable",
+      "type": "boolean",
+      "default": true,
+      "description": "A copy button in the title bar."
+    },
+    {
+      "name": "onCopy",
+      "type": "(code: string) => void",
+      "description": "Called after copying."
+    },
+    {
+      "name": "virtualizeAfter",
+      "type": "number",
+      "default": 1000,
+      "description": "Virtualize above this many lines."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Names the code region; defaults to a string title or \"Code\"."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes on the frame; give it a height to scroll."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the frame."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The frame in editor.bg; data-slot=\"code-block\", data-language, data-virtual."
+    },
+    {
+      "name": "header",
+      "element": "div",
+      "description": "Title and copy button; data-slot=\"code-block-header\"."
+    },
+    {
+      "name": "scroller",
+      "element": "div",
+      "description": "role=\"region\", focusable, scrolls; data-slot=\"code-block-scroller\", data-numbers."
+    },
+    {
+      "name": "pre",
+      "element": "pre",
+      "description": "data-slot=\"code-block-pre\", data-wrap."
+    },
+    {
+      "name": "line",
+      "element": "div",
+      "description": "One line; data-slot=\"code-block-line\", data-highlighted, data-wrap."
+    },
+    {
+      "name": "gutter",
+      "element": "span",
+      "description": "The line number in editor.gutter, aria-hidden, sticky; data-slot=\"code-block-gutter\"."
+    }
+  ],
+  "states": [
+    {
+      "name": "highlighted",
+      "variant": "data-highlighted",
+      "description": "A highlighted line: editor.line-highlight.",
+      "props": {
+        "language": "sql",
+        "code": "select id, 'open', 42, true from orders where total > 0; -- note\nselect now()::text, null from t",
+        "highlightLines": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "wrap",
+      "variant": "data-wrap",
+      "props": {
+        "wrap": true
+      },
+      "description": "Lines wrap instead of scrolling sideways."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the region: an inset ring of ring.width in color.ring."
+    }
+  ],
+  "tokens": [
+    "color.border.default",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.ring",
+    "editor.bg",
+    "editor.fg",
+    "editor.gutter",
+    "editor.line-highlight",
+    "font.mono",
+    "font.sans",
+    "motion.duration.fast",
+    "motion.easing.standard",
+    "opacity.disabled",
+    "radius.md",
+    "ring.offset",
+    "ring.width",
+    "size.control.sm",
+    "size.icon.sm",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.sm",
+    "space.inset.xs",
+    "syntax.comment",
+    "syntax.constant",
+    "syntax.identifier",
+    "syntax.keyword",
+    "syntax.number",
+    "syntax.operator",
+    "syntax.string",
+    "syntax.type",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "CodeBlockMinimal",
+    "realistic": "CodeBlockRealistic"
+  },
+  "accessibility": [
+    "The code is in <pre><code> inside a focusable role=\"region\" named by aria-label or the title, so keyboard users can scroll it with the arrow keys.",
+    "Line numbers are aria-hidden, so screen readers read the code, not the numbers.",
+    "The copy button is an IconButton (\"Copy code\", then \"Copied\"), and a polite status announces \"Copied to the clipboard\".",
+    "Virtualized blocks keep only the lines in view in the DOM; screen readers read those, and Copy gives the whole text.",
+    "Colours are the editor.* and syntax.* roles, which the token build checks for contrast on editor.bg."
+  ]
+}

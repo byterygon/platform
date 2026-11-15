@@ -1,0 +1,207 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "chart",
+  "title": "Chart",
+  "description": "Bar, line and area charts drawn as SVG from data in the colour-blind-safe chart.cat roles, with axes, legend, keyboard-readable tooltip, a hidden data table, decimation for long series, and an inline sparkline.",
+  "usage": "Use Chart for a small set of series over categories or time: statements per hour (bar), connections by state (stacked area), latency over the last N statements (line). Pass data (one object per category), x (the category field) and series ({ key, label, color? }); aria-label says what the chart shows. stacked stacks bars or areas; valueFormat and xFormat format numbers and categories. Long series are decimated to the plot width. ChartSparkline is a tiny trend line for a table cell or a Stat. For one number use Stat; for exact values use Table. Charts are built here on SVG (Base UI has none; the project adds no chart library).",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    {
+      "name": "type",
+      "type": "\"bar\" | \"line\" | \"area\"",
+      "default": "bar",
+      "description": "The mark."
+    },
+    {
+      "name": "data",
+      "type": "Record<string, unknown>[]",
+      "description": "One object per category."
+    },
+    {
+      "name": "x",
+      "type": "string",
+      "default": "\"x\"",
+      "description": "The category field."
+    },
+    {
+      "name": "series",
+      "type": "{ key: string; label: string; color?: 1..8 }[]",
+      "description": "The series; colour defaults to the series' position in chart.cat."
+    },
+    {
+      "name": "stacked",
+      "type": "boolean",
+      "default": false,
+      "description": "Stack bars or areas."
+    },
+    {
+      "name": "valueFormat",
+      "type": "(value: number) => string",
+      "description": "Formats values (axis, tooltip, table)."
+    },
+    {
+      "name": "xFormat",
+      "type": "(value: unknown) => string",
+      "description": "Formats categories."
+    },
+    {
+      "name": "legend",
+      "type": "boolean",
+      "description": "Show the legend; default for more than one series."
+    },
+    {
+      "name": "grid",
+      "type": "boolean",
+      "default": true,
+      "description": "Horizontal grid lines."
+    },
+    {
+      "name": "activeIndex",
+      "type": "number | null",
+      "description": "The marked category (controlled)."
+    },
+    {
+      "name": "defaultActiveIndex",
+      "type": "number | null",
+      "description": "The marked category at first."
+    },
+    {
+      "name": "onActiveIndexChange",
+      "type": "(index: number | null) => void",
+      "description": "Called when the marked category changes."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "required": true,
+      "description": "What the chart shows."
+    },
+    {
+      "name": "emptyText",
+      "type": "ReactNode",
+      "default": "\"No data\"",
+      "description": "Shown without data."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes on the root."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "data-slot=\"chart\", data-type."
+    },
+    {
+      "name": "plot",
+      "element": "div",
+      "description": "role=\"group\" (roledescription chart), focusable, h-panel-xs; data-slot=\"chart-plot\"."
+    },
+    {
+      "name": "guide",
+      "element": "line",
+      "description": "The vertical guide at the marked category; data-slot=\"chart-guide\"."
+    },
+    {
+      "name": "empty",
+      "element": "div",
+      "description": "Shown without data; data-slot=\"chart-empty\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "ChartLegend",
+      "slot": "chart-legend",
+      "description": "The legend list: each series' swatch (colour and dash) and name."
+    },
+    {
+      "name": "ChartTooltip",
+      "slot": "chart-tooltip",
+      "description": "The box with the category and each series' value."
+    },
+    {
+      "name": "ChartSparkline",
+      "slot": "chart-sparkline",
+      "description": "A tiny inline line, role=\"img\" with a summary label; values, color, area."
+    }
+  ],
+  "states": [
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the plot: a ring of ring.width in color.ring."
+    }
+  ],
+  "tokens": [
+    "chart.cat.1",
+    "chart.cat.2",
+    "chart.cat.3",
+    "chart.cat.4",
+    "chart.cat.5",
+    "chart.cat.6",
+    "chart.cat.7",
+    "chart.cat.8",
+    "color.bg.overlay",
+    "color.bg.surface",
+    "color.border.default",
+    "color.border.muted",
+    "color.border.strong",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.ring",
+    "elevation.overlay.shadow",
+    "font.sans",
+    "radius.md",
+    "radius.sm",
+    "ring.offset",
+    "ring.width",
+    "size.control.lg",
+    "size.control.xs",
+    "size.icon.md",
+    "size.panel.md",
+    "size.panel.sm",
+    "size.panel.xs",
+    "size.track",
+    "space.inline.lg",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.xs",
+    "space.stack.sm",
+    "space.stack.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight",
+    "z.tooltip"
+  ],
+  "examples": {
+    "minimal": "ChartMinimal",
+    "realistic": "ChartRealistic"
+  },
+  "accessibility": [
+    "The plot is one tab stop (role=\"group\", aria-roledescription=\"chart\", named by aria-label); Left and Right move between categories, Home and End to the ends, Escape clears; a polite live region reads the category and each series' value.",
+    "A visually hidden table (caption, column and row headers) holds the data and describes the plot (aria-describedby); above 1,000 rows a summary of each series' range replaces it. The SVG itself is aria-hidden.",
+    "chart.cat colours are colour-blind safe, and series differ by more than colour: lines and areas have their own dash pattern and marker shape (shown in the legend), bars keep their order.",
+    "ChartSparkline is role=\"img\" with a label that states first, last, lowest and highest values.",
+    "Nothing animates."
+  ]
+}

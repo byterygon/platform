@@ -173,6 +173,22 @@
       ]
     },
     {
+      "name": "chart",
+      "type": "registry:ui",
+      "title": "Chart",
+      "description": "Bar, line and area charts drawn as SVG from data in the colour-blind-safe chart.cat roles, with axes, legend, keyboard-readable tooltip, a hidden data table, decimation for long series, and an inline sparkline.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/chart.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "checkbox",
       "type": "registry:ui",
       "title": "Checkbox",
@@ -204,6 +220,27 @@
       "files": [
         {
           "path": "ui/code.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "code-block",
+      "type": "registry:ui",
+      "title": "CodeBlock",
+      "description": "Read-only, highlighted code in editor.* and syntax.* colours, with line numbers, highlighted lines, a title bar and copy; virtualized above 1,000 lines.",
+      "dependencies": [
+        "@codemirror/lang-json",
+        "@codemirror/lang-sql",
+        "@lezer/highlight"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/icon-button"
+      ],
+      "files": [
+        {
+          "path": "ui/code-block.tsx",
           "type": "registry:ui"
         }
       ]
@@ -537,6 +574,23 @@
       "files": [
         {
           "path": "ui/input-group.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "json-viewer",
+      "type": "registry:ui",
+      "title": "JsonViewer",
+      "description": "A JSON value as a keyboard-navigable, virtualized tree in the editor's syntax colours; objects and arrays expand and collapse.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/json-viewer.tsx",
           "type": "registry:ui"
         }
       ]
