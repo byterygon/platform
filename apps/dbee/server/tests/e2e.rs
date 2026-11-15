@@ -708,9 +708,12 @@ async fn a_server_issued_session_adds_approves_and_queries_over_the_websocket() 
         .find(|r| r.entry.action.name == "plugin-host.broker.open")
         .unwrap();
     assert!(broker_open.entry.parent_correlation_id.is_some());
+    // Every DBee call runs as the issued principal; Plugin Host entries carry the driver's own
+    // chain under the call's correlation id.
     assert!(
         records
             .iter()
+            .filter(|r| !r.entry.action.name.starts_with("plugin-host."))
             .all(|r| r.entry.principal_chain[0].id == PRINCIPAL)
     );
     let connections =
