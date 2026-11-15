@@ -11,7 +11,8 @@ members = [
     "crates/plugin-host",
     "crates/db-driver",
     "crates/db-driver-postgres",
-    "apps/dbee",
+    "apps/dbee/core",
+    "apps/dbee/rpc-gen",
 ]
 
 [workspace.package]

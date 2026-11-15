@@ -1,0 +1,2109 @@
+{
+  "$defs": {
+    "AppEvent": {
+      "description": "One event of `app.events`.",
+      "oneOf": [
+        {
+          "properties": {
+            "connectionId": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "ConnectionStatus",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/ConnectionStatus"
+            }
+          },
+          "required": [
+            "kind",
+            "connectionId",
+            "status"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The grant ends soon (15 minutes before, DBee spec Decision 9).",
+          "properties": {
+            "connectionId": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "GrantExpiring",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "connectionId",
+            "expiresAt"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "connectionId": {
+              "type": "string"
+            },
+            "expiredAt": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "GrantExpired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "connectionId",
+            "expiredAt"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A database session ended for a reason other than `sessions.close`.",
+          "properties": {
+            "kind": {
+              "const": "SessionEnded",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "sessionId",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AppInfo": {
+      "description": "Output of `app.info`.",
+      "properties": {
+        "apiVersion": {
+          "description": "The API version written into the generated client.",
+          "type": "string"
+        },
+        "auditLogPath": {
+          "type": "string"
+        },
+        "drivers": {
+          "items": {
+            "$ref": "#/$defs/DriverInfo"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "$ref": "#/$defs/AppMode"
+        },
+        "platform": {
+          "description": "The operating system, e.g. `linux`.",
+          "type": "string"
+        },
+        "schemaHash": {
+          "description": "The schema hash the server announces; equals `SCHEMA_HASH` of the generated client.",
+          "type": "string"
+        },
+        "secretStore": {
+          "$ref": "#/$defs/SecretStoreKind"
+        },
+        "secretStoreNote": {
+          "description": "Why the keychain is not used, when it is not. Display-safe.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "description": "Version of the core.",
+          "type": "string"
+        },
+        "workspacePath": {
+          "description": "Where the workspace lives (connections, settings, tabs, audit log). Read-only in Settings.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "apiVersion",
+        "schemaHash",
+        "mode",
+        "platform",
+        "drivers",
+        "secretStore",
+        "secretStoreNote",
+        "workspacePath",
+        "auditLogPath"
+      ],
+      "type": "object"
+    },
+    "AppMode": {
+      "description": "Which shell runs the core.",
+      "oneOf": [
+        {
+          "const": "standalone",
+          "description": "The Tauri desktop app: one local human, no network listener.",
+          "type": "string"
+        },
+        {
+          "const": "server",
+          "description": "The self-hosted web server.",
+          "type": "string"
+        }
+      ]
+    },
+    "ApprovalRequiredDetails": {
+      "description": "`details` of an `ApprovalRequired` error raised by the authorizer: the id of the recorded\napproval request.",
+      "properties": {
+        "approval_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id"
+      ],
+      "type": "object"
+    },
+    "ChooseSavePathInput": {
+      "properties": {
+        "filters": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FileFilter"
+          },
+          "type": "array"
+        },
+        "suggestedName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "suggestedName"
+      ],
+      "type": "object"
+    },
+    "Classification": {
+      "description": "Output of `query.classify`.",
+      "properties": {
+        "kind": {
+          "description": "The leading keyword(s) of the first statement, e.g. `SELECT`, `DROP TABLE`, or\n`unparseable`.",
+          "type": "string"
+        },
+        "risk": {
+          "$ref": "#/$defs/SqlRisk"
+        },
+        "statements": {
+          "description": "Statements in the text; the server runs one per call.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "risk",
+        "statements",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ClassifyInput": {
+      "properties": {
+        "sql": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sql"
+      ],
+      "type": "object"
+    },
+    "Code": {
+      "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
+      "enum": [
+        "Cancelled",
+        "DeadlineExceeded",
+        "Unauthenticated",
+        "PermissionDenied",
+        "ApprovalRequired",
+        "InvalidArgument",
+        "NotFound",
+        "FailedPrecondition",
+        "ResourceExhausted",
+        "Unavailable",
+        "Unimplemented",
+        "VersionMismatch",
+        "Internal"
+      ],
+      "type": "string"
+    },
+    "ColumnInfo": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "typeName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "typeName",
+        "nullable"
+      ],
+      "type": "object"
+    },
+    "ColumnsInput": {
+      "properties": {
+        "connectionId": {
+          "type": "string"
+        },
+        "schema": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connectionId",
+        "table"
+      ],
+      "type": "object"
+    },
+    "ConnectionDraft": {
+      "description": "What the connection form submits to `connections.prepare` and `connections.create`.",
+      "properties": {
+        "allowCancelConnection": {
+          "default": true,
+          "type": "boolean"
+        },
+        "allowedAddresses": {
+          "default": null,
+          "description": "Networks (CIDR) the connection may reach. `null` proposes the addresses resolved right\nnow (loopback for `localhost`); a list replaces the proposal (the user widened it).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "colour": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database": {
+          "type": "string"
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expiresAt": {
+          "default": null,
+          "description": "Unix milliseconds; `null` for a personal connection that does not expire.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "hasSecret": {
+          "default": false,
+          "description": "Whether a password is bound to the connection: supplied with `connections.create`, or\nkept from the connection being replaced.",
+          "type": "boolean"
+        },
+        "host": {
+          "description": "A host name or IP literal, matched exactly in the grant.",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "port": {
+          "default": 5432,
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tls": {
+          "$ref": "#/$defs/TlsDraft"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "host",
+        "database",
+        "user",
+        "tls"
+      ],
+      "type": "object"
+    },
+    "ConnectionError": {
+      "description": "Typed errors of the `connections` procedures (DBee spec §5, §8).",
+      "oneOf": [
+        {
+          "description": "A field of the draft is invalid; `field` is its camelCase name.",
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "InvalidTarget",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "field",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The host did not resolve.",
+          "properties": {
+            "kind": {
+              "const": "ResolveFailed",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The preview no longer matches the draft (or the driver, or the resolved addresses);\nprepare again.",
+          "properties": {
+            "kind": {
+              "const": "PreviewStale",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The keychain is unavailable; the connection can be created without saving the password.",
+          "properties": {
+            "kind": {
+              "const": "SecretStoreUnavailable",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The Plugin Host refused the grant.",
+          "properties": {
+            "kind": {
+              "const": "GrantRefused",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "NotFound",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ConnectionId": {
+      "description": "Input of procedures that name one connection.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "ConnectionStatus": {
+      "description": "Status of a connection as the tree shows it.",
+      "enum": [
+        "disconnected",
+        "connecting",
+        "connected",
+        "error",
+        "expired"
+      ],
+      "type": "string"
+    },
+    "ConnectionSummary": {
+      "description": "One connection as `connections.list` returns it. Never a credential or its reference.",
+      "properties": {
+        "allowCancelConnection": {
+          "type": "boolean"
+        },
+        "colour": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "database": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driver": {
+          "type": "string"
+        },
+        "grant": {
+          "$ref": "#/$defs/GrantSummary"
+        },
+        "hasSecret": {
+          "description": "Whether a password is available for this connection (in the keychain, or for this\nsession only).",
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/ConnectionStatus"
+        },
+        "tls": {
+          "$ref": "#/$defs/TlsKind"
+        },
+        "user": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "colour",
+        "driver",
+        "host",
+        "port",
+        "database",
+        "user",
+        "tls",
+        "hasSecret",
+        "allowCancelConnection",
+        "status",
+        "grant"
+      ],
+      "type": "object"
+    },
+    "CreateConnectionInput": {
+      "description": "Input of `connections.create`.",
+      "properties": {
+        "draft": {
+          "$ref": "#/$defs/ConnectionDraft"
+        },
+        "previewDigest": {
+          "description": "From the `GrantPreview` the approver saw.",
+          "type": "string"
+        },
+        "replaces": {
+          "default": null,
+          "description": "The connection this one replaces (a grant-covered edit or a renewal): its grant is\nrevoked once the new one is active, and the connection keeps its id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "secret": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "draft",
+        "previewDigest"
+      ],
+      "type": "object"
+    },
+    "DeniedReason": {
+      "description": "Why a grant refused the connection.",
+      "oneOf": [
+        {
+          "properties": {
+            "expiredAt": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "Expired",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "expiredAt"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "Revoked",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The host resolved to an address outside the grant's address policy.",
+          "properties": {
+            "address": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "AddressNotAllowed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "address"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The broker refused the open; the audit log has the reason.",
+          "properties": {
+            "kind": {
+              "const": "Refused",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DriverInfo": {
+      "description": "A database driver compiled into the core.",
+      "properties": {
+        "digest": {
+          "description": "`sha256:<hex>` of the driver as the grant binds it.",
+          "type": "string"
+        },
+        "firstParty": {
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Plugin id, e.g. `com.byterygon.dbee.postgres`.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human name, e.g. `PostgreSQL`.",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "version",
+        "digest",
+        "firstParty"
+      ],
+      "type": "object"
+    },
+    "Empty": {
+      "description": "The empty object, `{}`: the input of procedures that take nothing and the output of those\nthat return nothing.",
+      "type": "object"
+    },
+    "ExecuteInput": {
+      "properties": {
+        "batchRows": {
+          "default": null,
+          "description": "Rows per Arrow record batch (advisory).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxRows": {
+          "default": null,
+          "description": "Row limit for this run; `null` is unlimited (DBee spec Decision 13).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "sql"
+      ],
+      "type": "object"
+    },
+    "ExecuteSummary": {
+      "description": "Final result of `query.execute` (Ambidex spec §13 shape).",
+      "properties": {
+        "elapsedMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "notices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "risk": {
+          "$ref": "#/$defs/SqlRisk"
+        },
+        "rowsAffected": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rowsReturned": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "statementKind": {
+          "description": "The classifier's kind of the statement.",
+          "type": "string"
+        },
+        "truncated": {
+          "description": "`max_rows` cut the result short.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "rowsAffected",
+        "rowsReturned",
+        "elapsedMs",
+        "notices",
+        "truncated",
+        "statementKind",
+        "risk"
+      ],
+      "type": "object"
+    },
+    "ExportDestination": {
+      "description": "Where the encoded bytes go.",
+      "oneOf": [
+        {
+          "description": "Streamed to the client as chunks (a download on web).",
+          "properties": {
+            "kind": {
+              "const": "client",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Written by the core to the path behind a handle from `files.chooseSavePath`.",
+          "properties": {
+            "handle": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "file",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "handle"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ExportFormat": {
+      "enum": [
+        "csv",
+        "tsv",
+        "jsonl"
+      ],
+      "type": "string"
+    },
+    "ExportInput": {
+      "properties": {
+        "destination": {
+          "$ref": "#/$defs/ExportDestination"
+        },
+        "format": {
+          "$ref": "#/$defs/ExportFormat"
+        },
+        "maxRows": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "options": {
+          "$ref": "#/$defs/ExportOptions",
+          "default": {
+            "delimiter": ",",
+            "header": true,
+            "lineEnding": "lf",
+            "nullText": "",
+            "quote": "\""
+          }
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "sql",
+        "format",
+        "destination"
+      ],
+      "type": "object"
+    },
+    "ExportOptions": {
+      "description": "Encoding options (DBee spec §3.8). `delimiter` and `quote` apply to CSV only.",
+      "properties": {
+        "delimiter": {
+          "default": ",",
+          "type": "string"
+        },
+        "header": {
+          "default": true,
+          "type": "boolean"
+        },
+        "lineEnding": {
+          "$ref": "#/$defs/LineEnding",
+          "default": "lf"
+        },
+        "nullText": {
+          "default": "",
+          "description": "Text written for NULL (CSV and TSV); empty by default.",
+          "type": "string"
+        },
+        "quote": {
+          "default": "\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ExportSummary": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "description": "The file written, for the `file` destination.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rows": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rows",
+        "bytes",
+        "path"
+      ],
+      "type": "object"
+    },
+    "FileFilter": {
+      "properties": {
+        "extensions": {
+          "description": "Extensions without the dot, e.g. `csv`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "GrantPreview": {
+      "description": "What an approver sees before `connections.create` (Plugin Host spec §3, DBee spec §3.4).",
+      "properties": {
+        "allowCancelConnection": {
+          "type": "boolean"
+        },
+        "approver": {
+          "description": "Who approves: the principal of this session.",
+          "type": "string"
+        },
+        "driver": {
+          "$ref": "#/$defs/DriverInfo"
+        },
+        "expiresAt": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "previewDigest": {
+          "description": "Binds `connections.create` to exactly this preview.",
+          "type": "string"
+        },
+        "proposedAddresses": {
+          "description": "The address policy the grant will carry (CIDR). Only these may be connected to.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resolvedAddresses": {
+          "description": "What the host resolved to right now.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "secretBinding": {
+          "description": "Whether a password will be stored in the secret store and released only to this\nconnection.",
+          "type": "boolean"
+        },
+        "template": {
+          "description": "The network template the grant binds, `db-transport`.",
+          "type": "string"
+        },
+        "tls": {
+          "$ref": "#/$defs/TlsPreview"
+        }
+      },
+      "required": [
+        "driver",
+        "template",
+        "host",
+        "port",
+        "resolvedAddresses",
+        "proposedAddresses",
+        "tls",
+        "allowCancelConnection",
+        "expiresAt",
+        "secretBinding",
+        "approver",
+        "previewDigest"
+      ],
+      "type": "object"
+    },
+    "GrantState": {
+      "enum": [
+        "active",
+        "expired",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "GrantSummary": {
+      "properties": {
+        "createdAt": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "expiresAt": {
+          "description": "Unix milliseconds; `null` for a grant that does not expire.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/GrantState"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "expiresAt",
+        "createdAt"
+      ],
+      "type": "object"
+    },
+    "LineEnding": {
+      "enum": [
+        "lf",
+        "crlf"
+      ],
+      "type": "string"
+    },
+    "OpenSessionInput": {
+      "properties": {
+        "connectionId": {
+          "type": "string"
+        },
+        "purpose": {
+          "$ref": "#/$defs/SessionPurpose"
+        }
+      },
+      "required": [
+        "connectionId",
+        "purpose"
+      ],
+      "type": "object"
+    },
+    "OpenSessionOutput": {
+      "properties": {
+        "serverVersion": {
+          "description": "The database's version string.",
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "serverVersion"
+      ],
+      "type": "object"
+    },
+    "QueryError": {
+      "description": "Typed errors of `query.execute` and `export.run` (DBee spec §5).",
+      "oneOf": [
+        {
+          "description": "The statement does not parse; `position` is a one-based character offset.",
+          "properties": {
+            "kind": {
+              "const": "Syntax",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "position": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "sqlstate": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "message",
+            "position",
+            "sqlstate"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "Database",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "sqlstate": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "vendorCode": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "message",
+            "sqlstate",
+            "vendorCode"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The database session is gone, or the statement could not be sent.",
+          "properties": {
+            "kind": {
+              "const": "Connection",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "Cancelled",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The grant ended while the statement ran; its outcome on the database is unknown.",
+          "properties": {
+            "kind": {
+              "const": "AccessEnded",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "Unsupported",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "NotFound",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SavePath": {
+      "description": "A chosen save path: an opaque one-time handle the core resolves, and the name to show.",
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "displayName"
+      ],
+      "type": "object"
+    },
+    "SchemasInput": {
+      "properties": {
+        "connectionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connectionId"
+      ],
+      "type": "object"
+    },
+    "SecretInput": {
+      "description": "The credential, write-only. Its `Debug` output names the type only.",
+      "properties": {
+        "password": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "password"
+      ],
+      "type": "object"
+    },
+    "SecretStoreKind": {
+      "description": "Where passwords go (DBee spec §4, Open question 2).",
+      "oneOf": [
+        {
+          "const": "keychain",
+          "description": "The OS keychain: passwords persist across restarts.",
+          "type": "string"
+        },
+        {
+          "const": "session-only",
+          "description": "No keychain is available: passwords are asked per session, kept in core memory only and\nzeroized when the session ends. Nothing is persisted.",
+          "type": "string"
+        }
+      ]
+    },
+    "SessionError": {
+      "description": "Typed errors of `sessions.*` and `schema.*` (DBee spec §8, mapping every `DbError`).",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "AuthenticationFailed",
+              "type": "string"
+            },
+            "user": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "user"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "TlsFailed",
+              "type": "string"
+            },
+            "policy": {
+              "$ref": "#/$defs/TlsKind"
+            }
+          },
+          "required": [
+            "kind",
+            "policy"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "PermissionDenied",
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "#/$defs/DeniedReason"
+            }
+          },
+          "required": [
+            "kind",
+            "reason"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "ConnectionLost",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "No answer from the host in time.",
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "Timeout",
+              "type": "string"
+            },
+            "port": {
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "host",
+            "port"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The connection has no password and the keychain holds none: ask the user and call\n`connections.setSecret` for this session.",
+          "properties": {
+            "kind": {
+              "const": "SecretMissing",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The database reported an error.",
+          "properties": {
+            "kind": {
+              "const": "Database",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "sqlstate": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "message",
+            "sqlstate"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "Unsupported",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "NotFound",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SessionId": {
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "SessionPurpose": {
+      "oneOf": [
+        {
+          "const": "editor",
+          "description": "A query tab's session: one per tab.",
+          "type": "string"
+        },
+        {
+          "const": "browser",
+          "description": "The schema browser's session: one per connection, reused.",
+          "type": "string"
+        }
+      ]
+    },
+    "SetSecretInput": {
+      "description": "Input of `connections.setSecret`. `null` removes the password.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "password": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "SetSecretOutput": {
+      "properties": {
+        "hasSecret": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "hasSecret"
+      ],
+      "type": "object"
+    },
+    "SqlRisk": {
+      "description": "Risk of a statement, as the fail-closed classifier sees it (Ambidex spec §8).",
+      "enum": [
+        "Read",
+        "Write",
+        "Destructive"
+      ],
+      "type": "string"
+    },
+    "TableInfo": {
+      "properties": {
+        "kind": {
+          "description": "The contract's kind string: `table`, `view`, `materialized view`, ...",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "name",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "TablesInput": {
+      "properties": {
+        "connectionId": {
+          "type": "string"
+        },
+        "schema": {
+          "default": null,
+          "description": "`null` lists what the session's search path makes visible.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connectionId"
+      ],
+      "type": "object"
+    },
+    "TlsDraft": {
+      "description": "TLS policy as the form submits it (DBee spec §3.3). The server name defaults to the host.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "deployment-ca",
+              "type": "string"
+            },
+            "serverName": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "caPem": {
+              "description": "One or more CA certificates, PEM.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "pinned-ca",
+              "type": "string"
+            },
+            "serverName": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "caPem"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "fingerprint": {
+              "description": "SHA-256 of the server certificate's DER encoding, as `sha256:<hex>`, with or without\ncolons, as the DBA gives it.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "pinned-cert",
+              "type": "string"
+            },
+            "serverName": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "fingerprint"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "plaintext",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "TlsKind": {
+      "description": "Transport security of a connection, as the list shows it (DBee spec §3.3).",
+      "oneOf": [
+        {
+          "const": "deployment-ca",
+          "description": "TLS required, verified against the deployment CA bundle.",
+          "type": "string"
+        },
+        {
+          "const": "pinned-ca",
+          "description": "TLS required, verified against a pinned CA certificate.",
+          "type": "string"
+        },
+        {
+          "const": "pinned-cert",
+          "description": "TLS required, the server must present exactly the pinned certificate.",
+          "type": "string"
+        },
+        {
+          "const": "plaintext",
+          "description": "Plaintext. Offered only because the first-party template says `tls = \"optional\"`.",
+          "type": "string"
+        }
+      ]
+    },
+    "TlsPreview": {
+      "description": "TLS policy as the approval dialog states it.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/TlsKind"
+        },
+        "pinned": {
+          "description": "What is pinned: `sha256:<hex>` of each pinned CA or server certificate.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "serverName": {
+          "description": "The name (or IP) the certificate must match; `null` for plaintext.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "serverName",
+        "pinned"
+      ],
+      "type": "object"
+    },
+    "UpdateConnectionInput": {
+      "additionalProperties": false,
+      "description": "Input of `connections.update`: the fields a grant does not cover. Anything else is refused\nwith `InvalidArgument` (use prepare and create with `replaces`).",
+      "properties": {
+        "colour": {
+          "default": null,
+          "description": "An empty string clears the colour.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "default": null,
+          "description": "An empty string clears the description.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  "api": {
+    "name": "dbee",
+    "version": "0.0.0"
+  },
+  "approval_required_details": {
+    "$ref": "#/$defs/ApprovalRequiredDetails"
+  },
+  "format": "ambidex.manifest.v1",
+  "procedures": [
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "subscription",
+      "log_input": false,
+      "name": "app.events",
+      "output": {
+        "$ref": "#/$defs/AppEvent"
+      },
+      "perm": "app.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": null,
+      "timeout_max_ms": null
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "app.info",
+      "output": {
+        "$ref": "#/$defs/AppInfo"
+      },
+      "perm": "app.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ConnectionError"
+      },
+      "input": {
+        "$ref": "#/$defs/CreateConnectionInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "connections.create",
+      "output": {
+        "$ref": "#/$defs/ConnectionSummary"
+      },
+      "perm": "connections.create",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ConnectionError"
+      },
+      "input": {
+        "$ref": "#/$defs/ConnectionId"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "connections.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "connections.delete",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "exposed",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "connections.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ConnectionSummary"
+        },
+        "type": "array"
+      },
+      "perm": "connections.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ConnectionError"
+      },
+      "input": {
+        "$ref": "#/$defs/ConnectionDraft"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "connections.prepare",
+      "output": {
+        "$ref": "#/$defs/GrantPreview"
+      },
+      "perm": "connections.create",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ConnectionError"
+      },
+      "input": {
+        "$ref": "#/$defs/SetSecretInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "connections.setSecret",
+      "output": {
+        "$ref": "#/$defs/SetSecretOutput"
+      },
+      "perm": "connections.update",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ConnectionError"
+      },
+      "input": {
+        "$ref": "#/$defs/UpdateConnectionInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "connections.update",
+      "output": {
+        "$ref": "#/$defs/ConnectionSummary"
+      },
+      "perm": "connections.update",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/QueryError"
+      },
+      "input": {
+        "$ref": "#/$defs/ExportInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "export.run",
+      "output": {
+        "$ref": "#/$defs/ExportSummary"
+      },
+      "perm": "db.export",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 300000,
+      "timeout_max_ms": 3600000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/ChooseSavePathInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "files.chooseSavePath",
+      "output": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/SavePath"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "perm": "files.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/ClassifyInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "query.classify",
+      "output": {
+        "$ref": "#/$defs/Classification"
+      },
+      "perm": "db.query.execute",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "exposed",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/QueryError"
+      },
+      "input": {
+        "$ref": "#/$defs/ExecuteInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "query.execute",
+      "output": {
+        "$ref": "#/$defs/ExecuteSummary"
+      },
+      "perm": "db.query.execute",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 300000,
+      "timeout_max_ms": 3600000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/SessionError"
+      },
+      "input": {
+        "$ref": "#/$defs/ColumnsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "schema.columns",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ColumnInfo"
+        },
+        "type": "array"
+      },
+      "perm": "db.schema.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "exposed",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/SessionError"
+      },
+      "input": {
+        "$ref": "#/$defs/SchemasInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "schema.schemas",
+      "output": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "perm": "db.schema.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "exposed",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/SessionError"
+      },
+      "input": {
+        "$ref": "#/$defs/TablesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "schema.tables",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/TableInfo"
+        },
+        "type": "array"
+      },
+      "perm": "db.schema.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/SessionId"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "sessions.close",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "db.connect",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/SessionError"
+      },
+      "input": {
+        "$ref": "#/$defs/OpenSessionInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "sessions.open",
+      "output": {
+        "$ref": "#/$defs/OpenSessionOutput"
+      },
+      "perm": "db.connect",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    }
+  ],
+  "protocol": 1,
+  "schema_hash": "sha256:4d742f3b601d2f07b6eeb0e40bee58b457490bc1b272042d0300e44de5b70577"
+}
