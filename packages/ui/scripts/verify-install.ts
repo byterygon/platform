@@ -47,6 +47,7 @@ const ITEMS = [
   "separator", "scroll-area", "card", "collapsible", "accordion",
   "resizable", "toolbar", "status-bar", "badge", "tag",
   "avatar", "progress", "spinner", "skeleton", "empty-state", "alert",
+  "table", "description-list", "stat", "code", "type-badge", "relative-time",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -188,6 +189,12 @@ import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateIcon, E
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Code } from "@/components/ui/code";
+import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
+import { RelativeTime } from "@/components/ui/relative-time";
+import { Stat, StatDelta, StatLabel, StatValue } from "@/components/ui/stat";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableNull, TableRow, TableVirtualBody } from "@/components/ui/table";
+import { TypeBadge } from "@/components/ui/type-badge";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/components/ui/status-bar";
 import { Tag, TagGroup } from "@/components/ui/tag";
@@ -390,6 +397,30 @@ function Feedback() {
   );
 }
 
+function Data() {
+  return (
+    <TooltipProvider>
+      <Table aria-label="Columns" variant="striped">
+        <TableCaption>2 columns</TableCaption>
+        <TableHeader><TableRow><TableHead sort="ascending" onSort={() => {}}>Name</TableHead><TableHead>Type</TableHead></TableRow></TableHeader>
+        <TableBody>
+          <TableRow selected><TableCell>id</TableCell><TableCell><TypeBadge type="integer" label="bigint" /></TableCell></TableRow>
+          <TableRow><TableCell>note</TableCell><TableCell><TableNull /></TableCell></TableRow>
+        </TableBody>
+      </Table>
+      <Table aria-label="Result" variant="bordered">
+        <TableHeader><TableRow><TableHead align="end">id</TableHead></TableRow></TableHeader>
+        <TableVirtualBody count={100000} renderRow={(i) => <TableRow key={i}><TableCell align="end">{i}</TableCell></TableRow>} />
+      </Table>
+      <DescriptionList divided>
+        <DescriptionListItem><DescriptionListTerm>Digest</DescriptionListTerm><DescriptionListDetails><Code>sha256:9f86d0</Code></DescriptionListDetails></DescriptionListItem>
+      </DescriptionList>
+      <Stat><StatLabel>Rows</StatLabel><StatValue>1,204</StatValue><StatDelta trend="up" intent="negative">12 %</StatDelta></Stat>
+      <RelativeTime date={Date.now() + 840000} timeZone="UTC" />
+    </TooltipProvider>
+  );
+}
+
 function Connection() {
   const form = useForm({ defaultValues: { host: "" } });
   return (
@@ -476,6 +507,7 @@ createRoot(document.getElementById("root")!).render(
     <Layout />
     <Shell />
     <Feedback />
+    <Data />
     <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
     <Field><FieldLabel>Filter</FieldLabel><CodeInput language="sql" defaultValue="id = 1" onSubmit={(v) => console.log(v)} /></Field>
     <CodeInput aria-label="Cell value" language="json" pretty value='{"id":1}' />
@@ -637,6 +669,11 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["bg-danger-subtle", "background-color", "color.status.danger.bg", "Byterygon Alert danger"],
   ["[&_[data-slot=progress-indicator]]:bg-success", "background-color", "color.status.success.solid", "Byterygon Progress success"],
   ["size-control-lg", "width", "size.control.lg", "Byterygon Avatar lg (density)"],
+  ["h-grid-row", "height", "grid.row-height", "Byterygon Table row (density)"],
+  ["px-grid-cell-x", "padding-inline", "grid.cell-padding-x", "Byterygon Table cell padding (density)"],
+  ["bg-grid-header", "background-color", "grid.header-bg", "Byterygon Table header"],
+  ["text-grid-null", "color", "grid.null-fg", "Byterygon TableNull"],
+  ["text-type-integer", "color", "data.type.integer", "Byterygon TypeBadge integer"],
   ["bg-editor", "background-color", "editor.bg", "Byterygon SqlEditor frame"],
   ["p-inset-sm", "padding", "space.inset.sm", "Byterygon SqlEditor fallback (density)"],
   ["data-readonly:bg-inset", "background-color", "color.bg.inset", "Byterygon CodeInput read-only and pretty"],

@@ -1,0 +1,149 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "stat",
+  "title": "Stat",
+  "description": "One number that matters, with its label, an optional change (arrow, words for screen readers, colour by intent) and a description.",
+  "usage": "Use Stat for a few key numbers: a query's time and row count, a table's size, connections in use. Compose Stat > StatLabel, StatValue, StatDelta (trend, intent), StatDescription. Format the value in the app (units, grouping). Set intent when up is bad (query time). Put stats in a row or in Cards; for many numbers use Table, for a series use a chart.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "size",
+      "type": "\"sm\" | \"md\"",
+      "default": "md",
+      "description": "The value in text.heading-2 (md) or text.heading-4 (sm)."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "The parts."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "size": [
+      "sm",
+      "md"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "data-slot=\"stat\", data-size."
+    },
+    {
+      "name": "label",
+      "element": "div",
+      "description": "text.label, color.fg.muted, truncates; data-slot=\"stat-label\"."
+    },
+    {
+      "name": "value",
+      "element": "div",
+      "description": "Tabular figures; data-slot=\"stat-value\"."
+    },
+    {
+      "name": "delta",
+      "element": "span",
+      "description": "Arrow, hidden trend words and the change; data-slot=\"stat-delta\", data-trend, data-intent."
+    },
+    {
+      "name": "description",
+      "element": "p",
+      "description": "text.caption, color.fg.muted; data-slot=\"stat-description\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "StatLabel",
+      "slot": "stat-label",
+      "description": "What the number is."
+    },
+    {
+      "name": "StatValue",
+      "slot": "stat-value",
+      "description": "The formatted number."
+    },
+    {
+      "name": "StatDelta",
+      "slot": "stat-delta",
+      "description": "The change: trend (up, down, flat), intent (positive, negative, neutral), trendLabel."
+    },
+    {
+      "name": "StatDescription",
+      "slot": "stat-description",
+      "description": "Context for the number."
+    }
+  ],
+  "states": [
+    {
+      "name": "positive",
+      "variant": "data-[intent=positive]",
+      "description": "A good change: color.status.success.fg."
+    },
+    {
+      "name": "negative",
+      "variant": "data-[intent=negative]",
+      "description": "A bad change: color.status.danger.fg."
+    },
+    {
+      "name": "neutral",
+      "variant": "data-[intent=neutral]",
+      "description": "A change that is neither: color.fg.muted."
+    }
+  ],
+  "tokens": [
+    "color.fg.default",
+    "color.fg.muted",
+    "color.status.danger.fg",
+    "color.status.success.fg",
+    "font.sans",
+    "size.icon.xs",
+    "space.inline.xs",
+    "space.stack.xs",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.heading-2.leading",
+    "text.heading-2.size",
+    "text.heading-2.tracking",
+    "text.heading-2.weight",
+    "text.heading-4.leading",
+    "text.heading-4.size",
+    "text.heading-4.tracking",
+    "text.heading-4.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "StatMinimal",
+    "realistic": "StatRealistic"
+  },
+  "accessibility": [
+    "Plain text in reading order: label, value, change, description.",
+    "StatDelta's arrow is aria-hidden and the trend is said in words (\"Up 12 %\"), so the change never depends on the arrow or the colour.",
+    "Values use tabular figures so they line up; long labels truncate (put the full label in title if it matters).",
+    "Not focusable."
+  ]
+}

@@ -1,0 +1,273 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "table",
+  "type": "registry:ui",
+  "title": "Table",
+  "description": "A plain, semantic data table styled with the grid.* roles DBee's DataGrid uses: sticky header, density-aware rows, sortable headers, NULL marker, and a virtualized body for large row counts.",
+  "dependencies": [],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/table.tsx",
+      "type": "registry:ui",
+      "content": "import {\n  Children,\n  cloneElement,\n  createContext,\n  isValidElement,\n  useCallback,\n  useContext,\n  useEffect,\n  useMemo,\n  useRef,\n  useState,\n  type ComponentProps,\n  type ReactElement,\n  type ReactNode,\n  type Ref,\n  type RefObject,\n} from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenPx } from \"@/lib/theme-scope\";\n\n// A plain, semantic data table (<table>, <thead>, <th scope=\"col\">…) styled with the grid.* roles\n// it shares with DBee's DataGrid (TSK-39), so a schema's column list and a query result look\n// alike: grid.row-height rows (density-aware), grid.cell-padding-x, a sticky grid.header-bg\n// header, grid.row-hover, grid.selection-bg for selected rows, NULL in grid.null-fg (TableNull).\n// It is presentational: sorting is the app's (TableHead `sort` + `onSort`), and so are selection\n// and data. Cells keep one line and truncate (`wrap` lets a cell wrap). For more than ~1,000 rows\n// use TableVirtualBody, which renders only the rows in view between two spacer rows, keeps the\n// semantic table, and sets aria-rowcount and aria-rowindex. Spacers are real heights, and browsers\n// cap an element near 33.5 million px: about 900,000 rows at 36 px (1.5 million at 22 px). The\n// Arrow-backed, cell-selectable, resizable DataGrid is a separate package; this is not it.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const tableVariants = {\n  variant: {\n    plain: \"\",\n    striped: \"[&_tbody>tr[data-odd]:not([data-selected])]:bg-grid-row-alt\",\n    bordered: \"[&_td:not(:last-child)]:border-e [&_th:not(:last-child)]:border-e\",\n  },\n} as const;\n\nconst base = [\n  \"relative w-full min-w-0 overflow-auto overscroll-contain rounded-md border border-grid-border bg-grid-row font-sans\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring\",\n];\n\nconst classes = {\n  table: \"w-full caption-bottom border-separate border-spacing-[var(--by-border-width-0)] text-body text-fg\",\n  header: \"\",\n  body: \"\",\n  footer: \"[&_td]:border-t [&_td]:border-b-0 [&_td]:bg-grid-header [&_td]:text-body-strong\",\n  row: \"hover:bg-grid-row-hover data-selected:bg-grid-selection data-selected:hover:bg-grid-selection\",\n  head: [\n    \"sticky top-0 z-[var(--by-z-sticky)] h-grid-row whitespace-nowrap border-b border-grid-border bg-grid-header px-grid-cell-x text-start align-middle text-label text-fg-muted\",\n    \"data-[align=center]:text-center data-[align=end]:text-end\",\n  ],\n  sortButton: [\n    \"-mx-inline-xs inline-flex max-w-full cursor-default items-center gap-inline-xs rounded-xs px-inline-xs text-label text-fg-muted hover:text-fg\",\n    \"in-data-[align=end]:flex-row-reverse\",\n    \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-ring\",\n    \"[&_svg]:size-icon-xs [&_svg]:shrink-0\",\n  ],\n  sortIcon: \"text-fg-subtle in-[[aria-sort]]:text-fg\",\n  cell: [\n    \"h-grid-row max-w-panel-sm truncate whitespace-nowrap border-b border-grid-border px-grid-cell-x align-middle\",\n    \"data-[align=center]:text-center data-[align=end]:text-end data-[align=end]:tabular-nums\",\n    \"data-wrap:whitespace-normal data-wrap:wrap-break-word\",\n  ],\n  caption: \"px-grid-cell-x py-inset-xs text-start text-caption text-fg-muted\",\n  null: \"italic text-grid-null\",\n} as const;\n\ninterface TableContextValue {\n  container: RefObject<HTMLDivElement | null>;\n  setRowCount: (count: number | undefined) => void;\n}\n\nconst TableContext = createContext<TableContextValue | null>(null);\n\nexport interface TableProps extends Omit<ComponentProps<\"table\">, \"className\" | \"ref\"> {\n  /** plain, striped (alternate rows in grid.row-bg-alt) or bordered (vertical rules between columns). */\n  variant?: keyof typeof tableVariants.variant;\n  /** Extra classes on the scroll container (give it a height to scroll: h-panel-md), merged after the component's own. */\n  className?: string;\n  /** Extra classes on the `<table>`. */\n  tableClassName?: string;\n  /** Reaches the scroll container. */\n  ref?: Ref<HTMLDivElement>;\n}\n\n/**\n * The table in a scroll container. A label (aria-label or aria-labelledby) names the table and\n * makes the container a focusable region, so keyboard users can scroll a tall or wide table.\n */\nexport function Table({ variant = \"plain\", className, tableClassName, children, ref, \"aria-label\": ariaLabel, \"aria-labelledby\": ariaLabelledBy, ...props }: TableProps) {\n  const container = useRef<HTMLDivElement | null>(null);\n  const [rowCount, setRowCount] = useState<number | undefined>(undefined);\n  const labelled = ariaLabel !== undefined || ariaLabelledBy !== undefined;\n  const setRef = useCallback(\n    (node: HTMLDivElement | null) => {\n      container.current = node;\n      if (typeof ref === \"function\") ref(node);\n      else if (ref) ref.current = node;\n    },\n    [ref],\n  );\n  const context = useMemo(() => ({ container, setRowCount }), []);\n  return (\n    <TableContext value={context}>\n      <div\n        ref={setRef}\n        data-slot=\"table\"\n        data-variant={variant}\n        role={labelled ? \"region\" : undefined}\n        tabIndex={labelled ? 0 : undefined}\n        aria-label={ariaLabel}\n        aria-labelledby={ariaLabelledBy}\n        className={cn(base, tableVariants.variant[variant], className)}\n      >\n        <table data-slot=\"table-element\" aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-rowcount={rowCount} className={cn(classes.table, tableClassName)} {...props}>\n          {children}\n        </table>\n      </div>\n    </TableContext>\n  );\n}\n\ntype SectionProps = Omit<ComponentProps<\"tbody\">, \"className\"> & { className?: string };\n\n/** The `<thead>`; its TableHead cells stick to the top while the body scrolls. */\nexport function TableHeader({ className, ...props }: SectionProps) {\n  return <thead data-slot=\"table-header\" className={cn(classes.header, className)} {...props} />;\n}\n\n/** Marks every other row (data-odd) for the striped variant. */\nfunction markOddRows(children: ReactNode, offset = 0): ReactNode {\n  let index = offset;\n  return Children.map(children, (child) => {\n    if (!isValidElement(child)) return child;\n    const odd = index % 2 === 1;\n    index += 1;\n    return odd ? cloneElement(child as ReactElement<Record<string, unknown>>, { \"data-odd\": \"\" }) : child;\n  });\n}\n\n/** The `<tbody>` for rows you render yourself (up to a thousand or so; beyond that use TableVirtualBody). */\nexport function TableBody({ className, children, ...props }: SectionProps) {\n  return (\n    <tbody data-slot=\"table-body\" className={cn(classes.body, className)} {...props}>\n      {markOddRows(children)}\n    </tbody>\n  );\n}\n\n/** The `<tfoot>`: totals or a summary row. */\nexport function TableFooter({ className, ...props }: SectionProps) {\n  return <tfoot data-slot=\"table-footer\" className={cn(classes.footer, className)} {...props} />;\n}\n\nexport interface TableRowProps extends Omit<ComponentProps<\"tr\">, \"className\"> {\n  /** Shows the row as selected (grid.selection-bg) and sets aria-selected. */\n  selected?: boolean;\n  className?: string;\n}\n\n/** A `<tr>`. */\nexport function TableRow({ selected, className, ...props }: TableRowProps) {\n  return <tr data-slot=\"table-row\" data-selected={selected ? \"\" : undefined} aria-selected={selected} className={cn(classes.row, className)} {...props} />;\n}\n\nconst SortIcon = ({ sort }: { sort: TableHeadProps[\"sort\"] }) => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    {sort === \"ascending\" ? <path d=\"m4.5 10 3.5-4 3.5 4\" /> : sort === \"descending\" ? <path d=\"m4.5 6 3.5 4 3.5-4\" /> : <path d=\"m5 6.5 3-3 3 3m-6 3 3 3 3-3\" />}\n  </svg>\n);\n\nexport interface TableHeadProps extends Omit<ComponentProps<\"th\">, \"className\" | \"align\"> {\n  /** Text alignment; `end` for numbers, matching their cells. */\n  align?: \"start\" | \"center\" | \"end\";\n  /** The column's current sort, shown by an icon and aria-sort; the app sorts the rows. */\n  sort?: \"ascending\" | \"descending\" | \"none\";\n  /** Makes the header a button that asks the app to sort by this column. */\n  onSort?: (() => void) | undefined;\n  className?: string;\n}\n\n/** A column header, `<th scope=\"col\">`; with `onSort` its label is a button. */\nexport function TableHead({ align = \"start\", sort, onSort, scope = \"col\", className, children, ...props }: TableHeadProps) {\n  const ariaSort = sort === \"ascending\" || sort === \"descending\" ? sort : undefined;\n  return (\n    <th data-slot=\"table-head\" data-align={align} scope={scope} aria-sort={ariaSort} className={cn(classes.head, className)} {...props}>\n      {onSort ? (\n        <button type=\"button\" data-slot=\"table-sort\" onClick={onSort} className={cn(classes.sortButton)}>\n          <span className=\"truncate\">{children}</span>\n          <span className={classes.sortIcon}>\n            <SortIcon sort={sort} />\n          </span>\n        </button>\n      ) : (\n        children\n      )}\n    </th>\n  );\n}\n\nexport interface TableCellProps extends Omit<ComponentProps<\"td\">, \"className\" | \"align\"> {\n  /** Text alignment; `end` for numbers (also tabular figures). */\n  align?: \"start\" | \"center\" | \"end\";\n  /** Lets the text wrap instead of truncating (not inside TableVirtualBody, whose rows have a fixed height). */\n  wrap?: boolean;\n  className?: string;\n}\n\n/** A data cell, `<td>`: one line that truncates with an ellipsis (put the full value in title). */\nexport function TableCell({ align = \"start\", wrap = false, className, ...props }: TableCellProps) {\n  return <td data-slot=\"table-cell\" data-align={align} data-wrap={wrap ? \"\" : undefined} className={cn(classes.cell, className)} {...props} />;\n}\n\nexport type TableCaptionProps = Omit<ComponentProps<\"caption\">, \"className\"> & { className?: string };\n\n/** The `<caption>`, under the table: what it lists (\"12 columns of public.orders\"). It names the table. */\nexport function TableCaption({ className, ...props }: TableCaptionProps) {\n  return <caption data-slot=\"table-caption\" className={cn(classes.caption, className)} {...props} />;\n}\n\nexport type TableNullProps = Omit<ComponentProps<\"span\">, \"className\"> & { className?: string };\n\n/** A SQL NULL, distinct from an empty string: \"NULL\" in italic grid.null-fg, as the DataGrid shows it. */\nexport function TableNull({ className, children = \"NULL\", ...props }: TableNullProps) {\n  return (\n    <span data-slot=\"table-null\" className={cn(classes.null, className)} {...props}>\n      {children}\n    </span>\n  );\n}\n\nexport interface TableVirtualBodyProps {\n  /** Number of rows. */\n  count: number;\n  /** Renders row `index` as a TableRow; it receives aria-rowindex and data-odd. */\n  renderRow: (index: number) => ReactElement;\n  /** Rows rendered above and below the visible ones. */\n  overscan?: number;\n  /** Header rows above the body, for aria-rowindex (1 by default). */\n  headerRows?: number;\n  className?: string;\n  /** Reaches the `<tbody>`. */\n  ref?: Ref<HTMLTableSectionElement>;\n}\n\n/**\n * A `<tbody>` that renders only the rows in view (plus `overscan`) inside a Table with a fixed\n * height. Rows are grid.row-height tall, one line each; spacer rows keep the scroll height, so\n * the header still sticks and the table stays a table for assistive technology.\n */\nexport function TableVirtualBody({ count, renderRow, overscan = 10, headerRows = 1, className, ref }: TableVirtualBodyProps) {\n  const context = useContext(TableContext);\n  if (!context) throw new Error(\"TableVirtualBody must be inside a Table\");\n  const { container, setRowCount } = context;\n  const body = useRef<HTMLTableSectionElement | null>(null);\n  const [view, setView] = useState({ scrollTop: 0, viewport: 0, rowHeight: 28, bodyTop: 0 });\n\n  useEffect(() => {\n    setRowCount(count + headerRows);\n    return () => setRowCount(undefined);\n  }, [count, headerRows, setRowCount]);\n\n  useEffect(() => {\n    const element = container.current;\n    if (!element) return undefined;\n    let frame = 0;\n    const measure = () => {\n      frame = 0;\n      setView((previous) => {\n        const next = {\n          scrollTop: element.scrollTop,\n          viewport: element.clientHeight,\n          rowHeight: tokenPx(element, \"--by-grid-row-height\", previous.rowHeight),\n          bodyTop: body.current?.offsetTop ?? 0,\n        };\n        return next.scrollTop === previous.scrollTop && next.viewport === previous.viewport && next.rowHeight === previous.rowHeight && next.bodyTop === previous.bodyTop ? previous : next;\n      });\n    };\n    const schedule = () => {\n      if (!frame) frame = typeof requestAnimationFrame === \"function\" ? requestAnimationFrame(measure) : (measure(), 0);\n    };\n    measure();\n    element.addEventListener(\"scroll\", schedule, { passive: true });\n    const observer = typeof ResizeObserver === \"undefined\" ? undefined : new ResizeObserver(schedule);\n    observer?.observe(element);\n    return () => {\n      element.removeEventListener(\"scroll\", schedule);\n      observer?.disconnect();\n      if (frame && typeof cancelAnimationFrame === \"function\") cancelAnimationFrame(frame);\n    };\n  }, [container]);\n\n  const { scrollTop, rowHeight, bodyTop } = view;\n  // jsdom and a container not laid out yet report 0: render a screenful anyway.\n  const viewport = view.viewport || rowHeight * 30;\n  const first = Math.max(0, Math.min(count, Math.floor(Math.max(0, scrollTop - bodyTop) / rowHeight) - overscan));\n  const last = Math.max(first, Math.min(count, Math.ceil((scrollTop - bodyTop + viewport) / rowHeight) + overscan));\n\n  const rows: ReactNode[] = [];\n  for (let index = first; index < last; index += 1) {\n    const row = renderRow(index) as ReactElement<Record<string, unknown>>;\n    rows.push(cloneElement(row, { key: row.key ?? index, \"aria-rowindex\": index + 1 + headerRows, \"data-odd\": index % 2 === 1 ? \"\" : undefined }));\n  }\n\n  const setRef = (node: HTMLTableSectionElement | null) => {\n    body.current = node;\n    if (typeof ref === \"function\") ref(node);\n    else if (ref) ref.current = node;\n  };\n\n  return (\n    <tbody ref={setRef} data-slot=\"table-virtual-body\" data-first={first} data-last={last} className={cn(classes.body, className)}>\n      <tr aria-hidden=\"true\" data-spacer=\"\">\n        <td colSpan={1000} style={{ height: first * rowHeight, padding: 0, border: 0 }} />\n      </tr>\n      {rows}\n      <tr aria-hidden=\"true\" data-spacer=\"\">\n        <td colSpan={1000} style={{ height: (count - last) * rowHeight, padding: 0, border: 0 }} />\n      </tr>\n    </tbody>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "table",
+      "title": "Table",
+      "description": "A plain, semantic data table styled with the grid.* roles DBee's DataGrid uses: sticky header, density-aware rows, sortable headers, NULL marker, and a virtualized body for large row counts.",
+      "usage": "Use Table for records with the same columns: a table's columns, indexes, grants, the audit log, a small query result. Compose Table (aria-label, or TableCaption with aria-labelledby) > TableHeader > TableRow > TableHead, then TableBody > TableRow > TableCell, and an optional TableFooter. It is presentational: the app sorts (TableHead sort + onSort), selects (TableRow selected) and pages. Cells keep one line and truncate (wrap lets one wrap); align=\"end\" for numbers; TableNull for SQL NULL. For more than about 1,000 rows, give the Table a height and use TableVirtualBody with count and renderRow; browsers cap an element's height near 33.5 million px, so it serves up to about 900,000 rows at the comfortable row height (1.5 million compact). Put the Table in a parent that lets it shrink (min-w-0) so wide tables scroll inside it. For streamed Arrow results with cell selection and column resizing use the DataGrid package (TSK-39); for term/value pairs use DescriptionList.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [],
+      "props": [
+        {
+          "name": "variant",
+          "type": "\"plain\" | \"striped\" | \"bordered\"",
+          "default": "plain",
+          "description": "striped: alternate rows in grid.row-bg-alt; bordered: rules between columns."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Names the table; the scroll container becomes a focusable region."
+        },
+        {
+          "name": "aria-labelledby",
+          "type": "string",
+          "description": "Names the table by another element (its TableCaption's id)."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "TableCaption, TableHeader, TableBody or TableVirtualBody, TableFooter."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes on the scroll container; give it a height to scroll."
+        },
+        {
+          "name": "tableClassName",
+          "type": "string",
+          "description": "Extra classes on the <table>."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the scroll container."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "plain",
+          "striped",
+          "bordered"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The scroll container, a focusable region when labelled; data-slot=\"table\", data-variant."
+        },
+        {
+          "name": "element",
+          "element": "table",
+          "description": "The <table>; data-slot=\"table-element\"; aria-rowcount with a virtual body."
+        },
+        {
+          "name": "header",
+          "element": "thead",
+          "description": "data-slot=\"table-header\"."
+        },
+        {
+          "name": "body",
+          "element": "tbody",
+          "description": "data-slot=\"table-body\"; marks odd rows data-odd."
+        },
+        {
+          "name": "virtual-body",
+          "element": "tbody",
+          "description": "Renders the rows in view between two aria-hidden spacer rows; data-slot=\"table-virtual-body\", data-first, data-last."
+        },
+        {
+          "name": "footer",
+          "element": "tfoot",
+          "description": "data-slot=\"table-footer\"."
+        },
+        {
+          "name": "row",
+          "element": "tr",
+          "description": "data-slot=\"table-row\", data-selected, aria-selected, data-odd."
+        },
+        {
+          "name": "head",
+          "element": "th",
+          "description": "scope=\"col\", sticky, grid.header-bg; data-slot=\"table-head\", data-align, aria-sort."
+        },
+        {
+          "name": "sort",
+          "element": "button",
+          "description": "The sort button inside a sortable head; data-slot=\"table-sort\"."
+        },
+        {
+          "name": "cell",
+          "element": "td",
+          "description": "grid.row-height, grid.cell-padding-x, truncates; data-slot=\"table-cell\", data-align, data-wrap."
+        },
+        {
+          "name": "caption",
+          "element": "caption",
+          "description": "Under the table; data-slot=\"table-caption\"."
+        },
+        {
+          "name": "null",
+          "element": "span",
+          "description": "NULL in italic grid.null-fg; data-slot=\"table-null\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "TableHeader",
+          "slot": "table-header",
+          "description": "The <thead>; its heads stick while the body scrolls."
+        },
+        {
+          "name": "TableBody",
+          "slot": "table-body",
+          "description": "The <tbody> for rows you render (up to about 1,000)."
+        },
+        {
+          "name": "TableVirtualBody",
+          "slot": "table-virtual-body",
+          "description": "A <tbody> that renders only the rows in view: count, renderRow, overscan, headerRows."
+        },
+        {
+          "name": "TableFooter",
+          "slot": "table-footer",
+          "description": "The <tfoot>."
+        },
+        {
+          "name": "TableRow",
+          "slot": "table-row",
+          "description": "A <tr>; selected marks it."
+        },
+        {
+          "name": "TableHead",
+          "slot": "table-head",
+          "description": "A column header: align, sort, onSort."
+        },
+        {
+          "name": "TableCell",
+          "slot": "table-cell",
+          "description": "A data cell: align, wrap."
+        },
+        {
+          "name": "TableCaption",
+          "slot": "table-caption",
+          "description": "What the table lists; names it."
+        },
+        {
+          "name": "TableNull",
+          "slot": "table-null",
+          "description": "A SQL NULL, distinct from an empty string."
+        }
+      ],
+      "states": [
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over a row: grid.row-hover; over a sort button: color.fg.default."
+        },
+        {
+          "name": "selected",
+          "variant": "data-selected",
+          "description": "A selected row: grid.selection-bg."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on the region or a sort button: a ring of ring.width in color.ring."
+        },
+        {
+          "name": "align-end",
+          "variant": "data-[align=end]",
+          "description": "End-aligned heads and cells; cells use tabular figures."
+        },
+        {
+          "name": "wrap",
+          "variant": "data-wrap",
+          "description": "A cell that wraps instead of truncating."
+        }
+      ],
+      "tokens": [
+        "border.width.0",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.ring",
+        "font.mono",
+        "font.sans",
+        "grid.cell-border",
+        "grid.cell-padding-x",
+        "grid.header-bg",
+        "grid.null-fg",
+        "grid.row-bg",
+        "grid.row-bg-alt",
+        "grid.row-height",
+        "grid.row-hover",
+        "grid.selection-bg",
+        "radius.md",
+        "radius.xs",
+        "ring.width",
+        "size.icon.xs",
+        "size.panel.md",
+        "size.panel.sm",
+        "space.inline.xs",
+        "space.inset.xs",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.code.leading",
+        "text.code.size",
+        "text.code.tracking",
+        "text.code.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight",
+        "z.sticky"
+      ],
+      "examples": {
+        "minimal": "TableMinimal",
+        "realistic": "TableRealistic"
+      },
+      "accessibility": [
+        "A real <table> with <thead>, <th scope=\"col\"> and <td>, so screen readers announce headers with each cell; name it with aria-label or a TableCaption referenced by aria-labelledby.",
+        "A labelled table's scroll container is a focusable region, so keyboard users can scroll a tall or wide table with the arrow keys.",
+        "A sortable column's label is a button; the current order is aria-sort on the <th> and an icon (aria-hidden).",
+        "TableVirtualBody keeps the semantic table: the <table> has aria-rowcount (all rows plus the header) and each rendered row its aria-rowindex; the spacer rows are aria-hidden.",
+        "Selected rows set aria-selected; NULL is the word NULL, not a colour; truncated cells should carry the full value in title.",
+        "Not an interactive grid: no cell focus or arrow-key movement between cells. For that, use the DataGrid (ARIA grid pattern)."
+      ]
+    },
+    "example": "import { useMemo, useState } from \"react\";\nimport { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableNull, TableRow, TableVirtualBody } from \"@/components/table/table\";\n\n/** The smallest useful Table: a header and two rows. */\nexport function TableMinimal() {\n  return (\n    <Table aria-label=\"Connections\" className=\"max-w-panel-md\">\n      <TableHeader>\n        <TableRow>\n          <TableHead>Name</TableHead>\n          <TableHead>Host</TableHead>\n        </TableRow>\n      </TableHeader>\n      <TableBody>\n        <TableRow>\n          <TableCell>orders-prod</TableCell>\n          <TableCell>db.internal:5432</TableCell>\n        </TableRow>\n        <TableRow>\n          <TableCell>analytics</TableCell>\n          <TableCell>wh.internal:5432</TableCell>\n        </TableRow>\n      </TableBody>\n    </Table>\n  );\n}\n\ninterface Column {\n  name: string;\n  type: string;\n  nullable: boolean;\n  default: string | null;\n  position: number;\n}\n\nconst columns: Column[] = [\n  { name: \"id\", type: \"bigint\", nullable: false, default: \"nextval('orders_id_seq')\", position: 1 },\n  { name: \"customer_id\", type: \"bigint\", nullable: false, default: null, position: 2 },\n  { name: \"status\", type: \"text\", nullable: false, default: \"'open'\", position: 3 },\n  { name: \"total\", type: \"numeric(12,2)\", nullable: true, default: null, position: 4 },\n  { name: \"shipping_address_line_2_for_international_orders\", type: \"text\", nullable: true, default: \"''\", position: 5 },\n  { name: \"created_at\", type: \"timestamptz\", nullable: false, default: \"now()\", position: 6 },\n];\n\n/** A table's columns (sortable, striped, a NULL, a selected row, a long name, a footer), then 100,000 query rows virtualized. */\nexport function TableRealistic() {\n  const [sort, setSort] = useState<{ key: keyof Column; dir: \"ascending\" | \"descending\" }>({ key: \"position\", dir: \"ascending\" });\n  const sorted = useMemo(() => {\n    const rows = [...columns].sort((a, b) => String(a[sort.key] ?? \"\").localeCompare(String(b[sort.key] ?? \"\"), \"en\", { numeric: true }));\n    return sort.dir === \"ascending\" ? rows : rows.reverse();\n  }, [sort]);\n  const by = (key: keyof Column) => () => setSort((s) => ({ key, dir: s.key === key && s.dir === \"ascending\" ? \"descending\" : \"ascending\" }));\n  const sortOf = (key: keyof Column) => (sort.key === key ? sort.dir : \"none\");\n\n  return (\n    <div className=\"flex w-full min-w-0 max-w-panel-xl flex-col gap-stack-lg\">\n      <Table variant=\"striped\" aria-labelledby=\"orders-columns-caption\">\n        <TableCaption id=\"orders-columns-caption\">6 columns of public.orders</TableCaption>\n        <TableHeader>\n          <TableRow>\n            <TableHead align=\"end\" sort={sortOf(\"position\")} onSort={by(\"position\")}>\n              #\n            </TableHead>\n            <TableHead sort={sortOf(\"name\")} onSort={by(\"name\")}>\n              Column\n            </TableHead>\n            <TableHead>Type</TableHead>\n            <TableHead align=\"center\">Nullable</TableHead>\n            <TableHead>Default</TableHead>\n          </TableRow>\n        </TableHeader>\n        <TableBody>\n          {sorted.map((column) => (\n            <TableRow key={column.name} selected={column.name === \"status\"}>\n              <TableCell align=\"end\">{column.position}</TableCell>\n              <TableCell title={column.name}>{column.name}</TableCell>\n              <TableCell className=\"font-mono text-code\">{column.type}</TableCell>\n              <TableCell align=\"center\">{column.nullable ? \"yes\" : \"no\"}</TableCell>\n              <TableCell className=\"font-mono text-code\">{column.default ?? <TableNull />}</TableCell>\n            </TableRow>\n          ))}\n        </TableBody>\n        <TableFooter>\n          <TableRow>\n            <TableCell colSpan={5}>Primary key: id</TableCell>\n          </TableRow>\n        </TableFooter>\n      </Table>\n      <Table variant=\"bordered\" aria-label=\"Query result, 100,000 rows\" className=\"h-panel-md\">\n        <TableHeader>\n          <TableRow>\n            <TableHead align=\"end\">id</TableHead>\n            <TableHead>status</TableHead>\n            <TableHead align=\"end\">total</TableHead>\n            <TableHead>note</TableHead>\n          </TableRow>\n        </TableHeader>\n        <TableVirtualBody\n          count={100_000}\n          renderRow={(i) => (\n            <TableRow key={i}>\n              <TableCell align=\"end\">{i + 1}</TableCell>\n              <TableCell>{[\"open\", \"paid\", \"shipped\"][i % 3]}</TableCell>\n              <TableCell align=\"end\">{((i * 7919) % 100_000) / 100}</TableCell>\n              <TableCell>{i % 5 === 0 ? <TableNull /> : `order ${i + 1}`}</TableCell>\n            </TableRow>\n          )}\n        />\n      </Table>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {}
+  }
+}

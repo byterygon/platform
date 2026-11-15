@@ -157,6 +157,19 @@ Usage: Use Checkbox for a yes/no choice that is applied when the form is submitt
 - Tokens: color.accent.bg, color.accent.bg-hover, color.accent.fg, color.bg.surface, color.border.strong, color.interactive.hover, color.ring, color.status.danger.border, motion.duration.fast, motion.easing.standard, opacity.disabled, radius.xs, ring.offset, ring.width, size.icon.lg, size.icon.md, size.icon.sm, size.icon.xs, space.stack.sm
 - Accessibility: Renders a <span role="checkbox"> with aria-checked (true, false or mixed) and a hidden native input for forms; Tab reaches it and Space toggles it. Label it by wrapping it in a FieldLabel with its text; the text then toggles it too and enlarges the target beyond the 14 to 20 px box (WCAG 2.2 target size). A group is a fieldset named by its FieldLegend; a FieldDescription inside a FieldItem describes that option only. Ticked and mixed are shown by a check or a dash as well as the accent fill; the unticked border is color.border.strong (3:1 against the surface). Focus shows a ring of ring.width in color.ring (3:1 on every surface).
 
+### Code
+
+[code.json](code.json): Inline code in running text (a SQLSTATE, an identifier, a digest) as a <code> in text.code-sm; long values break anywhere.
+
+Usage: Use Code inside a sentence for something the user might type or copy: a SQLSTATE, a table name, a digest or a fingerprint. variant="plain" drops the background inside dense places. For several lines use CodeBlock; for keyboard keys use Kbd; for an editable value use CodeInput.
+
+- Wraps: @base-ui/react/use-render
+- variant: default, plain
+- Props: variant ("default" | "plain", default "default"); children (ReactNode); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: 
+- Tokens: color.bg.inset, color.fg.default, font.mono, radius.xs, space.inline.xs, text.code-sm.leading, text.code-sm.size, text.code-sm.tracking, text.code-sm.weight
+- Accessibility: A <code> element read in place with the sentence; render <samp> for program output, which is semantically different. color.fg.default on color.bg.inset is contrast-checked as text. Long unbroken values break anywhere (break-all) so they never force horizontal scrolling. Not focusable; to make it copyable, put a copy IconButton next to it.
+
 ### CodeInput
 
 [code-input.json](code-input.json): A small code field on CodeMirror 6: one line (Enter submits) or several, PostgreSQL or JSON highlighting in the syntax.* colours, a read-only pretty viewer for JSON; themed through the token CSS variables and usable inside a Field.
@@ -235,6 +248,20 @@ Usage: Use DatePicker for a day in a form or a filter (a restore point, a snapsh
 - States: focus-visible (focus-visible), open (data-popup-open), entering (data-starting-style), invalid (has-[[data-slot=input-group-input][aria-invalid=true]]), selected (data-selected), disabled (has-[[data-slot=input-group-input][data-disabled]])
 - Tokens: color.accent.bg, color.accent.bg-active, color.accent.bg-hover, color.accent.fg, color.accent.subtle-fg, color.bg.overlay, color.bg.surface, color.border.default, color.border.strong, color.fg.default, color.fg.disabled, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.ring, color.status.danger.border, elevation.overlay.shadow, font.sans, motion.duration.fast, motion.easing.enter, motion.easing.exit, motion.easing.standard, opacity.disabled, radius.md, ring.offset, ring.width, size.control.lg, size.control.md, size.control.sm, size.control.xs, size.icon.sm, space.control.x, space.inline.md, space.inline.sm, space.inline.xl, space.inline.xs, space.inset.sm, space.inset.xs, space.stack.sm, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight, z.popover
 - Accessibility: The text field is named by its FieldLabel (or aria-label), described by FieldDescription and FieldError, and aria-invalid while its text is not a date; the placeholder shows the format to type. The calendar button is named by calendarLabel ("Choose date") and has aria-haspopup="dialog" and aria-expanded; Alt+ArrowDown in the text field opens the calendar too. When the popup opens, focus moves to the chosen day (else today); the arrow keys, PageUp and PageDown move it, Enter or Space picks it, and the popup closes and returns focus to the text field. Escape closes it without a change. The calendar is a role="grid" per month with full-date labels on the days; days outside min, max or disabledDays are disabled and struck through. Everything the popup does can be done by typing the date, so the field also works without a pointer or the popup.
+
+### DescriptionList
+
+[description-list.json](description-list.json): Term/value pairs in a <dl>: the term beside its value or above it, optionally divided by rules; long values wrap.
+
+Usage: Use DescriptionList for the facts of one thing: the grant summary in the approval dialog, a connection's details, About and diagnostics. Compose DescriptionList > DescriptionListItem > DescriptionListTerm + DescriptionListDetails (one or more). layout="stacked" in narrow panels; divided adds rules between items. For many records with the same fields use Table; for a single number use Stat.
+
+- Wraps: @base-ui/react/use-render
+- Parts: DescriptionListItem (data-slot description-list-item): Groups one term with its values.; DescriptionListTerm (data-slot description-list-term): The term, a <dt>.; DescriptionListDetails (data-slot description-list-details): The value, a <dd>.
+- layout: inline, stacked
+- Props: layout ("inline" | "stacked", default "inline"); divided (boolean, default false); children (ReactNode); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLDListElement>)
+- States: divided (data-divided)
+- Tokens: color.border.muted, color.fg.default, color.fg.muted, font.mono, font.sans, size.panel.md, size.panel.xs, space.inline.md, space.inset.xs, space.stack.sm, space.stack.xs, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: A real <dl> with <dt> and <dd> (each pair in a <div>, which HTML allows), so screen readers announce the list and pair terms with values. Terms are color.fg.muted and values color.fg.default, both contrast-checked as text. Long values (digests, paths) wrap instead of overflowing; not focusable.
 
 ### Dialog
 
@@ -503,6 +530,18 @@ Usage: Use RadioGroup when the user must pick exactly one of two to about six op
 - Tokens: color.accent.bg, color.accent.bg-hover, color.accent.fg, color.bg.surface, color.border.strong, color.interactive.hover, color.ring, color.status.danger.border, motion.duration.fast, motion.easing.standard, opacity.disabled, ring.offset, ring.width, size.icon.lg, size.icon.md, size.icon.sm, space.stack.sm
 - Accessibility: Renders a <div role="radiogroup"> named by its FieldLegend (aria-labelledby), with a <span role="radio"> and aria-checked per option, and hidden native inputs for forms. Tab enters the group at the chosen radio (or the first) and leaves it; arrow keys move the choice, skipping disabled radios. Wrap each radio and its text in a FieldLabel: the text chooses it too, which enlarges the target beyond the 14 to 20 px circle (WCAG 2.2 target size). A FieldDescription inside the FieldItem describes that option only. The chosen radio shows a dot as well as the accent fill; the border is color.border.strong (3:1 against the surface). Focus shows a ring of ring.width in color.ring (3:1 on every surface).
 
+### RelativeTime
+
+[relative-time.json](relative-time.json): A time relative to now ("in 14 min", "2 s ago") in a <time datetime>, kept current, with the absolute time in a Tooltip and as hidden text.
+
+Usage: Use RelativeTime where how long ago or how soon matters more than the clock time: a grant's expiry, "last run" in the status line, when a connection was created. date takes a Date, an ISO string or epoch ms; timeZone sets the absolute time's zone ("UTC"). It updates itself; pass now to freeze it. tooltip={false} drops the Tooltip (and the tab stop) in long lists. For a timestamp in a data cell, show the absolute value instead.
+
+- Wraps: no Base UI part
+- Props: date (Date | string | number); now (number); live (boolean, default true); locale (string); style ("long" | "short" | "narrow", default "short"); timeZone (string); tooltip (boolean, default true); className (string); ref (Ref<HTMLTimeElement>)
+- States: tooltip (data-tooltip), focus-visible (focus-visible)
+- Tokens: color.fg.subtle, color.ring, radius.xs, ring.offset, ring.width
+- Accessibility: A <time> with a machine-readable datetime; screen readers read the relative text followed by the absolute time from visually hidden text, so nothing depends on the tooltip. With a tooltip the time is in the tab order and the Tooltip opens on focus as well as hover. Not a live region: the text updates silently (an announcing countdown would never stop). Announce an expiry with a Toast or Alert instead. Formatting uses the browser's Intl APIs in the user's locale; nothing is downloaded.
+
 ### Resizable
 
 [resizable.json](resizable.json): Panes the user resizes by dragging or with the keyboard: a group of panels with focusable separator handles between them (ARIA window splitter).
@@ -664,6 +703,20 @@ Usage: Use SqlEditor for real queries: a query tab (variant="ghost", className="
 - Tokens: color.border.default, color.border.strong, color.ring, editor.bg, editor.cursor, editor.fg, editor.gutter, editor.selection, font.mono, radius.md, ring.offset, ring.width, size.panel.xs, space.inset.sm, text.code.leading, text.code.size, text.code.tracking, text.code.weight
 - Accessibility: The text area is Monaco's own input (a textarea or an EditContext with role textbox), named by aria-label ("SQL editor" by default) or aria-labelledby; the stand-in textarea has the same name. Tab indents inside the editor, as code editors do; Ctrl+M (Ctrl+Shift+M on macOS) switches Tab to move focus, and tabMovesFocus starts in that mode, so focus is never trapped. Every action has a key: Ctrl+Enter runs, Ctrl+F finds, Ctrl+/ comments, F8 and Shift+F8 move between error markers, F1 opens Monaco's command list. Error markers are announced through Monaco's hover and the F8 marker widget, not by colour alone; editor.* and syntax.* colours are contrast-checked by the token build in every mode. screenReaderOptimized turns on Monaco's screen reader mode (offer it as a setting); otherwise Monaco detects a screen reader. Focus shows a ring of ring.width in color.ring on the frame. Nothing is fetched: Monaco, its worker and its font come from the app's bundle.
 
+### Stat
+
+[stat.json](stat.json): One number that matters, with its label, an optional change (arrow, words for screen readers, colour by intent) and a description.
+
+Usage: Use Stat for a few key numbers: a query's time and row count, a table's size, connections in use. Compose Stat > StatLabel, StatValue, StatDelta (trend, intent), StatDescription. Format the value in the app (units, grouping). Set intent when up is bad (query time). Put stats in a row or in Cards; for many numbers use Table, for a series use a chart.
+
+- Wraps: @base-ui/react/use-render
+- Parts: StatLabel (data-slot stat-label): What the number is.; StatValue (data-slot stat-value): The formatted number.; StatDelta (data-slot stat-delta): The change: trend (up, down, flat), intent (positive, negative, neutral), trendLabel.; StatDescription (data-slot stat-description): Context for the number.
+- size: sm, md
+- Props: size ("sm" | "md", default "md"); children (ReactNode); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: positive (data-[intent=positive]), negative (data-[intent=negative]), neutral (data-[intent=neutral])
+- Tokens: color.fg.default, color.fg.muted, color.status.danger.fg, color.status.success.fg, font.sans, size.icon.xs, space.inline.xs, space.stack.xs, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.heading-2.leading, text.heading-2.size, text.heading-2.tracking, text.heading-2.weight, text.heading-4.leading, text.heading-4.size, text.heading-4.tracking, text.heading-4.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight
+- Accessibility: Plain text in reading order: label, value, change, description. StatDelta's arrow is aria-hidden and the trend is said in words ("Up 12 %"), so the change never depends on the arrow or the colour. Values use tabular figures so they line up; long labels truncate (put the full label in title if it matters). Not focusable.
+
 ### StatusBar
 
 [status-bar.json](status-bar.json): The thin bar at the bottom of an app or pane: one-line status items that truncate, buttons, a spacer, and live items announced politely.
@@ -704,6 +757,20 @@ Usage: Use Switch for a setting that takes effect as soon as it is flipped ("Aut
 - States: hover (hover), checked (data-checked), focus-visible (focus-visible), invalid (data-invalid), disabled (data-disabled)
 - Tokens: color.accent.bg, color.accent.bg-hover, color.bg.surface, color.border.strong, color.ring, color.status.danger.border, motion.duration.fast, motion.easing.standard, opacity.disabled, ring.offset, ring.width, shadow.raised, size.icon.md, size.icon.sm, size.icon.xs
 - Accessibility: Renders a <span role="switch"> with aria-checked and a hidden native input for forms; Tab reaches it, Space and Enter flip it. Label it by wrapping it in a FieldLabel with its text; the text flips it too and enlarges the target beyond the track (WCAG 2.2 target size). Name the setting, not the state ("Auto-commit", not "Auto-commit on"). On and off differ by the thumb's position as well as the track colour; the off track is color.border.strong (3:1 against the surface). The thumb slides in the reading direction (right in LTR, left in RTL). Focus shows a ring of ring.width in color.ring (3:1 on every surface).
+
+### Table
+
+[table.json](table.json): A plain, semantic data table styled with the grid.* roles DBee's DataGrid uses: sticky header, density-aware rows, sortable headers, NULL marker, and a virtualized body for large row counts.
+
+Usage: Use Table for records with the same columns: a table's columns, indexes, grants, the audit log, a small query result. Compose Table (aria-label, or TableCaption with aria-labelledby) > TableHeader > TableRow > TableHead, then TableBody > TableRow > TableCell, and an optional TableFooter. It is presentational: the app sorts (TableHead sort + onSort), selects (TableRow selected) and pages. Cells keep one line and truncate (wrap lets one wrap); align="end" for numbers; TableNull for SQL NULL. For more than about 1,000 rows, give the Table a height and use TableVirtualBody with count and renderRow; browsers cap an element's height near 33.5 million px, so it serves up to about 900,000 rows at the comfortable row height (1.5 million compact). Put the Table in a parent that lets it shrink (min-w-0) so wide tables scroll inside it. For streamed Arrow results with cell selection and column resizing use the DataGrid package (TSK-39); for term/value pairs use DescriptionList.
+
+- Wraps: no Base UI part
+- Parts: TableHeader (data-slot table-header): The <thead>; its heads stick while the body scrolls.; TableBody (data-slot table-body): The <tbody> for rows you render (up to about 1,000).; TableVirtualBody (data-slot table-virtual-body): A <tbody> that renders only the rows in view: count, renderRow, overscan, headerRows.; TableFooter (data-slot table-footer): The <tfoot>.; TableRow (data-slot table-row): A <tr>; selected marks it.; TableHead (data-slot table-head): A column header: align, sort, onSort.; TableCell (data-slot table-cell): A data cell: align, wrap.; TableCaption (data-slot table-caption): What the table lists; names it.; TableNull (data-slot table-null): A SQL NULL, distinct from an empty string.
+- variant: plain, striped, bordered
+- Props: variant ("plain" | "striped" | "bordered", default "plain"); aria-label (string); aria-labelledby (string); children (ReactNode); className (string); tableClassName (string); ref (Ref<HTMLDivElement>)
+- States: hover (hover), selected (data-selected), focus-visible (focus-visible), align-end (data-[align=end]), wrap (data-wrap)
+- Tokens: border.width.0, color.fg.default, color.fg.muted, color.fg.subtle, color.ring, font.mono, font.sans, grid.cell-border, grid.cell-padding-x, grid.header-bg, grid.null-fg, grid.row-bg, grid.row-bg-alt, grid.row-height, grid.row-hover, grid.selection-bg, radius.md, radius.xs, ring.width, size.icon.xs, size.panel.md, size.panel.sm, space.inline.xs, space.inset.xs, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight, text.label.leading, text.label.size, text.label.tracking, text.label.weight, z.sticky
+- Accessibility: A real <table> with <thead>, <th scope="col"> and <td>, so screen readers announce headers with each cell; name it with aria-label or a TableCaption referenced by aria-labelledby. A labelled table's scroll container is a focusable region, so keyboard users can scroll a tall or wide table with the arrow keys. A sortable column's label is a button; the current order is aria-sort on the <th> and an icon (aria-hidden). TableVirtualBody keeps the semantic table: the <table> has aria-rowcount (all rows plus the header) and each rendered row its aria-rowindex; the spacer rows are aria-hidden. Selected rows set aria-selected; NULL is the word NULL, not a colour; truncated cells should carry the full value in title. Not an interactive grid: no cell focus or arrow-key movement between cells. For that, use the DataGrid (ARIA grid pattern).
 
 ### Tabs
 
@@ -843,6 +910,19 @@ Usage: Use Tree for a hierarchy the user browses and opens: DBee's connections a
 - States: selected (data-selected), active (data-active), expanded (data-expanded), hover (hover), disabled (data-disabled)
 - Tokens: color.border.default, color.fg.default, color.fg.disabled, color.fg.muted, color.interactive.hover, color.interactive.selected, color.interactive.selected-hover, color.ring, color.status.danger.fg, font.sans, motion.duration.fast, motion.easing.standard, radius.md, ring.width, size.control.sm, size.icon.md, size.icon.sm, size.panel.sm, size.panel.xs, space.inline.sm, space.inline.xs, space.inset.sm, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight
 - Accessibility: The tree is role="tree" named by aria-label and is one tab stop; the active row is named by aria-activedescendant (always rendered, even when scrolled away), so virtualization does not move DOM focus. Rows are role="treeitem" with aria-level, aria-setsize and aria-posinset (the tree is flat in the DOM), aria-expanded on parents, aria-selected, aria-disabled and aria-busy while loading. ArrowDown and ArrowUp move; ArrowRight opens a node or moves to its first child; ArrowLeft closes it or moves to its parent; Home and End go to the first and last row; typing jumps to the next node starting with the text; Space selects; Enter runs onAction (or Retry on an error row). A loading row says so in text and an error row shows the message and Retry; Retry is out of the tab order because Enter on the row retries. Selection uses color.interactive.selected and aria-selected; the focus ring shows only on keyboard focus. Only the chevron turns; prefers-reduced-motion: reduce turns that off.
+
+### TypeBadge
+
+[type-badge.json](type-badge.json): A column's data type as a glyph and a short name in its data.type.* colour, for grid headers, column nodes and the value viewer.
+
+Usage: Use TypeBadge wherever a column's type is shown: the schema tree's column nodes, a table of columns, the value viewer, the DataGrid's headers. type picks the family (integer, decimal, text, boolean, datetime, json, binary, uuid); label shows the real type ("numeric(12,2)"); iconOnly keeps only the glyph where space is tight. For a status word use Badge.
+
+- Wraps: @base-ui/react/use-render
+- type: integer, decimal, text, boolean, datetime, json, binary, uuid
+- Props: type ("integer" | "decimal" | "text" | "boolean" | "datetime" | "json" | "binary" | "uuid"); label (ReactNode); iconOnly (boolean, default false); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<HTMLElement>)
+- States: 
+- Tokens: color.fg.muted, data.type.binary, data.type.boolean, data.type.datetime, data.type.decimal, data.type.integer, data.type.json, data.type.text, data.type.uuid, font.mono, radius.xs, size.icon.md, space.inline.xs, text.code-sm.leading, text.code-sm.size, text.code-sm.tracking, text.code-sm.weight
+- Accessibility: The glyph is aria-hidden; the type name is text (hidden text with iconOnly), so screen readers read "int" or "numeric(12,2)". Each family has its own glyph and name, so the type is never conveyed by colour alone. Long type names truncate; put the full name in title where it may be cut. Not focusable.
 
 ## Helpers
 

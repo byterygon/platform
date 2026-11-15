@@ -1,0 +1,76 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "code",
+  "title": "Code",
+  "description": "Inline code in running text (a SQLSTATE, an identifier, a digest) as a <code> in text.code-sm; long values break anywhere.",
+  "usage": "Use Code inside a sentence for something the user might type or copy: a SQLSTATE, a table name, a digest or a fingerprint. variant=\"plain\" drops the background inside dense places. For several lines use CodeBlock; for keyboard keys use Kbd; for an editable value use CodeInput.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"default\" | \"plain\"",
+      "default": "default",
+      "description": "default on color.bg.inset; plain without a background."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "The code."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: a <samp> for output, a <var> for a placeholder."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "default",
+      "plain"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "code",
+      "description": "data-slot=\"code\", data-variant."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.bg.inset",
+    "color.fg.default",
+    "font.mono",
+    "radius.xs",
+    "space.inline.xs",
+    "text.code-sm.leading",
+    "text.code-sm.size",
+    "text.code-sm.tracking",
+    "text.code-sm.weight"
+  ],
+  "examples": {
+    "minimal": "CodeMinimal",
+    "realistic": "CodeRealistic"
+  },
+  "accessibility": [
+    "A <code> element read in place with the sentence; render <samp> for program output, which is semantically different.",
+    "color.fg.default on color.bg.inset is contrast-checked as text.",
+    "Long unbroken values break anywhere (break-all) so they never force horizontal scrolling.",
+    "Not focusable; to make it copyable, put a copy IconButton next to it."
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "type-badge",
+  "title": "TypeBadge",
+  "description": "A column's data type as a glyph and a short name in its data.type.* colour, for grid headers, column nodes and the value viewer.",
+  "usage": "Use TypeBadge wherever a column's type is shown: the schema tree's column nodes, a table of columns, the value viewer, the DataGrid's headers. type picks the family (integer, decimal, text, boolean, datetime, json, binary, uuid); label shows the real type (\"numeric(12,2)\"); iconOnly keeps only the glyph where space is tight. For a status word use Badge.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "type",
+      "type": "\"integer\" | \"decimal\" | \"text\" | \"boolean\" | \"datetime\" | \"json\" | \"binary\" | \"uuid\"",
+      "required": true,
+      "description": "The type family and its data.type.* colour."
+    },
+    {
+      "name": "label",
+      "type": "ReactNode",
+      "description": "Text after the glyph; defaults to the short name (int, dec, text, bool, time, json, bin, uuid)."
+    },
+    {
+      "name": "iconOnly",
+      "type": "boolean",
+      "default": false,
+      "description": "Only the glyph; the name becomes hidden text."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "type": [
+      "integer",
+      "decimal",
+      "text",
+      "boolean",
+      "datetime",
+      "json",
+      "binary",
+      "uuid"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "span",
+      "description": "data-slot=\"type-badge\", data-type; text.code-sm in the type colour."
+    },
+    {
+      "name": "glyph",
+      "element": "span",
+      "description": "The glyph in a thin frame of the type colour, aria-hidden; data-slot=\"type-badge-glyph\"."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.fg.muted",
+    "data.type.binary",
+    "data.type.boolean",
+    "data.type.datetime",
+    "data.type.decimal",
+    "data.type.integer",
+    "data.type.json",
+    "data.type.text",
+    "data.type.uuid",
+    "font.mono",
+    "radius.xs",
+    "size.icon.md",
+    "space.inline.xs",
+    "text.code-sm.leading",
+    "text.code-sm.size",
+    "text.code-sm.tracking",
+    "text.code-sm.weight"
+  ],
+  "examples": {
+    "minimal": "TypeBadgeMinimal",
+    "realistic": "TypeBadgeRealistic"
+  },
+  "accessibility": [
+    "The glyph is aria-hidden; the type name is text (hidden text with iconOnly), so screen readers read \"int\" or \"numeric(12,2)\".",
+    "Each family has its own glyph and name, so the type is never conveyed by colour alone.",
+    "Long type names truncate; put the full name in title where it may be cut.",
+    "Not focusable."
+  ]
+}

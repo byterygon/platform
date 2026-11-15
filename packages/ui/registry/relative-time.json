@@ -1,0 +1,121 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "relative-time",
+  "type": "registry:ui",
+  "title": "RelativeTime",
+  "description": "A time relative to now (\"in 14 min\", \"2 s ago\") in a <time datetime>, kept current, with the absolute time in a Tooltip and as hidden text.",
+  "dependencies": [],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/tooltip"
+  ],
+  "files": [
+    {
+      "path": "ui/relative-time.tsx",
+      "type": "registry:ui",
+      "content": "import { useEffect, useState, type Ref } from \"react\";\nimport { Tooltip, TooltipContent, TooltipTrigger } from \"@/components/ui/tooltip\";\nimport { cn } from \"@/lib/cn\";\n\n// A time relative to now (\"in 14 min\", \"2 s ago\") in a <time datetime>, kept current while it is\n// on screen, with the absolute time in a Tooltip and as hidden text for screen readers (a\n// grant's expiry, \"last run 3 min ago\" in the status line). Formatting is the browser's own\n// Intl.RelativeTimeFormat and Intl.DateTimeFormat, so it needs no locale data download. It\n// re-renders every second while the time is within a minute, every 15 s within an hour, then\n// every minute. It is not a live region: a countdown that announced itself would never stop.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const relativeTimeVariants = {} as const;\n\nconst classes = {\n  root: [\n    \"whitespace-nowrap rounded-xs tabular-nums\",\n    \"data-tooltip:underline data-tooltip:decoration-fg-subtle data-tooltip:decoration-dotted data-tooltip:underline-offset-4\",\n    \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  ],\n  hidden: \"sr-only\",\n} as const;\n\nconst UNITS: [Intl.RelativeTimeFormatUnit, number][] = [\n  [\"year\", 365 * 24 * 3600],\n  [\"month\", 30 * 24 * 3600],\n  [\"week\", 7 * 24 * 3600],\n  [\"day\", 24 * 3600],\n  [\"hour\", 3600],\n  [\"minute\", 60],\n  [\"second\", 1],\n];\n\nconst toDate = (value: Date | string | number) => (value instanceof Date ? value : new Date(value));\n\n/** \"in 14 min\", \"2 s ago\", \"yesterday\": the largest unit that fits, rounded. */\nexport function formatRelative(date: Date | string | number, now: number, locale?: string, style: Intl.RelativeTimeFormatStyle = \"short\"): string {\n  const seconds = (toDate(date).getTime() - now) / 1000;\n  const format = new Intl.RelativeTimeFormat(locale, { numeric: \"auto\", style });\n  for (const [unit, size] of UNITS) {\n    if (Math.abs(seconds) >= size || unit === \"second\") return format.format(Math.round(seconds / size), unit);\n  }\n  return format.format(0, \"second\");\n}\n\n/** How long until the text may change: 1 s within a minute, 15 s within an hour, then a minute. */\nexport function refreshInterval(date: Date | string | number, now: number): number {\n  const distance = Math.abs(toDate(date).getTime() - now);\n  return distance < 60_000 ? 1000 : distance < 3_600_000 ? 15_000 : 60_000;\n}\n\nexport interface RelativeTimeProps {\n  /** The moment: a Date, an ISO string or epoch milliseconds. */\n  date: Date | string | number;\n  /** Freeze \"now\" (tests, previews); otherwise the clock, kept current. */\n  now?: number;\n  /** Keep the text current while mounted (default true). */\n  live?: boolean;\n  /** The BCP 47 locale; the user's own by default. */\n  locale?: string;\n  /** long (\"in 14 minutes\"), short (\"in 14 min\") or narrow (\"in 14m\"). */\n  style?: Intl.RelativeTimeFormatStyle;\n  /** Time zone of the absolute time (\"UTC\"); the user's own by default. */\n  timeZone?: string;\n  /** Show the absolute time in a Tooltip on hover and focus (the time becomes focusable). */\n  tooltip?: boolean;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the `<time>`. */\n  ref?: Ref<HTMLTimeElement>;\n}\n\n/** A relative time in a `<time datetime>`, with the absolute time in a Tooltip and as hidden text. */\nexport function RelativeTime({ date, now: fixedNow, live = true, locale, style = \"short\", timeZone, tooltip = true, className, ref }: RelativeTimeProps) {\n  const [clock, setClock] = useState(() => Date.now());\n  const now = fixedNow ?? clock;\n  const moment = toDate(date);\n  const valid = !Number.isNaN(moment.getTime());\n\n  useEffect(() => {\n    if (!live || fixedNow !== undefined || !valid) return undefined;\n    const timer = setTimeout(() => setClock(Date.now()), refreshInterval(moment, clock));\n    return () => clearTimeout(timer);\n  }, [live, fixedNow, valid, moment.getTime(), clock]); // eslint-disable-line react-hooks/exhaustive-deps\n\n  if (!valid) {\n    return (\n      <time ref={ref} data-slot=\"relative-time\" className={cn(classes.root, className)}>\n        —\n      </time>\n    );\n  }\n\n  const relative = formatRelative(moment, now, locale, style);\n  const absolute = new Intl.DateTimeFormat(locale, {\n    year: \"numeric\",\n    month: \"short\",\n    day: \"numeric\",\n    hour: \"2-digit\",\n    minute: \"2-digit\",\n    second: \"2-digit\",\n    timeZone,\n    timeZoneName: timeZone ? \"short\" : undefined,\n  }).format(moment);\n  const element = (\n    <time\n      ref={ref}\n      data-slot=\"relative-time\"\n      data-tooltip={tooltip ? \"\" : undefined}\n      dateTime={moment.toISOString()}\n      tabIndex={tooltip ? 0 : undefined}\n      className={cn(classes.root, className)}\n    >\n      {relative}\n      <span className={classes.hidden}>{`, ${absolute}`}</span>\n    </time>\n  );\n  if (!tooltip) return element;\n  return (\n    <Tooltip>\n      <TooltipTrigger render={element} />\n      <TooltipContent>{absolute}</TooltipContent>\n    </Tooltip>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "relative-time",
+      "title": "RelativeTime",
+      "description": "A time relative to now (\"in 14 min\", \"2 s ago\") in a <time datetime>, kept current, with the absolute time in a Tooltip and as hidden text.",
+      "usage": "Use RelativeTime where how long ago or how soon matters more than the clock time: a grant's expiry, \"last run\" in the status line, when a connection was created. date takes a Date, an ISO string or epoch ms; timeZone sets the absolute time's zone (\"UTC\"). It updates itself; pass now to freeze it. tooltip={false} drops the Tooltip (and the tab stop) in long lists. For a timestamp in a data cell, show the absolute value instead.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [],
+      "props": [
+        {
+          "name": "date",
+          "type": "Date | string | number",
+          "required": true,
+          "description": "The moment."
+        },
+        {
+          "name": "now",
+          "type": "number",
+          "description": "Freezes now (epoch ms); otherwise the clock."
+        },
+        {
+          "name": "live",
+          "type": "boolean",
+          "default": true,
+          "description": "Keeps the text current while mounted."
+        },
+        {
+          "name": "locale",
+          "type": "string",
+          "description": "BCP 47 locale; the user's own by default."
+        },
+        {
+          "name": "style",
+          "type": "\"long\" | \"short\" | \"narrow\"",
+          "default": "short",
+          "description": "Intl.RelativeTimeFormat style."
+        },
+        {
+          "name": "timeZone",
+          "type": "string",
+          "description": "Time zone of the absolute time."
+        },
+        {
+          "name": "tooltip",
+          "type": "boolean",
+          "default": true,
+          "description": "Absolute time in a Tooltip on hover and focus; the time is focusable."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLTimeElement>",
+          "description": "Reaches the <time>."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "time",
+          "description": "datetime in ISO 8601; data-slot=\"relative-time\", data-tooltip; dotted underline when it has a tooltip."
+        }
+      ],
+      "states": [
+        {
+          "name": "tooltip",
+          "variant": "data-tooltip",
+          "description": "Has a tooltip: dotted underline in color.fg.subtle, focusable."
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus: a ring of ring.width in color.ring."
+        }
+      ],
+      "tokens": [
+        "color.fg.subtle",
+        "color.ring",
+        "radius.xs",
+        "ring.offset",
+        "ring.width"
+      ],
+      "examples": {
+        "minimal": "RelativeTimeMinimal",
+        "realistic": "RelativeTimeRealistic"
+      },
+      "accessibility": [
+        "A <time> with a machine-readable datetime; screen readers read the relative text followed by the absolute time from visually hidden text, so nothing depends on the tooltip.",
+        "With a tooltip the time is in the tab order and the Tooltip opens on focus as well as hover.",
+        "Not a live region: the text updates silently (an announcing countdown would never stop). Announce an expiry with a Toast or Alert instead.",
+        "Formatting uses the browser's Intl APIs in the user's locale; nothing is downloaded."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { RelativeTime } from \"@/components/relative-time/relative-time\";\n\n/** The smallest useful RelativeTime: a moment a few minutes ago. */\nexport function RelativeTimeMinimal() {\n  const [at] = useState(() => Date.now() - 3 * 60_000);\n  return <RelativeTime date={at} />;\n}\n\n/** A grant's live countdown, the last run in the status line, styles, UTC, a plain one without a tooltip. */\nexport function RelativeTimeRealistic() {\n  const [now] = useState(() => Date.now());\n  return (\n    <ul className=\"flex flex-col gap-stack-xs text-body text-fg\">\n      <li>\n        Access expires <RelativeTime date={now + 14 * 60_000 + 20_000} timeZone=\"UTC\" />\n      </li>\n      <li className=\"text-caption text-fg-muted\">\n        Last run <RelativeTime date={now - 42_000} style=\"narrow\" />\n      </li>\n      <li>\n        Created <RelativeTime date={now - 3 * 24 * 3600_000} style=\"long\" />\n      </li>\n      <li>\n        Approved <RelativeTime date={now - 26 * 3600_000} tooltip={false} />\n      </li>\n    </ul>\n  );\n}\n",
+    "dependencyVersions": {}
+  }
+}
