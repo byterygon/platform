@@ -1,0 +1,99 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "skeleton",
+  "type": "registry:ui",
+  "title": "Skeleton",
+  "description": "An aria-hidden placeholder in the shape of loading content (a text line, a block, a circle) that pulses slowly.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/motion"
+  ],
+  "files": [
+    {
+      "path": "ui/skeleton.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { useRef } from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenMs, useLoopAnimation } from \"@/lib/motion\";\n\n// A placeholder in the shape of content that is loading (tree rows, a card, a line of text), on\n// Base UI's useRender. It pulses through the Web Animations API (@/lib/motion), slowly (eight\n// motion.duration.slow per beat), and stands still under prefers-reduced-motion. Skeletons are\n// aria-hidden: mark the region that is loading aria-busy and give it a name or a Spinner with a\n// label, so screen readers hear \"loading\" once rather than a row of blanks.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const skeletonVariants = {\n  variant: {\n    text: \"h-[var(--by-text-body-size)] w-full rounded-xs\",\n    block: \"rounded-md\",\n    circle: \"aspect-square rounded-full\",\n  },\n} as const;\n\nconst base = [\"block shrink-0 bg-inset\"];\n\nexport interface SkeletonProps extends Omit<useRender.ComponentProps<\"span\">, \"className\" | \"children\"> {\n  /** text: a line of body text; block: a rectangle (size it with classes); circle: an avatar (give it a size). */\n  variant?: keyof typeof skeletonVariants.variant;\n  /** Pulse while motion is allowed (default true). */\n  animated?: boolean;\n  /** Extra classes (the size: h-control-sm w-panel-xs, size-control-md), merged after the component's own. */\n  className?: string;\n}\n\n/** A shaped, aria-hidden placeholder that pulses; a `<span>` (display block). The ref reaches it. */\nexport function Skeleton({ variant = \"block\", animated = true, className, render, ...props }: SkeletonProps) {\n  const own = useRef<HTMLElement>(null);\n  useLoopAnimation(own, [{ opacity: 1 }, { opacity: 0.5 }, { opacity: 1 }], {\n    enabled: animated,\n    easing: \"ease-in-out\",\n    duration: (element) => tokenMs(element, \"--by-motion-duration-slow\", 8, 1920),\n  });\n  return useRender({\n    defaultTagName: \"span\",\n    render,\n    ref: own,\n    props: { \"data-slot\": \"skeleton\", \"data-variant\": variant, \"aria-hidden\": true, ...props, className: cn(base, skeletonVariants.variant[variant], className) },\n  });\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "skeleton",
+      "title": "Skeleton",
+      "description": "An aria-hidden placeholder in the shape of loading content (a text line, a block, a circle) that pulses slowly.",
+      "usage": "Use Skeleton while content with a known shape loads: tree rows, a card, a line of text. Size blocks and circles with classes (h-control-sm w-panel-xs, size-control-md); text lines take the body text size. Mark the loading region aria-busy and name it (aria-label \"Loading tables\") or add a labelled Spinner. Keep the skeleton's layout close to the real content so nothing jumps. For an unknown shape use Spinner; for measurable progress use Progress.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "variant",
+          "type": "\"text\" | \"block\" | \"circle\"",
+          "default": "block",
+          "description": "text: a body line; block: a rectangle; circle: an avatar."
+        },
+        {
+          "name": "animated",
+          "type": "boolean",
+          "default": true,
+          "description": "Pulse while motion is allowed."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes; sets the size."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLElement>",
+          "description": "Reaches the rendered element."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "text",
+          "block",
+          "circle"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "span",
+          "description": "The placeholder in color.bg.inset, aria-hidden; data-slot=\"skeleton\", data-variant."
+        }
+      ],
+      "states": [],
+      "tokens": [
+        "color.bg.inset",
+        "radius.md",
+        "radius.xs",
+        "text.body.size"
+      ],
+      "examples": {
+        "minimal": "SkeletonMinimal",
+        "realistic": "SkeletonRealistic"
+      },
+      "accessibility": [
+        "Every skeleton is aria-hidden; the loading region carries aria-busy and a name (or a labelled Spinner), so screen readers announce loading once.",
+        "Remove aria-busy when the content arrives so the region is read again.",
+        "The pulse runs through the Web Animations API at eight motion.duration.slow per beat and never under prefers-reduced-motion.",
+        "Not focusable."
+      ]
+    },
+    "example": "import { Skeleton } from \"@/components/skeleton/skeleton\";\n\n/** The smallest useful Skeleton: a line of text loading. */\nexport function SkeletonMinimal() {\n  return (\n    <div role=\"group\" aria-busy=\"true\" aria-label=\"Loading description\" className=\"w-panel-sm\">\n      <Skeleton variant=\"text\" />\n    </div>\n  );\n}\n\n/** A schema tree loading, then a connection card loading: rows, an avatar, text lines and a block. */\nexport function SkeletonRealistic() {\n  return (\n    <div className=\"flex flex-wrap items-start gap-gap-lg\">\n      <div role=\"group\" aria-busy=\"true\" aria-label=\"Loading tables\" className=\"flex w-panel-xs flex-col gap-stack-xs\">\n        {[0, 1, 2, 3, 4].map((row) => (\n          <div key={row} className=\"flex h-control-sm items-center gap-inline-sm ps-inset-xs\">\n            <Skeleton className=\"size-icon-sm\" />\n            <Skeleton variant=\"text\" className={row % 2 ? \"w-panel-xs\" : \"w-2/3\"} />\n          </div>\n        ))}\n      </div>\n      <div role=\"group\" aria-busy=\"true\" aria-label=\"Loading connection\" className=\"flex w-panel-sm flex-col gap-stack-sm rounded-lg border border-border p-inset-md\">\n        <div className=\"flex items-center gap-inline-md\">\n          <Skeleton variant=\"circle\" className=\"size-control-md\" />\n          <div className=\"flex flex-1 flex-col gap-stack-xs\">\n            <Skeleton variant=\"text\" className=\"w-1/2\" />\n            <Skeleton variant=\"text\" className=\"w-3/4\" />\n          </div>\n        </div>\n        <Skeleton className=\"h-control-lg w-full\" />\n        <Skeleton className=\"h-control-sm w-1/3\" animated={false} />\n      </div>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

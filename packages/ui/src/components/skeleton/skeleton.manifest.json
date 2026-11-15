@@ -1,0 +1,73 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "skeleton",
+  "title": "Skeleton",
+  "description": "An aria-hidden placeholder in the shape of loading content (a text line, a block, a circle) that pulses slowly.",
+  "usage": "Use Skeleton while content with a known shape loads: tree rows, a card, a line of text. Size blocks and circles with classes (h-control-sm w-panel-xs, size-control-md); text lines take the body text size. Mark the loading region aria-busy and name it (aria-label \"Loading tables\") or add a labelled Spinner. Keep the skeleton's layout close to the real content so nothing jumps. For an unknown shape use Spinner; for measurable progress use Progress.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"text\" | \"block\" | \"circle\"",
+      "default": "block",
+      "description": "text: a body line; block: a rectangle; circle: an avatar."
+    },
+    {
+      "name": "animated",
+      "type": "boolean",
+      "default": true,
+      "description": "Pulse while motion is allowed."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes; sets the size."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "text",
+      "block",
+      "circle"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "span",
+      "description": "The placeholder in color.bg.inset, aria-hidden; data-slot=\"skeleton\", data-variant."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.bg.inset",
+    "radius.md",
+    "radius.xs",
+    "text.body.size"
+  ],
+  "examples": {
+    "minimal": "SkeletonMinimal",
+    "realistic": "SkeletonRealistic"
+  },
+  "accessibility": [
+    "Every skeleton is aria-hidden; the loading region carries aria-busy and a name (or a labelled Spinner), so screen readers announce loading once.",
+    "Remove aria-busy when the content arrives so the region is read again.",
+    "The pulse runs through the Web Animations API at eight motion.duration.slow per beat and never under prefers-reduced-motion.",
+    "Not focusable."
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "alert",
+  "type": "registry:ui",
+  "title": "Alert",
+  "description": "A message in the page flow, in five tones with a status icon, a title, a description, actions and an optional close button; inline box or full-width banner.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/icon-button"
+  ],
+  "files": [
+    {
+      "path": "ui/alert.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport type { ReactNode } from \"react\";\nimport { IconButton } from \"@/components/ui/icon-button\";\nimport { cn } from \"@/lib/cn\";\n\n// A message in the page flow that needs to be read: a query error under the editor, a plaintext\n// connection warning in a form, a notice across the top of the app. Alert > AlertTitle,\n// AlertDescription, AlertActions, on Base UI's useRender, with a status icon per variant and an\n// optional dismiss button. `layout=\"banner\"` spans its container with no radius and a bottom\n// border (the app's top banner); `inline` is a bordered box. Danger and warning alerts are\n// role=\"alert\" (announced at once), the others role=\"status\" (announced politely): render the\n// alert when the condition occurs, not hidden beforehand. Toast is for transient messages.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const alertVariants = {\n  variant: {\n    neutral: \"border-border bg-surface [&_[data-slot=alert-icon]]:text-fg-muted\",\n    info: \"border-info-border bg-info-subtle [&_[data-slot=alert-icon]]:text-info-fg [&_[data-slot=alert-title]]:text-info-fg\",\n    success: \"border-success-border bg-success-subtle [&_[data-slot=alert-icon]]:text-success-fg [&_[data-slot=alert-title]]:text-success-fg\",\n    warning: \"border-warning-border bg-warning-subtle [&_[data-slot=alert-icon]]:text-warning-fg [&_[data-slot=alert-title]]:text-warning-fg\",\n    danger: \"border-danger-border bg-danger-subtle [&_[data-slot=alert-icon]]:text-danger-fg [&_[data-slot=alert-title]]:text-danger-fg\",\n  },\n  layout: {\n    inline: \"rounded-md border p-inset-sm\",\n    banner: \"w-full border-b px-inset-md py-inset-xs\",\n  },\n} as const;\n\nconst base = [\"flex w-full min-w-0 items-start gap-inline-sm font-sans text-body text-fg\"];\n\nconst classes = {\n  icon: \"flex h-[var(--by-text-body-leading)] shrink-0 items-center [&_svg]:size-icon-md\",\n  content: \"flex min-w-0 flex-1 flex-col gap-stack-xs\",\n  title: \"min-w-0 text-body-strong wrap-break-word\",\n  description: \"min-w-0 text-body text-fg wrap-break-word [&_code]:font-mono [&_code]:text-code\",\n  actions: \"flex flex-wrap items-center gap-inline-sm pt-inset-xs\",\n  dismiss: \"-my-inset-xs -me-inset-xs shrink-0\",\n} as const;\n\nconst icons: Record<keyof typeof alertVariants.variant, ReactNode> = {\n  neutral: (\n    <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n      <circle cx=\"8\" cy=\"8\" r=\"6\" />\n      <path d=\"M8 7.5v3.5M8 5h.01\" />\n    </svg>\n  ),\n  info: (\n    <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n      <circle cx=\"8\" cy=\"8\" r=\"6\" />\n      <path d=\"M8 7.5v3.5M8 5h.01\" />\n    </svg>\n  ),\n  success: (\n    <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n      <circle cx=\"8\" cy=\"8\" r=\"6\" />\n      <path d=\"m5.5 8 1.75 1.75L10.5 6.5\" />\n    </svg>\n  ),\n  warning: (\n    <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n      <path d=\"M8 2.5 14 13H2z\" />\n      <path d=\"M8 6.5v3M8 11.25h.01\" />\n    </svg>\n  ),\n  danger: (\n    <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n      <circle cx=\"8\" cy=\"8\" r=\"6\" />\n      <path d=\"m6 6 4 4m0-4-4 4\" />\n    </svg>\n  ),\n};\n\nconst XIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"m4.5 4.5 7 7m0-7-7 7\" />\n  </svg>\n);\n\nexport interface AlertProps extends Omit<useRender.ComponentProps<\"div\">, \"className\"> {\n  /** neutral, info, success, warning or danger; sets the colours, the icon and the role. */\n  variant?: keyof typeof alertVariants.variant;\n  /** inline: a bordered box in the flow; banner: full width with a bottom border, for the top of the app or a pane. */\n  layout?: keyof typeof alertVariants.layout;\n  /** Replaces the status icon; false shows none. */\n  icon?: ReactNode | false;\n  /** Shows a close button that calls this. */\n  onDismiss?: () => void;\n  /** Accessible name of the close button. */\n  dismissLabel?: string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A message in the flow: icon, then the title, description and actions, then an optional close button. The ref reaches the `<div>`. */\nexport function Alert({ variant = \"neutral\", layout = \"inline\", icon, onDismiss, dismissLabel = \"Dismiss\", className, render, children, ...props }: AlertProps) {\n  const shownIcon = icon === false ? null : (icon ?? icons[variant]);\n  return useRender({\n    defaultTagName: \"div\",\n    render,\n    props: {\n      role: variant === \"danger\" || variant === \"warning\" ? \"alert\" : \"status\",\n      \"data-slot\": \"alert\",\n      \"data-variant\": variant,\n      \"data-layout\": layout,\n      ...props,\n      className: cn(base, alertVariants.variant[variant], alertVariants.layout[layout], className),\n      children: (\n        <>\n          {shownIcon ? (\n            <span data-slot=\"alert-icon\" aria-hidden=\"true\" className={classes.icon}>\n              {shownIcon}\n            </span>\n          ) : null}\n          <div className={classes.content}>{children}</div>\n          {onDismiss ? (\n            <IconButton aria-label={dismissLabel} size=\"sm\" onClick={onDismiss} className={classes.dismiss}>\n              <XIcon />\n            </IconButton>\n          ) : null}\n        </>\n      ),\n    },\n  });\n}\n\nexport type AlertTitleProps = Omit<useRender.ComponentProps<\"p\">, \"className\"> & { className?: string };\n\n/** The message in a few words (\"Query failed\"), in text.body-strong and the status colour. */\nexport function AlertTitle({ className, render, ...props }: AlertTitleProps) {\n  return useRender({ defaultTagName: \"p\", render, props: { \"data-slot\": \"alert-title\", ...props, className: cn(classes.title, className) } });\n}\n\nexport type AlertDescriptionProps = Omit<useRender.ComponentProps<\"div\">, \"className\"> & { className?: string };\n\n/** The detail: what happened and what to do; `<code>` inside is set in the code font. */\nexport function AlertDescription({ className, render, ...props }: AlertDescriptionProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"alert-description\", ...props, className: cn(classes.description, className) } });\n}\n\nexport type AlertActionsProps = Omit<useRender.ComponentProps<\"div\">, \"className\"> & { className?: string };\n\n/** Buttons that act on the message (Retry, Open settings). */\nexport function AlertActions({ className, render, ...props }: AlertActionsProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"alert-actions\", ...props, className: cn(classes.actions, className) } });\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "alert",
+      "title": "Alert",
+      "description": "A message in the page flow, in five tones with a status icon, a title, a description, actions and an optional close button; inline box or full-width banner.",
+      "usage": "Use Alert for a message that belongs to a place on the page and stays until the condition changes: a query error under the editor (with SQLSTATE in <code>), a plaintext warning in the connection form, a grant about to expire across the top (layout=\"banner\"). Compose Alert > AlertTitle, AlertDescription, AlertActions. Render it when the condition occurs: danger and warning are role=\"alert\" and are announced at once. For a transient confirmation use Toast; for a decision the user must make, AlertDialog; for an empty view, EmptyState.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "variant",
+          "type": "\"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\"",
+          "default": "neutral",
+          "description": "Colours, icon and role (alert for danger and warning, status otherwise)."
+        },
+        {
+          "name": "layout",
+          "type": "\"inline\" | \"banner\"",
+          "default": "inline",
+          "description": "inline: a bordered box; banner: full width with a bottom border."
+        },
+        {
+          "name": "icon",
+          "type": "ReactNode | false",
+          "description": "Replaces the status icon; false shows none."
+        },
+        {
+          "name": "onDismiss",
+          "type": "() => void",
+          "description": "Shows a close button that calls it."
+        },
+        {
+          "name": "dismissLabel",
+          "type": "string",
+          "default": "\"Dismiss\"",
+          "description": "Accessible name of the close button."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "AlertTitle, AlertDescription, AlertActions."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLElement>",
+          "description": "Reaches the rendered element."
+        }
+      ],
+      "variants": {
+        "variant": [
+          "neutral",
+          "info",
+          "success",
+          "warning",
+          "danger"
+        ],
+        "layout": [
+          "inline",
+          "banner"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "role=\"alert\" or \"status\"; data-slot=\"alert\", data-variant, data-layout."
+        },
+        {
+          "name": "icon",
+          "element": "span",
+          "description": "The status icon, aria-hidden; data-slot=\"alert-icon\"."
+        },
+        {
+          "name": "title",
+          "element": "p",
+          "description": "text.body-strong in the status fg; data-slot=\"alert-title\"."
+        },
+        {
+          "name": "description",
+          "element": "div",
+          "description": "The detail; <code> in the code font; data-slot=\"alert-description\"."
+        },
+        {
+          "name": "actions",
+          "element": "div",
+          "description": "A wrapping row of buttons; data-slot=\"alert-actions\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "AlertTitle",
+          "slot": "alert-title",
+          "description": "The message in a few words."
+        },
+        {
+          "name": "AlertDescription",
+          "slot": "alert-description",
+          "description": "What happened and what to do."
+        },
+        {
+          "name": "AlertActions",
+          "slot": "alert-actions",
+          "description": "Buttons that act on the message."
+        }
+      ],
+      "states": [],
+      "tokens": [
+        "color.bg.surface",
+        "color.border.default",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.status.danger.bg",
+        "color.status.danger.border",
+        "color.status.danger.fg",
+        "color.status.info.bg",
+        "color.status.info.border",
+        "color.status.info.fg",
+        "color.status.success.bg",
+        "color.status.success.border",
+        "color.status.success.fg",
+        "color.status.warning.bg",
+        "color.status.warning.border",
+        "color.status.warning.fg",
+        "font.mono",
+        "font.sans",
+        "radius.md",
+        "size.icon.md",
+        "space.inline.sm",
+        "space.inset.md",
+        "space.inset.sm",
+        "space.inset.xs",
+        "space.stack.xs",
+        "text.body-strong.leading",
+        "text.body-strong.size",
+        "text.body-strong.tracking",
+        "text.body-strong.weight",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.code.leading",
+        "text.code.size",
+        "text.code.tracking",
+        "text.code.weight"
+      ],
+      "examples": {
+        "minimal": "AlertMinimal",
+        "realistic": "AlertRealistic"
+      },
+      "accessibility": [
+        "Danger and warning alerts are role=\"alert\" (assertive), the others role=\"status\" (polite). Insert the alert when the condition occurs so it is announced; one already on the page at load may not be.",
+        "The icon is aria-hidden; the title and description say the status in words, not by colour alone.",
+        "The close button is an IconButton named by dismissLabel; move focus to a sensible place after dismissing if it was inside the alert.",
+        "Text colours are the status fg roles on the status subtle backgrounds, which the token build checks for contrast; long identifiers wrap."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { Alert, AlertActions, AlertDescription, AlertTitle } from \"@/components/alert/alert\";\nimport { Button } from \"@/components/button/button\";\n\n/** The smallest useful Alert: a title and a sentence. */\nexport function AlertMinimal() {\n  return (\n    <Alert variant=\"info\">\n      <AlertTitle>Read-only connection</AlertTitle>\n      <AlertDescription>Statements that write are refused.</AlertDescription>\n    </Alert>\n  );\n}\n\n/** A query error with SQLSTATE and Retry, a plaintext warning, the other tones, and a dismissible banner. */\nexport function AlertRealistic() {\n  const [banner, setBanner] = useState(true);\n  return (\n    <div className=\"flex max-w-panel-lg flex-col gap-stack-sm\">\n      {banner ? (\n        <Alert variant=\"warning\" layout=\"banner\" onDismiss={() => setBanner(false)} dismissLabel=\"Dismiss expiry warning\">\n          <AlertDescription>Access to orders-prod expires in 15 minutes. Ask for a new grant before then.</AlertDescription>\n        </Alert>\n      ) : null}\n      <Alert variant=\"danger\">\n        <AlertTitle>Query failed</AlertTitle>\n        <AlertDescription>\n          <code>42P01</code> relation &quot;public.order_itemz&quot; does not exist at line 3, column 15. Check the table name or refresh the schema.\n        </AlertDescription>\n        <AlertActions>\n          <Button size=\"sm\" variant=\"secondary\">\n            Refresh schema\n          </Button>\n        </AlertActions>\n      </Alert>\n      <Alert variant=\"warning\">\n        <AlertTitle>Plaintext connection</AlertTitle>\n        <AlertDescription>Without TLS, the password and every row cross the network unencrypted.</AlertDescription>\n      </Alert>\n      <Alert variant=\"success\">\n        <AlertDescription>Exported 1,000,000 rows to orders.csv.</AlertDescription>\n      </Alert>\n      <Alert variant=\"neutral\" icon={false}>\n        <AlertDescription>A_very_long_identifier_without_spaces_public.customer_lifetime_value_by_region_and_month_partition_2026_11 wraps.</AlertDescription>\n      </Alert>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

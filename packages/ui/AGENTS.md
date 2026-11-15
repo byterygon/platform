@@ -200,6 +200,14 @@ What `test/conventions.test.tsx` enforces for every component:
 - Base UI's Toolbar moves focus with the arrow keys and wraps (`loopFocus`); it has no Home/End.
 - Two-axis looks (Badge: tone × appearance) put every appearance's classes in each tone behind
   `data-[appearance=…]:`, so `<name>Variants` keeps one key per prop without compound variants.
+- Looping motion (Spinner, an indeterminate Progress, Skeleton's pulse) goes through `@/lib/motion`
+  (`useLoopAnimation`, the Web Animations API): the token theme has no `@keyframes` and
+  `animate-*` defaults do not compile. Periods are multiples of `motion.duration.slow`
+  (`tokenMs`); loops never start under `prefers-reduced-motion`, and jsdom has no
+  `element.animate`, so stub it in tests that check the loop.
+- The suite reads the examples' classes only for components with `parts`. A component that
+  renders optional inner elements from props (Progress's label and value) exports them as parts,
+  or their classes go unchecked.
 - A prop that picks a colour from a numbered role (Tag `swatch` → `bg-chart-1..8`) maps to class
   strings written out in full, and the example shows every value so the token test checks them.
 

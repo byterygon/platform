@@ -1,0 +1,178 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "progress",
+  "title": "Progress",
+  "description": "A bar that shows how far a task has got, with an optional label and formatted value; value={null} is indeterminate.",
+  "usage": "Use Progress for a task with measurable progress: an export, a large fetch, a memory budget. Pass value and max, or value={null} while the total is unknown. label names the task (and the bar); showValue prints the formatted value (format, getAriaValueText for \"412,000 of 1,000,000 rows\"). variant shows the outcome: success, warning, danger. For a short unknown wait use Spinner; for loading content with a known shape use Skeleton.",
+  "status": "experimental",
+  "base": "@base-ui/react/progress",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "value",
+      "type": "number | null",
+      "required": true,
+      "description": "Progress from min to max; null while indeterminate."
+    },
+    {
+      "name": "max",
+      "type": "number",
+      "default": 100,
+      "description": "The value when complete."
+    },
+    {
+      "name": "min",
+      "type": "number",
+      "default": 0,
+      "description": "The value at the start."
+    },
+    {
+      "name": "label",
+      "type": "ReactNode",
+      "description": "The task's name above the track; labels the progressbar."
+    },
+    {
+      "name": "showValue",
+      "type": "boolean",
+      "default": false,
+      "description": "Shows the formatted value at the end of the label line."
+    },
+    {
+      "name": "format",
+      "type": "Intl.NumberFormatOptions",
+      "description": "How the value is formatted (a percentage by default)."
+    },
+    {
+      "name": "getAriaValueText",
+      "type": "(formatted: string, value: number | null) => string",
+      "description": "The aria-valuetext screen readers announce."
+    },
+    {
+      "name": "variant",
+      "type": "\"accent\" | \"success\" | \"warning\" | \"danger\"",
+      "default": "accent",
+      "description": "The indicator colour: running, or the outcome."
+    },
+    {
+      "name": "size",
+      "type": "\"sm\" | \"md\"",
+      "default": "sm",
+      "description": "Track height: size.track or space.inline.sm."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Names the bar when there is no label."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "accent",
+      "success",
+      "warning",
+      "danger"
+    ],
+    "size": [
+      "sm",
+      "md"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "role=\"progressbar\"; data-slot=\"progress\", data-variant, data-size, Base UI's data-progressing, data-complete, data-indeterminate."
+    },
+    {
+      "name": "label",
+      "element": "span",
+      "description": "The task's name; truncates; data-slot=\"progress-label\"."
+    },
+    {
+      "name": "value",
+      "element": "span",
+      "description": "The formatted value; data-slot=\"progress-value\"."
+    },
+    {
+      "name": "track",
+      "element": "div",
+      "description": "The track in color.bg.inset; data-slot=\"progress-track\"."
+    },
+    {
+      "name": "indicator",
+      "element": "div",
+      "description": "The filled part, its width set by Base UI; data-slot=\"progress-indicator\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "ProgressLabel",
+      "slot": "progress-label",
+      "description": "The task's name; Progress renders it from label."
+    },
+    {
+      "name": "ProgressValue",
+      "slot": "progress-value",
+      "description": "The formatted value; Progress renders it with showValue."
+    }
+  ],
+  "states": [
+    {
+      "name": "indeterminate",
+      "variant": "data-indeterminate",
+      "props": {
+        "value": null
+      },
+      "description": "A third of the track slides across (still under reduced motion)."
+    }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.bg.inset",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.status.danger.solid",
+    "color.status.success.solid",
+    "color.status.warning.solid",
+    "font.sans",
+    "motion.duration.base",
+    "motion.easing.standard",
+    "size.panel.sm",
+    "size.panel.xs",
+    "size.track",
+    "space.inline.md",
+    "space.inline.sm",
+    "space.stack.xs",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "ProgressMinimal",
+    "realistic": "ProgressRealistic"
+  },
+  "accessibility": [
+    "role=\"progressbar\" with aria-valuenow, aria-valuemin, aria-valuemax and a formatted aria-valuetext (getAriaValueText for units such as rows); no aria-valuenow while indeterminate.",
+    "label is the bar's accessible name (aria-labelledby); without one, pass aria-label.",
+    "The outcome is in the label text (\"Export failed at row 180,224\"), not only the indicator colour.",
+    "The width change and the indeterminate slide stop under prefers-reduced-motion."
+  ]
+}

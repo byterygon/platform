@@ -46,6 +46,7 @@ const ITEMS = [
   "sql-editor", "code-input",
   "separator", "scroll-area", "card", "collapsible", "accordion",
   "resizable", "toolbar", "status-bar", "badge", "tag",
+  "avatar", "progress", "spinner", "skeleton", "empty-state", "alert",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -147,7 +148,7 @@ function serve(dir: string): Promise<Server> {
 const itemContent = (name: string) => (JSON.parse(readFileSync(join(REGISTRY, `${name}.json`), "utf8")) as { files: { content: string }[] }).files[0]!.content;
 
 function checkInstalledFiles(app: string, label: string): void {
-  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ["src/lib/monaco.ts", "monaco"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
+  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ["src/lib/monaco.ts", "monaco"], ["src/lib/motion.ts", "motion"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
     const full = join(app, path);
     if (check(existsSync(full), `${label}: ${path} was not installed`)) {
       check(readFileSync(full, "utf8") === itemContent(item), `${label}: ${path} differs from the registry item ${item}`);
@@ -181,6 +182,12 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Avatar } from "@/components/ui/avatar";
+import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@/components/ui/empty-state";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/components/ui/status-bar";
 import { Tag, TagGroup } from "@/components/ui/tag";
@@ -360,6 +367,29 @@ function Shell() {
   );
 }
 
+function Feedback() {
+  return (
+    <div>
+      <Avatar name="Uy Son" size="lg" shape="square" />
+      <Progress value={40} label="Exporting" showValue />
+      <Progress value={null} aria-label="Counting rows" variant="success" size="md" />
+      <Spinner label="Loading tables" variant="accent" />
+      <div role="group" aria-busy="true" aria-label="Loading"><Skeleton variant="text" /><Skeleton variant="circle" /></div>
+      <EmptyState variant="inline">
+        <EmptyStateIcon><svg aria-hidden="true" viewBox="0 0 16 16" /></EmptyStateIcon>
+        <EmptyStateTitle>No rows</EmptyStateTitle>
+        <EmptyStateDescription>Nothing matched.</EmptyStateDescription>
+        <EmptyStateActions><Button size="sm">Clear filter</Button></EmptyStateActions>
+      </EmptyState>
+      <Alert variant="danger" layout="banner" onDismiss={() => {}}>
+        <AlertTitle>Query failed</AlertTitle>
+        <AlertDescription><code>42P01</code> relation does not exist</AlertDescription>
+        <AlertActions><Button size="sm" variant="secondary">Retry</Button></AlertActions>
+      </Alert>
+    </div>
+  );
+}
+
 function Connection() {
   const form = useForm({ defaultValues: { host: "" } });
   return (
@@ -445,6 +475,7 @@ createRoot(document.getElementById("root")!).render(
     <Overlays />
     <Layout />
     <Shell />
+    <Feedback />
     <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
     <Field><FieldLabel>Filter</FieldLabel><CodeInput language="sql" defaultValue="id = 1" onSubmit={(v) => console.log(v)} /></Field>
     <CodeInput aria-label="Cell value" language="json" pretty value='{"id":1}' />
@@ -603,6 +634,9 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["h-control-xs", "height", "size.control.xs", "Byterygon StatusBar (density)"],
   ["[&>[data-slot=badge-dot]]:bg-success", "background-color", "color.status.success.solid", "Byterygon Badge dot"],
   ["bg-chart-2", "background-color", "chart.cat.2", "Byterygon Tag swatch"],
+  ["bg-danger-subtle", "background-color", "color.status.danger.bg", "Byterygon Alert danger"],
+  ["[&_[data-slot=progress-indicator]]:bg-success", "background-color", "color.status.success.solid", "Byterygon Progress success"],
+  ["size-control-lg", "width", "size.control.lg", "Byterygon Avatar lg (density)"],
   ["bg-editor", "background-color", "editor.bg", "Byterygon SqlEditor frame"],
   ["p-inset-sm", "padding", "space.inset.sm", "Byterygon SqlEditor fallback (density)"],
   ["data-readonly:bg-inset", "background-color", "color.bg.inset", "Byterygon CodeInput read-only and pretty"],

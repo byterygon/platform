@@ -1,0 +1,118 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "avatar",
+  "title": "Avatar",
+  "description": "A person's or a service's picture, with initials (or another fallback) while it loads or when there is none; circle or square in three sizes.",
+  "usage": "Use Avatar beside a name: the signed-in user, who approved a grant, a connection in a list (shape=\"square\"). name is the accessible name and the source of the initials; src is a local or data: URL, never a remote service in an air-gapped app. fallback replaces the initials (an icon). The picture shows only once loaded. For a status next to a name use Badge.",
+  "status": "experimental",
+  "base": "@base-ui/react/avatar",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "name",
+      "type": "string",
+      "required": true,
+      "description": "Accessible name and source of the initials."
+    },
+    {
+      "name": "src",
+      "type": "string",
+      "description": "A local or data: URL of the picture."
+    },
+    {
+      "name": "fallback",
+      "type": "ReactNode",
+      "description": "Replaces the initials."
+    },
+    {
+      "name": "size",
+      "type": "\"sm\" | \"md\" | \"lg\"",
+      "default": "md",
+      "description": "size.control.xs, sm or lg."
+    },
+    {
+      "name": "shape",
+      "type": "\"circle\" | \"square\"",
+      "default": "circle",
+      "description": "circle for people, square for services."
+    },
+    {
+      "name": "fallbackDelay",
+      "type": "number",
+      "description": "ms to wait before showing the fallback."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLSpanElement>",
+      "description": "Reaches the root <span>."
+    }
+  ],
+  "variants": {
+    "size": [
+      "sm",
+      "md",
+      "lg"
+    ],
+    "shape": [
+      "circle",
+      "square"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "span",
+      "description": "role=\"img\" named by name; data-slot=\"avatar\", data-size, data-shape."
+    },
+    {
+      "name": "image",
+      "element": "img",
+      "description": "The picture, alt=\"\" (the root carries the name); data-slot=\"avatar-image\"."
+    },
+    {
+      "name": "fallback",
+      "element": "span",
+      "description": "Initials or the fallback, aria-hidden; data-slot=\"avatar-fallback\"."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.neutral.subtle-bg",
+    "color.neutral.subtle-fg",
+    "font.sans",
+    "radius.md",
+    "size.control.lg",
+    "size.control.sm",
+    "size.control.xs",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "AvatarMinimal",
+    "realistic": "AvatarRealistic"
+  },
+  "accessibility": [
+    "The root is role=\"img\" with aria-label from name; the picture has alt=\"\" and the initials are aria-hidden, so the name is read once.",
+    "When the avatar sits next to the same name in text, it repeats it; that is acceptable, or pass aria-hidden on the Avatar to skip it.",
+    "Initials are color.neutral.subtle-fg on color.neutral.subtle-bg, contrast-checked by the token build.",
+    "Not focusable."
+  ]
+}
