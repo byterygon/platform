@@ -1,0 +1,99 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "relative-time",
+  "title": "RelativeTime",
+  "description": "A time relative to now (\"in 14 min\", \"2 s ago\") in a <time datetime>, kept current, with the absolute time in a Tooltip and as hidden text.",
+  "usage": "Use RelativeTime where how long ago or how soon matters more than the clock time: a grant's expiry, \"last run\" in the status line, when a connection was created. date takes a Date, an ISO string or epoch ms; timeZone sets the absolute time's zone (\"UTC\"). It updates itself; pass now to freeze it. tooltip={false} drops the Tooltip (and the tab stop) in long lists. For a timestamp in a data cell, show the absolute value instead.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    {
+      "name": "date",
+      "type": "Date | string | number",
+      "required": true,
+      "description": "The moment."
+    },
+    {
+      "name": "now",
+      "type": "number",
+      "description": "Freezes now (epoch ms); otherwise the clock."
+    },
+    {
+      "name": "live",
+      "type": "boolean",
+      "default": true,
+      "description": "Keeps the text current while mounted."
+    },
+    {
+      "name": "locale",
+      "type": "string",
+      "description": "BCP 47 locale; the user's own by default."
+    },
+    {
+      "name": "style",
+      "type": "\"long\" | \"short\" | \"narrow\"",
+      "default": "short",
+      "description": "Intl.RelativeTimeFormat style."
+    },
+    {
+      "name": "timeZone",
+      "type": "string",
+      "description": "Time zone of the absolute time."
+    },
+    {
+      "name": "tooltip",
+      "type": "boolean",
+      "default": true,
+      "description": "Absolute time in a Tooltip on hover and focus; the time is focusable."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLTimeElement>",
+      "description": "Reaches the <time>."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "time",
+      "description": "datetime in ISO 8601; data-slot=\"relative-time\", data-tooltip; dotted underline when it has a tooltip."
+    }
+  ],
+  "states": [
+    {
+      "name": "tooltip",
+      "variant": "data-tooltip",
+      "description": "Has a tooltip: dotted underline in color.fg.subtle, focusable."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus: a ring of ring.width in color.ring."
+    }
+  ],
+  "tokens": [
+    "color.fg.subtle",
+    "color.ring",
+    "radius.xs",
+    "ring.offset",
+    "ring.width"
+  ],
+  "examples": {
+    "minimal": "RelativeTimeMinimal",
+    "realistic": "RelativeTimeRealistic"
+  },
+  "accessibility": [
+    "A <time> with a machine-readable datetime; screen readers read the relative text followed by the absolute time from visually hidden text, so nothing depends on the tooltip.",
+    "With a tooltip the time is in the tab order and the Tooltip opens on focus as well as hover.",
+    "Not a live region: the text updates silently (an announcing countdown would never stop). Announce an expiry with a Toast or Alert instead.",
+    "Formatting uses the browser's Intl APIs in the user's locale; nothing is downloaded."
+  ]
+}

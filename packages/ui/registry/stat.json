@@ -1,0 +1,174 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "stat",
+  "type": "registry:ui",
+  "title": "Stat",
+  "description": "One number that matters, with its label, an optional change (arrow, words for screen readers, colour by intent) and a description.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/stat.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport type { ReactNode } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// One number that matters, with its label and change: rows returned, query time, a table's size.\n// Stat > StatLabel, StatValue, StatDelta, StatDescription, on Base UI's useRender. StatValue\n// uses tabular figures so numbers line up across stats. StatDelta shows the trend with an arrow\n// and says it in words for screen readers; its colour follows `intent`, because up is not always\n// good (query time up is bad), and is never the only cue.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const statVariants = {\n  size: {\n    sm: \"[&_[data-slot=stat-value]]:text-heading-4\",\n    md: \"[&_[data-slot=stat-value]]:text-heading-2\",\n  },\n} as const;\n\nconst base = [\"flex min-w-0 flex-col gap-stack-xs font-sans\"];\n\nconst parts = {\n  label: \"min-w-0 truncate text-label text-fg-muted\",\n  value: \"min-w-0 truncate text-fg tabular-nums\",\n  delta: [\n    \"inline-flex items-center gap-inline-xs text-label tabular-nums\",\n    \"data-[intent=positive]:text-success-fg data-[intent=negative]:text-danger-fg data-[intent=neutral]:text-fg-muted\",\n    \"[&_svg]:size-icon-xs [&_svg]:shrink-0\",\n  ],\n  description: \"min-w-0 text-caption text-fg-muted wrap-break-word\",\n} as const;\n\ntype DivProps = Omit<useRender.ComponentProps<\"div\">, \"className\"> & { className?: string };\n\nexport interface StatProps extends DivProps {\n  /** The value's size: text.heading-2 (md) or text.heading-4 (sm, in dense rows). */\n  size?: keyof typeof statVariants.size;\n}\n\n/** The stat; the ref reaches its `<div>`. */\nexport function Stat({ size = \"md\", className, render, ...props }: StatProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"stat\", \"data-size\": size, ...props, className: cn(base, statVariants.size[size], className) } });\n}\n\n/** What the number is (\"Rows returned\"). */\nexport function StatLabel({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"stat-label\", ...props, className: cn(parts.label, className) } });\n}\n\n/** The number, formatted by the app (\"1,204\", \"38 ms\"), in tabular figures. */\nexport function StatValue({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"stat-value\", ...props, className: cn(parts.value, className) } });\n}\n\nconst Arrow = ({ trend }: { trend: StatDeltaProps[\"trend\"] }) => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    {trend === \"up\" ? <path d=\"M8 12.5v-9m-4 4 4-4 4 4\" /> : trend === \"down\" ? <path d=\"M8 3.5v9m-4-4 4 4 4-4\" /> : <path d=\"M3.5 8h9\" />}\n  </svg>\n);\n\nexport interface StatDeltaProps extends Omit<useRender.ComponentProps<\"span\">, \"className\"> {\n  /** Which way the number moved. */\n  trend: \"up\" | \"down\" | \"flat\";\n  /** Whether that is good: positive (success colour), negative (danger) or neutral. Defaults: up positive, down negative. */\n  intent?: \"positive\" | \"negative\" | \"neutral\";\n  /** The words screen readers hear before the change; defaults to \"Up\", \"Down\" or \"No change\". */\n  trendLabel?: ReactNode;\n  className?: string;\n}\n\n/** The change since the last value (\"12 %\", \"4 ms\"), with an arrow and the trend in words for screen readers. */\nexport function StatDelta({ trend, intent, trendLabel, className, render, children, ...props }: StatDeltaProps) {\n  const tone = intent ?? (trend === \"up\" ? \"positive\" : trend === \"down\" ? \"negative\" : \"neutral\");\n  const words = trendLabel ?? (trend === \"up\" ? \"Up\" : trend === \"down\" ? \"Down\" : \"No change\");\n  return useRender({\n    defaultTagName: \"span\",\n    render,\n    props: {\n      \"data-slot\": \"stat-delta\",\n      \"data-trend\": trend,\n      \"data-intent\": tone,\n      ...props,\n      className: cn(parts.delta, className),\n      children: (\n        <>\n          <Arrow trend={trend} />\n          <span className=\"sr-only\">{words} </span>\n          {children}\n        </>\n      ),\n    },\n  });\n}\n\nexport type StatDescriptionProps = Omit<useRender.ComponentProps<\"p\">, \"className\"> & { className?: string };\n\n/** Context for the number (\"since the previous run\"). */\nexport function StatDescription({ className, render, ...props }: StatDescriptionProps) {\n  return useRender({ defaultTagName: \"p\", render, props: { \"data-slot\": \"stat-description\", ...props, className: cn(parts.description, className) } });\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "stat",
+      "title": "Stat",
+      "description": "One number that matters, with its label, an optional change (arrow, words for screen readers, colour by intent) and a description.",
+      "usage": "Use Stat for a few key numbers: a query's time and row count, a table's size, connections in use. Compose Stat > StatLabel, StatValue, StatDelta (trend, intent), StatDescription. Format the value in the app (units, grouping). Set intent when up is bad (query time). Put stats in a row or in Cards; for many numbers use Table, for a series use a chart.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "size",
+          "type": "\"sm\" | \"md\"",
+          "default": "md",
+          "description": "The value in text.heading-2 (md) or text.heading-4 (sm)."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "The parts."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLElement>",
+          "description": "Reaches the rendered element."
+        }
+      ],
+      "variants": {
+        "size": [
+          "sm",
+          "md"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "data-slot=\"stat\", data-size."
+        },
+        {
+          "name": "label",
+          "element": "div",
+          "description": "text.label, color.fg.muted, truncates; data-slot=\"stat-label\"."
+        },
+        {
+          "name": "value",
+          "element": "div",
+          "description": "Tabular figures; data-slot=\"stat-value\"."
+        },
+        {
+          "name": "delta",
+          "element": "span",
+          "description": "Arrow, hidden trend words and the change; data-slot=\"stat-delta\", data-trend, data-intent."
+        },
+        {
+          "name": "description",
+          "element": "p",
+          "description": "text.caption, color.fg.muted; data-slot=\"stat-description\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "StatLabel",
+          "slot": "stat-label",
+          "description": "What the number is."
+        },
+        {
+          "name": "StatValue",
+          "slot": "stat-value",
+          "description": "The formatted number."
+        },
+        {
+          "name": "StatDelta",
+          "slot": "stat-delta",
+          "description": "The change: trend (up, down, flat), intent (positive, negative, neutral), trendLabel."
+        },
+        {
+          "name": "StatDescription",
+          "slot": "stat-description",
+          "description": "Context for the number."
+        }
+      ],
+      "states": [
+        {
+          "name": "positive",
+          "variant": "data-[intent=positive]",
+          "description": "A good change: color.status.success.fg."
+        },
+        {
+          "name": "negative",
+          "variant": "data-[intent=negative]",
+          "description": "A bad change: color.status.danger.fg."
+        },
+        {
+          "name": "neutral",
+          "variant": "data-[intent=neutral]",
+          "description": "A change that is neither: color.fg.muted."
+        }
+      ],
+      "tokens": [
+        "color.fg.default",
+        "color.fg.muted",
+        "color.status.danger.fg",
+        "color.status.success.fg",
+        "font.sans",
+        "size.icon.xs",
+        "space.inline.xs",
+        "space.stack.xs",
+        "text.caption.leading",
+        "text.caption.size",
+        "text.caption.tracking",
+        "text.caption.weight",
+        "text.heading-2.leading",
+        "text.heading-2.size",
+        "text.heading-2.tracking",
+        "text.heading-2.weight",
+        "text.heading-4.leading",
+        "text.heading-4.size",
+        "text.heading-4.tracking",
+        "text.heading-4.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "StatMinimal",
+        "realistic": "StatRealistic"
+      },
+      "accessibility": [
+        "Plain text in reading order: label, value, change, description.",
+        "StatDelta's arrow is aria-hidden and the trend is said in words (\"Up 12 %\"), so the change never depends on the arrow or the colour.",
+        "Values use tabular figures so they line up; long labels truncate (put the full label in title if it matters).",
+        "Not focusable."
+      ]
+    },
+    "example": "import { Stat, StatDelta, StatDescription, StatLabel, StatValue } from \"@/components/stat/stat\";\n\n/** The smallest useful Stat: a label and a number. */\nexport function StatMinimal() {\n  return (\n    <Stat>\n      <StatLabel>Rows returned</StatLabel>\n      <StatValue>1,204</StatValue>\n    </Stat>\n  );\n}\n\n/** A query's run summary: time up (bad), rows down (neutral), size flat, and small stats in a dense row. */\nexport function StatRealistic() {\n  return (\n    <div className=\"flex flex-col gap-stack-lg\">\n      <div className=\"flex flex-wrap gap-gap-xl\">\n        <Stat>\n          <StatLabel>Query time</StatLabel>\n          <StatValue>38 ms</StatValue>\n          <StatDelta trend=\"up\" intent=\"negative\">\n            12 %\n          </StatDelta>\n          <StatDescription>since the previous run</StatDescription>\n        </Stat>\n        <Stat>\n          <StatLabel>Rows returned</StatLabel>\n          <StatValue>1,204</StatValue>\n          <StatDelta trend=\"down\" intent=\"neutral\">\n            96\n          </StatDelta>\n        </Stat>\n        <Stat>\n          <StatLabel>Table size</StatLabel>\n          <StatValue>2.4 GB</StatValue>\n          <StatDelta trend=\"flat\">0 %</StatDelta>\n        </Stat>\n        <Stat>\n          <StatLabel>Cache hit ratio</StatLabel>\n          <StatValue>99.2 %</StatValue>\n          <StatDelta trend=\"up\">0.4 pt</StatDelta>\n        </Stat>\n      </div>\n      <div className=\"flex w-panel-sm flex-wrap gap-gap-lg\">\n        <Stat size=\"sm\">\n          <StatLabel>Connections in use by the analytics warehouse replica</StatLabel>\n          <StatValue>18 / 100</StatValue>\n        </Stat>\n        <Stat size=\"sm\">\n          <StatLabel>Locks</StatLabel>\n          <StatValue>3</StatValue>\n        </Stat>\n      </div>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

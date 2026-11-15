@@ -1,0 +1,251 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "table",
+  "title": "Table",
+  "description": "A plain, semantic data table styled with the grid.* roles DBee's DataGrid uses: sticky header, density-aware rows, sortable headers, NULL marker, and a virtualized body for large row counts.",
+  "usage": "Use Table for records with the same columns: a table's columns, indexes, grants, the audit log, a small query result. Compose Table (aria-label, or TableCaption with aria-labelledby) > TableHeader > TableRow > TableHead, then TableBody > TableRow > TableCell, and an optional TableFooter. It is presentational: the app sorts (TableHead sort + onSort), selects (TableRow selected) and pages. Cells keep one line and truncate (wrap lets one wrap); align=\"end\" for numbers; TableNull for SQL NULL. For more than about 1,000 rows, give the Table a height and use TableVirtualBody with count and renderRow; browsers cap an element's height near 33.5 million px, so it serves up to about 900,000 rows at the comfortable row height (1.5 million compact). Put the Table in a parent that lets it shrink (min-w-0) so wide tables scroll inside it. For streamed Arrow results with cell selection and column resizing use the DataGrid package (TSK-39); for term/value pairs use DescriptionList.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"plain\" | \"striped\" | \"bordered\"",
+      "default": "plain",
+      "description": "striped: alternate rows in grid.row-bg-alt; bordered: rules between columns."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Names the table; the scroll container becomes a focusable region."
+    },
+    {
+      "name": "aria-labelledby",
+      "type": "string",
+      "description": "Names the table by another element (its TableCaption's id)."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "TableCaption, TableHeader, TableBody or TableVirtualBody, TableFooter."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes on the scroll container; give it a height to scroll."
+    },
+    {
+      "name": "tableClassName",
+      "type": "string",
+      "description": "Extra classes on the <table>."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the scroll container."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "plain",
+      "striped",
+      "bordered"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The scroll container, a focusable region when labelled; data-slot=\"table\", data-variant."
+    },
+    {
+      "name": "element",
+      "element": "table",
+      "description": "The <table>; data-slot=\"table-element\"; aria-rowcount with a virtual body."
+    },
+    {
+      "name": "header",
+      "element": "thead",
+      "description": "data-slot=\"table-header\"."
+    },
+    {
+      "name": "body",
+      "element": "tbody",
+      "description": "data-slot=\"table-body\"; marks odd rows data-odd."
+    },
+    {
+      "name": "virtual-body",
+      "element": "tbody",
+      "description": "Renders the rows in view between two aria-hidden spacer rows; data-slot=\"table-virtual-body\", data-first, data-last."
+    },
+    {
+      "name": "footer",
+      "element": "tfoot",
+      "description": "data-slot=\"table-footer\"."
+    },
+    {
+      "name": "row",
+      "element": "tr",
+      "description": "data-slot=\"table-row\", data-selected, aria-selected, data-odd."
+    },
+    {
+      "name": "head",
+      "element": "th",
+      "description": "scope=\"col\", sticky, grid.header-bg; data-slot=\"table-head\", data-align, aria-sort."
+    },
+    {
+      "name": "sort",
+      "element": "button",
+      "description": "The sort button inside a sortable head; data-slot=\"table-sort\"."
+    },
+    {
+      "name": "cell",
+      "element": "td",
+      "description": "grid.row-height, grid.cell-padding-x, truncates; data-slot=\"table-cell\", data-align, data-wrap."
+    },
+    {
+      "name": "caption",
+      "element": "caption",
+      "description": "Under the table; data-slot=\"table-caption\"."
+    },
+    {
+      "name": "null",
+      "element": "span",
+      "description": "NULL in italic grid.null-fg; data-slot=\"table-null\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "TableHeader",
+      "slot": "table-header",
+      "description": "The <thead>; its heads stick while the body scrolls."
+    },
+    {
+      "name": "TableBody",
+      "slot": "table-body",
+      "description": "The <tbody> for rows you render (up to about 1,000)."
+    },
+    {
+      "name": "TableVirtualBody",
+      "slot": "table-virtual-body",
+      "description": "A <tbody> that renders only the rows in view: count, renderRow, overscan, headerRows."
+    },
+    {
+      "name": "TableFooter",
+      "slot": "table-footer",
+      "description": "The <tfoot>."
+    },
+    {
+      "name": "TableRow",
+      "slot": "table-row",
+      "description": "A <tr>; selected marks it."
+    },
+    {
+      "name": "TableHead",
+      "slot": "table-head",
+      "description": "A column header: align, sort, onSort."
+    },
+    {
+      "name": "TableCell",
+      "slot": "table-cell",
+      "description": "A data cell: align, wrap."
+    },
+    {
+      "name": "TableCaption",
+      "slot": "table-caption",
+      "description": "What the table lists; names it."
+    },
+    {
+      "name": "TableNull",
+      "slot": "table-null",
+      "description": "A SQL NULL, distinct from an empty string."
+    }
+  ],
+  "states": [
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over a row: grid.row-hover; over a sort button: color.fg.default."
+    },
+    {
+      "name": "selected",
+      "variant": "data-selected",
+      "description": "A selected row: grid.selection-bg."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the region or a sort button: a ring of ring.width in color.ring."
+    },
+    {
+      "name": "align-end",
+      "variant": "data-[align=end]",
+      "description": "End-aligned heads and cells; cells use tabular figures."
+    },
+    {
+      "name": "wrap",
+      "variant": "data-wrap",
+      "description": "A cell that wraps instead of truncating."
+    }
+  ],
+  "tokens": [
+    "border.width.0",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.fg.subtle",
+    "color.ring",
+    "font.mono",
+    "font.sans",
+    "grid.cell-border",
+    "grid.cell-padding-x",
+    "grid.header-bg",
+    "grid.null-fg",
+    "grid.row-bg",
+    "grid.row-bg-alt",
+    "grid.row-height",
+    "grid.row-hover",
+    "grid.selection-bg",
+    "radius.md",
+    "radius.xs",
+    "ring.width",
+    "size.icon.xs",
+    "size.panel.md",
+    "size.panel.sm",
+    "space.inline.xs",
+    "space.inset.xs",
+    "text.body-strong.leading",
+    "text.body-strong.size",
+    "text.body-strong.tracking",
+    "text.body-strong.weight",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight",
+    "z.sticky"
+  ],
+  "examples": {
+    "minimal": "TableMinimal",
+    "realistic": "TableRealistic"
+  },
+  "accessibility": [
+    "A real <table> with <thead>, <th scope=\"col\"> and <td>, so screen readers announce headers with each cell; name it with aria-label or a TableCaption referenced by aria-labelledby.",
+    "A labelled table's scroll container is a focusable region, so keyboard users can scroll a tall or wide table with the arrow keys.",
+    "A sortable column's label is a button; the current order is aria-sort on the <th> and an icon (aria-hidden).",
+    "TableVirtualBody keeps the semantic table: the <table> has aria-rowcount (all rows plus the header) and each rendered row its aria-rowindex; the spacer rows are aria-hidden.",
+    "Selected rows set aria-selected; NULL is the word NULL, not a colour; truncated cells should carry the full value in title.",
+    "Not an interactive grid: no cell focus or arrow-key movement between cells. For that, use the DataGrid (ARIA grid pattern)."
+  ]
+}

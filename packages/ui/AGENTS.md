@@ -208,6 +208,17 @@ What `test/conventions.test.tsx` enforces for every component:
 - The suite reads the examples' classes only for components with `parts`. A component that
   renders optional inner elements from props (Progress's label and value) exports them as parts,
   or their classes go unchecked.
+- Table is the plain semantic table (TSK-45 decision: a presentational primitive; the Arrow
+  DataGrid is TSK-39's own package). It shares the `grid.*` roles with the DataGrid so they look
+  alike. `TableVirtualBody` renders the rows in view between two `aria-hidden` spacer rows inside
+  a Table with a height, sets `aria-rowcount` on the table and `aria-rowindex` on rows, and
+  needs one-line rows (cells truncate). Browsers cap an element near 33.5 million px, so it
+  serves up to ~900k rows (comfortable) or ~1.5M (compact); beyond that, the DataGrid.
+- Anything that can show more than ~1,000 rows or items is virtualized (Tree, Table's virtual
+  body, CodeBlock and JsonViewer); state the limit in the manifest.
+- A boolean prop is never a variant key (the suite passes variant values as strings, so
+  `"false"` would be truthy): style it through a `data-*` attribute and list it as a state.
+- Part names start with the title (`DescriptionListItem`, slot `description-list-item`).
 - A prop that picks a colour from a numbered role (Tag `swatch` → `bg-chart-1..8`) maps to class
   strings written out in full, and the example shows every value so the token test checks them.
 

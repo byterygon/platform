@@ -191,6 +191,24 @@
       ]
     },
     {
+      "name": "code",
+      "type": "registry:ui",
+      "title": "Code",
+      "description": "Inline code in running text (a SQLSTATE, an identifier, a digest) as a <code> in text.code-sm; long values break anywhere.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/code.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "code-input",
       "type": "registry:ui",
       "title": "CodeInput",
@@ -312,6 +330,24 @@
       "files": [
         {
           "path": "ui/date-picker.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "description-list",
+      "type": "registry:ui",
+      "title": "DescriptionList",
+      "description": "Term/value pairs in a <dl>: the term beside its value or above it, optionally divided by rules; long values wrap.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/description-list.tsx",
           "type": "registry:ui"
         }
       ]
@@ -694,6 +730,23 @@
       ]
     },
     {
+      "name": "relative-time",
+      "type": "registry:ui",
+      "title": "RelativeTime",
+      "description": "A time relative to now (\"in 14 min\", \"2 s ago\") in a <time datetime>, kept current, with the absolute time in a Tooltip and as hidden text.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/tooltip"
+      ],
+      "files": [
+        {
+          "path": "ui/relative-time.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "resizable",
       "type": "registry:ui",
       "title": "Resizable",
@@ -920,6 +973,24 @@
       ]
     },
     {
+      "name": "stat",
+      "type": "registry:ui",
+      "title": "Stat",
+      "description": "One number that matters, with its label, an optional change (arrow, words for screen readers, colour by intent) and a description.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/stat.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "status-bar",
       "type": "registry:ui",
       "title": "StatusBar",
@@ -967,6 +1038,23 @@
       "files": [
         {
           "path": "ui/switch.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "table",
+      "type": "registry:ui",
+      "title": "Table",
+      "description": "A plain, semantic data table styled with the grid.* roles DBee's DataGrid uses: sticky header, density-aware rows, sortable headers, NULL marker, and a virtualized body for large row counts.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/table.tsx",
           "type": "registry:ui"
         }
       ]
@@ -1153,6 +1241,24 @@
       "files": [
         {
           "path": "ui/tree.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "type-badge",
+      "type": "registry:ui",
+      "title": "TypeBadge",
+      "description": "A column's data type as a glyph and a short name in its data.type.* colour, for grid headers, column nodes and the value viewer.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "registryDependencies": [
+        "@byterygon/cn"
+      ],
+      "files": [
+        {
+          "path": "ui/type-badge.tsx",
           "type": "registry:ui"
         }
       ]

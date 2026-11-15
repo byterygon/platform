@@ -1,0 +1,126 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "type-badge",
+  "type": "registry:ui",
+  "title": "TypeBadge",
+  "description": "A column's data type as a glyph and a short name in its data.type.* colour, for grid headers, column nodes and the value viewer.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/type-badge.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport type { ReactNode } from \"react\";\nimport { cn } from \"@/lib/cn\";\n\n// A column's data type at a glance: a glyph and a short name in the data.type.* colour (grid\n// headers, the schema tree's column nodes, the value viewer). The glyph and the name carry the\n// type, so the colour is never the only cue. `label` replaces the short name with the real type\n// (\"numeric(12,2)\", \"int8\"); `iconOnly` keeps the glyph and moves the name to hidden text.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const typeBadgeVariants = {\n  type: {\n    integer: \"text-type-integer\",\n    decimal: \"text-type-decimal\",\n    text: \"text-type-text\",\n    boolean: \"text-type-boolean\",\n    datetime: \"text-type-datetime\",\n    json: \"text-type-json\",\n    binary: \"text-type-binary\",\n    uuid: \"text-type-uuid\",\n  },\n} as const;\n\ntype DataType = keyof typeof typeBadgeVariants.type;\n\nconst base = [\"inline-flex min-w-0 max-w-full items-center gap-inline-xs font-mono text-code-sm whitespace-nowrap align-middle\"];\n\nconst classes = {\n  glyph: \"inline-flex min-w-icon-md shrink-0 items-center justify-center rounded-xs border border-current px-inline-xs leading-none\",\n  label: \"min-w-0 truncate text-fg-muted\",\n  hidden: \"sr-only\",\n} as const;\n\n/** The glyph and the short name of each type. */\nexport const typeGlyphs: Record<DataType, { glyph: string; name: string }> = {\n  integer: { glyph: \"#\", name: \"int\" },\n  decimal: { glyph: \"#.#\", name: \"dec\" },\n  text: { glyph: \"Aa\", name: \"text\" },\n  boolean: { glyph: \"T/F\", name: \"bool\" },\n  datetime: { glyph: \"◷\", name: \"time\" },\n  json: { glyph: \"{}\", name: \"json\" },\n  binary: { glyph: \"01\", name: \"bin\" },\n  uuid: { glyph: \"id\", name: \"uuid\" },\n};\n\nexport interface TypeBadgeProps extends Omit<useRender.ComponentProps<\"span\">, \"className\" | \"children\"> {\n  /** The data type family, from the data.type.* roles. */\n  type: DataType;\n  /** The text after the glyph; defaults to the short name (\"int\"). Pass the real type (\"numeric(12,2)\"). */\n  label?: ReactNode;\n  /** Only the glyph; the name becomes hidden text for screen readers. */\n  iconOnly?: boolean;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** A data type as a glyph and a name, a `<span>`. The ref reaches it. */\nexport function TypeBadge({ type, label, iconOnly = false, className, render, ...props }: TypeBadgeProps) {\n  const { glyph, name } = typeGlyphs[type] ?? typeGlyphs.text;\n  const text = label ?? name;\n  return useRender({\n    defaultTagName: \"span\",\n    render,\n    props: {\n      \"data-slot\": \"type-badge\",\n      \"data-type\": type,\n      ...props,\n      className: cn(base, typeBadgeVariants.type[type] ?? typeBadgeVariants.type.text, className),\n      children: (\n        <>\n          <span data-slot=\"type-badge-glyph\" aria-hidden=\"true\" className={classes.glyph}>\n            {glyph}\n          </span>\n          <span className={iconOnly ? classes.hidden : classes.label}>{text}</span>\n        </>\n      ),\n    },\n  });\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "type-badge",
+      "title": "TypeBadge",
+      "description": "A column's data type as a glyph and a short name in its data.type.* colour, for grid headers, column nodes and the value viewer.",
+      "usage": "Use TypeBadge wherever a column's type is shown: the schema tree's column nodes, a table of columns, the value viewer, the DataGrid's headers. type picks the family (integer, decimal, text, boolean, datetime, json, binary, uuid); label shows the real type (\"numeric(12,2)\"); iconOnly keeps only the glyph where space is tight. For a status word use Badge.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "type",
+          "type": "\"integer\" | \"decimal\" | \"text\" | \"boolean\" | \"datetime\" | \"json\" | \"binary\" | \"uuid\"",
+          "required": true,
+          "description": "The type family and its data.type.* colour."
+        },
+        {
+          "name": "label",
+          "type": "ReactNode",
+          "description": "Text after the glyph; defaults to the short name (int, dec, text, bool, time, json, bin, uuid)."
+        },
+        {
+          "name": "iconOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Only the glyph; the name becomes hidden text."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLElement>",
+          "description": "Reaches the rendered element."
+        }
+      ],
+      "variants": {
+        "type": [
+          "integer",
+          "decimal",
+          "text",
+          "boolean",
+          "datetime",
+          "json",
+          "binary",
+          "uuid"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "span",
+          "description": "data-slot=\"type-badge\", data-type; text.code-sm in the type colour."
+        },
+        {
+          "name": "glyph",
+          "element": "span",
+          "description": "The glyph in a thin frame of the type colour, aria-hidden; data-slot=\"type-badge-glyph\"."
+        }
+      ],
+      "states": [],
+      "tokens": [
+        "color.fg.muted",
+        "data.type.binary",
+        "data.type.boolean",
+        "data.type.datetime",
+        "data.type.decimal",
+        "data.type.integer",
+        "data.type.json",
+        "data.type.text",
+        "data.type.uuid",
+        "font.mono",
+        "radius.xs",
+        "size.icon.md",
+        "space.inline.xs",
+        "text.code-sm.leading",
+        "text.code-sm.size",
+        "text.code-sm.tracking",
+        "text.code-sm.weight"
+      ],
+      "examples": {
+        "minimal": "TypeBadgeMinimal",
+        "realistic": "TypeBadgeRealistic"
+      },
+      "accessibility": [
+        "The glyph is aria-hidden; the type name is text (hidden text with iconOnly), so screen readers read \"int\" or \"numeric(12,2)\".",
+        "Each family has its own glyph and name, so the type is never conveyed by colour alone.",
+        "Long type names truncate; put the full name in title where it may be cut.",
+        "Not focusable."
+      ]
+    },
+    "example": "import { TypeBadge, typeGlyphs } from \"@/components/type-badge/type-badge\";\n\n/** The smallest useful TypeBadge. */\nexport function TypeBadgeMinimal() {\n  return <TypeBadge type=\"integer\" />;\n}\n\n/** Every type family, real PostgreSQL type names, icon-only in a narrow grid header, a long name that truncates. */\nexport function TypeBadgeRealistic() {\n  return (\n    <div className=\"flex flex-col gap-stack-sm text-body text-fg\">\n      <div className=\"flex flex-wrap items-center gap-inline-md\">\n        {(Object.keys(typeGlyphs) as (keyof typeof typeGlyphs)[]).map((type) => (\n          <TypeBadge key={type} type={type} />\n        ))}\n      </div>\n      <ul className=\"flex flex-col gap-stack-xs\">\n        <li className=\"flex items-center gap-inline-sm\">\n          <span className=\"min-w-0 flex-1 truncate\">total</span>\n          <TypeBadge type=\"decimal\" label=\"numeric(12,2)\" />\n        </li>\n        <li className=\"flex items-center gap-inline-sm\">\n          <span className=\"min-w-0 flex-1 truncate\">created_at</span>\n          <TypeBadge type=\"datetime\" label=\"timestamptz\" />\n        </li>\n        <li className=\"flex items-center gap-inline-sm\">\n          <span className=\"min-w-0 flex-1 truncate\">payload</span>\n          <TypeBadge type=\"json\" label=\"jsonb\" />\n        </li>\n      </ul>\n      <div className=\"flex w-panel-xs items-center gap-inline-sm\">\n        <span className=\"truncate\">customer_id</span>\n        <TypeBadge type=\"integer\" iconOnly />\n        <TypeBadge type=\"text\" label=\"character varying(255) collate &quot;en_US&quot;\" className=\"min-w-0\" />\n      </div>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

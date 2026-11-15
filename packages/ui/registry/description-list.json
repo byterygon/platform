@@ -1,0 +1,161 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "description-list",
+  "type": "registry:ui",
+  "title": "DescriptionList",
+  "description": "Term/value pairs in a <dl>: the term beside its value or above it, optionally divided by rules; long values wrap.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn"
+  ],
+  "files": [
+    {
+      "path": "ui/description-list.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/cn\";\n\n// Term/value pairs: the approval dialog's grant summary, a connection's details, About. A <dl>\n// of DescriptionListItem (a <div> grouping one dt and its dd's, as HTML allows), DescriptionListTerm and\n// DescriptionListDetails, on Base UI's useRender. `inline` puts the term beside its value (terms a\n// third of the width); `stacked` puts it above. Gaps come from space.stack/inline roles, so both\n// densities apply. Long values (digests, paths) wrap.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const descriptionListVariants = {\n  layout: {\n    inline: \"[&_[data-slot=description-list-item]]:flex-row [&_[data-slot=description-list-term]]:w-1/3 [&_[data-slot=description-list-term]]:shrink-0\",\n    stacked: \"[&_[data-slot=description-list-item]]:flex-col\",\n  },\n} as const;\n\nconst base = [\n  \"flex min-w-0 flex-col font-sans text-body not-data-divided:gap-stack-sm\",\n  \"data-divided:[&_[data-slot=description-list-item]]:border-b data-divided:[&_[data-slot=description-list-item]]:border-border-muted data-divided:[&_[data-slot=description-list-item]]:py-inset-xs data-divided:[&_[data-slot=description-list-item]:last-child]:border-b-0\",\n];\n\nconst parts = {\n  item: \"flex min-w-0 gap-x-inline-md gap-y-stack-xs\",\n  term: \"min-w-0 text-label text-fg-muted wrap-break-word\",\n  details: \"min-w-0 flex-1 text-body text-fg wrap-break-word\",\n} as const;\n\nexport interface DescriptionListProps extends Omit<useRender.ComponentProps<\"dl\">, \"className\"> {\n  /** inline: the term beside its value; stacked: above it (narrow places). */\n  layout?: keyof typeof descriptionListVariants.layout;\n  /** Rules between the items. */\n  divided?: boolean;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The list, a `<dl>`. The ref reaches it. */\nexport function DescriptionList({ layout = \"inline\", divided = false, className, render, ...props }: DescriptionListProps) {\n  return useRender({\n    defaultTagName: \"dl\",\n    render,\n    props: {\n      \"data-slot\": \"description-list\",\n      \"data-layout\": layout,\n      \"data-divided\": divided ? \"\" : undefined,\n      ...props,\n      className: cn(base, descriptionListVariants.layout[layout], className),\n    },\n  });\n}\n\ntype DivProps = Omit<useRender.ComponentProps<\"div\">, \"className\"> & { className?: string };\n\n/** One term and its value(s), a `<div>` inside the `<dl>`. */\nexport function DescriptionListItem({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"description-list-item\", ...props, className: cn(parts.item, className) } });\n}\n\nexport type DescriptionListTermProps = Omit<useRender.ComponentProps<\"dt\">, \"className\"> & { className?: string };\n\n/** The term, a `<dt>` in text.label and color.fg.muted. */\nexport function DescriptionListTerm({ className, render, ...props }: DescriptionListTermProps) {\n  return useRender({ defaultTagName: \"dt\", render, props: { \"data-slot\": \"description-list-term\", ...props, className: cn(parts.term, className) } });\n}\n\nexport type DescriptionListDetailsProps = Omit<useRender.ComponentProps<\"dd\">, \"className\"> & { className?: string };\n\n/** The value, a `<dd>`; wraps long values. */\nexport function DescriptionListDetails({ className, render, ...props }: DescriptionListDetailsProps) {\n  return useRender({ defaultTagName: \"dd\", render, props: { \"data-slot\": \"description-list-details\", ...props, className: cn(parts.details, className) } });\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "description-list",
+      "title": "DescriptionList",
+      "description": "Term/value pairs in a <dl>: the term beside its value or above it, optionally divided by rules; long values wrap.",
+      "usage": "Use DescriptionList for the facts of one thing: the grant summary in the approval dialog, a connection's details, About and diagnostics. Compose DescriptionList > DescriptionListItem > DescriptionListTerm + DescriptionListDetails (one or more). layout=\"stacked\" in narrow panels; divided adds rules between items. For many records with the same fields use Table; for a single number use Stat.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "layout",
+          "type": "\"inline\" | \"stacked\"",
+          "default": "inline",
+          "description": "inline: the term (a third of the width) beside its value; stacked: above it."
+        },
+        {
+          "name": "divided",
+          "type": "boolean",
+          "default": false,
+          "description": "Rules between the items."
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "description": "DescriptionListItems."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDListElement>",
+          "description": "Reaches the <dl>."
+        }
+      ],
+      "variants": {
+        "layout": [
+          "inline",
+          "stacked"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "dl",
+          "description": "data-slot=\"description-list\", data-layout, data-divided."
+        },
+        {
+          "name": "item",
+          "element": "div",
+          "description": "One term and its values; data-slot=\"description-list-item\"."
+        },
+        {
+          "name": "term",
+          "element": "dt",
+          "description": "text.label in color.fg.muted; data-slot=\"description-list-term\"."
+        },
+        {
+          "name": "details",
+          "element": "dd",
+          "description": "The value; wraps; data-slot=\"description-list-details\"."
+        }
+      ],
+      "parts": [
+        {
+          "name": "DescriptionListItem",
+          "slot": "description-list-item",
+          "description": "Groups one term with its values."
+        },
+        {
+          "name": "DescriptionListTerm",
+          "slot": "description-list-term",
+          "description": "The term, a <dt>."
+        },
+        {
+          "name": "DescriptionListDetails",
+          "slot": "description-list-details",
+          "description": "The value, a <dd>."
+        }
+      ],
+      "states": [
+        {
+          "name": "divided",
+          "variant": "data-divided",
+          "props": {
+            "divided": true
+          },
+          "description": "Rules in color.border.muted between items."
+        }
+      ],
+      "tokens": [
+        "color.border.muted",
+        "color.fg.default",
+        "color.fg.muted",
+        "font.mono",
+        "font.sans",
+        "size.panel.md",
+        "size.panel.xs",
+        "space.inline.md",
+        "space.inset.xs",
+        "space.stack.sm",
+        "space.stack.xs",
+        "text.body.leading",
+        "text.body.size",
+        "text.body.tracking",
+        "text.body.weight",
+        "text.code.leading",
+        "text.code.size",
+        "text.code.tracking",
+        "text.code.weight",
+        "text.label.leading",
+        "text.label.size",
+        "text.label.tracking",
+        "text.label.weight"
+      ],
+      "examples": {
+        "minimal": "DescriptionListMinimal",
+        "realistic": "DescriptionListRealistic"
+      },
+      "accessibility": [
+        "A real <dl> with <dt> and <dd> (each pair in a <div>, which HTML allows), so screen readers announce the list and pair terms with values.",
+        "Terms are color.fg.muted and values color.fg.default, both contrast-checked as text.",
+        "Long values (digests, paths) wrap instead of overflowing; not focusable."
+      ]
+    },
+    "example": "import { DescriptionListDetails, DescriptionListItem, DescriptionList, DescriptionListTerm } from \"@/components/description-list/description-list\";\n\n/** The smallest useful DescriptionList: two pairs. */\nexport function DescriptionListMinimal() {\n  return (\n    <DescriptionList className=\"max-w-panel-md\">\n      <DescriptionListItem>\n        <DescriptionListTerm>Host</DescriptionListTerm>\n        <DescriptionListDetails>db.internal:5432</DescriptionListDetails>\n      </DescriptionListItem>\n      <DescriptionListItem>\n        <DescriptionListTerm>Database</DescriptionListTerm>\n        <DescriptionListDetails>orders</DescriptionListDetails>\n      </DescriptionListItem>\n    </DescriptionList>\n  );\n}\n\n/** The approval dialog's grant summary (divided, a long digest that wraps) and About in a narrow panel (stacked). */\nexport function DescriptionListRealistic() {\n  return (\n    <div className=\"flex flex-wrap items-start gap-gap-xl\">\n      <DescriptionList divided className=\"w-panel-md\">\n        <DescriptionListItem>\n          <DescriptionListTerm>Plugin</DescriptionListTerm>\n          <DescriptionListDetails>db-driver-postgres 0.1.0 (first-party)</DescriptionListDetails>\n        </DescriptionListItem>\n        <DescriptionListItem>\n          <DescriptionListTerm>May reach</DescriptionListTerm>\n          <DescriptionListDetails>db.internal:5432 over TLS</DescriptionListDetails>\n        </DescriptionListItem>\n        <DescriptionListItem>\n          <DescriptionListTerm>Access</DescriptionListTerm>\n          <DescriptionListDetails>Read-only, expires in 1 hour</DescriptionListDetails>\n        </DescriptionListItem>\n        <DescriptionListItem>\n          <DescriptionListTerm>Digest</DescriptionListTerm>\n          <DescriptionListDetails className=\"font-mono text-code\">sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08</DescriptionListDetails>\n        </DescriptionListItem>\n      </DescriptionList>\n      <DescriptionList layout=\"stacked\" className=\"w-panel-xs\">\n        <DescriptionListItem>\n          <DescriptionListTerm>Version</DescriptionListTerm>\n          <DescriptionListDetails>DBee 0.1.0</DescriptionListDetails>\n        </DescriptionListItem>\n        <DescriptionListItem>\n          <DescriptionListTerm>Workspace</DescriptionListTerm>\n          <DescriptionListDetails>/home/analyst/.local/share/dbee/workspaces/default</DescriptionListDetails>\n        </DescriptionListItem>\n      </DescriptionList>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

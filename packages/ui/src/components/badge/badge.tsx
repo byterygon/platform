@@ -31,7 +31,7 @@ export const badgeVariants = {
 } as const;
 
 const base = [
-  "inline-flex max-w-full shrink-0 select-none items-center gap-inline-xs rounded-full border border-transparent font-sans whitespace-nowrap align-middle",
+  "inline-flex min-w-0 max-w-full select-none items-center gap-inline-xs rounded-full border border-transparent font-sans whitespace-nowrap align-middle",
   "[&_svg]:size-icon-xs [&_svg]:shrink-0",
 ];
 

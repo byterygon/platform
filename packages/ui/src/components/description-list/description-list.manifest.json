@@ -1,0 +1,136 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "description-list",
+  "title": "DescriptionList",
+  "description": "Term/value pairs in a <dl>: the term beside its value or above it, optionally divided by rules; long values wrap.",
+  "usage": "Use DescriptionList for the facts of one thing: the grant summary in the approval dialog, a connection's details, About and diagnostics. Compose DescriptionList > DescriptionListItem > DescriptionListTerm + DescriptionListDetails (one or more). layout=\"stacked\" in narrow panels; divided adds rules between items. For many records with the same fields use Table; for a single number use Stat.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "layout",
+      "type": "\"inline\" | \"stacked\"",
+      "default": "inline",
+      "description": "inline: the term (a third of the width) beside its value; stacked: above it."
+    },
+    {
+      "name": "divided",
+      "type": "boolean",
+      "default": false,
+      "description": "Rules between the items."
+    },
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "DescriptionListItems."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDListElement>",
+      "description": "Reaches the <dl>."
+    }
+  ],
+  "variants": {
+    "layout": [
+      "inline",
+      "stacked"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "dl",
+      "description": "data-slot=\"description-list\", data-layout, data-divided."
+    },
+    {
+      "name": "item",
+      "element": "div",
+      "description": "One term and its values; data-slot=\"description-list-item\"."
+    },
+    {
+      "name": "term",
+      "element": "dt",
+      "description": "text.label in color.fg.muted; data-slot=\"description-list-term\"."
+    },
+    {
+      "name": "details",
+      "element": "dd",
+      "description": "The value; wraps; data-slot=\"description-list-details\"."
+    }
+  ],
+  "parts": [
+    {
+      "name": "DescriptionListItem",
+      "slot": "description-list-item",
+      "description": "Groups one term with its values."
+    },
+    {
+      "name": "DescriptionListTerm",
+      "slot": "description-list-term",
+      "description": "The term, a <dt>."
+    },
+    {
+      "name": "DescriptionListDetails",
+      "slot": "description-list-details",
+      "description": "The value, a <dd>."
+    }
+  ],
+  "states": [
+    {
+      "name": "divided",
+      "variant": "data-divided",
+      "props": {
+        "divided": true
+      },
+      "description": "Rules in color.border.muted between items."
+    }
+  ],
+  "tokens": [
+    "color.border.muted",
+    "color.fg.default",
+    "color.fg.muted",
+    "font.mono",
+    "font.sans",
+    "size.panel.md",
+    "size.panel.xs",
+    "space.inline.md",
+    "space.inset.xs",
+    "space.stack.sm",
+    "space.stack.xs",
+    "text.body.leading",
+    "text.body.size",
+    "text.body.tracking",
+    "text.body.weight",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight",
+    "text.label.leading",
+    "text.label.size",
+    "text.label.tracking",
+    "text.label.weight"
+  ],
+  "examples": {
+    "minimal": "DescriptionListMinimal",
+    "realistic": "DescriptionListRealistic"
+  },
+  "accessibility": [
+    "A real <dl> with <dt> and <dd> (each pair in a <div>, which HTML allows), so screen readers announce the list and pair terms with values.",
+    "Terms are color.fg.muted and values color.fg.default, both contrast-checked as text.",
+    "Long values (digests, paths) wrap instead of overflowing; not focusable."
+  ]
+}
