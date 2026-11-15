@@ -14,6 +14,7 @@ members = [
     "apps/dbee/core",
     "apps/dbee/rpc-gen",
     "apps/dbee/server",
+    "apps/dbee/desktop",
 ]
 
 [workspace.package]

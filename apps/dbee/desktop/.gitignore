@@ -1,0 +1,2 @@
+# Tauri writes the capability schemas here at build time.
+gen/

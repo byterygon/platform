@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "The bundled main window: the Ambidex IPC commands only (DBee spec §11, Ambidex spec §8). Local content only; never add a remote section.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": ["ambidex:default"]
+}
