@@ -182,12 +182,12 @@ function FontSeed({ token, label, theme, onChange }: { token: string; label: str
       </div>
       <Input
         size="sm"
-        placeholder={token === "font.sans" ? "Inter, ui-sans-serif, system-ui, sans-serif" : "JetBrains Mono, ui-monospace, monospace"}
+        placeholder={token === "font.sans" ? "Segoe UI Variable Text, Segoe UI Variable, Segoe UI, Selawik, system-ui, sans-serif" : "Cascadia Mono, JetBrains Mono, ui-monospace, monospace"}
         value={overrideText(current)}
         onValueChange={(text: string) => onChange(setOverride(theme, token, text.trim() === "" ? undefined : parseOverrideText("fontFamily", text)))}
       />
       <FieldDescription>
-        Families in order, comma-separated (the <code className="font-mono">{token}</code> token). Only Inter and JetBrains Mono are bundled; others must be installed where the theme is used.
+        Families in order, comma-separated (the <code className="font-mono">{token}</code> token). Selawik, JetBrains Mono and Inter are bundled; Segoe UI Variable and Cascadia Mono are the system's (Windows 11); others must be installed where the theme is used.
       </FieldDescription>
     </Field>
   );
@@ -208,7 +208,7 @@ export function SeedsPanel({ theme, seeds, set, onChange }: SeedsPanelProps) {
 
       <Section title="Shape and type" set={anySet(shapePaths) || ["font.sans", "font.mono"].some((t) => overrideOf(theme, t) !== undefined)} onReset={() => onChange(setOverride(setOverride(resetSeeds(theme, shapePaths), "font.sans", undefined), "font.mono", undefined))}>
         <NumberSeed label="Radius (px)" value={seeds.radius} set={seedOf(theme, ["radius"]) !== undefined} min={0} max={32} step={1} description="The md corner; the other radius steps follow it." onChange={(value) => onChange(setSeed(theme, ["radius"], value))} />
-        <NumberSeed label="Body font size (px)" value={seeds.fontSize} set={seedOf(theme, ["fontSize"]) !== undefined} min={11} max={18} step={1} description="Every font.size step is an offset from it." onChange={(value) => onChange(setSeed(theme, ["fontSize"], value))} />
+        <NumberSeed label="Body font size (px)" value={seeds.fontSize} set={seedOf(theme, ["fontSize"]) !== undefined} min={11} max={18} step={1} description="The size of body-1 (Fluent's step 300); the whole type ramp scales with it." onChange={(value) => onChange(setSeed(theme, ["fontSize"], value))} />
         <FontSeed token="font.sans" label="Interface font" theme={theme} onChange={onChange} />
         <FontSeed token="font.mono" label="Code font" theme={theme} onChange={onChange} />
       </Section>

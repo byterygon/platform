@@ -6,7 +6,7 @@
  *
  * Every theme has these roles. Their defaults keep a theme's own look: the backdrop's glows are
  * the canvas colour (so it shows a flat canvas), and the layers are near-white (light) or a faint
- * white wash (dark). The `aurora` preset colours the glows. Values that are not ramp steps come from the reference
+ * white wash (dark). The `default` preset (Aurora) colours the glows. Values that are not ramp steps come from the reference
  * canvas (black and white at exact percentages, `color.black.alpha-*`).
  *
  * Contrast on a layer is measured over the backdrop at its least favourable point, and for a

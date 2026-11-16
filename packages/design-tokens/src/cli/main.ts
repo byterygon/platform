@@ -448,11 +448,15 @@ async function preset(args: ParsedArgs, io: Io): Promise<Outcome> {
     return { exitCode: EXIT.ok, data: { name, file: display(io, loaded.file), preset: loaded.theme }, text: stableJson(loaded.theme).trimEnd() };
   }
   if (action === "create" && name !== undefined && extra.length === 0) {
-    const base = loadTheme(flag(args, "--from") ?? "default", io);
-    const theme: Record<string, unknown> = isPlainObject(base.theme) ? structuredClone(base.theme) : {};
+    // Without --from, a new theme starts empty: the engine defaults (the default preset's seeds),
+    // as a new theme in the Theme Studio does. The default preset itself (Aurora) also tunes its
+    // brand steps by override for #6b4eff, which would not follow a --set brand hue (TSK-57).
+    const from = flag(args, "--from");
+    const base = from === undefined ? undefined : loadTheme(from, io);
+    const theme: Record<string, unknown> = base && isPlainObject(base.theme) ? structuredClone(base.theme) : { schemaVersion: 1 };
     delete theme["$schema"];
     theme["name"] = name;
-    theme["description"] = `Based on the ${isPlainObject(base.theme) ? String(base.theme["name"]) : "default"} preset.`;
+    theme["description"] = base ? `Based on the ${isPlainObject(base.theme) ? String(base.theme["name"]) : from} preset.` : "A new theme on the engine defaults.";
     for (const assignment of args.flags.get("--set") ?? []) applySet(theme, assignment);
     const target = resolvePath(io.cwd, flag(args, "--out") ?? `${name}${PRESET_SUFFIX}`);
     const shown = display(io, target);

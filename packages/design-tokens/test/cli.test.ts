@@ -160,15 +160,16 @@ test("diff compares resolved values mode by mode", async () => {
   assert.deepEqual([same.code, same.json.differs, same.json.changed], [EXIT.ok, false, []]);
 
   const theme = writeTheme("rounder", { "color.fg.link": { dark: "{color.brand-dark.12}" } }, { radius: 8 });
-  const result = await cli("diff", "default", theme, "--json");
+  // The test themes build on classic (test/helpers.ts).
+  const result = await cli("diff", "classic", theme, "--json");
   assert.equal(result.code, EXIT.ok);
-  assert.deepEqual([result.json.from, result.json.to, result.json.differs], ["default", "rounder", true]);
+  assert.deepEqual([result.json.from, result.json.to, result.json.differs], ["classic", "rounder", true]);
   const changed = Object.fromEntries(result.json.changed.map((c: { path: string; modes: unknown }) => [c.path, c.modes]));
   assert.deepEqual(Object.keys(changed).sort(), ["color.fg.link", "radius.lg", "radius.md", "radius.sm", "radius.xl", "radius.xs"]);
   assert.deepEqual(changed["radius.md"], [{ mode: {}, from: "6px", to: "8px" }]);
   assert.equal(changed["color.fg.link"].length, 1);
   assert.deepEqual(changed["color.fg.link"][0].mode, { theme: "dark" });
-  assert.equal((await cli("diff", "default", theme, "--exit-code")).code, EXIT.drift);
+  assert.equal((await cli("diff", "classic", theme, "--exit-code")).code, EXIT.drift);
   assert.equal((await cli("diff", "default", "--json")).code, EXIT.usage);
 });
 
@@ -176,7 +177,8 @@ test("preset: list, show, create from a preset with --set", async () => {
   const list = await cli("preset", "list", "--json");
   assert.ok(list.json.presets.some((p: { name: string; description: string }) => p.name === "default" && p.description.length > 0));
   const shown = await cli("preset", "show", "default", "--json");
-  assert.equal(shown.json.preset.seeds.colors.brand.hue, 230);
+  assert.equal(shown.json.preset.seeds.colors.brand.hue, 282.5);
+  assert.equal((await cli("preset", "show", "classic", "--json")).json.preset.seeds.colors.brand.hue, 230);
 
   const created = await cli("preset", "create", "forest", "--set", "seeds.colors.brand.hue=150", "--set", "seeds.density=compact", "--set", "overrides.color.border.default={color.neutral.7}", "--json");
   assert.equal(created.code, EXIT.ok);
@@ -185,6 +187,12 @@ test("preset: list, show, create from a preset with --set", async () => {
   assert.deepEqual([file.name, file.schemaVersion, file.seeds.colors.brand.hue, file.seeds.density], ["forest", 1, 150, "compact"]);
   assert.deepEqual(file.overrides, { "color.border.default": "{color.neutral.7}" });
   assert.equal((await cli("build", "--theme", "forest.theme.json", "--json")).code, EXIT.ok);
+  // Without --from a theme starts empty (the engine defaults); --from copies a preset.
+  assert.deepEqual(Object.keys(file.seeds.colors), ["brand"]);
+  const copied = await cli("preset", "create", "violet", "--from", "default", "--set", "seeds.radius=6", "--json");
+  assert.equal(copied.code, EXIT.ok);
+  const violet = JSON.parse(readFileSync(join(scratch, "violet.theme.json"), "utf8"));
+  assert.deepEqual([violet.seeds.colors.brand.hue, violet.seeds.radius, violet.overrides["radius.lg"]], [282.5, 6, "8px"]);
 
   // Refuses to overwrite, and refuses to write a theme that breaks a rule.
   const again = await cli("preset", "create", "forest", "--json");
@@ -207,7 +215,7 @@ test("export prints one output, or the theme with every seed spelled out", async
   const sparse = join(scratch, "sparse.theme.json");
   writeFileSync(sparse, JSON.stringify({ schemaVersion: 1, name: "sparse", seeds: { radius: 4 } }));
   const theme = JSON.parse((await cli("export", "theme", "--theme", sparse)).stdout);
-  assert.deepEqual([theme.name, theme.seeds.radius, theme.seeds.colors.brand.hue, theme.seeds.colors.neutral.hue], ["sparse", 4, 230, 230]);
+  assert.deepEqual([theme.name, theme.seeds.radius, theme.seeds.colors.brand.hue, theme.seeds.colors.neutral.hue], ["sparse", 4, 282.5, 275]);
 
   const written = await cli("export", "tailwind", "--out", "out/theme.css", "--json");
   assert.equal(written.json.written, join("out", "theme.css"));

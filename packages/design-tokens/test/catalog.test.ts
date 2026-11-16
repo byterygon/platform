@@ -306,9 +306,9 @@ test("the presets differ in the ways their names promise", async () => {
     return resolved.value;
   };
   const chroma = (name: string, path: string, theme: string) => (value(name, path, { theme, density: "comfortable" }) as unknown as { components: number[] }).components[1]!;
-  // Paper is warm: its backgrounds carry a visible tint. Default and Slate are almost grey.
+  // Paper is warm: its backgrounds carry a visible tint. Classic and Slate are almost grey.
   assert.ok(chroma("paper", "color.bg.canvas", "light") > 0.005);
-  assert.ok(chroma("default", "color.bg.canvas", "light") < 0.002);
+  assert.ok(chroma("classic", "color.bg.canvas", "light") < 0.002);
   assert.ok(chroma("slate", "color.bg.canvas", "light") < 0.002);
   // Midnight: dark first, with a deep blue background.
   assert.equal(byName.get("midnight")!.seeds.colorScheme, "dark");
@@ -320,28 +320,34 @@ test("the presets differ in the ways their names promise", async () => {
   // High contrast: a thicker focus ring.
   assert.deepEqual(value("high-contrast", "ring.width"), { value: 3, unit: "px" });
   assert.deepEqual(value("default", "ring.width"), { value: 2, unit: "px" });
+  assert.deepEqual(value("classic", "ring.width"), { value: 2, unit: "px" });
   // Paper reads more slowly: relaxed line height for body text.
   assert.equal(value("paper", "text.body.leading"), 1.65);
-  // Aurora (TSK-52): the #6b4eff violet solid, radius 4 for controls and 8 for containers, a
-  // backdrop with two glows in both modes over the canvas, and a black and white focus ring.
-  assert.equal((value("aurora", "color.accent.bg") as unknown as { hex: string }).hex, "#6b4eff");
-  assert.deepEqual([value("aurora", "radius.md"), value("aurora", "radius.lg")], [{ value: 4, unit: "px" }, { value: 8, unit: "px" }]);
-  assert.deepEqual([value("default", "radius.md"), value("default", "radius.lg")], [{ value: 6, unit: "px" }, { value: 10, unit: "px" }]);
+  // Default is Aurora (TSK-52, the default since TSK-57): the #6b4eff violet solid, radius 4 for
+  // controls and 8 for containers, a backdrop with two glows in both modes over the canvas, and a
+  // black and white focus ring. Classic is the blue-teal default from before, with Inter.
+  assert.equal((value("default", "color.accent.bg") as unknown as { hex: string }).hex, "#6b4eff");
+  assert.deepEqual([value("default", "radius.md"), value("default", "radius.lg")], [{ value: 4, unit: "px" }, { value: 8, unit: "px" }]);
+  assert.deepEqual([value("classic", "radius.md"), value("classic", "radius.lg")], [{ value: 6, unit: "px" }, { value: 10, unit: "px" }]);
+  assert.equal((value("classic", "font.sans") as string[])[0], "Inter");
+  assert.equal((value("classic", "font.mono") as string[])[0], "JetBrains Mono");
   for (const theme of ["light", "dark"]) {
     const context = { theme, density: "comfortable" };
     const hex = (name: string, path: string) => (value(name, path, context) as unknown as { hex: string }).hex;
     for (const glow of ["color.backdrop.glow-1", "color.backdrop.glow-2"]) {
-      assert.notEqual(hex("aurora", glow), hex("aurora", "color.bg.canvas"), `aurora ${glow} ${theme}`);
-      assert.equal(hex("default", glow), hex("default", "color.bg.canvas"), `other presets: no glow (${theme})`);
+      assert.notEqual(hex("default", glow), hex("default", "color.bg.canvas"), `default ${glow} ${theme}`);
+      assert.equal(hex("classic", glow), hex("classic", "color.bg.canvas"), `other presets: no glow (${theme})`);
     }
   }
-  assert.equal((value("aurora", "color.ring") as unknown as { hex: string }).hex, "#000000");
-  assert.equal((value("aurora", "color.ring", { theme: "dark", density: "comfortable" }) as unknown as { hex: string }).hex, "#ffffff");
+  assert.equal((value("default", "color.ring") as unknown as { hex: string }).hex, "#000000");
+  assert.equal((value("default", "color.ring", { theme: "dark", density: "comfortable" }) as unknown as { hex: string }).hex, "#ffffff");
 });
 
 test("a background tint changes steps 1 to 5 of a ramp and nothing else", () => {
-  const plain = generateTokens(themeWith({}, { colors: { neutral: { chroma: 0.025 } } })).set;
-  const tinted = generateTokens(themeWith({}, { colors: { neutral: { chroma: 0.025, tint: 0.012 } } })).set;
+  // On the classic brand (hue 230), where the step-8 border solves to the same lightness either way.
+  const brand = { hue: 230, chroma: 0.11 };
+  const plain = generateTokens(themeWith({}, { colors: { brand, neutral: { chroma: 0.025 } } })).set;
+  const tinted = generateTokens(themeWith({}, { colors: { brand, neutral: { chroma: 0.025, tint: 0.012 } } })).set;
   const components = (set: typeof plain, path: string) => (set.tokens.get(path)!.value as unknown as { components: number[] }).components;
   for (const step of [1, 2, 3, 4, 5]) assert.ok(components(tinted, `color.neutral.${step}`)[1]! > components(plain, `color.neutral.${step}`)[1]!, `step ${step}`);
   for (const step of [6, 8, 9, 11, 12]) assert.deepEqual(components(tinted, `color.neutral.${step}`), components(plain, `color.neutral.${step}`), `step ${step}`);

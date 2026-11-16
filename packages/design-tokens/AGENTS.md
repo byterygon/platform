@@ -37,7 +37,8 @@ pnpm --filter @byterygon/design-tokens tokens validate         # rules only, wri
 pnpm --filter @byterygon/design-tokens tokens explain color.bg.surface
 pnpm --filter @byterygon/design-tokens tokens search hover background
 pnpm --filter @byterygon/design-tokens tokens diff default ./my.theme.json
-pnpm --filter @byterygon/design-tokens tokens preset create my-theme --set seeds.colors.brand.hue=150
+pnpm --filter @byterygon/design-tokens tokens preset create my-theme --set seeds.colors.brand.hue=150   # starts empty (engine defaults)
+pnpm --filter @byterygon/design-tokens tokens preset create my-aurora --from default --set seeds.radius=6   # copies a preset
 pnpm --filter @byterygon/design-tokens tokens export css --theme ./my.theme.json
 pnpm --filter @byterygon/design-tokens tokens export monaco --theme paper      # also registry, ts, dtcg, figma, tailwind, shadcn, theme
 pnpm --filter @byterygon/design-tokens tokens hash encode --theme ./my.theme.json --mode dark   # a Theme Studio URL hash
@@ -91,6 +92,12 @@ that role's failures. Command-line mistakes come back as `"error": { "code", "me
 
 - Every seed is optional; a missing one takes the default (`src/seeds.ts`). `by-tokens export
   theme` prints a theme with all of them spelled out.
+- `brand` and `neutral` are a theme's identity. A theme that gives its own takes their `solid`,
+  `tint` and (neutral) `hue` from itself only, never from the default's (Aurora's tuned solid and
+  cool grey), and a theme with its own brand but no neutral gets an untinted neutral on its brand
+  hue at the default chroma. Other ramps merge field by field with the default's (a new amber hue
+  keeps amber's light solid). A theme with no seeds at all is the default's seeds, without the
+  default's overrides (its glows, ring, canvas step and brand steps 9-11).
 - `seeds.colors.<ramp>` is `{ hue, chroma, solid?, tint? }`. `neutral` follows the brand hue unless
   it has its own. Ramps that exist by default: `neutral`, `brand`, `red`, `amber`, `green`,
   `blue` and the hues the domain tokens need, `violet`, `orange`, `teal`, `pink`. Any new name adds a
@@ -145,17 +152,24 @@ density   the density the Studio shows; optional
 ## Presets
 
 Seven themes ship in `themes/`. All seven pass every contrast pair in both colour modes (and, because
-colour roles never depend on density, in both densities). The name in the first column is the
-theme name; the second is how the Theme Studio will label it.
+colour roles never depend on density, in both densities), with no warning. The name in the first
+column is the theme name; the second is how the Theme Studio will label it.
+
+`default` is Aurora (DOC-17 open question 104, TSK-57): its file is the former `aurora.theme.json`
+with every seed spelled out, so `@byterygon/design-tokens/default/*`, `theme-default` and
+`by-tokens` without `--theme` give the Aurora look. There is no `aurora` preset any more: it would be
+a byte-for-byte copy of `default` under a second name (it existed for a few hours, TSK-52 to TSK-57,
+with no consumer). The previous default is `classic`. DBee's appearance list
+(`apps/dbee/ui/src/app/presets.ts`) still names six presets and none is `classic`: TSK-55 updates it.
 
 | Theme | Label | Look |
 | --- | --- | --- |
-| `default` | Byterygon | cool neutral, blue-teal brand (hue 230), light, comfortable. DBee sets `data-density="compact"` itself |
+| `default` | Byterygon | Aurora, the Fluent 2 layered look chosen on 2026-11-16 (TSK-52), the default since TSK-57: violet brand `#6b4eff` (hue 282.5; light steps 9-11 overridden to the full chroma 0.2474, which the dark solid cannot show, so the seed chroma is 0.165), cool near-grey neutral (hue 275, chroma 0.012, tint 0.006), backdrop glows `brand.4`/`teal.3` (dark `brand-dark.6`/`teal-dark.6`) over a canvas one step up (`neutral.2`, dark `neutral-dark.3`, with surface, raised and overlay following), radius 4 with `radius.lg` 8, a black and white focus ring (`color.ring`), `color.border.focus` and `grid.selection-border` on the accent, `color.neutral-dark.10` lifted by the printed fix so subtle text holds on a field over the brightest glow. DBee takes it through `default` and sets `data-density="compact"` itself |
+| `classic` | Classic | the default before TSK-57, values unchanged: cool neutral, blue-teal brand (hue 230), radius 6, light, comfortable, no glows; `font.sans` and `font.mono` overridden back to Inter and JetBrains Mono first |
 | `slate` | Slate | near-greyscale, muted slate-blue accent, radius 4 |
 | `paper` | Paper | warm cream (neutral tint), rust accent, 15 px text with relaxed body leading, radius 8; its orange (the warning colour) at hue 65, so warning stays apart from the rust brand |
 | `midnight` | Midnight | dark first, deep blue neutral, periwinkle accent |
 | `terminal` | Terminal | dark first, green accent, `font.sans` set to the mono stack, 13 px, radius 2, compact |
-| `aurora` | Aurora | the Fluent 2 layered look chosen on 2026-11-16 (TSK-52): violet brand `#6b4eff` (hue 282.5; light steps 9-11 overridden to the full chroma 0.2474, which the dark solid cannot show, so the seed chroma is 0.165), cool near-grey neutral (hue 275, chroma 0.012, tint 0.006), backdrop glows `brand.4`/`teal.3` (dark `brand-dark.6`/`teal-dark.6`) over a canvas one step up (`neutral.2`, dark `neutral-dark.3`, with surface, raised and overlay following), radius 4 with `radius.lg` 8, a black and white focus ring (`color.ring`), `color.border.focus` and `grid.selection-border` on the accent, `color.neutral-dark.10` lifted by the printed fix so subtle text holds on a field over the brightest glow |
 | `high-contrast` | High contrast | WCAG AAA (7:1 text, 4.5:1 UI), pure grey, 3 px focus ring, `color.neutral.11` pushed to pass AAA, the field's bottom stroke at 55 % black (`color.black.alpha-55`) to reach 4.5:1 |
 
 `generated/default/` holds all eight outputs. The other presets commit `tokens.css`,

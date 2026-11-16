@@ -10,14 +10,21 @@ import { closest, isPlainObject } from "./util.js";
  * The default theme's seeds. `themes/default.theme.json` spells the same values out, and a test
  * keeps the two equal.
  *
- * Brand: a blue-teal around hue 230 (tentative; see the spec's open questions). Its chroma is the
- * most sRGB can show at the solid's lightness for that hue. Amber is the one ramp with a light
- * solid, because a dark amber reads as brown.
+ * The default theme is Aurora (DOC-17 open question 104, TSK-57): the violet #6b4eff brand (hue
+ * 282.5; the seed chroma is what the dark solid can show, the light steps 9-11 are overridden to
+ * the full chroma in the theme file) with the solid lightness of #6b4eff and the canvas's #a998ff,
+ * on a cool grey neutral (hue 275, a faint tint). The previous blue-teal default is the `classic`
+ * preset. Amber is the one other ramp with a light solid, because a dark amber reads as brown.
+ *
+ * `brand` and `neutral` are a theme's identity: a theme that gives its own takes their optional
+ * fields (`solid`, `tint`, and the neutral `hue`) from itself only, never from these defaults
+ * (`resolveSeeds`), so Aurora's tuning does not leak into a theme with another brand; a theme
+ * that gives a brand and no neutral gets the default neutral's chroma on its own brand hue.
  */
 export const DEFAULT_SEEDS: Seeds = {
   colors: {
-    neutral: { chroma: 0.025 },
-    brand: { hue: 230, chroma: 0.11 },
+    neutral: { hue: 275, chroma: 0.012, tint: 0.006 },
+    brand: { hue: 282.5, chroma: 0.165, solid: { light: 0.5656, dark: 0.7365 } },
     red: { hue: 27, chroma: 0.2 },
     amber: { hue: 75, chroma: 0.15, solid: { light: 0.8, dark: 0.8 } },
     green: { hue: 150, chroma: 0.14 },
@@ -28,7 +35,7 @@ export const DEFAULT_SEEDS: Seeds = {
     teal: { hue: 190, chroma: 0.11 },
     pink: { hue: 350, chroma: 0.16 },
   },
-  radius: 6,
+  radius: 4,
   fontSize: 14,
   colorScheme: "light",
   density: "comfortable",
@@ -46,6 +53,13 @@ const RAMP_NAME = /^[a-z][a-z0-9]*$/;
 
 export const SEED_KEYS = ["colors", "radius", "fontSize", "colorScheme", "density", "contrast"] as const;
 export const RAMP_KEYS = ["hue", "chroma", "solid", "tint"] as const;
+
+/**
+ * Ramps whose optional fields are tuned to the default theme's own colour: a theme that gives one
+ * keeps only `chroma` (and the brand's `hue`) from the defaults, so a brand of another hue does not
+ * inherit Aurora's solid lightness, nor a neutral Aurora's hue or tint.
+ */
+const IDENTITY_RAMPS: Readonly<Record<string, readonly string[]>> = { brand: ["solid", "tint"], neutral: ["hue", "solid", "tint"] };
 
 export function resolveSeeds(input: SeedsInput | undefined): { seeds: ResolvedSeeds; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];
@@ -106,7 +120,12 @@ export function resolveSeeds(input: SeedsInput | undefined): { seeds: ResolvedSe
       error(path, `${path} must be an object with hue and chroma`);
       continue;
     }
-    const fields: Record<string, unknown> = { ...(DEFAULT_SEEDS.colors[name] ?? {}), ...(given ?? {}) };
+    const defaults: Record<string, unknown> = { ...(DEFAULT_SEEDS.colors[name] ?? {}) };
+    // A theme with its own brand also gets a neutral that follows that brand, as the neutral
+    // always has, rather than the default's own cool grey.
+    const ownIdentity = given !== undefined || (name === "neutral" && colorSources["brand"] !== undefined);
+    if (ownIdentity) for (const key of IDENTITY_RAMPS[name] ?? []) delete defaults[key];
+    const fields: Record<string, unknown> = { ...defaults, ...(given ?? {}) };
     for (const key of Object.keys(fields)) {
       if (!(RAMP_KEYS as readonly string[]).includes(key)) {
         error(`${path}.${key}`, `unknown ramp seed "${key}"`, { fix: { summary: `Known fields: ${RAMP_KEYS.join(", ")}.` } });

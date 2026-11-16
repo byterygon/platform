@@ -271,3 +271,22 @@ test("a primitive that aliases breaks the tier rule", () => {
   const { errors } = check(themeWith({ "color.brand.9": "{color.red.9}" }));
   assert.deepEqual(errors.filter((d) => d.rule === "tier-direction").map((d) => d.token), ["color.brand.9"]);
 });
+
+test("a theme's own brand and neutral never inherit the default's solid, tint or neutral hue", () => {
+  // The default is Aurora: a tuned brand solid and a tinted cool neutral. Another brand keeps its own.
+  const { seeds } = generateTokens({ schemaVersion: 1, name: "t", seeds: { colors: { brand: { hue: 150, chroma: 0.12 }, neutral: { chroma: 0.02 } } } });
+  assert.deepEqual(seeds.colors["brand"], { hue: 150, chroma: 0.12 });
+  assert.deepEqual(seeds.colors["neutral"], { hue: 150, chroma: 0.02 });
+  // A ramp given only partly still takes its chroma (and the brand its hue) from the defaults.
+  const partial = generateTokens({ schemaVersion: 1, name: "p", seeds: { colors: { brand: { chroma: 0.1 }, neutral: { tint: 0.01 } } } }).seeds;
+  assert.deepEqual(partial.colors["brand"], { hue: DEFAULT_SEEDS.colors["brand"]!.hue, chroma: 0.1 });
+  assert.deepEqual(partial.colors["neutral"], { hue: DEFAULT_SEEDS.colors["brand"]!.hue, chroma: DEFAULT_SEEDS.colors["neutral"]!.chroma, tint: 0.01 });
+  // Status ramps keep the field merge: a new amber hue keeps amber's light solid.
+  const amber = generateTokens({ schemaVersion: 1, name: "a", seeds: { colors: { amber: { hue: 80 } } } }).seeds;
+  assert.deepEqual(amber.colors["amber"], { hue: 80, chroma: 0.15, solid: { light: 0.8, dark: 0.8 } });
+  // A brand and no neutral: the neutral follows that brand, untinted, at the default's chroma.
+  const brandOnly = generateTokens({ schemaVersion: 1, name: "b", seeds: { colors: { brand: { hue: 150, chroma: 0.12 } } } }).seeds;
+  assert.deepEqual(brandOnly.colors["neutral"], { hue: 150, chroma: DEFAULT_SEEDS.colors["neutral"]!.chroma });
+  // A theme without brand or neutral is the default's in full.
+  assert.deepEqual(generateTokens({ schemaVersion: 1, name: "e" }).seeds.colors["brand"], DEFAULT_SEEDS.colors["brand"]);
+});
