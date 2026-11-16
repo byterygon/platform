@@ -1,7 +1,10 @@
 import type { ComponentProps } from "react";
 import { Button } from "@/components/button/button";
 import { IconButton } from "@/components/icon-button/icon-button";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { controlSize, type ControlSizeProp } from "@/lib/control";
+import { ChevronLeft, ChevronRight } from "@/lib/icons";
 
 // Moving between pages of a long list: a <nav> with Previous, page numbers (the first, the last,
 // the current one and its neighbours, an ellipsis for the gaps) and Next, built from Button and
@@ -11,15 +14,16 @@ import { cn } from "@/lib/cn";
 export const paginationVariants = {
   /** Button height, from `size.control.*`; page buttons are at least as wide as they are tall. */
   size: {
-    sm: "min-w-control-sm",
-    md: "min-w-control-md",
+    small: "min-w-control-sm",
+    medium: "min-w-control-md",
+    large: "min-w-control-lg",
   },
 } as const;
 
 const classes = {
   list: "flex flex-wrap items-center gap-inline-xs font-sans",
   page: "px-inset-xs data-current:bg-selected data-current:text-fg data-current:hover:bg-selected-hover",
-  ellipsis: "flex min-w-control-sm items-center justify-center text-body text-fg-subtle select-none",
+  ellipsis: "flex min-w-control-sm items-center justify-center text-body-1 text-fg-subtle select-none",
 } as const;
 
 /** The items to show: page numbers and "gap" markers, for `page` of `pageCount` with `siblings` each side. */
@@ -37,18 +41,6 @@ export function pageItems(page: number, pageCount: number, siblings = 1): (numbe
   return items;
 }
 
-const ChevronLeft = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m10 4-4 4 4 4" />
-  </svg>
-);
-
-const ChevronRight = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m6 4 4 4-4 4" />
-  </svg>
-);
-
 export interface PaginationProps extends Omit<ComponentProps<"nav">, "className" | "onChange"> {
   /** The current page, from 1. */
   page: number;
@@ -58,8 +50,8 @@ export interface PaginationProps extends Omit<ComponentProps<"nav">, "className"
   onPageChange?: (page: number) => void;
   /** Pages shown on each side of the current one. */
   siblingCount?: number;
-  /** Button height. */
-  size?: keyof typeof paginationVariants.size;
+  /** Button height: `small`, `medium` (default) or `large`; `sm`, `md` and `lg` still work for one release. */
+  size?: keyof typeof paginationVariants.size | ControlSizeProp;
   /** Accessible names: the landmark, the arrows and each page ("Page 3"). */
   labels?: { nav?: string; previous?: string; next?: string; page?: (page: number) => string };
   /** Disables every button (while a page loads). */
@@ -69,8 +61,9 @@ export interface PaginationProps extends Omit<ComponentProps<"nav">, "className"
 }
 
 /** Previous, page numbers with gaps, and Next, in a <nav> named "Pagination". */
-export function Pagination({ page, pageCount, onPageChange, siblingCount = 1, size = "md", labels = {}, disabled = false, className, ...props }: PaginationProps) {
+export function Pagination({ page, pageCount, onPageChange, siblingCount = 1, size: sizeProp, labels = {}, disabled = false, className, ...props }: PaginationProps) {
   const { nav = "Pagination", previous = "Previous page", next = "Next page", page: pageLabel = (n: number) => `Page ${n}` } = labels;
+  const size = controlSize(sizeProp);
   const go = (target: number) => {
     if (target !== page && target >= 1 && target <= pageCount) onPageChange?.(target);
   };
@@ -79,7 +72,7 @@ export function Pagination({ page, pageCount, onPageChange, siblingCount = 1, si
       <ul className={cn(classes.list)}>
         <li>
           <IconButton aria-label={previous} size={size} disabled={disabled || page <= 1} onClick={() => go(page - 1)}>
-            <ChevronLeft />
+            <Icon icon={ChevronLeft} className="rtl:-scale-x-100" />
           </IconButton>
         </li>
         {pageItems(page, pageCount, siblingCount).map((item, index) =>
@@ -107,7 +100,7 @@ export function Pagination({ page, pageCount, onPageChange, siblingCount = 1, si
         )}
         <li>
           <IconButton aria-label={next} size={size} disabled={disabled || page >= pageCount} onClick={() => go(page + 1)}>
-            <ChevronRight />
+            <Icon icon={ChevronRight} className="rtl:-scale-x-100" />
           </IconButton>
         </li>
       </ul>

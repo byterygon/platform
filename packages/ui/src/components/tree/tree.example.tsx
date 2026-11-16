@@ -1,26 +1,14 @@
+import { Icon } from "@/components/icon/icon";
 import { useState } from "react";
 import { SearchInput } from "@/components/search-input/search-input";
 import { Tree, type TreeNode } from "@/components/tree/tree";
+import { Database, Folder, Table } from "@/lib/icons";
 
-const FolderIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-    <path d="M2.5 4.5h4l1.5 1.5h5.5v6.5h-11z" />
-  </svg>
-);
+const FolderIcon = () => <Icon icon={Folder} />;
 
-const TableIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-    <rect x="2.5" y="3" width="11" height="10" rx="1" />
-    <path d="M2.5 6.5h11M6.5 6.5V13" />
-  </svg>
-);
+const TableIcon = () => <Icon icon={Table} />;
 
-const DatabaseIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-    <ellipse cx="8" cy="4" rx="5" ry="1.75" />
-    <path d="M3 4v8c0 1 2.2 1.75 5 1.75s5-.75 5-1.75V4M3 8c0 1 2.2 1.75 5 1.75S13 9 13 8" />
-  </svg>
-);
+const DatabaseIcon = () => <Icon icon={Database} />;
 
 /** The smallest useful Tree: a schema with its tables and columns. */
 export function TreeMinimal() {

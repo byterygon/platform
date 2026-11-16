@@ -26,22 +26,19 @@ const temp = () => {
  * test below fails if one comes back.
  */
 export const REPLACEMENTS: Record<string, string> = {
-  "navigation-menu: chevron": "chevron-down",
-  "breadcrumb, json-viewer, tree, pagination next: chevron": "chevron-right",
-  "pagination previous": "chevron-left",
-  "stepper error": "error-circle",
-  "code-block copied, stepper done": "checkmark",
+  "json-viewer: chevron": "chevron-right",
+    "code-block copied": "checkmark",
   "DBee new": "add",
-  "breadcrumb, DBee more": "more-horizontal",
+  "DBee more": "more-horizontal",
   "code-block copy": "copy",
   "DBee settings (gear)": "settings",
   "stat trend up": "arrow-up",
   "stat trend down": "arrow-down",
   "stat trend flat": "subtract",
   "DBee download": "arrow-download",
-  "tree folder, DBee schema": "folder",
-  "tree, DBee table": "table",
-  "tree, avatar, empty-state, DBee database": "database",
+  "DBee schema": "folder",
+  "DBee table": "table",
+  "avatar, empty-state, DBee database": "database",
   "DBee refresh": "arrow-clockwise",
   "DBee view": "eye",
   "DBee column": "column-triple",
@@ -71,6 +68,7 @@ describe("hand-drawn icons", () => {
     done.push("checkbox", "radio-group", "switch", "slider", "dropdown-menu", "context-menu", "menubar", "popover", "hover-card", "tooltip"); // batch 3
     done.push("dialog", "alert-dialog", "sheet", "toast", "command-palette", "alert", "badge", "tag"); // batch 4
     done.push("card", "sidebar", "tabs", "accordion", "collapsible", "scroll-area", "resizable", "status-bar", "toolbar", "separator"); // TSK-55 batch 1
+    done.push("breadcrumb", "pagination", "stepper", "navigation-menu", "tree"); // TSK-55 batch 2
     for (const name of done) {
       expect(Object.keys(REPLACEMENTS).filter((key) => new RegExp(`(?<![a-z-])${name}(?![a-z-])`).test(key)), name).toEqual([]);
     }

@@ -430,7 +430,8 @@ registry item, which `@byterygon/icon` depends on.
   Combobox, MultiSelect, Field (batch 2); Checkbox, RadioGroup, Switch, Slider, DropdownMenu,
   ContextMenu, Menubar, Popover, HoverCard, Tooltip (batch 3); Dialog, AlertDialog, Sheet, Toast,
   CommandPalette, Alert, Badge, Tag (batch 4); Card, Table, Sidebar, Tabs, Accordion, Collapsible,
-  ScrollArea, Resizable, StatusBar, Toolbar, Separator (TSK-55 batch 1).
+  ScrollArea, Resizable, StatusBar, Toolbar, Separator (TSK-55 batch 1); Breadcrumb, Pagination,
+  Stepper, NavigationMenu, Tree (batch 2).
 
 | Hand-drawn today | Fluent icon |
 | --- | --- |

@@ -18,7 +18,7 @@ export function PaginationRealistic() {
           Page {page} of 40, 50 records each
         </span>
       </div>
-      <Pagination size="sm" page={1} pageCount={3} labels={{ nav: "Result pages" }} />
+      <Pagination size="small" page={1} pageCount={3} labels={{ nav: "Result pages" }} />
       <Pagination page={3} pageCount={8} disabled labels={{ nav: "Loading pages" }} />
     </div>
   );

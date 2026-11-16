@@ -1,6 +1,9 @@
 import { NavigationMenu as NavigationMenuPrimitive } from "@base-ui/react/navigation-menu";
 import type { ReactNode, Ref } from "react";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { focusRing, flyoutMotion, flyoutSurface } from "@/lib/control";
+import { ChevronDown } from "@/lib/icons";
 import { tokenPx, useThemeScope } from "@/lib/theme-scope";
 
 // Site or app navigation with panels of links, on Base UI's NavigationMenu: `NavigationMenu` is
@@ -13,40 +16,35 @@ export const navigationMenuVariants = {} as const;
 
 /** The look of a row entry: NavigationMenuTrigger uses it; give it to a NavigationMenuLink placed straight in the row. */
 export const navigationMenuTriggerStyle = [
-  "inline-flex h-control-md select-none items-center gap-inline-xs rounded-md px-control-x font-sans text-label text-fg outline-none",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:bg-hover data-popup-open:bg-hover data-active:bg-selected",
-  "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
-  "[&_svg]:size-icon-sm",
+  "inline-flex h-control-md select-none items-center gap-inline-xs rounded-md px-control-x font-sans text-body-1 text-fg",
+  "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease hover:bg-hover active:bg-pressed data-popup-open:bg-hover data-active:bg-selected data-active:text-body-1-strong",
+  focusRing,
+  "[&_svg]:size-icon-md",
 ].join(" ");
 
 const classes = {
   root: "relative font-sans",
   list: "flex items-center gap-inline-xs data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch",
-  icon: "flex text-fg-muted transition-transform duration-[var(--by-motion-duration-base)] ease-standard motion-reduce:transition-none data-popup-open:rotate-180",
+  icon: "flex text-fg-muted transition-transform duration-[var(--by-motion-duration-normal)] ease-easy-ease motion-reduce:transition-none data-popup-open:rotate-180",
   positioner: "z-[var(--by-z-popover)] outline-none",
   popup: [
-    "relative overflow-hidden rounded-md border border-border bg-overlay text-body text-fg shadow-overlay outline-none",
-    "transition-opacity duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none",
-    "data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit",
+    "relative overflow-hidden",
+    flyoutSurface,
+    "transition-opacity duration-[var(--by-motion-duration-normal)] ease-decelerate-mid motion-reduce:transition-none",
+    "data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-[var(--by-motion-duration-fast)] data-ending-style:ease-accelerate-mid",
   ],
   viewport: "relative size-full overflow-hidden",
   content: [
     "flex w-panel-md max-w-full flex-col gap-stack-xs p-inset-sm",
-    "transition-opacity duration-[var(--by-motion-duration-base)] ease-standard motion-reduce:transition-none",
+    "transition-opacity duration-[var(--by-motion-duration-normal)] ease-decelerate-mid motion-reduce:transition-none",
     "data-starting-style:opacity-0 data-ending-style:opacity-0",
   ],
   link: [
-    "flex flex-col gap-stack-xs rounded-sm p-inset-sm text-body text-fg outline-none",
-    "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:bg-hover data-active:bg-selected",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    "flex flex-col gap-stack-xs rounded-md p-inset-sm text-body-1 text-fg",
+    "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease hover:bg-hover active:bg-pressed data-active:bg-selected",
+    focusRing,
   ],
 } as const;
-
-const ChevronIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m4 6 4 4 4-4" />
-  </svg>
-);
 
 /** Base UI sizes the popup to the open panel through these run-time variables; they are not tokens. */
 const popupStyle = { width: "var(--popup-width)", height: "var(--popup-height)", transformOrigin: "var(--transform-origin)" } as const;
@@ -106,7 +104,7 @@ export function NavigationMenuTrigger({ className, children, ...props }: WithCla
     <NavigationMenuPrimitive.Trigger data-slot="navigation-menu-trigger" className={cn(navigationMenuTriggerStyle, className)} {...props}>
       {children}
       <NavigationMenuPrimitive.Icon data-slot="navigation-menu-icon" className={cn(classes.icon)}>
-        <ChevronIcon />
+        <Icon icon={ChevronDown} />
       </NavigationMenuPrimitive.Icon>
     </NavigationMenuPrimitive.Trigger>
   );
