@@ -31,9 +31,10 @@ export type SheetSide = keyof typeof sheetVariants.side;
 export type SheetSize = keyof typeof sheetVariants.size;
 
 const popupClasses = [
-  "fixed z-[var(--by-z-modal)] flex flex-col gap-stack-md border-border bg-overlay p-inset-lg font-sans text-body text-fg shadow-modal outline-none",
-  "transition-transform duration-[var(--by-motion-duration-slow)] ease-emphasized motion-reduce:transition-none",
-  "data-ending-style:ease-exit",
+  // Fluent 2's Drawer (overlay): elevation.dialog, sliding in over motion.duration.gentle (decelerate), out over normal (accelerate).
+  "fixed z-[var(--by-z-modal)] flex flex-col gap-stack-md border-border-subtle bg-overlay p-inset-lg font-sans text-body-1 text-fg shadow-dialog outline-none",
+  "transition-transform duration-[var(--by-motion-duration-gentle)] ease-decelerate-mid motion-reduce:transition-none",
+  "data-ending-style:duration-[var(--by-motion-duration-normal)] data-ending-style:ease-accelerate-mid",
 ];
 
 interface SheetContextValue {

@@ -4,7 +4,7 @@
   "name": "alert-dialog",
   "title": "AlertDialog",
   "description": "A decision the user must make before going on, on Base UI's AlertDialog: Dialog's scrim and popup with role=\"alertdialog\", no close button and no dismissal by an outside click, a Cancel and an Action in the footer.",
-  "usage": "Use AlertDialog to confirm an action that destroys data or cannot be undone (delete a connection, run a destructive statement) or to approve something with consequences (grant access). Compose it as AlertDialog > AlertDialogTrigger (render a Button; or open it through open) + AlertDialogContent > AlertDialogHeader (AlertDialogTitle: the question or consequence; AlertDialogDescription), an optional AlertDialogBody (the statement, the target), AlertDialogFooter (AlertDialogCancel, then the action). An action that finishes at once can be an AlertDialogCancel with variant=\"danger\" (it closes); an action that waits for the core is an AlertDialogAction with loading, and the caller closes the dialog through open when it succeeds. Name the action after what it does (\"Delete\", \"Approve and save\"), not \"OK\". For a task that may be dismissed freely use Dialog.",
+  "usage": "Use AlertDialog to confirm an action that destroys data or cannot be undone (delete a connection, run a destructive statement) or to approve something with consequences (grant access). Compose it as AlertDialog > AlertDialogTrigger (render a Button; or open it through open) + AlertDialogContent > AlertDialogHeader (AlertDialogTitle: the question or consequence; AlertDialogDescription), an optional AlertDialogBody (the statement, the target), AlertDialogFooter (AlertDialogCancel, then the action). An action that finishes at once can be an AlertDialogCancel with appearance=\"danger\" (it closes); an action that waits for the core is an AlertDialogAction with loading, and the caller closes the dialog through open when it succeeds. Name the action after what it does (\"Delete\", \"Approve and save\"), not \"OK\". For a task that may be dismissed freely use Dialog.",
   "status": "experimental",
   "base": "@base-ui/react/alert-dialog",
   "dependencies": [
@@ -28,9 +28,15 @@
       "description": "Called when the trigger, an AlertDialogCancel or Escape opens or closes it."
     },
     {
+      "name": "appearance",
+      "type": "\"primary\" | \"secondary\" | \"outline\" | \"subtle\" | \"transparent\" | \"danger\"",
+      "description": "AlertDialogAction (default primary) and AlertDialogCancel (default secondary, as Fluent's dialog actions): the Button's appearance."
+    },
+    {
       "name": "variant",
       "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"",
-      "description": "AlertDialogAction (default primary) and AlertDialogCancel (default ghost): the Button's variant."
+      "description": "The old name of the parts' appearance (ghost is subtle). Kept for one release.",
+      "deprecated": "use appearance (ghost is subtle)"
     },
     {
       "name": "loading",
@@ -71,7 +77,7 @@
     {
       "name": "popup",
       "element": "div",
-      "description": "role=\"alertdialog\", color.bg.overlay with elevation.modal; data-slot=\"alert-dialog-content\", data-size."
+      "description": "role=\"alertdialog\", elevation.dialog (color.bg.overlay, color.border.subtle, depth 64); data-slot=\"alert-dialog-content\", data-size."
     }
   ],
   "parts": [
@@ -103,7 +109,7 @@
     {
       "name": "AlertDialogTitle",
       "slot": "alert-dialog-title",
-      "description": "An <h2> in type.heading-4 that names the dialog."
+      "description": "An <h2> in text.subtitle-1 (Fluent's dialog title) that names the dialog."
     },
     {
       "name": "AlertDialogDescription",
@@ -135,12 +141,12 @@
     {
       "name": "open",
       "variant": "data-starting-style",
-      "description": "Opening: Dialog's scale and fade over motion.duration.slow; reduced motion turns them off."
+      "description": "Opening: Dialog's scale and fade over motion.duration.gentle (decelerate); reduced motion turns them off."
     },
     {
       "name": "closing",
       "variant": "data-ending-style",
-      "description": "Closing: the reverse, with motion.easing.exit."
+      "description": "Closing: the reverse, over motion.duration.fast with the accelerate curve."
     },
     {
       "name": "loading",
@@ -153,14 +159,12 @@
     "color.accent.bg-active",
     "color.accent.bg-hover",
     "color.accent.fg",
-    "color.accent.subtle-fg",
     "color.bg.disabled",
     "color.bg.inset",
     "color.bg.layer",
     "color.bg.overlay",
     "color.bg.scrim",
     "color.border.control-bottom-subtle",
-    "color.border.default",
     "color.border.disabled",
     "color.border.subtle",
     "color.fg.default",
@@ -173,15 +177,15 @@
     "color.status.danger.solid",
     "color.status.danger.solid-fg",
     "color.status.danger.solid-hover",
-    "elevation.modal.shadow",
+    "elevation.dialog.shadow",
     "font.mono",
     "font.sans",
+    "motion.duration.fast",
     "motion.duration.faster",
-    "motion.duration.slow",
+    "motion.duration.gentle",
+    "motion.easing.accelerate-mid",
+    "motion.easing.decelerate-mid",
     "motion.easing.easy-ease",
-    "motion.easing.emphasized",
-    "motion.easing.exit",
-    "motion.easing.standard",
     "radius.lg",
     "radius.md",
     "ring.inner-width",
@@ -202,6 +206,10 @@
     "text.body-1-strong.size",
     "text.body-1-strong.tracking",
     "text.body-1-strong.weight",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
     "text.body.leading",
     "text.body.size",
     "text.body.tracking",
@@ -210,10 +218,10 @@
     "text.code.size",
     "text.code.tracking",
     "text.code.weight",
-    "text.heading-4.leading",
-    "text.heading-4.size",
-    "text.heading-4.tracking",
-    "text.heading-4.weight",
+    "text.subtitle-1.leading",
+    "text.subtitle-1.size",
+    "text.subtitle-1.tracking",
+    "text.subtitle-1.weight",
     "z.modal",
     "z.overlay"
   ],
@@ -225,7 +233,7 @@
     "The popup is role=\"alertdialog\", named by AlertDialogTitle and described by AlertDialogDescription; while it is open the rest of the page is inert and hidden from assistive technology.",
     "Opening moves focus to the first focusable element (Cancel in the usual footer order, so Enter does not confirm by accident); Tab stays inside; closing returns focus to the trigger.",
     "Escape closes it (as Cancel); a press outside does not.",
-    "The action names what it does; a destructive one uses the danger variant and its text, so the meaning does not rest on colour.",
+    "The action names what it does; a destructive one uses the danger appearance and its text, so the meaning does not rest on colour.",
     "prefers-reduced-motion: reduce turns the scale and fade transitions off."
   ]
 }

@@ -89,7 +89,7 @@
     {
       "name": "popup",
       "element": "div",
-      "description": "role=\"dialog\", color.bg.overlay with elevation.modal; data-slot=\"dialog-content\", data-size."
+      "description": "role=\"dialog\", elevation.dialog (color.bg.overlay, color.border.subtle, depth 64); data-slot=\"dialog-content\", data-size."
     }
   ],
   "parts": [
@@ -121,7 +121,7 @@
     {
       "name": "DialogTitle",
       "slot": "dialog-title",
-      "description": "An <h2> in type.heading-4 that names the dialog (aria-labelledby)."
+      "description": "An <h2> in text.subtitle-1 (Fluent's dialog title) that names the dialog (aria-labelledby)."
     },
     {
       "name": "DialogDescription",
@@ -148,12 +148,12 @@
     {
       "name": "open",
       "variant": "data-starting-style",
-      "description": "Opening: the popup grows from 95 % and fades in over motion.duration.slow with motion.easing.emphasized, the scrim fades in; reduced motion turns the transitions off."
+      "description": "Opening: the popup grows from 95 % and fades in over motion.duration.gentle with the decelerate curve, the scrim fades in; reduced motion turns the transitions off."
     },
     {
       "name": "closing",
       "variant": "data-ending-style",
-      "description": "Closing: the reverse, with motion.easing.exit."
+      "description": "Closing: the reverse, over motion.duration.fast with the accelerate curve."
     }
   ],
   "tokens": [
@@ -167,7 +167,6 @@
     "color.bg.overlay",
     "color.bg.scrim",
     "color.border.control-bottom-subtle",
-    "color.border.default",
     "color.border.disabled",
     "color.border.subtle",
     "color.fg.default",
@@ -177,14 +176,14 @@
     "color.interactive.hover",
     "color.ring",
     "color.ring-inner",
-    "elevation.modal.shadow",
+    "elevation.dialog.shadow",
     "font.sans",
+    "motion.duration.fast",
     "motion.duration.faster",
-    "motion.duration.slow",
+    "motion.duration.gentle",
+    "motion.easing.accelerate-mid",
+    "motion.easing.decelerate-mid",
     "motion.easing.easy-ease",
-    "motion.easing.emphasized",
-    "motion.easing.exit",
-    "motion.easing.standard",
     "radius.lg",
     "radius.md",
     "ring.inner-width",
@@ -206,14 +205,18 @@
     "text.body-1-strong.size",
     "text.body-1-strong.tracking",
     "text.body-1-strong.weight",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
     "text.body.leading",
     "text.body.size",
     "text.body.tracking",
     "text.body.weight",
-    "text.heading-4.leading",
-    "text.heading-4.size",
-    "text.heading-4.tracking",
-    "text.heading-4.weight",
+    "text.subtitle-1.leading",
+    "text.subtitle-1.size",
+    "text.subtitle-1.tracking",
+    "text.subtitle-1.weight",
     "z.modal",
     "z.overlay"
   ],

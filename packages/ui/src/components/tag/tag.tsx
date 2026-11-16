@@ -1,7 +1,10 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { useRender } from "@base-ui/react/use-render";
 import type { ReactNode } from "react";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { Dismiss } from "@/lib/icons";
 
 // A label the user applied and can remove (a saved query's labels, a filter chip), on Base UI's
 // useRender with a Base UI Button for removal. `swatch` adds a categorical colour dot from the
@@ -13,6 +16,8 @@ export const tagVariants = {
   variant: {
     neutral: "border-border bg-neutral-subtle text-neutral-subtle-fg",
     accent: "border-transparent bg-accent-subtle text-accent-subtle-fg",
+    /** A label that warns (an expiring grant, a deprecated driver): the orange warning tone. */
+    warning: "border-warning-border bg-warning-subtle text-warning-fg",
   },
   size: {
     sm: "h-control-xs ps-inline-sm text-caption",
@@ -44,23 +49,18 @@ const classes = {
   remove: [
     "inline-flex aspect-square h-full shrink-0 cursor-default items-center justify-center rounded-e-sm text-fg-muted",
     "hover:bg-hover hover:text-fg",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    focusRing,
     "data-disabled:pointer-events-none",
     "[&_svg]:size-icon-xs",
   ],
   group: "flex min-w-0 flex-wrap items-center gap-inline-xs",
 } as const;
 
-const XIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <path d="m4.5 4.5 7 7m0-7-7 7" />
-  </svg>
-);
 
 export interface TagProps extends Omit<useRender.ComponentProps<"span">, "className" | "children"> {
   /** The tag's text. */
   children?: ReactNode;
-  /** neutral (default) or accent. */
+  /** neutral (default), accent, or warning (orange). */
   variant?: keyof typeof tagVariants.variant;
   /** sm in dense lists, md in forms. */
   size?: keyof typeof tagVariants.size;
@@ -97,7 +97,7 @@ export function Tag({ variant = "neutral", size = "sm", swatch, onRemove, remove
           </span>
           {onRemove ? (
             <ButtonPrimitive data-slot="tag-remove" type="button" aria-label={name} disabled={disabled} onClick={onRemove} className={cn(classes.remove)}>
-              <XIcon />
+              <Icon icon={Dismiss} />
             </ButtonPrimitive>
           ) : null}
         </>

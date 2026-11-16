@@ -11,7 +11,7 @@ const root = (container: HTMLElement) => container.querySelector('[data-slot="al
 describe("Alert", () => {
   test("danger and warning are role=alert; the others role=status", () => {
     for (const [variant, role] of [["danger", "alert"], ["warning", "alert"], ["info", "status"], ["success", "status"], ["neutral", "status"]] as const) {
-      const { container, unmount } = render(<Alert variant={variant}>x</Alert>);
+      const { container, unmount } = render(<Alert intent={variant}>x</Alert>);
       expect(root(container).getAttribute("role"), variant).toBe(role);
       unmount();
     }
@@ -19,7 +19,7 @@ describe("Alert", () => {
 
   test("renders a hidden status icon and its parts", async () => {
     const { container } = render(
-      <Alert variant="danger">
+      <Alert intent="danger">
         <AlertTitle>Query failed</AlertTitle>
         <AlertDescription>
           <code>42P01</code> relation does not exist
@@ -62,5 +62,16 @@ describe("Alert", () => {
     const ref = createRef<HTMLDivElement>();
     render(<Alert ref={ref}>x</Alert>);
     expect(ref.current?.dataset.slot).toBe("alert");
+  });
+  test("takes Fluent's intent, and variant as an alias for one release", () => {
+    for (const [props, intent] of [[{ intent: "warning" }, "warning"], [{ variant: "warning" }, "warning"], [{ intent: "info", variant: "danger" }, "info"], [{}, "neutral"]] as const) {
+      const { container, unmount } = render(<Alert {...props}>Message</Alert>);
+      const alert = container.querySelector('[data-slot="alert"]') as HTMLElement;
+      expect(alert.dataset.intent).toBe(intent);
+      unmount();
+    }
+    const { container } = render(<Alert intent="warning">Expiring</Alert>);
+    expect(container.querySelector('[data-slot="alert-icon"] [data-slot="icon"]')?.getAttribute("data-icon")).toBe("warning");
+    expect(container.querySelector('[data-slot="alert"]')?.className).toContain("border-warning-border");
   });
 });

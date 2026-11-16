@@ -2,15 +2,20 @@ import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { useEffect, type ReactNode } from "react";
 import { Button } from "@/components/button/button";
 import { ScopeAnchor } from "@/components/dialog/dialog";
+import { Icon } from "@/components/icon/icon";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { CheckmarkCircle, Dismiss, ErrorCircle, Info, Warning } from "@/lib/icons";
 import { useThemeScope } from "@/lib/theme-scope";
 
 // Notifications on Base UI's Toast. `Toast` is the region: put one near the root of the app. Add
 // toasts with `useToast().add({ title, description, type, timeout, priority, actionProps })` inside
 // it, or from anywhere with a manager from `createToastManager()` passed as `toastManager`.
 // `type` picks the tone (info, success, warning, danger); `timeout: 0` keeps a toast until it is
-// dismissed (sticky); `priority: "high"` announces it at once. Nothing leaves the page.
+// dismissed (sticky); `priority: "high"` announces it at once. Nothing leaves the page. Fluent 2's
+// Toast: a flyout surface (elevation.flyout) with the intent's filled icon (Info, CheckmarkCircle,
+// Warning on orange, ErrorCircle) in its status colour, sliding up and fading in.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const toastVariants = {
@@ -28,24 +33,27 @@ export type ToastPlacement = keyof typeof toastVariants.placement;
 const classes = {
   viewport: "flex w-panel-sm max-w-full flex-col gap-stack-sm outline-none",
   root: [
-    "relative flex w-full items-start gap-inline-sm rounded-md border border-s-2 border-border bg-overlay p-inset-md font-sans text-body text-fg shadow-overlay outline-none",
-    "data-[type=info]:border-s-info-border data-[type=success]:border-s-success-border data-[type=warning]:border-s-warning-border data-[type=danger]:border-s-danger-border",
-    "transition duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none",
-    "data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit",
+    "relative flex w-full items-start gap-inline-md rounded-md border border-border-subtle bg-overlay p-inset-sm font-sans text-body-1 text-fg shadow-flyout",
+    "transition duration-[var(--by-motion-duration-normal)] ease-decelerate-mid motion-reduce:transition-none",
+    "data-starting-style:translate-y-inline-sm data-starting-style:opacity-0",
+    "data-ending-style:opacity-0 data-ending-style:duration-[var(--by-motion-duration-fast)] data-ending-style:ease-accelerate-mid",
     "data-limited:hidden",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
+    focusRing,
   ],
+  icon: "flex h-lh shrink-0 items-center [&_svg]:size-icon-lg",
   content: "flex min-w-0 flex-1 flex-col gap-stack-xs",
-  title: "text-body-strong text-fg",
-  description: "text-body text-fg-muted",
+  title: "text-body-1-strong text-fg",
+  description: "text-body-1 text-fg-muted",
   actions: "flex shrink-0 items-center gap-inline-xs",
 } as const;
 
-const XIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <path d="m4.5 4.5 7 7m0-7-7 7" />
-  </svg>
-);
+/** Fluent's intent icons, filled, in the status text colours (warning is orange). */
+const INTENTS = {
+  info: { icon: Info, tone: "info" },
+  success: { icon: CheckmarkCircle, tone: "success" },
+  warning: { icon: Warning, tone: "warning" },
+  danger: { icon: ErrorCircle, tone: "danger" },
+} as const;
 
 /** Adds, updates and closes toasts from inside a Toast region (Base UI's useToastManager). */
 export const useToast = ToastPrimitive.useToastManager;
@@ -82,6 +90,11 @@ export interface ToastItemProps {
 export function ToastItem({ toast, closeLabel = "Dismiss" }: ToastItemProps) {
   return (
     <ToastPrimitive.Root toast={toast} data-slot="toast-item" className={cn(classes.root)}>
+      {toast.type && Object.hasOwn(INTENTS, toast.type) ? (
+        <span data-slot="toast-icon" className={cn(classes.icon)}>
+          <Icon icon={INTENTS[toast.type as keyof typeof INTENTS].icon} tone={INTENTS[toast.type as keyof typeof INTENTS].tone} filled />
+        </span>
+      ) : null}
       <ToastPrimitive.Content data-slot="toast-content" className={cn(classes.content)}>
         <ToastPrimitive.Title data-slot="toast-title" className={cn(classes.title)} />
         <ToastPrimitive.Description data-slot="toast-description" className={cn(classes.description)} />
@@ -89,7 +102,7 @@ export function ToastItem({ toast, closeLabel = "Dismiss" }: ToastItemProps) {
       <div data-slot="toast-actions" className={cn(classes.actions)}>
         {toast.actionProps ? <ToastPrimitive.Action render={<Button appearance="secondary" size="small" />} /> : null}
         <ToastPrimitive.Close render={<IconButton aria-label={closeLabel} size="small" />}>
-          <XIcon />
+          <Icon icon={Dismiss} />
         </ToastPrimitive.Close>
       </div>
     </ToastPrimitive.Root>

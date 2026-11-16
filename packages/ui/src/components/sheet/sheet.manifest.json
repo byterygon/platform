@@ -79,7 +79,7 @@
     {
       "name": "popup",
       "element": "div",
-      "description": "role=\"dialog\" at z.modal, color.bg.overlay with elevation.modal and a border on its inner edge, with the region's data-theme and data-density; data-slot=\"sheet-content\", data-side, data-size."
+      "description": "role=\"dialog\" at z.modal, elevation.dialog (color.bg.overlay, color.border.subtle, depth 64) and a border on its inner edge, with the region's data-theme and data-density; data-slot=\"sheet-content\", data-side, data-size."
     }
   ],
   "parts": [
@@ -106,7 +106,7 @@
     {
       "name": "SheetTitle",
       "slot": "sheet-title",
-      "description": "An <h2> in type.heading-4 that names the sheet."
+      "description": "An <h2> in text.subtitle-1 (Fluent's dialog title) that names the sheet."
     },
     {
       "name": "SheetDescription",
@@ -133,12 +133,12 @@
     {
       "name": "open",
       "variant": "data-starting-style",
-      "description": "Opening: the sheet slides in from its edge over motion.duration.slow with motion.easing.emphasized and the scrim fades in; reduced motion turns the slide off."
+      "description": "Opening: the sheet slides in from its edge over motion.duration.gentle with the decelerate curve and the scrim fades in; reduced motion turns the slide off."
     },
     {
       "name": "closing",
       "variant": "data-ending-style",
-      "description": "Closing: it slides back out with motion.easing.exit."
+      "description": "Closing: it slides back out over motion.duration.normal with the accelerate curve."
     }
   ],
   "tokens": [
@@ -152,7 +152,6 @@
     "color.bg.overlay",
     "color.bg.scrim",
     "color.border.control-bottom-subtle",
-    "color.border.default",
     "color.border.disabled",
     "color.border.subtle",
     "color.fg.default",
@@ -162,15 +161,16 @@
     "color.interactive.hover",
     "color.ring",
     "color.ring-inner",
-    "elevation.modal.shadow",
+    "elevation.dialog.shadow",
     "font.mono",
     "font.sans",
+    "motion.duration.fast",
     "motion.duration.faster",
-    "motion.duration.slow",
+    "motion.duration.gentle",
+    "motion.duration.normal",
+    "motion.easing.accelerate-mid",
+    "motion.easing.decelerate-mid",
     "motion.easing.easy-ease",
-    "motion.easing.emphasized",
-    "motion.easing.exit",
-    "motion.easing.standard",
     "radius.md",
     "ring.inner-width",
     "ring.width",
@@ -188,6 +188,10 @@
     "text.body-1-strong.size",
     "text.body-1-strong.tracking",
     "text.body-1-strong.weight",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
     "text.body.leading",
     "text.body.size",
     "text.body.tracking",
@@ -196,10 +200,10 @@
     "text.code.size",
     "text.code.tracking",
     "text.code.weight",
-    "text.heading-4.leading",
-    "text.heading-4.size",
-    "text.heading-4.tracking",
-    "text.heading-4.weight",
+    "text.subtitle-1.leading",
+    "text.subtitle-1.size",
+    "text.subtitle-1.tracking",
+    "text.subtitle-1.weight",
     "z.modal",
     "z.overlay"
   ],

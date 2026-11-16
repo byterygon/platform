@@ -155,7 +155,7 @@ export function App({ initial, save = saveState }: AppProps) {
 
       {notices.length > 0 && (
         <div className="px-inset-lg pt-inset-sm">
-          <Alert variant="warning" onDismiss={() => setNotices([])}>
+          <Alert intent="warning" onDismiss={() => setNotices([])}>
             <AlertTitle>Opened with changes</AlertTitle>
             <AlertDescription>{notices.map((d) => d.message).join(" ")}</AlertDescription>
           </Alert>
