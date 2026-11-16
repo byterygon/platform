@@ -35,6 +35,7 @@ pnpm --filter @byterygon/design-tokens tokens build --check    # exit 3 if gener
 pnpm --filter @byterygon/design-tokens tokens build --theme paper --all   # all eight files, not only the committed ones
 pnpm --filter @byterygon/design-tokens tokens validate         # rules only, writes nothing
 pnpm --filter @byterygon/design-tokens tokens fix --theme ./my.theme.json   # apply every suggested fix, write the file
+pnpm --filter @byterygon/design-tokens tokens import ./globals.css --name ocean --out ocean.theme.json   # shadcn, --by-* CSS, DTCG or a theme file
 pnpm --filter @byterygon/design-tokens tokens explain color.bg.surface
 pnpm --filter @byterygon/design-tokens tokens search hover background
 pnpm --filter @byterygon/design-tokens tokens diff default ./my.theme.json
@@ -128,6 +129,44 @@ theme's value for the other modes; seeds merge key by key.
   is only allowed on a primitive, inside a shadow or a gradient too.
 - `seeds.contrast.level` is `AA` (4.5:1 text, 3:1 UI) or `AAA` (7:1, 4.5:1). `seeds.contrast.apca`
   (`{ text, ui }`, absolute Lc) adds an APCA minimum; without it APCA is reported, not enforced.
+
+## Import
+
+`by-tokens import <file>` and the Theme Studio's Import call `importTheme(text, { name, format })`
+(`src/import.ts`), which returns the theme file as `text` (printed as is), what it read, and notes:
+`import-unmapped` (a name with no Byterygon token or role), `import-approximated` (a colour that
+could not be placed exactly), `import-value-unreadable`; `import-unreadable` (an error) when
+nothing could be read. The result validates like any theme; exit 1 when it breaks a rule (the file
+is still written or printed; `by-tokens fix` applies the suggested fixes).
+
+| Format (`--format`) | Read from | Gives |
+| --- | --- | --- |
+| `css` | `--by-*` declarations; `:root` and `[data-<axis>="<mode>"]` / `.dark` blocks are the modes, the block that also holds `:root` the default | exact: seeds inferred, every remaining difference an override; the theme renders the same tokens.css |
+| `dtcg` | tokens.dtcg.json: `$value`, the extension's `axis`/`modes`, the root's axes defaults and contrast level | exact, as above |
+| `shadcn` | `--background`, `--primary`, ... and `--radius` in `:root` (light) and `.dark` / `[data-theme="dark"]`; oklch(), hex, rgb(), hsl() and v3's bare `H S% L%` | approximate: seeds and the ramp steps the shadcn roles use |
+| `theme` | a theme file | the file through `readThemeFile` (a newer `schemaVersion` keeps what this version knows) |
+
+- Exact import infers the seeds ramp by ramp: for each ramp it tries the engine default first, then
+  the hue and chroma of step 9 (light, dark, and the default's chroma, since sRGB may have reduced
+  the seed's), with and without the solid lightness of both steps 9, and for the neutral the tint
+  (step 2's chroma), keeping whichever leaves the fewest differences; then AAA when the source
+  does not say the level (CSS), radius from `radius.md`, body size from `font.size.300`, scheme and
+  density from the defaults. Every value that still differs becomes an override (a per-mode
+  object when only some modes differ). The tests import all seven presets from tokens.css and from
+  DTCG: each renders its tokens.css again, with no more overrides than the preset file has.
+- CSS writes `0` without a unit; it is read as `0px` / `0ms`. A value written exactly as the
+  generated one (a gradient with aliases, say) is not parsed. A gradient that differs is reported
+  (`import-value-unreadable`): CSS gradients are not read back; DTCG gradients are.
+- shadcn: `brand` from `--primary`, `neutral` from `--muted-foreground`, `red` from `--destructive`
+  (hue and chroma, light block first), `radius` from `--radius` (shadcn's `--radius` is
+  `radius.md` in the alias block; rem times 16). Each colour then overrides the ramp step its role
+  resolves to in that scheme (the alias block's mapping read backwards: `--primary` ->
+  `color.accent.bg` -> `color.brand.9`). Not placed, with a note: a role that resolves to a
+  non-ramp primitive (white, an alpha overlay: `--card`, `--accent`), a translucent colour on an
+  opaque step (`--border` in dark), and a second variable landing on a step an earlier one took
+  with another colour (`--ring` and `--primary`). Variables with no role (`--font-heading`) are
+  listed. Stock shadcn colours miss some WCAG pairs (muted text, for one): the report shows them
+  with fixes.
 
 ## Studio state (URL hash), versioned
 
@@ -424,7 +463,7 @@ build or run time, and a browser only downloads Inter where no Segoe UI is insta
 
 | Import | What |
 | --- | --- |
-| `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `applyFix` and `fixAll`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), the presets' labels and order (`PRESET_LABELS`, `presetLabel`, `presetOrder`, `duplicateTheme`, `copyName`), and the Monaco and registry modules |
+| `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `applyFix` and `fixAll`, `importTheme`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), the presets' labels and order (`PRESET_LABELS`, `presetLabel`, `presetOrder`, `duplicateTheme`, `copyName`), and the Monaco and registry modules |
 | `@byterygon/design-tokens/color` | the colour module alone: OKLCH conversion, sRGB gamut mapping, WCAG and APCA contrast, the lightness solver, `generateRamp` |
 | `@byterygon/design-tokens/build` | `buildTheme`, `renderOutputs`, `monacoThemeFor`, and `renderTokensCss` (`tokens.css` alone, synchronous, in a few milliseconds, byte for byte the `renderOutputs` one: the Theme Studio's live preview; with `{ scope }` the same declarations on the elements a selector matches instead of `:root`, mode selectors matching the scope element or its ancestors: the Studio's gallery cards), and `exportTheme` with `EXPORT_FORMATS` (`src/export.ts`: every export, its file name and install note; `by-tokens export` and the Studio's Export dialog both call it) (Style Dictionary; runs in Node and in the browser) |
 | `@byterygon/design-tokens/monaco` | `src/monaco.ts` as source: `MONACO_COLORS`, `MONACO_TOKENS`, `monacoTheme(read)` |

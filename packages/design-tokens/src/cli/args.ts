@@ -71,6 +71,17 @@ export const COMMANDS: readonly CommandSpec[] = [
     ],
   },
   {
+    name: "import",
+    usage: "by-tokens import <file> [--format <css|dtcg|shadcn|theme>] [--name <name>] [--out <file>]",
+    summary: "Read Byterygon CSS variables (--by-*), Byterygon DTCG JSON, a stock shadcn/ui globals.css or a theme file into a theme file (seeds plus overrides): the Theme Studio's Import, byte for byte. Prints the theme file unless --out; what could not be placed is reported. Exit 1 when the imported theme breaks a rule (the file is still written: run `by-tokens fix`).",
+    options: [
+      { name: "--format", value: "<css|dtcg|shadcn|theme>", summary: "the source format (default: detected)" },
+      { name: "--name", value: "<name>", summary: "the theme name (default: the source's, else imported)" },
+      { name: "--out", value: "<file>", summary: "write the theme file here instead of printing it" },
+      JSON_FLAG,
+    ],
+  },
+  {
     name: "explain",
     usage: "by-tokens explain <token> [--theme <name|file>]",
     summary: "Everything about one token: when to use it, its value in each mode, the alias chain, what references it, and its contrast pairs. Accepts a dot path, a --by- variable or a Tailwind variable.",

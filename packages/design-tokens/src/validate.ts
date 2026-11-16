@@ -479,6 +479,8 @@ function contrastFix(
         if (!info || info.alpha || typeof info.step !== "number") continue;
         if (info.name !== primitive.ramp.name || info.scheme !== primitive.ramp.scheme || candidate.path === primitivePath) continue;
         const value = candidate.value as ColorValue;
+        // A step a theme overrode with a translucent colour is not a solid replacement.
+        if (isAlias(value) || (value.alpha ?? 1) < 1) continue;
         const ratio = passesAll(paint(value), group);
         const distance = Math.abs(value.components[0] - fgValue.components[0]);
         if (ratio !== undefined && (!best || distance < best.distance)) best = { path: candidate.path, ratio, distance };

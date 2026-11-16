@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { decodeState, generateTokens } from "@byterygon/design-tokens";
 import { renderTokensCss } from "@byterygon/design-tokens/build";
 import { act } from "react";
@@ -314,5 +316,31 @@ describe("Theme Studio", () => {
 
     click(byText('[aria-label="Mode combination"] button', "dark · compact")!);
     await waitFor(() => expect(document.body.textContent).toContain("No pair fails in dark · compact."));
+  });
+
+  test("Import: a pasted shadcn globals.css becomes a theme file; opening it lands on the contrast report", async () => {
+    const shadcn = readFileSync(join(import.meta.dirname, "..", "..", "design-tokens", "test", "fixtures", "shadcn-v4.css"), "utf8");
+    const saved = mount();
+    click(byText("button", "Import")!);
+    await waitFor(() => expect($('[role="dialog"] textarea')).toBeTruthy());
+    const area = $<HTMLTextAreaElement>('[role="dialog"] textarea')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    act(() => {
+      setter.call(area, shadcn);
+      area.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    type($<HTMLInputElement>('input[placeholder="from the source"]')!, "neutral");
+    click(byText("button", "Read")!);
+    await waitFor(() => expect($('section[aria-label="Imported theme"]')).toBeTruthy());
+    expect(document.body.textContent).toContain("Read as shadcn/ui globals.css");
+    expect(document.body.textContent).toContain("by-tokens import <file> --name neutral");
+    expect($('section[aria-label="Imported theme"]')!.textContent).toMatch(/--border \(dark\) is translucent/);
+
+    click(byText("button", "Open this theme")!);
+    await waitFor(() => expect(styleText()).toContain('theme "neutral"'));
+    expect(styleText()).toContain("--by-radius-md: 10px;");
+    // Stock shadcn colours miss some contrast pairs: the report opens with the engine's fixes.
+    await waitFor(() => expect($('main [role="tab"][aria-selected="true"]')!.textContent).toMatch(/^Contrast \(\d+\)$/));
+    expect((await lastSavedTheme(saved)).theme["name"]).toBe("neutral");
   });
 });
