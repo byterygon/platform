@@ -28,7 +28,7 @@ export function FieldRealistic() {
       </Field>
       <Field name="port" invalid>
         <FieldLabel>Port</FieldLabel>
-        <Input size="sm" defaultValue="99999" inputMode="numeric" />
+        <Input size="small" defaultValue="99999" inputMode="numeric" />
         <FieldError>The port must be between 1 and 65535.</FieldError>
       </Field>
       <Field name="driver" disabled>

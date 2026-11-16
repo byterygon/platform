@@ -1,15 +1,19 @@
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { useRef, useState } from "react";
+import { Icon } from "@/components/icon/icon";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, inputGroupVariants } from "@/components/input-group/input-group";
 import { cn } from "@/lib/cn";
+import type { ControlSizeProp, FieldAppearance } from "@/lib/control";
+import { Dismiss, Search } from "@/lib/icons";
 
-// A search box: an InputGroup with a search icon, Base UI's Input as type="search" (so it works
+// Fluent 2's SearchBox: an InputGroup with a search icon, Base UI's Input as type="search" (so it works
 // inside a Field and gets role searchbox), and a Clear button while there is text. Escape clears
 // too; with nothing to clear it lets Escape through, so a dialog around it still closes.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const searchInputVariants = {
-  /** InputGroup applies these; listed here so the manifest and the tests see every size. */
+  /** InputGroup applies these; listed here so the manifest and the tests see every value. */
+  appearance: inputGroupVariants.appearance,
   size: inputGroupVariants.size,
 } as const;
 
@@ -19,19 +23,6 @@ const inputClasses = ["[&::-webkit-search-cancel-button]:appearance-none", "[&:h
 
 const clearClasses = ["text-fg-muted hover:text-fg"];
 
-const SearchIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <circle cx="7" cy="7" r="4.5" />
-    <path d="m10.5 10.5 3.5 3.5" />
-  </svg>
-);
-
-const ClearIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <path d="m4.5 4.5 7 7m0-7-7 7" />
-  </svg>
-);
-
 export interface SearchInputProps extends Omit<InputPrimitive.Props, "className" | "size" | "type" | "value" | "defaultValue" | "onValueChange"> {
   /** Controlled text. */
   value?: string;
@@ -39,8 +30,10 @@ export interface SearchInputProps extends Omit<InputPrimitive.Props, "className"
   defaultValue?: string;
   /** Called on every change, with "" when the text is cleared. */
   onValueChange?: (value: string) => void;
-  /** Height, from the density-aware `size.control.*` roles. */
-  size?: keyof typeof inputGroupVariants.size;
+  /** Fluent's field appearance: outline (default), underline, filled-darker or filled-lighter. */
+  appearance?: FieldAppearance | undefined;
+  /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** The Clear button's accessible name. */
   clearLabel?: string;
   /** Extra classes for the frame, merged after the component's own so they win. */
@@ -56,7 +49,8 @@ export function SearchInput({
   value,
   defaultValue = "",
   onValueChange,
-  size = "md",
+  appearance,
+  size,
   clearLabel = "Clear search",
   disabled,
   readOnly,
@@ -89,9 +83,9 @@ export function SearchInput({
     else if (ref) ref.current = element;
   };
   return (
-    <InputGroup data-slot="search-input" size={size} className={cn(className)}>
+    <InputGroup data-slot="search-input" appearance={appearance} size={size} className={cn(className)}>
       <InputGroupAddon>
-        <SearchIcon />
+        <Icon icon={Search} />
       </InputGroupAddon>
       <InputGroupInput
         ref={setRef}
@@ -106,7 +100,7 @@ export function SearchInput({
       />
       {/* Always rendered (hidden while there is nothing to clear), so the DOM and tab order stay stable. */}
       <InputGroupButton aria-label={clearLabel} hidden={text === "" || disabled || readOnly} onClick={clear} className={cn(clearClasses)}>
-        <ClearIcon />
+        <Icon icon={Dismiss} />
       </InputGroupButton>
     </InputGroup>
   );

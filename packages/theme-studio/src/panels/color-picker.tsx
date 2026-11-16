@@ -177,17 +177,17 @@ export function ColorSeed({ label, ramp, hue, chroma, lightness, kind, set, onCh
             <Plane hue={current.hue} chroma={current.chroma} lightness={lightness} onChange={onChange} />
             <Field invalid={pasteError !== undefined}>
               <FieldLabel>Paste a colour</FieldLabel>
-              <Input size="sm" className="font-mono" placeholder="#0e7490 or oklch(0.55 0.11 230)" value={pasted} onValueChange={applyText} />
+              <Input size="small" className="font-mono" placeholder="#0e7490 or oklch(0.55 0.11 230)" value={pasted} onValueChange={applyText} />
               <FieldDescription>{pasteError ?? "Its hue and chroma are used; lightness stays with the ramp."}</FieldDescription>
             </Field>
             <div className="flex items-end gap-inline-md">
               <Field className="flex-1">
                 <FieldLabel>Hue</FieldLabel>
-                <NumberInput size="sm" min={0} max={360} step={1} value={current.hue} onValueChange={(v) => v !== null && onChange(tidy(v, current.chroma))} />
+                <NumberInput size="small" min={0} max={360} step={1} value={current.hue} onValueChange={(v) => v !== null && onChange(tidy(v, current.chroma))} />
               </Field>
               <Field className="flex-1">
                 <FieldLabel>Chroma</FieldLabel>
-                <NumberInput size="sm" min={0} max={0.4} step={0.005} format={{ maximumFractionDigits: 3 }} value={current.chroma} onValueChange={(v) => v !== null && onChange(tidy(current.hue, v))} />
+                <NumberInput size="small" min={0} max={0.4} step={0.005} format={{ maximumFractionDigits: 3 }} value={current.chroma} onValueChange={(v) => v !== null && onChange(tidy(current.hue, v))} />
               </Field>
             </div>
           </div>

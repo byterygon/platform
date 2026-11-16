@@ -22,14 +22,14 @@ export interface IconButtonProps extends Omit<ButtonPrimitive.Props, "className"
   /** The accessible name, required: what the button does ("Copy connection string"), not the icon's name. */
   "aria-label": string;
   /** Button's appearance. Subtle by default: icon buttons mostly sit in toolbars and inputs. */
-  appearance?: keyof typeof iconButtonVariants.appearance;
+  appearance?: keyof typeof iconButtonVariants.appearance | undefined;
   /**
    * The old name of `appearance` (`ghost` is `subtle`).
    * @deprecated Use `appearance`. Kept for one release.
    */
-  variant?: ButtonVariant;
+  variant?: ButtonVariant | undefined;
   /** A square of the density-aware `size.control.*` height: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
-  size?: ControlSizeProp;
+  size?: ControlSizeProp | undefined;
   /** Shows that the action is running: stays focusable, ignores clicks, sets `aria-busy` and `data-loading`. */
   loading?: boolean;
   /** Extra classes, merged after the component's own so they win. */

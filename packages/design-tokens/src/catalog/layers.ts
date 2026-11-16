@@ -274,5 +274,8 @@ export function layerPairs(surfaces: readonly string[]): ContrastPair[] {
     ...pairs("ui", ["color.border.control-bottom", "color.border.focus-underline", "color.ring"], ["color.bg.layer-alt"], ON_LAYER),
     ...pairs("ui", ["color.border.control-bottom", "color.ring", "color.accent.bg", "color.status.danger.solid"], ["color.bg.layer"], BACKDROP),
     ...pairs("ui", ["color.border.control-bottom", "color.border.focus-underline"], surfaces),
+    // The bottom edge of an invalid field (TSK-53), on every fill a field takes.
+    ...pairs("ui", ["color.status.danger.solid"], ["color.bg.layer-alt"], ON_LAYER),
+    ...pairs("ui", ["color.status.danger.solid"], surfaces),
   ];
 }

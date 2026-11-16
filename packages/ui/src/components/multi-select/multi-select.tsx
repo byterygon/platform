@@ -2,42 +2,43 @@ import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import type { ReactNode, Ref } from "react";
 import { ChevronIcon, ClearIcon, ComboboxPopup, frameButtonClasses } from "@/components/combobox/combobox";
 import { cn } from "@/lib/cn";
+import { controlSize, fieldAppearance, fieldAppearances, fieldFrame, focusRing, type ControlSizeProp, type FieldAppearance } from "@/lib/control";
 import { useThemeScope } from "@/lib/theme-scope";
 
 // Several choices from a list, on Base UI's Combobox with `multiple`: each chosen item is a chip
 // (with a remove button) before the text input, which filters the list as in Combobox. The list
 // stays open after a choice so several can be picked in a row; Backspace in the empty input
 // removes the last chip, and ArrowLeft from the start of the input moves onto the chips. The
-// popup and items are Combobox's (ComboboxItem, ComboboxGroup, ComboboxGroupLabel).
+// popup and items are Combobox's (ComboboxItem, ComboboxGroup, ComboboxGroupLabel). The frame
+// takes Input's Fluent appearances, focus underline and states (Fluent's TagPicker).
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const multiSelectVariants = {
+  appearance: fieldAppearances,
   size: {
-    sm: "min-h-control-sm",
-    md: "min-h-control-md",
-    lg: "min-h-control-lg",
+    small: "min-h-control-sm text-caption-1",
+    medium: "min-h-control-md text-body-1",
+    large: "min-h-control-lg text-body-2",
   },
 } as const;
 
 // Written out in full (no template strings): Tailwind finds classes by scanning the source as text.
 const frameClasses = [
-  "flex w-full min-w-0 cursor-text items-center gap-inline-xs rounded-md border border-border-strong bg-surface ps-control-x pe-inline-xs font-sans text-body text-fg",
+  "flex w-full min-w-0 cursor-text items-center gap-inline-xs ps-control-x pe-inline-xs",
+  fieldFrame,
   "has-[[data-slot=multi-select-chip]]:ps-inline-xs",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-  "has-[input:focus-visible]:outline-solid has-[input:focus-visible]:outline-[length:var(--by-ring-width)]",
-  "has-[input:focus-visible]:outline-offset-[var(--by-ring-offset)] has-[input:focus-visible]:outline-ring",
-  "data-popup-open:border-border-focus",
-  "data-invalid:border-danger-border has-[[aria-invalid=true]]:border-danger-border",
-  "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
+  "has-[input:focus-visible]:shadow-focus-underline data-popup-open:shadow-focus-underline",
+  "data-invalid:border-danger-border data-invalid:border-b-danger has-[[aria-invalid=true]]:border-danger-border has-[[aria-invalid=true]]:border-b-danger",
+  "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",
 ];
 
 const chipsClasses = "flex min-w-0 flex-1 flex-wrap items-center gap-inline-xs py-inset-xs";
 
 const chipClasses = [
-  "flex h-control-xs min-w-0 max-w-full cursor-default items-center gap-inline-xs rounded-sm bg-neutral-subtle ps-inset-xs text-label text-neutral-subtle-fg outline-none",
+  "flex h-control-xs min-w-0 max-w-full cursor-default items-center gap-inline-xs rounded-sm bg-neutral-subtle ps-inset-xs text-caption-1 text-neutral-subtle-fg",
   "has-[[data-slot=multi-select-chip-remove][data-disabled]]:pe-inset-xs",
   "data-highlighted:bg-selected",
-  "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-ring",
+  focusRing,
 ];
 
 const chipRemoveClasses = [
@@ -48,9 +49,9 @@ const chipRemoveClasses = [
 ];
 
 const inputClasses = [
-  "h-control-xs min-w-control-lg flex-1 bg-transparent text-body text-fg outline-none",
+  "h-control-xs min-w-control-lg flex-1 bg-transparent text-fg outline-none",
   "placeholder:text-fg-subtle",
-  "data-disabled:cursor-not-allowed",
+  "data-disabled:cursor-not-allowed data-disabled:text-fg-disabled data-disabled:placeholder:text-fg-disabled",
 ];
 
 /** A chosen value's text: `itemToStringLabel`, else a `{ label }` object's label, else the value. */
@@ -67,8 +68,10 @@ function keyOf(value: unknown): string {
 }
 
 export interface MultiSelectProps<Value, Item = Value> extends Omit<ComboboxPrimitive.Root.Props<Value, true, Item>, "multiple" | "children"> {
-  /** Minimum frame height, from the density-aware `size.control.*` roles; chips wrap below. */
-  size?: keyof typeof multiSelectVariants.size;
+  /** Fluent's field appearance of the frame: outline (default), underline, filled-darker or filled-lighter. */
+  appearance?: FieldAppearance | undefined;
+  /** Minimum frame height: small, medium or large (`sm`, `md`, `lg` are deprecated aliases); chips wrap below. */
+  size?: ControlSizeProp | undefined;
   /** Placeholder of the text input while nothing is chosen. */
   placeholder?: string;
   /** Accessible name when there is no FieldLabel; set on the input. */
@@ -95,7 +98,8 @@ export interface MultiSelectProps<Value, Item = Value> extends Omit<ComboboxPrim
  * description and validity; the ref reaches the input.
  */
 export function MultiSelect<Value, Item = Value>({
-  size = "md",
+  appearance,
+  size,
   placeholder,
   "aria-label": ariaLabel,
   emptyMessage = "No results.",
@@ -111,6 +115,8 @@ export function MultiSelect<Value, Item = Value>({
   ...props
 }: MultiSelectProps<Value, Item>) {
   const { ref: anchorRef, anchor, scope, refresh } = useThemeScope<HTMLDivElement>();
+  const look = fieldAppearance(appearance);
+  const height = controlSize(size);
   return (
     <ComboboxPrimitive.Root<Value, true, Item>
       multiple
@@ -127,7 +133,13 @@ export function MultiSelect<Value, Item = Value>({
       }}
       {...props}
     >
-      <ComboboxPrimitive.InputGroup ref={anchorRef} data-slot="multi-select" data-size={size} className={cn(frameClasses, multiSelectVariants.size[size], className)}>
+      <ComboboxPrimitive.InputGroup
+        ref={anchorRef}
+        data-slot="multi-select"
+        data-appearance={look}
+        data-size={height}
+        className={cn(frameClasses, multiSelectVariants.appearance[look], multiSelectVariants.size[height], className)}
+      >
         <ComboboxPrimitive.Chips data-slot="multi-select-chips" className={chipsClasses}>
           <ComboboxPrimitive.Value>
             {(values: Value[]) => (

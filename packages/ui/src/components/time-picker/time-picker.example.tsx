@@ -35,7 +35,7 @@ export function TimePickerRealistic() {
       </Field>
       <Field name="report">
         <FieldLabel>Daily report</FieldLabel>
-        <TimePicker defaultValue="08:15" size="sm" minuteStep={15} />
+        <TimePicker defaultValue="08:15" size="small" appearance="filled-darker" minuteStep={15} />
       </Field>
     </div>
   );

@@ -30,7 +30,7 @@ export function NumberInputRealistic() {
       </Field>
       <Field name="port" invalid>
         <FieldLabel>Port</FieldLabel>
-        <NumberInput size="sm" defaultValue={70000} allowOutOfRange />
+        <NumberInput size="small" appearance="filled-darker" defaultValue={70000} allowOutOfRange />
         <FieldError>The port must be between 1 and 65535.</FieldError>
       </Field>
       <Field name="fetch" disabled>
@@ -40,7 +40,7 @@ export function NumberInputRealistic() {
       </Field>
       <Field name="rows">
         <FieldLabel>Row limit</FieldLabel>
-        <NumberInput size="lg" placeholder="No limit" min={1} />
+        <NumberInput size="large" appearance="underline" placeholder="No limit" min={1} />
       </Field>
     </div>
   );

@@ -63,3 +63,60 @@ export function controlAppearance<A extends string, V extends string>(
   if (variant !== undefined) return aliases[variant] ?? fallback;
   return fallback;
 }
+
+/*
+ * Fields (Fluent 2's Input, Textarea, Select, Combobox, SpinButton, DatePicker): a frame with a
+ * hairline (color.border.subtle) and a bottom edge in color.border.control-bottom, the stroke
+ * that makes a field 3:1. Focus is Fluent's accent underline (shadow.focus-underline), not the
+ * double ring; invalid turns the hairline and the bottom edge danger (FieldError says why);
+ * disabled drops the fill and greys the strokes and text.
+ */
+
+/** Fluent 2's field appearances, on the element that draws the frame (an input, a group, a trigger). */
+export const fieldAppearances = {
+  /** A light fill (color.bg.layer-alt) with a hairline and the darker bottom edge: the default. */
+  outline: "border-border-subtle border-b-border-control-bottom bg-layer-alt",
+  /** Only the bottom edge, no fill or corners: dense forms and inline editing. */
+  underline: "rounded-none border-transparent border-b-border-control-bottom bg-transparent",
+  /** A darker fill (color.bg.inset) for a field on a white or light surface. */
+  "filled-darker": "border-transparent border-b-border-control-bottom bg-inset",
+  /** A lighter fill (color.bg.surface) for a field on a grey or inset surface. */
+  "filled-lighter": "border-transparent border-b-border-control-bottom bg-surface",
+} as const;
+
+export type FieldAppearance = keyof typeof fieldAppearances;
+export const FIELD_APPEARANCES = Object.keys(fieldAppearances) as FieldAppearance[];
+
+/** The field appearance for an `appearance` prop, `outline` when none is given. */
+export function fieldAppearance(appearance: FieldAppearance | undefined): FieldAppearance {
+  return appearance !== undefined && Object.hasOwn(fieldAppearances, appearance) ? appearance : "outline";
+}
+
+/** Fluent's field heights and text: small 24 px caption-1, medium 32 px body-1, large 40 px body-2 (comfortable). */
+export const fieldSizes = {
+  small: "h-control-sm text-caption-1",
+  medium: "h-control-md text-body-1",
+  large: "h-control-lg text-body-2",
+} as const;
+
+/** Fluent's horizontal padding inside a field: 8, 12 and 16 px when comfortable. */
+export const fieldPadding = {
+  small: "px-inset-xs",
+  medium: "px-control-x",
+  large: "px-inset-md",
+} as const;
+
+/** The frame every field shares: border box, radius, font, and the underline fading in. */
+export const fieldFrame =
+  "rounded-md border font-sans text-fg outline-none transition duration-[var(--by-motion-duration-faster)] ease-easy-ease motion-reduce:transition-none";
+
+/**
+ * Focus, invalid and disabled on a field that is itself the focusable element (Input, Textarea,
+ * a Select trigger). A frame around a control (InputGroup, NumberInput) writes the same looks
+ * with `has-[…]` on its control's slot.
+ */
+export const fieldStates = [
+  "focus-visible:shadow-focus-underline",
+  "aria-invalid:border-danger-border aria-invalid:border-b-danger data-invalid:border-danger-border data-invalid:border-b-danger",
+  "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",
+].join(" ");

@@ -123,6 +123,23 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   default text, the accent's pressed solid on primary, accent text on transparent. Pass the Icon
   `filled` while pressed, as Fluent does.
 - **Motion**: hover and state changes `duration-[var(--by-motion-duration-faster)] ease-easy-ease`.
+- **Fields** (TSK-53 batch 2: Input, Textarea, InputGroup, SearchInput, PasswordInput, FileInput,
+  NumberInput, DatePicker, TimePicker, Select, Combobox, MultiSelect): `appearance` = `outline`
+  (default: `bg-layer-alt`, a `border-border-subtle` hairline and the `border-b-border-control-bottom`
+  edge that makes the field 3:1) | `underline` (the bottom edge only, no fill or corners) |
+  `filled-darker` (`bg-inset`) | `filled-lighter` (`bg-surface`); every appearance keeps the bottom
+  edge, unlike Fluent's filled ones, so a field is always 3:1. Sizes as Button's, with text
+  `caption-1`, `body-1`, `body-2`. The shared pieces are `fieldAppearances`, `fieldSizes`,
+  `fieldPadding`, `fieldFrame` and `fieldStates` in `@/lib/control`; a frame around a control
+  (InputGroup, NumberInput, Combobox) writes the states with `has-[…]` on its control's slot.
+- **Field focus** is Fluent's accent underline (`shadow-focus-underline`), not the double ring;
+  Select, Combobox and MultiSelect keep it while their list is open (`data-popup-open:`). Buttons
+  inside a field (clear, show password, the calendar, the steppers) keep the double ring.
+- **Invalid**: the hairline turns `border-danger-border` and the bottom edge `border-b-danger` (the
+  danger solid, a 3:1 pair on every fill a field takes); FieldError starts with Fluent's filled
+  ErrorCircle. **Disabled**: no fill, `border-border-disabled`, `text-fg-disabled` (placeholder too).
+- Fluent's hover on a field changes its stroke by a shade the roles do not have, so fields keep
+  their look on hover.
 
 ## Forms
 
@@ -370,11 +387,13 @@ registry item, which `@byterygon/icon` depends on.
   (`REPLACEMENTS` in `test/icons.test.ts`, which checks every icon below is vendored). A component
   leaves `REPLACEMENTS` when its svgs are swapped, and the test then fails if its component or
   example draws an `<svg>` again (Icon, Spinner and Chart draw on purpose). Done: Button,
-  IconButton, ToggleButton, ToggleGroup, SplitButton (TSK-53 batch 1).
+  IconButton, ToggleButton, ToggleGroup, SplitButton (TSK-53 batch 1); Input, Textarea, InputGroup,
+  NumberInput, SearchInput, PasswordInput, FileInput, DatePicker, Calendar, TimePicker, Select,
+  Combobox, MultiSelect, Field (batch 2).
 
 | Hand-drawn today | Fluent icon |
 | --- | --- |
-| Accordion, Select, Combobox, NavigationMenu chevron (SplitButton: done) | ChevronDown |
+| Accordion, NavigationMenu chevron (SplitButton, Select, Combobox: done) | ChevronDown |
 | Breadcrumb, Collapsible, JsonViewer, Tree, submenu, Pagination next | ChevronRight |
 | Pagination previous, Calendar previous month | ChevronLeft (and ChevronRight) |
 | Table sort (none / ascending / descending) | ArrowSort, ArrowSortUp, ArrowSortDown |

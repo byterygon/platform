@@ -122,7 +122,7 @@ export function App({ initial, save = saveState }: AppProps) {
         <h1 className="text-heading-3 text-fg">Theme Studio</h1>
         <Field className="w-panel-xs">
           <FieldLabel className="sr-only">Theme name</FieldLabel>
-          <Input size="sm" className="font-mono" value={name} onValueChange={(text: string) => setTheme({ ...theme, name: text })} aria-label="Theme name" />
+          <Input size="small" className="font-mono" value={name} onValueChange={(text: string) => setTheme({ ...theme, name: text })} aria-label="Theme name" />
         </Field>
         <Status errors={derived.errors} warnings={derived.warnings} checks={checks} />
         <div className="ms-auto flex flex-wrap items-center gap-inline-md">

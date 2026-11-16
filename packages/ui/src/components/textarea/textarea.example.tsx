@@ -17,12 +17,12 @@ export function TextareaRealistic() {
       </Field>
       <Field invalid>
         <FieldLabel>Filter</FieldLabel>
-        <Textarea size="sm" rows={2} defaultValue="region = 'emea' AND" className="font-mono" />
+        <Textarea size="small" appearance="filled-darker" rows={2} defaultValue="region = 'emea' AND" className="font-mono" />
         <FieldError>The filter ends with AND; add a condition or remove it.</FieldError>
       </Field>
       <Field disabled>
         <FieldLabel>Generated SQL</FieldLabel>
-        <Textarea size="lg" rows={2} defaultValue="SELECT region, count(*) FROM sessions GROUP BY region;" />
+        <Textarea size="large" appearance="underline" rows={2} defaultValue="SELECT region, count(*) FROM sessions GROUP BY region;" />
       </Field>
     </div>
   );

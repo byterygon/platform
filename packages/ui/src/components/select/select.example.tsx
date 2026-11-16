@@ -65,7 +65,7 @@ export function SelectRealistic() {
       </Field>
       <Field name="encoding" invalid>
         <FieldLabel>Client encoding</FieldLabel>
-        <Select items={{ utf8: "UTF-8", latin1: "LATIN1" }} placeholder="Choose an encoding" size="sm">
+        <Select items={{ utf8: "UTF-8", latin1: "LATIN1" }} placeholder="Choose an encoding" size="small" appearance="filled-darker">
           <SelectItem value="utf8">UTF-8</SelectItem>
           <SelectItem value="latin1">LATIN1</SelectItem>
         </Select>
@@ -80,7 +80,7 @@ export function SelectRealistic() {
       </Field>
       <Field name="isolation">
         <FieldLabel>Isolation level</FieldLabel>
-        <Select items={{ "read-committed": "Read committed", "repeatable-read": "Repeatable read", serializable: "Serializable" }} defaultValue="read-committed" size="lg">
+        <Select items={{ "read-committed": "Read committed", "repeatable-read": "Repeatable read", serializable: "Serializable" }} defaultValue="read-committed" size="large" appearance="underline">
           <SelectItem value="read-committed">Read committed</SelectItem>
           <SelectItem value="repeatable-read">Repeatable read</SelectItem>
           <SelectItem value="serializable">Serializable</SelectItem>

@@ -42,14 +42,14 @@ export const TOGGLE_BUTTON_VARIANT_ALIASES: Readonly<Record<ToggleButtonVariant,
 
 export interface ToggleButtonProps extends Omit<TogglePrimitive.Props, "className" | "value"> {
   /** Button's appearances; subtle by default, for toolbars. */
-  appearance?: keyof typeof toggleButtonVariants.appearance;
+  appearance?: keyof typeof toggleButtonVariants.appearance | undefined;
   /**
    * The old name of `appearance` (`ghost` is `subtle`).
    * @deprecated Use `appearance`. Kept for one release.
    */
-  variant?: ToggleButtonVariant;
+  variant?: ToggleButtonVariant | undefined;
   /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
-  size?: ControlSizeProp;
+  size?: ControlSizeProp | undefined;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }

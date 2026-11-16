@@ -33,8 +33,8 @@ export function SearchInputRealistic() {
           </li>
         ))}
       </ul>
-      <SearchInput aria-label="Search the result" size="sm" defaultValue="timeout" />
-      <SearchInput aria-label="Search all workspaces" size="lg" placeholder="Search all workspaces" />
+      <SearchInput aria-label="Search the result" size="small" appearance="filled-darker" defaultValue="timeout" />
+      <SearchInput aria-label="Search all workspaces" size="large" appearance="underline" placeholder="Search all workspaces" />
       <SearchInput aria-label="Search history" disabled placeholder="History is off" />
     </div>
   );

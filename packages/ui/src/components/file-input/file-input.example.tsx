@@ -28,7 +28,7 @@ export function FileInputRealistic() {
       </Field>
       <Field name="key" invalid>
         <FieldLabel>Client key</FieldLabel>
-        <FileInput accept=".pem,.key" size="sm" />
+        <FileInput accept=".pem,.key" size="small" appearance="filled-darker" />
         <FieldError>Choose the key that matches the certificate.</FieldError>
       </Field>
       <Field name="root" disabled>
@@ -38,7 +38,7 @@ export function FileInputRealistic() {
       </Field>
       <Field name="ssh">
         <FieldLabel>SSH identity</FieldLabel>
-        <FileInput size="lg" />
+        <FileInput size="large" appearance="underline" />
       </Field>
       <Field name="scripts">
         <FieldLabel>SQL scripts</FieldLabel>

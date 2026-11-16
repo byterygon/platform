@@ -64,14 +64,14 @@ export const BUTTON_VARIANT_ALIASES: Readonly<Record<ButtonVariant, ButtonAppear
 
 export interface ButtonProps extends Omit<ButtonPrimitive.Props, "className"> {
   /** Fluent's appearance: primary for the main action, secondary for the others, subtle in toolbars. */
-  appearance?: ButtonAppearance;
+  appearance?: ButtonAppearance | undefined;
   /**
    * The old name of `appearance` (`ghost` is `subtle`).
    * @deprecated Use `appearance`. Kept for one release.
    */
-  variant?: ButtonVariant;
+  variant?: ButtonVariant | undefined;
   /** Fluent's size: small, medium or large; `sm`, `md` and `lg` are deprecated aliases. */
-  size?: ControlSizeProp;
+  size?: ControlSizeProp | undefined;
   /**
    * Shows that the action is running: the button stays focusable, ignores clicks and sets
    * `aria-busy` and `data-loading`.

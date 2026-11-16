@@ -272,7 +272,7 @@ export function TokenDetail({ theme, derived, onChange, selected, onSelect }: To
               <Field>
                 <FieldLabel>Value as written in the theme file</FieldLabel>
                 <Input
-                  size="sm"
+                  size="small"
                   className="font-mono"
                   placeholder={view.chain.length > 1 ? `{${view.chain[1]}}` : view.css}
                   value={overrideText(written)}

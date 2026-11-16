@@ -78,7 +78,7 @@ describe("Theme Studio", () => {
     expect(styleText()).toBe(renderTokensCss(generateTokens(startingTheme()).set, "Theme Studio"));
     expect(document.documentElement.dataset["theme"]).toBe("light");
     expect(document.documentElement.dataset["density"]).toBe("comfortable");
-    expect($('[role="status"]')!.textContent).toMatch(/458 contrast checks pass/);
+    expect($('[role="status"]')!.textContent).toMatch(/470 contrast checks pass/);
   });
 
   test("the colour mode and density switches change the root and are saved", async () => {

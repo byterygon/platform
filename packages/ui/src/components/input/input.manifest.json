@@ -3,64 +3,162 @@
   "schemaVersion": 1,
   "name": "input",
   "title": "Input",
-  "description": "A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.",
-  "usage": "Put Input inside a Field with a FieldLabel (and FieldDescription and FieldError as needed); it takes the label, description and validity from it. Use Textarea for multi-line text and InputGroup for an icon, a unit or a button attached to the input. Match the size to the controls beside it.",
+  "description": "A single-line text input in Fluent's small, medium and large, with placeholder, invalid and disabled states; works inside a Base UI Field.",
+  "usage": "Put Input inside a Field with a FieldLabel (and FieldDescription and FieldError as needed); it takes the label, description and validity from it. Use Textarea for multi-line text and InputGroup for an icon, a unit or a button attached to the input. Match the size to the controls beside it. Appearance outline is the default; underline for dense or inline forms, filled-darker on white surfaces, filled-lighter on grey ones. The old sizes sm/md/lg still work for one release.",
   "status": "experimental",
   "base": "@base-ui/react/input",
-  "dependencies": ["@base-ui/react"],
+  "dependencies": [
+    "@base-ui/react"
+  ],
   "props": [
-    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Control height from size.control.*, which follows data-density." },
-    { "name": "value", "type": "string", "description": "The value, when controlled." },
-    { "name": "defaultValue", "type": "string", "description": "The initial value, when uncontrolled." },
-    { "name": "onValueChange", "type": "(value: string, details) => void", "description": "Called with the new value on every change." },
-    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction and sets data-disabled." },
-    { "name": "aria-invalid", "type": "boolean | \"true\" | \"false\"", "description": "Marks the value invalid outside a Field; inside a Field, data-invalid comes from its validation." },
-    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
-    { "name": "ref", "type": "Ref<HTMLInputElement>", "description": "Reaches the <input>." }
+    {
+      "name": "appearance",
+      "type": "\"outline\" | \"underline\" | \"filled-darker\" | \"filled-lighter\"",
+      "default": "outline",
+      "description": "Fluent's field appearance: outline (a light fill, a hairline and the darker bottom edge), underline (the bottom edge only), filled-darker (color.bg.inset) or filled-lighter (color.bg.surface)."
+    },
+    {
+      "name": "size",
+      "type": "\"small\" | \"medium\" | \"large\"",
+      "default": "medium",
+      "description": "Fluent's field sizes: 24, 32 and 40 px when comfortable (caption-1, body-1, body-2), 22, 28 and 34 px when compact (size.control.sm, md, lg)."
+    },
+    {
+      "name": "size (sm, md, lg)",
+      "type": "\"sm\" | \"md\" | \"lg\"",
+      "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+      "deprecated": "use small, medium or large"
+    },
+    {
+      "name": "value",
+      "type": "string",
+      "description": "The value, when controlled."
+    },
+    {
+      "name": "defaultValue",
+      "type": "string",
+      "description": "The initial value, when uncontrolled."
+    },
+    {
+      "name": "onValueChange",
+      "type": "(value: string, details) => void",
+      "description": "Called with the new value on every change."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Ignores interaction and sets data-disabled."
+    },
+    {
+      "name": "aria-invalid",
+      "type": "boolean | \"true\" | \"false\"",
+      "description": "Marks the value invalid outside a Field; inside a Field, data-invalid comes from its validation."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLInputElement>",
+      "description": "Reaches the <input>."
+    }
   ],
   "variants": {
-    "size": ["sm", "md", "lg"]
+    "appearance": [
+      "outline",
+      "underline",
+      "filled-darker",
+      "filled-lighter"
+    ],
+    "size": [
+      "small",
+      "medium",
+      "large"
+    ]
   },
   "slots": [
-    { "name": "root", "element": "input", "description": "The input; data-slot=\"input\" and data-size name it." }
+    {
+      "name": "root",
+      "element": "input",
+      "description": "The input; data-slot=\"input\" and data-appearance and data-size name it."
+    }
   ],
   "states": [
-    { "name": "focus-visible", "variant": "focus-visible", "description": "Focused: a ring of ring.width in color.ring, offset by ring.offset." },
-    { "name": "invalid", "variant": "aria-invalid", "props": { "aria-invalid": true }, "description": "Invalid value: the danger border. Inside a Field the same style follows data-invalid." },
-    { "name": "invalid-in-field", "variant": "data-invalid", "description": "Invalid inside a Base UI Field (its validation sets data-invalid)." },
-    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." }
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Focused: Fluent's accent underline (shadow.focus-underline)."
+    },
+    {
+      "name": "invalid",
+      "variant": "aria-invalid",
+      "props": {
+        "aria-invalid": true
+      },
+      "description": "Invalid value: the danger hairline and bottom edge. Inside a Field the same style follows data-invalid."
+    },
+    {
+      "name": "invalid-in-field",
+      "variant": "data-invalid",
+      "description": "Invalid inside a Base UI Field (its validation sets data-invalid)."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "props": {
+        "disabled": true
+      },
+      "description": "Ignores interaction, with Fluent's disabled stroke and text, no fill."
+    }
   ],
   "tokens": [
+    "color.bg.inset",
+    "color.bg.layer-alt",
     "color.bg.surface",
-    "color.border.strong",
+    "color.border.control-bottom",
+    "color.border.disabled",
+    "color.border.subtle",
     "color.fg.default",
+    "color.fg.disabled",
     "color.fg.subtle",
-    "color.ring",
     "color.status.danger.border",
+    "color.status.danger.solid",
     "font.sans",
-    "motion.duration.fast",
-    "motion.easing.standard",
-    "opacity.disabled",
+    "motion.duration.faster",
+    "motion.easing.easy-ease",
     "radius.md",
-    "ring.offset",
-    "ring.width",
+    "shadow.focus-underline",
     "size.control.lg",
     "size.control.md",
     "size.control.sm",
     "space.control.x",
-    "space.inset.lg",
-    "space.inset.sm",
-    "text.body.leading",
-    "text.body.size",
-    "text.body.tracking",
-    "text.body.weight"
+    "space.inset.md",
+    "space.inset.xs",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
+    "text.body-2.leading",
+    "text.body-2.size",
+    "text.body-2.tracking",
+    "text.body-2.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight"
   ],
-  "examples": { "minimal": "InputMinimal", "realistic": "InputRealistic" },
+  "examples": {
+    "minimal": "InputMinimal",
+    "realistic": "InputRealistic"
+  },
   "accessibility": [
     "Renders a native <input>; give it a visible <label> (or a Base UI Field.Label), or aria-label when there is no room for one.",
     "Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface.",
-    "Mark errors with aria-invalid and point aria-describedby at the message; the danger border is not the only signal.",
-    "The border (color.border.strong) meets 3:1 against every surface, as WCAG 1.4.11 asks of a control's outline.",
-    "Focus shows a ring of ring.width in color.ring."
+    "Mark errors with aria-invalid and point aria-describedby at the message; the danger hairline and bottom edge is not the only signal.",
+    "The bottom edge (color.border.control-bottom) meets 3:1 on every fill and surface a field takes, as WCAG 1.4.11 asks of a control's boundary; the hairline (color.border.subtle) is decoration.",
+    "Focus shows Fluent's accent underline (shadow.focus-underline)."
   ]
 }
