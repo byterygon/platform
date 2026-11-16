@@ -9,7 +9,7 @@ this directory.
 The product is specified in the Notion Docs page **"DBee: UX and app spec for the first usable
 version"** (TSK-37), summarised below; TSK-38 (app skeleton) and TSK-39 (data grid) implement it.
 The spec is the source of truth; this file only orients a reader. `core/`, `rpc-gen/`,
-`server/` and `desktop/` exist (TSK-38, batches 1 to 3); the UI follows in the last batch.
+`server/`, `desktop/` and `ui/` exist (TSK-38); the data grid is TSK-39.
 
 ## The first usable version
 
@@ -53,7 +53,7 @@ apps/dbee/core      dbee-core      router + procedures, connection manager, work
 apps/dbee/rpc-gen   dbee-rpc-gen   writes ui/src/gen/api.ts and api.manifest.json (committed, drift-checked)   (done)
 apps/dbee/desktop   dbee-desktop   Tauri 2 app (ambidex-tauri, capability, CSP, native save dialog)           (done)
 apps/dbee/server    dbee-server    axum binary (ambidex-axum, static UI, TLS, Host/Origin config, audit verify) (done)
-apps/dbee/ui        @byterygon/dbee React + Vite; @byterygon/ambidex, Byterygon UI registry items, @byterygon/data-grid (next)
+apps/dbee/ui        @byterygon/dbee React 19 + Vite; @byterygon/ambidex, Byterygon UI registry items; the grid is TSK-39 (done)
 packages/data-grid  @byterygon/data-grid  the virtualized Arrow grid (MIT OR Apache-2.0, TSK-39)
 ```
 
@@ -137,9 +137,34 @@ DBEE_COLD_START_EXIT=1 cargo run -p dbee-desktop   # print the cold-start times 
 cargo test -p dbee-desktop                     # the app on Tauri's mock runtime; config and capability pinned
 ```
 
-`build.frontendDist` points at `ui-placeholder/` until the UI batch replaces it with
-`../ui/dist`. Secrets go to the OS keychain where one exists; otherwise the core asks per
-session and persists nothing (the note is printed at start and shown by `app.info`).
+`build.frontendDist` is `../ui/dist`, the built UI; without it `build.rs` embeds `ui-placeholder/`
+and warns, so a Rust-only build still compiles. Secrets go to the OS keychain where one exists;
+otherwise the core asks per session and persists nothing (the note is printed at start and shown
+by `app.info`).
+
+### dbee/ui
+
+`@byterygon/dbee`: React 19 + Vite + Tailwind v4, one bundle for both shells. The Byterygon UI
+items it uses are copied from `packages/ui/registry` into `src/components/ui` and `src/lib` by
+`scripts/sync-ui.ts` (byte for byte, as the shadcn CLI installs them; `--check` fails when the
+registry moved on). The app builds one client, `createClient(api, autoTransport())`, from the
+generated `src/gen/api.ts`; `autoTransport` picks Tauri IPC in the desktop webview and the
+WebSocket to the page's origin in a browser, and nothing else in the code branches on the shell
+except the shortcut table (browser-owned keys use Alt+Shift on web) and the export destination.
+Arrow chunks are decoded in a Worker (`src/app/arrow-worker.ts`); the results table reads the
+buffers directly (Int64 as BigInt, NULL from the validity bitmap) until the data grid (TSK-39).
+Screens: the shell (sidebar tree, query tabs, status bar, command palette, toasts), the connection
+form (TanStack Form) and the approval dialog built from the core's preview, the schema browser,
+query tabs on SqlEditor with the destructive-statement confirmation, results with the cell viewer,
+export, settings, about and the shortcuts dialog. Tabs, sizes and settings persist in the
+webview's storage. Errors follow spec §8 with the correlation id behind a Details disclosure.
+
+```sh
+pnpm --filter @byterygon/dbee build        # dist/ (the desktop's frontendDist, the server's --ui)
+pnpm --filter @byterygon/dbee test         # sync-ui --check, then vitest: units, screen flows, axe
+pnpm --filter @byterygon/dbee sync:ui      # refresh the registry items after a packages/ui change
+pnpm --filter @byterygon/dbee dev          # Vite dev server on 127.0.0.1 (development only)
+```
 
 ## Ambidex procedures the skeleton builds
 

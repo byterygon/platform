@@ -1,0 +1,31 @@
+/*
+ * The import order of a Byterygon UI app: fonts, the default preset's tokens, Tailwind, the
+ * Tailwind names of the roles (packages/ui's gallery does the same). The other five presets are
+ * bundled as text and swapped in by Settings (src/app/presets.ts); the role names are the same in
+ * every preset, so the Tailwind theme is loaded once. Everything comes from the bundle: no CDN.
+ */
+@import "@byterygon/design-tokens/fonts/fonts.css";
+@import "@byterygon/design-tokens/default/tokens.css";
+@import "tailwindcss";
+@import "@byterygon/design-tokens/default/tailwind-theme.css";
+
+@source "./";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--by-color-bg-canvas);
+  color: var(--by-color-fg-default);
+  font-family: var(--by-font-sans);
+}
+
+/* Monaco's editor fills the pane it is given. */
+.dbee-editor-pane [data-slot="sql-editor"] {
+  height: 100%;
+}

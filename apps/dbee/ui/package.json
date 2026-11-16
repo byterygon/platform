@@ -1,0 +1,49 @@
+{
+  "name": "@byterygon/dbee",
+  "version": "0.0.0",
+  "description": "DBee user interface: React 19 + Vite + Tailwind v4 on the Byterygon UI registry items and the @byterygon/ambidex client; one bundle for the Tauri desktop app and the self-hosted web server.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node scripts/sync-ui.ts --check && vitest run",
+    "sync:ui": "node scripts/sync-ui.ts",
+    "sync:ui:check": "node scripts/sync-ui.ts --check"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "@byterygon/ambidex": "workspace:*",
+    "@byterygon/design-tokens": "workspace:*",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-sql": "6.10.0",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@lezer/highlight": "1.2.5",
+    "@tanstack/react-form": "1.33.5",
+    "apache-arrow": "21.2.0",
+    "class-variance-authority": "0.7.1",
+    "cn": "0.5.2",
+    "date-fns": "4.4.0",
+    "monaco-editor": "0.57.0",
+    "react": "19.3.1",
+    "react-day-picker": "10.0.2",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@byterygon/ui": "workspace:*",
+    "@tailwindcss/vite": "4.3.5",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "axe-core": "4.14.0",
+    "jsdom": "31.0.0",
+    "tailwindcss": "4.3.5",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}
