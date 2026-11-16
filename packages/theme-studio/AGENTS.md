@@ -30,7 +30,8 @@ from `file://` and from a loopback server. It fails on any request outside the S
 any script error, an edit that does not apply or persist, Monaco not starting, or an export
 (downloaded through the Export dialog for every preset and format) that differs from
 `by-tokens export`, a gallery card that does not show its preset's own tokens, a Duplicate that
-does not open and save the copy, or a share link that does not reopen the same theme and view.
+does not open and save the copy, a share link that does not reopen the same theme and view, or a
+contrast fix that does not clear the failures and land in the theme file.
 Without a browser it skips unless `BYTERYGON_REQUIRE_BROWSER=1` (CI, in a
 network namespace); `BYTERYGON_BROWSER` names one; `--presets a,b` and `--screenshot <dir>` help
 locally.
@@ -48,7 +49,9 @@ The Studio's whole state is a theme file and a view, so every edit is a change t
 | In the Studio | Headless |
 | --- | --- |
 | Seeds panel, token editor | edit `<name>.theme.json` (`seeds`, `overrides`), or `by-tokens preset create <name> --set seeds.radius=8 --set overrides.color.fg.link={color.brand.12}` |
-| Problems tab, a token's contrast pairs | `by-tokens validate --theme <file> --contrast --json` |
+| Problems tab, a token's contrast pairs, the Contrast tab | `by-tokens validate --theme <file> --contrast --json` (a failing measurement carries its `fix`) |
+| Contrast tab: Apply fix, Apply (an alternative) | merge the diagnostic's `fix.overrides` / `fix.seeds` into the file (the engine's `applyFix`) |
+| Contrast tab: Fix all | `by-tokens fix --theme <file>` (`--dry-run` prints the fixed file; the engine's `fixAll`) |
 | A token's resolved values and alias chain | `by-tokens explain <token> --theme <file>` |
 | The address bar (state) | `by-tokens hash encode --theme <file> --mode dark` / `by-tokens hash decode '<hash or url>'` |
 | Themes dialog: the presets and their order | `by-tokens preset list` (same order and labels, from `PRESET_LABELS`), `by-tokens preset show <name>` |
@@ -94,6 +97,27 @@ file in `themes/` appears after a build, and the engine's test fails until it ha
   `readThemeFile`; a newer `version` is read leniently with a warning; unreadable JSON is reported
   and a later save writes a new list. Delete has Undo. Without storage the dialog says so and
   Duplicate still opens the copy.
+
+## Contrast report
+
+The Contrast tab (`src/panels/contrast-report.tsx`) lists `derived.contrast`, the measurements of
+`validate`, for one mode combination at a time (`allContexts`: light and dark x comfortable and
+compact; a measurement counts in every combination that has its modes, so a colour pair shows in
+both densities). Each combination shows how many measurements fail; the view's own is chosen,
+unless it has none and another has.
+
+- Measurements are grouped by foreground role and mode, failing groups first and worst first,
+  because the engine solves one fix per role and mode against every background it is paired
+  with. A group shows the fix (`measurement.fix`, the same object as the diagnostic's), its
+  alternatives (alias another step of the same ramp; for a translucent stroke, the nearest alpha),
+  and the pairs, each painted as it is measured: the stack under it (a gradient over the canvas),
+  the background, then the text or the stroke, under the combination's `data-theme` and
+  `data-density`.
+- **Apply fix** and **Apply** call `applyFix(theme, fix, set)`; **Fix all** calls `fixAll(theme)`,
+  which applies the first fixable error's fix, validates again and repeats (`by-tokens fix` does
+  the same). Every application shows what changed with Undo.
+- Gamut warnings (a seed chroma sRGB cannot show) are listed with their fix (the reduced chroma
+  as the seed). Keeping the reduced colour is also valid, so Fix all leaves warnings alone.
 
 ## Share link
 
@@ -159,4 +183,6 @@ Dictionary for the exports, the engine, React and Base UI) because nothing is lo
   (`scripts/check-licenses.mjs` fails).
 - Never hard-code a preset name or label: take `PRESETS` (`src/state/presets.ts`), which comes from
   the engine's `themes/` and `presetOrder`/`presetLabel`.
-- The contrast report with one-click fixes and import are the next TSK-49 batches.
+- A fix is always the engine's: show `measurement.fix` / `diagnostic.fix` and apply it with
+  `applyFix`. Never write a fix, a lightness or an alias choice in the Studio.
+- Import is the next TSK-49 batch.

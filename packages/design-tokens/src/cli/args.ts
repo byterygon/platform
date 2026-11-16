@@ -60,6 +60,17 @@ export const COMMANDS: readonly CommandSpec[] = [
     options: [THEME, { name: "--contrast", summary: "list every measured role pair, not only the lowest" }, JSON_FLAG],
   },
   {
+    name: "fix",
+    usage: "by-tokens fix [--theme <name|file>] [--out <file>] [--dry-run]",
+    summary: "Apply the suggested fix of every rule the theme breaks, one at a time and validating after each (the Theme Studio's Fix all), and write the theme file. Warnings, such as a reduced chroma, are left alone. Exit 1 when errors remain that have no fix.",
+    options: [
+      THEME,
+      { name: "--out", value: "<file>", summary: "where to write the fixed theme (default: the theme file itself; required for a built-in preset)" },
+      { name: "--dry-run", summary: "write nothing; print the fixed theme file (or, with --json, report it)" },
+      JSON_FLAG,
+    ],
+  },
+  {
     name: "explain",
     usage: "by-tokens explain <token> [--theme <name|file>]",
     summary: "Everything about one token: when to use it, its value in each mode, the alias chain, what references it, and its contrast pairs. Accepts a dot path, a --by- variable or a Tailwind variable.",

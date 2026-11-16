@@ -173,6 +173,27 @@ test("diff compares resolved values mode by mode", async () => {
   assert.equal((await cli("diff", "default", "--json")).code, EXIT.usage);
 });
 
+test("fix: applies the suggested fixes and writes the theme file; --dry-run writes nothing", async () => {
+  const file = writeTheme("faded", { "color.neutral.11": "oklch(0.7 0.02 230)" });
+  const before = readFileSync(file, "utf8");
+  const dry = await cli("fix", "--theme", file, "--dry-run", "--json");
+  assert.deepEqual([dry.code, dry.json.written, dry.json.applied.length], [EXIT.ok, false, 1]);
+  assert.equal(dry.json.applied[0].rule, "contrast");
+  assert.equal(dry.json.theme.overrides["color.neutral.11"], "oklch(0.49 0.02 230)");
+  assert.equal(readFileSync(file, "utf8"), before, "a dry run writes nothing");
+  const printed = await cli("fix", "--theme", file, "--dry-run");
+  assert.deepEqual(JSON.parse(printed.stdout), dry.json.theme, "a text dry run prints the theme file on stdout");
+  assert.match(printed.stderr, /fixed contrast/);
+
+  const fixed = await cli("fix", "--theme", file, "--json");
+  assert.deepEqual([fixed.code, fixed.json.written], [EXIT.ok, "faded.theme.json"]);
+  assert.equal((await cli("validate", "--theme", file, "--json")).code, EXIT.ok);
+  assert.equal((await cli("fix", "--theme", file)).stdout.trim(), "nothing to fix");
+
+  const preset = await cli("fix", "--theme", "paper", "--json");
+  assert.deepEqual([preset.code, preset.json.error.code], [EXIT.usage, "out-required"]);
+});
+
 test("preset: list, show, create from a preset with --set", async () => {
   const list = await cli("preset", "list", "--json");
   assert.ok(list.json.presets.some((p: { name: string; description: string }) => p.name === "default" && p.description.length > 0));
@@ -303,7 +324,7 @@ test("help lists every command and the exit codes; version prints the package", 
   const help = await cli("help", "--json");
   assert.deepEqual(
     help.json.commands.map((c: { name: string }) => c.name),
-    ["build", "validate", "explain", "search", "diff", "preset", "export", "hash", "help"],
+    ["build", "validate", "fix", "explain", "search", "diff", "preset", "export", "hash", "help"],
   );
   assert.deepEqual(help.json.exitCodes.map((e: { code: number }) => e.code), [0, 1, 2, 3, 70]);
   assert.match((await cli()).stdout, /by-tokens build/);

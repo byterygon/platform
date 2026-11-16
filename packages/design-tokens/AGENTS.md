@@ -34,6 +34,7 @@ pnpm --filter @byterygon/design-tokens tokens build --theme paper    # a preset 
 pnpm --filter @byterygon/design-tokens tokens build --check    # exit 3 if generated/ is stale
 pnpm --filter @byterygon/design-tokens tokens build --theme paper --all   # all eight files, not only the committed ones
 pnpm --filter @byterygon/design-tokens tokens validate         # rules only, writes nothing
+pnpm --filter @byterygon/design-tokens tokens fix --theme ./my.theme.json   # apply every suggested fix, write the file
 pnpm --filter @byterygon/design-tokens tokens explain color.bg.surface
 pnpm --filter @byterygon/design-tokens tokens search hover background
 pnpm --filter @byterygon/design-tokens tokens diff default ./my.theme.json
@@ -61,7 +62,15 @@ Inside the package directory the same commands are `node bin/by-tokens.js <comma
 
 `fix.overrides` and `fix.seeds` are ready to merge into the theme file. A contrast fix is solved
 against every background the role is paired with in that mode, so applying it once clears all of
-that role's failures. Command-line mistakes come back as `"error": { "code", "message", "fix" }`.
+that role's failures. A failing contrast measurement (`validate --contrast`, the Studio's Contrast
+tab) carries the same `fix`. Command-line mistakes come back as `"error": { "code", "message", "fix" }`.
+
+`by-tokens fix --theme <file>` applies them (`src/fix.ts`, the Theme Studio's Fix all): the first
+error that has a fix, then validate again, until no error has one; warnings (gamut) are left. It
+writes the theme file in place (`--out` elsewhere; required for a built-in preset) and reports each
+applied fix; `--dry-run` writes nothing and prints the fixed file. `applyFix(theme, fix, set)` is the
+one-fix step: overrides replace the theme's for that token, except that a per-mode fix keeps the
+theme's value for the other modes; seeds merge key by key.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -415,7 +424,7 @@ build or run time, and a browser only downloads Inter where no Segoe UI is insta
 
 | Import | What |
 | --- | --- |
-| `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), the presets' labels and order (`PRESET_LABELS`, `presetLabel`, `presetOrder`, `duplicateTheme`, `copyName`), and the Monaco and registry modules |
+| `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `applyFix` and `fixAll`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), the presets' labels and order (`PRESET_LABELS`, `presetLabel`, `presetOrder`, `duplicateTheme`, `copyName`), and the Monaco and registry modules |
 | `@byterygon/design-tokens/color` | the colour module alone: OKLCH conversion, sRGB gamut mapping, WCAG and APCA contrast, the lightness solver, `generateRamp` |
 | `@byterygon/design-tokens/build` | `buildTheme`, `renderOutputs`, `monacoThemeFor`, and `renderTokensCss` (`tokens.css` alone, synchronous, in a few milliseconds, byte for byte the `renderOutputs` one: the Theme Studio's live preview; with `{ scope }` the same declarations on the elements a selector matches instead of `:root`, mode selectors matching the scope element or its ancestors: the Studio's gallery cards), and `exportTheme` with `EXPORT_FORMATS` (`src/export.ts`: every export, its file name and install note; `by-tokens export` and the Studio's Export dialog both call it) (Style Dictionary; runs in Node and in the browser) |
 | `@byterygon/design-tokens/monaco` | `src/monaco.ts` as source: `MONACO_COLORS`, `MONACO_TOKENS`, `monacoTheme(read)` |
