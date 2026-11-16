@@ -122,6 +122,15 @@ export const fieldStates = [
 ].join(" ");
 
 /*
+ * Surfaces (TSK-55; Fluent 2's Card, Table, Sidebar, Toolbar, Tabs, StatusBar): a translucent
+ * layer (color.bg.layer) over the backdrop with a hairline (color.border.subtle), radius.lg (8 px)
+ * and elevation.layer (shadow-layer). Text on it is checked as a token pair over the backdrop.
+ */
+
+/** The look of a layer over the backdrop: fill, hairline, radius and the layer shadow. Add padding and layout per component. */
+export const layerSurface = "rounded-lg border border-border-subtle bg-layer shadow-layer";
+
+/*
  * Flyouts (Fluent 2's Menu, Popover, the lists of Dropdown and Combobox, Tooltip): an opaque
  * surface with elevation.flyout (color.bg.overlay, a color.border.subtle hairline, depth 16),
  * radius.lg, entering with a short slide from the trigger's side and a fade (normal, decelerate)

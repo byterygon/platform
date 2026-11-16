@@ -1,15 +1,9 @@
+import { Icon } from "@/components/icon/icon";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarInput, ToolbarLink, ToolbarSeparator } from "@/components/toolbar/toolbar";
+import { Play, Stop } from "@/lib/icons";
 
-const PlayIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M5 3.5v9l7-4.5z" />
-  </svg>
-);
-const StopIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor">
-    <rect x="4" y="4" width="8" height="8" rx="1" />
-  </svg>
-);
+const PlayIcon = () => <Icon icon={Play} />;
+const StopIcon = () => <Icon icon={Stop} />;
 
 /** The smallest useful Toolbar: two buttons. */
 export function ToolbarMinimal() {

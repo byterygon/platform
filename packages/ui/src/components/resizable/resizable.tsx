@@ -1,5 +1,6 @@
 import { Children, cloneElement, createContext, isValidElement, useCallback, useContext, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode, type Ref } from "react";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 
 // Panes the user resizes by dragging or by keyboard (DBee's sidebar | editor / results layout),
 // following the ARIA window splitter pattern; Base UI has no splitter, so it is built here.
@@ -16,10 +17,11 @@ const classes = {
   group: "flex size-full min-h-0 min-w-0 overflow-hidden data-[orientation=vertical]:flex-col",
   panel: "relative min-h-0 min-w-0 overflow-hidden",
   handle: [
-    "relative flex shrink-0 touch-none select-none items-center justify-center bg-border",
-    "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
+    "relative flex shrink-0 touch-none select-none items-center justify-center bg-border-subtle",
+    "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
     "hover:bg-border-focus data-dragging:bg-border-focus",
-    "outline-none focus-visible:bg-border-focus focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-ring",
+    "focus-visible:bg-border-focus",
+    focusRing,
     // The rule is border.width.1; the hit area (after:) is size.track wide on either side.
     "data-[orientation=horizontal]:w-[var(--by-border-width-1)] data-[orientation=horizontal]:cursor-col-resize",
     "data-[orientation=vertical]:h-[var(--by-border-width-1)] data-[orientation=vertical]:cursor-row-resize",

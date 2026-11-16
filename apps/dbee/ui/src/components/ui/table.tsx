@@ -15,7 +15,10 @@ import {
   type Ref,
   type RefObject,
 } from "react";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { ArrowSort, ArrowSortDown, ArrowSortUp } from "@/lib/icons";
 import { tokenPx } from "@/lib/theme-scope";
 
 // A plain, semantic data table (<table>, <thead>, <th scope="col">…) styled with the grid.* roles
@@ -39,24 +42,24 @@ export const tableVariants = {
 } as const;
 
 const base = [
-  "relative w-full min-w-0 overflow-auto overscroll-contain rounded-md border border-grid-border bg-grid-row font-sans",
-  "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+  "relative w-full min-w-0 overflow-auto overscroll-contain rounded-lg border border-border-subtle bg-layer font-sans shadow-layer",
+  focusRing,
 ];
 
 const classes = {
-  table: "w-full caption-bottom border-separate border-spacing-[var(--by-border-width-0)] text-body text-fg",
+  table: "w-full caption-bottom border-separate border-spacing-[var(--by-border-width-0)] text-body-1 text-fg",
   header: "",
   body: "",
-  footer: "[&_td]:border-t [&_td]:border-b-0 [&_td]:bg-grid-header [&_td]:text-body-strong",
+  footer: "[&_td]:border-t [&_td]:border-b-0 [&_td]:bg-grid-header [&_td]:text-body-1-strong",
   row: "hover:bg-grid-row-hover data-selected:bg-grid-selection data-selected:hover:bg-grid-selection",
   head: [
-    "sticky top-0 z-[var(--by-z-sticky)] h-grid-row whitespace-nowrap border-b border-grid-border bg-grid-header px-grid-cell-x text-start align-middle text-label text-fg-muted",
+    "sticky top-0 z-[var(--by-z-sticky)] h-grid-row whitespace-nowrap border-b border-grid-border bg-grid-header px-grid-cell-x text-start align-middle text-body-1-strong text-fg-muted",
     "data-[align=center]:text-center data-[align=end]:text-end",
   ],
   sortButton: [
-    "-mx-inline-xs inline-flex max-w-full cursor-default items-center gap-inline-xs rounded-xs px-inline-xs text-label text-fg-muted hover:text-fg",
+    "-mx-inline-xs inline-flex max-w-full cursor-default items-center gap-inline-xs rounded-md px-inline-xs text-body-1-strong text-fg-muted hover:text-fg",
     "in-data-[align=end]:flex-row-reverse",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-ring",
+    focusRing,
     "[&_svg]:size-icon-xs [&_svg]:shrink-0",
   ],
   sortIcon: "text-fg-subtle in-[[aria-sort]]:text-fg",
@@ -65,7 +68,7 @@ const classes = {
     "data-[align=center]:text-center data-[align=end]:text-end data-[align=end]:tabular-nums",
     "data-wrap:whitespace-normal data-wrap:wrap-break-word",
   ],
-  caption: "px-grid-cell-x py-inset-xs text-start text-caption text-fg-muted",
+  caption: "px-grid-cell-x py-inset-xs text-start text-caption-1 text-fg-muted",
   null: "italic text-grid-null",
 } as const;
 
@@ -167,11 +170,7 @@ export function TableRow({ selected, className, ...props }: TableRowProps) {
   return <tr data-slot="table-row" data-selected={selected ? "" : undefined} aria-selected={selected} className={cn(classes.row, className)} {...props} />;
 }
 
-const SortIcon = ({ sort }: { sort: TableHeadProps["sort"] }) => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    {sort === "ascending" ? <path d="m4.5 10 3.5-4 3.5 4" /> : sort === "descending" ? <path d="m4.5 6 3.5 4 3.5-4" /> : <path d="m5 6.5 3-3 3 3m-6 3 3 3 3-3" />}
-  </svg>
-);
+const SortIcon = ({ sort }: { sort: TableHeadProps["sort"] }) => <Icon icon={sort === "ascending" ? ArrowSortUp : sort === "descending" ? ArrowSortDown : ArrowSort} />;
 
 export interface TableHeadProps extends Omit<ComponentProps<"th">, "className" | "align"> {
   /** Text alignment; `end` for numbers, matching their cells. */

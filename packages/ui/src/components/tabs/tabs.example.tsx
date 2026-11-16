@@ -1,6 +1,8 @@
+import { Icon } from "@/components/icon/icon";
 import { useState } from "react";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/tabs/tabs";
+import { Add } from "@/lib/icons";
 
 /** The smallest useful Tabs: the sections of the Settings dialog. */
 export function TabsMinimal() {
@@ -34,11 +36,7 @@ interface QueryTab {
 const ModifiedDot = () => <span aria-label="modified" role="img" className="size-icon-xs shrink-0 rounded-full bg-fg-muted" />;
 const RunningDot = () => <span aria-label="running" role="img" className="size-icon-xs shrink-0 rounded-full bg-accent-solid" />;
 
-const PlusIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-    <path d="M8 3.5v9M3.5 8h9" />
-  </svg>
-);
+const PlusIcon = () => <Icon icon={Add} />;
 
 /**
  * DBee's query tabs: enclosed and small, each closable (the button, or Delete) and reorderable
@@ -76,7 +74,7 @@ export function TabsRealistic() {
   };
 
   return (
-    <Tabs variant="enclosed" size="sm" value={active} onValueChange={(value) => setActive(value as string)} className="w-full">
+    <Tabs appearance="enclosed" size="small" value={active} onValueChange={(value) => setActive(value as string)} className="w-full">
       <div className="flex items-stretch">
         <TabsList onReorder={reorder} className="min-w-0 flex-1">
           {tabs.map((tab) => (

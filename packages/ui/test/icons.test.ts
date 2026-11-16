@@ -26,30 +26,22 @@ const temp = () => {
  * test below fails if one comes back.
  */
 export const REPLACEMENTS: Record<string, string> = {
-  "accordion, navigation-menu: chevron": "chevron-down",
-  "breadcrumb, collapsible, json-viewer, tree, pagination next: chevron": "chevron-right",
+  "navigation-menu: chevron": "chevron-down",
+  "breadcrumb, json-viewer, tree, pagination next: chevron": "chevron-right",
   "pagination previous": "chevron-left",
-  "table sort (none / ascending / descending)": "arrow-sort",
-  "table sort ascending": "arrow-sort-up",
-  "table sort descending": "arrow-sort-down",
   "stepper error": "error-circle",
-  "tabs close": "dismiss",
   "code-block copied, stepper done": "checkmark",
-  "tabs new, DBee new": "add",
+  "DBee new": "add",
   "breadcrumb, DBee more": "more-horizontal",
   "code-block copy": "copy",
-  "sidebar history": "history",
-  "sidebar, DBee settings (gear)": "settings",
-  "sidebar collapse": "panel-left",
+  "DBee settings (gear)": "settings",
   "stat trend up": "arrow-up",
   "stat trend down": "arrow-down",
   "stat trend flat": "subtract",
-  "toolbar, DBee run": "play",
-  "toolbar, DBee stop": "stop",
   "DBee download": "arrow-download",
   "tree folder, DBee schema": "folder",
   "tree, DBee table": "table",
-  "tree, sidebar, avatar, empty-state, status-bar, DBee database": "database",
+  "tree, avatar, empty-state, DBee database": "database",
   "DBee refresh": "arrow-clockwise",
   "DBee view": "eye",
   "DBee column": "column-triple",
@@ -78,6 +70,7 @@ describe("hand-drawn icons", () => {
     done.push("input", "textarea", "input-group", "number-input", "search-input", "password-input", "file-input", "date-picker", "calendar", "time-picker", "select", "combobox", "multi-select", "field"); // batch 2
     done.push("checkbox", "radio-group", "switch", "slider", "dropdown-menu", "context-menu", "menubar", "popover", "hover-card", "tooltip"); // batch 3
     done.push("dialog", "alert-dialog", "sheet", "toast", "command-palette", "alert", "badge", "tag"); // batch 4
+    done.push("card", "sidebar", "tabs", "accordion", "collapsible", "scroll-area", "resizable", "status-bar", "toolbar", "separator"); // TSK-55 batch 1
     for (const name of done) {
       expect(Object.keys(REPLACEMENTS).filter((key) => new RegExp(`(?<![a-z-])${name}(?![a-z-])`).test(key)), name).toEqual([]);
     }

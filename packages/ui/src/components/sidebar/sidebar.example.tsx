@@ -1,3 +1,4 @@
+import { Icon } from "@/components/icon/icon";
 import {
   Sidebar,
   SidebarContent,
@@ -13,27 +14,13 @@ import {
   SidebarTrigger,
 } from "@/components/sidebar/sidebar";
 import { Tree, type TreeNode } from "@/components/tree/tree";
+import { Database, History, Settings } from "@/lib/icons";
 
-const DatabaseIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-    <ellipse cx="8" cy="4" rx="5" ry="1.75" />
-    <path d="M3 4v8c0 1 2.2 1.75 5 1.75s5-.75 5-1.75V4" />
-  </svg>
-);
+const DatabaseIcon = () => <Icon icon={Database} />;
 
-const HistoryIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-    <circle cx="8" cy="8" r="5.5" />
-    <path d="M8 5v3l2 1.5" />
-  </svg>
-);
+const HistoryIcon = () => <Icon icon={History} />;
 
-const GearIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-    <circle cx="8" cy="8" r="2" />
-    <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" />
-  </svg>
-);
+const GearIcon = () => <Icon icon={Settings} />;
 
 /** The smallest useful Sidebar: a panel with a menu beside the main area, and its toggle. */
 export function SidebarMinimal() {

@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const separatorVariants = {
   variant: {
-    default: "bg-border",
+    default: "bg-border-subtle",
     muted: "bg-border-muted",
     strong: "bg-border-strong",
   },

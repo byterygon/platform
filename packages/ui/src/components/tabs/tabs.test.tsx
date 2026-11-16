@@ -24,7 +24,7 @@ function QueryTabs({ onReorder }: { onReorder?: (value: string | number, index: 
     });
   };
   return (
-    <Tabs variant="enclosed" size="sm" value={active} onValueChange={(value) => setActive(value as string)}>
+    <Tabs appearance="enclosed" size="small" value={active} onValueChange={(value) => setActive(value as string)}>
       <TabsList onReorder={reorder}>
         {tabs.map((tab) => (
           <TabsTrigger key={tab} value={tab} onClose={() => close(tab)}>
@@ -163,5 +163,25 @@ describe("Tabs", () => {
   test("honours reduced motion: nothing moves", () => {
     render(<QueryTabs />);
     expect(honoursReducedMotion($$("[data-slot^='tabs']"))).toEqual([]);
+  });
+
+  test("takes Fluent appearances and sizes, and the old variant and size names as aliases", () => {
+    const strip = (props: Record<string, unknown>) => {
+      const { container, unmount } = render(
+        <Tabs {...props} defaultValue="a">
+          <TabsList>
+            <TabsTrigger value="a">A</TabsTrigger>
+          </TabsList>
+        </Tabs>,
+      );
+      const root = container.querySelector("[data-slot=tabs]") as HTMLElement;
+      const result = [root.dataset.appearance, root.dataset.size];
+      unmount();
+      return result;
+    };
+    expect(strip({})).toEqual(["transparent", "medium"]);
+    expect(strip({ appearance: "subtle", size: "large" })).toEqual(["subtle", "large"]);
+    expect(strip({ variant: "line", size: "sm" })).toEqual(["transparent", "small"]);
+    expect(strip({ appearance: "enclosed", variant: "line" })).toEqual(["enclosed", "medium"]);
   });
 });

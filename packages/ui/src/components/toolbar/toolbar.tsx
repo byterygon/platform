@@ -1,5 +1,6 @@
 import { Toolbar as ToolbarPrimitive } from "@base-ui/react/toolbar";
 import { cn } from "@/lib/cn";
+import { fieldAppearances, focusRing } from "@/lib/control";
 
 // A row of controls with one tab stop, on Base UI's Toolbar (role="toolbar"; arrow keys move
 // between items): DBee's query tab bar (Run, Cancel, connection, row limit).
@@ -11,37 +12,37 @@ import { cn } from "@/lib/cn";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const toolbarVariants = {
   variant: {
-    bar: "border-b border-border bg-surface px-inset-xs",
+    bar: "border-b border-border-subtle bg-layer px-inset-xs",
     plain: "",
   },
 } as const;
 
 const base = [
-  "flex min-h-control-md min-w-0 items-center gap-inline-xs overflow-x-auto font-sans text-label text-fg",
+  "flex min-h-control-md min-w-0 items-center gap-inline-xs overflow-x-auto font-sans text-body-1 text-fg",
   "data-[orientation=vertical]:min-h-0 data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch data-[orientation=vertical]:overflow-x-visible",
 ];
 
 const classes = {
   group: "flex shrink-0 items-center gap-inline-xs in-data-[orientation=vertical]:flex-col in-data-[orientation=vertical]:items-stretch",
   button: [
-    "inline-flex h-control-sm shrink-0 cursor-default select-none items-center justify-center gap-inline-xs whitespace-nowrap rounded-md px-inset-xs text-label text-fg",
-    "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
+    "inline-flex h-control-sm shrink-0 cursor-default select-none items-center justify-center gap-inline-xs whitespace-nowrap rounded-md px-inset-xs text-body-1 text-fg",
+    "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
     "hover:bg-hover active:bg-pressed data-pressed:bg-selected",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
-    "data-disabled:pointer-events-none data-disabled:opacity-[var(--by-opacity-disabled)]",
+    focusRing,
+    "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
     "[&_svg]:size-icon-sm [&_svg]:shrink-0",
   ],
   link: [
-    "inline-flex h-control-sm shrink-0 items-center rounded-md px-inset-xs text-label text-fg-link underline-offset-4 hover:underline",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    "inline-flex h-control-sm shrink-0 items-center rounded-md px-inset-xs text-body-1 text-fg-link underline-offset-4 hover:underline",
+    focusRing,
   ],
   input: [
-    "h-control-sm min-w-0 rounded-md border border-border-strong bg-surface px-inset-xs text-label text-fg placeholder:text-fg-subtle",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
-    "data-disabled:opacity-[var(--by-opacity-disabled)]",
+    "h-control-sm min-w-0 rounded-md border px-inset-xs text-caption-1 text-fg outline-none placeholder:text-fg-subtle",
+    fieldAppearances.outline,
+    "focus-visible:shadow-focus-underline data-disabled:border-border-disabled data-disabled:text-fg-disabled",
   ],
   separator: [
-    "shrink-0 self-stretch bg-border",
+    "shrink-0 self-stretch bg-border-subtle",
     "data-[orientation=vertical]:my-inset-xs data-[orientation=vertical]:w-[var(--by-border-width-1)]",
     "data-[orientation=horizontal]:mx-inset-xs data-[orientation=horizontal]:h-[var(--by-border-width-1)]",
   ],

@@ -108,8 +108,10 @@
     "color.border.strong",
     "color.fg.subtle",
     "color.ring",
-    "motion.duration.base",
-    "motion.easing.standard",
+    "color.ring-inner",
+    "motion.duration.normal",
+    "motion.easing.easy-ease",
+    "ring.inner-width",
     "ring.width",
     "size.track"
   ],

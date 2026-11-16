@@ -12,7 +12,10 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -164,12 +167,13 @@
       "name": "card",
       "type": "registry:ui",
       "title": "Card",
-      "description": "A bounded surface that groups one subject, with a header (title, description, action), content and a footer; padding follows density.",
+      "description": "Fluent 2's Card: a bounded surface that groups one subject, a translucent layer over the backdrop with a hairline and radius 8, with a header (title, description, action), content and a footer; padding follows density.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -288,7 +292,10 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -868,7 +875,8 @@
       "description": "Panes the user resizes by dragging or with the keyboard: a group of panels with focusable separator handles between them (ARIA window splitter).",
       "dependencies": [],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -886,7 +894,8 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -988,7 +997,10 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
         "@byterygon/icon-button",
+        "@byterygon/icons",
         "@byterygon/tooltip"
       ],
       "files": [
@@ -1123,7 +1135,8 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -1175,6 +1188,9 @@
       "dependencies": [],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/theme-scope"
       ],
       "files": [
@@ -1188,12 +1204,15 @@
       "name": "tabs",
       "type": "registry:ui",
       "title": "Tabs",
-      "description": "Tabs on Base UI's Tabs: a strip of tabs (underline or enclosed, two sizes, horizontal or vertical) with panels; tabs can carry a status icon, be closed with a button or Delete, and be reordered by drag or Alt+Shift+Arrow.",
+      "description": "Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, and be reordered by drag or Alt+Shift+Arrow.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -1336,7 +1355,8 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {

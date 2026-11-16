@@ -1,6 +1,7 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { useRender } from "@base-ui/react/use-render";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 
 // The thin bar at the bottom of an app or a pane (DBee: connection, row count, elapsed time,
 // cursor position): StatusBar > StatusBarItem, StatusBarButton, StatusBarSpacer. Items keep one
@@ -11,19 +12,19 @@ import { cn } from "@/lib/cn";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const statusBarVariants = {
   variant: {
-    default: "border-t border-border bg-surface text-fg-muted",
+    default: "border-t border-border-subtle bg-layer text-fg-muted",
     accent: "bg-accent-solid text-accent-solid-fg",
   },
 } as const;
 
-const base = ["flex h-control-xs min-w-0 shrink-0 items-center gap-inline-xs overflow-hidden px-inline-xs font-sans text-caption"];
+const base = ["flex h-control-xs min-w-0 shrink-0 items-center gap-inline-xs overflow-hidden px-inline-xs font-sans text-caption-1"];
 
 const classes = {
   item: "inline-flex min-w-0 shrink items-center gap-inline-xs px-inline-xs whitespace-nowrap [&>span]:truncate [&_svg]:size-icon-xs [&_svg]:shrink-0",
   button: [
-    "inline-flex h-full min-w-0 shrink cursor-default items-center gap-inline-xs rounded-xs px-inline-xs whitespace-nowrap",
-    "hover:bg-hover in-data-[variant=accent]:hover:bg-accent-solid-hover",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    "inline-flex h-full min-w-0 shrink cursor-default items-center gap-inline-xs rounded-md px-inline-xs whitespace-nowrap",
+    "hover:bg-hover active:bg-pressed in-data-[variant=accent]:hover:bg-accent-solid-hover",
+    focusRing,
     "data-disabled:pointer-events-none data-disabled:opacity-[var(--by-opacity-disabled)]",
     "[&>span]:truncate [&_svg]:size-icon-xs [&_svg]:shrink-0",
   ],

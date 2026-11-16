@@ -70,9 +70,9 @@
   ],
   "tokens": [
     "border.width.1",
-    "color.border.default",
     "color.border.muted",
-    "color.border.strong"
+    "color.border.strong",
+    "color.border.subtle"
   ],
   "examples": {
     "minimal": "SeparatorMinimal",
