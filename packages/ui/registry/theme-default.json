@@ -1007,7 +1007,7 @@
       "--by-radius-lg": "8px",
       "--by-radius-xl": "8px",
       "--by-radius-full": "9999px",
-      "--by-font-sans": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif",
+      "--by-font-sans": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif",
       "--by-font-mono": "\"Cascadia Mono\", \"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, monospace",
       "--by-ring-width": "2px",
       "--by-ring-offset": "2px",

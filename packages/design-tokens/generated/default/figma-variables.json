@@ -11234,7 +11234,7 @@
         {
           "name": "font/sans",
           "type": "STRING",
-          "description": "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Selawik (fonts/fonts.css). Not for code, identifiers or tabular data that must align: use font.mono.",
+          "description": "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Inter (fonts/fonts.css). Not for code, identifiers or tabular data that must align: use font.mono.",
           "scopes": [
             "ALL_SCOPES"
           ],

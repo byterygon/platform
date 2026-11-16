@@ -182,12 +182,12 @@ function FontSeed({ token, label, theme, onChange }: { token: string; label: str
       </div>
       <Input
         size="sm"
-        placeholder={token === "font.sans" ? "Segoe UI Variable Text, Segoe UI Variable, Segoe UI, Selawik, system-ui, sans-serif" : "Cascadia Mono, JetBrains Mono, ui-monospace, monospace"}
+        placeholder={token === "font.sans" ? "Segoe UI Variable Text, Segoe UI Variable, Segoe UI, Inter, system-ui, sans-serif" : "Cascadia Mono, JetBrains Mono, ui-monospace, monospace"}
         value={overrideText(current)}
         onValueChange={(text: string) => onChange(setOverride(theme, token, text.trim() === "" ? undefined : parseOverrideText("fontFamily", text)))}
       />
       <FieldDescription>
-        Families in order, comma-separated (the <code className="font-mono">{token}</code> token). Selawik, JetBrains Mono and Inter are bundled; Segoe UI Variable and Cascadia Mono are the system's (Windows 11); others must be installed where the theme is used.
+        Families in order, comma-separated (the <code className="font-mono">{token}</code> token). Inter and JetBrains Mono are bundled; Segoe UI Variable and Cascadia Mono are the system's (Windows 11); others must be installed where the theme is used.
       </FieldDescription>
     </Field>
   );
