@@ -203,6 +203,21 @@ test("the presets differ in the ways their names promise", async () => {
   assert.deepEqual(value("default", "ring.width"), { value: 2, unit: "px" });
   // Paper reads more slowly: relaxed line height for body text.
   assert.equal(value("paper", "text.body.leading"), 1.65);
+  // Aurora (TSK-52): the #6b4eff violet solid, radius 4 for controls and 8 for containers, a
+  // backdrop with two glows in both modes over the canvas, and a black and white focus ring.
+  assert.equal((value("aurora", "color.accent.bg") as unknown as { hex: string }).hex, "#6b4eff");
+  assert.deepEqual([value("aurora", "radius.md"), value("aurora", "radius.lg")], [{ value: 4, unit: "px" }, { value: 8, unit: "px" }]);
+  assert.deepEqual([value("default", "radius.md"), value("default", "radius.lg")], [{ value: 6, unit: "px" }, { value: 10, unit: "px" }]);
+  for (const theme of ["light", "dark"]) {
+    const context = { theme, density: "comfortable" };
+    const hex = (name: string, path: string) => (value(name, path, context) as unknown as { hex: string }).hex;
+    for (const glow of ["color.backdrop.glow-1", "color.backdrop.glow-2"]) {
+      assert.notEqual(hex("aurora", glow), hex("aurora", "color.bg.canvas"), `aurora ${glow} ${theme}`);
+      assert.equal(hex("default", glow), hex("default", "color.bg.canvas"), `other presets: no glow (${theme})`);
+    }
+  }
+  assert.equal((value("aurora", "color.ring") as unknown as { hex: string }).hex, "#000000");
+  assert.equal((value("aurora", "color.ring", { theme: "dark", density: "comfortable" }) as unknown as { hex: string }).hex, "#ffffff");
 });
 
 test("a background tint changes steps 1 to 5 of a ramp and nothing else", () => {

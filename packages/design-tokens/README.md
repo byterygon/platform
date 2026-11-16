@@ -11,7 +11,7 @@ pnpm --filter @byterygon/design-tokens build     # compile the engine and the CL
 pnpm --filter @byterygon/design-tokens tokens help
 ```
 
-Six presets (Byterygon `default`, Slate, Paper, Midnight, Terminal, High contrast) are checked for
+Seven presets (Byterygon `default`, Slate, Paper, Midnight, Terminal, High contrast, Aurora) are checked for
 WCAG 2.2 contrast in both colour modes, and Inter and JetBrains Mono ship in `fonts/` under the SIL
 Open Font License (the package's code is MIT OR Apache-2.0; the fonts are not, see
 [fonts/README.md](./fonts/README.md)).

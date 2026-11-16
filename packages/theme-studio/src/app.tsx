@@ -117,7 +117,7 @@ export function App({ initial, save = saveState }: AppProps) {
   const checks = derived.contrast.length;
 
   return (
-    <div className="flex h-dvh flex-col bg-canvas text-fg">
+    <div className="flex h-dvh flex-col bg-canvas bg-(image:--by-gradient-backdrop) text-fg">
       <header className="flex flex-wrap items-center gap-inline-md border-b border-border bg-surface px-inset-lg py-inset-sm">
         <h1 className="text-heading-3 text-fg">Theme Studio</h1>
         <Field className="w-panel-xs">

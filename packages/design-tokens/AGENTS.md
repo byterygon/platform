@@ -139,7 +139,7 @@ density   the density the Studio shows; optional
 
 ## Presets
 
-Six themes ship in `themes/`. All six pass every contrast pair in both colour modes (and, because
+Seven themes ship in `themes/`. All seven pass every contrast pair in both colour modes (and, because
 colour roles never depend on density, in both densities). The name in the first column is the
 theme name; the second is how the Theme Studio will label it.
 
@@ -150,6 +150,7 @@ theme name; the second is how the Theme Studio will label it.
 | `paper` | Paper | warm cream (neutral tint), rust accent, 15 px text with relaxed body leading, radius 8; its orange (the warning colour) at hue 65, so warning stays apart from the rust brand |
 | `midnight` | Midnight | dark first, deep blue neutral, periwinkle accent |
 | `terminal` | Terminal | dark first, green accent, `font.sans` set to the mono stack, 13 px, radius 2, compact |
+| `aurora` | Aurora | the Fluent 2 layered look chosen on 2026-11-16 (TSK-52): violet brand `#6b4eff` (hue 282.5; light steps 9-11 overridden to the full chroma 0.2474, which the dark solid cannot show, so the seed chroma is 0.165), cool near-grey neutral (hue 275, chroma 0.012, tint 0.006), backdrop glows `brand.4`/`teal.3` (dark `brand-dark.6`/`teal-dark.6`) over a canvas one step up (`neutral.2`, dark `neutral-dark.3`, with surface, raised and overlay following), radius 4 with `radius.lg` 8, a black and white focus ring (`color.ring`), `color.border.focus` and `grid.selection-border` on the accent, `color.neutral-dark.10` lifted by the printed fix so subtle text holds on a field over the brightest glow |
 | `high-contrast` | High contrast | WCAG AAA (7:1 text, 4.5:1 UI), pure grey, 3 px focus ring, `color.neutral.11` pushed to pass AAA, the field's bottom stroke at 55 % black (`color.black.alpha-55`) to reach 4.5:1 |
 
 `generated/default/` holds all eight outputs. The other presets commit `tokens.css`,
