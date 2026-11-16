@@ -263,6 +263,37 @@ impl Resolve for PinnedResolver {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Clock
+// ---------------------------------------------------------------------------------------------
+
+/// A wall clock that moves only when a test advances it, so expiry tests do not sleep and can
+/// jump over a deadline the way a machine waking from sleep does.
+pub struct ManualClock(tokio::sync::watch::Sender<u64>);
+
+impl ManualClock {
+    pub fn at(ms: u64) -> Arc<Self> {
+        Arc::new(Self(tokio::sync::watch::Sender::new(ms)))
+    }
+
+    pub fn advance(&self, ms: u64) {
+        self.0.send_modify(|now| *now += ms);
+    }
+}
+
+impl security_types::Clock for ManualClock {
+    fn now_unix_ms(&self) -> u64 {
+        *self.0.borrow()
+    }
+
+    fn sleep_until(&self, deadline_unix_ms: u64) -> BoxFuture<'_, ()> {
+        let mut now = self.0.subscribe();
+        Box::pin(async move {
+            let _ = now.wait_for(|now| *now >= deadline_unix_ms).await;
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Core
 // ---------------------------------------------------------------------------------------------
 
@@ -279,6 +310,7 @@ pub struct Options {
     pub secret_store: Option<SecretStoreConfig>,
     pub audit: Option<AuditConfig>,
     pub dir: Option<tempfile::TempDir>,
+    pub clock: Option<Arc<dyn security_types::Clock>>,
 }
 
 impl TestCore {
@@ -297,6 +329,9 @@ impl TestCore {
         });
         if let Some(audit) = options.audit {
             config.audit = audit;
+        }
+        if let Some(clock) = options.clock {
+            config.clock = clock;
         }
         config.resolver = Arc::clone(&resolver) as Arc<dyn Resolve>;
         config.driver_factory = Some(Arc::new(FakeFactory(Arc::clone(&probe))));

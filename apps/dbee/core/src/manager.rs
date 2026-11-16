@@ -29,8 +29,7 @@ use plugin_host::{
     TlsPolicy, TlsSettings,
 };
 use security_types::{
-    AuditDetail, AuditSink, Digest, Principal, PrincipalKind, SessionId, SystemClock, TenantId,
-    unix_now_ms,
+    AuditDetail, AuditSink, Clock, Digest, Principal, PrincipalKind, SessionId, TenantId,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::sync::broadcast;
@@ -86,6 +85,7 @@ pub struct ManagerParts {
     pub factory: Arc<dyn DriverFactory>,
     pub tenant: TenantId,
     pub deployment_roots: Arc<rustls::RootCertStore>,
+    pub clock: Arc<dyn Clock>,
 }
 
 pub struct Manager {
@@ -98,6 +98,7 @@ pub struct Manager {
     factory: Arc<dyn DriverFactory>,
     authz: DbeeAuthorizer,
     tenant: TenantId,
+    clock: Arc<dyn Clock>,
     sessions: Mutex<HashMap<String, Arc<DbSession>>>,
     statuses: Mutex<HashMap<String, ConnectionStatus>>,
     /// Expiry watchers by connection id; cancelled when the grant is replaced or deleted.
@@ -110,7 +111,7 @@ pub struct Manager {
 
 impl Manager {
     pub fn new(parts: ManagerParts) -> Manager {
-        let grants = Arc::new(GrantStore::new(Arc::new(SystemClock), parts.audit));
+        let grants = Arc::new(GrantStore::new(Arc::clone(&parts.clock), parts.audit));
         let broker = NativeBroker::new(
             Arc::clone(&grants),
             ArcResolver(Arc::clone(&parts.resolver)),
@@ -130,6 +131,7 @@ impl Manager {
             factory: parts.factory,
             authz: DbeeAuthorizer::new(parts.tenant.clone()),
             tenant: parts.tenant,
+            clock: parts.clock,
             sessions: Mutex::default(),
             statuses: Mutex::default(),
             watchers: Mutex::default(),
@@ -171,7 +173,7 @@ impl Manager {
     /// A grant the store refuses stays in the record (its connection cannot open) and the
     /// reason goes to stderr.
     pub async fn restore(self: &Arc<Self>) {
-        let now = unix_now_ms();
+        let now = self.clock.now_unix_ms();
         let detail = AuditDetail::new([("origin", "workspace_restore")]).expect("valid detail");
         for record in self.workspace.connections() {
             if record.grant.state != GrantState::Active {
@@ -369,7 +371,7 @@ impl Manager {
             return Err(invalid("user", "a user is required"));
         }
         if let Some(expires_at) = draft.expires_at
-            && expires_at <= unix_now_ms()
+            && expires_at <= self.clock.now_unix_ms()
         {
             return Err(invalid("expiresAt", "the expiry is in the past"));
         }
@@ -822,12 +824,11 @@ impl Manager {
         let connection_id = connection_id.to_owned();
         tokio::spawn(async move {
             let warn_at = expires_at.saturating_sub(EXPIRY_WARNING.as_millis() as u64);
-            let sleep_until = |at: u64| async move {
-                let now = unix_now_ms();
-                if at > now {
-                    tokio::time::sleep(Duration::from_millis(at - now)).await;
-                }
-            };
+            // The clock, not `tokio::time::sleep`, waits: the Tokio timer is monotonic and stands
+            // still while the machine sleeps, so a bare sleep would fire the events late after a
+            // wake. `SystemClock::sleep_until` re-reads the wall clock every second.
+            let clock = Arc::clone(&manager.clock);
+            let sleep_until = |at: u64| clock.sleep_until(at);
             tokio::select! {
                 () = token.cancelled() => return,
                 () = sleep_until(warn_at) => {}

@@ -64,8 +64,10 @@ export const defaultValues: ConnectionFormValues = {
   colour: "",
 };
 
-export function valuesOf(c: ConnectionSummary): ConnectionFormValues {
-  const expiresAt = c.grant.expiresAt;
+export function valuesOf(c: ConnectionSummary, renewing = false): ConnectionFormValues {
+  // Renewing a grant whose time has passed starts without a date: the new expiry is the user's
+  // choice, never the old one.
+  const expiresAt = renewing && c.grant.expiresAt !== null && c.grant.expiresAt <= Date.now() ? null : c.grant.expiresAt;
   const d = expiresAt === null ? null : new Date(expiresAt);
   return {
     ...defaultValues,
@@ -77,7 +79,7 @@ export function valuesOf(c: ConnectionSummary): ConnectionFormValues {
     user: c.user,
     tlsKind: c.tls,
     allowCancelConnection: c.allowCancelConnection,
-    expires: expiresAt !== null,
+    expires: c.grant.expiresAt !== null,
     expiresDate: d,
     expiresTime: d ? `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}` : null,
     colour: c.colour ?? "",
@@ -148,6 +150,8 @@ export interface ConnectionSheetProps {
   onOpenChange: (open: boolean) => void;
   /** The connection being edited, if any. */
   editing?: ConnectionSummary | undefined;
+  /** Renew access: always a new prepare and approval for the same target, never an in-place save. */
+  renewing?: boolean;
   existingNames: readonly string[];
   /** The preview is ready: show the approval dialog. */
   onPreview: (preview: GrantPreview, draft: ConnectionDraft, password: string | null, replaces: string | null) => void;
@@ -155,17 +159,17 @@ export interface ConnectionSheetProps {
   onUpdated: (connection: ConnectionSummary) => void;
 }
 
-export function ConnectionSheet({ open, onOpenChange, editing, existingNames, onPreview, onUpdated }: ConnectionSheetProps) {
+export function ConnectionSheet({ open, onOpenChange, editing, renewing = false, existingNames, onPreview, onUpdated }: ConnectionSheetProps) {
   const client = useClient();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const form = useForm({
-    defaultValues: editing ? valuesOf(editing) : defaultValues,
+    defaultValues: editing ? valuesOf(editing, renewing) : defaultValues,
     onSubmit: async ({ value }) => {
       setBusy(true);
       setError(null);
       try {
-        if (editing && !grantCoveredChange(editing, value)) {
+        if (editing && !renewing && !grantCoveredChange(editing, value)) {
           const updated = await client.connections.update({
             id: editing.id,
             name: value.name.trim(),
@@ -192,7 +196,7 @@ export function ConnectionSheet({ open, onOpenChange, editing, existingNames, on
       }
     },
   });
-  const title = editing ? `Edit ${editing.name}` : "New connection";
+  const title = editing ? `${renewing ? "Renew access to" : "Edit"} ${editing.name}` : "New connection";
   return (
     <Sheet open={open} onOpenChange={onOpenChange} side="right" size="lg">
       <SheetContent>
@@ -452,7 +456,7 @@ export function ConnectionSheet({ open, onOpenChange, editing, existingNames, on
           <SheetFooter>
             <SheetClose render={<Button variant="ghost" />}>Cancel</SheetClose>
             <Button type="submit" loading={busy}>
-              {editing ? "Save" : "Continue to approval"}
+              {editing && !renewing ? "Save" : "Continue to approval"}
             </Button>
           </SheetFooter>
         </Form>

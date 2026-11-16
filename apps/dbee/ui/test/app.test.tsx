@@ -345,7 +345,31 @@ describe("grant expiry (spec §3.11 flow 4)", () => {
     await act(async () => fake.emit({ kind: "GrantExpired", connectionId: "conn-1", expiredAt: Date.now() }));
     await waitFor(() => document.querySelector("[role=tree]")?.textContent?.includes("expired") ?? false, "expired node");
     await click(byRole("button", "Renew access"));
-    await waitFor(() => dialogWith("Edit Local") !== null, "the form for renewal");
+    await waitFor(() => dialogWith("Renew access to Local") !== null, "the form for renewal");
+  });
+});
+
+describe("renew access (spec §4)", () => {
+  test("Renew access always goes through prepare and approval for the same target, and the new grant replaces the old", async () => {
+    const soon = Date.now() + 10 * 60_000;
+    const fake = createFakeServices({ connections: [{ ...connection(), grant: { id: "g-1", state: "active" as const, expiresAt: soon, createdAt: 0 } }] });
+    mount(fake);
+    await waitFor(() => document.querySelector("[role=tree]") !== null, "tree");
+    // The badge is in the tree within 15 minutes of expiry.
+    await waitFor(() => document.querySelector("[role=tree] [data-expiry-phase=soon]") !== null, "the expiry badge");
+    await act(async () => fake.emit({ kind: "GrantExpiring", connectionId: "conn-1", expiresAt: soon }));
+    await waitFor(() => byRole("button", "Renew access") !== null, "the toast action");
+    await click(byRole("button", "Renew access"));
+    await waitFor(() => dialogWith("Renew access to Local") !== null, "the renewal form");
+    // Nothing was changed in the form: an edit would save in place, a renewal must not.
+    await click(byRole("button", "Continue to approval"));
+    await waitFor(() => byRole("button", "Approve and save") !== null, "the approval dialog");
+    expect(fake.state.calls.some((c) => c.procedure === "connections.update")).toBe(false);
+    expect(fake.state.calls.filter((c) => c.procedure === "connections.prepare").length).toBe(1);
+    await click(byRole("button", "Approve and save"));
+    await waitFor(() => fake.state.calls.some((c) => c.procedure === "connections.create"), "create");
+    const create = fake.state.calls.find((c) => c.procedure === "connections.create")!.input as { replaces: string | null };
+    expect(create.replaces).toBe("conn-1");
   });
 });
 

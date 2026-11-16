@@ -15,7 +15,7 @@ use dbee_core::{AuditConfig, SecretStoreConfig};
 use security_types::{Outcome, PrincipalKind, Risk};
 use serde_json::json;
 use std::sync::Arc;
-use support::{Options, PASSWORD, TESTER, TestCore, draft, kind, tester};
+use support::{ManualClock, Options, PASSWORD, TESTER, TestCore, draft, kind, tester};
 
 #[tokio::test]
 async fn prepare_shows_exactly_what_the_grant_will_hold() {
@@ -850,6 +850,144 @@ async fn a_grant_that_expires_is_announced_and_ends_its_sessions() {
         (Code::PermissionDenied, "PermissionDenied")
     );
     assert_eq!(err.details.as_ref().unwrap()["reason"]["kind"], "Expired");
+}
+
+/// Reads the next expiry event of `events`, with a real-time bound only as a hang guard.
+async fn next_expiry_event(
+    events: &mut tokio::sync::broadcast::Receiver<dbee_core::types::AppEvent>,
+) -> serde_json::Value {
+    loop {
+        let event = tokio::time::timeout(Duration::from_secs(10), events.recv())
+            .await
+            .expect("an expiry event arrives")
+            .unwrap();
+        let event = serde_json::to_value(event).unwrap();
+        if matches!(
+            event["kind"].as_str(),
+            Some("GrantExpiring" | "GrantExpired")
+        ) {
+            return event;
+        }
+    }
+}
+
+async fn approve_with_expiry(t: &TestCore, expires_at: u64) -> String {
+    let mut draft = draft("Short");
+    draft["expiresAt"] = json!(expires_at);
+    let preview = t.ok("connections.prepare", draft.clone()).await;
+    let summary = t
+        .ok(
+            "connections.create",
+            json!({ "draft": draft, "previewDigest": preview["previewDigest"], "secret": { "password": PASSWORD } }),
+        )
+        .await;
+    summary["id"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn expiry_events_follow_the_clock_in_order_and_on_time() {
+    let start = security_types::unix_now_ms();
+    let clock = ManualClock::at(start);
+    let t = TestCore::with(Options {
+        clock: Some(clock.clone()),
+        ..Options::default()
+    })
+    .await;
+    let mut events = t.core.state().manager.subscribe();
+    let expires_at = start + 60 * 60 * 1000;
+    let id = approve_with_expiry(&t, expires_at).await;
+    let session = t
+        .ok(
+            "sessions.open",
+            json!({ "connectionId": id, "purpose": "editor" }),
+        )
+        .await["sessionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    // Just before the warning time: nothing yet.
+    let warn_at = expires_at - 15 * 60 * 1000;
+    clock.advance(warn_at - 1 - start);
+    tokio::task::yield_now().await;
+    assert!(events.try_recv().map_or(true, |e| !matches!(
+        serde_json::to_value(e).unwrap()["kind"].as_str(),
+        Some("GrantExpiring")
+    )));
+
+    clock.advance(1);
+    let warning = next_expiry_event(&mut events).await;
+    assert_eq!(warning["kind"], "GrantExpiring");
+    assert_eq!(warning["expiresAt"], expires_at);
+    assert!(
+        t.core
+            .state()
+            .manager
+            .session(&session, &tester())
+            .is_some()
+    );
+
+    clock.advance(expires_at - warn_at - 1);
+    tokio::task::yield_now().await;
+    assert!(
+        t.core
+            .state()
+            .manager
+            .session(&session, &tester())
+            .is_some()
+    );
+
+    clock.advance(1);
+    let expired = next_expiry_event(&mut events).await;
+    assert_eq!(expired["kind"], "GrantExpired");
+    assert_eq!(expired["expiredAt"], expires_at);
+    assert!(
+        t.core
+            .state()
+            .manager
+            .session(&session, &tester())
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn a_clock_that_jumps_past_both_times_announces_both_at_once() {
+    // A machine waking from sleep: the wall clock is already past the warning and the expiry.
+    let start = security_types::unix_now_ms();
+    let clock = ManualClock::at(start);
+    let t = TestCore::with(Options {
+        clock: Some(clock.clone()),
+        ..Options::default()
+    })
+    .await;
+    let mut events = t.core.state().manager.subscribe();
+    let expires_at = start + 60 * 60 * 1000;
+    let id = approve_with_expiry(&t, expires_at).await;
+    let session = t
+        .ok(
+            "sessions.open",
+            json!({ "connectionId": id, "purpose": "editor" }),
+        )
+        .await["sessionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    clock.advance(3 * 60 * 60 * 1000);
+    assert_eq!(
+        next_expiry_event(&mut events).await["kind"],
+        "GrantExpiring"
+    );
+    assert_eq!(next_expiry_event(&mut events).await["kind"], "GrantExpired");
+    assert!(
+        t.core
+            .state()
+            .manager
+            .session(&session, &tester())
+            .is_none()
+    );
+    let list = t.ok("connections.list", json!({})).await;
+    assert_eq!(list[0]["status"], "expired");
 }
 
 #[tokio::test]

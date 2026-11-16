@@ -48,7 +48,7 @@ describe("error mapping (spec §8)", () => {
     expect(describeError(rpc("FailedPrecondition", { kind: "AuthenticationFailed", user: "app" }), "connect")).toMatchObject({ title: "Authentication failed for user app", remedy: "editConnection", correlationId: "corr-9" });
     expect(describeError(rpc("FailedPrecondition", { kind: "TlsFailed", policy: "pinned-ca" }), "connect")).toMatchObject({ title: "TLS failed", remedy: "editConnection" });
     expect(describeError(rpc("PermissionDenied", { kind: "PermissionDenied", reason: { kind: "AddressNotAllowed", address: "10.1.2.3" } }), "connect")).toMatchObject({ title: "10.1.2.3 is not an allowed address", remedy: "widenAddresses" });
-    expect(describeError(rpc("PermissionDenied", { kind: "PermissionDenied", reason: { kind: "Expired", expiredAt: Date.UTC(2026, 0, 1, 14, 2) } }), "connect").title).toMatch(/^Access expired at/);
+    expect(describeError(rpc("PermissionDenied", { kind: "PermissionDenied", reason: { kind: "Expired", expiredAt: Date.UTC(2026, 0, 1, 14, 2) } }), "connect").title).toMatch(/^Access to this connection expired at/);
     expect(describeError(rpc("PermissionDenied", { kind: "PermissionDenied", reason: { kind: "Revoked" } }), "connect").title).toBe("Access was revoked");
     expect(describeError(rpc("FailedPrecondition", { kind: "ConnectionLost" }), "connect")).toMatchObject({ title: "Connection lost", remedy: "reconnect" });
     expect(describeError(rpc("FailedPrecondition", { kind: "Timeout", host: "db", port: 5432 }), "connect")).toMatchObject({ title: "No answer from db:5432 in 10 s", remedy: "retry" });
