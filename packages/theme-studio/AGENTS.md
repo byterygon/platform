@@ -82,6 +82,10 @@ Never format an export in the Studio: add the format to `src/export.ts` of the t
 - The edited theme is applied to the whole page, the Studio's own controls included. That is on
   purpose: popups render in a portal outside any preview region, so only a page-wide theme shows
   menus, dialogs and toasts as they will look.
+- The page, the component preview and the role board paint `gradient.backdrop` (over
+  `color.bg.canvas`), as an app root does in the layered look: Aurora shows its glows there, and a
+  theme whose glows are the canvas colour looks flat, as before. The role board shows gradient
+  roles as wide swatches next to the colour roles.
 
 ## Offline and `file://`
 

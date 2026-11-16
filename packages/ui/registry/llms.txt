@@ -9,6 +9,7 @@ Install (components.json: "registries": { "@byterygon": "<this folder or URL>/{n
 ## Themes
 
 - [theme-default](theme-default.json): The Byterygon default theme: a blue-teal brand on a neutral tinted with the same hue, light by default, comfortable density, WCAG 2.2 AA.
+- [theme-aurora](theme-aurora.json): Aurora: the Fluent 2 layered look. Violet brand #6b4eff, cool grey neutral, violet and aqua glows behind translucent layers, radius 4 and 8, a black and white focus ring.
 - [theme-high-contrast](theme-high-contrast.json): High contrast: WCAG 2.2 AAA (7:1 text, 4.5:1 for controls and focus), pure grey neutral, a deep blue accent and a thick focus ring. Comfortable density.
 - [theme-midnight](theme-midnight.json): Midnight: dark first, on a deep blue neutral with a periwinkle accent. The light scheme is a cool blue-tinted counterpart. Comfortable density.
 - [theme-paper](theme-paper.json): Paper: a warm light theme for reading. Cream backgrounds, a rust accent (so its orange, the warning colour, leans to amber), larger text with relaxed line height, rounder corners, comfortable density.

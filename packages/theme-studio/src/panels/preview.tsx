@@ -60,7 +60,8 @@ export const Gallery = memo(function Gallery() {
     <div className="flex flex-col gap-stack-xl">
       {PREVIEW_GROUPS.map((group) => (
         <Region key={group.id} title={group.title}>
-          <div className="flex flex-col items-start gap-stack-lg rounded-lg border border-border bg-canvas p-inset-lg">
+          {/* The backdrop, as an app root paints it: a theme with glows (Aurora) shows them behind its layers. */}
+          <div className="flex flex-col items-start gap-stack-lg rounded-lg border border-border bg-canvas bg-(image:--by-gradient-backdrop) p-inset-lg">
             {group.examples.map((Example, index) => (
               <Example key={index} />
             ))}
@@ -109,11 +110,11 @@ function RampRow({ ramp, scheme }: { ramp: string; scheme: "light" | "dark" }) {
   );
 }
 
-/** Colour roles grouped by their group path (`color.bg`, `color.fg`, `color.status.danger`). */
+/** Colour and gradient roles grouped by their group path (`color.bg`, `color.status.danger`, `gradient`). */
 function roleGroups(set: TokenSet): [string, Token[]][] {
   const out = new Map<string, Token[]>();
   for (const token of set.tokens.values()) {
-    if (token.type !== "color" || token.tier === "primitive") continue;
+    if ((token.type !== "color" && token.type !== "gradient") || token.tier === "primitive") continue;
     const group = token.path.slice(0, token.path.lastIndexOf("."));
     out.set(group, [...(out.get(group) ?? []), token]);
   }
@@ -122,7 +123,7 @@ function roleGroups(set: TokenSet): [string, Token[]][] {
 
 function RoleBoard({ set, scheme }: { set: TokenSet; scheme: "light" | "dark" }) {
   return (
-    <div data-theme={scheme} className="flex flex-1 flex-col gap-stack-md rounded-lg border border-border bg-canvas p-inset-lg text-fg">
+    <div data-theme={scheme} className="flex flex-1 flex-col gap-stack-md rounded-lg border border-border bg-canvas bg-(image:--by-gradient-backdrop) p-inset-lg text-fg">
       <p className="text-label text-fg-muted">{scheme === "light" ? "Light" : "Dark"}</p>
       {roleGroups(set).map(([group, tokens]) => (
         <div key={group} className="flex flex-col gap-stack-xs">
@@ -130,7 +131,11 @@ function RoleBoard({ set, scheme }: { set: TokenSet; scheme: "light" | "dark" })
           <div className="flex flex-wrap gap-inline-sm">
             {tokens.map((token) => (
               <span key={token.path} className="flex items-center gap-inline-xs" title={token.description}>
-                <span aria-hidden="true" className="inline-block size-icon-lg rounded-sm border border-border" style={{ background: cssVar(token.path) }} />
+                <span
+                  aria-hidden="true"
+                  className={`inline-block rounded-sm border border-border ${token.type === "gradient" ? "h-icon-lg w-panel-xs" : "size-icon-lg"}`}
+                  style={token.type === "gradient" ? { backgroundImage: cssVar(token.path) } : { background: cssVar(token.path) }}
+                />
                 <span className="font-mono text-caption">{token.path.slice(group.length + 1)}</span>
               </span>
             ))}

@@ -17,8 +17,8 @@ const PRESETS = readdirSync(join(ROOT, "themes"))
   .map((file) => file.slice(0, -".theme.json".length))
   .sort();
 
-test("the six presets are the ones the spec names", () => {
-  assert.deepEqual(PRESETS, ["default", "high-contrast", "midnight", "paper", "slate", "terminal"]);
+test("the presets are the six the spec names and Aurora (TSK-52)", () => {
+  assert.deepEqual(PRESETS, ["aurora", "default", "high-contrast", "midnight", "paper", "slate", "terminal"]);
 });
 
 for (const preset of PRESETS) {
