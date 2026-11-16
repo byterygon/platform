@@ -2,7 +2,8 @@
 // body font size, the default colour scheme and density, the contrast level, and the two font
 // families. A seed the file does not set shows the engine's default; changing it writes the seed
 // into the theme file; "Reset" removes it again. Every value range is the engine's own (seeds.ts).
-import type { ResolvedSeeds } from "@byterygon/design-tokens";
+import type { ResolvedSeeds, TokenSet } from "@byterygon/design-tokens";
+import { ColorSeed } from "./color-picker.tsx";
 import { Accordion, AccordionItem, AccordionPanel, AccordionTrigger } from "@/components/accordion/accordion";
 import { Badge } from "@/components/badge/badge";
 import { Button } from "@/components/button/button";
@@ -17,6 +18,8 @@ import { type ThemeDoc, overrideOf, overrideText, parseOverrideText, resetSeeds,
 export interface SeedsPanelProps {
   readonly theme: ThemeDoc;
   readonly seeds: ResolvedSeeds;
+  /** The generated tokens, for the colour each ramp shows at. */
+  readonly set: TokenSet;
   readonly onChange: (next: ThemeDoc) => void;
 }
 
@@ -121,33 +124,36 @@ function ChoiceSeed<T extends string>({ label, value, set, options, onChange }: 
   );
 }
 
-function RampSeeds({ ramp, theme, seeds, onChange }: { ramp: string } & SeedsPanelProps) {
+/** Lightness of a ramp's solid step in the light scheme, as the engine generated it. */
+function solidLightness(set: TokenSet, ramp: string): number {
+  const value = set.tokens.get(`color.${ramp}.9`)?.value as { components?: readonly number[] } | undefined;
+  return value?.components?.[0] ?? 0.55;
+}
+
+function RampSeeds({ ramp, theme, seeds, set, onChange, label }: { ramp: string; label: string } & SeedsPanelProps) {
   const resolved = seeds.colors[ramp];
   if (!resolved) return null;
   const isSet = (field: string) => seedOf(theme, ["colors", ramp, field]) !== undefined;
   const brandHue = seeds.colors["brand"]?.hue ?? 0;
+  const note =
+    ramp === "neutral" && !isSet("hue")
+      ? "The neutral follows the brand hue until you pick one."
+      : ramp === "brand"
+        ? "A chroma sRGB cannot show at a step is lowered by the engine, with a gamut warning."
+        : undefined;
   return (
     <div className="flex flex-col gap-stack-md">
-      <NumberSeed
-        label="Hue"
-        value={resolved.hue ?? brandHue}
-        set={isSet("hue")}
-        min={0}
-        max={360}
-        step={1}
-        description={ramp === "neutral" && !isSet("hue") ? "Follows the brand hue until set." : undefined}
-        onChange={(value) => onChange(setSeed(theme, ["colors", ramp, "hue"], value))}
+      <ColorSeed
+        label={label}
+        ramp={ramp}
+        hue={resolved.hue ?? brandHue}
+        chroma={resolved.chroma}
+        lightness={solidLightness(set, ramp)}
+        kind={ramp === "neutral" ? "neutral" : "accent"}
+        set={isSet("hue") || isSet("chroma")}
+        onChange={({ hue, chroma }) => onChange(setSeed(setSeed(theme, ["colors", ramp, "hue"], hue), ["colors", ramp, "chroma"], chroma))}
       />
-      <NumberSeed
-        label="Chroma"
-        value={resolved.chroma}
-        set={isSet("chroma")}
-        min={0}
-        max={0.4}
-        step={0.005}
-        description={ramp === "brand" ? "sRGB cannot show every chroma; the engine lowers it and warns (gamut)." : undefined}
-        onChange={(value) => onChange(setSeed(theme, ["colors", ramp, "chroma"], value))}
-      />
+      {note && <p className="text-caption text-fg-muted">{note}</p>}
       {ramp === "neutral" && (
         <NumberSeed
           label="Tint"
@@ -187,7 +193,7 @@ function FontSeed({ token, label, theme, onChange }: { token: string; label: str
   );
 }
 
-export function SeedsPanel({ theme, seeds, onChange }: SeedsPanelProps) {
+export function SeedsPanel({ theme, seeds, set, onChange }: SeedsPanelProps) {
   const others = Object.keys(seeds.colors).filter((ramp) => !(PRIMARY_RAMPS as readonly string[]).includes(ramp));
   const anySet = (paths: readonly (readonly string[])[]) => paths.some((path) => seedOf(theme, path) !== undefined);
   const shapePaths = [["radius"], ["fontSize"]];
@@ -196,7 +202,7 @@ export function SeedsPanel({ theme, seeds, onChange }: SeedsPanelProps) {
     <div className="flex flex-col gap-stack-lg">
       {PRIMARY_RAMPS.map((ramp) => (
         <Section key={ramp} title={LABELS[ramp]!} set={anySet(rampSeedPaths(ramp))} onReset={() => onChange(resetSeeds(theme, rampSeedPaths(ramp)))}>
-          <RampSeeds ramp={ramp} theme={theme} seeds={seeds} onChange={onChange} />
+          <RampSeeds ramp={ramp} label={LABELS[ramp] ?? ramp} theme={theme} seeds={seeds} set={set} onChange={onChange} />
         </Section>
       ))}
 
@@ -232,7 +238,7 @@ export function SeedsPanel({ theme, seeds, onChange }: SeedsPanelProps) {
               </AccordionTrigger>
               <AccordionPanel>
                 <div className="flex flex-col gap-stack-md">
-                  <RampSeeds ramp={ramp} theme={theme} seeds={seeds} onChange={onChange} />
+                  <RampSeeds ramp={ramp} label={LABELS[ramp] ?? ramp} theme={theme} seeds={seeds} set={set} onChange={onChange} />
                   <Button variant="ghost" size="sm" className="self-start" disabled={!anySet(rampSeedPaths(ramp))} onClick={() => onChange(resetSeeds(theme, rampSeedPaths(ramp)))}>
                     Reset {LABELS[ramp] ?? ramp}
                   </Button>

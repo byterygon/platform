@@ -105,13 +105,28 @@ describe("Theme Studio", () => {
     expect((await lastSavedTheme(saved)).theme).toEqual(startingTheme());
   });
 
-  test("the brand hue drives the brand ramp", async () => {
-    mount();
-    const before = styleText().match(/--by-color-brand-9: ([^;]+);/)![1];
-    const hue = $$<HTMLInputElement>('input[aria-label="Hue"]')[0]!;
-    act(() => hue.focus());
-    key(hue, "ArrowUp");
-    await waitFor(() => expect(styleText().match(/--by-color-brand-9: ([^;]+);/)![1]).not.toBe(before));
+  test("the colour picker: a palette swatch sets the ramp's hue and chroma; the plane moves by keyboard; a pasted colour works", async () => {
+    const saved = mount();
+    const brand9 = () => styleText().match(/--by-color-brand-9: ([^;]+);/)![1];
+    const before = brand9();
+    click($('button[aria-label^="Brand: hue 230, chroma 0.11"]')!);
+    await waitFor(() => expect($('[role="group"][aria-label="Ready colours"]')).toBeTruthy());
+
+    click($('button[aria-label="hue 135, chroma 0.12"]')!);
+    await waitFor(() => expect(brand9()).not.toBe(before));
+    expect(brand9()).toMatch(/ 135\)$/);
+    expect((await lastSavedTheme(saved)).theme["seeds"]).toEqual({ colors: { brand: { hue: 135, chroma: 0.12 } } });
+
+    const plane = $('[role="slider"][aria-label="Hue and chroma"]')!;
+    act(() => plane.focus());
+    key(plane, "ArrowRight");
+    key(plane, "ArrowDown");
+    await waitFor(() => expect(plane.getAttribute("aria-valuetext")).toBe("hue 136, chroma 0.115"));
+
+    type($<HTMLInputElement>('input[placeholder^="#0e7490"]')!, "oklch(0.6 0.15 30)");
+    await waitFor(() => expect(plane.getAttribute("aria-valuetext")).toBe("hue 30, chroma 0.15"));
+    type($<HTMLInputElement>('input[placeholder^="#0e7490"]')!, "not a colour");
+    await waitFor(() => expect(document.body.textContent).toContain("Not a colour"));
   });
 
   test("the token editor overrides one token per mode, shows its contrast, and resets it", async () => {

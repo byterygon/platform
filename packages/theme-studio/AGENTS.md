@@ -83,6 +83,10 @@ Dictionary for the exports, the engine, React and Base UI) because nothing is lo
 - Every check comes from the engine (`derive` in `src/engine.ts`): never compute a contrast ratio,
   resolve an alias or validate a value in the Studio. If the Studio needs a new answer, add it to
   `@byterygon/design-tokens` and use it from both the Studio and `by-tokens`.
+- A ramp's colour is picked by eye (`src/panels/color-picker.tsx`): a palette, a hue x chroma plane
+  painted at the ramp's solid lightness, a field for a pasted `#hex`/`oklch()`, and exact values. It
+  writes only `hue` and `chroma`; lightness stays with the ramp so contrast holds. The colour maths is
+  the engine's (`oklchToDisplayRgb`, `maxChroma`, `parseColor`). Studio-only: Base UI has no picker.
 - A new seed control writes the same key the theme file has (`src/state/theme-edit.ts`), with the
   range `resolveSeeds` accepts (`packages/design-tokens/src/seeds.ts`).
 - Never fetch, never load from a CDN, never add a backend. Never depend on anything in `apps/`

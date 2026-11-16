@@ -170,7 +170,7 @@ export function App({ initial, save = saveState }: AppProps) {
             <TabsContent value="seeds" className="min-h-0 flex-1">
               <ScrollArea className="h-full" aria-label="Seeds">
                 <div className="p-inset-lg">
-                  <SeedsPanel theme={theme} seeds={derived.seeds} onChange={setTheme} />
+                  <SeedsPanel theme={theme} seeds={derived.seeds} set={derived.set} onChange={setTheme} />
                 </div>
               </ScrollArea>
             </TabsContent>
