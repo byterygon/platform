@@ -333,5 +333,15 @@ fn the_config_has_the_strict_csp_no_dev_url_and_one_window() {
     assert!(csp.contains("connect-src ipc: http://ipc.localhost;"));
     assert!(csp.contains("worker-src 'self';"));
     assert!(!csp.contains("https:") && !csp.contains("wss:"));
+    // Inline styles are allowed (Monaco's run-time <style> elements, TSK-56); inline scripts and
+    // eval never are.
+    assert!(csp.contains("script-src 'self';"), "scripts: bundled only");
+    assert!(csp.contains("style-src 'self' 'unsafe-inline';"));
+    assert!(!csp.contains("unsafe-eval"));
+    assert_eq!(
+        csp.matches("'unsafe-inline'").count(),
+        1,
+        "'unsafe-inline' only for styles"
+    );
     assert_eq!(config["identifier"], "com.byterygon.dbee");
 }

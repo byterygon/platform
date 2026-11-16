@@ -49,8 +49,11 @@ pub use session::{
 
 /// Content Security Policy for apps using this transport (spec §8: strict CSP, no remote
 /// scripts). Only bundled resources load; the only connections allowed are Tauri's IPC origins
-/// (`ipc:` on Linux and macOS, `http://ipc.localhost` on Windows).
-pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; \
+/// (`ipc:` on Linux and macOS, `http://ipc.localhost` on Windows). Scripts stay `'self'` only (no
+/// inline script, no eval). Styles also allow `'unsafe-inline'` (decided 2026-11-16, TSK-56): Monaco
+/// and Byterygon UI's Monaco theme create `<style>` elements at run time and Monaco has no nonce
+/// support, so without it the SQL editor loses its colours; the DBee server sends the same rule.
+pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
 img-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost; worker-src 'self'; \
 object-src 'none'; base-uri 'none'; form-action 'none'; \
 frame-ancestors 'none'";
