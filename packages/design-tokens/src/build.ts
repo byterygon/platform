@@ -10,7 +10,7 @@ import { OUTPUT_FILES, type OutputFile, renderOutputs } from "./outputs.js";
 import type { ResolvedSeeds } from "./seeds.js";
 import { type ContrastMeasurement, validate } from "./validate.js";
 
-export { OUTPUT_ALIASES, OUTPUT_FILES, type OutputFile, monacoThemeFor, renderOutputs } from "./outputs.js";
+export { OUTPUT_ALIASES, OUTPUT_FILES, type OutputFile, monacoThemeFor, renderOutputs, renderTokensCss } from "./outputs.js";
 
 /**
  * The files of a built-in preset that are committed under `generated/<theme>/`. The default theme

@@ -215,7 +215,7 @@ function modesInOrder(axis: Axis): string[] {
   return [axis.default, ...axis.modes.filter((mode) => mode !== axis.default)];
 }
 
-function header(input: FormatInput, lines: readonly string[]): string {
+function header(input: Pick<FormatInput, "set" | "source">, lines: readonly string[]): string {
   return [
     "/*",
     ` * Byterygon design tokens, theme "${input.set.name}".`,
@@ -226,14 +226,22 @@ function header(input: FormatInput, lines: readonly string[]): string {
   ].join("\n");
 }
 
-function formatTokensCss(input: FormatInput): string {
+/** The CSS text of a token's own literal value in a context. */
+type LiteralCss = (token: Token, context: ModeContext) => string;
+
+/** Style Dictionary's transformed value, from the per-context runs. */
+const transformedLiteral =
+  (input: FormatInput): LiteralCss =>
+  (token, context) =>
+    input.transformed.get(contextKey(context, input.set.axes))!.css.get(token.path)!;
+
+function formatTokensCss(input: Pick<FormatInput, "set" | "source">, literalCss: LiteralCss): string {
   const { set } = input;
-  const transformedIn = (context: ModeContext) => input.transformed.get(contextKey(context, set.axes))!;
   const asVar = (alias: Alias) => `var(${cssVarName(aliasTarget(alias))})`;
-  /** The declaration of a token in a context: SD's transformed literal, or `var()` for aliases. */
+  /** The declaration of a token in a context: the transformed literal, or `var()` for aliases. */
   const declaration = (token: Token, context: ModeContext): string => {
     const own = valueIn(token, context)!;
-    const value = aliasesIn(own).length > 0 ? cssValue(token.type, own, asVar) : transformedIn(context).css.get(token.path)!;
+    const value = aliasesIn(own).length > 0 ? cssValue(token.type, own, asVar) : literalCss(token, context);
     return `  ${cssVarName(token.path)}: ${value};`;
   };
   const tokens = [...set.tokens.values()];
@@ -541,6 +549,22 @@ function formatMonacoTheme(input: FormatInput): string {
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * `tokens.css` alone, synchronously and without Style Dictionary, for a live preview that
+ * re-renders on every edit (the full `renderOutputs` takes a few hundred milliseconds). The
+ * literals go through the same value transforms Style Dictionary applies (a token whose own value
+ * is a literal has no references to resolve) and the same formatter, so the text is byte for byte
+ * the `tokens.css` of `renderOutputs`; a test compares the two for every preset.
+ */
+export function renderTokensCss(set: TokenSet, source: string): string {
+  return formatTokensCss({ set, source }, (token, context) => {
+    const literal = { $type: token.type, $value: valueIn(token, context) } as unknown as TransformedToken;
+    return String(token.type === "shadow" ? cssShadowTransform(literal) : cssTransform(literal));
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+
+/**
  * Renders every output for a token set that has passed validation.
  * `source` names the theme file in the generated headers.
  */
@@ -553,7 +577,7 @@ export async function renderOutputs(set: TokenSet, source: string): Promise<Map<
     set,
     defaultContext(set),
     {
-      "by/css/tokens": () => formatTokensCss(input),
+      "by/css/tokens": () => formatTokensCss(input, transformedLiteral(input)),
       "by/css/tailwind-theme": () => formatTailwindTheme(input),
       "by/css/shadcn-alias": () => formatShadcnAlias(input),
       "by/ts/tokens": () => formatTokensTs(input),
