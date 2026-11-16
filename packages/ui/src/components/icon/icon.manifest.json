@@ -1,0 +1,110 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "icon",
+  "title": "Icon",
+  "description": "A Fluent UI System Icon (vendored offline, MIT) as an inline svg: regular or filled artwork, sized by size.icon.*, coloured by currentColor or a token text role.",
+  "usage": "Use Icon for every pictogram: <Icon icon={ChevronDown} /> with an export of @/lib/icons (ChevronDown, Database, Search, Dismiss). It takes the surrounding text colour (tone=\"inherit\"), or a role through tone (muted, accent, danger, warning, success, info). size follows size.icon.* (xs 12, sm 14, md 16, lg 20, xl 24 px) and picks Fluent's 16, 20 or 24 px drawing. filled is Fluent's solid style, for a selected or active state. An icon beside text is decorative (hidden from screen readers); one that stands alone needs label, or put it in an IconButton with aria-label. Import only the icons you use. To add an icon, vendor it with pnpm --filter @byterygon/ui icons add <name> --from <@fluentui/svg-icons tarball> (offline), never draw one by hand.",
+  "status": "experimental",
+  "base": "@base-ui/react/use-render",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "props": [
+    {
+      "name": "icon",
+      "type": "IconDefinition",
+      "description": "The icon: an export of @/lib/icons (ChevronDown, Database). Without one it renders an empty box of its size."
+    },
+    {
+      "name": "size",
+      "type": "\"xs\" | \"sm\" | \"md\" | \"lg\" | \"xl\"",
+      "default": "md",
+      "description": "Edge from size.icon.* (12, 14, 16, 20, 24 px); xs to md draw Fluent's 16 px artwork, lg the 20 px, xl the 24 px."
+    },
+    {
+      "name": "tone",
+      "type": "\"inherit\" | \"default\" | \"muted\" | \"subtle\" | \"accent\" | \"danger\" | \"warning\" | \"success\" | \"info\"",
+      "default": "inherit",
+      "description": "Colour from a text role; inherit keeps the surrounding text colour (currentColor)."
+    },
+    {
+      "name": "filled",
+      "type": "boolean",
+      "default": false,
+      "description": "Fluent's filled (solid) style, for a selected or active state; sets data-filled."
+    },
+    {
+      "name": "label",
+      "type": "string",
+      "description": "Names a standalone icon for screen readers (role=\"img\", aria-label); without it the icon is aria-hidden."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element with the icon's props."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<SVGSVGElement>",
+      "description": "Reaches the svg element."
+    }
+  ],
+  "variants": {
+    "size": [
+      "xs",
+      "sm",
+      "md",
+      "lg",
+      "xl"
+    ],
+    "tone": [
+      "inherit",
+      "default",
+      "muted",
+      "subtle",
+      "accent",
+      "danger",
+      "warning",
+      "success",
+      "info"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "svg",
+      "description": "The icon; data-slot=\"icon\", data-icon (its Fluent name), data-size, data-tone, data-filled."
+    }
+  ],
+  "states": [],
+  "tokens": [
+    "color.accent.subtle-fg",
+    "color.fg.default",
+    "color.fg.muted",
+    "color.fg.subtle",
+    "color.status.danger.fg",
+    "color.status.info.fg",
+    "color.status.success.fg",
+    "color.status.warning.fg",
+    "size.icon.lg",
+    "size.icon.md",
+    "size.icon.sm",
+    "size.icon.xl",
+    "size.icon.xs"
+  ],
+  "examples": {
+    "minimal": "IconMinimal",
+    "realistic": "IconRealistic"
+  },
+  "accessibility": [
+    "Renders an inline svg with focusable=\"false\"; it is never in the tab order.",
+    "Decorative by default (aria-hidden): the text next to it says what it means. A standalone icon takes label (role=\"img\" with aria-label), or sits in an IconButton whose aria-label says what the button does.",
+    "Colour is never the only cue: a status icon (Info, Warning, ErrorCircle, CheckmarkCircle) differs in shape too, and status text goes with it. Tones use text roles checked at 4.5:1 on their surfaces."
+  ]
+}

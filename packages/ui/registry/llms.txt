@@ -382,6 +382,20 @@ Usage: Use HoverCard to preview the target of a link without leaving the page: a
 - Tokens: color.bg.overlay, color.border.default, color.fg.default, color.fg.link, color.fg.muted, color.fg.subtle, color.ring, elevation.overlay.shadow, font.mono, font.sans, motion.duration.base, motion.easing.enter, motion.easing.exit, radius.md, radius.xs, ring.offset, ring.width, size.panel.sm, space.inline.sm, space.inset.md, space.stack.sm, space.stack.xs, text.body-strong.leading, text.body-strong.size, text.body-strong.tracking, text.body-strong.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight, z.popover
 - Accessibility: The trigger is an ordinary link, named by its text; it works (Enter follows it) whether or not the card opens. The card opens on hover after delay and on keyboard focus of the link; Escape closes it and focus stays on the link; leaving the link and the card closes it after closeDelay. The card is supplementary and read-only: nothing in it is required to complete a task, so screen-reader users lose nothing when it is not announced. prefers-reduced-motion: reduce turns the scale and fade transitions off. The card takes the link's theme and density and sits at z.popover.
 
+### Icon
+
+[icon.json](icon.json): A Fluent UI System Icon (vendored offline, MIT) as an inline svg: regular or filled artwork, sized by size.icon.*, coloured by currentColor or a token text role.
+
+Usage: Use Icon for every pictogram: <Icon icon={ChevronDown} /> with an export of @/lib/icons (ChevronDown, Database, Search, Dismiss). It takes the surrounding text colour (tone="inherit"), or a role through tone (muted, accent, danger, warning, success, info). size follows size.icon.* (xs 12, sm 14, md 16, lg 20, xl 24 px) and picks Fluent's 16, 20 or 24 px drawing. filled is Fluent's solid style, for a selected or active state. An icon beside text is decorative (hidden from screen readers); one that stands alone needs label, or put it in an IconButton with aria-label. Import only the icons you use. To add an icon, vendor it with pnpm --filter @byterygon/ui icons add <name> --from <@fluentui/svg-icons tarball> (offline), never draw one by hand.
+
+- Wraps: @base-ui/react/use-render
+- size: xs, sm, md, lg, xl
+- tone: inherit, default, muted, subtle, accent, danger, warning, success, info
+- Props: icon (IconDefinition); size ("xs" | "sm" | "md" | "lg" | "xl", default "md"); tone ("inherit" | "default" | "muted" | "subtle" | "accent" | "danger" | "warning" | "success" | "info", default "inherit"); filled (boolean, default false); label (string); render (ReactElement | ((props, state) => ReactElement)); className (string); ref (Ref<SVGSVGElement>)
+- States: 
+- Tokens: color.accent.subtle-fg, color.fg.default, color.fg.muted, color.fg.subtle, color.status.danger.fg, color.status.info.fg, color.status.success.fg, color.status.warning.fg, size.icon.lg, size.icon.md, size.icon.sm, size.icon.xl, size.icon.xs
+- Accessibility: Renders an inline svg with focusable="false"; it is never in the tab order. Decorative by default (aria-hidden): the text next to it says what it means. A standalone icon takes label (role="img" with aria-label), or sits in an IconButton whose aria-label says what the button does. Colour is never the only cue: a status icon (Info, Warning, ErrorCircle, CheckmarkCircle) differs in shape too, and status text goes with it. Tones use text roles checked at 4.5:1 on their surfaces.
+
 ### IconButton
 
 [icon-button.json](icon-button.json): A square, icon-only action button with Button's four variants in three density-aware sizes, disabled and loading states, and a required aria-label.
@@ -968,4 +982,5 @@ Usage: Use TypeBadge wherever a column's type is shown: the schema tree's column
 - [theme-scope.json](theme-scope.json): gives popups in a portal the theme and density of their trigger; the popup components depend on it.
 - [monaco.json](monaco.json): loads Monaco lazily and offline (Vite ?worker) and turns the token roles in scope into a Monaco theme; SqlEditor depends on it.
 - [monaco-theme.json](monaco-theme.json): which token role colours each Monaco colour id and SQL token type; the monaco helper depends on it.
+- [icons.json](icons.json): Fluent UI System Icons as path data, one export per icon (ChevronDown, Database); the Icon component depends on it.
 - [motion.json](motion.json): looping animations through the Web Animations API, off under reduced motion; Spinner, Progress and Skeleton depend on it.

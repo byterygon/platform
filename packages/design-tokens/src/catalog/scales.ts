@@ -172,6 +172,8 @@ const ICONS: readonly (readonly [string, number])[] = [
   ["sm", 14],
   ["md", 16],
   ["lg", 20],
+  // Fluent's three drawing sizes are 16, 20 and 24: xl is the 24 px artwork at its own size (TSK-57).
+  ["xl", 24],
 ];
 const iconSize: RoleDef[] = ICONS.map(([name, value]): RoleDef => ({
   path: `size.icon.${name}`,

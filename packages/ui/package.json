@@ -23,6 +23,7 @@
     "gallery": "vite",
     "registry": "node scripts/registry.ts",
     "registry:check": "node scripts/registry.ts --check",
+    "icons": "node scripts/icons.ts",
     "new": "node scripts/new-component.ts",
     "verify:install": "node scripts/verify-install.ts",
     "check:browser": "node scripts/browser-check.ts"

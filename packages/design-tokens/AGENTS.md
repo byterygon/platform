@@ -345,6 +345,8 @@ package is a reference, never a dependency. `test/catalog.test.ts` pins every va
 ## Catalogue notes
 
 - A half step of the space scale is written `0-5`, `1-5` (a path segment cannot hold a dot).
+- `size.icon.{xs,sm,md,lg,xl}` are 12, 14, 16, 20 and 24 px; `xl` (TSK-57) is Fluent's largest
+  drawing size, so `@byterygon/ui`'s Icon shows the 16, 20 and 24 px artwork at its own size.
 - Shadows and colours vary by `theme`; size and space roles vary by `density`. A token never varies
   by both (`mode-cross-axis`): an elevation role is an alias to a themed shadow, not a role that also
   picks a density.

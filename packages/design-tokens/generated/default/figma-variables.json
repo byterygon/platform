@@ -10644,6 +10644,19 @@
           }
         },
         {
+          "name": "size/icon/xl",
+          "type": "FLOAT",
+          "description": "Edge of a xl icon (24 px): the size-icon-xl utility. Not for the size of a control: use size.control.*, which follows the density mode.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-icon-xl)"
+          },
+          "valuesByMode": {
+            "Value": 24
+          }
+        },
+        {
           "name": "size/track",
           "type": "FLOAT",
           "description": "Thickness of a slider track or a thin progress bar (4 px): the h-track (w-track when vertical) utility. Not for borders or dividers: use border.width.*; not for a control or an icon: use size.control.* or size.icon.*.",

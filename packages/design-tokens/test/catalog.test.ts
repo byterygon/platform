@@ -39,7 +39,7 @@ function specTokens(): string[] {
   add("z", ["base", "sticky", "dropdown", "overlay", "modal", "popover", "toast", "tooltip"]);
   add("breakpoint", ["sm", "md", "lg", "xl", "2xl"]);
   add("opacity", ["disabled", "hover", "overlay"]);
-  add("size.icon", ["xs", "sm", "md", "lg"]);
+  add("size.icon", ["xs", "sm", "md", "lg", "xl"]);
   // Semantic tier.
   add("color.bg", ["canvas", "surface", "raised", "overlay", "inset", "scrim"]);
   add("color.fg", ["default", "muted", "subtle", "disabled", "link", "on-accent"]); // on-status: see the open questions

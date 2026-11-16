@@ -4,6 +4,8 @@
 // 2. No permissive crate or package depends, directly or transitively, on an AGPL one.
 // 3. Vendored fonts (packages/*/fonts/manifest.json) have an allowed licence, ship its text, and
 //    match the checksums recorded for them; no font file is unlisted.
+// 4. Vendored icons (packages/*/icons/manifest.json, Fluent UI System Icons) are MIT, ship the
+//    licence text, and match their checksums; no icon file is unlisted.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -177,10 +179,47 @@ for (const dir of ["packages", "apps"]) {
   }
 }
 
+// Icons: the manifest lists every vendored SVG with its sha256; MIT requires the copyright and
+// permission notice to travel with copies, so the licence text must be next to the files (the
+// generated module that ships them repeats it; packages/ui/test/icons.test.ts checks that).
+const ICON_LICENSES = { MIT: /^MIT License[\s\S]*Permission is hereby granted, free of charge/ };
+let iconSets = 0;
+let iconFiles = 0;
+for (const parent of ["packages", "apps"]) {
+  for (const entry of readdirSync(parent, { withFileTypes: true })) {
+    const dir = join(parent, entry.name);
+    const iconsDir = join(dir, "icons");
+    const manifestPath = join(iconsDir, "manifest.json");
+    if (!entry.isDirectory() || !existsSync(manifestPath)) continue;
+    iconSets += 1;
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    const pattern = ICON_LICENSES[manifest.source?.license];
+    if (!pattern) errors.push(`${manifestPath}: icon licence must be one of ${Object.keys(ICON_LICENSES).join(", ")} (got ${manifest.source?.license ?? "none"})`);
+    const licensePath = join(iconsDir, manifest.source?.licenseFile ?? "LICENSE");
+    if (!existsSync(licensePath)) errors.push(`${licensePath}: the icons' licence text is missing`);
+    else if (pattern && !pattern.test(readFileSync(licensePath, "utf8"))) errors.push(`${licensePath}: does not contain the ${manifest.source.license} text`);
+    const listed = new Set();
+    for (const icon of manifest.icons ?? []) {
+      for (const file of icon.files ?? []) {
+        const path = join(iconsDir, file.path);
+        listed.add(path);
+        iconFiles += 1;
+        if (!existsSync(path)) errors.push(`${path}: listed in the manifest but missing`);
+        else if (createHash("sha256").update(readFileSync(path)).digest("hex") !== file.sha256) {
+          errors.push(`${path}: sha256 differs from the manifest; re-vendor it (scripts/icons.ts add), never edit it`);
+        }
+      }
+    }
+    for (const file of listFiles(iconsDir)) {
+      if (file.endsWith(".svg") && !listed.has(file)) errors.push(`${relative(".", file)}: icon file is not listed in ${manifestPath}`);
+    }
+  }
+}
+
 if (errors.length > 0) {
   for (const e of errors) console.error(`error: ${e}`);
   process.exit(1);
 }
 console.log(
-  `License policy OK (${meta.workspace_members.length} crates, ${manifests.length} package.json files, ${fontFamilies} font famil${fontFamilies === 1 ? "y" : "ies"}).`,
+  `License policy OK (${meta.workspace_members.length} crates, ${manifests.length} package.json files, ${fontFamilies} font famil${fontFamilies === 1 ? "y" : "ies"}, ${iconFiles} icon files in ${iconSets} set${iconSets === 1 ? "" : "s"}).`,
 );
