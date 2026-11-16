@@ -92,7 +92,7 @@ function ExportView({ theme, format }: { theme: ThemeDoc; format: ExportFormat }
         </p>
       )}
       {current && !current.ok && (
-        <Alert variant="danger">
+        <Alert intent="danger">
           <AlertTitle>The theme breaks {current.diagnostics.filter((d) => d.severity === "error").length} rules</AlertTitle>
           <AlertDescription>Nothing is exported until it validates, as with by-tokens. The Problems tab lists each rule with a fix.</AlertDescription>
         </Alert>

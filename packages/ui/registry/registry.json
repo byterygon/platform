@@ -31,7 +31,9 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
-        "@byterygon/icon-button"
+        "@byterygon/icon",
+        "@byterygon/icon-button",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -329,7 +331,9 @@
       "registryDependencies": [
         "@byterygon/cn",
         "@byterygon/dialog",
-        "@byterygon/dropdown-menu"
+        "@byterygon/dropdown-menu",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -412,7 +416,9 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/icon",
         "@byterygon/icon-button",
+        "@byterygon/icons",
         "@byterygon/theme-scope"
       ],
       "files": [
@@ -1205,7 +1211,10 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -1264,8 +1273,11 @@
       "registryDependencies": [
         "@byterygon/button",
         "@byterygon/cn",
+        "@byterygon/control",
         "@byterygon/dialog",
+        "@byterygon/icon",
         "@byterygon/icon-button",
+        "@byterygon/icons",
         "@byterygon/theme-scope"
       ],
       "files": [

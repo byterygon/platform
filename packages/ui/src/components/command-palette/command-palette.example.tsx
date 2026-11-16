@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Button } from "@/components/button/button";
 import { CommandPalette, type CommandGroup } from "@/components/command-palette/command-palette";
+import { Icon } from "@/components/icon/icon";
+import { Table } from "@/lib/icons";
 import { Kbd } from "@/components/kbd/kbd";
 
 const noop = () => {};
@@ -27,13 +29,6 @@ export function CommandPaletteMinimal() {
   );
 }
 
-const TableIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-    <rect x="2.5" y="3" width="11" height="10" rx="1" />
-    <path d="M2.5 6.5h11M6.5 6.5V13" />
-  </svg>
-);
-
 /** DBee's palette: every action with its binding, in groups, with keywords and an action that needs a connection. */
 export function CommandPaletteRealistic() {
   const [open, setOpen] = useState(false);
@@ -53,7 +48,7 @@ export function CommandPaletteRealistic() {
       label: "Connections",
       items: [
         { id: "add", label: "Add connection", shortcut: "Ctrl+Alt+N", onSelect: run("Add connection") },
-        { id: "open-orders", label: "Open public.orders", icon: <TableIcon />, keywords: ["table"], onSelect: run("Open public.orders") },
+        { id: "open-orders", label: "Open public.orders", icon: <Icon icon={Table} />, keywords: ["table"], onSelect: run("Open public.orders") },
       ],
     },
     {
@@ -69,7 +64,7 @@ export function CommandPaletteRealistic() {
       <Button aria-haspopup="dialog" onClick={() => setOpen(true)}>
         Open command palette
       </Button>
-      <span className="text-body text-fg-muted">Last command: {last}</span>
+      <span className="text-body-1 text-fg-muted">Last command: {last}</span>
       <CommandPalette groups={groups} open={open} onOpenChange={setOpen} hotkeys={["Mod+Shift+P"]} placeholder="Type a command or a table" />
     </div>
   );

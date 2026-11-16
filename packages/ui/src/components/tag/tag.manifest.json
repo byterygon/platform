@@ -18,9 +18,9 @@
     },
     {
       "name": "variant",
-      "type": "\"neutral\" | \"accent\"",
+      "type": "\"neutral\" | \"accent\" | \"warning\"",
       "default": "neutral",
-      "description": "neutral for labels, accent for an active filter."
+      "description": "neutral for labels, accent for an active filter; warning is the orange status tone (color.status.warning.*)."
     },
     {
       "name": "size",
@@ -68,7 +68,8 @@
   "variants": {
     "variant": [
       "neutral",
-      "accent"
+      "accent",
+      "warning"
     ],
     "size": [
       "sm",
@@ -142,9 +143,14 @@
     "color.neutral.subtle-bg",
     "color.neutral.subtle-fg",
     "color.ring",
+    "color.ring-inner",
+    "color.status.warning.bg",
+    "color.status.warning.border",
+    "color.status.warning.fg",
     "font.sans",
     "opacity.disabled",
     "radius.sm",
+    "ring.inner-width",
     "ring.width",
     "size.control.sm",
     "size.control.xs",

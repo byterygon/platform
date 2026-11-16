@@ -25,7 +25,7 @@ export function AlertDialogMinimal() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogCancel variant="danger">Delete</AlertDialogCancel>
+          <AlertDialogCancel appearance="danger">Delete</AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -60,7 +60,7 @@ export function AlertDialogRealistic() {
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Back</AlertDialogCancel>
-            <AlertDialogCancel variant="danger">Run it</AlertDialogCancel>
+            <AlertDialogCancel appearance="danger">Run it</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
