@@ -5,7 +5,7 @@ import { Toast, useToast } from "@/components/toast/toast";
 function SaveButton() {
   const toast = useToast();
   return (
-    <Button variant="secondary" onClick={() => toast.add({ title: "Query saved", description: "orders-by-region.sql", type: "success" })}>
+    <Button appearance="secondary" onClick={() => toast.add({ title: "Query saved", description: "orders-by-region.sql", type: "success" })}>
       Save query
     </Button>
   );
@@ -38,7 +38,7 @@ function DbeeNotices() {
     toast.add({ title: "Connection lost", description: "orders-prod stopped answering.", type: "danger", timeout: 0, actionProps: { children: "Reconnect" } });
   }, [toast]);
   return (
-    <Button variant="ghost" onClick={() => toast.add({ title: "Copied 12 cells", type: "info" })}>
+    <Button appearance="subtle" onClick={() => toast.add({ title: "Copied 12 cells", type: "info" })}>
       Copy cells
     </Button>
   );

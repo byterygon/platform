@@ -14041,6 +14041,30 @@
           }
         },
         {
+          "name": "color/bg/disabled",
+          "type": "COLOR",
+          "description": "The fill of a disabled filled control (a primary, secondary, outline or danger button, a checked checkbox), as Fluent 2's neutral disabled background; its text is color.fg.disabled. Not for content or a recessed area (use color.bg.inset); quiet controls (subtle, transparent) stay transparent when disabled.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-bg-disabled)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral/3"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral-dark/2"
+            }
+          }
+        },
+        {
           "name": "color/fg/default",
           "type": "COLOR",
           "description": "Body text, headings and icons that carry meaning. Not for text on a solid accent background (use color.fg.on-accent) or a solid status background (use that status's solid-fg).",
@@ -14277,6 +14301,30 @@
               "type": "VARIABLE_ALIAS",
               "collection": "Theme",
               "name": "color/accent/bg"
+            }
+          }
+        },
+        {
+          "name": "color/border/disabled",
+          "type": "COLOR",
+          "description": "The outline of a disabled control that has one (secondary and outline buttons, fields), as Fluent 2's neutral disabled stroke. Not for enabled controls (use color.border.subtle or color.border.strong) and not for separators (use color.border.default).",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-border-disabled)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral/5"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral-dark/5"
             }
           }
         },
@@ -17525,7 +17573,7 @@
         {
           "name": "size/control/sm",
           "type": "FLOAT",
-          "description": "Height of small controls and of dense rows (toolbars, grid rows). Not for forms a user fills in at length: use size.control.md.",
+          "description": "Height of small controls (Fluent 2's small, 24 px when comfortable) and of dense rows (toolbars, grid rows). Not for forms a user fills in at length: use size.control.md.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -17534,14 +17582,14 @@
             "WEB": "var(--by-size-control-sm)"
           },
           "valuesByMode": {
-            "Comfortable": 28,
+            "Comfortable": 24,
             "Compact": 22
           }
         },
         {
           "name": "size/control/md",
           "type": "FLOAT",
-          "description": "Height of standard controls: buttons, inputs, selects. Not a fixed pixel value: never hard-code 36px, the density mode changes it.",
+          "description": "Height of standard controls: buttons, inputs, selects (Fluent 2's medium, 32 px when comfortable). Not a fixed pixel value: never hard-code 32px, the density mode changes it.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -17550,14 +17598,14 @@
             "WEB": "var(--by-size-control-md)"
           },
           "valuesByMode": {
-            "Comfortable": 36,
+            "Comfortable": 32,
             "Compact": 28
           }
         },
         {
           "name": "size/control/lg",
           "type": "FLOAT",
-          "description": "Height of large controls: the main call to action, touch-first layouts. Not inside dense tools such as grids and toolbars.",
+          "description": "Height of large controls (Fluent 2's large, 40 px when comfortable): the main call to action, touch-first layouts. Not inside dense tools such as grids and toolbars.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -17566,7 +17614,7 @@
             "WEB": "var(--by-size-control-lg)"
           },
           "valuesByMode": {
-            "Comfortable": 44,
+            "Comfortable": 40,
             "Compact": 34
           }
         },

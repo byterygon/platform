@@ -3,19 +3,22 @@
   "name": "split-button",
   "type": "registry:ui",
   "title": "SplitButton",
-  "description": "A primary action joined to a menu of its variants: a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in three variants and three sizes.",
+  "description": "Fluent 2's SplitButton: a main action joined to a menu of its variants, a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in Button's primary, secondary, outline, subtle and transparent appearances and small, medium and large.",
   "dependencies": [],
   "registryDependencies": [
     "@byterygon/button",
     "@byterygon/cn",
+    "@byterygon/control",
     "@byterygon/dropdown-menu",
-    "@byterygon/icon-button"
+    "@byterygon/icon",
+    "@byterygon/icon-button",
+    "@byterygon/icons"
   ],
   "files": [
     {
       "path": "ui/split-button.tsx",
       "type": "registry:ui",
-      "content": "import type { ComponentProps, MouseEventHandler, ReactNode, Ref } from \"react\";\nimport { Button } from \"@/components/ui/button\";\nimport { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, type DropdownMenuProps } from \"@/components/ui/dropdown-menu\";\nimport { IconButton } from \"@/components/ui/icon-button\";\nimport { cn } from \"@/lib/cn\";\n\n// A primary action with a menu of its variants, joined into one control: a Button and an\n// IconButton that opens a DropdownMenu (Base UI's Menu). DBee's Run is one: Run, with \"Run\n// selection\" and \"Run statement\" in the menu. The menu's content is DropdownMenu's parts.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const splitButtonVariants = {\n  /** The Button variant of both halves; the classes are the divider and the open menu button. */\n  variant: {\n    primary: \"border-s-accent-solid-active data-popup-open:bg-accent-solid-active\",\n    secondary: \"border-s-neutral-solid-active data-popup-open:bg-neutral-solid-active\",\n    ghost: \"border-s-border data-popup-open:bg-pressed\",\n  },\n  /** The height of both halves, from `size.control.*`; the menu button is square. */\n  size: {\n    sm: \"border-s\",\n    md: \"border-s\",\n    lg: \"border-s\",\n  },\n} as const;\n\nconst ChevronDownIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"m4 6 4 4 4-4\" />\n  </svg>\n);\n\nexport interface SplitButtonProps extends Omit<ComponentProps<\"div\">, \"className\" | \"onClick\" | \"children\" | \"ref\"> {\n  /** The main action's label. */\n  children?: ReactNode;\n  /** Runs the main action. */\n  onClick?: MouseEventHandler<HTMLButtonElement>;\n  /** The menu's items: DropdownMenuItem, DropdownMenuGroup, DropdownMenuSeparator. */\n  menu?: ReactNode;\n  /** The accessible name of the menu button. */\n  menuLabel?: string;\n  /** Button variant of both halves. */\n  variant?: keyof typeof splitButtonVariants.variant;\n  /** Height of both halves. */\n  size?: keyof typeof splitButtonVariants.size;\n  /** Disables both halves. */\n  disabled?: boolean;\n  /** The main action is running: its Button shows loading; the menu stays usable. */\n  loading?: boolean;\n  /** How the menu lines up with the control. */\n  align?: \"start\" | \"center\" | \"end\";\n  /** Controlled open state of the menu; `defaultOpen` and `onOpenChange` as DropdownMenu's. */\n  open?: boolean;\n  defaultOpen?: boolean;\n  onOpenChange?: DropdownMenuProps[\"onOpenChange\"];\n  /** Extra classes for the group, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the main action's `<button>`. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** A Button joined to a menu button that opens a DropdownMenu of related actions. */\nexport function SplitButton({\n  children,\n  onClick,\n  menu,\n  menuLabel = \"More options\",\n  variant = \"primary\",\n  size = \"md\",\n  disabled = false,\n  loading = false,\n  align = \"end\",\n  open,\n  defaultOpen,\n  onOpenChange,\n  className,\n  ref,\n  ...props\n}: SplitButtonProps) {\n  const menuState = { ...(open === undefined ? {} : { open }), ...(defaultOpen === undefined ? {} : { defaultOpen }), ...(onOpenChange ? { onOpenChange } : {}) };\n  return (\n    <div data-slot=\"split-button\" data-variant={variant} data-size={size} role=\"group\" className={cn(\"inline-flex items-stretch\", className)} {...props}>\n      <Button ref={ref} variant={variant} size={size} disabled={disabled} loading={loading} className=\"rounded-e-none\" {...(onClick ? { onClick } : {})}>\n        {children}\n      </Button>\n      <DropdownMenu {...menuState}>\n        <DropdownMenuTrigger\n          disabled={disabled}\n          render={<IconButton aria-label={menuLabel} variant={variant} size={size} />}\n          className={cn(\"rounded-s-none\", splitButtonVariants.variant[variant], splitButtonVariants.size[size])}\n        >\n          <ChevronDownIcon />\n        </DropdownMenuTrigger>\n        <DropdownMenuContent align={align}>{menu}</DropdownMenuContent>\n      </DropdownMenu>\n    </div>\n  );\n}\n"
+      "content": "import type { ComponentProps, MouseEventHandler, ReactNode, Ref } from \"react\";\nimport { Button, type ButtonVariant } from \"@/components/ui/button\";\nimport { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, type DropdownMenuProps } from \"@/components/ui/dropdown-menu\";\nimport { Icon } from \"@/components/ui/icon\";\nimport { IconButton } from \"@/components/ui/icon-button\";\nimport { cn } from \"@/lib/cn\";\nimport { controlAppearance, controlSize, type ControlSizeProp } from \"@/lib/control\";\nimport { ChevronDown } from \"@/lib/icons\";\n\n// Fluent 2's SplitButton: a primary action with a menu of its variants, joined into one control: a\n// Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu). DBee's Run is one:\n// Run, with \"Run selection\" and \"Run statement\" in the menu. The menu's content is DropdownMenu's\n// parts. Both halves take Button's appearance and size; a focused half is lifted above the other\n// so its double ring is never covered.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const splitButtonVariants = {\n  /** The Button appearance of both halves; the classes are the divider and the open menu button. */\n  appearance: {\n    primary: \"border-s-accent-solid-active data-popup-open:bg-accent-solid-active\",\n    secondary: \"border-s-border-subtle data-popup-open:bg-pressed\",\n    outline: \"border-s-border data-popup-open:bg-pressed\",\n    subtle: \"border-s-border-subtle data-popup-open:bg-pressed\",\n    transparent: \"border-s-transparent data-popup-open:text-accent-subtle-fg\",\n  },\n  /** The height of both halves, from `size.control.*`; the menu button is square. */\n  size: {\n    small: \"border-s\",\n    medium: \"border-s\",\n    large: \"border-s\",\n  },\n} as const;\n\n/** The deprecated `variant` values SplitButton took, and the appearances they map to. */\nconst VARIANT_ALIASES: Readonly<Record<Exclude<ButtonVariant, \"danger\">, keyof typeof splitButtonVariants.appearance>> = {\n  primary: \"primary\",\n  secondary: \"secondary\",\n  ghost: \"subtle\",\n};\n\nexport interface SplitButtonProps extends Omit<ComponentProps<\"div\">, \"className\" | \"onClick\" | \"children\" | \"ref\"> {\n  /** The main action's label. */\n  children?: ReactNode;\n  /** Runs the main action. */\n  onClick?: MouseEventHandler<HTMLButtonElement>;\n  /** The menu's items: DropdownMenuItem, DropdownMenuGroup, DropdownMenuSeparator. */\n  menu?: ReactNode;\n  /** The accessible name of the menu button. */\n  menuLabel?: string;\n  /** Button appearance of both halves. */\n  appearance?: keyof typeof splitButtonVariants.appearance;\n  /**\n   * The old name of `appearance` (`ghost` is `subtle`).\n   * @deprecated Use `appearance`. Kept for one release.\n   */\n  variant?: Exclude<ButtonVariant, \"danger\">;\n  /** Height of both halves: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp;\n  /** Disables both halves. */\n  disabled?: boolean;\n  /** The main action is running: its Button shows loading; the menu stays usable. */\n  loading?: boolean;\n  /** How the menu lines up with the control. */\n  align?: \"start\" | \"center\" | \"end\";\n  /** Controlled open state of the menu; `defaultOpen` and `onOpenChange` as DropdownMenu's. */\n  open?: boolean;\n  defaultOpen?: boolean;\n  onOpenChange?: DropdownMenuProps[\"onOpenChange\"];\n  /** Extra classes for the group, merged after the component's own so they win. */\n  className?: string;\n  /** Reaches the main action's `<button>`. */\n  ref?: Ref<HTMLButtonElement>;\n}\n\n/** A Button joined to a menu button that opens a DropdownMenu of related actions. */\nexport function SplitButton({\n  children,\n  onClick,\n  menu,\n  menuLabel = \"More options\",\n  appearance,\n  variant,\n  size,\n  disabled = false,\n  loading = false,\n  align = \"end\",\n  open,\n  defaultOpen,\n  onOpenChange,\n  className,\n  ref,\n  ...props\n}: SplitButtonProps) {\n  const look = controlAppearance(appearance, variant, VARIANT_ALIASES, \"primary\");\n  const height = controlSize(size);\n  const menuState = { ...(open === undefined ? {} : { open }), ...(defaultOpen === undefined ? {} : { defaultOpen }), ...(onOpenChange ? { onOpenChange } : {}) };\n  return (\n    <div data-slot=\"split-button\" data-appearance={look} data-size={height} role=\"group\" className={cn(\"inline-flex items-stretch\", className)} {...props}>\n      <Button ref={ref} appearance={look} size={height} disabled={disabled} loading={loading} className=\"rounded-e-none focus-visible:relative\" {...(onClick ? { onClick } : {})}>\n        {children}\n      </Button>\n      <DropdownMenu {...menuState}>\n        <DropdownMenuTrigger\n          disabled={disabled}\n          render={<IconButton aria-label={menuLabel} appearance={look} size={height} />}\n          className={cn(\"rounded-s-none focus-visible:relative\", splitButtonVariants.appearance[look], splitButtonVariants.size[height])}\n        >\n          <Icon icon={ChevronDown} />\n        </DropdownMenuTrigger>\n        <DropdownMenuContent align={align}>{menu}</DropdownMenuContent>\n      </DropdownMenu>\n    </div>\n  );\n}\n"
     }
   ],
   "meta": {
@@ -23,8 +26,8 @@
       "schemaVersion": 1,
       "name": "split-button",
       "title": "SplitButton",
-      "description": "A primary action joined to a menu of its variants: a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in three variants and three sizes.",
-      "usage": "Use SplitButton when one action is the usual choice and a few close variants should stay one click away: Run (statement under cursor) with Run selection and Explain in the menu, Export CSV with other formats. Put the action's label in children and its handler in onClick, and the menu's DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel and DropdownMenuSeparator in menu; name the menu button with menuLabel. loading shows the action running while the menu stays usable. When there is no usual choice, use a DropdownMenu behind a plain Button; for unrelated actions, separate Buttons.",
+      "description": "Fluent 2's SplitButton: a main action joined to a menu of its variants, a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in Button's primary, secondary, outline, subtle and transparent appearances and small, medium and large.",
+      "usage": "Use SplitButton when one action is the usual choice and a few close variants should stay one click away: Run (statement under cursor) with Run selection and Explain in the menu, Export CSV with other formats. Put the action's label in children and its handler in onClick, and the menu's DropdownMenuItem, DropdownMenuGroup, DropdownMenuLabel and DropdownMenuSeparator in menu; name the menu button with menuLabel. loading shows the action running while the menu stays usable. When there is no usual choice, use a DropdownMenu behind a plain Button; for unrelated actions, separate Buttons. The old variant prop (ghost is subtle) and sm/md/lg still work for one release.",
       "status": "experimental",
       "base": null,
       "dependencies": [],
@@ -51,16 +54,28 @@
           "description": "The accessible name of the menu button; say what it holds (\"Run options\")."
         },
         {
-          "name": "variant",
-          "type": "\"primary\" | \"secondary\" | \"ghost\"",
+          "name": "appearance",
+          "type": "\"primary\" | \"secondary\" | \"outline\" | \"subtle\" | \"transparent\"",
           "default": "primary",
-          "description": "Button variant of both halves."
+          "description": "Button appearance of both halves; the divider and the open menu button follow it."
         },
         {
           "name": "size",
+          "type": "\"small\" | \"medium\" | \"large\"",
+          "default": "medium",
+          "description": "Height of both halves, from size.control.*; the menu button is square."
+        },
+        {
+          "name": "variant",
+          "type": "\"primary\" | \"secondary\" | \"ghost\"",
+          "description": "The old name of appearance; ghost maps to subtle. Kept for one release.",
+          "deprecated": "use appearance (ghost is subtle)"
+        },
+        {
+          "name": "size (sm, md, lg)",
           "type": "\"sm\" | \"md\" | \"lg\"",
-          "default": "md",
-          "description": "Height of both halves, from size.control.*."
+          "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+          "deprecated": "use small, medium or large"
         },
         {
           "name": "disabled",
@@ -97,22 +112,24 @@
         }
       ],
       "variants": {
-        "variant": [
+        "appearance": [
           "primary",
           "secondary",
-          "ghost"
+          "outline",
+          "subtle",
+          "transparent"
         ],
         "size": [
-          "sm",
-          "md",
-          "lg"
+          "small",
+          "medium",
+          "large"
         ]
       },
       "slots": [
         {
           "name": "root",
           "element": "div",
-          "description": "role=\"group\" joining the halves; data-slot=\"split-button\", data-variant, data-size."
+          "description": "role=\"group\" joining the halves; data-slot=\"split-button\", data-appearance, data-size."
         },
         {
           "name": "action",
@@ -122,7 +139,7 @@
         {
           "name": "menu-button",
           "element": "button",
-          "description": "The chevron IconButton (aria-haspopup=\"menu\"), with a divider on its inner edge; data-slot=\"dropdown-menu-trigger\"."
+          "description": "The IconButton with Fluent's ChevronDown (aria-haspopup=\"menu\"), with a divider on its inner edge; data-slot=\"dropdown-menu-trigger\"."
         },
         {
           "name": "menu",
@@ -134,12 +151,12 @@
         {
           "name": "hover",
           "variant": "hover",
-          "description": "Each half takes its Button variant's hover colour."
+          "description": "Each half takes its Button appearance's hover look."
         },
         {
           "name": "focus-visible",
           "variant": "focus-visible",
-          "description": "Each half shows its own focus ring."
+          "description": "Each half shows Fluent's double ring and is lifted above the other half so the ring is never covered."
         },
         {
           "name": "open",
@@ -147,7 +164,7 @@
           "props": {
             "defaultOpen": true
           },
-          "description": "While the menu is open the menu button keeps its active colour."
+          "description": "While the menu is open the menu button keeps its pressed look."
         },
         {
           "name": "loading",
@@ -163,7 +180,7 @@
           "props": {
             "disabled": true
           },
-          "description": "Both halves at opacity.disabled, ignoring interaction."
+          "description": "Both halves in Fluent's disabled fill and text, ignoring interaction."
         }
       ],
       "tokens": [
@@ -171,49 +188,58 @@
         "color.accent.bg-active",
         "color.accent.bg-hover",
         "color.accent.fg",
+        "color.accent.subtle-fg",
+        "color.bg.disabled",
+        "color.bg.layer",
         "color.bg.overlay",
+        "color.border.control-bottom-subtle",
         "color.border.default",
+        "color.border.disabled",
+        "color.border.strong",
+        "color.border.subtle",
         "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
         "color.interactive.active",
         "color.interactive.hover",
-        "color.neutral.bg",
-        "color.neutral.bg-active",
-        "color.neutral.bg-hover",
-        "color.neutral.fg",
         "color.ring",
+        "color.ring-inner",
         "elevation.overlay.shadow",
         "font.sans",
         "motion.duration.base",
-        "motion.duration.fast",
+        "motion.duration.faster",
+        "motion.easing.easy-ease",
         "motion.easing.enter",
         "motion.easing.exit",
-        "motion.easing.standard",
-        "opacity.disabled",
         "radius.md",
-        "ring.offset",
+        "ring.inner-width",
         "ring.width",
         "size.control.lg",
         "size.control.md",
         "size.control.sm",
+        "size.icon.lg",
         "size.icon.md",
-        "size.icon.sm",
+        "size.icon.xl",
         "space.control.x",
         "space.inline.sm",
-        "space.inset.lg",
-        "space.inset.sm",
+        "space.inset.md",
         "space.inset.xs",
-        "text.body-strong.leading",
-        "text.body-strong.size",
-        "text.body-strong.tracking",
-        "text.body-strong.weight",
+        "text.body-1-strong.leading",
+        "text.body-1-strong.size",
+        "text.body-1-strong.tracking",
+        "text.body-1-strong.weight",
         "text.body.leading",
         "text.body.size",
         "text.body.tracking",
         "text.body.weight",
-        "text.label.leading",
-        "text.label.size",
-        "text.label.tracking",
-        "text.label.weight",
+        "text.caption-1.leading",
+        "text.caption-1.size",
+        "text.caption-1.tracking",
+        "text.caption-1.weight",
+        "text.subtitle-2.leading",
+        "text.subtitle-2.size",
+        "text.subtitle-2.tracking",
+        "text.subtitle-2.weight",
         "z.popover"
       ],
       "examples": {
@@ -228,7 +254,7 @@
         "The menu takes the control's theme and density and sits at z.popover."
       ]
     },
-    "example": "import { useState } from \"react\";\nimport { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut } from \"@/components/dropdown-menu/dropdown-menu\";\nimport { SplitButton } from \"@/components/split-button/split-button\";\n\n/** The smallest useful SplitButton: an action and one variant of it. */\nexport function SplitButtonMinimal() {\n  return (\n    <SplitButton menuLabel=\"More export options\" variant=\"secondary\" menu={<DropdownMenuItem>Export as JSON Lines</DropdownMenuItem>}>\n      Export CSV\n    </SplitButton>\n  );\n}\n\n/** DBee's Run: the statement under the cursor, the selection in the menu; loading while it runs; the three sizes. */\nexport function SplitButtonRealistic() {\n  const [running, setRunning] = useState(false);\n  const run = () => {\n    setRunning(true);\n    setTimeout(() => setRunning(false), 800);\n  };\n  const runMenu = (\n    <>\n      <DropdownMenuGroup>\n        <DropdownMenuLabel>Run</DropdownMenuLabel>\n        <DropdownMenuItem onClick={run}>\n          Run statement under cursor <DropdownMenuShortcut>Ctrl+Enter</DropdownMenuShortcut>\n        </DropdownMenuItem>\n        <DropdownMenuItem onClick={run}>Run selection</DropdownMenuItem>\n      </DropdownMenuGroup>\n      <DropdownMenuSeparator />\n      <DropdownMenuItem>Explain</DropdownMenuItem>\n    </>\n  );\n  return (\n    <div className=\"flex flex-wrap items-center gap-inline-md\">\n      <SplitButton menuLabel=\"Run options\" loading={running} onClick={run} menu={runMenu}>\n        Run\n      </SplitButton>\n      <SplitButton size=\"sm\" variant=\"ghost\" menuLabel=\"More copy options\" menu={<DropdownMenuItem>Copy as JSON</DropdownMenuItem>}>\n        Copy\n      </SplitButton>\n      <SplitButton size=\"lg\" menuLabel=\"More save options\" menu={<DropdownMenuItem>Save as…</DropdownMenuItem>}>\n        Save\n      </SplitButton>\n      <SplitButton disabled menuLabel=\"More run options\" menu={<DropdownMenuItem>Run selection</DropdownMenuItem>}>\n        Run (no connection)\n      </SplitButton>\n    </div>\n  );\n}\n",
+    "example": "import { useState } from \"react\";\nimport { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut } from \"@/components/dropdown-menu/dropdown-menu\";\nimport { SplitButton } from \"@/components/split-button/split-button\";\n\n/** The smallest useful SplitButton: an action and one variant of it. */\nexport function SplitButtonMinimal() {\n  return (\n    <SplitButton menuLabel=\"More export options\" appearance=\"secondary\" menu={<DropdownMenuItem>Export as JSON Lines</DropdownMenuItem>}>\n      Export CSV\n    </SplitButton>\n  );\n}\n\n/** DBee's Run: the statement under the cursor, the selection in the menu; loading while it runs; every appearance and the three sizes. */\nexport function SplitButtonRealistic() {\n  const [running, setRunning] = useState(false);\n  const run = () => {\n    setRunning(true);\n    setTimeout(() => setRunning(false), 800);\n  };\n  const runMenu = (\n    <>\n      <DropdownMenuGroup>\n        <DropdownMenuLabel>Run</DropdownMenuLabel>\n        <DropdownMenuItem onClick={run}>\n          Run statement under cursor <DropdownMenuShortcut>Ctrl+Enter</DropdownMenuShortcut>\n        </DropdownMenuItem>\n        <DropdownMenuItem onClick={run}>Run selection</DropdownMenuItem>\n      </DropdownMenuGroup>\n      <DropdownMenuSeparator />\n      <DropdownMenuItem>Explain</DropdownMenuItem>\n    </>\n  );\n  return (\n    <div className=\"flex flex-wrap items-center gap-inline-md\">\n      <SplitButton menuLabel=\"Run options\" loading={running} onClick={run} menu={runMenu}>\n        Run\n      </SplitButton>\n      <SplitButton size=\"small\" appearance=\"subtle\" menuLabel=\"More copy options\" menu={<DropdownMenuItem>Copy as JSON</DropdownMenuItem>}>\n        Copy\n      </SplitButton>\n      <SplitButton size=\"large\" appearance=\"outline\" menuLabel=\"More save options\" menu={<DropdownMenuItem>Save as…</DropdownMenuItem>}>\n        Save\n      </SplitButton>\n      <SplitButton appearance=\"transparent\" menuLabel=\"More share options\" menu={<DropdownMenuItem>Share as link</DropdownMenuItem>}>\n        Share\n      </SplitButton>\n      <SplitButton disabled menuLabel=\"More run options\" menu={<DropdownMenuItem>Run selection</DropdownMenuItem>}>\n        Run (no connection)\n      </SplitButton>\n    </div>\n  );\n}\n",
     "dependencyVersions": {}
   }
 }

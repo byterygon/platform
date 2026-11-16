@@ -11,6 +11,8 @@ export interface ManifestProp {
   readonly default?: string | number | boolean | null;
   readonly required?: boolean;
   readonly description: string;
+  /** Set on an alias kept for one release: what to use instead (`use appearance`). */
+  readonly deprecated?: string;
 }
 
 export interface ManifestSlot {
@@ -132,6 +134,7 @@ export function validateManifest(value: unknown, folder?: string): string[] {
     description: isText,
     required: optional((x) => typeof x === "boolean"),
     default: optional((x) => x === null || ["string", "number", "boolean"].includes(typeof x)),
+    deprecated: optional(isText),
   });
   list("slots", m.slots, { name: isText, element: isText, description: isText });
   list("states", m.states, { name: isText, variant: isText, description: isText, props: optional(isObject) });

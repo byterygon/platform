@@ -3,77 +3,199 @@
   "schemaVersion": 1,
   "name": "toggle-button",
   "title": "ToggleButton",
-  "description": "A button that stays pressed or unpressed, on Base UI's Toggle, in a ghost or outline variant and three density-aware sizes.",
-  "usage": "Use ToggleButton for a setting that is on or off and takes effect at once, in a toolbar or next to what it changes: word wrap in an editor, \"show nulls\" over a grid. Give an icon-only toggle an aria-label naming the setting (\"Word wrap\"), not the action; the pressed state is announced. For one choice out of several, or several related toggles, use ToggleGroup; for a setting in a form, use Switch or Checkbox.",
+  "description": "Fluent 2's ToggleButton on Base UI's Toggle: a Button that stays checked, in Button's primary, secondary, outline, subtle and transparent appearances and small, medium and large.",
+  "usage": "Use ToggleButton for a setting that is on or off and takes effect at once, in a toolbar or next to what it changes: word wrap in an editor, \"show nulls\" over a grid. Subtle is the default (toolbars); secondary or outline where it stands beside inputs. Pass its Icon `filled` while pressed, as Fluent does. Give an icon-only toggle an aria-label naming the setting (\"Word wrap\"), not the action; the pressed state is announced. For one choice out of several, or several related toggles, use ToggleGroup; for a setting in a form, use Switch or Checkbox. The old variant prop (ghost is subtle) and sm/md/lg still work for one release.",
   "status": "experimental",
   "base": "@base-ui/react/toggle",
-  "dependencies": ["@base-ui/react"],
+  "dependencies": [
+    "@base-ui/react"
+  ],
   "props": [
-    { "name": "pressed", "type": "boolean", "description": "Controlled pressed state (aria-pressed, data-pressed)." },
-    { "name": "defaultPressed", "type": "boolean", "default": false, "description": "Initial pressed state when uncontrolled." },
-    { "name": "onPressedChange", "type": "(pressed: boolean, details) => void", "description": "Called when the user presses or releases the toggle." },
-    { "name": "variant", "type": "\"ghost\" | \"outline\"", "default": "ghost", "description": "Ghost for toolbars; outline for a toggle that stands next to inputs." },
-    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Control height from size.control.*, which follows data-density." },
-    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction and sets data-disabled." },
-    { "name": "aria-label", "type": "string", "description": "The accessible name of an icon-only toggle: the setting it turns on." },
-    { "name": "render", "type": "ReactElement | ((props, state) => ReactElement)", "description": "Base UI render prop: render another element with the toggle's props (state.pressed swaps an icon)." },
-    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
-    { "name": "ref", "type": "Ref<HTMLButtonElement>", "description": "Reaches the <button>." }
+    {
+      "name": "pressed",
+      "type": "boolean",
+      "description": "Controlled pressed state (aria-pressed, data-pressed)."
+    },
+    {
+      "name": "defaultPressed",
+      "type": "boolean",
+      "default": false,
+      "description": "Initial pressed state when uncontrolled."
+    },
+    {
+      "name": "onPressedChange",
+      "type": "(pressed: boolean, details) => void",
+      "description": "Called when the user presses or releases the toggle."
+    },
+    {
+      "name": "appearance",
+      "type": "\"primary\" | \"secondary\" | \"outline\" | \"subtle\" | \"transparent\"",
+      "default": "subtle",
+      "description": "Button's appearances; checked adds the selected wash (the accent's pressed solid on primary, accent text on transparent)."
+    },
+    {
+      "name": "size",
+      "type": "\"small\" | \"medium\" | \"large\"",
+      "default": "medium",
+      "description": "Button's sizes: size.control.sm, md, lg (24, 32, 40 px comfortable; 22, 28, 34 compact)."
+    },
+    {
+      "name": "variant",
+      "type": "\"ghost\" | \"outline\"",
+      "description": "The old name of appearance; ghost maps to subtle. Kept for one release.",
+      "deprecated": "use appearance (ghost is subtle)"
+    },
+    {
+      "name": "size (sm, md, lg)",
+      "type": "\"sm\" | \"md\" | \"lg\"",
+      "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+      "deprecated": "use small, medium or large"
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Ignores interaction and sets data-disabled."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "The accessible name of an icon-only toggle: the setting it turns on."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element with the toggle's props (state.pressed swaps an icon)."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLButtonElement>",
+      "description": "Reaches the <button>."
+    }
   ],
   "variants": {
-    "variant": ["ghost", "outline"],
-    "size": ["sm", "md", "lg"]
+    "appearance": [
+      "primary",
+      "secondary",
+      "outline",
+      "subtle",
+      "transparent"
+    ],
+    "size": [
+      "small",
+      "medium",
+      "large"
+    ]
   },
   "slots": [
-    { "name": "root", "element": "button", "description": "The toggle; data-slot=\"toggle-button\", data-variant, data-size and data-pressed name it." },
-    { "name": "icon", "element": "svg", "description": "An optional child icon, sized to size.icon.sm." }
+    {
+      "name": "root",
+      "element": "button",
+      "description": "The toggle; data-slot=\"toggle-button\", data-appearance, data-size and data-pressed name it."
+    },
+    {
+      "name": "icon",
+      "element": "svg",
+      "description": "An optional child Icon, sized by the size (16, 20, 24 px); filled while pressed."
+    }
   ],
   "states": [
-    { "name": "hover", "variant": "hover", "description": "Pointer over it: color.interactive.hover and color.fg.default." },
-    { "name": "active", "variant": "active", "description": "While pressing: color.interactive.active." },
-    { "name": "pressed", "variant": "data-pressed", "props": { "defaultPressed": true }, "description": "On: color.interactive.selected and color.fg.default, aria-pressed=\"true\"." },
-    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus: a ring of ring.width in color.ring." },
-    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." }
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over it: the appearance's hover look."
+    },
+    {
+      "name": "active",
+      "variant": "active",
+      "description": "While pressing: the appearance's pressed look."
+    },
+    {
+      "name": "pressed",
+      "variant": "data-pressed",
+      "props": {
+        "defaultPressed": true
+      },
+      "description": "Checked: color.interactive.selected (the accent's pressed solid on primary, accent text on transparent), aria-pressed=\"true\"."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus: Fluent's double ring (@/lib/control focusRing)."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "props": {
+        "disabled": true
+      },
+      "description": "Ignores interaction: Fluent's disabled fill and text."
+    }
   ],
   "tokens": [
-    "color.bg.surface",
+    "color.accent.bg",
+    "color.accent.bg-active",
+    "color.accent.bg-hover",
+    "color.accent.fg",
+    "color.accent.subtle-fg",
+    "color.bg.disabled",
+    "color.bg.layer",
+    "color.border.control-bottom-subtle",
+    "color.border.default",
+    "color.border.disabled",
     "color.border.strong",
+    "color.border.subtle",
     "color.fg.default",
+    "color.fg.disabled",
     "color.fg.muted",
     "color.interactive.active",
     "color.interactive.hover",
     "color.interactive.selected",
     "color.interactive.selected-hover",
     "color.ring",
+    "color.ring-inner",
     "font.sans",
-    "motion.duration.fast",
-    "motion.easing.standard",
-    "opacity.disabled",
+    "motion.duration.faster",
+    "motion.easing.easy-ease",
     "radius.md",
-    "ring.offset",
+    "ring.inner-width",
     "ring.width",
     "size.control.lg",
     "size.control.md",
     "size.control.sm",
-    "size.icon.sm",
+    "size.icon.lg",
+    "size.icon.md",
+    "size.icon.xl",
     "space.control.x",
     "space.inline.sm",
-    "space.inset.lg",
-    "space.inset.sm",
-    "text.body-strong.leading",
-    "text.body-strong.size",
-    "text.body-strong.tracking",
-    "text.body-strong.weight",
-    "text.label.leading",
-    "text.label.size",
-    "text.label.tracking",
-    "text.label.weight"
+    "space.inset.md",
+    "space.inset.xs",
+    "text.body-1-strong.leading",
+    "text.body-1-strong.size",
+    "text.body-1-strong.tracking",
+    "text.body-1-strong.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight",
+    "text.subtitle-2.leading",
+    "text.subtitle-2.size",
+    "text.subtitle-2.tracking",
+    "text.subtitle-2.weight"
   ],
-  "examples": { "minimal": "ToggleButtonMinimal", "realistic": "ToggleButtonRealistic" },
+  "examples": {
+    "minimal": "ToggleButtonMinimal",
+    "realistic": "ToggleButtonRealistic"
+  },
   "accessibility": [
     "Renders a native <button> with aria-pressed, so Enter and Space toggle it and screen readers announce \"toggle button, pressed\".",
     "Icon-only toggles need an aria-label naming the setting (\"Word wrap\"); keep the name the same in both states, the pressed state carries the change.",
-    "Pressed is shown by color.interactive.selected and a change from color.fg.muted to color.fg.default, and announced by aria-pressed, not by colour alone.",
-    "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+    "Pressed is shown by a change of fill (color.interactive.selected, or the accent's pressed solid) and of text colour, and announced by aria-pressed, not by colour alone.",
+    "Focus shows Fluent's double ring: an outline in color.ring (kept in forced-colours mode, 3:1 on every surface) around color.ring-inner."
   ]
 }

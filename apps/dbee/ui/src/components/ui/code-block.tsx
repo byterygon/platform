@@ -217,7 +217,7 @@ export function CodeBlock({
   }, [text, onCopy]);
 
   const copyButton = copyable ? (
-    <IconButton aria-label={copied ? "Copied" : "Copy code"} size="sm" onClick={copy} className={classes.copy}>
+    <IconButton aria-label={copied ? "Copied" : "Copy code"} size="small" onClick={copy} className={classes.copy}>
       {copied ? <CheckIcon /> : <CopyIcon />}
     </IconButton>
   ) : null;

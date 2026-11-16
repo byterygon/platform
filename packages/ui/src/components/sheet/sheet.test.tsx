@@ -18,7 +18,7 @@ function Example(props: { side?: SheetSide; size?: SheetSize }) {
           <input aria-label="Name" defaultValue="orders-prod" />
         </SheetBody>
         <SheetFooter>
-          <SheetClose render={<Button variant="ghost" />}>Cancel</SheetClose>
+          <SheetClose render={<Button appearance="subtle" />}>Cancel</SheetClose>
         </SheetFooter>
       </SheetContent>
     </Sheet>

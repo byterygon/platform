@@ -30,7 +30,7 @@ const MoreIcon = () => (
 export function DropdownMenuMinimal() {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<IconButton aria-label="Tab actions" variant="ghost" />}>
+      <DropdownMenuTrigger render={<IconButton aria-label="Tab actions" appearance="subtle" />}>
         <MoreIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
@@ -52,7 +52,7 @@ export function DropdownMenuRealistic() {
   const [headers, setHeaders] = useState(true);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="secondary" size="sm" />}>Copy</DropdownMenuTrigger>
+      <DropdownMenuTrigger render={<Button appearance="secondary" size="small" />}>Copy</DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuGroup>
           <DropdownMenuLabel>Selection</DropdownMenuLabel>

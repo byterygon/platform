@@ -3,7 +3,7 @@
 // covers every icon drawn by hand in the components and DBee (TSK-53/55 swap them), and icons are
 // added from a copy on disk, never the network.
 import { createHash } from "node:crypto";
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -20,11 +20,13 @@ const temp = () => {
 };
 
 /**
- * Every hand-drawn svg in packages/ui/src/components and apps/dbee/ui (inventory of 2026-11-16)
- * and the Fluent icon that replaces it; packages/ui/AGENTS.md ("Icons") carries the same table.
+ * The hand-drawn svgs still in packages/ui/src/components and apps/dbee/ui (inventory of
+ * 2026-11-16) and the Fluent icon that replaces each; packages/ui/AGENTS.md ("Icons") carries the
+ * same table. A component leaves a key when its svgs are swapped (TSK-53/55); from then on the
+ * test below fails if one comes back.
  */
 export const REPLACEMENTS: Record<string, string> = {
-  "accordion, select, combobox, navigation-menu, split-button: chevron": "chevron-down",
+  "accordion, select, combobox, navigation-menu: chevron": "chevron-down",
   "breadcrumb, collapsible, json-viewer, tree, dropdown-menu submenu, pagination next: chevron": "chevron-right",
   "pagination previous, calendar previous month": "chevron-left",
   "table sort (none / ascending / descending)": "arrow-sort",
@@ -41,7 +43,7 @@ export const REPLACEMENTS: Record<string, string> = {
   "number-input increment, tabs new, DBee new": "add",
   "radio-group and menu radio dot": "circle",
   "breadcrumb, dropdown-menu, DBee more": "more-horizontal",
-  "code-block, icon-button copy": "copy",
+  "code-block copy": "copy",
   "command-palette, search-input, input-group search": "search",
   "date-picker": "calendar-ltr",
   "password-input show": "eye",
@@ -53,22 +55,41 @@ export const REPLACEMENTS: Record<string, string> = {
   "stat trend up": "arrow-up",
   "stat trend down": "arrow-down",
   "stat trend flat": "subtract",
-  "toggle-button wrap": "text-wrap",
-  "toggle-group align": "text-align-left",
-  "toggle-group align centre": "text-align-center",
-  "toggle-group align right": "text-align-right",
-  "toolbar, tooltip, icon-button, DBee run": "play",
+  "toolbar, tooltip, DBee run": "play",
   "toolbar, tooltip, DBee stop": "stop",
   "tooltip, DBee download": "arrow-download",
   "tree folder, DBee schema": "folder",
   "tree, command-palette, DBee table": "table",
   "tree, sidebar, avatar, empty-state, status-bar, DBee database": "database",
-  "icon-button, DBee refresh": "arrow-clockwise",
-  "icon-button delete": "delete",
+  "DBee refresh": "arrow-clockwise",
   "DBee view": "eye",
   "DBee column": "column-triple",
   "DBee help": "question-circle",
 };
+
+/** Components that draw svgs on purpose: the Icon itself, Spinner's animated arc, Chart's plots. */
+const DRAWS_SVG = new Set(["icon", "spinner", "chart"]);
+const COMPONENTS_DIR = join(import.meta.dirname, "..", "src", "components");
+
+describe("hand-drawn icons", () => {
+  test("a component no longer listed in REPLACEMENTS draws no svg of its own (component and example)", () => {
+    const pending = (name: string) => Object.keys(REPLACEMENTS).some((key) => new RegExp(`(?<![a-z-])${name}(?![a-z-])`).test(key));
+    const offenders: string[] = [];
+    for (const name of readdirSync(COMPONENTS_DIR)) {
+      if (DRAWS_SVG.has(name) || pending(name)) continue;
+      for (const file of [`${name}.tsx`, `${name}.example.tsx`]) {
+        if (/<svg[\s>]/.test(readFileSync(join(COMPONENTS_DIR, name, file), "utf8"))) offenders.push(`${name}/${file}`);
+      }
+    }
+    expect(offenders, "use <Icon icon={...} /> from @/lib/icons (packages/ui/AGENTS.md, Icons)").toEqual([]);
+  });
+
+  test("the components TSK-53 batch 1 moved to Fluent icons are no longer pending", () => {
+    for (const name of ["button", "icon-button", "toggle-button", "toggle-group", "split-button"]) {
+      expect(Object.keys(REPLACEMENTS).filter((key) => new RegExp(`(?<![a-z-])${name}(?![a-z-])`).test(key)), name).toEqual([]);
+    }
+  });
+});
 
 describe("vendored icons", () => {
   test("src/lib/icons.ts is current (run `pnpm --filter @byterygon/ui icons build`)", () => {

@@ -101,15 +101,15 @@ function ExportView({ theme, format }: { theme: ThemeDoc; format: ExportFormat }
         <>
           <div className="flex flex-wrap items-center gap-inline-sm">
             <Button
-              variant="primary"
-              size="sm"
+              appearance="primary"
+              size="small"
               onClick={() => {
                 void copyText(content).then((ok) => setCopied(ok ? "yes" : "no"));
               }}
             >
               Copy
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => downloadText(content, fileName, info.mediaType)}>
+            <Button appearance="secondary" size="small" onClick={() => downloadText(content, fileName, info.mediaType)}>
               Download {fileName}
             </Button>
             <span className="text-caption text-fg-muted" aria-live="polite">
@@ -133,7 +133,7 @@ export function ExportPanel({ theme }: { theme: ThemeDoc }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog size="xl" open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="primary" size="sm" />}>Export</DialogTrigger>
+      <DialogTrigger render={<Button appearance="primary" size="small" />}>Export</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Export</DialogTitle>
@@ -141,7 +141,7 @@ export function ExportPanel({ theme }: { theme: ThemeDoc }) {
         </DialogHeader>
         <DialogBody>
           <div className="flex flex-col gap-gap-md md:flex-row">
-            <ToggleGroup aria-label="Format" orientation="vertical" variant="ghost" size="sm" className="shrink-0 items-stretch" value={[format]} onValueChange={(next: unknown[]) => next[0] !== undefined && setFormat(next[0] as ExportFormat)}>
+            <ToggleGroup aria-label="Format" orientation="vertical" appearance="subtle" size="small" className="shrink-0 items-stretch" value={[format]} onValueChange={(next: unknown[]) => next[0] !== undefined && setFormat(next[0] as ExportFormat)}>
               {EXPORT_FORMATS.map((info) => (
                 <ToggleGroupItem key={info.format} value={info.format} className="justify-start">
                   {info.label}

@@ -19,7 +19,7 @@ afterEach(cleanup);
 function Example({ onAction, onOpenChange }: { onAction?: () => void; onOpenChange?: (open: boolean) => void }) {
   return (
     <AlertDialog onOpenChange={onOpenChange}>
-      <AlertDialogTrigger render={<Button variant="danger" />}>Delete</AlertDialogTrigger>
+      <AlertDialogTrigger render={<Button appearance="danger" />}>Delete</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete orders-prod?</AlertDialogTitle>
@@ -76,7 +76,7 @@ describe("AlertDialog", () => {
     render(<Example onAction={onAction} />);
     await click(trigger());
     const action = $<HTMLButtonElement>('[data-slot="alert-dialog-action"]')!;
-    expect(action.dataset.variant).toBe("danger");
+    expect(action.dataset.appearance).toBe("danger");
     await click(action);
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(popup()).not.toBeNull();

@@ -36,7 +36,7 @@ describe("registry", () => {
     // Bare names: the shadcn CLI reinstalls a dependency that has a version specifier.
     expect(button.dependencies).toEqual(["@base-ui/react"]);
     expect(button.meta.dependencyVersions).toEqual({ "@base-ui/react": "1.9.0" });
-    expect(button.registryDependencies).toEqual(["@byterygon/cn"]);
+    expect(button.registryDependencies).toEqual(["@byterygon/cn", "@byterygon/control"]);
     expect(button.meta.manifest.tokens).toContain("color.accent.bg");
     expect(button.meta.example).toContain("export function ButtonMinimal");
   });
@@ -74,6 +74,6 @@ describe("registry", () => {
   test("llms.txt lists every component with its variants and tokens", () => {
     const llms = files.get("llms.txt")!;
     for (const name of listComponents(PACKAGE_ROOT)) expect(llms).toContain(`[${name}.json](${name}.json)`);
-    expect(llms).toContain("- variant: primary, secondary, ghost, danger");
+    expect(llms).toContain("- appearance: primary, secondary, outline, subtle, transparent, danger");
   });
 });

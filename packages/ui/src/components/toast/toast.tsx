@@ -87,8 +87,8 @@ export function ToastItem({ toast, closeLabel = "Dismiss" }: ToastItemProps) {
         <ToastPrimitive.Description data-slot="toast-description" className={cn(classes.description)} />
       </ToastPrimitive.Content>
       <div data-slot="toast-actions" className={cn(classes.actions)}>
-        {toast.actionProps ? <ToastPrimitive.Action render={<Button variant="secondary" size="sm" />} /> : null}
-        <ToastPrimitive.Close render={<IconButton aria-label={closeLabel} size="sm" />}>
+        {toast.actionProps ? <ToastPrimitive.Action render={<Button appearance="secondary" size="small" />} /> : null}
+        <ToastPrimitive.Close render={<IconButton aria-label={closeLabel} size="small" />}>
           <XIcon />
         </ToastPrimitive.Close>
       </div>

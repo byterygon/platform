@@ -43,6 +43,7 @@
   --color-overlay: var(--by-color-bg-overlay);
   --color-inset: var(--by-color-bg-inset);
   --color-scrim: var(--by-color-bg-scrim);
+  --color-disabled: var(--by-color-bg-disabled);
   --color-fg: var(--by-color-fg-default);
   --color-fg-muted: var(--by-color-fg-muted);
   --color-fg-subtle: var(--by-color-fg-subtle);
@@ -53,6 +54,7 @@
   --color-border: var(--by-color-border-default);
   --color-border-strong: var(--by-color-border-strong);
   --color-border-focus: var(--by-color-border-focus);
+  --color-border-disabled: var(--by-color-border-disabled);
   --color-ring: var(--by-color-ring);
   --color-accent-fg: var(--by-color-accent-fg);
   --color-accent-solid-fg: var(--by-color-accent-fg);

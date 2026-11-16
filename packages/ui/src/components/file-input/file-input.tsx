@@ -189,7 +189,7 @@ export function FileInput({
       <span aria-hidden="true" data-slot="file-input-names" data-empty={files.length === 0 ? "" : undefined} className={cn(namesClasses)}>
         {files.length === 0 ? emptyLabel : names}
       </span>
-      <Button variant="ghost" size="sm" aria-label={clearLabel} hidden={files.length === 0 || disabled} onClick={clear} className={cn(clearClasses)}>
+      <Button appearance="subtle" size="small" aria-label={clearLabel} hidden={files.length === 0 || disabled} onClick={clear} className={cn(clearClasses)}>
         <ClearIcon />
       </Button>
     </div>

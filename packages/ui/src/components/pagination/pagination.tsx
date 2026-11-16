@@ -91,7 +91,7 @@ export function Pagination({ page, pageCount, onPageChange, siblingCount = 1, si
             <li key={item}>
               <Button
                 data-slot="pagination-page"
-                variant="ghost"
+                appearance="subtle"
                 size={size}
                 disabled={disabled}
                 aria-label={pageLabel(item)}

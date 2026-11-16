@@ -26,7 +26,8 @@
           "type": { "type": "string" },
           "default": { "type": ["string", "number", "boolean", "null"] },
           "required": { "type": "boolean" },
-          "description": { "type": "string" }
+          "description": { "type": "string" },
+          "deprecated": { "type": "string", "minLength": 1, "description": "Set on an alias kept for one release (TSK-53: variant, sm/md/lg): what to use instead." }
         }
       }
     },
