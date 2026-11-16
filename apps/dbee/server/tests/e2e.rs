@@ -643,6 +643,10 @@ async fn a_server_issued_session_adds_approves_and_queries_over_the_websocket() 
     let mut decoder = IpcDecoder::new();
     let mut rows = 0;
     let mut chunks = 0;
+    // Time to first rows at the protocol level (spec §14): the call frame to the first batch
+    // over the WebSocket, on the CI runner's loopback. The UI adds its Worker decode on top.
+    let sent = std::time::Instant::now();
+    let mut first_rows_ms: Option<u128> = None;
     loop {
         let frame = client.recv().await.expect("a frame");
         match frame.kind {
@@ -652,6 +656,7 @@ async fn a_server_issued_session_adds_approves_and_queries_over_the_websocket() 
                 chunks += 1;
                 for batch in decoder.push(&frame.payload).unwrap() {
                     rows += batch.num_rows();
+                    first_rows_ms.get_or_insert_with(|| sent.elapsed().as_millis());
                 }
                 // A client returns the credit it consumed (spec §6).
                 client.credit(5, 1).await;
@@ -660,6 +665,11 @@ async fn a_server_issued_session_adds_approves_and_queries_over_the_websocket() 
                 let end: Value = serde_json::from_slice(&frame.payload).unwrap();
                 assert_eq!(end["rowsReturned"], 5, "{end}");
                 assert_eq!(end["statementKind"], "SELECT", "{end}");
+                eprintln!(
+                    "dbee-server e2e: time to first rows {} ms, stream end {} ms (query.execute over the WebSocket)",
+                    first_rows_ms.unwrap_or_default(),
+                    sent.elapsed().as_millis()
+                );
                 break;
             }
             other => panic!(

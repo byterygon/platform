@@ -320,7 +320,10 @@ fn the_config_has_the_strict_csp_no_dev_url_and_one_window() {
     assert_eq!(config["app"]["security"]["capabilities"], json!(["main"]));
     assert_eq!(config["app"]["withGlobalTauri"], false);
     assert!(config["build"].get("devUrl").is_none(), "{config}");
-    assert!(config["build"]["frontendDist"].is_string());
+    assert_eq!(
+        config["build"]["frontendDist"], "../ui/dist",
+        "the built UI; build.rs falls back to the placeholder"
+    );
     let windows = config["app"]["windows"].as_array().unwrap();
     assert_eq!(windows.len(), 1);
     assert_eq!(windows[0]["label"], MAIN_WINDOW);

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "identifier": "com.byterygon.dbee",
   "build": {
-    "frontendDist": "ui-placeholder"
+    "frontendDist": "../ui/dist"
   },
   "app": {
     "withGlobalTauri": false,
@@ -20,7 +20,9 @@
     ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src ipc: http://ipc.localhost; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-      "capabilities": ["main"]
+      "capabilities": [
+        "main"
+      ]
     }
   },
   "bundle": {
