@@ -26,6 +26,9 @@ pnpm --filter @byterygon/theme-studio typecheck
 
 Open `dist/index.html` directly, or serve `dist/` from any static server. Nothing else is needed.
 
+Typecheck reads `@byterygon/design-tokens` from its TypeScript source (`paths` in `tsconfig.json`),
+because CI typechecks before it builds; Vite, the tests and the build use its `dist/`.
+
 ## Everything the Studio does, without the Studio (spec 9a.1)
 
 The Studio's whole state is a theme file and a view, so every edit is a change to a file that
