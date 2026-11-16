@@ -54,7 +54,7 @@ export default defineConfig({
     // One file holds the engine, Style Dictionary, Monaco and the app.
     chunkSizeWarningLimit: 16_384,
     rolldownOptions: {
-      output: { format: "iife", inlineDynamicImports: true, entryFileNames: "studio.js", assetFileNames: "studio[extname]" },
+      output: { format: "iife", entryFileNames: "studio.js", assetFileNames: "studio[extname]" },
       onwarn(warning, warn) {
         // Base UI marks its modules "use client" for React Server Components; a client bundle drops it.
         if (warning.code !== "MODULE_LEVEL_DIRECTIVE") warn(warning);

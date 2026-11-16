@@ -274,7 +274,7 @@ missing licence text, a changed file or an unlisted font file. Nothing is fetche
 | --- | --- |
 | `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), and the Monaco and registry modules |
 | `@byterygon/design-tokens/color` | the colour module alone: OKLCH conversion, sRGB gamut mapping, WCAG and APCA contrast, the lightness solver, `generateRamp` |
-| `@byterygon/design-tokens/build` | `buildTheme`, `renderOutputs`, `monacoThemeFor`, and `renderTokensCss` (`tokens.css` alone, synchronous, in a few milliseconds, byte for byte the `renderOutputs` one: the Theme Studio's live preview) (Style Dictionary; runs in Node and in the browser) |
+| `@byterygon/design-tokens/build` | `buildTheme`, `renderOutputs`, `monacoThemeFor`, and `renderTokensCss` (`tokens.css` alone, synchronous, in a few milliseconds, byte for byte the `renderOutputs` one: the Theme Studio's live preview), and `exportTheme` with `EXPORT_FORMATS` (`src/export.ts`: every export, its file name and install note; `by-tokens export` and the Studio's Export dialog both call it) (Style Dictionary; runs in Node and in the browser) |
 | `@byterygon/design-tokens/monaco` | `src/monaco.ts` as source: `MONACO_COLORS`, `MONACO_TOKENS`, `monacoTheme(read)` |
 | `@byterygon/design-tokens/registry-theme` | `src/registry-theme.ts` as source: `registryThemeItem`, `formatRegistryThemeItem`, the small CSS reader |
 | `@byterygon/design-tokens/default/*` | the committed outputs of the default theme (`tokens.css`, `tailwind-theme.css`, `shadcn-alias.css`, `tokens.dtcg.json`, `figma-variables.json`, `monaco-theme.ts`, `registry-theme.json`) |

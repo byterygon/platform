@@ -167,6 +167,42 @@ describe("Theme Studio", () => {
     expect($('[data-slot="code-input"]')).toBeTruthy();
   });
 
+  test("Export: each format with its install note, Copy and Download of the exact export", async () => {
+    const theme = { ...startingTheme(), name: "ocean", seeds: { colors: { brand: { hue: 200 } } } };
+    mount(theme);
+    const downloads: { name: string; text: Promise<string> }[] = [];
+    const created = URL.createObjectURL;
+    const blobs = new Map<string, Blob>();
+    URL.createObjectURL = (blob: Blob) => {
+      const url = `blob:test/${blobs.size}`;
+      blobs.set(url, blob);
+      return url;
+    };
+    URL.revokeObjectURL = () => {};
+    const anchorClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      downloads.push({ name: this.download, text: blobs.get(this.href)!.text() });
+    };
+    try {
+      const dialog = () => $$('[role="dialog"]').find((d) => d.textContent?.includes("Copy or download the theme"));
+      click(byText("button", "Export")!);
+      await waitFor(() => expect(dialog()).toBeTruthy());
+      click(byText('[role="dialog"] button', "shadcn registry theme item")!);
+      await waitFor(() => expect(byText('[role="dialog"] button', "Download theme-ocean.json")).toBeTruthy(), 10_000);
+      expect(dialog()!.textContent).toContain("shadcn add /path/to/registry/theme-<name>.json");
+      click(byText('[role="dialog"] button', "Download theme-ocean.json")!);
+      const { exportTheme } = await import("@byterygon/design-tokens/build");
+      expect(downloads.map((d) => d.name)).toEqual(["theme-ocean.json"]);
+      expect(await downloads[0]!.text).toBe((await exportTheme(theme, "registry")).content);
+
+      click(byText('[role="dialog"] button', "Copy")!);
+      await waitFor(() => expect(dialog()!.textContent).toMatch(/Copied to the clipboard|refused the clipboard/));
+    } finally {
+      URL.createObjectURL = created;
+      HTMLAnchorElement.prototype.click = anchorClick;
+    }
+  });
+
   test("the swatch board lists every ramp in both schemes and the colour roles", async () => {
     mount();
     click($$('[role="tab"]').find((tab) => tab.textContent === "Swatches")!);
