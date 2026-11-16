@@ -259,6 +259,13 @@ export function SqlEditor({
   const [fallbackText, setFallbackText] = useState(value ?? defaultValue);
   const latest = useRef({ onValueChange, onRun, value, onEditorReady });
   latest.current = { onValueChange, onRun, value, onEditorReady };
+  // Controlled mode: the values Monaco reported through onValueChange that the app has not rendered
+  // back yet, oldest first. A `value` prop equal to one of them is the app catching up (a stale
+  // echo when it is not the newest), never a change to apply: applying it would bring back text the
+  // user has already changed again (a key typed and deleted before the app re-rendered).
+  const emitted = useRef<string[]>([]);
+  // True while the editor applies a controlled value, so that edit is not reported as the user's.
+  const applying = useRef(false);
   const text = value ?? fallbackText;
   const textRef = useRef(text);
   textRef.current = text;
@@ -327,8 +334,14 @@ export function SqlEditor({
         instance.addAction({ id: "byterygon.sql-editor.run", label: "Run selection or statement", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run });
 
         const changes = model.onDidChangeContent(() => {
+          if (applying.current) return;
           const next = model.getValue();
-          if (next !== latest.current.value) latest.current.onValueChange?.(next);
+          if (latest.current.value !== undefined) {
+            emitted.current.push(next);
+            // Bounded: an app that never renders the value back must not keep every version.
+            if (emitted.current.length > 32) emitted.current.splice(0, emitted.current.length - 32);
+          }
+          latest.current.onValueChange?.(next);
         });
         // Retheme when this editor's tokens may have changed: an attribute on the root or an
         // ancestor (data-theme, data-density, a class), a stylesheet added or edited (a preset),
@@ -404,11 +417,27 @@ export function SqlEditor({
     if (model && editor) editor.monaco.editor.setModelLanguage(model, language);
   }, [editor, language]);
 
-  // A controlled value that differs from the model replaces the text as one undoable edit.
+  // A controlled value replaces the text as one undoable edit, unless it is a value this editor
+  // reported itself (the app catching up, possibly with an older version than the model now has).
   useEffect(() => {
     const model = editor?.editor.getModel();
-    if (!model || !editor || value === undefined || model.getValue() === value) return;
-    editor.editor.executeEdits("byterygon.sql-editor.value", [{ range: model.getFullModelRange(), text: value, forceMoveMarkers: true }]);
+    if (!model || !editor || value === undefined) return;
+    const seen = emitted.current.indexOf(value);
+    if (seen !== -1) {
+      emitted.current.splice(0, seen + 1);
+      return;
+    }
+    if (model.getValue() === value) {
+      emitted.current = [];
+      return;
+    }
+    emitted.current = [];
+    applying.current = true;
+    try {
+      editor.editor.executeEdits("byterygon.sql-editor.value", [{ range: model.getFullModelRange(), text: value, forceMoveMarkers: true }]);
+    } finally {
+      applying.current = false;
+    }
   }, [editor, value]);
 
   useEffect(() => {

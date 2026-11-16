@@ -52,6 +52,12 @@ interface Check {
 }
 
 let resolveReady: () => void = () => {};
+// Every Content-Security-Policy violation, so the check can serve the page under DBee's CSPs and
+// prove nothing Monaco needs (its styles, worker, fonts, images) is blocked on an internal network.
+const violations: string[] = [];
+document.addEventListener("securitypolicyviolation", (event) => violations.push(`${event.effectiveDirective} blocked ${event.blockedURI || "inline"}${event.sourceFile ? ` (${event.sourceFile}:${event.lineNumber})` : ""}`));
+(window as unknown as { __violations: string[] }).__violations = violations;
+
 let resolveSecond: () => void = () => {};
 const second = new Promise<void>((resolve) => (resolveSecond = resolve));
 const check: Check = {

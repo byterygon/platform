@@ -243,6 +243,11 @@ What `test/conventions.test.tsx` enforces for every component:
   With another bundler, set `self.MonacoEnvironment.getWorker` and replace the `?worker` import.
 - Until Monaco has loaded, a textarea with the same text, colours, name and Ctrl+Enter stands in
   (`data-loading`, `aria-busy`); Monaco then takes over the text, the selection and the focus.
+- Controlled SqlEditor (`value` + `onValueChange`): every user edit is reported, and the editor keeps
+  the values it reported that the app has not rendered back yet. A `value` equal to one of them is
+  the app catching up and is never applied, even when it is older than the text now (a key typed and
+  deleted before the app re-rendered would otherwise come back: TSK-56). Any other `value` replaces
+  the text as one undoable edit and is not reported back.
 - Theme: Monaco's `defineTheme` takes hex, so `monacoTheme` reads `editor.*`, `syntax.*` and the
   overlay roles at the editor's element (the browser resolves the OKLCH variables there) and
   converts them; `monacoMetrics` takes the font from `text.code.*` and the padding from
@@ -274,7 +279,13 @@ What `test/conventions.test.tsx` enforces for every component:
 - jsdom cannot run Monaco: in tests every `monaco-editor/*` import is aliased to
   `test/fakes/monaco.ts`. The real editor is checked by `scripts/browser-check.ts` (CI runs it with
   the runner's Chrome in a network namespace; `BYTERYGON_REQUIRE_BROWSER=1` makes a missing browser
-  a failure, `BYTERYGON_BROWSER` names one).
+  a failure, `BYTERYGON_BROWSER` names one). Its internal-network case serves the same build from a
+  sub-path (`/intranet/dbee/`) under each CSP Byterygon apps send (`INTERNAL_CSPS`: the DBee server's
+  and the Tauri desktop's) and fails on a CSP violation, a request outside the sub-path or a worker
+  that does not start. Monaco needs no network, no CDN, no AMD loader and no `unsafe-eval`; it does
+  create `<style>` elements at run time (no nonce support), so a CSP without
+  `style-src 'unsafe-inline'` strips its colours: the Tauri case is a reported known issue until
+  that decision is made (TSK-56).
 - `test/licenses.test.ts` checks every npm package a registry item installs, transitively, against
   the `allow` list of `deny.toml`.
 

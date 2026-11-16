@@ -192,6 +192,33 @@ describe("SqlEditor", () => {
     expect(onValueChange).not.toHaveBeenCalled();
   });
 
+  test("controlled: a keystroke undone before the parent re-renders does not come back (stale echo)", async () => {
+    // The parent applies onValueChange later, as a busy React app or a 1 MB document does: the
+    // user types "x" and deletes it before the parent has rendered "select 1x".
+    const queued: string[] = [];
+    let set: (v: string) => void = () => {};
+    function Controlled() {
+      const [value, setValue] = useState("select 1");
+      set = setValue;
+      return <SqlEditor aria-label="Query" value={value} onValueChange={(next) => queued.push(next)} />;
+    }
+    render(<Controlled />);
+    await settle();
+    const model = fake.editors[0]!.model;
+    model.setValue("select 1x");
+    model.setValue("select 1");
+    expect(queued).toEqual(["select 1x", "select 1"]);
+    // The parent now renders the first, stale value, and only then the second.
+    await act(async () => set(queued[0]!));
+    expect(model.getValue()).toBe("select 1");
+    await act(async () => set(queued[1]!));
+    expect(model.getValue()).toBe("select 1");
+    // A value the editor never emitted is still an external change and replaces the text.
+    await act(async () => set("select 3"));
+    expect(model.getValue()).toBe("select 3");
+    expect(queued).toEqual(["select 1x", "select 1"]);
+  });
+
   test("Ctrl+Enter runs the statement under the cursor, in the fallback and in Monaco", async () => {
     const onRun = vi.fn();
     const { container } = render(<SqlEditor aria-label="Query" defaultValue={"select 1;\nselect 2;"} onRun={onRun} />);
