@@ -4,10 +4,37 @@
  *
  *   @import "@byterygon/design-tokens/fonts/fonts.css";
  *
- * Inter is the interface font (font.sans), JetBrains Mono the code font (font.mono). Both are
- * SIL Open Font License 1.1; the licences are in the font folders and the checksums in
- * manifest.json (scripts/check-licenses.mjs verifies both).
+ * font.sans names the system's Segoe UI Variable first (Windows 11; Microsoft's licence does not
+ * allow shipping it), then Selawik, Microsoft's open, metric-compatible fallback, declared here.
+ * JetBrains Mono is the code font (font.mono; a system Cascadia Mono comes first when present).
+ * Inter stays for themes that name it in font.sans. All three are SIL Open Font License 1.1; the
+ * licences are in the font folders and the checksums in manifest.json (scripts/check-licenses.mjs
+ * verifies both). A browser downloads a face only when the text needs it, so where Segoe UI
+ * Variable is installed, Selawik is never fetched.
  */
+
+/* Selawik 1.01 (Microsoft), the weights Fluent 2's type ramp uses: 400, 600, 700. */
+@font-face {
+  font-family: "Selawik";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./selawik/selawk.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Selawik";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./selawik/selawksb.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Selawik";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./selawik/selawkb.woff2") format("woff2");
+}
 
 /* Inter 4.1, variable: weights 100-900 and the optical-size axis in one file. */
 @font-face {

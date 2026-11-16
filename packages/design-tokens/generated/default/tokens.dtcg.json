@@ -15039,12 +15039,14 @@
     "sans": {
       "$type": "fontFamily",
       "$value": [
-        "Inter",
-        "ui-sans-serif",
+        "Segoe UI Variable Text",
+        "Segoe UI Variable",
+        "Segoe UI",
+        "Selawik",
         "system-ui",
         "sans-serif"
       ],
-      "$description": "All interface text. Not for code, identifiers or tabular data that must align: use font.mono.",
+      "$description": "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Selawik (fonts/fonts.css). Not for code, identifiers or tabular data that must align: use font.mono.",
       "$extensions": {
         "com.byterygon": {
           "tier": "semantic",
@@ -15055,13 +15057,14 @@
     "mono": {
       "$type": "fontFamily",
       "$value": [
+        "Cascadia Mono",
         "JetBrains Mono",
         "ui-monospace",
         "SFMono-Regular",
         "Menlo",
         "monospace"
       ],
-      "$description": "Code, SQL, identifiers, and grid cells that must align. Not for labels or prose.",
+      "$description": "Code, SQL, identifiers, and grid cells that must align: the system's Cascadia Mono where it is installed, else the vendored JetBrains Mono. Not for labels or prose.",
       "$extensions": {
         "com.byterygon": {
           "tier": "semantic",

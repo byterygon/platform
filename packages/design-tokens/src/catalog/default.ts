@@ -447,17 +447,22 @@ const font: RoleDef[] = [
   {
     path: "font.sans",
     type: "fontFamily",
-    value: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+    // Segoe UI Variable is the system's (Windows 11) and is never shipped: Microsoft's licence does
+    // not allow redistribution. Selawik is its open (SIL OFL) metric-compatible fallback, vendored
+    // in fonts/ (DOC-17 open question 104 (d)).
+    value: ["Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Selawik", "system-ui", "sans-serif"],
     tailwind: "--font-sans",
-    use: "All interface text.",
+    use: "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Selawik (fonts/fonts.css).",
     avoid: "Not for code, identifiers or tabular data that must align: use font.mono.",
   },
   {
     path: "font.mono",
     type: "fontFamily",
-    value: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+    // Cascadia Mono is the system's on Windows 11 and is not vendored (its OFL would allow it, but
+    // JetBrains Mono already covers every platform offline); JetBrains Mono is in fonts/.
+    value: ["Cascadia Mono", "JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
     tailwind: "--font-mono",
-    use: "Code, SQL, identifiers, and grid cells that must align.",
+    use: "Code, SQL, identifiers, and grid cells that must align: the system's Cascadia Mono where it is installed, else the vendored JetBrains Mono.",
     avoid: "Not for labels or prose.",
   },
 ];

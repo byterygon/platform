@@ -11221,7 +11221,7 @@
         {
           "name": "font/sans",
           "type": "STRING",
-          "description": "All interface text. Not for code, identifiers or tabular data that must align: use font.mono.",
+          "description": "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Selawik (fonts/fonts.css). Not for code, identifiers or tabular data that must align: use font.mono.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11230,13 +11230,13 @@
             "WEB": "var(--by-font-sans)"
           },
           "valuesByMode": {
-            "Value": "Inter"
+            "Value": "Segoe UI Variable Text"
           }
         },
         {
           "name": "font/mono",
           "type": "STRING",
-          "description": "Code, SQL, identifiers, and grid cells that must align. Not for labels or prose.",
+          "description": "Code, SQL, identifiers, and grid cells that must align: the system's Cascadia Mono where it is installed, else the vendored JetBrains Mono. Not for labels or prose.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11245,7 +11245,7 @@
             "WEB": "var(--by-font-mono)"
           },
           "valuesByMode": {
-            "Value": "JetBrains Mono"
+            "Value": "Cascadia Mono"
           }
         },
         {

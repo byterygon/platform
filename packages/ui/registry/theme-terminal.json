@@ -1006,7 +1006,7 @@
       "--by-radius-xl": "4px",
       "--by-radius-full": "9999px",
       "--by-font-sans": "\"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, monospace",
-      "--by-font-mono": "\"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, monospace",
+      "--by-font-mono": "\"Cascadia Mono\", \"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, monospace",
       "--by-ring-width": "2px",
       "--by-ring-offset": "2px",
       "--by-ring-inner-width": "1px",

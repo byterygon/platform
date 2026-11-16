@@ -2,6 +2,25 @@
   "$comment": "Vendored fonts. scripts/check-licenses.mjs checks that every family has an allowed licence and its licence text, that every file listed exists with this sha256, and that no font file is unlisted. To update a font: download the release archive, check its sha256 against the publisher's, copy the files, and edit this file.",
   "fonts": [
     {
+      "family": "Selawik",
+      "version": "1.01",
+      "license": "OFL-1.1",
+      "licenseFiles": ["selawik/LICENSE.txt"],
+      "source": "https://github.com/microsoft/Selawik/releases/tag/1.01",
+      "licenseSource": "https://github.com/microsoft/Selawik/blob/89362e84731d1f5777fa078fd4d5ebbd339e4378/LICENSE.txt",
+      "note": "Microsoft's open-source fallback for Segoe UI (metric-compatible). Reserved Font Name Selawik: the files are Microsoft's woff2 as released, unmodified (no subsetting or conversion). The release archive carries no licence text; LICENSE.txt is the repository's at the commit in licenseSource, and the fonts' name table (IDs 13 and 14) names SIL OFL 1.1 too. Weights 400, 600 and 700: the ones Fluent 2's type ramp uses.",
+      "archive": {
+        "url": "https://github.com/microsoft/Selawik/releases/download/1.01/Selawik_Release.zip",
+        "sha256": "3f62c51e05e3b5a1e6241cf92a371f0be2ea1183aa87b30718bbd40832a8d423",
+        "path": "selawk.woff2, selawksb.woff2, selawkb.woff2"
+      },
+      "files": [
+        { "path": "selawik/selawk.woff2", "sha256": "0f11afe1e85c8fd5d35d33e0142bd140e460a48cf3b42317d0c34e40c2b7118b" },
+        { "path": "selawik/selawksb.woff2", "sha256": "83767c05ef6b99e054a20e85ed538223c3d3147fd3bea8c372ca9c46764d8c5b" },
+        { "path": "selawik/selawkb.woff2", "sha256": "e8e9896309b2b003e2eefca4c51f82d2d3fb693a440cb969dd0650f0d5070012" }
+      ]
+    },
+    {
       "family": "Inter",
       "version": "4.1",
       "license": "OFL-1.1",
