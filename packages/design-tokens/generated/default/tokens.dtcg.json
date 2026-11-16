@@ -298,6 +298,215 @@
             "tier": "primitive"
           }
         }
+      },
+      "alpha-4": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.04,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 4% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-6": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.06,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 6% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-7": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.07,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 7% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-8": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.08,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 8% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-12": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.12,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 12% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-14": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.14,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 14% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-18": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.18,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 18% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-26": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.26,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 26% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-45": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.45,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 45% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-55": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.55,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 55% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-72": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            1,
+            0,
+            0
+          ],
+          "alpha": 0.72,
+          "hex": "#ffffff"
+        },
+        "$description": "White at exactly 72% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
       }
     },
     "black": {
@@ -523,6 +732,215 @@
           "hex": "#000000"
         },
         "$description": "Black at 95% alpha, for shadows, scrims and hairlines on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-4": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.04,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 4% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-6": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.06,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 6% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-7": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.07,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 7% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-8": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.08,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 8% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-12": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.12,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 12% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-14": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.14,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 14% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-18": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.18,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 18% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-26": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.26,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 26% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-45": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.45,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 45% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-55": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.55,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 55% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "alpha-72": {
+        "$type": "color",
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [
+            0,
+            0,
+            0
+          ],
+          "alpha": 0.72,
+          "hex": "#000000"
+        },
+        "$description": "Black at exactly 72% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -12709,6 +13127,38 @@
             "tailwind": "--color-scrim"
           }
         }
+      },
+      "layer": {
+        "$type": "color",
+        "$value": "{color.white.alpha-72}",
+        "$description": "Translucent surfaces on the backdrop: cards, panels, toolbars, and the fill of secondary buttons. The backdrop shows through (72 % white in light, 5 % in dark). Not for floating layers (use elevation.flyout or elevation.dialog) and not on an opaque surface where nothing shows through: use color.bg.surface.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.white.alpha-72}",
+              "dark": "{color.white.a1}"
+            },
+            "tailwind": "--color-layer"
+          }
+        }
+      },
+      "layer-alt": {
+        "$type": "color",
+        "$value": "{color.base.white}",
+        "$description": "The fill of text fields, selects and segmented tracks on a layer, and every other row of a striped table: one step brighter than color.bg.layer. Not for cards or panels: use color.bg.layer. Not a hover state: use color.interactive.hover.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.base.white}",
+              "dark": "{color.white.alpha-6}"
+            },
+            "tailwind": "--color-layer-alt"
+          }
+        }
       }
     },
     "fg": {
@@ -12866,6 +13316,65 @@
           "com.byterygon": {
             "tier": "semantic",
             "tailwind": "--color-border-focus"
+          }
+        }
+      },
+      "subtle": {
+        "$type": "color",
+        "$value": "{color.black.alpha-8}",
+        "$description": "Hairline outline of controls, flyouts and separators on translucent layers: 8 % black or white, so it reads on any backdrop. Not the only cue that identifies a text field (far below 3:1): add color.border.control-bottom. On opaque surfaces color.border.default also works.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.black.alpha-8}",
+              "dark": "{color.white.alpha-8}"
+            },
+            "tailwind": "--color-border-subtle"
+          }
+        }
+      },
+      "control-bottom": {
+        "$type": "color",
+        "$value": "{color.black.alpha-45}",
+        "$description": "The darker bottom edge of text fields, selects and other inputs, drawn over color.border.subtle: the stroke that makes a field reach 3:1 on its layer. Not on buttons (use color.border.control-bottom-subtle) and not as a whole outline (use color.border.subtle around the field).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.black.alpha-45}",
+              "dark": "{color.white.alpha-55}"
+            },
+            "tailwind": "--color-border-control-bottom"
+          }
+        }
+      },
+      "control-bottom-subtle": {
+        "$type": "color",
+        "$value": "{color.black.alpha-18}",
+        "$description": "The slightly different bottom edge of buttons and other raised controls, which reads as depth. Not on text fields, whose bottom stroke must reach 3:1: use color.border.control-bottom. Never the only thing that identifies a control.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.black.alpha-18}",
+              "dark": "{color.white.alpha-4}"
+            },
+            "tailwind": "--color-border-control-bottom-subtle"
+          }
+        }
+      },
+      "focus-underline": {
+        "$type": "color",
+        "$value": "{color.accent.bg}",
+        "$description": "The 2 px underline of a focused text field, in the accent colour (shadow.focus-underline draws it). Not the focus indicator of buttons and other controls: use the double ring (color.ring outside color.ring-inner).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--color-border-focus-underline"
           }
         }
       }
@@ -13168,15 +13677,15 @@
       "warning": {
         "solid": {
           "$type": "color",
-          "$value": "{color.amber.9}",
+          "$value": "{color.orange.9}",
           "$description": "The filled background of a warning badge, banner or button for warnings that need attention but do not block. Not for warning text on a neutral background: use color.status.warning.fg.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
               "axis": "theme",
               "modes": {
-                "light": "{color.amber.9}",
-                "dark": "{color.amber-dark.9}"
+                "light": "{color.orange.9}",
+                "dark": "{color.orange-dark.9}"
               },
               "tailwind": "--color-warning"
             }
@@ -13184,15 +13693,15 @@
         },
         "solid-hover": {
           "$type": "color",
-          "$value": "{color.amber.10}",
+          "$value": "{color.orange.10}",
           "$description": "color.status.warning.solid while hovered. Not a resting colour.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
               "axis": "theme",
               "modes": {
-                "light": "{color.amber.10}",
-                "dark": "{color.amber-dark.10}"
+                "light": "{color.orange.10}",
+                "dark": "{color.orange-dark.10}"
               },
               "tailwind": "--color-warning-hover"
             }
@@ -13200,15 +13709,15 @@
         },
         "solid-fg": {
           "$type": "color",
-          "$value": "{color.amber.contrast}",
+          "$value": "{color.orange.contrast}",
           "$description": "Text and icons on color.status.warning.solid and its hover colour. It is the ramp's own contrast colour, so it is white or dark ink as that solid needs. Not on a tinted status background: use the status fg. Not color.fg.on-accent, which belongs to the accent ramp.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
               "axis": "theme",
               "modes": {
-                "light": "{color.amber.contrast}",
-                "dark": "{color.amber-dark.contrast}"
+                "light": "{color.orange.contrast}",
+                "dark": "{color.orange-dark.contrast}"
               },
               "tailwind": "--color-warning-solid-fg"
             }
@@ -13216,15 +13725,15 @@
         },
         "fg": {
           "$type": "color",
-          "$value": "{color.amber.11}",
+          "$value": "{color.orange.11}",
           "$description": "Text and icons for warnings that need attention but do not block, on neutral backgrounds or on color.status.warning.bg. Not the only signal: pair it with an icon or text, colour alone does not carry meaning.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
               "axis": "theme",
               "modes": {
-                "light": "{color.amber.11}",
-                "dark": "{color.amber-dark.11}"
+                "light": "{color.orange.11}",
+                "dark": "{color.orange-dark.11}"
               },
               "tailwind": "--color-warning-fg"
             }
@@ -13232,15 +13741,15 @@
         },
         "bg": {
           "$type": "color",
-          "$value": "{color.amber.3}",
+          "$value": "{color.orange.3}",
           "$description": "A tinted background for warnings that need attention but do not block: alerts, badges, inline messages. Not for filled buttons: use the status solid.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
               "axis": "theme",
               "modes": {
-                "light": "{color.amber.3}",
-                "dark": "{color.amber-dark.5}"
+                "light": "{color.orange.3}",
+                "dark": "{color.orange-dark.5}"
               },
               "tailwind": "--color-warning-subtle"
             }
@@ -13248,15 +13757,15 @@
         },
         "border": {
           "$type": "color",
-          "$value": "{color.amber.7}",
+          "$value": "{color.orange.7}",
           "$description": "The outline of a warning alert or banner, on color.status.warning.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
               "axis": "theme",
               "modes": {
-                "light": "{color.amber.7}",
-                "dark": "{color.amber-dark.7}"
+                "light": "{color.orange.7}",
+                "dark": "{color.orange-dark.7}"
               },
               "tailwind": "--color-warning-border"
             }
@@ -13457,6 +13966,44 @@
               "tailwind": "--color-info-border"
             }
           }
+        }
+      }
+    },
+    "backdrop": {
+      "glow-1": {
+        "$type": "color",
+        "$value": "{color.bg.canvas}",
+        "$description": "Colour of the backdrop's first glow, at the top left of the app. The canvas colour unless the theme gives the backdrop glows (Aurora: a light tint of the brand). Not painted on its own: gradient.backdrop draws it. Not for surfaces or text.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "glow-2": {
+        "$type": "color",
+        "$value": "{color.bg.canvas}",
+        "$description": "Colour of the backdrop's second glow, at the right edge of the app. The canvas colour unless the theme gives the backdrop glows (Aurora: a light aqua). Not painted on its own: gradient.backdrop draws it. Not for surfaces or text.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      }
+    },
+    "ring-inner": {
+      "$type": "color",
+      "$value": "{color.base.white}",
+      "$description": "The inner stroke of the double focus ring, between the control and color.ring, so the ring reads on any fill (white in light, black in dark). Not a focus indicator on its own: it is always drawn with color.ring outside it.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "axis": "theme",
+          "modes": {
+            "light": "{color.base.white}",
+            "dark": "{color.base.black}"
+          },
+          "tailwind": "--color-ring-inner"
         }
       }
     }
@@ -15815,6 +16362,38 @@
           "tailwind": "--shadow-raised"
         }
       }
+    },
+    "focus-underline": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "{color.border.focus-underline}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": -2,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 0,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          },
+          "inset": true
+        }
+      ],
+      "$description": "Draws the 2 px accent underline of a focused text field inside its box (inset 0 -2px 0), over its bottom stroke. Not for buttons or a whole-box focus ring: use the double ring (ring.color and ring.inner-color).",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "tailwind": "--shadow-focus-underline"
+        }
+      }
     }
   },
   "elevation": {
@@ -15947,6 +16526,175 @@
           }
         }
       }
+    },
+    "layer": {
+      "shadow": {
+        "$type": "shadow",
+        "$value": [
+          {
+            "color": "{color.black.alpha-4}",
+            "offsetX": {
+              "value": 0,
+              "unit": "px"
+            },
+            "offsetY": {
+              "value": 2,
+              "unit": "px"
+            },
+            "blur": {
+              "value": 4,
+              "unit": "px"
+            },
+            "spread": {
+              "value": 0,
+              "unit": "px"
+            }
+          }
+        ],
+        "$description": "Shadow of the layer elevation. Cards and panels laid on the backdrop: a translucent fill, a hairline and (light only) a faint shadow. Use the three tokens of the role together (shadow, border, bg). Not for anything that floats: use elevation.flyout or elevation.dialog.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": [
+                {
+                  "color": "{color.black.alpha-4}",
+                  "offsetX": {
+                    "value": 0,
+                    "unit": "px"
+                  },
+                  "offsetY": {
+                    "value": 2,
+                    "unit": "px"
+                  },
+                  "blur": {
+                    "value": 4,
+                    "unit": "px"
+                  },
+                  "spread": {
+                    "value": 0,
+                    "unit": "px"
+                  }
+                }
+              ],
+              "dark": [
+                {
+                  "color": "{color.white.a1}",
+                  "offsetX": {
+                    "value": 0,
+                    "unit": "px"
+                  },
+                  "offsetY": {
+                    "value": 0,
+                    "unit": "px"
+                  },
+                  "blur": {
+                    "value": 0,
+                    "unit": "px"
+                  },
+                  "spread": {
+                    "value": 0,
+                    "unit": "px"
+                  }
+                }
+              ]
+            },
+            "tailwind": "--shadow-layer"
+          }
+        }
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.black.alpha-6}",
+        "$description": "Hairline border of the layer elevation. Cards and panels laid on the backdrop: a translucent fill, a hairline and (light only) a faint shadow. Use the three tokens of the role together (shadow, border, bg). Not for anything that floats: use elevation.flyout or elevation.dialog.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.black.alpha-6}",
+              "dark": "{color.white.alpha-7}"
+            }
+          }
+        }
+      },
+      "bg": {
+        "$type": "color",
+        "$value": "{color.bg.layer}",
+        "$description": "Surface colour of the layer elevation. Cards and panels laid on the backdrop: a translucent fill, a hairline and (light only) a faint shadow. Use the three tokens of the role together (shadow, border, bg). Not for anything that floats: use elevation.flyout or elevation.dialog.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      }
+    },
+    "flyout": {
+      "shadow": {
+        "$type": "shadow",
+        "$value": "{depth.16}",
+        "$description": "Shadow of the flyout elevation. Layers that float over the page and close on an outside click, in the layered look: menus, popovers, select and combobox lists, tooltips, toasts. Use the three tokens of the role together (shadow, border, bg). Not for dialogs that block the page: use elevation.dialog.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--shadow-flyout"
+          }
+        }
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.border.subtle}",
+        "$description": "Hairline border of the flyout elevation. Layers that float over the page and close on an outside click, in the layered look: menus, popovers, select and combobox lists, tooltips, toasts. Use the three tokens of the role together (shadow, border, bg). Not for dialogs that block the page: use elevation.dialog.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "bg": {
+        "$type": "color",
+        "$value": "{color.bg.overlay}",
+        "$description": "Surface colour of the flyout elevation. Layers that float over the page and close on an outside click, in the layered look: menus, popovers, select and combobox lists, tooltips, toasts. Use the three tokens of the role together (shadow, border, bg). Not for dialogs that block the page: use elevation.dialog.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      }
+    },
+    "dialog": {
+      "shadow": {
+        "$type": "shadow",
+        "$value": "{depth.64}",
+        "$description": "Shadow of the dialog elevation. The top layer of the layered look, over a scrim: dialogs, alert dialogs, sheets and the command palette. Use the three tokens of the role together (shadow, border, bg). Not for anything that does not block the page: use elevation.flyout.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--shadow-dialog"
+          }
+        }
+      },
+      "border": {
+        "$type": "color",
+        "$value": "{color.border.subtle}",
+        "$description": "Hairline border of the dialog elevation. The top layer of the layered look, over a scrim: dialogs, alert dialogs, sheets and the command palette. Use the three tokens of the role together (shadow, border, bg). Not for anything that does not block the page: use elevation.flyout.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "bg": {
+        "$type": "color",
+        "$value": "{color.bg.overlay}",
+        "$description": "Surface colour of the dialog elevation. The top layer of the layered look, over a scrim: dialogs, alert dialogs, sheets and the command palette. Use the three tokens of the role together (shadow, border, bg). Not for anything that does not block the page: use elevation.flyout.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      }
     }
   },
   "ring": {
@@ -15983,6 +16731,888 @@
       "$extensions": {
         "com.byterygon": {
           "tier": "semantic"
+        }
+      }
+    },
+    "inner-width": {
+      "$type": "dimension",
+      "$value": {
+        "value": 1,
+        "unit": "px"
+      },
+      "$description": "Thickness of the inner stroke of the double focus ring (ring.inner-color), inside the ring.width of ring.color: outline for the outer stroke, box-shadow for the inner one. Not a border width: use border.width.*.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic"
+        }
+      }
+    },
+    "inner-color": {
+      "$type": "color",
+      "$value": "{color.ring-inner}",
+      "$description": "Colour of the inner stroke of the double focus ring: box-shadow: 0 0 0 var(--by-ring-inner-width) var(--by-ring-inner-color), with the outline in ring.color outside it. Not a border or a selection colour, and not without the outer ring.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic"
+        }
+      }
+    }
+  },
+  "gradient": {
+    "backdrop": {
+      "$type": "color",
+      "$value": "{color.bg.canvas}",
+      "$description": "The app background of the layered look, painted once on the app root (background or background-image: var(--by-gradient-backdrop), or the bg-(image:--by-gradient-backdrop) utility): the two backdrop glows over the canvas colour, under every translucent layer. Where the glows are the canvas colour it shows a flat canvas. Not behind a single card or control, and not where a colour is needed: tools without gradients (Figma, Monaco) read its solid colour, color.bg.canvas unless the theme changes it.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "type": "gradient",
+          "gradient": [
+            {
+              "kind": "radial",
+              "color": "{color.backdrop.glow-1}",
+              "radiusX": {
+                "value": 1100,
+                "unit": "px"
+              },
+              "radiusY": {
+                "value": 700,
+                "unit": "px"
+              },
+              "x": 0.08,
+              "y": 0,
+              "fade": 0.6
+            },
+            {
+              "kind": "radial",
+              "color": "{color.backdrop.glow-2}",
+              "radiusX": {
+                "value": 1000,
+                "unit": "px"
+              },
+              "radiusY": {
+                "value": 800,
+                "unit": "px"
+              },
+              "x": 1,
+              "y": 0.35,
+              "fade": 0.6
+            },
+            {
+              "kind": "solid",
+              "color": "{color.bg.canvas}"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "depth": {
+    "2": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "{color.black.alpha-14}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 1,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 2,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": "{color.black.alpha-12}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 2,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Fluent depth 2: the faintest lift: a control or card that sits just above its layer. A key and an ambient shadow; dark themes keep both, darker. Not on a component directly: use the elevation role (elevation.layer, elevation.flyout, elevation.dialog) that bundles shadow, border and surface.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "axis": "theme",
+          "modes": {
+            "light": [
+              {
+                "color": "{color.black.alpha-14}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 1,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.alpha-12}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ],
+            "dark": [
+              {
+                "color": "{color.black.alpha-26}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 1,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.a6}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "4": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "{color.black.alpha-14}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 2,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 4,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": "{color.black.alpha-12}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 2,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Fluent depth 4: a card that is hovered or dragged. A key and an ambient shadow; dark themes keep both, darker. Not on a component directly: use the elevation role (elevation.layer, elevation.flyout, elevation.dialog) that bundles shadow, border and surface.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "axis": "theme",
+          "modes": {
+            "light": [
+              {
+                "color": "{color.black.alpha-14}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 4,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.alpha-12}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ],
+            "dark": [
+              {
+                "color": "{color.black.alpha-26}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 4,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.a6}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "8": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "{color.black.alpha-14}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 4,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 8,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": "{color.black.alpha-12}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 2,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Fluent depth 8: tooltips and small flyouts. A key and an ambient shadow; dark themes keep both, darker. Not on a component directly: use the elevation role (elevation.layer, elevation.flyout, elevation.dialog) that bundles shadow, border and surface.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "axis": "theme",
+          "modes": {
+            "light": [
+              {
+                "color": "{color.black.alpha-14}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 4,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 8,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.alpha-12}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ],
+            "dark": [
+              {
+                "color": "{color.black.alpha-26}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 4,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 8,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.a6}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "16": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "{color.black.alpha-14}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 8,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 16,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": "{color.black.alpha-12}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 2,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Fluent depth 16: flyouts: menus, popovers, select and combobox lists, toasts. A key and an ambient shadow; dark themes keep both, darker. Not on a component directly: use the elevation role (elevation.layer, elevation.flyout, elevation.dialog) that bundles shadow, border and surface.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "axis": "theme",
+          "modes": {
+            "light": [
+              {
+                "color": "{color.black.alpha-14}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 8,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 16,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.alpha-12}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ],
+            "dark": [
+              {
+                "color": "{color.black.alpha-26}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 8,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 16,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.a6}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 2,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "28": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "{color.black.alpha-14}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 14,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 28,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": "{color.black.alpha-12}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 8,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Fluent depth 28: large flyouts and teaching popups. A key and an ambient shadow; dark themes keep both, darker. Not on a component directly: use the elevation role (elevation.layer, elevation.flyout, elevation.dialog) that bundles shadow, border and surface.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "axis": "theme",
+          "modes": {
+            "light": [
+              {
+                "color": "{color.black.alpha-14}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 14,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 28,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.alpha-12}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 8,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ],
+            "dark": [
+              {
+                "color": "{color.black.alpha-26}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 14,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 28,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.a6}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 8,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "64": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "{color.black.alpha-14}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 32,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 64,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        },
+        {
+          "color": "{color.black.alpha-12}",
+          "offsetX": {
+            "value": 0,
+            "unit": "px"
+          },
+          "offsetY": {
+            "value": 0,
+            "unit": "px"
+          },
+          "blur": {
+            "value": 8,
+            "unit": "px"
+          },
+          "spread": {
+            "value": 0,
+            "unit": "px"
+          }
+        }
+      ],
+      "$description": "Fluent depth 64: dialogs and other windows above the page. A key and an ambient shadow; dark themes keep both, darker. Not on a component directly: use the elevation role (elevation.layer, elevation.flyout, elevation.dialog) that bundles shadow, border and surface.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "axis": "theme",
+          "modes": {
+            "light": [
+              {
+                "color": "{color.black.alpha-14}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 32,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 64,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.alpha-12}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 8,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ],
+            "dark": [
+              {
+                "color": "{color.black.alpha-26}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 32,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 64,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              },
+              {
+                "color": "{color.black.a6}",
+                "offsetX": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "offsetY": {
+                  "value": 0,
+                  "unit": "px"
+                },
+                "blur": {
+                  "value": 8,
+                  "unit": "px"
+                },
+                "spread": {
+                  "value": 0,
+                  "unit": "px"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "blur": {
+    "acrylic": {
+      "$type": "dimension",
+      "$value": {
+        "value": 30,
+        "unit": "px"
+      },
+      "$description": "Blur of what shows through a translucent flyout or layer (backdrop-filter: blur(), the backdrop-blur-acrylic utility), so text on it stays legible. Not a shadow blur, and not on opaque surfaces, where it costs paint time and shows nothing.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "tailwind": "--blur-acrylic"
         }
       }
     }

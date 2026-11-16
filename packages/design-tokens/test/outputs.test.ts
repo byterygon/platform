@@ -209,7 +209,7 @@ test("figma-variables.json groups variables into collections with modes", async 
   // Figma has no variable for a shadow or an easing curve; everything else is a variable.
   const skipped = figma.skipped.map((s: { token: string }) => s.token);
   assert.ok(skipped.includes("shadow.raised") && skipped.includes("shadow.3") && skipped.includes("elevation.modal.shadow") && skipped.includes("motion.easing.standard"));
-  assert.ok(skipped.every((token: string) => /^(shadow\.|elevation\..*\.shadow$|motion\.easing\.)/.test(token)), skipped.join(", "));
+  assert.ok(skipped.every((token: string) => /^(shadow\.|depth\.|elevation\..*\.shadow$|motion\.easing\.)/.test(token)), skipped.join(", "));
   assert.deepEqual(variable("Density", "space/inline/md").valuesByMode, {
     Comfortable: { type: "VARIABLE_ALIAS", collection: "Primitives", name: "space/2" },
     Compact: { type: "VARIABLE_ALIAS", collection: "Primitives", name: "space/1-5" },

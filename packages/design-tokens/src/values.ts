@@ -9,6 +9,7 @@ import {
   type ColorValue,
   type DimensionValue,
   type DurationValue,
+  type GradientLayer,
   type RawValue,
   type ShadowLayer,
   type TokenType,
@@ -26,6 +27,7 @@ export const TOKEN_TYPES: readonly TokenType[] = [
   "duration",
   "cubicBezier",
   "shadow",
+  "gradient",
 ];
 
 /** CSS custom property name of a token: `color.bg.surface` -> `--by-color-bg-surface`. */
@@ -122,6 +124,61 @@ function parseShadowLayer(input: unknown): { ok: true; layer: ShadowLayer } | { 
   return { ok: true, layer: input["inset"] === true ? { ...layer, inset: true } : layer };
 }
 
+const GRADIENT_KEYS: Readonly<Record<GradientLayer["kind"], readonly string[]>> = {
+  radial: ["kind", "color", "radiusX", "radiusY", "x", "y", "fade"],
+  solid: ["kind", "color"],
+};
+
+/** A gradient: radial glows, topmost first, then exactly one solid colour, last. */
+function parseGradient(input: unknown): Parsed {
+  const usage = 'a gradient is a list of layers: radial glows ({ "kind": "radial", "color", "radiusX", "radiusY", "x", "y", "fade" }), topmost first, then one { "kind": "solid", "color" } last';
+  if (!Array.isArray(input) || input.length === 0) return fail(`expected ${usage}`);
+  const layers: GradientLayer[] = [];
+  for (const [index, item] of (input as readonly unknown[]).entries()) {
+    const where = `gradient layer ${index + 1}`;
+    if (!isPlainObject(item)) return fail(`${where} must be an object; ${usage}`);
+    const kind = item["kind"];
+    if (kind !== "radial" && kind !== "solid") return fail(`${where}: kind must be "radial" or "solid"`);
+    const unknown = Object.keys(item).filter((key) => !GRADIENT_KEYS[kind].includes(key));
+    if (unknown.length > 0) return fail(`${where}: unknown field ${unknown.join(", ")}; a ${kind} layer has ${GRADIENT_KEYS[kind].join(", ")}`);
+    const color = isAlias(item["color"]) ? ({ ok: true, value: item["color"] } as const) : parseColorLiteral(item["color"]);
+    if (!color.ok) return fail(`${where} color: ${color.error}`);
+    const last = index === input.length - 1;
+    if (kind === "solid") {
+      if (!last) return fail(`${where}: the solid colour must be the last layer, under every glow`);
+      layers.push({ kind, color: color.value as ColorValue | Alias });
+      continue;
+    }
+    if (last) return fail(`${where}: the last layer must be { "kind": "solid", "color" }, the colour under the glows`);
+    const radius = (key: "radiusX" | "radiusY"): DimensionValue | Alias | string => {
+      const raw = item[key];
+      if (isAlias(raw)) return raw;
+      return parseUnit(raw, ["px", "rem"] as const) ?? `${where}: ${key} must be a dimension such as 1100px`;
+    };
+    const radiusX = radius("radiusX");
+    const radiusY = radius("radiusY");
+    for (const value of [radiusX, radiusY]) if (typeof value === "string" && !isAlias(value)) return fail(value);
+    const fraction = (key: "x" | "y" | "fade", min: number, max: number): number | string => {
+      const raw = item[key];
+      return typeof raw === "number" && Number.isFinite(raw) && raw >= min && raw <= max ? raw : `${where}: ${key} must be a number from ${min} to ${max} (a fraction: 0.6 is 60%)`;
+    };
+    const x = fraction("x", -1, 2);
+    const y = fraction("y", -1, 2);
+    const fade = fraction("fade", 0.01, 1);
+    for (const value of [x, y, fade]) if (typeof value === "string") return fail(value);
+    layers.push({
+      kind,
+      color: color.value as ColorValue | Alias,
+      radiusX: radiusX as DimensionValue | Alias,
+      radiusY: radiusY as DimensionValue | Alias,
+      x: x as number,
+      y: y as number,
+      fade: fade as number,
+    });
+  }
+  return { ok: true, value: layers };
+}
+
 /**
  * Reads a value written in a theme file for a token of `type`: an alias (`{color.brand.11}`), a
  * CSS-like literal (`oklch(0.5 0.1 230)`, `#0a7ea4`, `12px`, `150ms`), or the DTCG object form.
@@ -166,6 +223,8 @@ export function parseLiteral(type: TokenType, input: unknown): Parsed {
       }
       return { ok: true, value: layers };
     }
+    case "gradient":
+      return parseGradient(input);
   }
 }
 
@@ -193,8 +252,8 @@ export function aliasesIn(value: TokenValue): Alias[] {
 export function colorLiteralsIn(type: TokenType, value: TokenValue): ColorValue[] {
   if (isAlias(value)) return [];
   if (type === "color") return [value as ColorValue];
-  if (type === "shadow") {
-    return (value as readonly ShadowLayer[]).map((l) => l.color).filter((c): c is ColorValue => !isAlias(c));
+  if (type === "shadow" || type === "gradient") {
+    return (value as readonly (ShadowLayer | GradientLayer)[]).map((l) => l.color).filter((c): c is ColorValue => !isAlias(c));
   }
   return [];
 }
@@ -203,6 +262,22 @@ export function colorLiteralsIn(type: TokenType, value: TokenValue): ColorValue[
 // CSS
 
 const formatNumber = (value: number) => String(Math.round(value * 10000) / 10000);
+const percent = (fraction: number) => `${formatNumber(fraction * 100)}%`;
+
+/**
+ * CSS `background-image` text of a gradient. A glow fades to `transparent`, which gradients
+ * interpolate in premultiplied alpha, so it fades to the glow's own hue. The solid colour is an
+ * image too (`linear-gradient(c, c)`), so the whole value fits `background-image` and `background`.
+ */
+export function gradientCss(layers: readonly GradientLayer[], color: (field: unknown) => string, dimension: (field: unknown) => string): string {
+  return layers
+    .map((layer) => {
+      const c = color(layer.color);
+      if (layer.kind === "solid") return `linear-gradient(${c}, ${c})`;
+      return `radial-gradient(${dimension(layer.radiusX)} ${dimension(layer.radiusY)} at ${percent(layer.x)} ${percent(layer.y)}, ${c} 0%, transparent ${percent(layer.fade)})`;
+    })
+    .join(", ");
+}
 const dimensionCss = (value: DimensionValue | DurationValue) => (value.value === 0 ? "0" : `${formatNumber(value.value)}${value.unit}`);
 
 function fontFamilyCss(value: string | readonly string[]): string {
@@ -239,5 +314,11 @@ export function cssValue(type: TokenType, value: TokenValue, alias: (alias: Alia
           return `${l.inset ? "inset " : ""}${part(l.offsetX)} ${part(l.offsetY)} ${part(l.blur)} ${part(l.spread)} ${color}`;
         })
         .join(", ");
+    case "gradient":
+      return gradientCss(
+        value as readonly GradientLayer[],
+        (field) => (isAlias(field) ? alias(field) : formatOklch(colorToOklch(field as ColorValue))),
+        (field) => (isAlias(field) ? alias(field) : dimensionCss(field as DimensionValue)),
+      );
   }
 }

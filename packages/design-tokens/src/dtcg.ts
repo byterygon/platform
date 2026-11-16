@@ -5,7 +5,7 @@
  * `$value` is the value in the theme's default modes, so a tool that knows nothing about modes
  * still reads the default look. The values of every mode are under the extension's `modes`.
  */
-import { type ModeContext, type Token, type TokenSet, type TokenValue, EXTENSION } from "./model.js";
+import { type GradientLayer, type ModeContext, type Token, type TokenSet, type TokenValue, EXTENSION } from "./model.js";
 import { defaultContext, valueIn } from "./resolve.js";
 
 export interface DtcgToken {
@@ -27,8 +27,13 @@ function metadata(token: Token): Record<string, unknown> {
   };
 }
 
-/** A nested tree of the tokens with their own values in `context` (aliases kept as written). */
-export function tokenTree(set: TokenSet, context: ModeContext): DtcgGroup {
+/**
+ * A nested tree of the tokens with their own values in `context` (aliases kept as written).
+ * `file` shapes it for `tokens.dtcg.json` rather than for Style Dictionary: a gradient (not a DTCG
+ * 2025.10 `gradient`, which is a list of stops) becomes a `color` token holding its solid colour,
+ * with the layers under the extension's `gradient` (and `modes`), so a DTCG tool reads a colour.
+ */
+export function tokenTree(set: TokenSet, context: ModeContext, file = false): DtcgGroup {
   const root: DtcgGroup = {};
   for (const token of set.tokens.values()) {
     const segments = token.path.split(".");
@@ -39,12 +44,20 @@ export function tokenTree(set: TokenSet, context: ModeContext): DtcgGroup {
     }
     const value = valueIn(token, context);
     if (value === undefined) continue;
-    const node: DtcgToken = {
-      $type: token.type,
-      $value: value,
-      $description: token.description,
-      $extensions: { [EXTENSION]: metadata(token) },
-    };
+    const asColour = file && token.type === "gradient" && Array.isArray(value);
+    const node: DtcgToken = asColour
+      ? {
+          $type: "color",
+          $value: (value as readonly GradientLayer[])[value.length - 1]!.color,
+          $description: token.description,
+          $extensions: { [EXTENSION]: { ...metadata(token), type: "gradient", gradient: value } },
+        }
+      : {
+          $type: token.type,
+          $value: value,
+          $description: token.description,
+          $extensions: { [EXTENSION]: metadata(token) },
+        };
     group[segments[segments.length - 1]!] = node;
   }
   return root;
@@ -62,6 +75,6 @@ export function toDtcg(set: TokenSet): DtcgGroup {
         contrast: set.contrast,
       },
     },
-    ...tokenTree(set, defaultContext(set)),
+    ...tokenTree(set, defaultContext(set), true),
   };
 }

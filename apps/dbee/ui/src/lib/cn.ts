@@ -19,8 +19,10 @@ export const roleNames = {
     "gap-xs", "gap-sm", "gap-md", "gap-lg", "gap-xl",
     "grid-row", "grid-cell-x",
   ],
-  /** `shadow-<role>`: elevation. */
-  shadow: ["raised", "overlay", "modal"],
+  /** `shadow-<role>`: elevation, and the focus underline of a field. */
+  shadow: ["raised", "overlay", "modal", "focus-underline", "layer", "flyout", "dialog"],
+  /** `blur-<role>`, `backdrop-blur-<role>`: the blur behind translucent layers. */
+  blur: ["acrylic"],
   /** `ease-<role>`: motion curves. */
   ease: ["standard", "enter", "exit", "emphasized"],
 } as const;
@@ -32,6 +34,7 @@ export const cn = createCn({
       text: [...roleNames.text],
       spacing: [...roleNames.spacing],
       shadow: [...roleNames.shadow],
+      blur: [...roleNames.blur],
       ease: [...roleNames.ease],
     },
   },

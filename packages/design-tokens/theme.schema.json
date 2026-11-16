@@ -52,7 +52,7 @@
       "description": "Token path to value. A value applies to every mode; an object keyed by mode name (light, dark, comfortable, compact) changes those modes only.",
       "propertyNames": { "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)+$" },
       "additionalProperties": {
-        "description": "An alias such as {color.brand.11}, or a literal of the token's type: oklch(L C H), oklch(L C H / A), #rrggbb, 12px, 0.75rem, 150ms, a number, a font family or list of families, or a list of shadow layers."
+        "description": "An alias such as {color.brand.11}, or a literal of the token's type: oklch(L C H), oklch(L C H / A), #rrggbb, 12px, 0.75rem, 150ms, a number, a font family or list of families, a list of shadow layers, or a list of gradient layers (radial glows { kind: \"radial\", color, radiusX, radiusY, x, y, fade }, topmost first, then { kind: \"solid\", color })."
       }
     }
   },

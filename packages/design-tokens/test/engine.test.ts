@@ -25,12 +25,13 @@ test("the default theme generates a valid token set with no findings", () => {
   assert.equal(set.name, "default");
   const tiers = [...set.tokens.values()].map((t) => t.tier);
   assert.ok(tiers.includes("primitive") && tiers.includes("semantic"));
-  // Ten ramps, two schemes, 12 steps + 12 alpha + contrast each; black and white with overlays; and
-  // the scales that are not colours (space, type scale, icons, borders, z, motion, ...).
+  // Ten ramps, two schemes, 12 steps + 12 alpha + contrast each; black and white with overlays (the
+  // a1..a12 scale and the eleven exact percentages of the layered look); and the scales that are
+  // not colours (space, type scale, icons, borders, z, motion, ...).
   const ramps = Object.keys(DEFAULT_SEEDS.colors).length;
   assert.equal(ramps, 10);
   const primitives = [...set.tokens.values()].filter((t) => t.tier === "primitive");
-  assert.equal(primitives.filter((t) => t.ramp || t.path.startsWith("color.")).length, ramps * 2 * 25 + 2 + 24);
+  assert.equal(primitives.filter((t) => t.ramp || t.path.startsWith("color.")).length, ramps * 2 * 25 + 2 + 24 + 22);
   assert.ok(primitives.length > ramps * 2 * 25 + 26, "the non-colour scales are primitives too");
   assert.equal(set.tokens.get("color.bg.canvas")!.axis, "theme");
   assert.equal(set.tokens.get("size.control.md")!.axis, "density");

@@ -104,6 +104,21 @@
   --shadow-overlay: var(--by-elevation-overlay-shadow);
   --shadow-modal: var(--by-elevation-modal-shadow);
 
+  --color-layer: var(--by-color-bg-layer);
+  --color-layer-alt: var(--by-color-bg-layer-alt);
+  --color-border-subtle: var(--by-color-border-subtle);
+  --color-border-control-bottom: var(--by-color-border-control-bottom);
+  --color-border-control-bottom-subtle: var(--by-color-border-control-bottom-subtle);
+  --color-border-focus-underline: var(--by-color-border-focus-underline);
+  --color-ring-inner: var(--by-color-ring-inner);
+
+  --shadow-focus-underline: var(--by-shadow-focus-underline);
+  --shadow-layer: var(--by-elevation-layer-shadow);
+  --shadow-flyout: var(--by-elevation-flyout-shadow);
+  --shadow-dialog: var(--by-elevation-dialog-shadow);
+
+  --blur-acrylic: var(--by-blur-acrylic);
+
   --spacing-control-xs: var(--by-size-control-xs);
   --spacing-control-sm: var(--by-size-control-sm);
   --spacing-control-md: var(--by-size-control-md);

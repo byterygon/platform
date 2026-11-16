@@ -37,6 +37,14 @@ const THEME_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /** Radix's alpha scale for the pure black and white overlays. */
 const OVERLAY_ALPHAS = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95];
 
+/**
+ * Exact percentages the layered (Fluent) roles need between the steps of that scale:
+ * `color.black.alpha-<percent>` and `color.white.alpha-<percent>`. Hairlines (6-8 %), control
+ * edges (18 %, and 45-55 % for the stroke that gives an input 3:1), shadows (4-26 %) and the
+ * translucent layer (72 %).
+ */
+const MATERIAL_ALPHAS = [4, 6, 7, 8, 12, 14, 18, 26, 45, 55, 72];
+
 const PRIMITIVE_RULE = "Primitive: reference it through a semantic role, never from a component.";
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -128,6 +136,15 @@ export function generateTokens(theme: unknown, catalog: Catalog = DEFAULT_CATALO
         description: `${capitalize(colorName)} at ${Math.round(alpha * 100)}% alpha, for shadows, scrims and hairlines on ${on} backgrounds. ${PRIMITIVE_RULE}`,
       });
     });
+    for (const percent of MATERIAL_ALPHAS) {
+      add({
+        path: `color.${colorName}.alpha-${percent}`,
+        type: "color",
+        tier: "primitive",
+        value: colorValue({ l: lightness, c: 0, h: 0, alpha: percent / 100 }),
+        description: `${capitalize(colorName)} at exactly ${percent}% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on ${on} backgrounds. ${PRIMITIVE_RULE}`,
+      });
+    }
   }
 
   const rampNames = Object.keys(seeds.colors).sort((a, b) => rampOrder(a) - rampOrder(b));

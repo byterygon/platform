@@ -25,6 +25,7 @@ import {
   type ColorValue,
   type DimensionValue,
   type DurationValue,
+  type GradientLayer,
   type ModeContext,
   type ShadowLayer,
   type Token,
@@ -38,7 +39,7 @@ import { MONACO_COLORS, MONACO_TOKENS, type MonacoThemeData, monacoTheme } from 
 import { formatRegistryThemeItem } from "./registry-theme.js";
 import { allContexts, defaultContext, dependentAxes, resolve, valueIn } from "./resolve.js";
 import { round, stableJson } from "./util.js";
-import { aliasesIn, cssValue, cssVarName } from "./values.js";
+import { aliasesIn, cssValue, cssVarName, gradientCss } from "./values.js";
 
 export const OUTPUT_FILES = [
   "tokens.css",
@@ -92,9 +93,22 @@ function cssShadowTransform(token: TransformedToken): unknown {
     .join(", ");
 }
 
+/** Gradients too, for the same reason; fields that were aliases arrive as CSS text. */
+function cssGradientTransform(token: TransformedToken): unknown {
+  const value = token.$value as unknown;
+  if (typeof value === "string") return value;
+  return gradientCss(
+    value as readonly GradientLayer[],
+    (field) => (typeof field === "string" ? field : cssValue("color", field as ColorValue)),
+    (field) => (typeof field === "string" ? field : cssValue("dimension", field as DimensionValue)),
+  );
+}
+
 type FigmaValue = number | string | { r: number; g: number; b: number; a: number };
+/** A gradient is a colour variable in Figma, which has no gradient variable: its solid colour. */
 const FIGMA_TYPE: Partial<Record<TokenType, "COLOR" | "FLOAT" | "STRING">> = {
   color: "COLOR",
+  gradient: "COLOR",
   dimension: "FLOAT",
   number: "FLOAT",
   duration: "FLOAT",
@@ -124,6 +138,12 @@ function figmaTransform(token: TransformedToken): unknown {
     }
     case "fontFamily":
       return Array.isArray(value) ? value[0] : value;
+    case "gradient": {
+      // Runs after references resolve: the solid colour is a transformed colour, or a literal.
+      if (!Array.isArray(value)) return value;
+      const solid = (value as readonly { color: unknown }[])[value.length - 1]!.color;
+      return typeof solid === "object" && solid !== null && "hex" in solid ? figmaTransform({ ...token, $type: "color", $value: solid }) : solid;
+    }
     default:
       return value;
   }
@@ -150,20 +170,27 @@ function dictionaryFor(set: TokenSet, context: ModeContext, formats: Formats, fi
         transforms: {
           "by/name/css-var": { type: "name", transform: (token) => cssVarName(pathOf(token)) },
           "by/name/figma": { type: "name", transform: (token) => token.path.join("/") },
-          "by/value/css": { type: "value", filter: (token) => token.$type !== "shadow", transform: cssTransform },
+          "by/value/css": { type: "value", filter: (token) => token.$type !== "shadow" && token.$type !== "gradient", transform: cssTransform },
           "by/value/css-shadow": {
             type: "value",
             transitive: true,
             filter: (token) => token.$type === "shadow",
             transform: cssShadowTransform,
           },
-          "by/value/figma": { type: "value", transform: figmaTransform },
+          "by/value/css-gradient": {
+            type: "value",
+            transitive: true,
+            filter: (token) => token.$type === "gradient",
+            transform: cssGradientTransform,
+          },
+          "by/value/figma": { type: "value", filter: (token) => token.$type !== "gradient", transform: figmaTransform },
+          "by/value/figma-gradient": { type: "value", transitive: true, filter: (token) => token.$type === "gradient", transform: figmaTransform },
         },
         formats: formats as never,
       },
       platforms: {
-        css: { transforms: ["by/name/css-var", "by/value/css", "by/value/css-shadow"], files: files.css },
-        figma: { transforms: ["by/name/figma", "by/value/figma"], files: files.figma },
+        css: { transforms: ["by/name/css-var", "by/value/css", "by/value/css-shadow", "by/value/css-gradient"], files: files.css },
+        figma: { transforms: ["by/name/figma", "by/value/figma", "by/value/figma-gradient"], files: files.figma },
       },
     },
     { verbosity: "silent", warnings: "disabled" },
@@ -466,7 +493,9 @@ function formatFigmaVariables(input: FormatInput): string {
     const valuesByMode: Record<string, unknown> = {};
     const modes = axis ? axis.modes.map((mode) => ({ label: capitalize(mode), context: contextWith(set, axis.name, mode) })) : [{ label: "Value", context: defaultContext(set) }];
     for (const { label, context } of modes) {
-      const own = valueIn(token, context)!;
+      const written = valueIn(token, context)!;
+      // A gradient shows as its solid colour, as written (often an alias of the canvas).
+      const own = token.type === "gradient" && Array.isArray(written) ? (written as readonly GradientLayer[])[written.length - 1]!.color : written;
       const target = isAlias(own) ? placement.get(aliasTarget(own)) : undefined;
       valuesByMode[label] = target
         ? { type: "VARIABLE_ALIAS", collection: target.collection.name, name: aliasTarget(own as Alias).split(".").join("/") }
@@ -488,7 +517,7 @@ function formatFigmaVariables(input: FormatInput): string {
     version: 1,
     theme: set.name,
     generatedFrom: input.source,
-    note: "Variable collections, modes and values in the shape of the Figma Variables API. Colours are sRGB 0..1, dimensions are px. Primitives have no scopes so they stay out of the pickers.",
+    note: "Variable collections, modes and values in the shape of the Figma Variables API. Colours are sRGB 0..1, dimensions are px. Primitives have no scopes so they stay out of the pickers. A gradient is a colour variable holding its solid colour (Figma has no gradient variable); paint the glows as a style.",
     collections: collections.filter((collection) => collection.variables.length > 0),
     skipped,
   });
@@ -558,7 +587,7 @@ function formatMonacoTheme(input: FormatInput): string {
 export function renderTokensCss(set: TokenSet, source: string): string {
   return formatTokensCss({ set, source }, (token, context) => {
     const literal = { $type: token.type, $value: valueIn(token, context) } as unknown as TransformedToken;
-    return String(token.type === "shadow" ? cssShadowTransform(literal) : cssTransform(literal));
+    return String(token.type === "shadow" ? cssShadowTransform(literal) : token.type === "gradient" ? cssGradientTransform(literal) : cssTransform(literal));
   });
 }
 
