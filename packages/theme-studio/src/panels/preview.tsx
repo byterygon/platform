@@ -24,7 +24,7 @@ import { TableRealistic } from "@/components/table/table.example";
 import { TabsRealistic } from "@/components/tabs/tabs.example";
 import { ToastRealistic } from "@/components/toast/toast.example";
 import { ToggleGroupRealistic } from "@/components/toggle-group/toggle-group.example";
-import type { ComponentType, ReactNode } from "react";
+import { type ComponentType, type ReactNode, memo } from "react";
 
 interface Group {
   readonly id: string;
@@ -54,7 +54,8 @@ function Region({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-export function Gallery() {
+/** Memoised: it takes no props and reads the theme only through CSS variables. */
+export const Gallery = memo(function Gallery() {
   return (
     <div className="flex flex-col gap-stack-xl">
       {PREVIEW_GROUPS.map((group) => (
@@ -68,7 +69,7 @@ export function Gallery() {
       ))}
     </div>
   );
-}
+});
 
 // ---------------------------------------------------------------------------------------------
 // Swatch board

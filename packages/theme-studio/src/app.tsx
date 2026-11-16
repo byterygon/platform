@@ -11,7 +11,7 @@ import { Input } from "@/components/input/input";
 import { ScrollArea } from "@/components/scroll-area/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/tabs/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/toggle-group/toggle-group";
-import { type ReactNode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { derive } from "./engine.ts";
 import { SeedsPanel } from "./panels/seeds-panel.tsx";
 import { TokenDetail, TokenList } from "./panels/token-editor.tsx";
@@ -70,9 +70,10 @@ export function App({ initial, save = saveState }: AppProps) {
   const [view, setView] = useState<View>(initial.view);
   const [selected, setSelected] = useState<string>();
   const [notices, setNotices] = useState(initial.diagnostics);
-  // Rendering the gallery is the slow part; the deferred theme keeps a slider responsive.
-  const deferred = useDeferredValue(theme);
-  const derived = useMemo(() => derive(deferred), [deferred]);
+  // About 10 ms per edit. The gallery is memoised and reads only CSS variables, so an edit does not
+  // re-render it (a deferred value never committed in a browser: the examples keep scheduling
+  // urgent updates, which starved the deferred render).
+  const derived = useMemo(() => derive(theme), [theme]);
 
   useLayoutEffect(() => applyThemeCss(derived.css), [derived.css]);
   useLayoutEffect(() => {
