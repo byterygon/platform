@@ -80,7 +80,7 @@
     "data.type.text",
     "data.type.uuid",
     "font.mono",
-    "radius.xs",
+    "radius.sm",
     "size.icon.md",
     "space.inline.xs",
     "text.code-sm.leading",

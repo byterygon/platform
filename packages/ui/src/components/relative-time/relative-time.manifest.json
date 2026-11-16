@@ -82,8 +82,9 @@
   "tokens": [
     "color.fg.subtle",
     "color.ring",
-    "radius.xs",
-    "ring.offset",
+    "color.ring-inner",
+    "radius.md",
+    "ring.inner-width",
     "ring.width"
   ],
   "examples": {

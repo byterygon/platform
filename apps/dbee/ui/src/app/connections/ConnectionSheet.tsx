@@ -454,7 +454,7 @@ export function ConnectionSheet({ open, onOpenChange, editing, renewing = false,
             ) : null}
           </SheetBody>
           <SheetFooter>
-            <SheetClose render={<Button variant="ghost" />}>Cancel</SheetClose>
+            <SheetClose render={<Button appearance="subtle" />}>Cancel</SheetClose>
             <Button type="submit" loading={busy}>
               {editing && !renewing ? "Save" : "Continue to approval"}
             </Button>

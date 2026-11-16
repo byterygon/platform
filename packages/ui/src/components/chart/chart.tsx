@@ -35,7 +35,7 @@ const DASHES = [undefined, "6 3", "2 3", "8 3 2 3", "1 2", "10 4", "4 2 1 2 1 2"
 const MARKERS = ["circle", "square", "triangle", "diamond", "circle", "square", "triangle", "diamond"] as const;
 
 const classes = {
-  root: "relative flex w-full min-w-0 flex-col gap-stack-sm font-sans text-caption text-fg-muted",
+  root: "relative flex w-full min-w-0 flex-col gap-stack-sm font-sans text-caption-1 text-fg-muted",
   plot: [
     "relative h-panel-xs min-h-0 w-full rounded-sm outline-none",
     "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
@@ -43,19 +43,19 @@ const classes = {
   svg: "absolute inset-0 size-full overflow-visible",
   grid: "stroke-border-muted",
   axis: "stroke-border",
-  tick: "fill-fg-muted text-caption tabular-nums",
+  tick: "fill-fg-muted text-caption-1 tabular-nums",
   guide: "stroke-border-strong",
   marker: "stroke-surface",
-  tooltip: "pointer-events-none absolute z-[var(--by-z-tooltip)] flex min-w-panel-xs max-w-panel-sm flex-col gap-stack-xs rounded-md border border-border bg-overlay p-inset-xs text-caption text-fg shadow-overlay",
-  tooltipTitle: "text-label text-fg",
+  tooltip: "pointer-events-none absolute z-[var(--by-z-tooltip)] flex min-w-panel-xs max-w-panel-sm flex-col gap-stack-xs rounded-lg border border-border-subtle bg-overlay p-inset-xs text-caption-1 text-fg shadow-flyout",
+  tooltipTitle: "text-caption-1-strong text-fg",
   tooltipRow: "flex items-center gap-inline-sm",
   tooltipLabel: "min-w-0 flex-1 truncate text-fg-muted",
   tooltipValue: "tabular-nums text-fg",
-  legend: "flex flex-wrap items-center gap-x-inline-lg gap-y-stack-xs text-caption text-fg",
+  legend: "flex flex-wrap items-center gap-x-inline-lg gap-y-stack-xs text-caption-1 text-fg",
   legendItem: "inline-flex min-w-0 items-center gap-inline-xs",
   legendLabel: "truncate",
   swatch: "h-track w-icon-md shrink-0 overflow-visible",
-  empty: "flex h-panel-xs items-center justify-center rounded-sm border border-dashed border-border text-body text-fg-muted",
+  empty: "flex h-panel-xs items-center justify-center rounded-lg border border-dashed border-border-subtle text-body-1 text-fg-muted",
   hidden: "sr-only",
   sparkline: "inline-block h-control-xs w-panel-xs shrink-0 overflow-visible align-middle",
 } as const;

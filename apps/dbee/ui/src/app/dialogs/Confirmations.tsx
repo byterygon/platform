@@ -19,7 +19,7 @@ export function ConfirmDestructiveDialog({ sql, statementKind, onCancel, onRun }
         </AlertDialogBody>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="danger" onClick={onRun}>
+          <AlertDialogAction appearance="danger" onClick={onRun}>
             Run it
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -38,7 +38,7 @@ export function DeleteConnectionDialog({ name, busy, onCancel, onDelete }: { nam
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="danger" loading={busy} onClick={onDelete}>
+          <AlertDialogAction appearance="danger" loading={busy} onClick={onDelete}>
             Delete
           </AlertDialogAction>
         </AlertDialogFooter>

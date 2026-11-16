@@ -151,7 +151,7 @@ export function ApproveDialog({ approval, onBack, onApproved }: ApproveDialogPro
           <AlertDialogCancel onClick={onBack}>Back</AlertDialogCancel>
           {error?.remedy === "continueWithoutPassword" ? (
             <AlertDialogAction
-              variant="secondary"
+              appearance="secondary"
               loading={busy}
               onClick={() => {
                 setWithoutPassword(true);

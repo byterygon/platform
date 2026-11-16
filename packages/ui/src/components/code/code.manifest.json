@@ -53,10 +53,11 @@
   ],
   "states": [],
   "tokens": [
-    "color.bg.inset",
+    "color.bg.layer-alt",
+    "color.border.subtle",
     "color.fg.default",
     "font.mono",
-    "radius.xs",
+    "radius.sm",
     "space.inline.xs",
     "text.code-sm.leading",
     "text.code-sm.size",

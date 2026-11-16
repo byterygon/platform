@@ -445,7 +445,7 @@ function Shell({ shell }: { shell: Shell }) {
               <SidebarHeader className="flex-row items-center justify-between">
                 <span className="text-label text-fg-muted">Connections</span>
                 <Tooltip>
-                  <TooltipTrigger render={<IconButton aria-label="Add connection" size="sm" onClick={() => perform("addConnection")} />}>
+                  <TooltipTrigger render={<IconButton aria-label="Add connection" size="small" onClick={() => perform("addConnection")} />}>
                     <PlusIcon className="size-icon-sm" />
                   </TooltipTrigger>
                   <TooltipContent>Add connection ({displayBinding(bindingsOf(ACTIONS[1]!, shell)[0]!)})</TooltipContent>
@@ -470,7 +470,7 @@ function Shell({ shell }: { shell: Shell }) {
                   </EmptyStateActions>
                 </EmptyState>
               ) : (
-                <Tabs value={state.activeTab ?? ""} onValueChange={(v) => dispatch({ type: "activateTab", id: String(v) })} variant="enclosed" size="sm" className="flex h-full min-h-0 flex-col">
+                <Tabs value={state.activeTab ?? ""} onValueChange={(v) => dispatch({ type: "activateTab", id: String(v) })} appearance="enclosed" size="small" className="flex h-full min-h-0 flex-col">
                   <div className="flex shrink-0 items-center border-b border-border">
                     <SidebarTrigger />
                     <TabsList onReorder={(value, index) => dispatch({ type: "reorderTab", id: String(value), index })} className="min-w-0 flex-1">
@@ -484,7 +484,7 @@ function Shell({ shell }: { shell: Shell }) {
                         );
                       })}
                     </TabsList>
-                    <IconButton aria-label="New query tab" size="sm" onClick={newTab}>
+                    <IconButton aria-label="New query tab" size="small" onClick={newTab}>
                       <PlusIcon className="size-icon-sm" />
                     </IconButton>
                   </div>
@@ -627,10 +627,10 @@ function Shell({ shell }: { shell: Shell }) {
             {state.connectionsError.description ? ` ${state.connectionsError.description}` : ""}
             {isRpcError(state.connectionsError) ? "" : ""}
           </span>
-          <Button size="sm" variant="secondary" onClick={() => void refreshConnections(ctx)}>
+          <Button size="small" appearance="secondary" onClick={() => void refreshConnections(ctx)}>
             Retry
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => dispatch({ type: "dialog", dialog: { kind: "about" } })}>
+          <Button size="small" appearance="subtle" onClick={() => dispatch({ type: "dialog", dialog: { kind: "about" } })}>
             Open diagnostics
           </Button>
         </div>

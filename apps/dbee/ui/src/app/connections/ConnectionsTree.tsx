@@ -246,7 +246,7 @@ export function ConnectionsTree({ shell, onAddConnection, onEdit, onRenew, onDel
         <EmptyStateTitle render={<p />}>No connections yet</EmptyStateTitle>
         <EmptyStateDescription>DBee stores passwords in the OS keychain and never sends anything over the network except to the database you approve.</EmptyStateDescription>
         <EmptyStateActions>
-          <Button size="sm" onClick={onAddConnection}>
+          <Button size="small" onClick={onAddConnection}>
             Add connection
           </Button>
         </EmptyStateActions>
@@ -256,7 +256,7 @@ export function ConnectionsTree({ shell, onAddConnection, onEdit, onRenew, onDel
   return (
     <div className="flex h-full min-h-0 flex-col gap-stack-xs">
       <div className="px-inset-sm pt-inset-xs">
-        <SearchInput size="sm" aria-label="Filter the tree" placeholder="Filter" value={filter} onValueChange={setFilter} />
+        <SearchInput size="small" aria-label="Filter the tree" placeholder="Filter" value={filter} onValueChange={setFilter} />
       </div>
       <ContextMenu>
         <ContextMenuTrigger className="min-h-0 flex-1" data-pane="tree">

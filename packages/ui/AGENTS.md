@@ -110,7 +110,7 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   the manifest's `props` with `deprecated` (what to use instead; `llms.txt` prints it), mapped by
   `controlAppearance` and `controlSize` from `@/lib/control`, and tested. `appearance` wins over
   `variant`. The rendered element always carries the Fluent names (`data-appearance`, `data-size`).
-  DBee keeps the old names until TSK-55; the next release removes the aliases.
+  DBee moved to the Fluent names in TSK-55; the next release removes the aliases.
 - **Focus**: every control uses `focusRing` (or `focusRingWithin` when focus sits on an element
   inside it) from `@/lib/control`: an outline in `ring.color` (`ring.width`, offset by
   `ring.inner-width`) around a box-shadow in `ring.inner-color`. Forced-colours mode keeps the
@@ -431,7 +431,9 @@ registry item, which `@byterygon/icon` depends on.
   ContextMenu, Menubar, Popover, HoverCard, Tooltip (batch 3); Dialog, AlertDialog, Sheet, Toast,
   CommandPalette, Alert, Badge, Tag (batch 4); Card, Table, Sidebar, Tabs, Accordion, Collapsible,
   ScrollArea, Resizable, StatusBar, Toolbar, Separator (TSK-55 batch 1); Breadcrumb, Pagination,
-  Stepper, NavigationMenu, Tree (batch 2).
+  Stepper, NavigationMenu, Tree (batch 2); Code, CodeBlock, JsonViewer, Chart, DescriptionList, Stat,
+  TypeBadge, RelativeTime, Avatar, Progress, Skeleton, EmptyState, Kbd and the SqlEditor and CodeInput
+  frames (batch 3). `REPLACEMENTS` is now empty and a test keeps apps/dbee/ui free of hand-drawn svgs.
 
 | Hand-drawn today | Fluent icon |
 | --- | --- |

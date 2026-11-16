@@ -61,7 +61,7 @@ export function QueryTab({ tab, connections, shell, splitSizes, onSplitSizes, on
         <ToolbarGroup>
           <Select
             aria-label="Connection"
-            size="sm"
+            size="small"
             placeholder="Choose a connection"
             items={connections.map((c) => ({ value: c.id, label: c.name }))}
             value={tab.connectionId}
@@ -80,7 +80,7 @@ export function QueryTab({ tab, connections, shell, splitSizes, onSplitSizes, on
           <Tooltip>
             <TooltipTrigger
               render={
-                <ToolbarButton render={<Button variant="primary" size="sm" />} disabled={running || tab.connectionId === null || tab.sql.trim() === ""} onClick={() => run()}>
+                <ToolbarButton render={<Button appearance="primary" size="small" />} disabled={running || tab.connectionId === null || tab.sql.trim() === ""} onClick={() => run()}>
                   <PlayIcon className="size-icon-sm" /> {statementCount > 1 ? "Run first statement" : "Run"}
                 </ToolbarButton>
               }
@@ -88,7 +88,7 @@ export function QueryTab({ tab, connections, shell, splitSizes, onSplitSizes, on
             <TooltipContent>Run selection or statement under cursor ({binding("run")})</TooltipContent>
           </Tooltip>
           {running ? (
-            <ToolbarButton render={<Button variant="secondary" size="sm" />} onClick={onCancel}>
+            <ToolbarButton render={<Button appearance="secondary" size="small" />} onClick={onCancel}>
               <StopIcon className="size-icon-sm" /> Cancel <Kbd>Shift+Esc</Kbd>
             </ToolbarButton>
           ) : null}
@@ -96,11 +96,11 @@ export function QueryTab({ tab, connections, shell, splitSizes, onSplitSizes, on
         <ToolbarSeparator />
         <ToolbarGroup className="items-center gap-inline-xs">
           <span className="text-caption text-fg-muted">Row limit</span>
-          <NumberInput aria-label="Row limit (blank is unlimited)" size="sm" value={tab.maxRows} onValueChange={(v) => onChange({ maxRows: v })} min={1} placeholder="unlimited" className="w-[12ch]" />
+          <NumberInput aria-label="Row limit (blank is unlimited)" size="small" value={tab.maxRows} onValueChange={(v) => onChange({ maxRows: v })} min={1} placeholder="unlimited" className="w-[12ch]" />
         </ToolbarGroup>
         <ToolbarSeparator />
         <ToolbarGroup>
-          <ToolbarButton render={<Button variant="ghost" size="sm" />} disabled={tab.connectionId === null || tab.sql.trim() === ""} onClick={onExport}>
+          <ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={tab.connectionId === null || tab.sql.trim() === ""} onClick={onExport}>
             Export
           </ToolbarButton>
         </ToolbarGroup>

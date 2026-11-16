@@ -7,43 +7,77 @@
   "usage": "Use Kbd in help text, menus and tooltips to show a key (Esc) or, with KbdGroup, a shortcut (Ctrl + K). Write the separator between the keys as text (+, then). Kbd shows a shortcut; it does not bind one. For a symbol (⌘, ⇧) add hidden text that names the key.",
   "status": "experimental",
   "base": "@base-ui/react/use-render",
-  "dependencies": ["@base-ui/react"],
+  "dependencies": [
+    "@base-ui/react"
+  ],
   "props": [
-    { "name": "children", "type": "ReactNode", "description": "The key's label, as text or an <svg aria-hidden> with hidden text." },
-    { "name": "render", "type": "ReactElement | ((props, state) => ReactElement)", "description": "Base UI render prop: render another element with the key's props and classes." },
-    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
-    { "name": "ref", "type": "Ref<HTMLElement>", "description": "Reaches the rendered element." }
+    {
+      "name": "children",
+      "type": "ReactNode",
+      "description": "The key's label, as text or an <svg aria-hidden> with hidden text."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element with the key's props and classes."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLElement>",
+      "description": "Reaches the rendered element."
+    }
   ],
   "variants": {},
   "slots": [
-    { "name": "root", "element": "kbd", "description": "The key; data-slot=\"kbd\"." },
-    { "name": "group", "element": "kbd", "description": "KbdGroup, the outer <kbd> of a combination; data-slot=\"kbd-group\"." }
+    {
+      "name": "root",
+      "element": "kbd",
+      "description": "The key; data-slot=\"kbd\"."
+    },
+    {
+      "name": "group",
+      "element": "kbd",
+      "description": "KbdGroup, the outer <kbd> of a combination; data-slot=\"kbd-group\"."
+    }
   ],
   "parts": [
-    { "name": "KbdGroup", "slot": "kbd-group", "description": "Lines up the keys of one shortcut with their text separators, in text.caption and color.fg.muted." }
+    {
+      "name": "KbdGroup",
+      "slot": "kbd-group",
+      "description": "Lines up the keys of one shortcut with their text separators, in text.caption and color.fg.muted."
+    }
   ],
   "states": [],
   "tokens": [
-    "color.bg.inset",
-    "color.border.default",
+    "color.bg.layer-alt",
+    "color.border.control-bottom",
+    "color.border.subtle",
     "color.fg.muted",
     "font.mono",
     "font.sans",
-    "radius.sm",
+    "radius.md",
     "size.control.xs",
     "size.icon.xs",
     "space.inline.sm",
     "space.inline.xs",
-    "text.caption.leading",
-    "text.caption.size",
-    "text.caption.tracking",
-    "text.caption.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight",
     "text.code.leading",
     "text.code.size",
     "text.code.tracking",
     "text.code.weight"
   ],
-  "examples": { "minimal": "KbdMinimal", "realistic": "KbdRealistic" },
+  "examples": {
+    "minimal": "KbdMinimal",
+    "realistic": "KbdRealistic"
+  },
   "accessibility": [
     "Renders <kbd>, which marks keyboard input; KbdGroup is an outer <kbd>, as HTML nests the keys of a combination.",
     "Screen readers read the key labels and the text separators; write \"Ctrl\", not an icon alone.",

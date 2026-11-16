@@ -524,7 +524,7 @@ async function themes(page: Page) {
           c = await page.evaluate<CodeSample>(`window.__sampleCode(${index})`);
         }
         const where = `${preset}/${mode} CodeInput${index === 0 ? " (beside the other mode)" : ""}`;
-        check(sameColor(c.background, c.expectedBackground), `theme ${where}: background ${c.background}, expected color.bg.surface ${c.expectedBackground}`);
+        check(sameColor(c.background, c.expectedBackground), `theme ${where}: background ${c.background}, expected color.bg.layer-alt ${c.expectedBackground}`);
         check(sameColor(c.keyword, c.expectedKeyword), `theme ${where}: keyword colour ${c.keyword}, expected syntax.keyword ${c.expectedKeyword}`);
         check(sameColor(c.string, c.expectedString), `theme ${where}: string colour ${c.string}, expected syntax.string ${c.expectedString}`);
         checked.push(where);

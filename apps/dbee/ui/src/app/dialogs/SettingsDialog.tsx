@@ -126,7 +126,7 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, info, o
                 {info?.secretStoreNote ? <FieldDescription>{info.secretStoreNote}</FieldDescription> : null}
               </Field>
               <div>
-                <Button variant="secondary" onClick={onOpenDiagnostics}>
+                <Button appearance="secondary" onClick={onOpenDiagnostics}>
                   Open diagnostics
                 </Button>
               </div>
@@ -134,7 +134,7 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, info, o
           </Tabs>
         </DialogBody>
         <DialogFooter>
-          <DialogClose render={<Button variant="primary" />}>Done</DialogClose>
+          <DialogClose render={<Button appearance="primary" />}>Done</DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>

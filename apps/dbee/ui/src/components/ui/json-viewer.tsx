@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { ChevronRight } from "@/lib/icons";
 import { tokenPx } from "@/lib/theme-scope";
 
 // Explore a JSON value as a tree (DBee's cell value viewer for json and jsonb, a plugin
@@ -29,15 +32,15 @@ interface Row {
 
 const classes = {
   root: [
-    "relative w-full overflow-auto overscroll-contain rounded-md border border-border bg-editor font-mono text-code-sm text-editor-fg outline-none data-invalid:border-danger-border",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    "relative w-full overflow-auto overscroll-contain rounded-lg border border-border-subtle bg-editor font-mono text-code-sm text-editor-fg data-invalid:border-danger-border",
+    focusRing,
   ],
   row: [
     "absolute inset-x-0 flex h-control-xs cursor-default items-center gap-inline-xs pe-inset-sm whitespace-nowrap",
     "hover:bg-hover data-active:bg-editor-line",
     "in-focus-visible:data-active:outline-solid in-focus-visible:data-active:outline-[length:var(--by-ring-width)] in-focus-visible:data-active:-outline-offset-[var(--by-ring-width)] in-focus-visible:data-active:outline-ring",
   ],
-  chevron: "flex size-icon-sm shrink-0 items-center justify-center text-editor-gutter transition-transform duration-[var(--by-motion-duration-fast)] ease-standard motion-reduce:transition-none data-expanded:rotate-90 [&_svg]:size-icon-xs",
+  chevron: "flex size-icon-sm shrink-0 items-center justify-center text-editor-gutter transition-transform duration-[var(--by-motion-duration-faster)] ease-easy-ease motion-reduce:transition-none data-expanded:rotate-90 [&_svg]:size-icon-xs",
   spacer: "size-icon-sm shrink-0",
   key: "shrink-0 text-syntax-identifier",
   index: "shrink-0 text-editor-gutter",
@@ -49,14 +52,8 @@ const classes = {
     boolean: "min-w-0 truncate text-syntax-constant",
     null: "min-w-0 truncate text-syntax-constant",
   },
-  error: "flex items-start gap-inline-xs p-inset-sm font-sans text-body text-danger-fg",
+  error: "flex items-start gap-inline-xs p-inset-sm font-sans text-body-1 text-danger-fg",
 } as const;
-
-const ChevronIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m6 4 4 4-4 4" />
-  </svg>
-);
 
 const kindOf = (value: unknown): Kind =>
   value === null ? "null" : Array.isArray(value) ? "array" : typeof value === "object" ? "object" : typeof value === "string" ? "string" : typeof value === "number" || typeof value === "bigint" ? "number" : typeof value === "boolean" ? "boolean" : "null";
@@ -297,7 +294,7 @@ export function JsonViewer({
       >
         {container && row.size ? (
           <span data-slot="json-viewer-chevron" data-expanded={isOpen ? "" : undefined} className={cn(classes.chevron)}>
-            <ChevronIcon />
+            <Icon icon={ChevronRight} />
           </span>
         ) : (
           <span className={classes.spacer} />

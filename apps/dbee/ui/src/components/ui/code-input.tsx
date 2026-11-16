@@ -25,9 +25,9 @@ export const codeInputVariants = {
 } as const;
 
 const base = [
-  "relative flex w-full min-w-0 items-center overflow-hidden rounded-md border border-border-strong bg-surface text-editor-fg",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-  "outline-none data-focused:outline-solid data-focused:outline-[length:var(--by-ring-width)] data-focused:outline-offset-[var(--by-ring-offset)] data-focused:outline-ring",
+  "relative flex w-full min-w-0 items-center overflow-hidden rounded-md border border-border-subtle border-b-border-control-bottom bg-layer-alt text-editor-fg",
+  "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
+  "outline-none data-focused:shadow-focus-underline",
   "data-multiline:h-auto data-multiline:items-start data-multiline:overflow-auto",
   "data-readonly:bg-inset",
   "data-invalid:border-danger-border",

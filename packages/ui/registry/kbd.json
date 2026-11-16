@@ -14,7 +14,7 @@
     {
       "path": "ui/kbd.tsx",
       "type": "registry:ui",
-      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/cn\";\n\n// A key or a shortcut, as text: a styled <kbd> on Base UI's useRender (no Base UI part exists).\n// KbdGroup lines up the keys of a combination; put the separator (\"+\", \"then\") between them as\n// text so screen readers read it.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const kbdVariants = {} as const;\n\nconst base = [\n  \"inline-flex h-control-xs min-w-control-xs shrink-0 select-none items-center justify-center gap-inline-xs\",\n  \"rounded-sm border border-border bg-inset px-inline-sm font-mono text-code text-fg-muted\",\n  \"[&_svg]:size-icon-xs [&_svg]:shrink-0\",\n];\n\nconst groupClasses = [\"inline-flex items-center gap-inline-xs font-sans text-caption text-fg-muted\"];\n\nexport interface KbdProps extends Omit<useRender.ComponentProps<\"kbd\">, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * One key (`Esc`, `⌘`, `Enter`), rendered as a `<kbd>`; `render` swaps the element, the ref\n * reaches it. Give a symbol a name screen readers read (a `<kbd>` takes no aria-label):\n * `<Kbd title=\"Command\"><span aria-hidden=\"true\">⌘</span><span className=\"sr-only\">Command</span></Kbd>`.\n */\nexport function Kbd({ className, render, ...props }: KbdProps) {\n  return useRender({\n    defaultTagName: \"kbd\",\n    render,\n    props: { \"data-slot\": \"kbd\", ...props, className: cn(base, className) },\n  });\n}\n\nexport interface KbdGroupProps extends Omit<useRender.ComponentProps<\"kbd\">, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The keys of one shortcut side by side, an outer `<kbd>` as HTML nests them: `<KbdGroup><Kbd>Ctrl</Kbd>+<Kbd>K</Kbd></KbdGroup>`. */\nexport function KbdGroup({ className, render, ...props }: KbdGroupProps) {\n  return useRender({\n    defaultTagName: \"kbd\",\n    render,\n    props: { \"data-slot\": \"kbd-group\", ...props, className: cn(groupClasses, className) },\n  });\n}\n"
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/cn\";\n\n// A key or a shortcut, as text: a styled <kbd> on Base UI's useRender (no Base UI part exists).\n// KbdGroup lines up the keys of a combination; put the separator (\"+\", \"then\") between them as\n// text so screen readers read it.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const kbdVariants = {} as const;\n\nconst base = [\n  \"inline-flex h-control-xs min-w-control-xs shrink-0 select-none items-center justify-center gap-inline-xs\",\n  \"rounded-md border border-border-subtle border-b-border-control-bottom bg-layer-alt px-inline-sm font-mono text-code text-fg-muted\",\n  \"[&_svg]:size-icon-xs [&_svg]:shrink-0\",\n];\n\nconst groupClasses = [\"inline-flex items-center gap-inline-xs font-sans text-caption-1 text-fg-muted\"];\n\nexport interface KbdProps extends Omit<useRender.ComponentProps<\"kbd\">, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * One key (`Esc`, `⌘`, `Enter`), rendered as a `<kbd>`; `render` swaps the element, the ref\n * reaches it. Give a symbol a name screen readers read (a `<kbd>` takes no aria-label):\n * `<Kbd title=\"Command\"><span aria-hidden=\"true\">⌘</span><span className=\"sr-only\">Command</span></Kbd>`.\n */\nexport function Kbd({ className, render, ...props }: KbdProps) {\n  return useRender({\n    defaultTagName: \"kbd\",\n    render,\n    props: { \"data-slot\": \"kbd\", ...props, className: cn(base, className) },\n  });\n}\n\nexport interface KbdGroupProps extends Omit<useRender.ComponentProps<\"kbd\">, \"className\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** The keys of one shortcut side by side, an outer `<kbd>` as HTML nests them: `<KbdGroup><Kbd>Ctrl</Kbd>+<Kbd>K</Kbd></KbdGroup>`. */\nexport function KbdGroup({ className, render, ...props }: KbdGroupProps) {\n  return useRender({\n    defaultTagName: \"kbd\",\n    render,\n    props: { \"data-slot\": \"kbd-group\", ...props, className: cn(groupClasses, className) },\n  });\n}\n"
     }
   ],
   "meta": {
@@ -73,20 +73,21 @@
       ],
       "states": [],
       "tokens": [
-        "color.bg.inset",
-        "color.border.default",
+        "color.bg.layer-alt",
+        "color.border.control-bottom",
+        "color.border.subtle",
         "color.fg.muted",
         "font.mono",
         "font.sans",
-        "radius.sm",
+        "radius.md",
         "size.control.xs",
         "size.icon.xs",
         "space.inline.sm",
         "space.inline.xs",
-        "text.caption.leading",
-        "text.caption.size",
-        "text.caption.tracking",
-        "text.caption.weight",
+        "text.caption-1.leading",
+        "text.caption-1.size",
+        "text.caption-1.tracking",
+        "text.caption-1.weight",
         "text.code.leading",
         "text.code.size",
         "text.code.tracking",
