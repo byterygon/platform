@@ -18,6 +18,7 @@
   "overrides": {
     "ring.width": "3px",
     "color.neutral.11": "oklch(0.3875 0 0)",
-    "color.neutral-dark.11": "oklch(0.8975 0 0)"
+    "color.neutral-dark.11": "oklch(0.8975 0 0)",
+    "color.border.control-bottom": { "light": "{color.black.alpha-55}" }
   }
 }

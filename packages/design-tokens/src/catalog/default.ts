@@ -7,6 +7,8 @@
  *   type.ts       text roles
  *   space.ts      density-aware space roles
  *   elevation.ts  shadow scale, elevation roles, focus ring
+ *   layers.ts     the layered (Fluent) look: backdrop, layers, control strokes, double focus
+ *                 ring, depth shadows, layer elevations, blur
  *   domain.ts     syntax, editor, data type, grid, chart and diff tokens
  *
  * See AGENTS.md for how to add a role.
@@ -15,13 +17,16 @@ import type { ShadowLayer } from "../model.js";
 import { type Catalog, type RoleDef, byDensity, byTheme, layer, pairs, px, ramp, ref } from "./authoring.js";
 import { DOMAIN_PAIRS, DOMAIN_ROLES } from "./domain.js";
 import { ELEVATION_ROLES } from "./elevation.js";
+import { LAYER_ROLES, layerPairs } from "./layers.js";
 import { SCALE_ROLES } from "./scales.js";
 import { SPACE_ROLES } from "./space.js";
 import { TEXT_ROLE_DEFS } from "./type.js";
 
 const STATUS: readonly { name: string; ramp: string; meaning: string }[] = [
   { name: "danger", ramp: "red", meaning: "errors and destructive actions" },
-  { name: "warning", ramp: "amber", meaning: "warnings that need attention but do not block" },
+  // Orange (hue 55), apart from danger's red (27) and from a violet, blue or teal brand. Amber
+  // (75) read as a second brand next to a yellow or honey accent; it stays for charts and syntax.
+  { name: "warning", ramp: "orange", meaning: "warnings that need attention but do not block" },
   { name: "success", ramp: "green", meaning: "success and completion" },
   { name: "info", ramp: "blue", meaning: "neutral information" },
 ];
@@ -539,6 +544,7 @@ export const DEFAULT_CATALOG: Catalog = {
     ...font,
     ...elevation,
     ...ELEVATION_ROLES,
+    ...LAYER_ROLES,
     ...density,
     ...SPACE_ROLES,
     ...TEXT_ROLE_DEFS,
@@ -563,6 +569,8 @@ export const DEFAULT_CATALOG: Catalog = {
     // Non-text contrast (WCAG 1.4.11): what identifies a control, and the focus ring.
     ...pairs("ui", ["color.border.strong", "color.ring", "color.border.focus"], SURFACES),
     ...pairs("ui", ["color.accent.bg", "color.status.danger.solid"], ["color.bg.canvas", "color.bg.surface"]),
+    // The layered look: text and controls on translucent layers, over the backdrop.
+    ...layerPairs(SURFACES),
     ...DOMAIN_PAIRS,
   ],
   shadcn: {

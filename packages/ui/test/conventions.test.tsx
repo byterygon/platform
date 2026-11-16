@@ -38,6 +38,7 @@ describe("package", () => {
     expect(unique(names("text")), "add the new text roles to roleNames.text in src/lib/cn.ts").toEqual(unique([...roleNames.text]));
     expect(unique(names("spacing")), "add the new space and size roles to roleNames.spacing in src/lib/cn.ts").toEqual(unique([...roleNames.spacing]));
     expect(unique(names("shadow")), "add the new shadows to roleNames.shadow in src/lib/cn.ts").toEqual(unique([...roleNames.shadow]));
+    expect(unique(names("blur")), "add the new blurs to roleNames.blur in src/lib/cn.ts").toEqual(unique([...roleNames.blur]));
     expect(unique(names("ease")), "add the new easings to roleNames.ease in src/lib/cn.ts").toEqual(unique([...roleNames.ease]));
   });
 

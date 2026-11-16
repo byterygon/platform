@@ -13,7 +13,7 @@ import { type Diagnostic, type ModeContext, type Token, type TokenSet, SCHEMA_VE
 import { dependentAxes, ownValues, referencedBy, resolve } from "../resolve.js";
 import { STATE_DENSITIES, STATE_MODES, decodeState, encodeState } from "../state.js";
 import { closest, isPlainObject, stableJson } from "../util.js";
-import { type ContrastMeasurement, contextsFor, validate } from "../validate.js";
+import { type ContrastMeasurement, contextsFor, overStack, overText, validate } from "../validate.js";
 import { TOKEN_TYPES, cssValue, cssVarName } from "../values.js";
 import { COMMANDS, EXIT, EXIT_CODES, type ParsedArgs, UsageError, parseArgs } from "./args.js";
 
@@ -146,7 +146,7 @@ function tokenCounts(set: TokenSet) {
 }
 
 const measurementText = (m: ContrastMeasurement) =>
-  `  ${m.pass ? "pass" : "FAIL"} ${m.ratio}:1 (needs ${m.required}:1, APCA Lc ${m.apca})  ${m.fg} on ${m.bg}${m.over ? ` over ${m.over}` : ""}${modeText(m.mode)}`;
+  `  ${m.pass ? "pass" : "FAIL"} ${m.ratio}:1 (needs ${m.required}:1, APCA Lc ${m.apca})  ${m.fg} on ${m.bg}${overText(m.over)}${modeText(m.mode)}`;
 
 // ---------------------------------------------------------------------------------------------
 // Commands
@@ -265,7 +265,7 @@ async function explain(args: ParsedArgs, io: Io): Promise<Outcome> {
     };
   });
   const users = referencedBy(set, token.path);
-  const contrast = checked.contrast.filter((m) => m.fg === token.path || m.bg === token.path || m.over === token.path);
+  const contrast = checked.contrast.filter((m) => m.fg === token.path || m.bg === token.path || (m.over !== undefined && overStack(m).includes(token.path)));
   const shadcn = Object.entries(set.shadcn).filter(([, path]) => path === token.path).map(([variable]) => variable);
   const diagnostics = [...generated.diagnostics, ...checked.diagnostics].filter((d) => d.token === token.path || d.related === token.path);
 

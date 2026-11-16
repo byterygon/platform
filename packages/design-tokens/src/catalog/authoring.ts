@@ -8,6 +8,7 @@ import type {
   Alias,
   ContrastPair,
   DimensionValue,
+  GradientLayer,
   ShadowLayer,
   Tier,
   TokenType,
@@ -90,12 +91,35 @@ export const layer = (color: Alias, x: number, y: number, blur: number, spread: 
   spread: px(spread),
 });
 
+/** One shadow layer drawn inside the box (`inset`), for an edge such as an underline. */
+export const insetLayer = (color: Alias, x: number, y: number, blur: number, spread: number = 0): ShadowLayer => ({
+  ...layer(color, x, y, blur, spread),
+  inset: true,
+});
+
+/**
+ * A radial glow of a gradient: `color` at (`x`, `y`) (fractions of the box), fading to
+ * transparent at `fade` of an ellipse with radii `radiusX` by `radiusY` px.
+ */
+export const radial = (color: Alias, radiusX: number, radiusY: number, x: number, y: number, fade: number): GradientLayer => ({
+  kind: "radial",
+  color,
+  radiusX: px(radiusX),
+  radiusY: px(radiusY),
+  x,
+  y,
+  fade,
+});
+
+/** The solid colour at the bottom of a gradient. */
+export const solid = (color: Alias): GradientLayer => ({ kind: "solid", color });
+
 /** Every foreground against every background. */
 export function pairs(
   kind: ContrastKind,
   fgs: readonly string[],
   bgs: readonly string[],
-  over?: string,
+  over?: string | readonly string[],
 ): ContrastPair[] {
   return fgs.flatMap((fg) => bgs.map((bg): ContrastPair => (over === undefined ? { fg, bg, kind } : { fg, bg, kind, over })));
 }

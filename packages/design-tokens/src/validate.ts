@@ -17,12 +17,13 @@
  *   contrast-pair-unknown-token a contrast pair names a token that does not exist
  *   output-mapping              a Tailwind or shadcn mapping is duplicated or points nowhere
  */
-import { type ContrastKind, type Oklch, type Rgb, apcaContrast, formatOklch, oklchToDisplayRgb, settle, wcagContrast } from "./color/index.js";
+import { type ContrastKind, type Oklch, type Rgb, apcaContrast, compositeOver, formatOklch, oklchToDisplayRgb, settle, wcagContrast } from "./color/index.js";
 import {
   type ColorValue,
   type ContrastPair,
   type Diagnostic,
   type Fix,
+  type GradientLayer,
   type ModeContext,
   type ShadowLayer,
   type Tier,
@@ -39,7 +40,8 @@ import { aliasesIn, checkValue, colorLiteralsIn, colorToOklch } from "./values.j
 export interface ContrastMeasurement {
   readonly fg: string;
   readonly bg: string;
-  readonly over?: string;
+  /** As the pair names it: one token, or a stack bottom first. */
+  readonly over?: string | readonly string[];
   readonly kind: ContrastKind;
   readonly mode: ModeContext;
   /** WCAG 2.x contrast ratio, rounded down to two decimals. */
@@ -244,14 +246,51 @@ export function contextsFor(set: TokenSet, paths: readonly string[]): ModeContex
   return contexts;
 }
 
+/** The tokens under a pair's background, bottom first. */
+export function overStack(pair: Pick<ContrastPair, "over">): readonly string[] {
+  return pair.over === undefined ? [DEFAULT_BACKDROP] : typeof pair.over === "string" ? [pair.over] : pair.over;
+}
+
+/** `over a over b` for messages: the stack read from the background down. */
+export function overText(over: string | readonly string[] | undefined): string {
+  return over === undefined ? "" : ` over ${(typeof over === "string" ? [over] : [...over].reverse()).join(" over ")}`;
+}
+
+/** Glow strengths sampled from each glow's centre (1) to where it has faded out (0). */
+const GLOW_STEPS = [1, 0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0];
+
+/**
+ * The opaque colours a gradient shows: its solid colour with every glow at every sampled
+ * strength, glows combined with each other too. Wherever a translucent layer lies on the
+ * gradient, the colour under it is one of these (or between two neighbouring samples).
+ */
+export function gradientSamples(layers: readonly GradientLayer[]): Rgb[] {
+  const solid = layers[layers.length - 1]!;
+  let samples: Rgb[] = [paint(solid.color as ColorValue)];
+  for (const glow of [...layers.slice(0, -1)].reverse()) {
+    const top = oklchToDisplayRgb(colorToOklch(glow.color as ColorValue));
+    const alpha = top.alpha ?? 1;
+    const seen = new Set<string>();
+    samples = samples.flatMap((under) =>
+      GLOW_STEPS.map((strength) => compositeOver({ ...top, alpha: alpha * strength }, under)).filter((rgb) => {
+        const key = `${rgb.r.toFixed(4)},${rgb.g.toFixed(4)},${rgb.b.toFixed(4)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }),
+    );
+  }
+  return samples;
+}
+
 function measureContrast(set: TokenSet, diagnostics: Diagnostic[]): ContrastMeasurement[] {
   const measurements: ContrastMeasurement[] = [];
   // Every background a foreground role is paired with, per mode: a fix has to hold on all of them.
   const backgrounds = new Map<string, Background[]>();
   const failures: (() => void)[] = [];
   for (const pair of set.pairs) {
-    const over = pair.over ?? DEFAULT_BACKDROP;
-    const unknown = [pair.fg, pair.bg, over].filter((path) => !set.tokens.has(path));
+    const stack = overStack(pair);
+    const unknown = [pair.fg, pair.bg, ...stack].filter((path) => !set.tokens.has(path));
     if (unknown.length > 0) {
       for (const path of unknown) {
         const near = closest(path, set.tokens.keys());
@@ -265,28 +304,41 @@ function measureContrast(set: TokenSet, diagnostics: Diagnostic[]): ContrastMeas
       }
       continue;
     }
-    if ([pair.fg, pair.bg, over].some((path) => set.tokens.get(path)!.type !== "color")) {
+    const typeOf = (path: string) => set.tokens.get(path)!.type;
+    const colours = [pair.fg, pair.bg, ...stack.slice(1)];
+    if (colours.some((path) => typeOf(path) !== "color") || !["color", "gradient"].includes(typeOf(stack[0]!))) {
       diagnostics.push({
         severity: "error",
         rule: "contrast-pair-unknown-token",
         token: pair.fg,
         related: pair.bg,
-        message: `the contrast pair ${pair.fg} on ${pair.bg} must name colour tokens`,
+        message: `the contrast pair ${pair.fg} on ${pair.bg} must name colour tokens (the bottom of what it is painted over may be a gradient)`,
       });
       continue;
     }
 
-    for (const context of contextsFor(set, [pair.fg, pair.bg, over])) {
+    for (const context of contextsFor(set, [pair.fg, pair.bg, ...stack])) {
       const fg = resolve(set, pair.fg, context);
       const bg = resolve(set, pair.bg, context);
-      const base = resolve(set, over, context);
-      if (!fg.ok || !bg.ok || !base.ok) continue; // already reported as alias-missing or alias-cycle
-      const baseRgb = paint(base.value as ColorValue);
-      const bgRgb = paint(bg.value as ColorValue, baseRgb);
-      const fgRgb = paint(fg.value as ColorValue, bgRgb);
-      const exact = wcagContrast(fgRgb, bgRgb);
-      const ratio = floor2(exact);
+      const under = stack.map((path) => resolve(set, path, context));
+      if (!fg.ok || !bg.ok || under.some((r) => !r.ok)) continue; // already reported as alias-missing or alias-cycle
+      const [bottom, ...rest] = under.map((r) => (r as Extract<typeof r, { ok: true }>).value);
+      let bases =
+        typeOf(stack[0]!) === "gradient" ? gradientSamples(bottom as unknown as readonly GradientLayer[]) : [paint(bottom as ColorValue)];
+      for (const layer of rest) bases = bases.map((base) => paint(layer as ColorValue, base));
       const required = set.contrast[pair.kind];
+      const key = `${pair.fg} ${JSON.stringify(context)}`;
+      // The least favourable point of the stack is the measurement; the fix must hold on all of them.
+      let worst: { exact: number; fgRgb: Rgb; bgRgb: Rgb } | undefined;
+      for (const base of bases) {
+        const bgRgb = paint(bg.value as ColorValue, base);
+        const fgRgb = paint(fg.value as ColorValue, bgRgb);
+        const exact = wcagContrast(fgRgb, bgRgb);
+        backgrounds.set(key, [...(backgrounds.get(key) ?? []), { rgb: bgRgb, required }]);
+        if (!worst || exact < worst.exact) worst = { exact, fgRgb, bgRgb };
+      }
+      const { exact, fgRgb, bgRgb } = worst!;
+      const ratio = floor2(exact);
       const apca = Math.round(apcaContrast(fgRgb, bgRgb) * 10) / 10;
       const apcaRequired = set.contrast.apca?.[pair.kind];
       const apcaPass = apcaRequired === undefined || Math.abs(apca) >= apcaRequired;
@@ -302,11 +354,9 @@ function measureContrast(set: TokenSet, diagnostics: Diagnostic[]): ContrastMeas
         pass: exact >= required && apcaPass,
       };
       measurements.push(measurement);
-      const key = `${pair.fg} ${JSON.stringify(context)}`;
       const background: Background = { rgb: bgRgb, required };
-      backgrounds.set(key, [...(backgrounds.get(key) ?? []), background]);
 
-      const where = `${pair.over ? ` over ${pair.over}` : ""}${describeMode(context)}`;
+      const where = `${overText(pair.over)}${bases.length > 1 ? " (at its least favourable point)" : ""}${describeMode(context)}`;
       if (exact < required) {
         failures.push(() =>
           diagnostics.push({
@@ -367,6 +417,17 @@ function passesAll(color: Rgb, group: readonly Background[]): number | undefined
   return lowest;
 }
 
+/** As `passesAll`, for a colour that may be translucent: painted over each background first. */
+function passesAllPainted(value: ColorValue, group: readonly Background[]): number | undefined {
+  let lowest = Infinity;
+  for (const background of group) {
+    const ratio = wcagContrast(paint(value, background.rgb), background.rgb);
+    if (ratio < background.required) return undefined;
+    lowest = Math.min(lowest, ratio);
+  }
+  return lowest;
+}
+
 /** The lightness closest to the colour's own at which it passes on every background of the group. */
 function nudgeLightness(color: Oklch, group: readonly Background[]): { color: Oklch; ratio: number } | undefined {
   for (let i = 1; i <= 400; i += 1) {
@@ -419,6 +480,25 @@ function contrastFix(
       if (best) {
         alternatives.push({
           summary: `Alias ${pair.fg} to {${best.path}} instead (at least ${floor2(best.ratio)}:1${scope}).`,
+          overrides: { [pair.fg]: overrideFor(role, context, `{${best.path}}`) },
+        });
+      }
+    }
+
+    // A translucent overlay (black or white at some alpha): the nearest alpha of the same colour.
+    if (primitive && !primitive.ramp && !opaque) {
+      let best: { path: string; ratio: number; distance: number } | undefined;
+      for (const candidate of set.tokens.values()) {
+        if (candidate.tier !== "primitive" || candidate.type !== "color" || candidate.path === primitivePath || isAlias(candidate.value)) continue;
+        const value = candidate.value as ColorValue;
+        if (value.components.some((component, index) => Math.abs(component - fgValue.components[index]!) > 1e-6)) continue;
+        const ratio = passesAllPainted(value, group);
+        const distance = Math.abs((value.alpha ?? 1) - (fgValue.alpha ?? 1));
+        if (ratio !== undefined && (!best || distance < best.distance)) best = { path: candidate.path, ratio, distance };
+      }
+      if (best) {
+        alternatives.push({
+          summary: `Alias ${pair.fg} to {${best.path}}, the nearest alpha of the same colour that passes (at least ${floor2(best.ratio)}:1${scope}).`,
           overrides: { [pair.fg]: overrideFor(role, context, `{${best.path}}`) },
         });
       }

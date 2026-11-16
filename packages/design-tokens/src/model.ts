@@ -47,6 +47,28 @@ export interface ShadowLayer {
   readonly inset?: boolean;
 }
 
+/**
+ * A radial glow: `color` at the centre (`x`, `y`, fractions of the painted box), fading to
+ * transparent at `fade` (a fraction of the ellipse) of an ellipse with radii `radiusX`, `radiusY`.
+ */
+export interface RadialGradientLayer {
+  readonly kind: "radial";
+  readonly color: ColorValue | Alias;
+  readonly radiusX: DimensionValue | Alias;
+  readonly radiusY: DimensionValue | Alias;
+  readonly x: number;
+  readonly y: number;
+  readonly fade: number;
+}
+
+/** The opaque colour at the bottom of a gradient, under every glow. */
+export interface SolidGradientLayer {
+  readonly kind: "solid";
+  readonly color: ColorValue | Alias;
+}
+
+export type GradientLayer = RadialGradientLayer | SolidGradientLayer;
+
 export type FontFamilyValue = string | readonly string[];
 export type CubicBezierValue = readonly [number, number, number, number];
 
@@ -59,6 +81,13 @@ export interface ValueByType {
   duration: DurationValue;
   cubicBezier: CubicBezierValue;
   shadow: readonly ShadowLayer[];
+  /**
+   * A painted background: radial glows, topmost first, over one solid colour, which comes last
+   * (the CSS `background-image` order). Not a DTCG 2025.10 `gradient` (a list of stops along a
+   * line): `tokens.dtcg.json` writes the solid colour as the token's `$value` and the layers under
+   * `$extensions`, and outputs that have no gradient (Figma, Monaco) use the solid colour.
+   */
+  gradient: readonly GradientLayer[];
 }
 
 export type TokenType = keyof ValueByType;
@@ -139,8 +168,13 @@ export interface ContrastPair {
   readonly fg: string;
   /** The background role. */
   readonly bg: string;
-  /** What a translucent `bg` (or `fg`) is painted over. Defaults to `color.bg.canvas`. */
-  readonly over?: string;
+  /**
+   * What a translucent `bg` (or `fg`) is painted over. Defaults to `color.bg.canvas`. A list is a
+   * stack, bottom first (`["gradient.backdrop", "color.bg.layer"]`: a control on a translucent
+   * card on the backdrop). The bottom may be a gradient; the pair must then hold at every point of
+   * it, and the measurement is the worst one.
+   */
+  readonly over?: string | readonly string[];
   /** `text`: WCAG 1.4.3. `ui`: WCAG 1.4.11 (non-text). */
   readonly kind: ContrastKind;
 }

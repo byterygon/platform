@@ -2,7 +2,7 @@
 // colour shows its OKLCH values and its contrast against every role it is paired with, as the
 // engine measured them; a primitive colour takes an OKLCH literal, a role takes an alias (a role
 // never holds a raw colour: the engine rejects it). Reset per token and per group.
-import type { Token, TokenSet } from "@byterygon/design-tokens";
+import { type Token, type TokenSet, overText } from "@byterygon/design-tokens";
 import { Badge } from "@/components/badge/badge";
 import { Button } from "@/components/button/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/collapsible/collapsible";
@@ -324,7 +324,7 @@ export function TokenDetail({ theme, derived, onChange, selected, onSelect }: To
                       </span>
                       <span className="font-mono text-caption text-fg">
                         {m.fg} on {m.bg}
-                        {m.over ? ` over ${m.over}` : ""}
+                        {overText(m.over)}
                       </span>
                     </span>
                   </TableCell>

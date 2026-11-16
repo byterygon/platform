@@ -91,7 +91,8 @@ export function resetGroup(theme: ThemeDoc, group: string): ThemeDoc {
 
 /** The text a user edits for an override value: font lists comma-separated, the rest as written. */
 export function overrideText(value: unknown): string {
-  if (Array.isArray(value)) return value.join(", ");
+  // A list of font families reads as CSS; a list of shadow or gradient layers as the JSON it is.
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) return value.join(", ");
   if (value === undefined) return "";
   return typeof value === "string" ? value : JSON.stringify(value);
 }

@@ -12,6 +12,7 @@ import {
   cssValue,
   dependentAxes,
   generateTokens,
+  overStack,
   resolve,
   validate,
 } from "@byterygon/design-tokens";
@@ -81,9 +82,9 @@ export function resolvedView(set: TokenSet, token: Token, context: ModeContext):
   return view;
 }
 
-/** The measured contrast pairs a token takes part in (as text, background or the surface under it). */
+/** The measured contrast pairs a token takes part in (as text, background or a layer under it). */
 export function contrastOf(contrast: readonly ContrastMeasurement[], path: string): ContrastMeasurement[] {
-  return contrast.filter((m) => m.fg === path || m.bg === path || m.over === path);
+  return contrast.filter((m) => m.fg === path || m.bg === path || (m.over !== undefined && overStack(m).includes(path)));
 }
 
 /** Diagnostics about one token. */

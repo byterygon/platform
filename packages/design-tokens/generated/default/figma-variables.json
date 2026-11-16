@@ -3,7 +3,7 @@
   "version": 1,
   "theme": "default",
   "generatedFrom": "themes/default.theme.json",
-  "note": "Variable collections, modes and values in the shape of the Figma Variables API. Colours are sRGB 0..1, dimensions are px. Primitives have no scopes so they stay out of the pickers.",
+  "note": "Variable collections, modes and values in the shape of the Figma Variables API. Colours are sRGB 0..1, dimensions are px. Primitives have no scopes so they stay out of the pickers. A gradient is a colour variable holding its solid colour (Figma has no gradient variable); paint the glows as a style.",
   "collections": [
     {
       "name": "Primitives",
@@ -265,6 +265,204 @@
           }
         },
         {
+          "name": "color/white/alpha-4",
+          "type": "COLOR",
+          "description": "White at exactly 4% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-4)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.04
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-6",
+          "type": "COLOR",
+          "description": "White at exactly 6% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-6)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.06
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-7",
+          "type": "COLOR",
+          "description": "White at exactly 7% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-7)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.07
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-8",
+          "type": "COLOR",
+          "description": "White at exactly 8% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-8)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.08
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-12",
+          "type": "COLOR",
+          "description": "White at exactly 12% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-12)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.12
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-14",
+          "type": "COLOR",
+          "description": "White at exactly 14% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-14)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.14
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-18",
+          "type": "COLOR",
+          "description": "White at exactly 18% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-18)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.18
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-26",
+          "type": "COLOR",
+          "description": "White at exactly 26% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-26)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.26
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-45",
+          "type": "COLOR",
+          "description": "White at exactly 45% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-45)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.45
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-55",
+          "type": "COLOR",
+          "description": "White at exactly 55% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-55)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.55
+            }
+          }
+        },
+        {
+          "name": "color/white/alpha-72",
+          "type": "COLOR",
+          "description": "White at exactly 72% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on dark backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-white-alpha-72)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 0.72
+            }
+          }
+        },
+        {
           "name": "color/black/a1",
           "type": "COLOR",
           "description": "Black at 5% alpha, for shadows, scrims and hairlines on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
@@ -477,6 +675,204 @@
               "g": 0,
               "b": 0,
               "a": 0.95
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-4",
+          "type": "COLOR",
+          "description": "Black at exactly 4% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-4)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.04
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-6",
+          "type": "COLOR",
+          "description": "Black at exactly 6% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-6)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.06
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-7",
+          "type": "COLOR",
+          "description": "Black at exactly 7% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-7)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.07
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-8",
+          "type": "COLOR",
+          "description": "Black at exactly 8% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-8)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.08
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-12",
+          "type": "COLOR",
+          "description": "Black at exactly 12% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-12)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.12
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-14",
+          "type": "COLOR",
+          "description": "Black at exactly 14% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-14)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.14
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-18",
+          "type": "COLOR",
+          "description": "Black at exactly 18% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-18)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.18
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-26",
+          "type": "COLOR",
+          "description": "Black at exactly 26% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-26)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.26
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-45",
+          "type": "COLOR",
+          "description": "Black at exactly 45% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-45)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.45
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-55",
+          "type": "COLOR",
+          "description": "Black at exactly 55% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-55)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.55
+            }
+          }
+        },
+        {
+          "name": "color/black/alpha-72",
+          "type": "COLOR",
+          "description": "Black at exactly 72% alpha (between the steps of the a1..a12 scale), for the hairlines, control edges, shadows and translucent layers of the layered look on light backgrounds. Primitive: reference it through a semantic role, never from a component.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-color-black-alpha-72)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.72
             }
           }
         },
@@ -10539,6 +10935,36 @@
           }
         },
         {
+          "name": "ring/inner-width",
+          "type": "FLOAT",
+          "description": "Thickness of the inner stroke of the double focus ring (ring.inner-color), inside the ring.width of ring.color: outline for the outer stroke, box-shadow for the inner one. Not a border width: use border.width.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-ring-inner-width)"
+          },
+          "valuesByMode": {
+            "Value": 1
+          }
+        },
+        {
+          "name": "blur/acrylic",
+          "type": "FLOAT",
+          "description": "Blur of what shows through a translucent flyout or layer (backdrop-filter: blur(), the backdrop-blur-acrylic utility), so text on it stays legible. Not a shadow blur, and not on opaque surfaces, where it costs paint time and shows nothing.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-blur-acrylic)"
+          },
+          "valuesByMode": {
+            "Value": 30
+          }
+        },
+        {
           "name": "text/display/family",
           "type": "STRING",
           "description": "Font family of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
@@ -12568,12 +12994,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber/9"
+              "name": "color/orange/9"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber-dark/9"
+              "name": "color/orange-dark/9"
             }
           }
         },
@@ -12592,12 +13018,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber/10"
+              "name": "color/orange/10"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber-dark/10"
+              "name": "color/orange-dark/10"
             }
           }
         },
@@ -12616,12 +13042,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber/contrast"
+              "name": "color/orange/contrast"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber-dark/contrast"
+              "name": "color/orange-dark/contrast"
             }
           }
         },
@@ -12640,12 +13066,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber/11"
+              "name": "color/orange/11"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber-dark/11"
+              "name": "color/orange-dark/11"
             }
           }
         },
@@ -12664,12 +13090,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber/3"
+              "name": "color/orange/3"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber-dark/5"
+              "name": "color/orange-dark/5"
             }
           }
         },
@@ -12688,12 +13114,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber/7"
+              "name": "color/orange/7"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/amber-dark/7"
+              "name": "color/orange-dark/7"
             }
           }
         },
@@ -13198,6 +13624,414 @@
               "type": "VARIABLE_ALIAS",
               "collection": "Theme",
               "name": "color/ring"
+            }
+          }
+        },
+        {
+          "name": "color/backdrop/glow-1",
+          "type": "COLOR",
+          "description": "Colour of the backdrop's first glow, at the top left of the app. The canvas colour unless the theme gives the backdrop glows (Aurora: a light tint of the brand). Not painted on its own: gradient.backdrop draws it. Not for surfaces or text.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-backdrop-glow-1)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/canvas"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/canvas"
+            }
+          }
+        },
+        {
+          "name": "color/backdrop/glow-2",
+          "type": "COLOR",
+          "description": "Colour of the backdrop's second glow, at the right edge of the app. The canvas colour unless the theme gives the backdrop glows (Aurora: a light aqua). Not painted on its own: gradient.backdrop draws it. Not for surfaces or text.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-backdrop-glow-2)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/canvas"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/canvas"
+            }
+          }
+        },
+        {
+          "name": "gradient/backdrop",
+          "type": "COLOR",
+          "description": "The app background of the layered look, painted once on the app root (background or background-image: var(--by-gradient-backdrop), or the bg-(image:--by-gradient-backdrop) utility): the two backdrop glows over the canvas colour, under every translucent layer. Where the glows are the canvas colour it shows a flat canvas. Not behind a single card or control, and not where a colour is needed: tools without gradients (Figma, Monaco) read its solid colour, color.bg.canvas unless the theme changes it.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-gradient-backdrop)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/canvas"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/canvas"
+            }
+          }
+        },
+        {
+          "name": "color/bg/layer",
+          "type": "COLOR",
+          "description": "Translucent surfaces on the backdrop: cards, panels, toolbars, and the fill of secondary buttons. The backdrop shows through (72 % white in light, 5 % in dark). Not for floating layers (use elevation.flyout or elevation.dialog) and not on an opaque surface where nothing shows through: use color.bg.surface.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-bg-layer)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/white/alpha-72"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/white/a1"
+            }
+          }
+        },
+        {
+          "name": "color/bg/layer-alt",
+          "type": "COLOR",
+          "description": "The fill of text fields, selects and segmented tracks on a layer, and every other row of a striped table: one step brighter than color.bg.layer. Not for cards or panels: use color.bg.layer. Not a hover state: use color.interactive.hover.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-bg-layer-alt)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/base/white"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/white/alpha-6"
+            }
+          }
+        },
+        {
+          "name": "color/border/subtle",
+          "type": "COLOR",
+          "description": "Hairline outline of controls, flyouts and separators on translucent layers: 8 % black or white, so it reads on any backdrop. Not the only cue that identifies a text field (far below 3:1): add color.border.control-bottom. On opaque surfaces color.border.default also works.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-border-subtle)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/black/alpha-8"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/white/alpha-8"
+            }
+          }
+        },
+        {
+          "name": "color/border/control-bottom",
+          "type": "COLOR",
+          "description": "The darker bottom edge of text fields, selects and other inputs, drawn over color.border.subtle: the stroke that makes a field reach 3:1 on its layer. Not on buttons (use color.border.control-bottom-subtle) and not as a whole outline (use color.border.subtle around the field).",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-border-control-bottom)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/black/alpha-45"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/white/alpha-55"
+            }
+          }
+        },
+        {
+          "name": "color/border/control-bottom-subtle",
+          "type": "COLOR",
+          "description": "The slightly different bottom edge of buttons and other raised controls, which reads as depth. Not on text fields, whose bottom stroke must reach 3:1: use color.border.control-bottom. Never the only thing that identifies a control.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-border-control-bottom-subtle)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/black/alpha-18"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/white/alpha-4"
+            }
+          }
+        },
+        {
+          "name": "color/border/focus-underline",
+          "type": "COLOR",
+          "description": "The 2 px underline of a focused text field, in the accent colour (shadow.focus-underline draws it). Not the focus indicator of buttons and other controls: use the double ring (color.ring outside color.ring-inner).",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-border-focus-underline)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/accent/bg"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/accent/bg"
+            }
+          }
+        },
+        {
+          "name": "color/ring-inner",
+          "type": "COLOR",
+          "description": "The inner stroke of the double focus ring, between the control and color.ring, so the ring reads on any fill (white in light, black in dark). Not a focus indicator on its own: it is always drawn with color.ring outside it.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-ring-inner)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/base/white"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/base/black"
+            }
+          }
+        },
+        {
+          "name": "ring/inner-color",
+          "type": "COLOR",
+          "description": "Colour of the inner stroke of the double focus ring: box-shadow: 0 0 0 var(--by-ring-inner-width) var(--by-ring-inner-color), with the outline in ring.color outside it. Not a border or a selection colour, and not without the outer ring.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-ring-inner-color)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/ring-inner"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/ring-inner"
+            }
+          }
+        },
+        {
+          "name": "elevation/layer/border",
+          "type": "COLOR",
+          "description": "Hairline border of the layer elevation. Cards and panels laid on the backdrop: a translucent fill, a hairline and (light only) a faint shadow. Use the three tokens of the role together (shadow, border, bg). Not for anything that floats: use elevation.flyout or elevation.dialog.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-elevation-layer-border)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/black/alpha-6"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/white/alpha-7"
+            }
+          }
+        },
+        {
+          "name": "elevation/layer/bg",
+          "type": "COLOR",
+          "description": "Surface colour of the layer elevation. Cards and panels laid on the backdrop: a translucent fill, a hairline and (light only) a faint shadow. Use the three tokens of the role together (shadow, border, bg). Not for anything that floats: use elevation.flyout or elevation.dialog.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-elevation-layer-bg)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/layer"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/layer"
+            }
+          }
+        },
+        {
+          "name": "elevation/flyout/border",
+          "type": "COLOR",
+          "description": "Hairline border of the flyout elevation. Layers that float over the page and close on an outside click, in the layered look: menus, popovers, select and combobox lists, tooltips, toasts. Use the three tokens of the role together (shadow, border, bg). Not for dialogs that block the page: use elevation.dialog.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-elevation-flyout-border)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/border/subtle"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/border/subtle"
+            }
+          }
+        },
+        {
+          "name": "elevation/flyout/bg",
+          "type": "COLOR",
+          "description": "Surface colour of the flyout elevation. Layers that float over the page and close on an outside click, in the layered look: menus, popovers, select and combobox lists, tooltips, toasts. Use the three tokens of the role together (shadow, border, bg). Not for dialogs that block the page: use elevation.dialog.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-elevation-flyout-bg)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/overlay"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/overlay"
+            }
+          }
+        },
+        {
+          "name": "elevation/dialog/border",
+          "type": "COLOR",
+          "description": "Hairline border of the dialog elevation. The top layer of the layered look, over a scrim: dialogs, alert dialogs, sheets and the command palette. Use the three tokens of the role together (shadow, border, bg). Not for anything that does not block the page: use elevation.flyout.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-elevation-dialog-border)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/border/subtle"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/border/subtle"
+            }
+          }
+        },
+        {
+          "name": "elevation/dialog/bg",
+          "type": "COLOR",
+          "description": "Surface colour of the dialog elevation. The top layer of the layered look, over a scrim: dialogs, alert dialogs, sheets and the command palette. Use the three tokens of the role together (shadow, border, bg). Not for anything that does not block the page: use elevation.flyout.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-elevation-dialog-bg)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/overlay"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/bg/overlay"
             }
           }
         },
@@ -15465,6 +16299,46 @@
     },
     {
       "token": "elevation.modal.shadow",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "shadow.focus-underline",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "depth.2",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "depth.4",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "depth.8",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "depth.16",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "depth.28",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "depth.64",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "elevation.layer.shadow",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "elevation.flyout.shadow",
+      "reason": "Figma has no variable type for shadow; create a style instead"
+    },
+    {
+      "token": "elevation.dialog.shadow",
       "reason": "Figma has no variable type for shadow; create a style instead"
     }
   ]

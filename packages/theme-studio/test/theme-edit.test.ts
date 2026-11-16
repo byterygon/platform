@@ -54,6 +54,9 @@ describe("overrides", () => {
     expect(parseOverrideText("dimension", " 12px ")).toBe("12px");
     expect(parseOverrideText("shadow", '[{"color":"{color.black.a3}"}]')).toEqual([{ color: "{color.black.a3}" }]);
     expect(overrideText(["Inter", "sans-serif"])).toBe("Inter, sans-serif");
+    const gradient = [{ kind: "radial", color: "{color.brand.4}", radiusX: "1100px", radiusY: "700px", x: 0.08, y: 0, fade: 0.6 }, { kind: "solid", color: "{color.bg.canvas}" }];
+    expect(overrideText(gradient)).toBe(JSON.stringify(gradient));
+    expect(parseOverrideText("gradient", overrideText(gradient))).toEqual(gradient);
     expect(overrideText(undefined)).toBe("");
   });
 });

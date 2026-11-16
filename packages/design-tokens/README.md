@@ -16,6 +16,11 @@ WCAG 2.2 contrast in both colour modes, and Inter and JetBrains Mono ship in `fo
 Open Font License (the package's code is MIT OR Apache-2.0; the fonts are not, see
 [fonts/README.md](./fonts/README.md)).
 
+Every theme also carries the roles of the layered look (Fluent 2): a backdrop gradient for the
+app root, translucent layers on it, control strokes with a darker bottom edge, a focus underline
+for fields, a double focus ring, Fluent depth shadows for flyouts and dialogs, and a blur for what
+shows through. Contrast on a layer is checked over the backdrop at its least favourable point.
+
 Everything a contributor or an agent needs (commands, the theme file, the tiers, the rules, how
 to add a role or a preset, what never to do) is in [AGENTS.md](./AGENTS.md).
 

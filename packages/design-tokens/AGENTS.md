@@ -103,7 +103,8 @@ that role's failures. Command-line mistakes come back as `"error": { "code", "me
   derived from it (14 gives 11, 12, 13, 14, 16, 18, 20, 24, 30).
 - An override is a value for every mode, or an object keyed by mode name to change some modes.
   A value is an alias in braces or a literal of the token's type (`oklch(L C H)`, `#rrggbb`,
-  `12px`, `150ms`, a list of font families). A colour literal is only allowed on a primitive.
+  `12px`, `150ms`, a list of font families, a list of shadow or gradient layers). A colour literal
+  is only allowed on a primitive, inside a shadow or a gradient too.
 - `seeds.contrast.level` is `AA` (4.5:1 text, 3:1 UI) or `AAA` (7:1, 4.5:1). `seeds.contrast.apca`
   (`{ text, ui }`, absolute Lc) adds an APCA minimum; without it APCA is reported, not enforced.
 
@@ -146,10 +147,10 @@ theme name; the second is how the Theme Studio will label it.
 | --- | --- | --- |
 | `default` | Byterygon | cool neutral, blue-teal brand (hue 230), light, comfortable. DBee sets `data-density="compact"` itself |
 | `slate` | Slate | near-greyscale, muted slate-blue accent, radius 4 |
-| `paper` | Paper | warm cream (neutral tint), rust accent, 15 px text with relaxed body leading, radius 8 |
+| `paper` | Paper | warm cream (neutral tint), rust accent, 15 px text with relaxed body leading, radius 8; its orange (the warning colour) at hue 65, so warning stays apart from the rust brand |
 | `midnight` | Midnight | dark first, deep blue neutral, periwinkle accent |
 | `terminal` | Terminal | dark first, green accent, `font.sans` set to the mono stack, 13 px, radius 2, compact |
-| `high-contrast` | High contrast | WCAG AAA (7:1 text, 4.5:1 UI), pure grey, 3 px focus ring, `color.neutral.11` pushed to pass AAA |
+| `high-contrast` | High contrast | WCAG AAA (7:1 text, 4.5:1 UI), pure grey, 3 px focus ring, `color.neutral.11` pushed to pass AAA, the field's bottom stroke at 55 % black (`color.black.alpha-55`) to reach 4.5:1 |
 
 `generated/default/` holds all eight outputs. The other presets commit `tokens.css`,
 `tailwind-theme.css` and `shadcn-alias.css`, which is what a project copies in: the other three are
@@ -169,7 +170,7 @@ them to step 8). `validate` reports each with its pair and mode.
 
 | Tier | Holds | Example | Who uses it |
 | --- | --- | --- | --- |
-| primitive | raw values: the generated ramps, black and white overlays | `color.neutral.8` | semantic tokens only |
+| primitive | raw values: the generated ramps, black and white overlays (`a1`..`a12`, Radix's scale, and `alpha-<percent>` for the exact percentages of the layered look) | `color.neutral.8` | semantic tokens only |
 | semantic | roles, by mode | `color.border.strong` | components |
 | component | a value a component needs that no role gives | `button.height` (none yet) | that component |
 
@@ -196,7 +197,12 @@ steps 1-5, and on the same steps of the neutral ramp), 12 high-contrast text. `b
 warning: a seed chroma that sRGB cannot show was reduced (hue and lightness are kept).
 
 Contrast is measured on the 8-bit sRGB colours a screen shows, in every mode a pair depends on;
-a translucent background is composited over the surface under it first.
+a translucent background is composited over the surface under it first. A pair's `over` may be a
+stack, bottom first (`["gradient.backdrop", "color.bg.layer"]`: a field on a translucent card on
+the backdrop), and its bottom may be a gradient: the pair is then measured at every point of the
+gradient (each glow at nine strengths, glows combined), the reported ratio is the worst one, and a
+fix must hold on all of them. A failing translucent stroke (black or white at some alpha) gets the
+nearest alpha of the same colour that passes as its fix.
 
 ## How to add things (data, not mechanism)
 
@@ -220,7 +226,12 @@ a translucent background is composited over the surface under it first.
   engine handles every type it has in all its outputs and Figma has no typography variable.
   Tracking is a px dimension (DTCG has no em).
 - **A token type**: add it to `ValueByType` in `src/model.ts` and to the switches in
-  `src/values.ts` (parse, check, CSS) and `figmaTransform` in `src/outputs.ts`.
+  `src/values.ts` (parse, check, CSS) and `figmaTransform` in `src/outputs.ts`. A composite whose
+  fields may be aliases (shadow, gradient) also needs a transitive Style Dictionary value
+  transform (it runs after references resolve) and the branch in `renderTokensCss`. `gradient` is
+  the worked example, including what an output without the type does with it (Figma: a colour
+  variable aliasing the solid colour; `tokens.dtcg.json`: a `color` token with the layers under
+  the extension).
 - **A ramp recipe change** (lightness curve, chroma curve, which steps are solved): edit
   `DEFAULT_RECIPE` in `src/color/ramp.ts`; it is data.
 
@@ -244,6 +255,38 @@ test fails otherwise.
   as TypeScript source and its registry ships `monaco.ts` as the `@byterygon/monaco-theme` item.
 - Never fetch anything at build or run time.
 
+## The layered look (Fluent 2 "Aurora")
+
+`src/catalog/layers.ts`. Every theme has these roles; their defaults keep a theme's own look (the
+backdrop's two glows are the canvas colour, so it paints a flat canvas; near-white or faint white
+layers). A preset colours the glows by overriding `color.backdrop.glow-1` and `glow-2` (an alias
+per mode), or replaces the whole `gradient.backdrop` with its own list of layers. Values that are not ramp steps are the reference canvas's
+(https://claude.ai/artifact/Re3tNwGGy65nfHRB2MLLK9, board "Fluent · Aurora").
+
+| Token | Tailwind | Light / dark | Use |
+| --- | --- | --- | --- |
+| `gradient.backdrop` | `bg-(image:--by-gradient-backdrop)` | glow 1 (1100 x 700 px at 8 % 0 %) and glow 2 (1000 x 800 px at 100 % 35 %), fading out at 60 %, over `color.bg.canvas` | once, on the app root |
+| `color.backdrop.glow-1`, `glow-2` | (none) | `color.bg.canvas` unless a theme colours them | the glows' colours |
+| `color.bg.layer` | `bg-layer` | white 72 % / white 5 % | cards, panels, toolbars, secondary buttons |
+| `color.bg.layer-alt` | `bg-layer-alt` | white / white 6 % | field fills, segmented tracks, striped rows |
+| `color.border.subtle` | `border-border-subtle` | black 8 % / white 8 % | hairline of controls and flyouts on layers |
+| `color.border.control-bottom` | `border-b-border-control-bottom` | black 45 % / white 55 % | bottom edge of a field: what makes it 3:1 |
+| `color.border.control-bottom-subtle` | `border-b-border-control-bottom-subtle` | black 18 % / white 4 % | bottom edge of a button (depth, not identity) |
+| `color.border.focus-underline`, `shadow.focus-underline` | `shadow-focus-underline` | the accent solid, inset 0 -2px 0 | a focused field |
+| `color.ring-inner`, `ring.inner-width`, `ring.inner-color` | `ring-ring-inner` | white / black, 1 px | the inner stroke of the double focus ring |
+| `depth.{2,4,8,16,28,64}` | (none) | key 14 % + ambient 12 % / 26 % + 40 % black | Fluent's depth scale, through an elevation |
+| `elevation.{layer,flyout,dialog}.{shadow,border,bg}` | `shadow-layer`, `shadow-flyout`, `shadow-dialog` | 0 2px 4px black 4 % (light only); depth 16; depth 64 | cards on the backdrop, flyouts, dialogs |
+| `blur.acrylic` | `backdrop-blur-acrylic` | 30 px | what shows through a translucent flyout |
+
+- The double focus ring is the outline in `ring.color` (`ring.width`, offset by
+  `ring.inner-width`) with a `box-shadow: 0 0 0 var(--by-ring-inner-width)
+  var(--by-ring-inner-color)` inside it. The outline survives forced-colours mode; the shadow
+  does not need to.
+- Contrast: text on `color.bg.layer` over the backdrop, text and the field strokes on
+  `color.bg.layer-alt` over the backdrop and a layer, the focus ring and the solids on a layer.
+- `elevation.flyout` and `elevation.dialog` use `color.bg.overlay`, opaque: a component that wants
+  acrylic lays `color.bg.layer` and `backdrop-blur-acrylic` itself.
+
 ## Catalogue notes
 
 - A half step of the space scale is written `0-5`, `1-5` (a path segment cannot hold a dot).
@@ -254,6 +297,9 @@ test fails otherwise.
   white overlays. `shadow.raised` predates them and is kept as it was.
 - Status colours: `color.status.<name>.{bg,border,fg,solid,solid-hover,solid-fg}`. Put `solid-fg` on
   `solid`, never `color.fg.on-accent`: the red solid takes white text where a yellow one takes ink.
+  Warning is the `orange` ramp (hue 55; before TSK-52 it was `amber`), apart from danger's red and
+  from the brand; a theme whose brand is orange or rust moves its `orange` seed (Paper: hue 65). A
+  test checks warning stays at least 20 degrees of hue from danger and from every preset's brand.
 - `color.accent.{bg,bg-hover,bg-active,fg}` are also `accent-solid`, `accent-solid-hover`,
   `accent-solid-active` and `accent-solid-fg` in Tailwind (`tailwindAliases`). shadcn/ui's
   `bg-accent` is a hover background (its `--accent`), so Byterygon components use the
