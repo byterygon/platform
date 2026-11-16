@@ -1,0 +1,23 @@
+/*
+ * The import order an app uses (packages/ui/AGENTS.md): fonts, tokens, Tailwind, the Tailwind
+ * theme of the roles. tokens.css of the default theme is only the first paint: the Studio writes
+ * the edited theme's tokens.css into a <style data-studio-theme> element after this sheet, which
+ * wins (same selectors, later in the document). The Tailwind names of the roles are the same for
+ * every theme, so tailwind-theme.css needs no regeneration.
+ */
+@import "@byterygon/design-tokens/fonts/fonts.css";
+@import "@byterygon/design-tokens/default/tokens.css";
+@import "tailwindcss";
+@import "@byterygon/design-tokens/default/tailwind-theme.css";
+
+/* The Byterygon UI sources the Studio renders, and the Studio's own. */
+@source "../../ui/src/components";
+@source "../../ui/src/lib";
+@source "./";
+
+body {
+  margin: 0;
+  background: var(--by-color-bg-canvas);
+  color: var(--by-color-fg-default);
+  font-family: var(--by-font-sans);
+}

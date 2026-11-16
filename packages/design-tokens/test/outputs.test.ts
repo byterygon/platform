@@ -5,7 +5,7 @@ import { test } from "node:test";
 
 import { OUTPUT_FILES, buildTheme, committedOutputs } from "../src/build.js";
 import { MONACO_COLORS, MONACO_TOKENS } from "../src/monaco.js";
-import { monacoThemeFor } from "../src/outputs.js";
+import { monacoThemeFor, renderOutputs, renderTokensCss } from "../src/outputs.js";
 import { generateTokens } from "../src/generate.js";
 import { EXTENSION } from "../src/model.js";
 import { ROOT, defaultTheme, themeWith } from "./helpers.js";
@@ -236,6 +236,20 @@ test("tokens.ts exports typed constants with the resolved value per mode", async
   assert.equal(module.tokens["size.control.md"].values.compact, "28px");
   assert.equal(module.cssVar("color.fg.muted"), "var(--by-color-fg-muted)");
   assert.ok(module.tokens["color.fg.muted"].description.length > 20);
+});
+
+test("renderTokensCss (the Studio's live preview) is the tokens.css of renderOutputs, byte for byte", async () => {
+  const edited = [
+    ...PRESETS.map((preset) => JSON.parse(readFileSync(join(ROOT, "themes", `${preset}.theme.json`), "utf8"))),
+    themeWith({ "color.neutral.7": "oklch(0.6 0.02 230)", "radius.lg": "12px", "shadow.raised": { light: "{shadow.3}" } }, { colors: { brand: { hue: 20, chroma: 0.2 } }, fontSize: 16, radius: 0 }),
+    themeWith({}, { colorScheme: "dark", density: "compact", contrast: { level: "AAA" } }),
+  ];
+  for (const theme of edited) {
+    // Rendered whether or not the theme passes every rule: the Studio previews a theme mid-edit.
+    const { set } = generateTokens(theme);
+    const files = await renderOutputs(set, "studio");
+    assert.ok(renderTokensCss(set, "studio") === files.get("tokens.css"), `${theme.name}: the preview CSS differs from tokens.css`);
+  }
 });
 
 test("the registry theme item is the one @byterygon/ui's registry holds, for every preset", async () => {

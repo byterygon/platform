@@ -1,0 +1,36 @@
+{
+  "name": "@byterygon/theme-studio",
+  "version": "0.0.0",
+  "description": "Byterygon Theme Studio: edit the design-token seeds and any token, preview real Byterygon UI components live, export. A static app: no backend, no network, runs from a folder.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "private": true,
+  "files": [
+    "dist",
+    "AGENTS.md",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@byterygon/design-tokens": "workspace:*",
+    "@byterygon/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.5",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "jsdom": "31.0.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tailwindcss": "4.3.5",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}

@@ -7,7 +7,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 
 const PERMISSIVE = "MIT OR Apache-2.0";
 const ALLOWED = new Set([PERMISSIVE, "AGPL-3.0-only"]);
@@ -85,6 +85,47 @@ for (const [name, { path, json }] of npm) {
       }
       stack.push([dep, depChain]);
     }
+  }
+}
+
+// Layout (ADR "Repository layout and licensing"): libraries in crates/ and packages/ never depend
+// on a product in apps/, whatever its licence and whatever the kind of dependency (dev included).
+const root = process.cwd();
+const inApps = (path) => relative(root, path).split(sep)[0] === "apps";
+for (const id of meta.workspace_members) {
+  const start = pkgs.get(id);
+  if (inApps(start.manifest_path)) continue;
+  const seen = new Set([id]);
+  const stack = [[id, [start.name]]];
+  while (stack.length > 0) {
+    const [cur, path] = stack.pop();
+    for (const dep of deps.get(cur) ?? []) {
+      if (seen.has(dep)) continue;
+      seen.add(dep);
+      const depPkg = pkgs.get(dep);
+      if (depPkg.source == null && inApps(depPkg.manifest_path)) {
+        errors.push(`crate ${start.name} is a library but depends on a product in apps/: ${[...path, depPkg.name].join(" -> ")}`);
+      }
+      stack.push([dep, [...path, depPkg.name]]);
+    }
+  }
+}
+const appPackages = new Set();
+const findApps = (dir, depth) => {
+  if (depth > 3 || !existsSync(dir)) return;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === "node_modules") continue;
+    const manifest = join(dir, entry.name, "package.json");
+    if (existsSync(manifest)) appPackages.add(JSON.parse(readFileSync(manifest, "utf8")).name);
+    findApps(join(dir, entry.name), depth + 1);
+  }
+};
+findApps("apps", 0);
+for (const [name, { path, json }] of npm) {
+  if (!path.startsWith(`packages${sep}`)) continue;
+  const all = { ...json.dependencies, ...json.devDependencies, ...json.peerDependencies, ...json.optionalDependencies };
+  for (const dep of Object.keys(all)) {
+    if (appPackages.has(dep)) errors.push(`${path} (${name}) is a library but depends on the app package ${dep}; packages/ never depend on apps/`);
   }
 }
 
