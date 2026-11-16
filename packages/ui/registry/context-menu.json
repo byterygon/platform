@@ -3,7 +3,7 @@
   "name": "context-menu",
   "type": "registry:ui",
   "title": "ContextMenu",
-  "description": "A menu opened by a right-click or the context-menu key on an area, on Base UI's ContextMenu: DropdownMenu's items (shortcuts, danger, checkbox and radio items, groups, separators, submenus) at the pointer, on color.bg.overlay at z.popover.",
+  "description": "A menu opened by a right-click or the context-menu key on an area, on Base UI's ContextMenu: DropdownMenu's items (shortcuts, danger, checkbox and radio items, groups, separators, submenus) at the pointer, on elevation.flyout (color.bg.overlay) at z.popover.",
   "dependencies": [
     "@base-ui/react"
   ],
@@ -24,7 +24,7 @@
       "schemaVersion": 1,
       "name": "context-menu",
       "title": "ContextMenu",
-      "description": "A menu opened by a right-click or the context-menu key on an area, on Base UI's ContextMenu: DropdownMenu's items (shortcuts, danger, checkbox and radio items, groups, separators, submenus) at the pointer, on color.bg.overlay at z.popover.",
+      "description": "A menu opened by a right-click or the context-menu key on an area, on Base UI's ContextMenu: DropdownMenu's items (shortcuts, danger, checkbox and radio items, groups, separators, submenus) at the pointer, on elevation.flyout (color.bg.overlay) at z.popover.",
       "usage": "Use ContextMenu for the actions of the thing under the pointer: a tree node, a grid cell, a tab. Compose it as ContextMenu > ContextMenuTrigger (the area; give it its own classes) + ContextMenuContent > ContextMenuItem, ContextMenuCheckboxItem, ContextMenuRadioGroup with ContextMenuRadioItem, ContextMenuGroup with ContextMenuLabel, ContextMenuSeparator, ContextMenuShortcut, and ContextMenuSub > ContextMenuSubTrigger + ContextMenuSubContent. A right-click is not discoverable and not available to everyone: every action in it must also be reachable another way (a toolbar, a DropdownMenu, the CommandPalette, a shortcut). For a menu behind a visible button use DropdownMenu.",
       "status": "experimental",
       "base": "@base-ui/react/context-menu",
@@ -92,7 +92,7 @@
         {
           "name": "popup",
           "element": "div",
-          "description": "role=\"menu\", color.bg.overlay with elevation.overlay; data-slot=\"context-menu-content\"."
+          "description": "role=\"menu\", elevation.flyout (color.bg.overlay, color.border.subtle, depth 16, radius.lg); data-slot=\"context-menu-content\"."
         }
       ],
       "parts": [
@@ -161,12 +161,12 @@
         {
           "name": "open",
           "variant": "data-starting-style",
-          "description": "Opening: the menu grows from 95 % and fades in over motion.duration.base with motion.easing.enter; reduced motion turns it off."
+          "description": "Opening: the menu grows from 95 % and fades in over motion.duration.normal with the decelerate curve; reduced motion turns it off."
         },
         {
           "name": "closing",
           "variant": "data-ending-style",
-          "description": "Closing: the reverse, with motion.easing.exit."
+          "description": "Closing: the reverse, with the accelerate curve (motion.duration.fast)."
         },
         {
           "name": "highlighted",
@@ -190,9 +190,10 @@
         }
       ],
       "tokens": [
+        "color.accent.subtle-fg",
         "color.bg.overlay",
-        "color.border.default",
         "color.border.strong",
+        "color.border.subtle",
         "color.fg.default",
         "color.fg.disabled",
         "color.fg.muted",
@@ -200,30 +201,40 @@
         "color.interactive.hover",
         "color.status.danger.bg",
         "color.status.danger.fg",
-        "elevation.overlay.shadow",
+        "elevation.flyout.shadow",
         "font.sans",
-        "motion.duration.base",
-        "motion.easing.enter",
-        "motion.easing.exit",
+        "motion.duration.fast",
+        "motion.duration.normal",
+        "motion.easing.accelerate-mid",
+        "motion.easing.decelerate-mid",
+        "radius.lg",
         "radius.md",
-        "radius.sm",
         "size.control.lg",
+        "size.control.md",
         "size.control.sm",
-        "size.control.xs",
-        "size.icon.sm",
+        "size.icon.md",
         "space.inline.lg",
+        "space.inline.md",
         "space.inline.sm",
+        "space.inline.xs",
         "space.inset.md",
-        "space.inset.sm",
         "space.inset.xs",
+        "text.body-1.leading",
+        "text.body-1.size",
+        "text.body-1.tracking",
+        "text.body-1.weight",
         "text.body.leading",
         "text.body.size",
         "text.body.tracking",
         "text.body.weight",
-        "text.caption.leading",
-        "text.caption.size",
-        "text.caption.tracking",
-        "text.caption.weight",
+        "text.caption-1-strong.leading",
+        "text.caption-1-strong.size",
+        "text.caption-1-strong.tracking",
+        "text.caption-1-strong.weight",
+        "text.caption-1.leading",
+        "text.caption-1.size",
+        "text.caption-1.tracking",
+        "text.caption-1.weight",
         "z.popover"
       ],
       "examples": {
@@ -235,7 +246,7 @@
         "A right-click opens the menu at the pointer; on a focused area the context-menu key or Shift+F10 opens it (the browser sends the same contextmenu event). Focus moves into the menu; arrows, Home, End and typing move, Enter chooses, Escape closes and returns focus.",
         "ArrowRight on a sub-trigger opens its submenu, ArrowLeft closes it. Disabled items stay reachable but have aria-disabled and cannot be chosen.",
         "Every action in a context menu is also available elsewhere (toolbar, DropdownMenu, CommandPalette, shortcut), because right-click is not discoverable.",
-        "prefers-reduced-motion: reduce turns the scale and fade transitions off.",
+        "prefers-reduced-motion: reduce turns the slide and fade transitions off.",
         "The menu takes the area's theme and density and sits at z.popover."
       ]
     },

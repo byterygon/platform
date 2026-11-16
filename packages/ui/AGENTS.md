@@ -140,6 +140,23 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   ErrorCircle. **Disabled**: no fill, `border-border-disabled`, `text-fg-disabled` (placeholder too).
 - Fluent's hover on a field changes its stroke by a shade the roles do not have, so fields keep
   their look on hover.
+- **Checkbox, RadioGroup, Switch, Slider** (batch 3): sizes `small | medium | large` (Fluent's medium is
+  the default: a 16 px box or radio, a 14 px switch thumb, a 20 px slider thumb). Unchecked controls
+  sit on `bg-layer-alt` with `border-border-strong`; Checkbox ticks with a filled Checkmark (Subtract when
+  mixed) on the accent solid; a chosen radio has an accent stroke and a filled Circle dot; Switch is
+  Fluent's outlined track with a `bg-fg-muted` thumb, the accent track and an `accent-solid-fg` thumb
+  when on; Slider is a `border-strong` rail, the accent for the chosen part and an accent disc in a
+  ring of the surface colour. All take the double ring (Slider's thumb through `focusRingWithin`).
+- **Flyouts** (menus, Popover, HoverCard, the lists of Select/Combobox/MultiSelect, DatePicker's
+  calendar): `flyoutSurface` (`bg-overlay`, `border-border-subtle`, `shadow-flyout`, `rounded-lg`,
+  body-1) and `flyoutMotion` (slide by `space.inline.sm` from the trigger's side and fade in,
+  `normal` + decelerate; fade out, `fast` + accelerate) from `@/lib/control`. Items are
+  `flyoutItem` (32 px comfortable, 16 px icon, `bg-hover` while highlighted; menu icons turn accent),
+  group labels `flyoutLabel`, dividers `flyoutSeparator`. Flyouts are opaque, not acrylic: Fluent 2's
+  web components draw them solid, and text on a translucent popup over arbitrary content cannot be
+  contrast-checked (DOC-17).
+- **Tooltip** takes `appearance` on its root: `normal` (default, the light flyout surface) or
+  `inverted` (the neutral solid, the look before TSK-53).
 
 ## Forms
 
@@ -389,7 +406,8 @@ registry item, which `@byterygon/icon` depends on.
   example draws an `<svg>` again (Icon, Spinner and Chart draw on purpose). Done: Button,
   IconButton, ToggleButton, ToggleGroup, SplitButton (TSK-53 batch 1); Input, Textarea, InputGroup,
   NumberInput, SearchInput, PasswordInput, FileInput, DatePicker, Calendar, TimePicker, Select,
-  Combobox, MultiSelect, Field (batch 2).
+  Combobox, MultiSelect, Field (batch 2); Checkbox, RadioGroup, Switch, Slider, DropdownMenu,
+  ContextMenu, Menubar, Popover, HoverCard, Tooltip (batch 3).
 
 | Hand-drawn today | Fluent icon |
 | --- | --- |

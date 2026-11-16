@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "name": "dropdown-menu",
   "title": "DropdownMenu",
-  "description": "A menu of actions opened from a button, on Base UI's Menu: items with shortcuts and a danger tone, checkbox and radio items, groups with labels, separators and submenus, on color.bg.overlay at z.popover.",
+  "description": "A menu of actions opened from a button, on Base UI's Menu: items with shortcuts and a danger tone, checkbox and radio items, groups with labels, separators and submenus, on elevation.flyout (color.bg.overlay) at z.popover.",
   "usage": "Use DropdownMenu for a list of actions or options behind one button: tab actions under a \"more\" IconButton, copy formats, view options. Compose it as DropdownMenu > DropdownMenuTrigger (render a Button or IconButton) + DropdownMenuContent > DropdownMenuItem (onClick; danger for a destructive one; DropdownMenuShortcut at the end), DropdownMenuCheckboxItem (checked, onCheckedChange), DropdownMenuRadioGroup (value, onValueChange) with DropdownMenuRadioItem, DropdownMenuGroup with DropdownMenuLabel, DropdownMenuSeparator, and DropdownMenuSub > DropdownMenuSubTrigger + DropdownMenuSubContent for a submenu. For a menu on right-click use ContextMenu; for an app's menu row, Menubar; for a primary action with variants, SplitButton; for picking a form value, Select; for a searchable list of every command, CommandPalette.",
   "status": "experimental",
   "base": "@base-ui/react/menu",
@@ -83,7 +83,7 @@
     {
       "name": "popup",
       "element": "div",
-      "description": "role=\"menu\", color.bg.overlay with elevation.overlay, at most the viewport's free height; data-slot=\"dropdown-menu-content\"."
+      "description": "role=\"menu\", elevation.flyout (color.bg.overlay, color.border.subtle, depth 16, radius.lg), at most the viewport's free height; data-slot=\"dropdown-menu-content\"."
     }
   ],
   "parts": [
@@ -152,12 +152,12 @@
     {
       "name": "open",
       "variant": "data-starting-style",
-      "description": "Opening: the menu grows from 95 % at the trigger and fades in over motion.duration.base with motion.easing.enter; reduced motion turns it off."
+      "description": "Opening: the menu grows from 95 % at the trigger and fades in over motion.duration.normal with the decelerate curve; reduced motion turns it off."
     },
     {
       "name": "closing",
       "variant": "data-ending-style",
-      "description": "Closing: the reverse, with motion.easing.exit."
+      "description": "Closing: the reverse, with the accelerate curve (motion.duration.fast)."
     },
     {
       "name": "highlighted",
@@ -186,7 +186,6 @@
     "color.bg.layer",
     "color.bg.overlay",
     "color.border.control-bottom-subtle",
-    "color.border.default",
     "color.border.disabled",
     "color.border.subtle",
     "color.fg.default",
@@ -199,39 +198,39 @@
     "color.ring-inner",
     "color.status.danger.bg",
     "color.status.danger.fg",
-    "elevation.overlay.shadow",
+    "elevation.flyout.shadow",
     "font.sans",
-    "motion.duration.base",
+    "motion.duration.fast",
     "motion.duration.faster",
+    "motion.duration.normal",
+    "motion.easing.accelerate-mid",
+    "motion.easing.decelerate-mid",
     "motion.easing.easy-ease",
-    "motion.easing.enter",
-    "motion.easing.exit",
+    "radius.lg",
     "radius.md",
-    "radius.sm",
     "ring.inner-width",
     "ring.width",
     "size.control.md",
     "size.control.sm",
-    "size.control.xs",
     "size.icon.lg",
     "size.icon.md",
-    "size.icon.sm",
     "space.inline.lg",
+    "space.inline.md",
     "space.inline.sm",
-    "space.inset.sm",
+    "space.inline.xs",
     "space.inset.xs",
-    "text.body.leading",
-    "text.body.size",
-    "text.body.tracking",
-    "text.body.weight",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
+    "text.caption-1-strong.leading",
+    "text.caption-1-strong.size",
+    "text.caption-1-strong.tracking",
+    "text.caption-1-strong.weight",
     "text.caption-1.leading",
     "text.caption-1.size",
     "text.caption-1.tracking",
     "text.caption-1.weight",
-    "text.caption.leading",
-    "text.caption.size",
-    "text.caption.tracking",
-    "text.caption.weight",
     "z.popover"
   ],
   "examples": {
@@ -243,7 +242,7 @@
     "Enter, Space or ArrowDown on the trigger opens the menu with the first item highlighted (ArrowUp: the last); arrow keys, Home and End move, typing jumps to an item, Enter or Space chooses, Escape closes and returns focus to the trigger.",
     "ArrowRight (inline-end) on a sub-trigger opens its submenu, ArrowLeft closes it. Disabled items stay reachable by the keyboard, as the ARIA menu pattern recommends, but have aria-disabled and cannot be chosen.",
     "A press outside closes the menu. A destructive item has danger and a clear label, so the meaning does not rest on colour; checked state shows a check mark or dot as well as aria-checked.",
-    "prefers-reduced-motion: reduce turns the scale and fade transitions off.",
+    "prefers-reduced-motion: reduce turns the slide and fade transitions off.",
     "The menu and its submenus take the trigger's theme and density, and sit at z.popover so a menu opened from a dialog is above it."
   ]
 }

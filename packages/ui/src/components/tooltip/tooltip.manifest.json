@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "name": "tooltip",
   "title": "Tooltip",
-  "description": "A short label for a control, shown on hover and keyboard focus, on Base UI's Tooltip: a neutral-solid bubble at z.tooltip on any side of the trigger, with an optional keyboard shortcut.",
+  "description": "A short label for a control, shown on hover and keyboard focus, on Base UI's Tooltip: Fluent 2's bubble at z.tooltip on any side of the trigger, normal (the light flyout surface) or inverted (the neutral solid), with an optional keyboard shortcut.",
   "usage": "Use Tooltip to name an icon button or add a few words to a control, never for anything the user must read to act (put that on the page) and never on a disabled control (it cannot be focused). Compose it as Tooltip > TooltipTrigger (render the IconButton; it keeps its own aria-label) + TooltipContent (side, align) with the text and an optional TooltipShortcut. Wrap a toolbar in TooltipProvider (delay) so moving between its buttons shows each tooltip at once. Keep it to one line where possible. For a richer preview on hover use HoverCard; for controls or text the user clicks to open, Popover.",
   "status": "experimental",
   "base": "@base-ui/react/tooltip",
@@ -11,6 +11,12 @@
     "@base-ui/react"
   ],
   "props": [
+    {
+      "name": "appearance",
+      "type": "\"normal\" | \"inverted\"",
+      "default": "normal",
+      "description": "On Tooltip (the root): Fluent's normal bubble (the light flyout surface, elevation.flyout) or inverted (the neutral solid); TooltipContent reads it."
+    },
     {
       "name": "open",
       "type": "boolean",
@@ -62,7 +68,12 @@
       "description": "On each part: extra classes, merged after the component's own."
     }
   ],
-  "variants": {},
+  "variants": {
+    "appearance": [
+      "normal",
+      "inverted"
+    ]
+  },
   "slots": [
     {
       "name": "positioner",
@@ -96,12 +107,12 @@
     {
       "name": "open",
       "variant": "data-starting-style",
-      "description": "Opening: a fade over motion.duration.base with motion.easing.enter; moving within a TooltipProvider shows the next one at once (data-instant); reduced motion turns the fade off."
+      "description": "Opening: a fade over motion.duration.fast with Fluent's decelerate curve; moving within a TooltipProvider shows the next one at once (data-instant); reduced motion turns the fade off."
     },
     {
       "name": "closing",
       "variant": "data-ending-style",
-      "description": "Closing: a fade with motion.easing.exit."
+      "description": "Closing: a fade with Fluent's accelerate curve."
     },
     {
       "name": "instant",
@@ -116,25 +127,24 @@
     "color.accent.fg",
     "color.accent.subtle-fg",
     "color.bg.disabled",
+    "color.bg.overlay",
+    "color.border.subtle",
     "color.fg.default",
     "color.fg.disabled",
     "color.fg.muted",
     "color.interactive.active",
     "color.interactive.hover",
-    "color.neutral.bg",
-    "color.neutral.fg",
     "color.ring",
     "color.ring-inner",
-    "elevation.overlay.shadow",
+    "elevation.flyout.shadow",
     "font.mono",
     "font.sans",
-    "motion.duration.base",
+    "motion.duration.fast",
     "motion.duration.faster",
+    "motion.easing.accelerate-mid",
+    "motion.easing.decelerate-mid",
     "motion.easing.easy-ease",
-    "motion.easing.enter",
-    "motion.easing.exit",
     "radius.md",
-    "radius.sm",
     "ring.inner-width",
     "ring.width",
     "size.control.md",
@@ -142,17 +152,14 @@
     "size.icon.lg",
     "size.icon.md",
     "size.panel.xs",
+    "space.inline.lg",
     "space.inline.sm",
-    "space.inset.sm",
+    "space.inline.xs",
     "space.inset.xs",
     "text.caption-1.leading",
     "text.caption-1.size",
     "text.caption-1.tracking",
     "text.caption-1.weight",
-    "text.caption.leading",
-    "text.caption.size",
-    "text.caption.tracking",
-    "text.caption.weight",
     "z.tooltip"
   ],
   "examples": {

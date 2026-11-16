@@ -1,9 +1,11 @@
+import { Icon } from "@/components/icon/icon";
 import { Button } from "@/components/button/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/field/field";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { NumberInput } from "@/components/number-input/number-input";
 import { Popover, PopoverClose, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/popover/popover";
 import { Switch } from "@/components/switch/switch";
+import { Options } from "@/lib/icons";
 
 /** The smallest useful Popover: a few words about a status, attached to it. */
 export function PopoverMinimal() {
@@ -18,22 +20,13 @@ export function PopoverMinimal() {
   );
 }
 
-const SlidersIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-    <path d="M3 4h10M3 8h10M3 12h10" />
-    <circle cx="6" cy="4" r="1.5" fill="currentColor" />
-    <circle cx="10" cy="8" r="1.5" fill="currentColor" />
-    <circle cx="5" cy="12" r="1.5" fill="currentColor" />
-  </svg>
-);
-
 /** The query toolbar's run options: a small form under an icon button, with its own actions. */
 export function PopoverRealistic() {
   return (
     <div className="flex items-center gap-inline-sm">
       <Popover>
         <PopoverTrigger render={<IconButton aria-label="Run options" appearance="subtle" />}>
-          <SlidersIcon />
+          <Icon icon={Options} />
         </PopoverTrigger>
         <PopoverContent align="start">
           <PopoverTitle>Run options</PopoverTitle>
