@@ -1,5 +1,8 @@
 import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { ChevronRight } from "@/lib/icons";
 
 // A section that shows and hides its panel, on Base UI's Collapsible: Collapsible > CollapsibleTrigger
 // + CollapsiblePanel. The trigger is a quiet text button with a chevron that turns when open (DBee's
@@ -13,25 +16,19 @@ export const collapsibleVariants = {} as const;
 const classes = {
   root: "flex min-w-0 flex-col",
   trigger: [
-    "inline-flex min-h-control-sm max-w-full cursor-default items-center gap-inline-xs self-start rounded-sm px-inline-xs font-sans text-label text-fg-muted",
+    "inline-flex min-h-control-sm max-w-full cursor-default items-center gap-inline-xs self-start rounded-md px-inline-xs font-sans text-body-1 text-fg-muted",
     "hover:text-fg data-panel-open:text-fg",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
+    focusRing,
     "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
     "[&_svg]:size-icon-sm [&_svg]:shrink-0",
   ],
-  chevron: "flex shrink-0 transition-transform duration-[var(--by-motion-duration-fast)] ease-standard motion-reduce:transition-none in-data-panel-open:rotate-90 rtl:rotate-180 rtl:in-data-panel-open:rotate-90",
+  chevron: "flex shrink-0 transition-transform duration-[var(--by-motion-duration-normal)] ease-easy-ease motion-reduce:transition-none in-data-panel-open:rotate-90 rtl:rotate-180 rtl:in-data-panel-open:rotate-90",
   label: "min-w-0 text-start wrap-break-word",
   panel: [
     "min-w-0 overflow-hidden",
-    "transition-opacity duration-[var(--by-motion-duration-fast)] ease-standard data-starting-style:opacity-0 data-ending-style:opacity-0",
+    "transition-opacity duration-[var(--by-motion-duration-normal)] ease-decelerate-mid data-starting-style:opacity-0 data-ending-style:opacity-0",
   ],
 } as const;
-
-const ChevronIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m6 4 4 4-4 4" />
-  </svg>
-);
 
 export interface CollapsibleProps extends Omit<CollapsiblePrimitive.Root.Props, "className"> {
   /** Extra classes, merged after the component's own so they win. */
@@ -56,7 +53,7 @@ export function CollapsibleTrigger({ chevron = true, className, children, ...pro
     <CollapsiblePrimitive.Trigger data-slot="collapsible-trigger" className={cn(classes.trigger, className)} {...props}>
       {chevron ? (
         <span data-slot="collapsible-chevron" className={cn(classes.chevron)}>
-          <ChevronIcon />
+          <Icon icon={ChevronRight} />
         </span>
       ) : null}
       <span className={classes.label}>{children}</span>

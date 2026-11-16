@@ -1,8 +1,11 @@
 import { useRender } from "@base-ui/react/use-render";
 import { createContext, useContext, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { Icon } from "@/components/ui/icon";
 import { IconButton, type IconButtonProps } from "@/components/ui/icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { PanelLeft } from "@/lib/icons";
 
 // The side panel of an app shell (DBee's connections and schema tree): SidebarProvider holds the
 // open state (and Ctrl/Cmd+B), Sidebar is the panel, SidebarInset the main area beside it,
@@ -40,34 +43,27 @@ export function useSidebar() {
 const classes = {
   provider: "flex h-full min-h-0 w-full",
   root: [
-    "flex h-full w-panel-xs shrink-0 flex-col overflow-hidden border-border bg-surface font-sans text-body text-fg",
-    "transition-all duration-[var(--by-motion-duration-base)] ease-standard motion-reduce:transition-none",
+    "flex h-full w-panel-xs shrink-0 flex-col overflow-hidden border-border-subtle bg-layer font-sans text-body-1 text-fg",
+    "transition-all duration-[var(--by-motion-duration-normal)] ease-easy-ease motion-reduce:transition-none",
     "data-[collapsed=icon]:w-control-lg data-[collapsed=offcanvas]:hidden",
   ],
   header: "flex flex-col gap-stack-xs p-inset-sm",
   content: "flex min-h-0 flex-1 flex-col gap-stack-sm overflow-y-auto overflow-x-hidden p-inset-xs",
   footer: "mt-auto flex flex-col gap-stack-xs p-inset-sm",
   group: "flex flex-col gap-stack-xs",
-  groupLabel: "flex h-control-xs items-center px-inset-sm text-caption text-fg-subtle data-collapsed:sr-only",
+  groupLabel: "flex h-control-xs items-center px-inset-sm text-caption-1-strong text-fg-subtle data-collapsed:sr-only",
   menu: "flex flex-col gap-stack-xs",
   item: "relative",
   button: [
-    "flex h-control-md w-full min-w-0 cursor-default select-none items-center gap-inline-sm rounded-md px-inset-sm text-start text-body text-fg outline-none",
-    "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:bg-hover data-active:bg-selected data-active:hover:bg-selected-hover",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    "flex h-control-md w-full min-w-0 cursor-default select-none items-center gap-inline-sm rounded-md px-inset-sm text-start text-body-1 text-fg",
+    "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease hover:bg-hover active:bg-pressed data-active:bg-selected data-active:text-fg data-active:hover:bg-selected-hover",
+    focusRing,
     "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
     "data-collapsed:justify-center data-collapsed:px-0 [&_svg]:size-icon-md [&_svg]:shrink-0 [&_svg]:text-fg-muted",
   ],
   label: "min-w-0 flex-1 truncate data-collapsed:sr-only",
   inset: "flex min-h-0 min-w-0 flex-1 flex-col",
 } as const;
-
-const PanelIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <rect x="2" y="3" width="12" height="10" rx="1.5" />
-    <path d="M6 3v10" />
-  </svg>
-);
 
 export interface SidebarProviderProps extends Omit<ComponentProps<"div">, "className"> {
   /** Controlled open state; `defaultOpen` when uncontrolled. */
@@ -255,7 +251,7 @@ export function SidebarTrigger({ "aria-label": label = "Toggle sidebar", onClick
       }}
       {...props}
     >
-      <PanelIcon />
+      <Icon icon={PanelLeft} />
     </IconButton>
   );
 }

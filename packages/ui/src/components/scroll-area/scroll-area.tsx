@@ -1,6 +1,7 @@
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 import type { CSSProperties, ReactNode, Ref, UIEvent } from "react";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 
 // A scroll container with thin overlay scrollbars that match the theme, on Base UI's ScrollArea:
 // the viewport scrolls natively (wheel, touch, keyboard once focused), the scrollbars are drawn
@@ -14,13 +15,13 @@ export const scrollAreaVariants = {} as const;
 const classes = {
   root: "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
   viewport: [
-    "min-h-0 flex-1 overscroll-contain outline-none",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    "min-h-0 flex-1 overscroll-contain",
+    focusRing,
   ],
   content: "min-w-full",
   scrollbar: [
     "pointer-events-none absolute flex touch-none select-none p-[var(--by-border-width-1)] opacity-0",
-    "transition-opacity duration-[var(--by-motion-duration-base)] ease-standard",
+    "transition-opacity duration-[var(--by-motion-duration-normal)] ease-easy-ease",
     "data-hovering:pointer-events-auto data-hovering:opacity-100 data-scrolling:pointer-events-auto data-scrolling:opacity-100",
     "data-[orientation=vertical]:inset-y-0 data-[orientation=vertical]:inset-e-0 data-[orientation=vertical]:w-track",
     "data-[orientation=horizontal]:inset-x-0 data-[orientation=horizontal]:bottom-0 data-[orientation=horizontal]:h-track",

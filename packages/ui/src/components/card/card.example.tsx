@@ -37,7 +37,7 @@ export function CardRealistic() {
           </Button>
         </CardFooter>
       </Card>
-      <Card variant="raised" className="w-panel-sm">
+      <Card appearance="filled" className="w-panel-sm">
         <CardHeader>
           <CardTitle>analytics_warehouse_replica_eu_central_1_long_name_for_overflow</CardTitle>
           <CardDescription>A name with no spaces wraps inside the card instead of pushing it wider.</CardDescription>
@@ -49,7 +49,7 @@ export function CardRealistic() {
         </CardHeader>
         <CardContent>Raised: lifted off the canvas.</CardContent>
       </Card>
-      <Card variant="inset" className="w-panel-xs">
+      <Card appearance="filled-alternative" className="w-panel-xs">
         <CardHeader>
           <CardTitle render={<h4 />}>Inset</CardTitle>
         </CardHeader>

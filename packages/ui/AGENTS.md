@@ -381,6 +381,17 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
 - `test/licenses.test.ts` checks every npm package a registry item installs, transitively, against
   the `allow` list of `deny.toml`.
 
+## Fluent 2 surfaces (TSK-55)
+
+Card, Table, Sidebar, Tabs, StatusBar and Toolbar are translucent layers over the backdrop:
+`bg-layer`, a `border-border-subtle` hairline, radius.lg (8 px), and `shadow-layer` on the free-standing
+ones (`layerSurface` in `@/lib/control`). Card takes `appearance` = `filled` (default) |
+`filled-alternative` | `outline` | `subtle` (old `variant`: outline, raised = filled, inset =
+filled-alternative); Tabs takes `appearance` = `transparent` (default, the old `line`) | `subtle` |
+`enclosed` and size small | medium | large (old `sm`/`md` still work). Every focusable part uses
+`focusRing`; chevrons, sort arrows, close and panel icons are `Icon`s; motion is Fluent's (faster/normal,
+easy-ease/decelerate). Text roles are the Fluent ramp (`text-body-1`, `text-body-1-strong`, `text-caption-1`).
+
 ## Icons (TSK-57)
 
 Fluent UI System Icons (MIT), vendored in `icons/` as a curated set: 83 icons, each in regular
@@ -418,7 +429,8 @@ registry item, which `@byterygon/icon` depends on.
   NumberInput, SearchInput, PasswordInput, FileInput, DatePicker, Calendar, TimePicker, Select,
   Combobox, MultiSelect, Field (batch 2); Checkbox, RadioGroup, Switch, Slider, DropdownMenu,
   ContextMenu, Menubar, Popover, HoverCard, Tooltip (batch 3); Dialog, AlertDialog, Sheet, Toast,
-  CommandPalette, Alert, Badge, Tag (batch 4).
+  CommandPalette, Alert, Badge, Tag (batch 4); Card, Table, Sidebar, Tabs, Accordion, Collapsible,
+  ScrollArea, Resizable, StatusBar, Toolbar, Separator (TSK-55 batch 1).
 
 | Hand-drawn today | Fluent icon |
 | --- | --- |

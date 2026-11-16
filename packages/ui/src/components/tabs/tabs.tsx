@@ -1,6 +1,9 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { controlAppearance, controlSize, focusRing, type ControlSizeProp } from "@/lib/control";
+import { Dismiss } from "@/lib/icons";
 
 // Tabs on Base UI's Tabs: `Tabs` is the root, TabsList the tab strip, TabsTrigger a tab, TabsContent
 // its panel. For DBee's query tabs a tab can also be closed (onClose: a close button outside the
@@ -9,28 +12,34 @@ import { cn } from "@/lib/cn";
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const tabsVariants = {
-  /** The look of the strip: an underline under the active tab, or editor-style enclosed tabs. */
-  variant: {
-    line: [
+  /** Fluent's tab appearance: `transparent` (an accent underline under the selected tab), `subtle` (a wash behind it), or Byterygon's `enclosed` editor tabs. */
+  appearance: {
+    transparent: [
       "-mb-px border-b-2 border-transparent text-fg-muted hover:text-fg data-active:border-accent-solid data-active:text-fg",
       "data-[orientation=vertical]:mb-0 data-[orientation=vertical]:-me-px data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e-2",
     ],
-    enclosed: "border-e border-border bg-inset text-fg-muted hover:bg-hover hover:text-fg data-active:bg-surface data-active:text-fg",
+    subtle: "rounded-md text-fg-muted hover:bg-hover hover:text-fg active:bg-pressed data-active:bg-selected data-active:text-fg",
+    enclosed: "border-e border-border-subtle bg-layer-alt text-fg-muted hover:bg-hover hover:text-fg data-active:bg-layer data-active:text-fg",
   },
-  /** Tab height, from the density-aware `size.control.*` roles. */
+  /** Tab height, from the density-aware `size.control.*` roles: Fluent's small 24, medium 32 and large 40 px. */
   size: {
-    sm: "h-control-sm px-inset-sm",
-    md: "h-control-md px-control-x",
+    small: "h-control-sm px-inset-sm",
+    medium: "h-control-md px-control-x",
+    large: "h-control-lg px-inset-md",
   },
 } as const;
 
-export type TabsVariant = keyof typeof tabsVariants.variant;
+export type TabsAppearance = keyof typeof tabsVariants.appearance;
 export type TabsSize = keyof typeof tabsVariants.size;
+/** The old `variant` names and the appearance each stands for. */
+const VARIANT_ALIASES = { line: "transparent", enclosed: "enclosed" } as const;
+export type TabsVariant = keyof typeof VARIANT_ALIASES;
 type TabValue = string | number;
 
 const listVariants = {
-  line: "border-b border-border data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e",
-  enclosed: "border-b border-border bg-inset",
+  transparent: "border-b border-border-subtle data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e",
+  subtle: "gap-inline-xs",
+  enclosed: "border-b border-border-subtle bg-layer-alt",
 } as const;
 
 const classes = {
@@ -43,25 +52,19 @@ const classes = {
     "data-dragging:opacity-[var(--by-opacity-disabled)]",
   ],
   trigger: [
-    "flex min-w-0 max-w-panel-xs cursor-default select-none items-center gap-inline-sm whitespace-nowrap font-sans text-label outline-none",
-    "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    "flex min-w-0 max-w-panel-xs cursor-default select-none items-center gap-inline-sm whitespace-nowrap font-sans text-body-1",
+    "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
+    focusRing,
     "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
     "data-closable:pe-control-sm [&_svg]:size-icon-sm [&_svg]:shrink-0",
   ],
   label: "min-w-0 truncate",
   close: [
     "absolute top-1/2 right-inset-xs flex size-control-xs -translate-y-1/2 items-center justify-center rounded-sm text-fg-muted",
-    "hover:bg-hover hover:text-fg [&_svg]:size-icon-xs",
+    "hover:bg-hover hover:text-fg active:bg-pressed [&_svg]:size-icon-xs",
   ],
-  panel: "min-h-0 flex-1 outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
+  panel: ["min-h-0 flex-1", focusRing],
 } as const;
-
-const XIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <path d="m4.5 4.5 7 7m0-7-7 7" />
-  </svg>
-);
 
 interface Drop {
   value: TabValue;
@@ -69,7 +72,7 @@ interface Drop {
 }
 
 interface TabsContextValue {
-  variant: TabsVariant;
+  appearance: TabsAppearance;
   size: TabsSize;
   orientation: "horizontal" | "vertical";
   /** Set by TabsList: moves `value` to `index` among the tabs. */
@@ -83,8 +86,8 @@ interface TabsContextValue {
 }
 
 const TabsContext = createContext<TabsContextValue>({
-  variant: "line",
-  size: "md",
+  appearance: "transparent",
+  size: "medium",
   orientation: "horizontal",
   order: () => [],
   dragging: null,
@@ -94,16 +97,23 @@ const TabsContext = createContext<TabsContextValue>({
 });
 
 export interface TabsProps extends Omit<TabsPrimitive.Root.Props, "className"> {
-  /** The look of the strip. */
+  /** Fluent's appearance: `transparent` (default), `subtle`, or Byterygon's `enclosed` for editor tabs. */
+  appearance?: TabsAppearance;
+  /** Tab height: `small`, `medium` (default) or `large`; `sm`, `md` and `lg` still work for one release. */
+  size?: TabsSize | ControlSizeProp;
+  /**
+   * The old name of `appearance`: `line` is transparent.
+   * @deprecated Use `appearance`. Kept for one release.
+   */
   variant?: TabsVariant;
-  /** Tab height. */
-  size?: TabsSize;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }
 
 /** Tabs on Base UI's Tabs: a TabsList of TabsTriggers and a TabsContent per tab. Closable tabs are controlled (`value`, `onValueChange`). */
-export function Tabs({ variant = "line", size = "md", orientation = "horizontal", className, ...props }: TabsProps) {
+export function Tabs({ appearance: appearanceProp, variant, size: sizeProp, orientation = "horizontal", className, ...props }: TabsProps) {
+  const appearance = controlAppearance(appearanceProp, variant, VARIANT_ALIASES, "transparent");
+  const size = controlSize(sizeProp);
   const values = useRef(new Map<string, TabValue>());
   const listRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState<TabValue | null>(null);
@@ -116,8 +126,8 @@ export function Tabs({ variant = "line", size = "md", orientation = "horizontal"
   }, []);
   return (
     <TabsListRegistry value={{ listRef, values: values.current, setReorder }}>
-      <TabsContext value={{ variant, size, orientation, reorder, order, dragging, setDragging, drop, setDrop }}>
-        <TabsPrimitive.Root data-slot="tabs" data-variant={variant} data-size={size} orientation={orientation} className={cn(classes.root, className)} {...props} />
+      <TabsContext value={{ appearance, size, orientation, reorder, order, dragging, setDragging, drop, setDrop }}>
+        <TabsPrimitive.Root data-slot="tabs" data-appearance={appearance} data-size={size} orientation={orientation} className={cn(classes.root, className)} {...props} />
       </TabsContext>
     </TabsListRegistry>
   );
@@ -147,7 +157,7 @@ export interface TabsListProps extends Omit<TabsPrimitive.List.Props, "className
 /** The tab strip (role="tablist"); it scrolls when the tabs do not fit. */
 export function TabsList({ onReorder, className, ref, ...props }: TabsListProps) {
   const registry = useContext(RegistryContext);
-  const { variant } = useContext(TabsContext);
+  const { appearance } = useContext(TabsContext);
   const setRef = useCallback(
     (element: HTMLDivElement | null) => {
       if (registry) registry.listRef.current = element;
@@ -164,7 +174,7 @@ export function TabsList({ onReorder, className, ref, ...props }: TabsListProps)
   useEffect(() => {
     setReorder?.(reorderable ? () => stable : undefined);
   }, [setReorder, reorderable, stable]);
-  return <TabsPrimitive.List data-slot="tabs-list" ref={setRef} className={cn(classes.list, listVariants[variant], className)} {...props} />;
+  return <TabsPrimitive.List data-slot="tabs-list" ref={setRef} className={cn(classes.list, listVariants[appearance], className)} {...props} />;
 }
 
 export interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, "className" | "value" | "children"> {
@@ -184,7 +194,7 @@ export interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, "classNa
 
 /** A tab (role="tab"): its icon, its title and, when closable, a close button. */
 export function TabsTrigger({ value, icon, children, onClose, closeLabel = "Close tab", className, onKeyDown, ...props }: TabsTriggerProps) {
-  const { variant, size, orientation, reorder, order, dragging, setDragging, drop, setDrop } = useContext(TabsContext);
+  const { appearance, size, orientation, reorder, order, dragging, setDragging, drop, setDrop } = useContext(TabsContext);
   const registry = useContext(RegistryContext);
   registry?.values.set(String(value), value);
   const itemRef = useRef<HTMLDivElement | null>(null);
@@ -275,7 +285,7 @@ export function TabsTrigger({ value, icon, children, onClose, closeLabel = "Clos
         value={value}
         aria-keyshortcuts={[onClose ? "Delete" : "", reorder ? (orientation === "horizontal" ? "Alt+Shift+ArrowLeft Alt+Shift+ArrowRight" : "Alt+Shift+ArrowUp Alt+Shift+ArrowDown") : ""].filter(Boolean).join(" ") || undefined}
         onKeyDown={keyDown}
-        className={cn(classes.trigger, tabsVariants.variant[variant], tabsVariants.size[size], className)}
+        className={cn(classes.trigger, tabsVariants.appearance[appearance], tabsVariants.size[size], className)}
         {...props}
       >
         {icon}
@@ -285,7 +295,7 @@ export function TabsTrigger({ value, icon, children, onClose, closeLabel = "Clos
         // Out of the tab order and hidden from assistive technology: keyboard and screen-reader
         // users close the focused tab with Delete (aria-keyshortcuts), so the tablist holds only tabs.
         <button type="button" data-slot="tabs-close" tabIndex={-1} aria-hidden="true" title={closeLabel} onClick={close} className={cn(classes.close)}>
-          <XIcon />
+          <Icon icon={Dismiss} />
         </button>
       ) : null}
     </div>

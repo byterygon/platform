@@ -3,18 +3,19 @@
   "name": "card",
   "type": "registry:ui",
   "title": "Card",
-  "description": "A bounded surface that groups one subject, with a header (title, description, action), content and a footer; padding follows density.",
+  "description": "Fluent 2's Card: a bounded surface that groups one subject, a translucent layer over the backdrop with a hairline and radius 8, with a header (title, description, action), content and a footer; padding follows density.",
   "dependencies": [
     "@base-ui/react"
   ],
   "registryDependencies": [
-    "@byterygon/cn"
+    "@byterygon/cn",
+    "@byterygon/control"
   ],
   "files": [
     {
       "path": "ui/card.tsx",
       "type": "registry:ui",
-      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/cn\";\n\n// A bounded surface that groups one subject (a connection, a saved query, a metric): CardHeader\n// (CardTitle, CardDescription, CardAction), CardContent and CardFooter, on Base UI's useRender\n// (no Base UI part exists). Padding comes from space.inset.*, so density applies. Long titles and\n// descriptions wrap inside the card; a CardAction stays at the top end of the header.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const cardVariants = {\n  variant: {\n    outline: \"border-border bg-surface\",\n    raised: \"border-border-muted bg-raised shadow-raised\",\n    inset: \"border-transparent bg-inset\",\n  },\n} as const;\n\nconst base = [\"flex min-w-0 flex-col gap-stack-md rounded-lg border py-inset-md font-sans text-body text-fg\"];\n\nconst parts = {\n  // Title and action share the first line (order 1 and 2); the description takes a line of its own.\n  header: \"flex min-w-0 flex-wrap items-start gap-x-inline-md gap-y-stack-xs px-inset-md\",\n  title: \"order-1 min-w-0 flex-1 text-heading-4 text-fg wrap-break-word\",\n  description: \"order-3 min-w-0 basis-full text-caption text-fg-muted wrap-break-word\",\n  action: \"order-2 ms-auto flex shrink-0 items-center gap-inline-xs\",\n  content: \"min-w-0 px-inset-md\",\n  footer: \"flex min-w-0 flex-wrap items-center gap-inline-sm px-inset-md\",\n} as const;\n\ntype DivProps = Omit<useRender.ComponentProps<\"div\">, \"className\"> & {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n};\n\nexport interface CardProps extends DivProps {\n  /** `outline` on the page surface (default), `raised` to lift it off a canvas, `inset` for a quiet group inside another surface. */\n  variant?: keyof typeof cardVariants.variant;\n}\n\n/** A bounded surface for one subject; `render` swaps the element (an `<article>`, a `<section>`), the ref reaches it. */\nexport function Card({ variant = \"outline\", className, render, ...props }: CardProps) {\n  return useRender({\n    defaultTagName: \"div\",\n    render,\n    props: { \"data-slot\": \"card\", \"data-variant\": variant, ...props, className: cn(base, cardVariants.variant[variant], className) },\n  });\n}\n\n/** The top of the card: CardTitle and CardDescription on the start side, CardAction at the end. */\nexport function CardHeader({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"card-header\", ...props, className: cn(parts.header, className) } });\n}\n\nexport type CardTitleProps = Omit<useRender.ComponentProps<\"h3\">, \"className\"> & { className?: string };\n\n/** The card's heading, an `<h3>` by default (`render={<h2 />}` for another level). */\nexport function CardTitle({ className, render, ...props }: CardTitleProps) {\n  return useRender({ defaultTagName: \"h3\", render, props: { \"data-slot\": \"card-title\", ...props, className: cn(parts.title, className) } });\n}\n\nexport type CardDescriptionProps = Omit<useRender.ComponentProps<\"p\">, \"className\"> & { className?: string };\n\n/** One line or two under the title, in text.caption and color.fg.muted. */\nexport function CardDescription({ className, render, ...props }: CardDescriptionProps) {\n  return useRender({ defaultTagName: \"p\", render, props: { \"data-slot\": \"card-description\", ...props, className: cn(parts.description, className) } });\n}\n\n/** Buttons or a menu at the top end of the header (Edit, a DropdownMenu trigger). */\nexport function CardAction({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"card-action\", ...props, className: cn(parts.action, className) } });\n}\n\n/** The body of the card. */\nexport function CardContent({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"card-content\", ...props, className: cn(parts.content, className) } });\n}\n\n/** Actions or facts at the bottom of the card, in a row that wraps. */\nexport function CardFooter({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"card-footer\", ...props, className: cn(parts.footer, className) } });\n}\n"
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/cn\";\nimport { controlAppearance } from \"@/lib/control\";\n\n// A bounded surface that groups one subject (a connection, a saved query, a metric): CardHeader\n// (CardTitle, CardDescription, CardAction), CardContent and CardFooter, on Base UI's useRender\n// (no Base UI part exists). Padding comes from space.inset.*, so density applies. Long titles and\n// descriptions wrap inside the card; a CardAction stays at the top end of the header.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const cardVariants = {\n  appearance: {\n    /** A translucent layer over the backdrop with a hairline and the layer shadow: the default. */\n    filled: \"border-border-subtle bg-layer shadow-layer\",\n    /** A lighter layer (color.bg.layer-alt) for a card on a card. */\n    \"filled-alternative\": \"border-border-subtle bg-layer-alt\",\n    /** A hairline only, no fill. */\n    outline: \"border-border-subtle bg-transparent\",\n    /** No fill and no edge: a group that only needs the card's padding. */\n    subtle: \"border-transparent bg-transparent\",\n  },\n} as const;\n\n/** The old variant names and the appearance each stands for. */\nconst VARIANT_ALIASES = { outline: \"outline\", raised: \"filled\", inset: \"filled-alternative\" } as const;\n\nconst base = [\"flex min-w-0 flex-col gap-stack-md rounded-lg border py-inset-md font-sans text-body-1 text-fg\"];\n\nconst parts = {\n  // Title and action share the first line (order 1 and 2); the description takes a line of its own.\n  header: \"flex min-w-0 flex-wrap items-start gap-x-inline-md gap-y-stack-xs px-inset-md\",\n  title: \"order-1 min-w-0 flex-1 text-subtitle-2 text-fg wrap-break-word\",\n  description: \"order-3 min-w-0 basis-full text-caption-1 text-fg-muted wrap-break-word\",\n  action: \"order-2 ms-auto flex shrink-0 items-center gap-inline-xs\",\n  content: \"min-w-0 px-inset-md\",\n  footer: \"flex min-w-0 flex-wrap items-center gap-inline-sm px-inset-md\",\n} as const;\n\ntype DivProps = Omit<useRender.ComponentProps<\"div\">, \"className\"> & {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n};\n\nexport interface CardProps extends DivProps {\n  /** Fluent's card appearance: `filled` (default, a layer over the backdrop), `filled-alternative`, `outline` or `subtle`. */\n  appearance?: keyof typeof cardVariants.appearance;\n  /**\n   * The old name of `appearance`: `outline` is outline, `raised` filled, `inset` filled-alternative.\n   * @deprecated Use `appearance`. Kept for one release.\n   */\n  variant?: keyof typeof VARIANT_ALIASES;\n}\n\n/** A bounded surface for one subject; `render` swaps the element (an `<article>`, a `<section>`), the ref reaches it. */\nexport function Card({ appearance: appearanceProp, variant, className, render, ...props }: CardProps) {\n  const appearance = controlAppearance(appearanceProp, variant, VARIANT_ALIASES, \"filled\");\n  return useRender({\n    defaultTagName: \"div\",\n    render,\n    props: { \"data-slot\": \"card\", \"data-appearance\": appearance, ...props, className: cn(base, cardVariants.appearance[appearance], className) },\n  });\n}\n\n/** The top of the card: CardTitle and CardDescription on the start side, CardAction at the end. */\nexport function CardHeader({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"card-header\", ...props, className: cn(parts.header, className) } });\n}\n\nexport type CardTitleProps = Omit<useRender.ComponentProps<\"h3\">, \"className\"> & { className?: string };\n\n/** The card's heading, an `<h3>` by default (`render={<h2 />}` for another level). */\nexport function CardTitle({ className, render, ...props }: CardTitleProps) {\n  return useRender({ defaultTagName: \"h3\", render, props: { \"data-slot\": \"card-title\", ...props, className: cn(parts.title, className) } });\n}\n\nexport type CardDescriptionProps = Omit<useRender.ComponentProps<\"p\">, \"className\"> & { className?: string };\n\n/** One line or two under the title, in text.caption and color.fg.muted. */\nexport function CardDescription({ className, render, ...props }: CardDescriptionProps) {\n  return useRender({ defaultTagName: \"p\", render, props: { \"data-slot\": \"card-description\", ...props, className: cn(parts.description, className) } });\n}\n\n/** Buttons or a menu at the top end of the header (Edit, a DropdownMenu trigger). */\nexport function CardAction({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"card-action\", ...props, className: cn(parts.action, className) } });\n}\n\n/** The body of the card. */\nexport function CardContent({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"card-content\", ...props, className: cn(parts.content, className) } });\n}\n\n/** Actions or facts at the bottom of the card, in a row that wraps. */\nexport function CardFooter({ className, render, ...props }: DivProps) {\n  return useRender({ defaultTagName: \"div\", render, props: { \"data-slot\": \"card-footer\", ...props, className: cn(parts.footer, className) } });\n}\n"
     }
   ],
   "meta": {
@@ -22,8 +23,8 @@
       "schemaVersion": 1,
       "name": "card",
       "title": "Card",
-      "description": "A bounded surface that groups one subject, with a header (title, description, action), content and a footer; padding follows density.",
-      "usage": "Use Card for one subject among several on a page: a connection on the start screen, a saved query, a metric with its Stat. Compose Card > CardHeader (CardTitle, CardDescription, CardAction), CardContent, CardFooter; every part is optional. variant=\"raised\" lifts it off bg.canvas, \"inset\" makes a quiet group inside another surface. Do not nest cards, and do not use one as a page section with a single child: a heading and Separator are lighter. For a list of many records use Table.",
+      "description": "Fluent 2's Card: a bounded surface that groups one subject, a translucent layer over the backdrop with a hairline and radius 8, with a header (title, description, action), content and a footer; padding follows density.",
+      "usage": "Use Card for one subject among several on a page: a connection on the start screen, a saved query, a metric with its Stat. Compose Card > CardHeader (CardTitle, CardDescription, CardAction), CardContent, CardFooter; every part is optional. appearance=\"filled\" (default) is a layer over the backdrop, \"filled-alternative\" a lighter layer for a card inside another, \"outline\" a hairline only, \"subtle\" no edge. Do not nest cards, and do not use one as a page section with a single child: a heading and Separator are lighter. For a list of many records use Table. The old variant prop (outline, raised = filled, inset = filled-alternative) still works for one release.",
       "status": "experimental",
       "base": "@base-ui/react/use-render",
       "dependencies": [
@@ -31,10 +32,16 @@
       ],
       "props": [
         {
+          "name": "appearance",
+          "type": "\"filled\" | \"filled-alternative\" | \"outline\" | \"subtle\"",
+          "default": "filled",
+          "description": "Fluent's card appearance: a layer with the layer shadow, a lighter layer, a hairline only, or no edge."
+        },
+        {
           "name": "variant",
           "type": "\"outline\" | \"raised\" | \"inset\"",
-          "default": "outline",
-          "description": "outline on the page surface, raised with elevation, inset for a quiet group."
+          "description": "The old name of appearance: outline is outline, raised filled, inset filled-alternative. Kept for one release.",
+          "deprecated": "use appearance"
         },
         {
           "name": "children",
@@ -58,17 +65,18 @@
         }
       ],
       "variants": {
-        "variant": [
+        "appearance": [
+          "filled",
+          "filled-alternative",
           "outline",
-          "raised",
-          "inset"
+          "subtle"
         ]
       },
       "slots": [
         {
           "name": "root",
           "element": "div",
-          "description": "The surface; data-slot=\"card\", data-variant."
+          "description": "The surface; data-slot=\"card\", data-appearance."
         },
         {
           "name": "header",
@@ -135,16 +143,14 @@
       ],
       "states": [],
       "tokens": [
-        "color.bg.inset",
-        "color.bg.raised",
-        "color.bg.surface",
-        "color.border.default",
-        "color.border.muted",
+        "color.bg.layer",
+        "color.bg.layer-alt",
+        "color.border.subtle",
         "color.fg.default",
         "color.fg.muted",
+        "elevation.layer.shadow",
         "font.sans",
         "radius.lg",
-        "shadow.raised",
         "size.panel.sm",
         "size.panel.xs",
         "space.inline.md",
@@ -153,18 +159,22 @@
         "space.inset.md",
         "space.stack.md",
         "space.stack.xs",
-        "text.body.leading",
-        "text.body.size",
-        "text.body.tracking",
-        "text.body.weight",
+        "text.body-1.leading",
+        "text.body-1.size",
+        "text.body-1.tracking",
+        "text.body-1.weight",
+        "text.caption-1.leading",
+        "text.caption-1.size",
+        "text.caption-1.tracking",
+        "text.caption-1.weight",
         "text.caption.leading",
         "text.caption.size",
         "text.caption.tracking",
         "text.caption.weight",
-        "text.heading-4.leading",
-        "text.heading-4.size",
-        "text.heading-4.tracking",
-        "text.heading-4.weight"
+        "text.subtitle-2.leading",
+        "text.subtitle-2.size",
+        "text.subtitle-2.tracking",
+        "text.subtitle-2.weight"
       ],
       "examples": {
         "minimal": "CardMinimal",
@@ -177,7 +187,7 @@
         "Long titles and descriptions wrap (wrap-break-word), so nothing is cut off at any width or density."
       ]
     },
-    "example": "import { Button } from \"@/components/button/button\";\nimport { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from \"@/components/card/card\";\n\n/** The smallest useful Card: a title and a line of content. */\nexport function CardMinimal() {\n  return (\n    <Card className=\"max-w-panel-sm\">\n      <CardHeader>\n        <CardTitle>orders-prod</CardTitle>\n      </CardHeader>\n      <CardContent>PostgreSQL 17 on db.internal:5432</CardContent>\n    </Card>\n  );\n}\n\n/** Connection cards on a start page: every part, the three variants, and a long name that wraps. */\nexport function CardRealistic() {\n  return (\n    <div className=\"flex flex-wrap items-start gap-gap-lg bg-canvas p-inset-md\">\n      <Card className=\"w-panel-sm\">\n        <CardHeader>\n          <CardTitle>orders-prod</CardTitle>\n          <CardDescription>Read-only grant, expires in 52 minutes</CardDescription>\n          <CardAction>\n            <Button appearance=\"subtle\" size=\"small\">\n              Edit\n            </Button>\n          </CardAction>\n        </CardHeader>\n        <CardContent>\n          <p className=\"text-caption text-fg-muted\">db.internal:5432 · TLS verified · user analyst</p>\n        </CardContent>\n        <CardFooter>\n          <Button size=\"small\">Connect</Button>\n          <Button appearance=\"secondary\" size=\"small\">\n            New query\n          </Button>\n        </CardFooter>\n      </Card>\n      <Card variant=\"raised\" className=\"w-panel-sm\">\n        <CardHeader>\n          <CardTitle>analytics_warehouse_replica_eu_central_1_long_name_for_overflow</CardTitle>\n          <CardDescription>A name with no spaces wraps inside the card instead of pushing it wider.</CardDescription>\n          <CardAction>\n            <Button appearance=\"subtle\" size=\"small\">\n              Edit\n            </Button>\n          </CardAction>\n        </CardHeader>\n        <CardContent>Raised: lifted off the canvas.</CardContent>\n      </Card>\n      <Card variant=\"inset\" className=\"w-panel-xs\">\n        <CardHeader>\n          <CardTitle render={<h4 />}>Inset</CardTitle>\n        </CardHeader>\n        <CardContent>A quiet group inside another surface.</CardContent>\n      </Card>\n    </div>\n  );\n}\n",
+    "example": "import { Button } from \"@/components/button/button\";\nimport { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from \"@/components/card/card\";\n\n/** The smallest useful Card: a title and a line of content. */\nexport function CardMinimal() {\n  return (\n    <Card className=\"max-w-panel-sm\">\n      <CardHeader>\n        <CardTitle>orders-prod</CardTitle>\n      </CardHeader>\n      <CardContent>PostgreSQL 17 on db.internal:5432</CardContent>\n    </Card>\n  );\n}\n\n/** Connection cards on a start page: every part, the three variants, and a long name that wraps. */\nexport function CardRealistic() {\n  return (\n    <div className=\"flex flex-wrap items-start gap-gap-lg bg-canvas p-inset-md\">\n      <Card className=\"w-panel-sm\">\n        <CardHeader>\n          <CardTitle>orders-prod</CardTitle>\n          <CardDescription>Read-only grant, expires in 52 minutes</CardDescription>\n          <CardAction>\n            <Button appearance=\"subtle\" size=\"small\">\n              Edit\n            </Button>\n          </CardAction>\n        </CardHeader>\n        <CardContent>\n          <p className=\"text-caption text-fg-muted\">db.internal:5432 · TLS verified · user analyst</p>\n        </CardContent>\n        <CardFooter>\n          <Button size=\"small\">Connect</Button>\n          <Button appearance=\"secondary\" size=\"small\">\n            New query\n          </Button>\n        </CardFooter>\n      </Card>\n      <Card appearance=\"filled\" className=\"w-panel-sm\">\n        <CardHeader>\n          <CardTitle>analytics_warehouse_replica_eu_central_1_long_name_for_overflow</CardTitle>\n          <CardDescription>A name with no spaces wraps inside the card instead of pushing it wider.</CardDescription>\n          <CardAction>\n            <Button appearance=\"subtle\" size=\"small\">\n              Edit\n            </Button>\n          </CardAction>\n        </CardHeader>\n        <CardContent>Raised: lifted off the canvas.</CardContent>\n      </Card>\n      <Card appearance=\"filled-alternative\" className=\"w-panel-xs\">\n        <CardHeader>\n          <CardTitle render={<h4 />}>Inset</CardTitle>\n        </CardHeader>\n        <CardContent>A quiet group inside another surface.</CardContent>\n      </Card>\n    </div>\n  );\n}\n",
     "dependencyVersions": {
       "@base-ui/react": "1.9.0"
     }

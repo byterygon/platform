@@ -1,5 +1,8 @@
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { ChevronDown } from "@/lib/icons";
 
 // A stack of sections that open one at a time (or several, with `multiple`), on Base UI's
 // Accordion: Accordion > AccordionItem > AccordionTrigger + AccordionPanel. Each trigger is a
@@ -11,37 +14,31 @@ import { cn } from "@/lib/cn";
 export const accordionVariants = {
   variant: {
     plain: "",
-    outline: "rounded-md border border-border bg-surface",
+    outline: "rounded-lg border border-border-subtle bg-layer shadow-layer",
   },
 } as const;
 
-const base = ["flex w-full min-w-0 flex-col font-sans text-body text-fg"];
+const base = ["flex w-full min-w-0 flex-col font-sans text-body-1 text-fg"];
 
 const classes = {
   // The outline variant pads the items inside its frame (in-data-[variant=outline]).
-  item: "min-w-0 border-b border-border last:border-b-0 in-data-[variant=outline]:px-inset-sm",
+  item: "min-w-0 border-b border-border-subtle last:border-b-0 in-data-[variant=outline]:px-inset-sm",
   header: "flex min-w-0",
   trigger: [
-    "flex min-h-control-md min-w-0 flex-1 cursor-default items-center justify-between gap-inline-md py-inset-xs text-start text-body-strong text-fg",
+    "flex min-h-control-md min-w-0 flex-1 cursor-default items-center justify-between gap-inline-md rounded-md py-inset-xs text-start text-body-1-strong text-fg",
     "hover:text-fg-link",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
+    focusRing,
     "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
     "[&_svg]:size-icon-md [&_svg]:shrink-0",
   ],
   label: "min-w-0 wrap-break-word",
-  chevron: "flex shrink-0 text-fg-muted transition-transform duration-[var(--by-motion-duration-fast)] ease-standard motion-reduce:transition-none in-data-panel-open:rotate-180",
+  chevron: "flex shrink-0 text-fg-muted transition-transform duration-[var(--by-motion-duration-normal)] ease-easy-ease motion-reduce:transition-none in-data-panel-open:rotate-180",
   panel: [
-    "min-w-0 overflow-hidden text-body text-fg-muted",
-    "transition-opacity duration-[var(--by-motion-duration-fast)] ease-standard data-starting-style:opacity-0 data-ending-style:opacity-0",
+    "min-w-0 overflow-hidden text-body-1 text-fg-muted",
+    "transition-opacity duration-[var(--by-motion-duration-normal)] ease-decelerate-mid data-starting-style:opacity-0 data-ending-style:opacity-0",
   ],
   panelInner: "pb-inset-sm",
 } as const;
-
-const ChevronIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m4 6 4 4 4-4" />
-  </svg>
-);
 
 export interface AccordionProps extends Omit<AccordionPrimitive.Root.Props, "className"> {
   /** `plain` separates sections by rules; `outline` puts them in a bordered frame. */
@@ -80,7 +77,7 @@ export function AccordionTrigger({ className, children, ...props }: AccordionTri
       <AccordionPrimitive.Trigger data-slot="accordion-trigger" className={cn(classes.trigger, className)} {...props}>
         <span className={classes.label}>{children}</span>
         <span data-slot="accordion-chevron" className={cn(classes.chevron)}>
-          <ChevronIcon />
+          <Icon icon={ChevronDown} />
         </span>
       </AccordionPrimitive.Trigger>
     </AccordionPrimitive.Header>

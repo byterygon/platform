@@ -1,11 +1,8 @@
+import { Icon } from "@/components/icon/icon";
 import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/components/status-bar/status-bar";
+import { Database } from "@/lib/icons";
 
-const DbIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <ellipse cx="8" cy="4" rx="5" ry="2" />
-    <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4" />
-  </svg>
-);
+const DbIcon = () => <Icon icon={Database} />;
 
 /** The smallest useful StatusBar: one item. */
 export function StatusBarMinimal() {

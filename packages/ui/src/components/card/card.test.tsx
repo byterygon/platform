@@ -25,18 +25,26 @@ describe("Card", () => {
   test("renders every part with its slot and element", async () => {
     const { container } = render(<Full />);
     const card = container.querySelector('[data-slot="card"]') as HTMLElement;
-    expect(card.dataset.variant).toBe("outline");
+    expect(card.dataset.appearance).toBe("filled");
     expect(card.querySelector('[data-slot="card-title"]')!.tagName).toBe("H3");
     expect(card.querySelector('[data-slot="card-description"]')!.tagName).toBe("P");
     for (const slot of ["card-header", "card-action", "card-content", "card-footer"]) expect(card.querySelector(`[data-slot="${slot}"]`)).not.toBeNull();
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  test("variant sets its classes and data-variant", () => {
+  test("the old variant names stay as aliases", () => {
     const { container } = render(<Card variant="raised">x</Card>);
     const card = container.querySelector('[data-slot="card"]') as HTMLElement;
-    expect(card.dataset.variant).toBe("raised");
-    expect(card.className).toContain("shadow-raised");
+    expect(card.dataset.appearance).toBe("filled");
+    expect(card.className).toContain("shadow-layer");
+  });
+
+  test("takes Fluent's appearances", () => {
+    for (const appearance of ["filled", "filled-alternative", "outline", "subtle"] as const) {
+      const { container, unmount } = render(<Card appearance={appearance}>x</Card>);
+      expect((container.querySelector("[data-slot=card]") as HTMLElement).dataset.appearance).toBe(appearance);
+      unmount();
+    }
   });
 
   test("render swaps the element; the ref reaches it", () => {
