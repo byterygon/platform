@@ -33,7 +33,7 @@ function writeTheme(name: string, overrides: Record<string, unknown> = {}, seeds
   return file;
 }
 
-test("build writes the six outputs, then --check reports no drift", async () => {
+test("build writes the eight outputs, then --check reports no drift", async () => {
   const theme = writeTheme("ocean", {}, { colors: { brand: { hue: 200, chroma: 0.1 } } });
   const built = await cli("build", "--theme", theme, "--json");
   assert.equal(built.code, EXIT.ok);
@@ -215,6 +215,44 @@ test("export prints one output, or the theme with every seed spelled out", async
   assert.equal((await cli("export", "pdf", "--json")).code, EXIT.usage);
 });
 
+test("export monaco and registry print the committed Monaco theme and registry item", async () => {
+  for (const [format, file] of [["monaco", "monaco-theme.ts"], ["registry", "registry-theme.json"]] as const) {
+    const out = await cli("export", format, "--json");
+    assert.equal(out.code, EXIT.ok);
+    assert.equal(out.json.file, file);
+    assert.equal(out.json.content, readFileSync(join(ROOT, "generated", "default", file), "utf8"));
+  }
+  assert.equal(JSON.parse((await cli("export", "registry", "--theme", "paper")).stdout).name, "theme-paper");
+});
+
+test("hash encode and decode round-trip a theme file and the view", async () => {
+  const file = writeTheme("tuned", { "radius.lg": "12px" }, { colors: { brand: { hue: 150 } } });
+  const encoded = await cli("hash", "encode", "--theme", file, "--mode", "dark", "--density", "compact", "--url", "file:///studio/index.html#old", "--json");
+  assert.equal(encoded.code, EXIT.ok);
+  assert.match(encoded.json.hash, /^#by=1&theme=[A-Za-z0-9_-]+&mode=dark&density=compact$/);
+  assert.equal(encoded.json.url, `file:///studio/index.html${encoded.json.hash}`);
+  assert.equal((await cli("hash", "encode", "--theme", file)).stdout, `${encoded.json.hash.split("&mode")[0]}\n`);
+
+  const decoded = await cli("hash", "decode", encoded.json.url, "--json");
+  assert.equal(decoded.code, EXIT.ok);
+  assert.deepEqual(decoded.json.theme, JSON.parse(readFileSync(file, "utf8")));
+  assert.deepEqual([decoded.json.mode, decoded.json.density], ["dark", "compact"]);
+  const plain = await cli("hash", "decode", encoded.json.hash);
+  assert.deepEqual(JSON.parse(plain.stdout), JSON.parse(readFileSync(file, "utf8")));
+  assert.equal(plain.stderr, "");
+
+  const written = await cli("hash", "decode", encoded.json.hash, "--out", "decoded/tuned.theme.json", "--json");
+  assert.equal(written.json.written, join("decoded", "tuned.theme.json"));
+  assert.equal((await cli("build", "--theme", join(scratch, "decoded", "tuned.theme.json"), "--out", "decoded/out", "--json")).code, EXIT.ok);
+
+  const broken = await cli("hash", "decode", "#by=1&theme=not-a-theme", "--json");
+  assert.equal(broken.code, EXIT.usage);
+  assert.equal(broken.json.diagnostics[0].rule, "state-invalid");
+  assert.equal((await cli("hash", "encode", "--mode", "dim", "--json")).json.error.code, "usage");
+  assert.equal((await cli("hash", "decode", "--json")).code, EXIT.usage);
+  assert.equal((await cli("hash", "rotate", "--json")).code, EXIT.usage);
+});
+
 test("usage errors: exit 2, a code, a message and a fix", async () => {
   const cases: [string[], string][] = [
     [["bild"], "unknown-command"],
@@ -243,7 +281,7 @@ test("help lists every command and the exit codes; version prints the package", 
   const help = await cli("help", "--json");
   assert.deepEqual(
     help.json.commands.map((c: { name: string }) => c.name),
-    ["build", "validate", "explain", "search", "diff", "preset", "export", "help"],
+    ["build", "validate", "explain", "search", "diff", "preset", "export", "hash", "help"],
   );
   assert.deepEqual(help.json.exitCodes.map((e: { code: number }) => e.code), [0, 1, 2, 3, 70]);
   assert.match((await cli()).stdout, /by-tokens build/);

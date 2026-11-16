@@ -14,6 +14,7 @@ src/components/<name>/<name>.tsx            the component (Base UI part + token 
 src/lib/cn.ts                               class merging that knows the role names
 src/lib/theme-scope.ts                      a popup in a portal takes its trigger's theme and density
 src/lib/monaco.ts                           Monaco loaded lazily and offline, and its theme from the tokens
+                                            (its colour mapping is @byterygon/design-tokens/monaco)
 gallery/                                    every example in Light/Dark x Comfortable/Compact
 scripts/registry.ts                         writes registry/ (committed, drift-tested)
 scripts/new-component.ts                    pnpm ui:new
@@ -252,7 +253,11 @@ What `test/conventions.test.tsx` enforces for every component:
   classes (`.mtk<n>`) point at the `--by-*` variables, so editors in a Light and a Dark region side
   by side are both right. Popups Monaco renders outside the editor (its context menu) use the theme
   of the editor mounted, focused or rethemed last.
-- Never pass raw colours to Monaco; add a role to `MONACO_COLORS` / `MONACO_TOKENS` instead.
+- Never pass raw colours to Monaco; add a role to `MONACO_COLORS` / `MONACO_TOKENS` instead. They
+  and `monacoTheme` live in `@byterygon/design-tokens` (`src/monaco.ts`), one source with its
+  `monaco-theme.ts` output and the Theme Studio's export; `lib/monaco.ts` imports them, and the
+  registry ships that file as the `monaco-theme` lib item (`@/lib/monaco-theme`), a registry
+  dependency of `monaco`. A lib item with `source` in `LIBS` is a token-package module shipped as is.
 - CodeInput is CodeMirror 6, imported statically (small, and a form field must work at once). Its
   `EditorView.theme` and `HighlightStyle` use the token variables directly (`var(--by-editor-fg)`,
   `var(--by-syntax-keyword)`, `var(--by-text-code-size)`), so modes, density and presets apply with
@@ -332,7 +337,9 @@ shadcn add /path/to/registry/theme-default.json /path/to/registry/button.json   
 - Items list npm dependencies by bare name; the CLI installs only those missing from the project's
   package.json, so provision them from your mirror first (`meta.dependencyVersions` gives the
   versions tested here). A versioned name would make the CLI reinstall it, and fail offline.
-- `theme-<preset>` writes the `--by-*` variables (Light/Dark via `data-theme` or `.dark`,
+- `theme-<preset>` is made by `@byterygon/design-tokens/registry-theme` from the preset's committed
+  CSS, the same function as `by-tokens export registry` and the Theme Studio's export, so a theme
+  tuned in the Studio installs exactly like a preset. It writes the `--by-*` variables (Light/Dark via `data-theme` or `.dark`,
   Comfortable/Compact via `data-density`), the shadcn aliases, the dark variant, and both Tailwind
   vocabularies into the project CSS. Stock shadcn components are themed with no change. Fonts are
   not in the item: copy `@byterygon/design-tokens/fonts/` and import `fonts.css`, or the system

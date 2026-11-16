@@ -1353,9 +1353,25 @@
       "dependencies": [
         "monaco-editor"
       ],
+      "registryDependencies": [
+        "@byterygon/monaco-theme"
+      ],
       "files": [
         {
           "path": "lib/monaco.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
+      "name": "monaco-theme",
+      "type": "registry:lib",
+      "title": "monaco-theme",
+      "description": "The Monaco colour ids and SQL token types with the token role each one reads, and the function that turns resolved colours into a Monaco theme. The same source as the monaco-theme.ts output of @byterygon/design-tokens and the Theme Studio's Monaco export. @/lib/monaco imports it.",
+      "dependencies": [],
+      "files": [
+        {
+          "path": "lib/monaco-theme.ts",
           "type": "registry:lib"
         }
       ]

@@ -44,12 +44,12 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     name: "build",
     usage: "by-tokens build [--theme <name|file>] [--out <dir>] [--check] [--all]",
-    summary: "Generate, validate and write tokens.css, tailwind-theme.css, shadcn-alias.css, tokens.ts, tokens.dtcg.json and figma-variables.json. Writes nothing when a rule fails.",
+    summary: "Generate, validate and write tokens.css, tailwind-theme.css, shadcn-alias.css, tokens.ts, tokens.dtcg.json, figma-variables.json, monaco-theme.ts and registry-theme.json. Writes nothing when a rule fails.",
     options: [
       THEME,
       { name: "--out", value: "<dir>", summary: "output directory (default: generated/<theme> in the package for presets, ./tokens/<theme> for theme files)" },
       { name: "--check", summary: "write nothing; exit 3 when the files on disk differ from what would be generated" },
-      { name: "--all", summary: "write all six files for a built-in preset other than default (only the three CSS files are committed for those)" },
+      { name: "--all", summary: "write all eight files for a built-in preset other than default (only the three CSS files are committed for those)" },
       JSON_FLAG,
     ],
   },
@@ -96,9 +96,22 @@ export const COMMANDS: readonly CommandSpec[] = [
   },
   {
     name: "export",
-    usage: "by-tokens export <css|tailwind|shadcn|ts|dtcg|figma|theme> [--theme <name|file>] [--out <file>]",
-    summary: "Print one output to stdout (or to a file). `theme` prints the theme with every seed spelled out.",
+    usage: "by-tokens export <css|tailwind|shadcn|ts|dtcg|figma|monaco|registry|theme> [--theme <name|file>] [--out <file>]",
+    summary: "Print one output to stdout (or to a file): the same bytes the Theme Studio exports. `monaco` is monaco-theme.ts, `registry` the shadcn registry:theme item, `theme` the theme with every seed spelled out.",
     options: [THEME, { name: "--out", value: "<file>", summary: "write to this file instead of stdout" }, JSON_FLAG],
+  },
+  {
+    name: "hash",
+    usage: "by-tokens hash encode [--theme <name|file>] [--mode <light|dark>] [--density <comfortable|compact>] [--url <studio-url>] | decode <hash|url> [--out <file>]",
+    summary: "Turn a theme file into a Theme Studio URL hash (#by=1&theme=...), or a hash or Studio URL back into the theme file. The schema is in AGENTS.md (\"Studio state\").",
+    options: [
+      THEME,
+      { name: "--mode", value: "<light|dark>", summary: "encode: the colour mode the Studio opens in" },
+      { name: "--density", value: "<comfortable|compact>", summary: "encode: the density the Studio opens in" },
+      { name: "--url", value: "<studio-url>", summary: "encode: print this URL with the hash appended (any existing hash is replaced)" },
+      { name: "--out", value: "<file>", summary: "decode: write the theme file here instead of printing it" },
+      JSON_FLAG,
+    ],
   },
   {
     name: "help",

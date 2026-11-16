@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseCss, selectors } from "./lib/css.ts";
+import { formatRegistryThemeItem } from "@byterygon/design-tokens/registry-theme";
 import { fileName, listComponents, readManifest, validateManifest, type Manifest } from "./lib/manifest.ts";
 
 export const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,7 +53,7 @@ function dependenciesOf(root: string, names: readonly string[]): { dependencies:
  * The helpers in src/lib that components may import, each shipped as a `registry:lib` item at
  * `lib/<name>.ts`, with the npm packages it needs.
  */
-export const LIBS: Record<string, { dependencies: string[]; description: string; llms: string }> = {
+export const LIBS: Record<string, { dependencies: string[]; description: string; llms: string; registryDependencies?: string[]; source?: string }> = {
   cn: {
     dependencies: ["cn"],
     description: "Class-name merging that knows the Tailwind names of the Byterygon token roles. Every Byterygon component imports it from @/lib/cn.",
@@ -68,6 +68,13 @@ export const LIBS: Record<string, { dependencies: string[]; description: string;
     dependencies: ["monaco-editor"],
     description: "Loads Monaco lazily from the app's own bundle (ESM, its editor worker through Vite's ?worker, no CDN or AMD loader) and builds a Monaco theme from the design tokens in scope at the editor. SqlEditor imports it from @/lib/monaco; with a bundler other than Vite, set MonacoEnvironment.getWorker and replace the ?worker import.",
     llms: "loads Monaco lazily and offline (Vite ?worker) and turns the token roles in scope into a Monaco theme; SqlEditor depends on it.",
+    registryDependencies: ["monaco-theme"],
+  },
+  "monaco-theme": {
+    dependencies: [],
+    description: "The Monaco colour ids and SQL token types with the token role each one reads, and the function that turns resolved colours into a Monaco theme. The same source as the monaco-theme.ts output of @byterygon/design-tokens and the Theme Studio's Monaco export. @/lib/monaco imports it.",
+    llms: "which token role colours each Monaco colour id and SQL token type; the monaco helper depends on it.",
+    source: "@byterygon/design-tokens/monaco",
   },
   motion: {
     dependencies: [],
@@ -127,9 +134,27 @@ function componentItem(root: string, name: string): Item {
   };
 }
 
+/**
+ * Imports of the token package that a lib may use, and the lib item each one becomes in a project
+ * (the token package is not installed there). Only self-contained modules of the token package.
+ */
+const TOKEN_MODULES = Object.fromEntries(Object.entries(LIBS).flatMap(([name, lib]) => (lib.source ? [[lib.source, name]] : [])));
+
+/** A lib's shipped source: token-package imports become the `@/lib/<name>` they are installed as. */
+export function shipLibSource(source: string, name: string): string {
+  return source.replace(/(from\s+["'])(@byterygon\/design-tokens\/[^"']+)(["'])/g, (_all, open: string, specifier: string, close: string) => {
+    const lib = TOKEN_MODULES[specifier];
+    if (!lib || !(LIBS[name]!.registryDependencies ?? []).includes(lib)) {
+      throw new RegistryError([`lib ${name}: imports ${specifier}; list the lib item it ships as in LIBS.${name}.registryDependencies`]);
+    }
+    return `${open}@/lib/${lib}${close}`;
+  });
+}
+
 function libItem(root: string, name: string): Item {
   const lib = LIBS[name]!;
   const { dependencies, versions } = dependenciesOf(root, lib.dependencies);
+  const file = lib.source ? require.resolve(lib.source) : join(root, "src", "lib", `${name}.ts`);
   return {
     $schema: SCHEMA_ITEM,
     name,
@@ -137,7 +162,8 @@ function libItem(root: string, name: string): Item {
     title: name,
     description: lib.description,
     dependencies,
-    files: [{ path: `lib/${name}.ts`, type: "registry:lib", content: readFileSync(join(root, "src", "lib", `${name}.ts`), "utf8") }],
+    ...(lib.registryDependencies ? { registryDependencies: lib.registryDependencies.map((dep) => `${NAMESPACE}/${dep}`) } : {}),
+    files: [{ path: `lib/${name}.ts`, type: "registry:lib", content: shipLibSource(readFileSync(file, "utf8"), name) }],
     meta: { dependencyVersions: versions },
   };
 }
@@ -156,45 +182,23 @@ export function presets(): string[] {
 const presetFile = (preset: string, file: string) => readFileSync(require.resolve(`@byterygon/design-tokens/presets/${preset}/${file}`), "utf8");
 
 /**
- * A `registry:theme` item for a token preset. `css` carries the variables (tokens.css and the
- * shadcn alias layer, every block with its selectors) and the dark variant; `cssVars.theme` the
- * Tailwind `@theme inline` names: Byterygon's roles plus shadcn's own colour names, so stock
- * shadcn components and Byterygon components both work in the project that installs it. shadcn's
- * meaning wins where the two collide (`--color-accent` is shadcn's hover colour), which is why
- * Byterygon components use the accent-solid names.
+ * The `registry:theme` item of a token preset, from its committed CSS outputs. Built by
+ * @byterygon/design-tokens (`registry-theme.ts`), the same code as its `registry-theme.json` output
+ * and the Theme Studio's export, so the three are the same bytes.
  */
-export function themeItem(preset: string): Item {
+export function themeItemFile(preset: string): string {
   const themeFile = JSON.parse(readFileSync(require.resolve(`@byterygon/design-tokens/themes/${preset}.theme.json`), "utf8")) as { description?: string };
-  const css: Record<string, Json> = {};
-  const tailwind = parseCss(presetFile(preset, "tailwind-theme.css"));
-  for (const rule of tailwind) if (rule.prelude.startsWith("@custom-variant")) css[rule.prelude] = {};
-  for (const file of ["tokens.css", "shadcn-alias.css"]) {
-    for (const rule of parseCss(presetFile(preset, file))) {
-      const key = selectors(rule.prelude).join(", ");
-      const block = (css[key] ??= {}) as Record<string, Json>;
-      for (const [property, value] of rule.declarations) block[property] = value;
-    }
-  }
-  const theme: Record<string, string> = {};
-  for (const rule of tailwind) {
-    if (rule.prelude !== "@theme inline") continue;
-    for (const [property, value] of rule.declarations) theme[property.slice(2)] = value;
-  }
-  for (const rule of parseCss(presetFile(preset, "shadcn-alias.css"))) {
-    for (const [property] of rule.declarations) {
-      if (property === "--radius") continue;
-      theme[`color-${property.slice(2)}`] = `var(${property})`;
-    }
-  }
-  return {
-    $schema: SCHEMA_ITEM,
-    name: `theme-${preset}`,
-    type: "registry:theme",
-    title: `Byterygon theme: ${preset}`,
-    description: `${themeFile.description ?? `The ${preset} preset.`} Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.`,
-    cssVars: { theme },
-    css,
-  };
+  return formatRegistryThemeItem({
+    name: preset,
+    ...(themeFile.description ? { description: themeFile.description } : {}),
+    tokensCss: presetFile(preset, "tokens.css"),
+    tailwindCss: presetFile(preset, "tailwind-theme.css"),
+    shadcnCss: presetFile(preset, "shadcn-alias.css"),
+  });
+}
+
+export function themeItem(preset: string): Item {
+  return JSON.parse(themeItemFile(preset)) as Item;
 }
 
 function llmsTxt(items: Item[]): string {

@@ -31,7 +31,7 @@ export interface GenerateResult {
   readonly diagnostics: readonly Diagnostic[];
 }
 
-const THEME_KEYS = ["$schema", "schemaVersion", "name", "description", "seeds", "overrides"];
+export const THEME_KEYS = ["$schema", "schemaVersion", "name", "description", "seeds", "overrides"];
 const THEME_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** Radix's alpha scale for the pure black and white overlays. */
