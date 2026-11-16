@@ -4,7 +4,6 @@
 // is here with its shortcut for this shell.
 import { isRpcError } from "@byterygon/ambidex";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CommandPalette, type CommandGroup } from "@/components/ui/command-palette";
 import { IconButton } from "@/components/ui/icon-button";
@@ -22,6 +21,7 @@ import { useServices } from "./client";
 import { type Approval, ApproveDialog } from "./connections/ApproveDialog";
 import { ConnectionSheet } from "./connections/ConnectionSheet";
 import { ConnectionsTree } from "./connections/ConnectionsTree";
+import { ExpiryBadge } from "./connections/ExpiryBadge";
 import { AboutDialog } from "./dialogs/AboutDialog";
 import { ConfirmDestructiveDialog, DeleteConnectionDialog, PasswordDialog } from "./dialogs/Confirmations";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
@@ -184,7 +184,8 @@ function Shell({ shell }: { shell: Shell }) {
   const connectionById = (id: string) => connections.find((c) => c.id === id);
 
   const renew = (id: string) => {
-    dispatch({ type: "dialog", dialog: { kind: "connection", editId: id } });
+    // Renew access is the edit flow with the same target, a new expiry and a new approval (spec §4).
+    dispatch({ type: "dialog", dialog: { kind: "connection", editId: id, renew: true } });
   };
 
   const disconnect = async (id: string) => {
@@ -269,8 +270,10 @@ function Shell({ shell }: { shell: Shell }) {
 
   const remedy = (what: string, connectionId: string | null) => {
     switch (what) {
-      case "editConnection":
       case "renewAccess":
+        if (connectionId) renew(connectionId);
+        break;
+      case "editConnection":
       case "widenAddresses":
         if (connectionId) dispatch({ type: "dialog", dialog: { kind: "connection", editId: connectionId } });
         break;
@@ -530,11 +533,9 @@ function Shell({ shell }: { shell: Shell }) {
           </StatusBarItem>
           {activeTab?.run?.status === "running" ? <StatusBarButton onClick={() => cancel(activeTab.id)}>Cancel</StatusBarButton> : null}
           <StatusBarSpacer />
-          {expiring !== null && expiring - Date.now() < 15 * 60_000 ? (
+          {expiring !== null ? (
             <StatusBarItem>
-              <Badge variant="warning" size="sm">
-                {expiring - Date.now() < 60_000 ? `expires in ${Math.max(0, Math.round((expiring - Date.now()) / 1000))} s` : `expires in ${Math.round((expiring - Date.now()) / 60_000)} min`}
-              </Badge>
+              <ExpiryBadge expiresAt={expiring} />
             </StatusBarItem>
           ) : null}
           <StatusBarButton onClick={() => dispatch({ type: "settings", settings: { density: state.settings.density === "compact" ? "comfortable" : "compact" } })}>{state.settings.density}</StatusBarButton>
@@ -556,6 +557,7 @@ function Shell({ shell }: { shell: Shell }) {
           open={approval === null}
           onOpenChange={(open) => !open && dispatch({ type: "dialog", dialog: { kind: "none" } })}
           editing={editing}
+          renewing={dialog.kind === "connection" && dialog.renew === true}
           existingNames={connections.map((c) => c.name)}
           onPreview={onPreview}
           onUpdated={() => {

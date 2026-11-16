@@ -124,6 +124,9 @@ pub struct CoreConfig {
     /// CA certificates for grants with the deployment-CA policy. Empty means such handshakes
     /// fail (nothing is loaded implicitly).
     pub deployment_roots: Arc<rustls::RootCertStore>,
+    /// The wall clock for grants and their expiry events; the system clock unless a test drives
+    /// time itself.
+    pub clock: Arc<dyn security_types::Clock>,
 }
 
 impl CoreConfig {
@@ -140,6 +143,7 @@ impl CoreConfig {
             save_dialog: None,
             driver_factory: None,
             deployment_roots: Arc::new(rustls::RootCertStore::empty()),
+            clock: Arc::new(security_types::SystemClock),
         }
     }
 }
@@ -220,6 +224,7 @@ impl Core {
             factory,
             tenant: TenantId::new(LOCAL_TENANT),
             deployment_roots: config.deployment_roots,
+            clock: config.clock,
         }));
         manager.restore().await;
 
@@ -366,6 +371,7 @@ pub fn codegen_router() -> Router {
         factory: Arc::new(NoFactory),
         tenant: TenantId::new(LOCAL_TENANT),
         deployment_roots: Arc::new(rustls::RootCertStore::empty()),
+        clock: Arc::new(security_types::SystemClock),
     }));
     let state = Arc::new(CoreState {
         manager,

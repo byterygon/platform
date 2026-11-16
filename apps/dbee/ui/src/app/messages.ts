@@ -45,7 +45,7 @@ function sessionError(e: SessionError): Described {
     case "PermissionDenied":
       switch (e.reason.kind) {
         case "Expired":
-          return withRemedy({ title: `Access expired at ${time(e.reason.expiredAt)}` }, "renewAccess");
+          return withRemedy({ title: `Access to this connection expired at ${time(e.reason.expiredAt)}` }, "renewAccess");
         case "Revoked":
           return { title: "Access was revoked" };
         case "AddressNotAllowed":
@@ -81,7 +81,7 @@ function queryError(e: QueryError): Described {
     case "Cancelled":
       return { title: "Cancelled" };
     case "AccessEnded":
-      return { title: "Access expired; the statement's outcome on the database is unknown" };
+      return { title: "The statement was stopped when access expired; its outcome on the database is unknown" };
     case "Unsupported":
       return { title: "Not supported", description: e.message };
     case "NotFound":

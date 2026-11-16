@@ -47,7 +47,7 @@ export interface SchemaCache {
 
 export type DialogState =
   | { kind: "none" }
-  | { kind: "connection"; editId?: string }
+  | { kind: "connection"; editId?: string; renew?: boolean }
   | { kind: "deleteConnection"; id: string }
   | { kind: "export"; tabId: string }
   | { kind: "settings" }

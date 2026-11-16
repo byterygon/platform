@@ -15,6 +15,7 @@ import { TypeBadge } from "@/components/ui/type-badge";
 import type { ColumnInfo, ConnectionStatus, ConnectionSummary, TableInfo } from "@/gen/api";
 import { type Ctx, connect, loadColumns, loadSchemas, loadTables, openTab, quoteIdent } from "../actions";
 import { useServices } from "../client";
+import { ExpiryBadge } from "./ExpiryBadge";
 import { ColumnIcon, DatabaseIcon, SchemaIcon, TableIcon, ViewIcon } from "../icons";
 import { tlsName } from "../messages";
 import { type SchemaCache, emptyCache, useStore } from "../store";
@@ -132,7 +133,6 @@ export function connectionNodes(connections: readonly ConnectionSummary[], statu
   return connections.map((c) => {
     const status = statuses[c.id] ?? c.status;
     const cache = schema[c.id] ?? emptyCache();
-    const expiresIn = c.grant.expiresAt === null ? null : c.grant.expiresAt - Date.now();
     const children =
       status === "connected" && cache.schemas.items
         ? (() => {
@@ -150,7 +150,7 @@ export function connectionNodes(connections: readonly ConnectionSummary[], statu
           <Badge variant={c.tls === "plaintext" ? "warning" : "neutral"} appearance="outline" title={tlsName(c.tls)}>
             {c.tls === "plaintext" ? "plaintext" : "TLS"}
           </Badge>
-          {expiresIn !== null && expiresIn > 0 && expiresIn < 15 * 60_000 ? <Badge variant="warning">expires in {Math.max(1, Math.round(expiresIn / 60_000))} min</Badge> : null}
+          <ExpiryBadge expiresAt={c.grant.expiresAt} hideExpired={status === "expired"} />
           {status === "connecting" ? <Spinner size="sm" label="Connecting" /> : <Badge variant={statusVariant(status)} appearance="dot">{status}</Badge>}
         </span>
       ),
