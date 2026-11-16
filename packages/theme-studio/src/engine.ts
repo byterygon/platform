@@ -94,3 +94,11 @@ export function diagnosticsOf(diagnostics: readonly Diagnostic[], path: string):
 
 /** A short label for a mode context (`light`, `dark, compact`). */
 export const modeLabel = (mode: ModeContext) => Object.values(mode).join(", ");
+
+/**
+ * `tokens.css` of a theme declared on the elements `scope` matches instead of `:root` (the
+ * engine's `renderTokensCss` with a scope), so a card can show a theme other than the page's.
+ */
+export function scopedThemeCss(theme: ThemeDoc, scope: string): string {
+  return renderTokensCss(generateTokens(theme).set, "Theme Studio", { scope });
+}

@@ -4,7 +4,9 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, describe, expect, test } from "vitest";
 import { App, THEME_STYLE_ATTRIBUTE } from "../src/app.tsx";
-import { type Loaded, startingTheme } from "../src/state/persist.ts";
+import { readLibrary } from "../src/state/library.ts";
+import { type Loaded, loadState, startingTheme } from "../src/state/persist.ts";
+import { PRESETS } from "../src/state/presets.ts";
 import type { ThemeDoc } from "../src/state/theme-edit.ts";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -15,6 +17,7 @@ afterEach(() => {
   act(() => root?.unmount());
   container?.remove();
   document.head.querySelector(`style[${THEME_STYLE_ATTRIBUTE}]`)?.remove();
+  localStorage.clear();
 });
 
 const $ = <T extends Element = HTMLElement>(selector: string) => document.body.querySelector<T>(selector);
@@ -110,8 +113,8 @@ describe("Theme Studio", () => {
     const saved = mount();
     const brand9 = () => styleText().match(/--by-color-brand-9: ([^;]+);/)![1];
     const before = brand9();
-    // The engine default brand is Aurora's (hue 282.5); the swatch label rounds the hue.
-    click($('button[aria-label^="Brand: hue 283, chroma 0.165"]')!);
+    // The engine default brand is Aurora's (hue 282.5); the label keeps its one decimal.
+    click($('button[aria-label^="Brand: hue 282.5, chroma 0.165"]')!);
     await waitFor(() => expect($('[role="group"][aria-label="Ready colours"]')).toBeTruthy());
 
     click($('button[aria-label="hue 135, chroma 0.12"]')!);
@@ -214,5 +217,59 @@ describe("Theme Studio", () => {
       expect($$(`[aria-label="${ramp}-dark ramp"] [role="listitem"]`)).toHaveLength(12);
     }
     expect(document.body.textContent).toContain("color.bg");
+  });
+
+  test("Themes: the gallery shows every preset with a scoped preview; Open loads one with its own view", async () => {
+    mount();
+    click(byText("button", "Themes")!);
+    await waitFor(() => expect($('section[aria-label="Presets"]')).toBeTruthy());
+    const cards = $$('section[aria-label="Presets"] li');
+    expect(cards.map((card) => card.getAttribute("aria-label"))).toEqual(PRESETS.map((p) => p.label));
+    expect(cards[0]!.getAttribute("aria-label")).toBe("Aurora");
+    // Each card declares its own theme's variables, scoped to the card.
+    const midnight = $('[data-studio-preview="preset-midnight"]')!;
+    expect(midnight.querySelector("style")!.textContent).toContain('[data-studio-preview="preset-midnight"] {');
+    expect(midnight.querySelector("style")!.textContent).not.toMatch(/^:root/m);
+
+    click($('button[aria-label="Open Midnight"]')!);
+    await waitFor(() => expect(styleText()).toContain('theme "midnight"'));
+    // Midnight is dark first: the view follows the theme.
+    expect(document.documentElement.dataset["theme"]).toBe("dark");
+    expect($<HTMLInputElement>('input[aria-label="Theme name"]')!.value).toBe("midnight");
+  });
+
+  test("Themes: duplicate a preset, save and update the edited theme, delete with undo", async () => {
+    mount({ ...startingTheme(), name: "ocean", seeds: { radius: 9 } });
+    click(byText("button", "Themes")!);
+    await waitFor(() => expect($('section[aria-label="Saved in this browser"]')).toBeTruthy());
+    click(byText("button", "Save ocean")!);
+    await waitFor(() => expect(readLibrary(localStorage).themes.map((t) => t.theme["name"])).toEqual(["ocean"]));
+    expect(byText("button", "Update saved ocean")).toBeTruthy();
+
+    click($('button[aria-label="Duplicate Paper"]')!);
+    await waitFor(() => expect(styleText()).toContain('theme "paper-copy"'));
+    const library = readLibrary(localStorage).themes;
+    expect(library.map((t) => t.theme["name"])).toEqual(["paper-copy", "ocean"]);
+    expect(library[0]!.theme["description"]).toBe("Based on the paper preset.");
+
+    click(byText("button", "Themes")!);
+    await waitFor(() => expect($('button[aria-label="Delete ocean"]')).toBeTruthy());
+    click($('button[aria-label="Delete ocean"]')!);
+    await waitFor(() => expect(readLibrary(localStorage).themes.map((t) => t.theme["name"])).toEqual(["paper-copy"]));
+    click(byText("button", "Undo")!);
+    await waitFor(() => expect(readLibrary(localStorage).themes.map((t) => t.theme["name"])).toEqual(["paper-copy", "ocean"]));
+  });
+
+  test("Share: the link is the page address with the current state's hash, and it opens that state", async () => {
+    const theme = { ...startingTheme(), name: "ocean", seeds: { colors: { brand: { hue: 200 } } } };
+    mount(theme, { mode: "dark", density: "compact" });
+    click(byText("button", "Share")!);
+    await waitFor(() => expect($<HTMLInputElement>('input[aria-label="Share link"]')?.value).toContain("#by=1&theme="));
+    const link = $<HTMLInputElement>('input[aria-label="Share link"]')!.value;
+    expect(link.startsWith(location.href.split("#")[0]!)).toBe(true);
+    const loaded = await loadState(link.slice(link.indexOf("#")), undefined);
+    expect([loaded.theme, loaded.view]).toEqual([theme, { mode: "dark", density: "compact" }]);
+    click(byText("button", "Copy link")!);
+    await waitFor(() => expect(document.body.textContent).toMatch(/Copied to the clipboard|the link is selected/));
   });
 });

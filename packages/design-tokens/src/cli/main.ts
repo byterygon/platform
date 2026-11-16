@@ -11,6 +11,7 @@ import { EXPORT_FORMATS, type ExportFormat, exportFormat, exportTheme } from "..
 import { generateTokens } from "../generate.js";
 import { type Diagnostic, type ModeContext, type Token, type TokenSet, SCHEMA_VERSION, TIERS, hasErrors } from "../model.js";
 import { dependentAxes, ownValues, referencedBy, resolve } from "../resolve.js";
+import { duplicateTheme, presetLabel, presetOrder } from "../presets.js";
 import { STATE_DENSITIES, STATE_MODES, decodeState, encodeState } from "../state.js";
 import { closest, isPlainObject, stableJson } from "../util.js";
 import { type ContrastMeasurement, contextsFor, overStack, overText, validate } from "../validate.js";
@@ -437,11 +438,11 @@ async function preset(args: ParsedArgs, io: Io): Promise<Outcome> {
   const [action, name, ...extra] = args.positionals;
   const usage = "Usage: by-tokens preset list | show <name> | create <name> [--from <preset>] [--set <path>=<value>]... [--out <file>]";
   if (action === "list" && name === undefined) {
-    const presets = presetNames().map((presetName) => {
+    const presets = presetOrder(presetNames()).map((presetName) => {
       const theme = loadTheme(presetName, io).theme;
-      return { name: presetName, description: isPlainObject(theme) && typeof theme["description"] === "string" ? theme["description"] : "", file: display(io, join(presetDir(), `${presetName}${PRESET_SUFFIX}`)) };
+      return { name: presetName, label: presetLabel(presetName), description: isPlainObject(theme) && typeof theme["description"] === "string" ? theme["description"] : "", file: display(io, join(presetDir(), `${presetName}${PRESET_SUFFIX}`)) };
     });
-    return { exitCode: EXIT.ok, data: { presets }, text: presets.map((p) => `${p.name}  ${p.description}\n  ${p.file}`).join("\n") };
+    return { exitCode: EXIT.ok, data: { presets }, text: presets.map((p) => `${p.name} (${p.label})  ${p.description}\n  ${p.file}`).join("\n") };
   }
   if (action === "show" && name !== undefined && extra.length === 0) {
     const loaded = loadTheme(name, io);
@@ -453,10 +454,7 @@ async function preset(args: ParsedArgs, io: Io): Promise<Outcome> {
     // brand steps by override for #6b4eff, which would not follow a --set brand hue (TSK-57).
     const from = flag(args, "--from");
     const base = from === undefined ? undefined : loadTheme(from, io);
-    const theme: Record<string, unknown> = base && isPlainObject(base.theme) ? structuredClone(base.theme) : { schemaVersion: 1 };
-    delete theme["$schema"];
-    theme["name"] = name;
-    theme["description"] = base ? `Based on the ${isPlainObject(base.theme) ? String(base.theme["name"]) : from} preset.` : "A new theme on the engine defaults.";
+    const theme = duplicateTheme(base?.theme, name, base && isPlainObject(base.theme) ? String(base.theme["name"]) : from);
     for (const assignment of args.flags.get("--set") ?? []) applySet(theme, assignment);
     const target = resolvePath(io.cwd, flag(args, "--out") ?? `${name}${PRESET_SUFFIX}`);
     const shown = display(io, target);

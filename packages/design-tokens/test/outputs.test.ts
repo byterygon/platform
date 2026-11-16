@@ -256,6 +256,22 @@ test("renderTokensCss (the Studio's live preview) is the tokens.css of renderOut
   }
 });
 
+test("renderTokensCss with a scope declares the same variables on the scope instead of :root", () => {
+  const { set } = generateTokens(JSON.parse(readFileSync(join(ROOT, "themes", "paper.theme.json"), "utf8")));
+  const plain = renderTokensCss(set, "studio");
+  const scope = '[data-preview="paper"]';
+  const scoped = renderTokensCss(set, "studio", { scope });
+  assert.equal(renderTokensCss(set, "studio", {}), plain, "no scope is tokens.css");
+  assert.doesNotMatch(scoped.replace(/\/\*[\s\S]*?\*\//g, ""), /:root/, "no selector outside the comments names :root");
+  // Same declarations, block for block; only the selector lists differ.
+  const declarations = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").split("{").slice(1).map((block) => block.split("}")[0]);
+  assert.deepEqual(declarations(scoped), declarations(plain));
+  const selectors = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").split("}").map((block) => block.split("{")[0]!.trim()).filter(Boolean);
+  for (const list of selectors(scoped)) for (const selector of list.split(/,\s*/)) assert.ok(selector.includes(scope), `${selector} is outside the scope`);
+  assert.match(scoped, /\[data-preview="paper"\]\[data-theme="dark"\],\n\[data-theme="dark"\] \[data-preview="paper"\]/);
+  assert.match(scoped, /\.dark \[data-preview="paper"\]/);
+});
+
 test("the registry theme item is the one @byterygon/ui's registry holds, for every preset", async () => {
   const registry = resolvePath(ROOT, "..", "ui", "registry");
   for (const preset of PRESETS) {

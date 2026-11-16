@@ -176,6 +176,8 @@ test("diff compares resolved values mode by mode", async () => {
 test("preset: list, show, create from a preset with --set", async () => {
   const list = await cli("preset", "list", "--json");
   assert.ok(list.json.presets.some((p: { name: string; description: string }) => p.name === "default" && p.description.length > 0));
+  // In the Studio's gallery order, with the gallery's labels.
+  assert.deepEqual(list.json.presets.slice(0, 2).map((p: { name: string; label: string }) => [p.name, p.label]), [["default", "Aurora"], ["classic", "Classic"]]);
   const shown = await cli("preset", "show", "default", "--json");
   assert.equal(shown.json.preset.seeds.colors.brand.hue, 282.5);
   assert.equal((await cli("preset", "show", "classic", "--json")).json.preset.seeds.colors.brand.hue, 230);

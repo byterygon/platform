@@ -34,6 +34,9 @@ export function startingTheme(): ThemeDoc {
 const seedScheme = (theme: ThemeDoc): View["mode"] => ((theme["seeds"] as { colorScheme?: string } | undefined)?.colorScheme === "dark" ? "dark" : "light");
 const seedDensity = (theme: ThemeDoc): View["density"] => ((theme["seeds"] as { density?: string } | undefined)?.density === "compact" ? "compact" : "comfortable");
 
+/** The view a theme opens in: its own default scheme and density. */
+export const viewOf = (theme: ThemeDoc): View => ({ mode: seedScheme(theme), density: seedDensity(theme) });
+
 function fromState(state: StudioState): { theme: ThemeDoc; view: View } {
   const theme = state.theme;
   return { theme, view: { mode: state.mode ?? seedScheme(theme), density: state.density ?? seedDensity(theme) } };
