@@ -160,15 +160,28 @@ function bundleReport(files: OutputFile[], outDir: string) {
 
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".ttf": "font/ttf", ".woff2": "font/woff2", ".json": "application/json", ".svg": "image/svg+xml" };
 
-function serve(dir: string): Promise<Server> {
+/**
+ * A static server on loopback. `prefix` serves the build under a sub-path (an intranet reverse
+ * proxy, `https://intranet/dbee/`); `csp` sends that Content-Security-Policy with every response.
+ */
+function serve(dir: string, { prefix = "", csp }: { prefix?: string; csp?: string } = {}): Promise<Server> {
   const server = createServer((req, res) => {
-    const path = decodeURIComponent((req.url ?? "/").split("?")[0]!);
+    let path = decodeURIComponent((req.url ?? "/").split("?")[0]!);
+    if (prefix) {
+      if (!path.startsWith(`${prefix}/`)) {
+        res.writeHead(404).end();
+        return;
+      }
+      path = path.slice(prefix.length);
+    }
     const file = join(dir, path === "/" ? "index.html" : path);
     if (!file.startsWith(dir) || !existsSync(file) || !statSync(file).isFile()) {
       res.writeHead(404).end();
       return;
     }
-    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": "no-store" }).end(readFileSync(file));
+    res
+      .writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": "no-store", ...(csp ? { "content-security-policy": csp } : {}) })
+      .end(readFileSync(file));
   });
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
@@ -270,6 +283,7 @@ interface Page {
   insertText: (text: string) => Promise<void>;
   screenshot: (path: string) => Promise<void>;
   click: (x: number, y: number) => Promise<void>;
+  close: () => Promise<void>;
   requests: string[];
   failed: string[];
   errors: string[];
@@ -335,6 +349,9 @@ async function openPage(cdp: Cdp): Promise<Page> {
       const { data } = (await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true })) as { data: string };
       writeFileSync(path, Buffer.from(data, "base64"));
     },
+    async close() {
+      await cdp.send("Target.closeTarget", { targetId });
+    },
     requests,
     failed,
     errors,
@@ -350,6 +367,69 @@ const frames = (n = 3) => `new Promise((r) => { let i = 0; const f = () => (++i 
  */
 async function producesFrames(page: Page): Promise<boolean> {
   return page.evaluate<boolean>("new Promise((r) => { requestAnimationFrame(() => r(true)); setTimeout(() => r(false), 2000); })");
+}
+
+/**
+ * The Content-Security-Policies Byterygon apps serve, with connections narrowed to the page itself
+ * (the check has no Ambidex endpoint). Kept in step with apps/dbee/server/src/static_ui.rs and
+ * crates/ambidex-tauri/src/lib.rs (`CSP`); the Tauri one is the strictest: no inline styles, no
+ * data: images.
+ */
+export const INTERNAL_CSPS: Readonly<Record<string, { csp: string; knownIssue?: string }>> = {
+  "dbee-server": {
+    csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'",
+  },
+  // ambidex_tauri::CSP with `connect-src` narrowed to the page (test/internal-csp.test.ts keeps
+  // the two in step). Its `style-src 'unsafe-inline'` exists because Monaco and lib/monaco create
+  // <style> elements at run time (TSK-56); scripts stay 'self' only.
+  "tauri-desktop": {
+    csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  },
+};
+
+/**
+ * Monaco on an internal network: the same build served from a sub-path under each CSP above, in a
+ * fresh page. Monaco must mount with its own stylesheet applied, start its worker, keep every
+ * request under the sub-path, and cause no CSP violation.
+ */
+async function internalNetwork(cdp: Cdp, out: string) {
+  const results: Record<string, { violations: string[]; outside: string[]; styled: boolean; worker: boolean; knownIssue?: string }> = {};
+  for (const [name, { csp, knownIssue }] of Object.entries(INTERNAL_CSPS)) {
+    const prefix = "/intranet/dbee";
+    const server = await serve(out, { prefix, csp });
+    try {
+      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}${prefix}`;
+      const page = await openPage(cdp);
+      await page.navigate(`${base}/`);
+      const ready = await waitFor(page, "window.__check && window.__check.readyAt > 0", 30_000);
+      check(ready, `internal network (${name}): Monaco did not mount from ${prefix}/ under the CSP`);
+      await page.evaluate(frames(4));
+      // Monaco's own CSS (injected <style> and its stylesheet) positions the text layer absolutely.
+      const styled = await page.evaluate<boolean>(`(() => { const v = document.querySelector("[data-slot=sql-editor] .monaco-editor .view-lines"); return !!v && getComputedStyle(v).position === "absolute"; })()`);
+      check(styled, `internal network (${name}): Monaco's styles were not applied`);
+      const worker = await page.evaluate<boolean>(`new Promise((resolve) => {
+        const w = self.MonacoEnvironment.getWorker("workerMain.js", "editorWorkerService");
+        w.addEventListener("error", () => resolve(false));
+        setTimeout(() => { w.terminate(); resolve(true); }, 500);
+      })`);
+      check(worker, `internal network (${name}): the editor worker did not start under worker-src 'self'`);
+      const violations = await page.evaluate<string[]>("window.__violations.slice()");
+      if (knownIssue && violations.length > 0) {
+        process.stderr.write(`warning: internal network (${name}): known issue, ${knownIssue}: ${violations.length} CSP violations, first: ${violations[0]}\n`);
+      } else {
+        check(violations.length === 0, `internal network (${name}): CSP violations: ${violations.join("; ")}`);
+        if (knownIssue) check(false, `internal network (${name}): no CSP violation any more; remove knownIssue from INTERNAL_CSPS so the case is strict again`);
+      }
+      const outside = page.requests.filter((u) => !u.startsWith(`${base}/`) && !u.startsWith("data:") && !u.startsWith("blob:") && u !== "about:blank");
+      check(outside.length === 0, `internal network (${name}): requests outside ${prefix}/: ${outside.join(", ")}`);
+      check(page.errors.length === 0, `internal network (${name}): page errors: ${page.errors.join("\n")}`);
+      results[name] = { violations, outside, styled, worker, ...(knownIssue ? { knownIssue } : {}) };
+      await page.close();
+    } finally {
+      server.close();
+    }
+  }
+  return results;
 }
 
 async function waitFor(page: Page, expression: string, timeout = 10_000): Promise<boolean> {
@@ -689,6 +769,8 @@ async function main(argv: string[]): Promise<number> {
     report.codeKeyboard = await within(60_000, "CodeInput keyboard", codeKeyboard(page));
     step("CodeInput 1 MB");
     report.codeLargeDocument = await within(90_000, "CodeInput 1 MB", codeLargeDocument(page));
+    step("internal network: sub-path and DBee CSPs");
+    report.internalNetwork = await within(120_000, "internal network", internalNetwork(cdp, out));
     if (screenshotPath) {
       await page.evaluate(`window.__check.setPreset("default"), window.__check.setTheme("light"), window.__check.setValue("select id, email from users where id = 1;\\nselect count(*) from orders;\\n"), ${frames()}`);
       await page.screenshot(screenshotPath);
