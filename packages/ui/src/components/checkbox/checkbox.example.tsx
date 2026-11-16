@@ -53,13 +53,13 @@ export function CheckboxRealistic() {
       </Field>
       <Field>
         <FieldLabel className="text-caption">
-          <Checkbox size="sm" defaultChecked />
+          <Checkbox size="small" defaultChecked />
           Quote every value
         </FieldLabel>
       </Field>
       <Field>
         <FieldLabel className="text-body">
-          <Checkbox size="lg" />
+          <Checkbox size="large" />
           Compress the file
         </FieldLabel>
       </Field>

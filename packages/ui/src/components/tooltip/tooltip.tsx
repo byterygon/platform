@@ -10,16 +10,24 @@ import { tokenPx, useMergedRef, useThemeScope, type ThemeScope } from "@/lib/the
 // Provider) shares the delay across a toolbar so moving between buttons shows the next at once.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
-export const tooltipVariants = {} as const;
+export const tooltipVariants = {
+  // Fluent 2's Tooltip: `normal` is the light flyout surface (elevation.flyout), `inverted` the
+  // neutral solid. Set on the Tooltip root; TooltipContent reads it.
+  appearance: {
+    normal: "border-border-subtle bg-overlay text-fg shadow-flyout",
+    inverted: "border-transparent bg-neutral-solid text-neutral-solid-fg shadow-flyout",
+  },
+} as const;
+const appearances = tooltipVariants.appearance;
 
 const classes = {
   positioner: "z-[var(--by-z-tooltip)] outline-none",
   popup: [
-    "flex max-w-panel-xs items-center gap-inline-sm rounded-sm bg-neutral-solid px-inset-sm py-inset-xs font-sans text-caption text-neutral-solid-fg shadow-overlay",
-    "transition-opacity duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none",
-    "data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit data-instant:transition-none",
+    "flex max-w-panel-xs items-center gap-inline-sm rounded-md border px-inline-lg py-inline-xs font-sans text-caption-1",
+    "transition-opacity duration-[var(--by-motion-duration-fast)] ease-decelerate-mid motion-reduce:transition-none",
+    "data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-accelerate-mid data-instant:transition-none",
   ],
-  shortcut: "font-mono text-caption text-neutral-solid-fg",
+  shortcut: "font-mono text-caption-1",
 } as const;
 
 /** The gap between the trigger and the tooltip: space.inline.xs where the trigger is. */
@@ -29,20 +37,27 @@ interface TooltipContextValue {
   anchorRef: (element: Element | null) => void;
   anchor: RefObject<Element | null>;
   scope: ThemeScope;
+  appearance: TooltipAppearance;
 }
 
-const TooltipContext = createContext<TooltipContextValue>({ anchorRef: () => {}, anchor: { current: null }, scope: {} });
+/** Fluent's tooltip appearances: normal (the light flyout surface, the default) or inverted (the neutral solid). */
+export type TooltipAppearance = keyof typeof appearances;
+
+const TooltipContext = createContext<TooltipContextValue>({ anchorRef: () => {}, anchor: { current: null }, scope: {}, appearance: "normal" });
 
 /** Shares the open delay across several tooltips (a toolbar); Base UI's Tooltip.Provider. */
 export const TooltipProvider = TooltipPrimitive.Provider;
 
-export type TooltipProps = TooltipPrimitive.Root.Props;
+export interface TooltipProps extends TooltipPrimitive.Root.Props {
+  /** Fluent's appearance: normal (the light flyout surface, default) or inverted (the neutral solid). */
+  appearance?: TooltipAppearance | undefined;
+}
 
 /** A tooltip on Base UI's Tooltip. It renders no element: put a TooltipTrigger and a TooltipContent inside. */
-export function Tooltip({ onOpenChange, ...props }: TooltipProps) {
+export function Tooltip({ appearance = "normal", onOpenChange, ...props }: TooltipProps) {
   const { ref, anchor, scope, refresh } = useThemeScope<Element>();
   return (
-    <TooltipContext value={{ anchorRef: ref, anchor, scope }}>
+    <TooltipContext value={{ anchorRef: ref, anchor, scope, appearance: Object.hasOwn(appearances, appearance) ? appearance : "normal" }}>
       <TooltipPrimitive.Root
         onOpenChange={(open, details) => {
           if (open) refresh();
@@ -83,11 +98,11 @@ export interface TooltipContentProps extends Omit<TooltipPrimitive.Popup.Props, 
 
 /** The portal, the positioner (at z.tooltip, with the trigger's theme) and the bubble. */
 export function TooltipContent({ side = "top", align = "center", sideOffset, className, children, ...props }: TooltipContentProps) {
-  const { anchor, scope } = useContext(TooltipContext);
+  const { anchor, scope, appearance } = useContext(TooltipContext);
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Positioner {...scope} data-slot="tooltip-positioner" side={side} align={align} sideOffset={sideOffset ?? (() => tooltipOffset(anchor.current))} className={cn(classes.positioner)}>
-        <TooltipPrimitive.Popup data-slot="tooltip-content" className={cn(classes.popup, className)} {...props}>
+        <TooltipPrimitive.Popup data-slot="tooltip-content" data-appearance={appearance} className={cn(classes.popup, appearances[appearance], className)} {...props}>
           {children}
         </TooltipPrimitive.Popup>
       </TooltipPrimitive.Positioner>

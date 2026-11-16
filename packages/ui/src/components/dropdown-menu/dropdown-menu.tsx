@@ -1,13 +1,18 @@
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { createContext, useContext, type ComponentProps, type CSSProperties, type ReactNode, type Ref, type RefObject } from "react";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { flyoutItem, flyoutLabel, flyoutMotion, flyoutSeparator, flyoutSurface } from "@/lib/control";
+import { Checkmark, ChevronRight, Circle } from "@/lib/icons";
 import { tokenPx, useMergedRef, useThemeScope, type ThemeScope } from "@/lib/theme-scope";
 
 // A menu of actions opened from a button, on Base UI's Menu: `DropdownMenu` is the root, the
 // parts are shadcn's (DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, CheckboxItem,
 // RadioGroup and RadioItem, Group and Label, Separator, Shortcut, Sub with SubTrigger and
 // SubContent). ContextMenu and Menubar build the same parts with `createMenuParts` and style
-// them with `menuClasses`, so the three menus look and behave alike.
+// them with `menuClasses`, so the three menus look and behave alike. Fluent 2's Menu: an opaque
+// flyout (elevation.flyout, radius.lg) that slides in from the trigger, 32 px items whose icon
+// turns accent while highlighted, Fluent's Checkmark, Circle and ChevronRight.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const dropdownMenuVariants = {} as const;
@@ -15,22 +20,17 @@ export const dropdownMenuVariants = {} as const;
 /** The classes DropdownMenu, ContextMenu, Menubar and SplitButton share. */
 export const menuClasses = {
   positioner: "z-[var(--by-z-popover)] outline-none",
-  popup: [
-    "flex flex-col overflow-y-auto overscroll-contain rounded-md border border-border bg-overlay p-inset-xs font-sans text-body text-fg shadow-overlay outline-none",
-    "transition duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none",
-    "data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit",
-  ],
+  popup: ["flex flex-col overflow-y-auto overscroll-contain p-inline-xs", flyoutSurface, flyoutMotion],
   item: [
-    "flex min-h-control-sm cursor-default select-none items-center gap-inline-sm whitespace-nowrap rounded-sm px-inset-sm text-body text-fg outline-none",
-    "data-highlighted:bg-hover data-popup-open:bg-hover",
-    "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
-    "data-danger:text-danger-fg data-danger:data-highlighted:bg-danger-subtle",
-    "[&_svg]:size-icon-sm [&_svg]:shrink-0",
+    flyoutItem,
+    "whitespace-nowrap data-popup-open:bg-hover",
+    "data-highlighted:[&_svg]:text-accent-subtle-fg",
+    "data-danger:text-danger-fg data-danger:data-highlighted:bg-danger-subtle data-danger:data-highlighted:[&_svg]:text-danger-fg",
   ],
-  indicator: "flex size-icon-sm shrink-0 items-center justify-center",
-  label: "flex min-h-control-xs select-none items-center px-inset-sm text-caption text-fg-subtle",
-  separator: "-mx-inset-xs my-inset-xs h-px shrink-0 bg-border",
-  shortcut: "ms-auto ps-inline-lg text-caption text-fg-subtle",
+  indicator: "flex size-icon-md shrink-0 items-center justify-center",
+  label: flyoutLabel,
+  separator: flyoutSeparator,
+  shortcut: "ms-auto ps-inline-lg text-caption-1 text-fg-subtle",
   chevron: "ms-auto flex shrink-0 text-fg-muted",
 } as const;
 
@@ -43,23 +43,10 @@ export const menuPopupStyle: CSSProperties = {
 /** The gap between a trigger and its menu: space.inline.xs where the trigger is. */
 export const menuOffset = (anchor: Element | null) => tokenPx(anchor, "--by-space-inline-xs", 4);
 
-export const CheckIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m3.5 8.5 3 3 6-7" />
-  </svg>
-);
-
-const DotIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor">
-    <circle cx="8" cy="8" r="3" />
-  </svg>
-);
-
-export const ChevronRightIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m6 4 4 4-4 4" />
-  </svg>
-);
+/** Fluent's Checkmark, Circle (filled, a radio item's dot) and ChevronRight; ContextMenu and Menubar reuse them. */
+export const CheckIcon = () => <Icon icon={Checkmark} />;
+const DotIcon = () => <Icon icon={Circle} filled size="xs" />;
+export const ChevronRightIcon = () => <Icon icon={ChevronRight} />;
 
 export interface MenuScope {
   anchorRef: (element: Element | null) => void;

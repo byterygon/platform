@@ -36,7 +36,7 @@ describe("RadioGroup", () => {
     const { container } = render(<Storage />);
     const group = container.querySelector<HTMLElement>('[data-slot="radio-group"]')!;
     expect(group.getAttribute("role")).toBe("radiogroup");
-    expect(group.dataset.size).toBe("md");
+    expect(group.dataset.size).toBe("medium");
     const legend = container.querySelector('[data-slot="field-legend"]')!;
     expect(group.getAttribute("aria-labelledby")).toBe(legend.id);
     expect(checked(container)).toEqual(["true", "false", "false"]);
@@ -84,5 +84,12 @@ describe("RadioGroup", () => {
     const ref = createRef<HTMLDivElement>();
     render(<Storage ref={ref} />);
     expect(ref.current?.dataset.slot).toBe("radio-group");
+  });
+  test("takes Fluent's sizes, and sm/md/lg as aliases for one release", () => {
+    for (const [size, fluent] of [["small", "small"], ["large", "large"], ["sm", "small"], ["md", "medium"], ["lg", "large"]] as const) {
+      const { container, unmount } = render(<RadioGroup aria-label="Line endings" size={size} defaultValue="lf"><RadioGroupItem value="lf" aria-label="LF" /></RadioGroup>);
+      expect((container.querySelector('[data-slot="radio-group"]') as HTMLElement).dataset.size).toBe(fluent);
+      unmount();
+    }
   });
 });

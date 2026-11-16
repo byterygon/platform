@@ -56,7 +56,7 @@ export function RadioGroupRealistic() {
       </Field>
       <div className="flex flex-wrap gap-inline-xl">
         <Field>
-          <RadioGroup size="sm" defaultValue="lf">
+          <RadioGroup size="small" defaultValue="lf">
             <FieldLegend>Line endings</FieldLegend>
             <FieldItem>
               <FieldLabel className="text-caption">
@@ -73,7 +73,7 @@ export function RadioGroupRealistic() {
           </RadioGroup>
         </Field>
         <Field>
-          <RadioGroup size="lg" defaultValue="utf8">
+          <RadioGroup size="large" defaultValue="utf8">
             <FieldLegend>Encoding</FieldLegend>
             <FieldItem>
               <FieldLabel className="text-body">

@@ -2,7 +2,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import type { ReactNode, Ref } from "react";
 import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
-import { controlSize, fieldAppearance, fieldAppearances, fieldFrame, fieldPadding, fieldSizes, fieldStates, type ControlSizeProp, type FieldAppearance } from "@/lib/control";
+import { controlSize, fieldAppearance, fieldAppearances, fieldFrame, fieldPadding, fieldSizes, fieldStates, flyoutItem, flyoutLabel, flyoutMotion, flyoutSeparator, flyoutSurface, type ControlSizeProp, type FieldAppearance } from "@/lib/control";
 import { Checkmark, ChevronDown } from "@/lib/icons";
 import { tokenPx, useThemeScope } from "@/lib/theme-scope";
 
@@ -41,19 +41,11 @@ const iconClasses = ["flex shrink-0 text-fg-muted in-data-disabled:text-fg-disab
  */
 export const popupClasses = {
   positioner: "z-[var(--by-z-popover)] outline-none",
-  popup: [
-    "flex flex-col overflow-y-auto overscroll-contain rounded-md border border-border bg-overlay p-inset-xs font-sans text-body text-fg shadow-overlay outline-none",
-    "transition-opacity duration-[var(--by-motion-duration-fast)] ease-enter",
-    "data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit",
-  ],
-  item: [
-    "flex min-h-control-sm cursor-default select-none items-center gap-inline-sm rounded-sm px-inset-sm text-body text-fg outline-none",
-    "data-highlighted:bg-hover",
-    "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
-  ],
-  indicator: "ms-auto flex shrink-0 [&_svg]:size-icon-sm",
-  groupLabel: "flex min-h-control-xs select-none items-center px-inset-sm text-caption text-fg-subtle",
-  separator: "-mx-inset-xs my-inset-xs h-px shrink-0 bg-border",
+  popup: ["flex flex-col overflow-y-auto overscroll-contain p-inline-xs", flyoutSurface, flyoutMotion],
+  item: [flyoutItem, "data-selected:text-body-1-strong"],
+  indicator: "ms-auto flex shrink-0 text-accent-subtle-fg",
+  groupLabel: flyoutLabel,
+  separator: flyoutSeparator,
 } as const;
 
 /**

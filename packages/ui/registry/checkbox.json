@@ -8,13 +8,16 @@
     "@base-ui/react"
   ],
   "registryDependencies": [
-    "@byterygon/cn"
+    "@byterygon/cn",
+    "@byterygon/control",
+    "@byterygon/icon",
+    "@byterygon/icons"
   ],
   "files": [
     {
       "path": "ui/checkbox.tsx",
       "type": "registry:ui",
-      "content": "import { Checkbox as CheckboxPrimitive } from \"@base-ui/react/checkbox\";\nimport { CheckboxGroup as CheckboxGroupPrimitive } from \"@base-ui/react/checkbox-group\";\nimport { Fieldset as FieldsetPrimitive } from \"@base-ui/react/fieldset\";\nimport { cn } from \"@/lib/cn\";\n\n// A checkbox on Base UI's Checkbox: a focusable <span role=\"checkbox\"> with a hidden <input>\n// beside it for forms. Ticked and mixed it fills with the accent solid and shows a check or a\n// dash. Label it by wrapping it in a FieldLabel (or any <label>). CheckboxGroup shares one\n// string[] value between several checkboxes and is a fieldset, so a FieldLegend names it.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const checkboxVariants = {\n  size: {\n    sm: \"size-icon-sm [&_svg]:size-icon-xs\",\n    md: \"size-icon-md [&_svg]:size-icon-sm\",\n    lg: \"size-icon-lg [&_svg]:size-icon-md\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex shrink-0 items-center justify-center rounded-xs border border-border-strong bg-surface text-accent-solid-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"hover:bg-hover\",\n  \"data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover\",\n  \"data-indeterminate:border-transparent data-indeterminate:bg-accent-solid data-indeterminate:hover:bg-accent-solid-hover\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n  \"[&_svg]:block\",\n];\n\nconst groupClasses = [\"flex min-w-0 flex-col gap-stack-sm\"];\n\nconst CheckIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"2\" strokeLinecap=\"round\" strokeLinejoin=\"round\">\n    <path d=\"M3.5 8.5 6.5 11.5 12.5 4.5\" />\n  </svg>\n);\n\nconst DashIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"2\" strokeLinecap=\"round\">\n    <path d=\"M4 8h8\" />\n  </svg>\n);\n\nexport interface CheckboxProps extends Omit<CheckboxPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Box size, from the `size.icon.*` roles. */\n  size?: keyof typeof checkboxVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A checkbox for one yes/no choice that takes effect on submit, on Base UI's Checkbox. Use\n * `checked` and `onCheckedChange`, or `defaultChecked`; `indeterminate` shows the mixed state (a\n * \"select all\" over a partial selection). Wrap it in a FieldLabel with its text. The ref reaches\n * the `<span role=\"checkbox\">`.\n */\nexport function Checkbox({ size = \"md\", className, ...props }: CheckboxProps) {\n  return (\n    <CheckboxPrimitive.Root data-slot=\"checkbox\" data-size={size} className={cn(base, checkboxVariants.size[size], className)} {...props}>\n      <CheckboxPrimitive.Indicator render={(indicatorProps, state) => <span {...indicatorProps}>{state.indeterminate ? <DashIcon /> : <CheckIcon />}</span>} />\n    </CheckboxPrimitive.Root>\n  );\n}\n\nexport interface CheckboxGroupProps extends Omit<CheckboxGroupPrimitive.Props, \"className\" | \"render\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * Checkboxes that share one value, on Base UI's CheckboxGroup: `value` is the array of the ticked\n * checkboxes' `value`s. A fieldset: put a FieldLegend first, then a FieldItem per checkbox. A\n * Checkbox with `parent` ticks or clears all of `allValues`. The ref reaches the group's `<div>`.\n */\nexport function CheckboxGroup({ className, disabled, ref, children, ...props }: CheckboxGroupProps) {\n  // Base UI's pattern for a labelled group: a Fieldset.Root rendered as the CheckboxGroup.\n  return (\n    <FieldsetPrimitive.Root\n      data-slot=\"checkbox-group\"\n      ref={ref}\n      disabled={disabled}\n      className={cn(groupClasses, className)}\n      render={<CheckboxGroupPrimitive disabled={disabled} {...props} />}\n    >\n      {children}\n    </FieldsetPrimitive.Root>\n  );\n}\n"
+      "content": "import { Checkbox as CheckboxPrimitive } from \"@base-ui/react/checkbox\";\nimport { CheckboxGroup as CheckboxGroupPrimitive } from \"@base-ui/react/checkbox-group\";\nimport { Fieldset as FieldsetPrimitive } from \"@base-ui/react/fieldset\";\nimport { Icon } from \"@/components/ui/icon\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, focusRing, type ControlSizeProp } from \"@/lib/control\";\nimport { Checkmark, Subtract } from \"@/lib/icons\";\n\n// A checkbox on Base UI's Checkbox: a focusable <span role=\"checkbox\"> with a hidden <input>\n// beside it for forms. Ticked and mixed it fills with the accent solid and shows a check or a\n// dash. Label it by wrapping it in a FieldLabel (or any <label>). CheckboxGroup shares one\n// string[] value between several checkboxes and is a fieldset, so a FieldLegend names it.\n// Fluent 2's Checkbox: a 16 px box (20 large, 14 small) with the accessible stroke, the accent fill\n// and a Fluent Checkmark when ticked, Subtract when mixed, and the double focus ring.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const checkboxVariants = {\n  size: {\n    small: \"size-icon-sm [&_svg]:size-icon-xs\",\n    medium: \"size-icon-md [&_svg]:size-icon-xs\",\n    large: \"size-icon-lg [&_svg]:size-icon-md\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex shrink-0 items-center justify-center rounded-xs border border-border-strong bg-layer-alt text-accent-solid-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease\",\n  \"hover:bg-hover\",\n  \"data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover data-checked:active:bg-accent-solid-active\",\n  \"data-indeterminate:border-transparent data-indeterminate:bg-accent-solid data-indeterminate:hover:bg-accent-solid-hover\",\n  focusRing,\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled\",\n  \"data-disabled:data-checked:bg-disabled data-disabled:data-indeterminate:bg-disabled\",\n  \"[&_svg]:block\",\n];\n\nconst groupClasses = [\"flex min-w-0 flex-col gap-stack-sm\"];\n\n\nexport interface CheckboxProps extends Omit<CheckboxPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Box size: small 14, medium 16 (Fluent's), large 20 px (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A checkbox for one yes/no choice that takes effect on submit, on Base UI's Checkbox. Use\n * `checked` and `onCheckedChange`, or `defaultChecked`; `indeterminate` shows the mixed state (a\n * \"select all\" over a partial selection). Wrap it in a FieldLabel with its text. The ref reaches\n * the `<span role=\"checkbox\">`.\n */\nexport function Checkbox({ size, className, ...props }: CheckboxProps) {\n  const box = controlSize(size);\n  return (\n    <CheckboxPrimitive.Root data-slot=\"checkbox\" data-size={box} className={cn(base, checkboxVariants.size[box], className)} {...props}>\n      <CheckboxPrimitive.Indicator\n        render={(indicatorProps, state) => (\n          <span {...indicatorProps}>\n            <Icon icon={state.indeterminate ? Subtract : Checkmark} filled />\n          </span>\n        )}\n      />\n    </CheckboxPrimitive.Root>\n  );\n}\n\nexport interface CheckboxGroupProps extends Omit<CheckboxGroupPrimitive.Props, \"className\" | \"render\"> {\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * Checkboxes that share one value, on Base UI's CheckboxGroup: `value` is the array of the ticked\n * checkboxes' `value`s. A fieldset: put a FieldLegend first, then a FieldItem per checkbox. A\n * Checkbox with `parent` ticks or clears all of `allValues`. The ref reaches the group's `<div>`.\n */\nexport function CheckboxGroup({ className, disabled, ref, children, ...props }: CheckboxGroupProps) {\n  // Base UI's pattern for a labelled group: a Fieldset.Root rendered as the CheckboxGroup.\n  return (\n    <FieldsetPrimitive.Root\n      data-slot=\"checkbox-group\"\n      ref={ref}\n      disabled={disabled}\n      className={cn(groupClasses, className)}\n      render={<CheckboxGroupPrimitive disabled={disabled} {...props} />}\n    >\n      {children}\n    </FieldsetPrimitive.Root>\n  );\n}\n"
     }
   ],
   "meta": {
@@ -23,7 +26,7 @@
       "name": "checkbox",
       "title": "Checkbox",
       "description": "A checkbox on Base UI's Checkbox, ticked, unticked or mixed, in three sizes, with CheckboxGroup for several checkboxes sharing one value and a parent \"select all\".",
-      "usage": "Use Checkbox for a yes/no choice that is applied when the form is submitted (\"Include column headers\"), and CheckboxGroup for picking any number of options from a short list. Wrap each checkbox and its text in a FieldLabel inside a Field; in a group, put a FieldLegend first and each option in a FieldItem. With TanStack Form wire checked, onCheckedChange and onBlur (or the group's value and onValueChange) to the field. For a setting that takes effect at once use Switch; for one choice out of several, RadioGroup; for a long list, a MultiSelect.",
+      "usage": "Use Checkbox for a yes/no choice that is applied when the form is submitted (\"Include column headers\"), and CheckboxGroup for picking any number of options from a short list. Wrap each checkbox and its text in a FieldLabel inside a Field; in a group, put a FieldLegend first and each option in a FieldItem. With TanStack Form wire checked, onCheckedChange and onBlur (or the group's value and onValueChange) to the field. For a setting that takes effect at once use Switch; for one choice out of several, RadioGroup; for a long list, a MultiSelect. The old sizes sm/md/lg still work for one release.",
       "status": "experimental",
       "base": "@base-ui/react/checkbox",
       "dependencies": [
@@ -65,9 +68,15 @@
         },
         {
           "name": "size",
+          "type": "\"small\" | \"medium\" | \"large\"",
+          "default": "medium",
+          "description": "Box size: small 14, medium 16 (Fluent's), large 20 px (size.icon.sm, md, lg)."
+        },
+        {
+          "name": "size (sm, md, lg)",
           "type": "\"sm\" | \"md\" | \"lg\"",
-          "default": "md",
-          "description": "Box size from size.icon.sm, md or lg."
+          "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+          "deprecated": "use small, medium or large"
         },
         {
           "name": "name",
@@ -105,9 +114,9 @@
       ],
       "variants": {
         "size": [
-          "sm",
-          "md",
-          "lg"
+          "small",
+          "medium",
+          "large"
         ]
       },
       "slots": [
@@ -146,7 +155,7 @@
           "props": {
             "defaultChecked": true
           },
-          "description": "Ticked: the accent solid with a check in color.accent.fg."
+          "description": "Ticked: the accent solid with Fluent's filled Checkmark in color.accent.fg."
         },
         {
           "name": "indeterminate",
@@ -154,12 +163,12 @@
           "props": {
             "indeterminate": true
           },
-          "description": "Mixed: the accent solid with a dash, aria-checked=\"mixed\"."
+          "description": "Mixed: the accent solid with Fluent's Subtract, aria-checked=\"mixed\"."
         },
         {
           "name": "focus-visible",
           "variant": "focus-visible",
-          "description": "Keyboard focus: a ring of ring.width in color.ring."
+          "description": "Keyboard focus: Fluent's double ring (@/lib/control focusRing)."
         },
         {
           "name": "invalid",
@@ -172,23 +181,27 @@
           "props": {
             "disabled": true
           },
-          "description": "Ignores interaction, at opacity.disabled."
+          "description": "Ignores interaction: Fluent's disabled stroke; ticked or mixed, color.bg.disabled with color.fg.disabled."
         }
       ],
       "tokens": [
         "color.accent.bg",
+        "color.accent.bg-active",
         "color.accent.bg-hover",
         "color.accent.fg",
-        "color.bg.surface",
+        "color.bg.disabled",
+        "color.bg.layer-alt",
+        "color.border.disabled",
         "color.border.strong",
+        "color.fg.disabled",
         "color.interactive.hover",
         "color.ring",
+        "color.ring-inner",
         "color.status.danger.border",
-        "motion.duration.fast",
-        "motion.easing.standard",
-        "opacity.disabled",
+        "motion.duration.faster",
+        "motion.easing.easy-ease",
         "radius.xs",
-        "ring.offset",
+        "ring.inner-width",
         "ring.width",
         "size.icon.lg",
         "size.icon.md",
@@ -204,11 +217,11 @@
         "Renders a <span role=\"checkbox\"> with aria-checked (true, false or mixed) and a hidden native input for forms; Tab reaches it and Space toggles it.",
         "Label it by wrapping it in a FieldLabel with its text; the text then toggles it too and enlarges the target beyond the 14 to 20 px box (WCAG 2.2 target size).",
         "A group is a fieldset named by its FieldLegend; a FieldDescription inside a FieldItem describes that option only.",
-        "Ticked and mixed are shown by a check or a dash as well as the accent fill; the unticked border is color.border.strong (3:1 against the surface).",
-        "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+        "Ticked and mixed are shown by a check or a dash as well as the accent fill; the unticked border is color.border.strong (3:1 on every surface).",
+        "Focus shows Fluent's accent underline (shadow.focus-underline) (3:1 on every surface)."
       ]
     },
-    "example": "import { useState } from \"react\";\nimport { Checkbox, CheckboxGroup } from \"@/components/checkbox/checkbox\";\nimport { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend } from \"@/components/field/field\";\n\n/** The smallest useful Checkbox: one choice with its label. */\nexport function CheckboxMinimal() {\n  return (\n    <Field>\n      <FieldLabel>\n        <Checkbox defaultChecked />\n        Include column headers\n      </FieldLabel>\n    </Field>\n  );\n}\n\nconst tables = [\"customers\", \"orders\", \"invoices\"];\n\n/**\n * Export options: a \"select all\" parent over a group of tables (mixed while some are ticked), a\n * table that cannot be exported, an error when none is chosen, and the three sizes.\n */\nexport function CheckboxRealistic() {\n  const [selected, setSelected] = useState([\"customers\"]);\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <Field name=\"tables\" invalid={selected.length === 0}>\n        <CheckboxGroup value={selected} onValueChange={setSelected} allValues={tables}>\n          <FieldLegend>Tables to export</FieldLegend>\n          <FieldItem>\n            <FieldLabel>\n              <Checkbox parent />\n              All tables\n            </FieldLabel>\n          </FieldItem>\n          {tables.map((table) => (\n            <FieldItem key={table} className=\"ps-inset-lg\">\n              <FieldLabel>\n                <Checkbox value={table} />\n                {table}\n              </FieldLabel>\n            </FieldItem>\n          ))}\n          <FieldItem className=\"ps-inset-lg\" disabled>\n            <FieldLabel>\n              <Checkbox value=\"audit_log\" />\n              audit_log\n            </FieldLabel>\n            <FieldDescription>Only administrators can export the audit log.</FieldDescription>\n          </FieldItem>\n        </CheckboxGroup>\n        <FieldError>Choose at least one table.</FieldError>\n      </Field>\n      <Field>\n        <FieldLabel className=\"text-caption\">\n          <Checkbox size=\"sm\" defaultChecked />\n          Quote every value\n        </FieldLabel>\n      </Field>\n      <Field>\n        <FieldLabel className=\"text-body\">\n          <Checkbox size=\"lg\" />\n          Compress the file\n        </FieldLabel>\n      </Field>\n    </div>\n  );\n}\n",
+    "example": "import { useState } from \"react\";\nimport { Checkbox, CheckboxGroup } from \"@/components/checkbox/checkbox\";\nimport { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend } from \"@/components/field/field\";\n\n/** The smallest useful Checkbox: one choice with its label. */\nexport function CheckboxMinimal() {\n  return (\n    <Field>\n      <FieldLabel>\n        <Checkbox defaultChecked />\n        Include column headers\n      </FieldLabel>\n    </Field>\n  );\n}\n\nconst tables = [\"customers\", \"orders\", \"invoices\"];\n\n/**\n * Export options: a \"select all\" parent over a group of tables (mixed while some are ticked), a\n * table that cannot be exported, an error when none is chosen, and the three sizes.\n */\nexport function CheckboxRealistic() {\n  const [selected, setSelected] = useState([\"customers\"]);\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <Field name=\"tables\" invalid={selected.length === 0}>\n        <CheckboxGroup value={selected} onValueChange={setSelected} allValues={tables}>\n          <FieldLegend>Tables to export</FieldLegend>\n          <FieldItem>\n            <FieldLabel>\n              <Checkbox parent />\n              All tables\n            </FieldLabel>\n          </FieldItem>\n          {tables.map((table) => (\n            <FieldItem key={table} className=\"ps-inset-lg\">\n              <FieldLabel>\n                <Checkbox value={table} />\n                {table}\n              </FieldLabel>\n            </FieldItem>\n          ))}\n          <FieldItem className=\"ps-inset-lg\" disabled>\n            <FieldLabel>\n              <Checkbox value=\"audit_log\" />\n              audit_log\n            </FieldLabel>\n            <FieldDescription>Only administrators can export the audit log.</FieldDescription>\n          </FieldItem>\n        </CheckboxGroup>\n        <FieldError>Choose at least one table.</FieldError>\n      </Field>\n      <Field>\n        <FieldLabel className=\"text-caption\">\n          <Checkbox size=\"small\" defaultChecked />\n          Quote every value\n        </FieldLabel>\n      </Field>\n      <Field>\n        <FieldLabel className=\"text-body\">\n          <Checkbox size=\"large\" />\n          Compress the file\n        </FieldLabel>\n      </Field>\n    </div>\n  );\n}\n",
     "dependencyVersions": {
       "@base-ui/react": "1.9.0"
     }

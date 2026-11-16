@@ -201,7 +201,10 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -339,7 +342,7 @@
       "name": "context-menu",
       "type": "registry:ui",
       "title": "ContextMenu",
-      "description": "A menu opened by a right-click or the context-menu key on an area, on Base UI's ContextMenu: DropdownMenu's items (shortcuts, danger, checkbox and radio items, groups, separators, submenus) at the pointer, on color.bg.overlay at z.popover.",
+      "description": "A menu opened by a right-click or the context-menu key on an area, on Base UI's ContextMenu: DropdownMenu's items (shortcuts, danger, checkbox and radio items, groups, separators, submenus) at the pointer, on elevation.flyout (color.bg.overlay) at z.popover.",
       "dependencies": [
         "@base-ui/react"
       ],
@@ -423,12 +426,15 @@
       "name": "dropdown-menu",
       "type": "registry:ui",
       "title": "DropdownMenu",
-      "description": "A menu of actions opened from a button, on Base UI's Menu: items with shortcuts and a danger tone, checkbox and radio items, groups with labels, separators and submenus, on color.bg.overlay at z.popover.",
+      "description": "A menu of actions opened from a button, on Base UI's Menu: items with shortcuts and a danger tone, checkbox and radio items, groups with labels, separators and submenus, on elevation.flyout (color.bg.overlay) at z.popover.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/theme-scope"
       ],
       "files": [
@@ -660,6 +666,7 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
         "@byterygon/dropdown-menu",
         "@byterygon/theme-scope"
       ],
@@ -775,12 +782,13 @@
       "name": "popover",
       "type": "registry:ui",
       "title": "Popover",
-      "description": "A small non-modal panel attached to a control, on Base UI's Popover: a trigger, and a popup on color.bg.overlay with an optional title, description, controls and a close action, placed on any side of the trigger.",
+      "description": "A small non-modal panel attached to a control, on Base UI's Popover: a trigger, and a popup on elevation.flyout (color.bg.overlay) with an optional title, description, controls and a close action, placed on any side of the trigger.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
         "@byterygon/theme-scope"
       ],
       "files": [
@@ -818,7 +826,10 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -1009,7 +1020,8 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -1139,7 +1151,8 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -1324,7 +1337,7 @@
       "name": "tooltip",
       "type": "registry:ui",
       "title": "Tooltip",
-      "description": "A short label for a control, shown on hover and keyboard focus, on Base UI's Tooltip: a neutral-solid bubble at z.tooltip on any side of the trigger, with an optional keyboard shortcut.",
+      "description": "A short label for a control, shown on hover and keyboard focus, on Base UI's Tooltip: Fluent 2's bubble at z.tooltip on any side of the trigger, normal (the light flyout surface) or inverted (the neutral solid), with an optional keyboard shortcut.",
       "dependencies": [
         "@base-ui/react"
       ],

@@ -1,6 +1,7 @@
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { createContext, useContext, type ReactNode, type Ref, type RefObject } from "react";
 import { cn } from "@/lib/cn";
+import { flyoutMotion, flyoutSurface } from "@/lib/control";
 import { tokenPx, useMergedRef, useThemeScope, type ThemeScope } from "@/lib/theme-scope";
 
 // A small non-modal panel attached to a control, on Base UI's Popover: `Popover` is the root, the
@@ -13,13 +14,9 @@ export const popoverVariants = {} as const;
 /** The classes Popover shares with HoverCard. */
 export const popoverClasses = {
   positioner: "z-[var(--by-z-popover)] outline-none",
-  popup: [
-    "flex max-w-panel-sm flex-col gap-stack-sm rounded-md border border-border bg-overlay p-inset-md font-sans text-body text-fg shadow-overlay outline-none",
-    "transition duration-[var(--by-motion-duration-base)] ease-enter motion-reduce:transition-none",
-    "data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit",
-  ],
-  title: "text-body-strong text-fg",
-  description: "text-body text-fg-muted",
+  popup: ["flex max-w-panel-sm flex-col gap-stack-sm p-inset-md", flyoutSurface, flyoutMotion],
+  title: "text-subtitle-2 text-fg",
+  description: "text-body-1 text-fg-muted",
 } as const;
 
 /** Base UI's run-time variables for the popup: they are not tokens, so they go in `style`. */

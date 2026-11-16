@@ -8,13 +8,14 @@
     "@base-ui/react"
   ],
   "registryDependencies": [
-    "@byterygon/cn"
+    "@byterygon/cn",
+    "@byterygon/control"
   ],
   "files": [
     {
       "path": "ui/switch.tsx",
       "type": "registry:ui",
-      "content": "import { Switch as SwitchPrimitive } from \"@base-ui/react/switch\";\nimport { cn } from \"@/lib/cn\";\n\n// An on/off switch on Base UI's Switch: a focusable <span role=\"switch\"> with a hidden <input>\n// for forms, and a thumb inside. The track's end padding is one thumb wide, so the thumb slides\n// by its own width (translate-x-full) with no computed lengths. The group's classes style the\n// thumb (`*:`), the only child.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const switchVariants = {\n  size: {\n    sm: \"pe-[var(--by-size-icon-xs)] *:size-icon-xs\",\n    md: \"pe-[var(--by-size-icon-sm)] *:size-icon-sm\",\n    lg: \"pe-[var(--by-size-icon-md)] *:size-icon-md\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex shrink-0 items-center rounded-full border-2 border-transparent bg-border-strong\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"data-invalid:data-unchecked:bg-danger-border aria-invalid:data-unchecked:bg-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n  \"*:rounded-full *:bg-surface *:shadow-raised\",\n  \"*:transition-transform *:duration-[var(--by-motion-duration-fast)] *:ease-standard\",\n  \"data-checked:*:translate-x-full rtl:data-checked:*:-translate-x-full\",\n];\n\nexport interface SwitchProps extends Omit<SwitchPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Thumb size, from the `size.icon.*` roles; the track is two thumbs wide. */\n  size?: keyof typeof switchVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A setting that is on or off and takes effect at once (\"Read-only connection\"), on Base UI's\n * Switch. Use `checked` and `onCheckedChange`, or `defaultChecked`. Wrap it in a FieldLabel with\n * its text. The ref reaches the `<span role=\"switch\">`.\n */\nexport function Switch({ size = \"md\", className, ...props }: SwitchProps) {\n  return (\n    <SwitchPrimitive.Root data-slot=\"switch\" data-size={size} className={cn(base, switchVariants.size[size], className)} {...props}>\n      <SwitchPrimitive.Thumb data-slot=\"switch-thumb\" />\n    </SwitchPrimitive.Root>\n  );\n}\n"
+      "content": "import { Switch as SwitchPrimitive } from \"@base-ui/react/switch\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, focusRing, type ControlSizeProp } from \"@/lib/control\";\n\n// An on/off switch on Base UI's Switch: a focusable <span role=\"switch\"> with a hidden <input>\n// for forms, and a thumb inside. The track's end padding is one thumb wide, so the thumb slides\n// by its own width (translate-x-full) with no computed lengths. The group's classes style the\n// thumb (`*:`), the only child. Fluent 2's Switch: off, an outlined track (the accessible stroke)\n// with a thumb of the same colour; on, the accent track with a thumb in its foreground.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const switchVariants = {\n  size: {\n    small: \"pe-[var(--by-size-icon-xs)] *:size-icon-xs\",\n    medium: \"pe-[var(--by-size-icon-sm)] *:size-icon-sm\",\n    large: \"pe-[var(--by-size-icon-md)] *:size-icon-md\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex shrink-0 items-center rounded-full border border-border-strong bg-transparent p-px\",\n  \"transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease\",\n  \"hover:bg-hover\",\n  \"data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover data-checked:active:bg-accent-solid-active\",\n  focusRing,\n  \"data-invalid:data-unchecked:border-danger-border aria-invalid:data-unchecked:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:data-checked:bg-disabled\",\n  \"*:rounded-full *:bg-fg-muted data-checked:*:bg-accent-solid-fg data-disabled:*:bg-fg-disabled\",\n  \"*:transition-transform *:duration-[var(--by-motion-duration-fast)] *:ease-easy-ease motion-reduce:*:transition-none\",\n  \"data-checked:*:translate-x-full rtl:data-checked:*:-translate-x-full\",\n];\n\nexport interface SwitchProps extends Omit<SwitchPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Thumb size: small 12, medium 14 (Fluent's), large 16 px; the track is two thumbs wide (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A setting that is on or off and takes effect at once (\"Read-only connection\"), on Base UI's\n * Switch. Use `checked` and `onCheckedChange`, or `defaultChecked`. Wrap it in a FieldLabel with\n * its text. The ref reaches the `<span role=\"switch\">`.\n */\nexport function Switch({ size, className, ...props }: SwitchProps) {\n  const thumb = controlSize(size);\n  return (\n    <SwitchPrimitive.Root data-slot=\"switch\" data-size={thumb} className={cn(base, switchVariants.size[thumb], className)} {...props}>\n      <SwitchPrimitive.Thumb data-slot=\"switch-thumb\" />\n    </SwitchPrimitive.Root>\n  );\n}\n"
     }
   ],
   "meta": {
@@ -23,7 +24,7 @@
       "name": "switch",
       "title": "Switch",
       "description": "An on/off switch on Base UI's Switch: a track that fills with the accent solid and a sliding thumb, in three sizes.",
-      "usage": "Use Switch for a setting that takes effect as soon as it is flipped (\"Auto-commit\", \"Read-only connection\"), in settings panels and side panels. Wrap it in a FieldLabel with its text (the text may come first) inside a Field, and add a FieldDescription for what it does; group related switches in a FieldSet with a FieldLegend. With TanStack Form wire checked, onCheckedChange and onBlur to the field. For a choice that only applies when a form is submitted, use Checkbox; for a toolbar toggle, ToggleButton.",
+      "usage": "Use Switch for a setting that takes effect as soon as it is flipped (\"Auto-commit\", \"Read-only connection\"), in settings panels and side panels. Wrap it in a FieldLabel with its text (the text may come first) inside a Field, and add a FieldDescription for what it does; group related switches in a FieldSet with a FieldLegend. With TanStack Form wire checked, onCheckedChange and onBlur to the field. For a choice that only applies when a form is submitted, use Checkbox; for a toolbar toggle, ToggleButton. The old sizes sm/md/lg still work for one release.",
       "status": "experimental",
       "base": "@base-ui/react/switch",
       "dependencies": [
@@ -48,9 +49,15 @@
         },
         {
           "name": "size",
+          "type": "\"small\" | \"medium\" | \"large\"",
+          "default": "medium",
+          "description": "Thumb size: small 12, medium 14 (Fluent's), large 16 px (size.icon.xs, sm, md); the track is two thumbs wide."
+        },
+        {
+          "name": "size (sm, md, lg)",
           "type": "\"sm\" | \"md\" | \"lg\"",
-          "default": "md",
-          "description": "Thumb size from size.icon.xs, sm or md; the track is two thumbs wide."
+          "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+          "deprecated": "use small, medium or large"
         },
         {
           "name": "name",
@@ -98,9 +105,9 @@
       ],
       "variants": {
         "size": [
-          "sm",
-          "md",
-          "lg"
+          "small",
+          "medium",
+          "large"
         ]
       },
       "slots": [
@@ -119,7 +126,7 @@
         {
           "name": "hover",
           "variant": "hover",
-          "description": "Pointer over an on switch: the accent solid's hover colour."
+          "description": "Pointer over the switch: color.interactive.hover off, the accent solid's hover colour on."
         },
         {
           "name": "checked",
@@ -127,17 +134,17 @@
           "props": {
             "defaultChecked": true
           },
-          "description": "On: the accent solid track, the thumb at the end."
+          "description": "On: the accent solid track with a thumb in color.accent.fg, at the end."
         },
         {
           "name": "focus-visible",
           "variant": "focus-visible",
-          "description": "Keyboard focus: a ring of ring.width in color.ring."
+          "description": "Keyboard focus: Fluent's double ring (@/lib/control focusRing)."
         },
         {
           "name": "invalid",
           "variant": "data-invalid",
-          "description": "In an invalid Field, while off: a color.status.danger.border track."
+          "description": "In an invalid Field, while off: a color.status.danger.border outline."
         },
         {
           "name": "disabled",
@@ -145,22 +152,28 @@
           "props": {
             "disabled": true
           },
-          "description": "Ignores interaction, at opacity.disabled."
+          "description": "Ignores interaction: Fluent's disabled stroke and thumb (color.bg.disabled track when on)."
         }
       ],
       "tokens": [
         "color.accent.bg",
+        "color.accent.bg-active",
         "color.accent.bg-hover",
-        "color.bg.surface",
+        "color.accent.fg",
+        "color.bg.disabled",
+        "color.border.disabled",
         "color.border.strong",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.interactive.hover",
         "color.ring",
+        "color.ring-inner",
         "color.status.danger.border",
         "motion.duration.fast",
-        "motion.easing.standard",
-        "opacity.disabled",
-        "ring.offset",
+        "motion.duration.faster",
+        "motion.easing.easy-ease",
+        "ring.inner-width",
         "ring.width",
-        "shadow.raised",
         "size.icon.md",
         "size.icon.sm",
         "size.icon.xs"
@@ -172,12 +185,12 @@
       "accessibility": [
         "Renders a <span role=\"switch\"> with aria-checked and a hidden native input for forms; Tab reaches it, Space and Enter flip it.",
         "Label it by wrapping it in a FieldLabel with its text; the text flips it too and enlarges the target beyond the track (WCAG 2.2 target size). Name the setting, not the state (\"Auto-commit\", not \"Auto-commit on\").",
-        "On and off differ by the thumb's position as well as the track colour; the off track is color.border.strong (3:1 against the surface).",
+        "On and off differ by the thumb's position as well as the track colour; off, the track is outlined in color.border.strong and the thumb is color.fg.muted (both at least 3:1).",
         "The thumb slides in the reading direction (right in LTR, left in RTL).",
-        "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+        "Focus shows Fluent's accent underline (shadow.focus-underline) (3:1 on every surface)."
       ]
     },
-    "example": "import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from \"@/components/field/field\";\nimport { Switch } from \"@/components/switch/switch\";\n\n/** The smallest useful Switch: one setting with its label. */\nexport function SwitchMinimal() {\n  return (\n    <Field>\n      <FieldLabel>\n        <Switch />\n        Read-only connection\n      </FieldLabel>\n    </Field>\n  );\n}\n\n/**\n * Connection settings: switches with descriptions, text before the switch, a setting the workspace\n * locks, and the small and large sizes.\n */\nexport function SwitchRealistic() {\n  return (\n    <FieldSet>\n      <FieldLegend>Session</FieldLegend>\n      <Field>\n        <FieldLabel>\n          <Switch defaultChecked />\n          Auto-commit\n        </FieldLabel>\n        <FieldDescription>Commit every statement as soon as it runs.</FieldDescription>\n      </Field>\n      <Field>\n        <FieldLabel className=\"w-full justify-between\">\n          Keep the connection alive\n          <Switch size=\"sm\" />\n        </FieldLabel>\n      </Field>\n      <Field disabled>\n        <FieldLabel>\n          <Switch defaultChecked />\n          Read-only connection\n        </FieldLabel>\n        <FieldDescription>Set by the workspace administrator.</FieldDescription>\n      </Field>\n      <Field>\n        <FieldLabel className=\"text-body\">\n          <Switch size=\"lg\" />\n          Show query plans\n        </FieldLabel>\n      </Field>\n    </FieldSet>\n  );\n}\n",
+    "example": "import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from \"@/components/field/field\";\nimport { Switch } from \"@/components/switch/switch\";\n\n/** The smallest useful Switch: one setting with its label. */\nexport function SwitchMinimal() {\n  return (\n    <Field>\n      <FieldLabel>\n        <Switch />\n        Read-only connection\n      </FieldLabel>\n    </Field>\n  );\n}\n\n/**\n * Connection settings: switches with descriptions, text before the switch, a setting the workspace\n * locks, and the small and large sizes.\n */\nexport function SwitchRealistic() {\n  return (\n    <FieldSet>\n      <FieldLegend>Session</FieldLegend>\n      <Field>\n        <FieldLabel>\n          <Switch defaultChecked />\n          Auto-commit\n        </FieldLabel>\n        <FieldDescription>Commit every statement as soon as it runs.</FieldDescription>\n      </Field>\n      <Field>\n        <FieldLabel className=\"w-full justify-between\">\n          Keep the connection alive\n          <Switch size=\"small\" />\n        </FieldLabel>\n      </Field>\n      <Field disabled>\n        <FieldLabel>\n          <Switch defaultChecked />\n          Read-only connection\n        </FieldLabel>\n        <FieldDescription>Set by the workspace administrator.</FieldDescription>\n      </Field>\n      <Field>\n        <FieldLabel className=\"text-body\">\n          <Switch size=\"large\" />\n          Show query plans\n        </FieldLabel>\n      </Field>\n    </FieldSet>\n  );\n}\n",
     "dependencyVersions": {
       "@base-ui/react": "1.9.0"
     }

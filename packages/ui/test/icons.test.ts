@@ -27,7 +27,7 @@ const temp = () => {
  */
 export const REPLACEMENTS: Record<string, string> = {
   "accordion, navigation-menu: chevron": "chevron-down",
-  "breadcrumb, collapsible, json-viewer, tree, dropdown-menu submenu, pagination next: chevron": "chevron-right",
+  "breadcrumb, collapsible, json-viewer, tree, pagination next: chevron": "chevron-right",
   "pagination previous": "chevron-left",
   "table sort (none / ascending / descending)": "arrow-sort",
   "table sort ascending": "arrow-sort-up",
@@ -36,24 +36,21 @@ export const REPLACEMENTS: Record<string, string> = {
   "alert success": "checkmark-circle",
   "alert warning": "warning",
   "alert danger, stepper error": "error-circle",
-  "alert, dialog, sheet, popover, tabs, tag, toast close": "dismiss",
-  "checkbox, dropdown-menu, code-block copied, stepper done": "checkmark",
-  "checkbox indeterminate": "subtract",
+  "alert, dialog, sheet, tabs, tag, toast close": "dismiss",
+  "code-block copied, stepper done": "checkmark",
   "tabs new, DBee new": "add",
-  "radio-group and menu radio dot": "circle",
-  "breadcrumb, dropdown-menu, DBee more": "more-horizontal",
+  "breadcrumb, DBee more": "more-horizontal",
   "code-block copy": "copy",
   "command-palette search": "search",
-  "popover filters (sliders)": "options",
   "sidebar history": "history",
   "sidebar, DBee settings (gear)": "settings",
   "sidebar collapse": "panel-left",
   "stat trend up": "arrow-up",
   "stat trend down": "arrow-down",
   "stat trend flat": "subtract",
-  "toolbar, tooltip, DBee run": "play",
-  "toolbar, tooltip, DBee stop": "stop",
-  "tooltip, DBee download": "arrow-download",
+  "toolbar, DBee run": "play",
+  "toolbar, DBee stop": "stop",
+  "DBee download": "arrow-download",
   "tree folder, DBee schema": "folder",
   "tree, command-palette, DBee table": "table",
   "tree, sidebar, avatar, empty-state, status-bar, DBee database": "database",
@@ -83,6 +80,7 @@ describe("hand-drawn icons", () => {
   test("the components TSK-53 moved to Fluent icons are no longer pending", () => {
     const done = ["button", "icon-button", "toggle-button", "toggle-group", "split-button"]; // batch 1
     done.push("input", "textarea", "input-group", "number-input", "search-input", "password-input", "file-input", "date-picker", "calendar", "time-picker", "select", "combobox", "multi-select", "field"); // batch 2
+    done.push("checkbox", "radio-group", "switch", "slider", "dropdown-menu", "context-menu", "menubar", "popover", "hover-card", "tooltip"); // batch 3
     for (const name of done) {
       expect(Object.keys(REPLACEMENTS).filter((key) => new RegExp(`(?<![a-z-])${name}(?![a-z-])`).test(key)), name).toEqual([]);
     }

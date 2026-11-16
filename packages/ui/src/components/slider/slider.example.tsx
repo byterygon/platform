@@ -31,7 +31,7 @@ export function SliderRealistic() {
           Row length: {range[0]} to {range[1]} bytes
         </FieldLabel>
         <Slider
-          size="lg"
+          size="large"
           value={range}
           onValueChange={(value) => setRange(value as number[])}
           step={10}
@@ -41,7 +41,7 @@ export function SliderRealistic() {
       </Field>
       <Field name="parallel" disabled>
         <FieldLabel>Parallel workers</FieldLabel>
-        <Slider size="sm" defaultValue={4} max={16} />
+        <Slider size="small" defaultValue={4} max={16} />
         <FieldDescription>Set by the workspace administrator.</FieldDescription>
       </Field>
     </div>

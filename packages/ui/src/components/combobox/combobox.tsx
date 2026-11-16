@@ -50,7 +50,7 @@ export const frameButtonClasses = [
 ];
 
 /** The "no results" and status lines; empty (and so hidden) while they have nothing to say. */
-export const messageClasses = "flex min-h-control-sm items-center px-inset-sm text-body text-fg-muted empty:hidden";
+export const messageClasses = "flex min-h-control-md items-center px-inline-md text-body-1 text-fg-muted empty:hidden";
 
 /** Fluent's ChevronDown and Dismiss, shared with MultiSelect. */
 export const ChevronIcon = () => <Icon icon={ChevronDown} />;

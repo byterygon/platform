@@ -31,7 +31,7 @@ export function SwitchRealistic() {
       <Field>
         <FieldLabel className="w-full justify-between">
           Keep the connection alive
-          <Switch size="sm" />
+          <Switch size="small" />
         </FieldLabel>
       </Field>
       <Field disabled>
@@ -43,7 +43,7 @@ export function SwitchRealistic() {
       </Field>
       <Field>
         <FieldLabel className="text-body">
-          <Switch size="lg" />
+          <Switch size="large" />
           Show query plans
         </FieldLabel>
       </Field>

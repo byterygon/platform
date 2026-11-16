@@ -120,3 +120,40 @@ export const fieldStates = [
   "aria-invalid:border-danger-border aria-invalid:border-b-danger data-invalid:border-danger-border data-invalid:border-b-danger",
   "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",
 ].join(" ");
+
+/*
+ * Flyouts (Fluent 2's Menu, Popover, the lists of Dropdown and Combobox, Tooltip): an opaque
+ * surface with elevation.flyout (color.bg.overlay, a color.border.subtle hairline, depth 16),
+ * radius.lg, entering with a short slide from the trigger's side and a fade (normal, decelerate)
+ * and leaving with a fade (fast, accelerate). Opaque, not acrylic: Fluent 2's web components draw
+ * flyouts solid, and text on a translucent flyout over arbitrary content cannot be contrast-checked.
+ */
+
+/** The surface of a flyout. Add padding and layout per component. */
+export const flyoutSurface = "rounded-lg border border-border-subtle bg-overlay font-sans text-body-1 text-fg shadow-flyout outline-none";
+
+/** Enter and leave motion of a positioned popup (Base UI sets data-side, data-starting-style, data-ending-style). */
+export const flyoutMotion = [
+  "transition duration-[var(--by-motion-duration-normal)] ease-decelerate-mid motion-reduce:transition-none",
+  "data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-[var(--by-motion-duration-fast)] data-ending-style:ease-accelerate-mid",
+  "data-[side=bottom]:data-starting-style:-translate-y-inline-sm data-[side=top]:data-starting-style:translate-y-inline-sm",
+  "data-[side=right]:data-starting-style:-translate-x-inline-sm data-[side=left]:data-starting-style:translate-x-inline-sm",
+  "data-[side=inline-end]:data-starting-style:-translate-x-inline-sm data-[side=inline-start]:data-starting-style:translate-x-inline-sm",
+].join(" ");
+
+/**
+ * An option or menu item in a flyout (Fluent's MenuItem and Option): 32 px comfortable, body-1,
+ * a 16 px icon, a wash while highlighted, disabled text when disabled.
+ */
+export const flyoutItem = [
+  "flex min-h-control-md cursor-default select-none items-center gap-inline-sm rounded-md px-inline-md text-body-1 text-fg outline-none",
+  "data-highlighted:bg-hover",
+  "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
+  "[&_svg]:size-icon-md [&_svg]:shrink-0",
+].join(" ");
+
+/** A group heading inside a flyout (Fluent's MenuGroupHeader): caption-1-strong in the subtle text colour. */
+export const flyoutLabel = "flex min-h-control-sm select-none items-center px-inline-md text-caption-1-strong text-fg-subtle";
+
+/** A line between groups in a flyout (Fluent's MenuDivider). */
+export const flyoutSeparator = "-mx-inset-xs my-inline-xs h-px shrink-0 bg-border-subtle";
