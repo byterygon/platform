@@ -111,7 +111,10 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -721,6 +724,9 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/theme-scope"
       ],
       "files": [
@@ -760,7 +766,10 @@
       "registryDependencies": [
         "@byterygon/button",
         "@byterygon/cn",
-        "@byterygon/icon-button"
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icon-button",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -1152,7 +1161,10 @@
       "description": "The steps of a task done in order: an ordered list of numbered steps joined by lines, showing done (accent, check), current, upcoming and failed steps, horizontal or vertical, with completed steps optionally clickable to go back.",
       "dependencies": [],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -1392,6 +1404,9 @@
       "dependencies": [],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/theme-scope"
       ],
       "files": [

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from "react";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { ChevronRight } from "@/lib/icons";
 import { tokenPx } from "@/lib/theme-scope";
 
 // A virtualized, keyboard-navigable tree (DBee's schema browser) following the ARIA treeview
@@ -46,30 +49,24 @@ interface Row {
 
 const classes = {
   root: [
-    "relative overflow-auto overscroll-contain font-sans text-body text-fg outline-none",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    "relative overflow-auto overscroll-contain font-sans text-body-1 text-fg",
+    focusRing,
   ],
   row: [
     "absolute inset-x-0 flex h-control-sm cursor-default select-none items-center gap-inline-xs pe-inset-sm whitespace-nowrap",
-    "hover:bg-hover data-selected:bg-selected data-selected:hover:bg-selected-hover",
-    "data-active:outline-none in-focus-visible:data-active:outline-solid in-focus-visible:data-active:outline-[length:var(--by-ring-width)] in-focus-visible:data-active:-outline-offset-[var(--by-ring-width)] in-focus-visible:data-active:outline-ring",
+    "rounded-md hover:bg-hover active:bg-pressed data-selected:bg-selected data-selected:hover:bg-selected-hover",
+    "data-active:outline-none in-focus-visible:data-active:outline-solid in-focus-visible:data-active:outline-[length:var(--by-ring-width)] in-focus-visible:data-active:-outline-offset-[var(--by-ring-width)] in-focus-visible:data-active:outline-ring in-focus-visible:data-active:ring-inset in-focus-visible:data-active:ring-[length:var(--by-ring-inner-width)] in-focus-visible:data-active:ring-ring-inner",
     "data-disabled:text-fg-disabled",
-    "[&_svg]:size-icon-sm [&_svg]:shrink-0",
+    "[&_svg]:size-icon-md [&_svg]:shrink-0",
   ],
-  chevron: "flex size-icon-md shrink-0 items-center justify-center text-fg-muted transition-transform duration-[var(--by-motion-duration-fast)] ease-standard motion-reduce:transition-none data-expanded:rotate-90",
+  chevron: "flex size-icon-md shrink-0 items-center justify-center text-fg-muted transition-transform duration-[var(--by-motion-duration-faster)] ease-easy-ease motion-reduce:transition-none data-expanded:rotate-90",
   icon: "flex shrink-0 text-fg-muted",
   label: "min-w-0 flex-1 truncate",
-  meta: "ms-auto shrink-0 ps-inline-sm text-caption text-fg-muted",
+  meta: "ms-auto shrink-0 ps-inline-sm text-caption-1 text-fg-muted",
   status: "text-fg-muted",
   error: "min-w-0 truncate text-danger-fg",
-  retry: "shrink-0 rounded-xs px-inline-xs text-label text-fg-link underline underline-offset-4 hover:text-fg",
+  retry: "shrink-0 rounded-md px-inline-xs text-body-1 text-fg-link underline underline-offset-4 hover:text-fg",
 } as const;
-
-const ChevronIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m6 4 4 4-4 4" />
-  </svg>
-);
 
 const expandable = (node: TreeNode) => (node.children !== undefined && node.children.length > 0) || node.hasChildren === true || node.loading === true || node.error !== undefined;
 
@@ -151,7 +148,7 @@ export function TreeItem({ id, node, level, setSize, posInSet, top, expanded, se
     >
       {expanded !== undefined ? (
         <span data-slot="tree-chevron" data-expanded={expanded ? "" : undefined} className={cn(classes.chevron)}>
-          <ChevronIcon />
+          <Icon icon={ChevronRight} />
         </span>
       ) : (
         <span className="size-icon-md shrink-0" />
@@ -383,7 +380,7 @@ export function Tree({
   if (rows.length === 0) {
     return (
       <div data-slot="tree" role="tree" aria-label={label} className={cn(classes.root, className)} ref={setRef}>
-        <p data-slot="tree-empty" role="none" className="p-inset-sm text-body text-fg-muted">
+        <p data-slot="tree-empty" role="none" className="p-inset-sm text-body-1 text-fg-muted">
           {emptyText}
         </p>
       </div>

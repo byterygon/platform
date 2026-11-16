@@ -56,4 +56,16 @@ describe("Pagination", () => {
     render(<Pagination page={3} pageCount={8} />);
     expect(honoursReducedMotion($$("[data-slot^='pagination']"))).toEqual([]);
   });
+
+  test("takes small, medium and large, and the old sm and md as aliases", () => {
+    const size = (props: { size?: "small" | "medium" | "large" | "sm" | "md" | "lg" }) => {
+      const { unmount } = render(<Pagination page={1} pageCount={3} {...props} />);
+      const value = ($('[data-slot="pagination"]') as HTMLElement).dataset.size;
+      unmount();
+      return value;
+    };
+    expect(size({})).toBe("medium");
+    expect(size({ size: "large" })).toBe("large");
+    expect(size({ size: "sm" })).toBe("small");
+  });
 });

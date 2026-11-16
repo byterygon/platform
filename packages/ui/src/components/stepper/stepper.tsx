@@ -1,5 +1,8 @@
 import type { ComponentProps, ReactNode } from "react";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { Checkmark, ErrorCircle } from "@/lib/icons";
 
 // The steps of a task done in order (add a connection, then approve access, then connect): an
 // ordered list of numbered steps that shows which are done, which is current and which failed.
@@ -22,24 +25,24 @@ const classes = {
   item: "flex min-w-0 gap-inline-sm data-[orientation=horizontal]:flex-1 data-[orientation=horizontal]:items-center",
   marker: "flex shrink-0 flex-col items-center",
   indicator: [
-    "flex size-control-sm shrink-0 items-center justify-center rounded-full border text-label [&_svg]:size-icon-sm",
+    "flex size-control-sm shrink-0 items-center justify-center rounded-full border text-body-1-strong [&_svg]:size-icon-md",
     "data-[status=complete]:border-accent-solid data-[status=complete]:bg-accent-solid data-[status=complete]:text-accent-solid-fg",
-    "data-[status=current]:border-accent-solid data-[status=current]:text-fg",
-    "data-[status=upcoming]:border-border-strong data-[status=upcoming]:text-fg-muted",
+    "data-[status=current]:border-accent-solid data-[status=current]:bg-layer data-[status=current]:text-fg",
+    "data-[status=upcoming]:border-border-strong data-[status=upcoming]:bg-layer data-[status=upcoming]:text-fg-muted",
     "data-[status=error]:border-danger-border data-[status=error]:bg-danger-subtle data-[status=error]:text-danger-fg",
   ],
   text: "flex min-w-0 flex-col pb-stack-md data-[orientation=horizontal]:pb-0",
-  title: "truncate text-label text-fg data-[status=upcoming]:text-fg-muted data-[status=error]:text-danger-fg",
-  description: "text-caption text-fg-muted",
+  title: "truncate text-body-1-strong text-fg data-[status=upcoming]:text-fg-muted data-[status=error]:text-danger-fg",
+  description: "text-caption-1 text-fg-muted",
   connector: [
-    "shrink-0 bg-border data-[status=complete]:bg-accent-solid",
+    "shrink-0 bg-border-strong data-[status=complete]:bg-accent-solid",
     "data-[orientation=horizontal]:h-px data-[orientation=horizontal]:min-w-control-sm data-[orientation=horizontal]:flex-1",
     "data-[orientation=vertical]:min-h-stack-md data-[orientation=vertical]:w-px data-[orientation=vertical]:flex-1",
   ],
   button: [
-    "flex min-w-0 items-center gap-inline-sm rounded-sm text-start outline-none data-[orientation=vertical]:items-start",
-    "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard hover:bg-hover",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
+    "flex min-w-0 items-center gap-inline-sm rounded-md text-start data-[orientation=vertical]:items-start",
+    "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease hover:bg-hover active:bg-pressed",
+    focusRing,
   ],
 } as const;
 
@@ -51,18 +54,6 @@ export interface Step {
   /** Marks a step that failed (it shows an error even if it is done or current). */
   error?: boolean;
 }
-
-const CheckIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m3.5 8.5 3 3 6-7" />
-  </svg>
-);
-
-const AlertIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
-    <path d="M8 4v5M8 11.5v.5" />
-  </svg>
-);
 
 /** The status of step `index` when step `value` is current. */
 export function stepStatus(steps: readonly Step[], index: number, value: number): StepStatus {
@@ -92,7 +83,7 @@ export interface StepperItemProps {
 export function StepperItem({ step, index, status, orientation, last, onSelect }: StepperItemProps) {
   const indicator = (
     <span data-slot="stepper-indicator" data-status={status} aria-hidden="true" className={cn(classes.indicator)}>
-      {status === "error" ? <AlertIcon /> : status === "complete" ? <CheckIcon /> : index + 1}
+      {status === "error" ? <Icon icon={ErrorCircle} /> : status === "complete" ? <Icon icon={Checkmark} /> : index + 1}
     </span>
   );
   const text = (
