@@ -161,6 +161,12 @@ What `test/conventions.test.tsx` enforces for every component:
 - Layers: scrim `z.overlay`, dialogs and sheets `z.modal`, everything attached to a control
   (popovers, menus, the lists of Select and Combobox) `z.popover`, so they open above a dialog;
   toasts `z.toast`, tooltips `z.tooltip`.
+- Motion follows Fluent 2 (`motion.duration.*`: `ultra-fast` 50 ms to `ultra-slow` 500 ms;
+  `motion.easing.*`): `ease-decelerate-mid` for what enters, `ease-accelerate-mid` for what
+  leaves, `ease-easy-ease` for what moves; small elements take the short durations. `ease-standard`,
+  `ease-enter`, `ease-exit`, `ease-emphasized` and `motion.duration.base` are aliases kept from
+  before. In script (the Web Animations API takes no `var()`), `@/lib/motion` has
+  `MOTION_DURATION_MS`, `MOTION_EASING`, `durationVar`, `easingVar` and `tokenEasing`.
 - Motion: an element that moves (`transition`, `transition-transform`, an animation) also carries
   `motion-reduce:transition-none` (or `motion-reduce:animate-none`); colour and opacity fades may
   stay. `honoursReducedMotion` in `test/interact.ts` checks it; each overlay test calls it.
@@ -203,7 +209,7 @@ What `test/conventions.test.tsx` enforces for every component:
   `data-[appearance=…]:`, so `<name>Variants` keeps one key per prop without compound variants.
 - Looping motion (Spinner, an indeterminate Progress, Skeleton's pulse) goes through `@/lib/motion`
   (`useLoopAnimation`, the Web Animations API): the token theme has no `@keyframes` and
-  `animate-*` defaults do not compile. Periods are multiples of `motion.duration.slow`
+  `animate-*` defaults do not compile. Periods are multiples of `motion.duration.slow` (300 ms)
   (`tokenMs`); loops never start under `prefers-reduced-motion`, and jsdom has no
   `element.animate`, so stub it in tests that check the loop.
 - The suite reads the examples' classes only for components with `parts`. A component that
@@ -296,7 +302,11 @@ What `test/conventions.test.tsx` enforces for every component:
   names (`bg-danger`, `text-danger-solid-fg`, `border-danger-border`, `text-danger-fg`). Size and
   space: `h-control-{xs,sm,md,lg}`, `px-control-x`, `p-inset-*`, `gap-inline-*`, `gap-stack-*`,
   `size-icon-*`, `h-track` (a slider track or thin bar), `max-w-panel-{xs,sm,md,lg,xl}` (240 to
-  768 px: tooltips, popovers, dialogs, sheets, sidebars). Type: `text-body`, `text-label`, `text-caption`, `text-code`. Radius:
+  768 px: tooltips, popovers, dialogs, sheets, sidebars). Type: Fluent 2's ramp, `text-caption-2`
+  to `text-display` (`text-body-1`, `text-body-1-strong`, `text-caption-1`, `text-subtitle-1`,
+  `text-title-3`; the table is in `packages/design-tokens/AGENTS.md`), and `text-code`,
+  `text-code-sm`. `text-body`, `text-label`, `text-caption` and `text-heading-*` are aliases
+  kept until TSK-53/55 move the components; new code uses the Fluent names. Radius:
   `rounded-{xs..xl}`. Elevation: `shadow-raised`, `shadow-overlay`, `shadow-modal`.
 - The accent solid is `bg-accent-solid`, `hover:bg-accent-solid-hover`,
   `active:bg-accent-solid-active`, `text-accent-solid-fg`. Never bare `bg-accent`: in a project
@@ -305,7 +315,7 @@ What `test/conventions.test.tsx` enforces for every component:
 - Secondary actions use the neutral solid (`bg-neutral-solid`, `text-neutral-solid-fg`);
   destructive ones `bg-danger` with `text-danger-solid-fg`, never `text-fg-on-accent`.
 - No role exists for motion, opacity, z-index, ring width and offset: use the token variable
-  (`duration-[var(--by-motion-duration-fast)]`, `ease-standard`, `z-[var(--by-z-modal)]`,
+  (`duration-[var(--by-motion-duration-fast)]`, `ease-easy-ease`, `z-[var(--by-z-modal)]`,
   `outline-[length:var(--by-ring-width)]`). Breakpoints are not CSS variables; read
   `tokens.ts` if you need the number.
 - Focus: `outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)]

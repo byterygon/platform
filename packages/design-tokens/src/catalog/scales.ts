@@ -7,7 +7,7 @@
  * sizes, easing curves); the rest are reached through a role.
  */
 import type { CubicBezierValue, DurationValue } from "../model.js";
-import { type RoleDef, px } from "./authoring.js";
+import { type RoleDef, px, ref } from "./authoring.js";
 
 const REFERENCE = "Primitive: reference it through a role, never from a component.";
 
@@ -40,7 +40,11 @@ const space: RoleDef[] = SPACE.map(([name, value]): RoleDef => ({
   avoid: "Not for a density-aware gap: use space.inline, space.stack, space.inset or space.gap, which change with the density mode.",
 }));
 
-/** Type scale steps and how far each sits from the body size (the `fontSize` seed). */
+/**
+ * The legacy type scale: steps and how far each sits from the body size (the `fontSize` seed).
+ * Kept because the spec names it and themes may alias it (Paper's relaxed body leading is a
+ * `font.leading.*` step); the text roles use Fluent's ramp below (TSK-57).
+ */
 const FONT_SIZES: readonly (readonly [string, number])[] = [
   ["2xs", -3],
   ["xs", -2],
@@ -58,8 +62,64 @@ const fontSize: RoleDef[] = FONT_SIZES.map(([name, offset]): RoleDef => ({
   type: "dimension",
   tier: "primitive",
   value: (seeds) => px(Math.max(10, seeds.fontSize + offset)),
-  use: `The ${name} step of the type scale, derived from the fontSize seed (the base step is the body size). ${REFERENCE}`,
-  avoid: "Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+  use: `The ${name} step of the legacy type scale, derived from the fontSize seed (the base step is the body size). ${REFERENCE}`,
+  avoid: "Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
+}));
+
+/**
+ * Fluent 2's type ramp, from `@fluentui/tokens` 1.0.0-alpha.24 (MIT; `fontSizes` and
+ * `lineHeights` in lib/global/fonts.js): step, font size and line height in px at Fluent's body
+ * size, 14 px (`fontSizeBase300`). Steps 100 to 600 are Fluent's Base sizes, 700 to 1000 its Hero
+ * sizes.
+ */
+export const FLUENT_RAMP: readonly (readonly [step: string, size: number, lineHeight: number])[] = [
+  ["100", 10, 14],
+  ["200", 12, 16],
+  ["300", 14, 20],
+  ["400", 16, 22],
+  ["500", 20, 28],
+  ["600", 24, 32],
+  ["700", 28, 36],
+  ["800", 32, 40],
+  ["900", 40, 52],
+  ["1000", 68, 92],
+];
+const FLUENT_BODY = 14;
+
+/**
+ * How `seeds.fontSize` drives Fluent's ramp: it is the size of step 300 (body-1). Every step is
+ * Fluent's size times fontSize / 14, rounded to a whole px (at least 10), and its line height is
+ * that size times Fluent's ratio for the step, rounded to a whole px. At 14 every value is
+ * Fluent's exactly; at 13 the ramp is 10, 11, 13, 15, 19, 22, 26, 30, 37, 63.
+ */
+export function fluentStep(fontSizeSeed: number, step: string): { size: number; lineHeight: number } {
+  const entry = FLUENT_RAMP.find(([name]) => name === step);
+  if (!entry) throw new Error(`unknown Fluent type ramp step ${step}`);
+  const [, size, lineHeight] = entry;
+  const scaled = Math.max(10, Math.round((size * fontSizeSeed) / FLUENT_BODY));
+  return { size: scaled, lineHeight: Math.round((scaled * lineHeight) / size) };
+}
+
+const fluentSize: RoleDef[] = FLUENT_RAMP.map(([step, size, lineHeight]): RoleDef => ({
+  path: `font.size.${step}`,
+  type: "dimension",
+  tier: "primitive",
+  value: (seeds) => px(fluentStep(seeds.fontSize, step).size),
+  use: `Step ${step} of Fluent 2's type ramp: ${size} px at the default body size (line height ${lineHeight} px), scaled by the fontSize seed. ${REFERENCE}`,
+  avoid: "Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+}));
+
+/** Unitless, so `calc(lines * size * leading)` and Monaco's metrics keep working. */
+const fluentLeading: RoleDef[] = FLUENT_RAMP.map(([step, size, lineHeight]): RoleDef => ({
+  path: `font.leading.${step}`,
+  type: "number",
+  tier: "primitive",
+  value: (seeds) => {
+    const scaled = fluentStep(seeds.fontSize, step);
+    return Math.round((scaled.lineHeight / scaled.size) * 10000) / 10000;
+  },
+  use: `Unitless line height of step ${step} of Fluent 2's type ramp (${lineHeight} px on ${size} px at the default body size, kept a whole px when the fontSize seed scales it). ${REFERENCE}`,
+  avoid: "Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
 }));
 
 const WEIGHTS: readonly (readonly [string, number])[] = [
@@ -207,42 +267,93 @@ const zIndex: RoleDef[] = Z.map(([name, value, fit]): RoleDef => ({
   avoid: "Not an arbitrary z-index: every layered element takes one of these, so layers stay in a known order.",
 }));
 
+/**
+ * Fluent 2's durations, from `@fluentui/tokens` 1.0.0-alpha.24 (`durations` in
+ * lib/global/durations.js), plus `instant` (0 ms, for reduced motion and drag) and `base`, an
+ * alias kept from before TSK-57 (semantic: a primitive holds a literal). `fast` and `slow` are
+ * Fluent's names, so they take Fluent's values (100 to 150 ms, 240 to 300 ms); `faster` is the
+ * old `fast`.
+ */
 const DURATIONS: readonly (readonly [string, number, string])[] = [
   ["instant", 0, "changes that must not animate (reduced motion, drag following the pointer)"],
-  ["fast", 100, "hover and focus feedback, small toggles"],
-  ["base", 160, "menus, popovers, tooltips and most transitions"],
-  ["slow", 240, "dialogs, drawers and layout changes"],
+  ["ultra-fast", 50, "the smallest feedback: a press, a check mark, a colour change under the pointer"],
+  ["faster", 100, "hover and focus feedback, small toggles"],
+  ["fast", 150, "small elements that appear or change: tooltips, badges, a switch thumb"],
+  ["normal", 200, "menus, popovers, fades and most transitions"],
+  ["gentle", 250, "dialogs and medium elements entering or leaving"],
+  ["slow", 300, "drawers, sheets and large elements; the period unit of looping indicators"],
+  ["slower", 400, "full-width panels and layout changes"],
+  ["ultra-slow", 500, "page-sized transitions that must be followed by the eye"],
 ];
-const duration: RoleDef[] = DURATIONS.map(([name, value, fit]): RoleDef => ({
-  path: `motion.duration.${name}`,
-  type: "duration",
-  tier: "primitive",
-  value: { value, unit: "ms" } satisfies DurationValue,
-  use: `${value} ms, for ${fit}. ${REFERENCE}`,
-  avoid: "Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
-}));
+const duration: RoleDef[] = [
+  ...DURATIONS.map(([name, value, fit]): RoleDef => ({
+    path: `motion.duration.${name}`,
+    type: "duration",
+    tier: "primitive",
+    value: { value, unit: "ms" } satisfies DurationValue,
+    use: `${value} ms${name === "instant" ? "" : ` (Fluent's duration ${name})`}, for ${fit}. ${REFERENCE}`,
+    avoid: "Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+  })),
+  {
+    path: "motion.duration.base",
+    type: "duration",
+    value: ref("motion.duration.normal"),
+    use: "Alias of motion.duration.normal (200 ms; 160 ms before TSK-57), kept so code written against the first motion scale keeps working.",
+    avoid: "Not in new code: use motion.duration.normal.",
+  },
+];
 
-const EASINGS: readonly (readonly [string, CubicBezierValue, string, string])[] = [
-  ["standard", [0.2, 0, 0, 1], "elements that move or change between two resting states", "--ease-standard"],
-  ["enter", [0.05, 0.7, 0.1, 1], "elements that appear: they start fast and settle", "--ease-enter"],
-  ["exit", [0.3, 0, 0.8, 0.15], "elements that leave: they start slowly and speed up", "--ease-exit"],
-  ["emphasized", [0.16, 1, 0.3, 1], "large movements that should draw the eye: drawers, dialogs", "--ease-emphasized"],
+/**
+ * Fluent 2's curves, from `@fluentui/tokens` 1.0.0-alpha.24 (`curves` in lib/global/curves.js).
+ * Fluent's guidance: ease-out (decelerate) for what enters, ease-in (accelerate) for what leaves,
+ * ease-in-out (easy ease) for what moves between two places, linear only for a constant rate.
+ */
+const EASINGS: readonly (readonly [string, CubicBezierValue, string])[] = [
+  ["accelerate-max", [0.9, 0.1, 1, 0.2], "large elements that leave fast and far (a drawer closing)"],
+  ["accelerate-mid", [1, 0, 1, 1], "elements that leave the screen or close: they start slowly and speed up"],
+  ["accelerate-min", [0.8, 0, 0.78, 1], "small elements that leave: a gentler ease-in"],
+  ["decelerate-max", [0.1, 0.9, 0.2, 1], "large elements that enter from far away (a drawer opening)"],
+  ["decelerate-mid", [0, 0, 0, 1], "elements that enter the screen or open: they start fast and settle"],
+  ["decelerate-min", [0.33, 0, 0.1, 1], "small elements that enter: a gentler ease-out"],
+  ["easy-ease-max", [0.8, 0, 0.2, 1], "large movements between two places that should draw the eye"],
+  ["easy-ease", [0.33, 0, 0.67, 1], "elements that move or change between two resting states"],
+  ["linear", [0, 0, 1, 1], "a constant rate: rotation, a progress loop"],
 ];
-const easing: RoleDef[] = EASINGS.map(([name, value, fit, tailwind]): RoleDef => ({
-  path: `motion.easing.${name}`,
-  type: "cubicBezier",
-  tier: "primitive",
-  value,
-  tailwind,
-  use: `The ${name} curve, for ${fit}.`,
-  avoid: "Not linear easing for movement, and not a custom curve: pick one of the four so the interface moves alike.",
-}));
+/** The first curves, kept as semantic aliases of the Fluent curve with the same job (a primitive holds a literal). */
+const EASING_ALIASES: readonly (readonly [string, string])[] = [
+  ["standard", "easy-ease"],
+  ["enter", "decelerate-mid"],
+  ["exit", "accelerate-mid"],
+  ["emphasized", "easy-ease-max"],
+];
+const easing: RoleDef[] = [
+  ...EASINGS.map(([name, value, fit]): RoleDef => ({
+    path: `motion.easing.${name}`,
+    type: "cubicBezier",
+    tier: "primitive",
+    value,
+    // Tailwind's own ease-linear is the same curve; a --ease-linear variable would clash with it.
+    ...(name === "linear" ? {} : { tailwind: `--ease-${name}` }),
+    use: `Fluent's ${name} curve, for ${fit}.${name === "linear" ? " In classes, Tailwind's ease-linear." : ""}`,
+    avoid: "Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+  })),
+  ...EASING_ALIASES.map(([name, target]): RoleDef => ({
+    path: `motion.easing.${name}`,
+    type: "cubicBezier",
+    value: ref(`motion.easing.${target}`),
+    tailwind: `--ease-${name}`,
+    use: `Alias of motion.easing.${target}, kept from the first motion scale so code written against it keeps working.`,
+    avoid: `Not in new code: use motion.easing.${target} (ease-${target}).`,
+  })),
+];
 
 export const SCALE_ROLES: readonly RoleDef[] = [
   ...space,
   ...fontSize,
+  ...fluentSize,
   ...fontWeight,
   ...fontLeading,
+  ...fluentLeading,
   ...fontTracking,
   ...iconSize,
   ...trackSize,

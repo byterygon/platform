@@ -99,8 +99,13 @@ that role's failures. Command-line mistakes come back as `"error": { "code", "me
   it those steps follow `chroma`, which leaves a low-chroma neutral almost grey: Paper asks for a
   warm cream with `"neutral": { "hue": 85, "chroma": 0.03, "tint": 0.011 }`, Midnight for a deep
   blue the same way. Steps 6-12 ignore it.
-- `seeds.fontSize` (11 to 18, default 14) is the body size in px; `font.size.2xs` to `4xl` are
-  derived from it (14 gives 11, 12, 13, 14, 16, 18, 20, 24, 30).
+- `seeds.fontSize` (11 to 18, default 14) is the body size in px: the size of `text.body-1`, Fluent's
+  step 300. Every step of Fluent's ramp (`font.size.100` to `font.size.1000`) is Fluent's size
+  times fontSize / 14, rounded to a whole px (at least 10), and its line height is that size times
+  Fluent's ratio for the step, rounded to a whole px (`font.leading.<step>` holds the ratio, so it
+  stays unitless). 14 gives Fluent's values exactly; 13 gives 10, 11, 13, 15, 19, 22, 26, 30, 37,
+  63. The legacy scale `font.size.2xs` to `4xl` is still derived as before (14 gives 11, 12, 13,
+  14, 16, 18, 20, 24, 30); no role uses it.
 - An override is a value for every mode, or an object keyed by mode name to change some modes.
   A value is an alias in braces or a literal of the token's type (`oklch(L C H)`, `#rrggbb`,
   `12px`, `150ms`, a list of font families, a list of shadow or gradient layers). A colour literal
@@ -223,7 +228,7 @@ nearest alpha of the same colour that passes as its fix.
   and commit `generated/<name>/`. The drift test, the contrast test and the output-directory test
   pick up every file in `themes/`.
 - **A text role**: five tokens, `text.<role>.{family,size,weight,leading,tracking}`, aliasing the
-  `font.*` scales (`type.ts`). It is five tokens and not a DTCG `typography` composite because the
+  `font.*` scales (`type.ts`: an entry in `TEXT_ROLES` with a Fluent ramp step and a weight). It is five tokens and not a DTCG `typography` composite because the
   engine handles every type it has in all its outputs and Figma has no typography variable.
   Tracking is a px dimension (DTCG has no em).
 - **A token type**: add it to `ValueByType` in `src/model.ts` and to the switches in
@@ -287,6 +292,55 @@ per mode), or replaces the whole `gradient.backdrop` with its own list of layers
   `color.bg.layer-alt` over the backdrop and a layer, the focus ring and the solids on a layer.
 - `elevation.flyout` and `elevation.dialog` use `color.bg.overlay`, opaque: a component that wants
   acrylic lays `color.bg.layer` and `backdrop-blur-acrylic` itself.
+
+## Type ramp and motion (Fluent 2)
+
+Values from `@fluentui/tokens` 1.0.0-alpha.24 (MIT, gitHead `2dd2a9a96210919c35b210a1aa8e873ab67dbada`):
+`typographyStyles`, `fontSizes`, `lineHeights`, `durations` and `curves` in `lib/global/`. The
+package is a reference, never a dependency. `test/catalog.test.ts` pins every value.
+
+| Role (`text.<role>`, `text-<role>`) | Fluent style | Size / line height (px, at 14) | Weight |
+| --- | --- | --- | --- |
+| `caption-2`, `caption-2-strong` | caption2, caption2Strong | 10 / 14 | 400, 600 |
+| `caption-1`, `caption-1-strong`, `caption-1-stronger` | caption1 (+ Strong, Stronger) | 12 / 16 | 400, 600, 700 |
+| `body-1`, `body-1-strong`, `body-1-stronger` | body1 (+ Strong, Stronger) | 14 / 20 | 400, 600, 700 |
+| `body-2` | body2 | 16 / 22 | 400 |
+| `subtitle-2`, `subtitle-2-stronger` | subtitle2 (+ Stronger) | 16 / 22 | 600, 700 |
+| `subtitle-1` | subtitle1 | 20 / 28 | 600 |
+| `title-3`, `title-2`, `title-1` | title3, title2, title1 | 24 / 32, 28 / 36, 32 / 40 | 600 |
+| `large-title` | largeTitle | 40 / 52 | 600 |
+| `display` | display | 68 / 92 | 600 |
+| `code`, `code-sm` | (Byterygon: `font.mono`) | 14 / 20, 12 / 16 | 400 |
+
+- Fluent has no letter spacing: every role tracks at `font.tracking.normal` (0).
+- The names from before TSK-57 alias a Fluent role, field by field (`text.body.size` is
+  `{text.body-1.size}`), so components and theme overrides keep working: `heading-1` -> `title-2`,
+  `heading-2` -> `title-3`, `heading-3` -> `subtitle-1` (Fluent's dialog title), `heading-4` ->
+  `subtitle-2`, `body` -> `body-1`, `body-strong` -> `body-1-strong`, `label` -> `body-1`
+  (Fluent's Label), `caption` -> `caption-1`. Headings moved one step up the ramp from their old
+  size. New code uses the Fluent names; TSK-53/55 move the components.
+- Text roles do not vary by density (compact shrinks controls and gaps, not the reading size).
+
+| Duration (`motion.duration.<name>`) | ms | | Curve (`motion.easing.<name>`, `ease-<name>`) | cubic-bezier |
+| --- | --- | --- | --- | --- |
+| `instant` (Byterygon) | 0 | | `accelerate-max`, `-mid`, `-min` | 0.9,0.1,1,0.2 · 1,0,1,1 · 0.8,0,0.78,1 |
+| `ultra-fast` | 50 | | `decelerate-max`, `-mid`, `-min` | 0.1,0.9,0.2,1 · 0,0,0,1 · 0.33,0,0.1,1 |
+| `faster` | 100 | | `easy-ease-max` | 0.8,0,0.2,1 |
+| `fast` | 150 | | `easy-ease` | 0.33,0,0.67,1 |
+| `normal` | 200 | | `linear` (Tailwind's own `ease-linear`) | 0,0,1,1 |
+| `gentle`, `slow`, `slower`, `ultra-slow` | 250, 300, 400, 500 | | | |
+
+- Fluent's guidance: decelerate (ease-out) for what enters, accelerate (ease-in) for what leaves,
+  easy ease for what moves between two places, linear only for a constant rate.
+- Kept names, as semantic aliases (a primitive holds a literal): `motion.duration.base` ->
+  `normal` (was 160 ms), `motion.easing.standard` -> `easy-ease`, `enter` -> `decelerate-mid`,
+  `exit` -> `accelerate-mid`, `emphasized` -> `easy-ease-max`. `fast` and `slow` are Fluent's own
+  names, so they took Fluent's values (100 -> 150 ms, 240 -> 300 ms); the old `fast` is `faster`.
+- `@byterygon/ui`'s `src/lib/motion.ts` mirrors these (`MOTION_DURATION_MS`, `MOTION_EASING`,
+  `durationVar`, `easingVar`, `tokenEasing`); its test keeps them equal to the tokens.
+- Curves have no Figma variable (they are in `figma-variables.json`'s `skipped` list). A new token
+  name that lands there must not look like a secret to gitleaks' generic-api-key rule: no digits
+  and an entropy below that of the names already there (DOC-17 open question 99).
 
 ## Catalogue notes
 

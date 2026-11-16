@@ -14563,13 +14563,143 @@
   },
   "font": {
     "size": {
+      "100": {
+        "$type": "dimension",
+        "$value": {
+          "value": 10,
+          "unit": "px"
+        },
+        "$description": "Step 100 of Fluent 2's type ramp: 10 px at the default body size (line height 14 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "200": {
+        "$type": "dimension",
+        "$value": {
+          "value": 12,
+          "unit": "px"
+        },
+        "$description": "Step 200 of Fluent 2's type ramp: 12 px at the default body size (line height 16 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "300": {
+        "$type": "dimension",
+        "$value": {
+          "value": 14,
+          "unit": "px"
+        },
+        "$description": "Step 300 of Fluent 2's type ramp: 14 px at the default body size (line height 20 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "400": {
+        "$type": "dimension",
+        "$value": {
+          "value": 16,
+          "unit": "px"
+        },
+        "$description": "Step 400 of Fluent 2's type ramp: 16 px at the default body size (line height 22 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "500": {
+        "$type": "dimension",
+        "$value": {
+          "value": 20,
+          "unit": "px"
+        },
+        "$description": "Step 500 of Fluent 2's type ramp: 20 px at the default body size (line height 28 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "600": {
+        "$type": "dimension",
+        "$value": {
+          "value": 24,
+          "unit": "px"
+        },
+        "$description": "Step 600 of Fluent 2's type ramp: 24 px at the default body size (line height 32 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "700": {
+        "$type": "dimension",
+        "$value": {
+          "value": 28,
+          "unit": "px"
+        },
+        "$description": "Step 700 of Fluent 2's type ramp: 28 px at the default body size (line height 36 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "800": {
+        "$type": "dimension",
+        "$value": {
+          "value": 32,
+          "unit": "px"
+        },
+        "$description": "Step 800 of Fluent 2's type ramp: 32 px at the default body size (line height 40 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "900": {
+        "$type": "dimension",
+        "$value": {
+          "value": 40,
+          "unit": "px"
+        },
+        "$description": "Step 900 of Fluent 2's type ramp: 40 px at the default body size (line height 52 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "1000": {
+        "$type": "dimension",
+        "$value": {
+          "value": 68,
+          "unit": "px"
+        },
+        "$description": "Step 1000 of Fluent 2's type ramp: 68 px at the default body size (line height 92 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
       "2xs": {
         "$type": "dimension",
         "$value": {
           "value": 11,
           "unit": "px"
         },
-        "$description": "The 2xs step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The 2xs step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14582,7 +14712,7 @@
           "value": 12,
           "unit": "px"
         },
-        "$description": "The xs step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The xs step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14595,7 +14725,7 @@
           "value": 13,
           "unit": "px"
         },
-        "$description": "The sm step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The sm step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14608,7 +14738,7 @@
           "value": 14,
           "unit": "px"
         },
-        "$description": "The base step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The base step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14621,7 +14751,7 @@
           "value": 16,
           "unit": "px"
         },
-        "$description": "The lg step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The lg step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14634,7 +14764,7 @@
           "value": 18,
           "unit": "px"
         },
-        "$description": "The xl step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The xl step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14647,7 +14777,7 @@
           "value": 20,
           "unit": "px"
         },
-        "$description": "The 2xl step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The 2xl step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14660,7 +14790,7 @@
           "value": 24,
           "unit": "px"
         },
-        "$description": "The 3xl step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The 3xl step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14673,7 +14803,7 @@
           "value": 30,
           "unit": "px"
         },
-        "$description": "The 4xl step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+        "$description": "The 4xl step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -14724,6 +14854,106 @@
       }
     },
     "leading": {
+      "100": {
+        "$type": "number",
+        "$value": 1.4,
+        "$description": "Unitless line height of step 100 of Fluent 2's type ramp (14 px on 10 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "200": {
+        "$type": "number",
+        "$value": 1.3333,
+        "$description": "Unitless line height of step 200 of Fluent 2's type ramp (16 px on 12 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "300": {
+        "$type": "number",
+        "$value": 1.4286,
+        "$description": "Unitless line height of step 300 of Fluent 2's type ramp (20 px on 14 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "400": {
+        "$type": "number",
+        "$value": 1.375,
+        "$description": "Unitless line height of step 400 of Fluent 2's type ramp (22 px on 16 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "500": {
+        "$type": "number",
+        "$value": 1.4,
+        "$description": "Unitless line height of step 500 of Fluent 2's type ramp (28 px on 20 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "600": {
+        "$type": "number",
+        "$value": 1.3333,
+        "$description": "Unitless line height of step 600 of Fluent 2's type ramp (32 px on 24 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "700": {
+        "$type": "number",
+        "$value": 1.2857,
+        "$description": "Unitless line height of step 700 of Fluent 2's type ramp (36 px on 28 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "800": {
+        "$type": "number",
+        "$value": 1.25,
+        "$description": "Unitless line height of step 800 of Fluent 2's type ramp (40 px on 32 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "900": {
+        "$type": "number",
+        "$value": 1.3,
+        "$description": "Unitless line height of step 900 of Fluent 2's type ramp (52 px on 40 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "1000": {
+        "$type": "number",
+        "$value": 1.3529,
+        "$description": "Unitless line height of step 1000 of Fluent 2's type ramp (92 px on 68 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
       "tight": {
         "$type": "number",
         "$value": 1.2,
@@ -15320,7 +15550,33 @@
           "value": 0,
           "unit": "ms"
         },
-        "$description": "0 ms, for changes that must not animate (reduced motion, drag following the pointer). Primitive: reference it through a role, never from a component. Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$description": "0 ms, for changes that must not animate (reduced motion, drag following the pointer). Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "ultra-fast": {
+        "$type": "duration",
+        "$value": {
+          "value": 50,
+          "unit": "ms"
+        },
+        "$description": "50 ms (Fluent's duration ultra-fast), for the smallest feedback: a press, a check mark, a colour change under the pointer. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "faster": {
+        "$type": "duration",
+        "$value": {
+          "value": 100,
+          "unit": "ms"
+        },
+        "$description": "100 ms (Fluent's duration faster), for hover and focus feedback, small toggles. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -15330,23 +15586,36 @@
       "fast": {
         "$type": "duration",
         "$value": {
-          "value": 100,
+          "value": 150,
           "unit": "ms"
         },
-        "$description": "100 ms, for hover and focus feedback, small toggles. Primitive: reference it through a role, never from a component. Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$description": "150 ms (Fluent's duration fast), for small elements that appear or change: tooltips, badges, a switch thumb. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
           }
         }
       },
-      "base": {
+      "normal": {
         "$type": "duration",
         "$value": {
-          "value": 160,
+          "value": 200,
           "unit": "ms"
         },
-        "$description": "160 ms, for menus, popovers, tooltips and most transitions. Primitive: reference it through a role, never from a component. Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$description": "200 ms (Fluent's duration normal), for menus, popovers, fades and most transitions. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "gentle": {
+        "$type": "duration",
+        "$value": {
+          "value": 250,
+          "unit": "ms"
+        },
+        "$description": "250 ms (Fluent's duration gentle), for dialogs and medium elements entering or leaving. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
@@ -15356,78 +15625,237 @@
       "slow": {
         "$type": "duration",
         "$value": {
-          "value": 240,
+          "value": 300,
           "unit": "ms"
         },
-        "$description": "240 ms, for dialogs, drawers and layout changes. Primitive: reference it through a role, never from a component. Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$description": "300 ms (Fluent's duration slow), for drawers, sheets and large elements; the period unit of looping indicators. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive"
           }
         }
+      },
+      "slower": {
+        "$type": "duration",
+        "$value": {
+          "value": 400,
+          "unit": "ms"
+        },
+        "$description": "400 ms (Fluent's duration slower), for full-width panels and layout changes. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "ultra-slow": {
+        "$type": "duration",
+        "$value": {
+          "value": 500,
+          "unit": "ms"
+        },
+        "$description": "500 ms (Fluent's duration ultra-slow), for page-sized transitions that must be followed by the eye. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "base": {
+        "$type": "duration",
+        "$value": "{motion.duration.normal}",
+        "$description": "Alias of motion.duration.normal (200 ms; 160 ms before TSK-57), kept so code written against the first motion scale keeps working. Not in new code: use motion.duration.normal.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
       }
     },
     "easing": {
-      "standard": {
+      "accelerate-max": {
         "$type": "cubicBezier",
         "$value": [
+          0.9,
+          0.1,
+          1,
+          0.2
+        ],
+        "$description": "Fluent's accelerate-max curve, for large elements that leave fast and far (a drawer closing). Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--ease-accelerate-max"
+          }
+        }
+      },
+      "accelerate-mid": {
+        "$type": "cubicBezier",
+        "$value": [
+          1,
+          0,
+          1,
+          1
+        ],
+        "$description": "Fluent's accelerate-mid curve, for elements that leave the screen or close: they start slowly and speed up. Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--ease-accelerate-mid"
+          }
+        }
+      },
+      "accelerate-min": {
+        "$type": "cubicBezier",
+        "$value": [
+          0.8,
+          0,
+          0.78,
+          1
+        ],
+        "$description": "Fluent's accelerate-min curve, for small elements that leave: a gentler ease-in. Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--ease-accelerate-min"
+          }
+        }
+      },
+      "decelerate-max": {
+        "$type": "cubicBezier",
+        "$value": [
+          0.1,
+          0.9,
           0.2,
+          1
+        ],
+        "$description": "Fluent's decelerate-max curve, for large elements that enter from far away (a drawer opening). Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--ease-decelerate-max"
+          }
+        }
+      },
+      "decelerate-mid": {
+        "$type": "cubicBezier",
+        "$value": [
+          0,
           0,
           0,
           1
         ],
-        "$description": "The standard curve, for elements that move or change between two resting states. Not linear easing for movement, and not a custom curve: pick one of the four so the interface moves alike.",
+        "$description": "Fluent's decelerate-mid curve, for elements that enter the screen or open: they start fast and settle. Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
+            "tailwind": "--ease-decelerate-mid"
+          }
+        }
+      },
+      "decelerate-min": {
+        "$type": "cubicBezier",
+        "$value": [
+          0.33,
+          0,
+          0.1,
+          1
+        ],
+        "$description": "Fluent's decelerate-min curve, for small elements that enter: a gentler ease-out. Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--ease-decelerate-min"
+          }
+        }
+      },
+      "easy-ease-max": {
+        "$type": "cubicBezier",
+        "$value": [
+          0.8,
+          0,
+          0.2,
+          1
+        ],
+        "$description": "Fluent's easy-ease-max curve, for large movements between two places that should draw the eye. Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--ease-easy-ease-max"
+          }
+        }
+      },
+      "easy-ease": {
+        "$type": "cubicBezier",
+        "$value": [
+          0.33,
+          0,
+          0.67,
+          1
+        ],
+        "$description": "Fluent's easy-ease curve, for elements that move or change between two resting states. Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--ease-easy-ease"
+          }
+        }
+      },
+      "linear": {
+        "$type": "cubicBezier",
+        "$value": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "$description": "Fluent's linear curve, for a constant rate: rotation, a progress loop. In classes, Tailwind's ease-linear. Not a custom curve: pick a Fluent curve by what the element does (enters, leaves, moves), so the interface moves alike.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
+      },
+      "standard": {
+        "$type": "cubicBezier",
+        "$value": "{motion.easing.easy-ease}",
+        "$description": "Alias of motion.easing.easy-ease, kept from the first motion scale so code written against it keeps working. Not in new code: use motion.easing.easy-ease (ease-easy-ease).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
             "tailwind": "--ease-standard"
           }
         }
       },
       "enter": {
         "$type": "cubicBezier",
-        "$value": [
-          0.05,
-          0.7,
-          0.1,
-          1
-        ],
-        "$description": "The enter curve, for elements that appear: they start fast and settle. Not linear easing for movement, and not a custom curve: pick one of the four so the interface moves alike.",
+        "$value": "{motion.easing.decelerate-mid}",
+        "$description": "Alias of motion.easing.decelerate-mid, kept from the first motion scale so code written against it keeps working. Not in new code: use motion.easing.decelerate-mid (ease-decelerate-mid).",
         "$extensions": {
           "com.byterygon": {
-            "tier": "primitive",
+            "tier": "semantic",
             "tailwind": "--ease-enter"
           }
         }
       },
       "exit": {
         "$type": "cubicBezier",
-        "$value": [
-          0.3,
-          0,
-          0.8,
-          0.15
-        ],
-        "$description": "The exit curve, for elements that leave: they start slowly and speed up. Not linear easing for movement, and not a custom curve: pick one of the four so the interface moves alike.",
+        "$value": "{motion.easing.accelerate-mid}",
+        "$description": "Alias of motion.easing.accelerate-mid, kept from the first motion scale so code written against it keeps working. Not in new code: use motion.easing.accelerate-mid (ease-accelerate-mid).",
         "$extensions": {
           "com.byterygon": {
-            "tier": "primitive",
+            "tier": "semantic",
             "tailwind": "--ease-exit"
           }
         }
       },
       "emphasized": {
         "$type": "cubicBezier",
-        "$value": [
-          0.16,
-          1,
-          0.3,
-          1
-        ],
-        "$description": "The emphasized curve, for large movements that should draw the eye: drawers, dialogs. Not linear easing for movement, and not a custom curve: pick one of the four so the interface moves alike.",
+        "$value": "{motion.easing.easy-ease-max}",
+        "$description": "Alias of motion.easing.easy-ease-max, kept from the first motion scale so code written against it keeps working. Not in new code: use motion.easing.easy-ease-max (ease-easy-ease-max).",
         "$extensions": {
           "com.byterygon": {
-            "tier": "primitive",
+            "tier": "semantic",
             "tailwind": "--ease-emphasized"
           }
         }
@@ -17618,11 +18046,11 @@
     }
   },
   "text": {
-    "display": {
+    "caption-2": {
       "family": {
         "$type": "fontFamily",
         "$value": "{font.sans}",
-        "$description": "Font family of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+        "$description": "Font family of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic"
@@ -17631,8 +18059,904 @@
       },
       "size": {
         "$type": "dimension",
-        "$value": "{font.size.4xl}",
-        "$description": "Font size of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+        "$value": "{font.size.100}",
+        "$description": "Font size of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-2"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.regular}",
+        "$description": "Font weight of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-2--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.100}",
+        "$description": "Unitless line height of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-2--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-2--letter-spacing"
+          }
+        }
+      }
+    },
+    "caption-2-strong": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.100}",
+        "$description": "Font size of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-2-strong"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-2-strong--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.100}",
+        "$description": "Unitless line height of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-2-strong--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-2-strong--letter-spacing"
+          }
+        }
+      }
+    },
+    "caption-1": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.200}",
+        "$description": "Font size of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.regular}",
+        "$description": "Font weight of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.200}",
+        "$description": "Unitless line height of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1--letter-spacing"
+          }
+        }
+      }
+    },
+    "caption-1-strong": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.200}",
+        "$description": "Font size of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1-strong"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1-strong--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.200}",
+        "$description": "Unitless line height of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1-strong--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1-strong--letter-spacing"
+          }
+        }
+      }
+    },
+    "caption-1-stronger": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.200}",
+        "$description": "Font size of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1-stronger"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.bold}",
+        "$description": "Font weight of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1-stronger--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.200}",
+        "$description": "Unitless line height of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1-stronger--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption-1-stronger--letter-spacing"
+          }
+        }
+      }
+    },
+    "body-1": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.300}",
+        "$description": "Font size of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.regular}",
+        "$description": "Font weight of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.300}",
+        "$description": "Unitless line height of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1--letter-spacing"
+          }
+        }
+      }
+    },
+    "body-1-strong": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.300}",
+        "$description": "Font size of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1-strong"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1-strong--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.300}",
+        "$description": "Unitless line height of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1-strong--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1-strong--letter-spacing"
+          }
+        }
+      }
+    },
+    "body-1-stronger": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.300}",
+        "$description": "Font size of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1-stronger"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.bold}",
+        "$description": "Font weight of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1-stronger--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.300}",
+        "$description": "Unitless line height of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1-stronger--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-1-stronger--letter-spacing"
+          }
+        }
+      }
+    },
+    "body-2": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.400}",
+        "$description": "Font size of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-2"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.regular}",
+        "$description": "Font weight of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-2--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.400}",
+        "$description": "Unitless line height of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-2--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-2--letter-spacing"
+          }
+        }
+      }
+    },
+    "subtitle-2": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.400}",
+        "$description": "Font size of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-2"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-2--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.400}",
+        "$description": "Unitless line height of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-2--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-2--letter-spacing"
+          }
+        }
+      }
+    },
+    "subtitle-2-stronger": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.400}",
+        "$description": "Font size of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-2-stronger"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.bold}",
+        "$description": "Font weight of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-2-stronger--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.400}",
+        "$description": "Unitless line height of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-2-stronger--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-2-stronger--letter-spacing"
+          }
+        }
+      }
+    },
+    "subtitle-1": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.500}",
+        "$description": "Font size of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-1"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-1--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.500}",
+        "$description": "Unitless line height of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-1--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-subtitle-1--letter-spacing"
+          }
+        }
+      }
+    },
+    "title-3": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.600}",
+        "$description": "Font size of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-3"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-3--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.600}",
+        "$description": "Unitless line height of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-3--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-3--letter-spacing"
+          }
+        }
+      }
+    },
+    "title-2": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.700}",
+        "$description": "Font size of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-2"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-2--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.700}",
+        "$description": "Unitless line height of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-2--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-2--letter-spacing"
+          }
+        }
+      }
+    },
+    "title-1": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.800}",
+        "$description": "Font size of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-1"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-1--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.800}",
+        "$description": "Unitless line height of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-1--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-title-1--letter-spacing"
+          }
+        }
+      }
+    },
+    "large-title": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.900}",
+        "$description": "Font size of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-large-title"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{font.weight.semibold}",
+        "$description": "Font weight of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-large-title--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{font.leading.900}",
+        "$description": "Unitless line height of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-large-title--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-large-title--letter-spacing"
+          }
+        }
+      }
+    },
+    "display": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{font.sans}",
+        "$description": "Font family of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{font.size.1000}",
+        "$description": "Font size of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -17643,7 +18967,7 @@
       "weight": {
         "$type": "fontWeight",
         "$value": "{font.weight.semibold}",
-        "$description": "Font weight of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+        "$description": "Font weight of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -17653,8 +18977,8 @@
       },
       "leading": {
         "$type": "number",
-        "$value": "{font.leading.tight}",
-        "$description": "Unitless line height of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+        "$value": "{font.leading.1000}",
+        "$description": "Unitless line height of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -17664,8 +18988,8 @@
       },
       "tracking": {
         "$type": "dimension",
-        "$value": "{font.tracking.tight}",
-        "$description": "Letter spacing of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+        "$value": "{font.tracking.normal}",
+        "$description": "Letter spacing of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -17674,459 +18998,11 @@
         }
       }
     },
-    "heading-1": {
-      "family": {
-        "$type": "fontFamily",
-        "$value": "{font.sans}",
-        "$description": "Font family of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic"
-          }
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "$value": "{font.size.3xl}",
-        "$description": "Font size of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-1"
-          }
-        }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "$value": "{font.weight.semibold}",
-        "$description": "Font weight of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-1--font-weight"
-          }
-        }
-      },
-      "leading": {
-        "$type": "number",
-        "$value": "{font.leading.tight}",
-        "$description": "Unitless line height of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-1--line-height"
-          }
-        }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "$value": "{font.tracking.tight}",
-        "$description": "Letter spacing of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-1--letter-spacing"
-          }
-        }
-      }
-    },
-    "heading-2": {
-      "family": {
-        "$type": "fontFamily",
-        "$value": "{font.sans}",
-        "$description": "Font family of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic"
-          }
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "$value": "{font.size.2xl}",
-        "$description": "Font size of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-2"
-          }
-        }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "$value": "{font.weight.semibold}",
-        "$description": "Font weight of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-2--font-weight"
-          }
-        }
-      },
-      "leading": {
-        "$type": "number",
-        "$value": "{font.leading.snug}",
-        "$description": "Unitless line height of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-2--line-height"
-          }
-        }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "$value": "{font.tracking.normal}",
-        "$description": "Letter spacing of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-2--letter-spacing"
-          }
-        }
-      }
-    },
-    "heading-3": {
-      "family": {
-        "$type": "fontFamily",
-        "$value": "{font.sans}",
-        "$description": "Font family of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic"
-          }
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "$value": "{font.size.xl}",
-        "$description": "Font size of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-3"
-          }
-        }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "$value": "{font.weight.semibold}",
-        "$description": "Font weight of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-3--font-weight"
-          }
-        }
-      },
-      "leading": {
-        "$type": "number",
-        "$value": "{font.leading.snug}",
-        "$description": "Unitless line height of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-3--line-height"
-          }
-        }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "$value": "{font.tracking.normal}",
-        "$description": "Letter spacing of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-3--letter-spacing"
-          }
-        }
-      }
-    },
-    "heading-4": {
-      "family": {
-        "$type": "fontFamily",
-        "$value": "{font.sans}",
-        "$description": "Font family of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic"
-          }
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "$value": "{font.size.lg}",
-        "$description": "Font size of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-4"
-          }
-        }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "$value": "{font.weight.semibold}",
-        "$description": "Font weight of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-4--font-weight"
-          }
-        }
-      },
-      "leading": {
-        "$type": "number",
-        "$value": "{font.leading.snug}",
-        "$description": "Unitless line height of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-4--line-height"
-          }
-        }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "$value": "{font.tracking.normal}",
-        "$description": "Letter spacing of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-heading-4--letter-spacing"
-          }
-        }
-      }
-    },
-    "body": {
-      "family": {
-        "$type": "fontFamily",
-        "$value": "{font.sans}",
-        "$description": "Font family of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic"
-          }
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "$value": "{font.size.base}",
-        "$description": "Font size of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-body"
-          }
-        }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "$value": "{font.weight.regular}",
-        "$description": "Font weight of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-body--font-weight"
-          }
-        }
-      },
-      "leading": {
-        "$type": "number",
-        "$value": "{font.leading.normal}",
-        "$description": "Unitless line height of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-body--line-height"
-          }
-        }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "$value": "{font.tracking.normal}",
-        "$description": "Letter spacing of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-body--letter-spacing"
-          }
-        }
-      }
-    },
-    "body-strong": {
-      "family": {
-        "$type": "fontFamily",
-        "$value": "{font.sans}",
-        "$description": "Font family of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic"
-          }
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "$value": "{font.size.base}",
-        "$description": "Font size of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-body-strong"
-          }
-        }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "$value": "{font.weight.semibold}",
-        "$description": "Font weight of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-body-strong--font-weight"
-          }
-        }
-      },
-      "leading": {
-        "$type": "number",
-        "$value": "{font.leading.normal}",
-        "$description": "Unitless line height of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-body-strong--line-height"
-          }
-        }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "$value": "{font.tracking.normal}",
-        "$description": "Letter spacing of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-body-strong--letter-spacing"
-          }
-        }
-      }
-    },
-    "label": {
-      "family": {
-        "$type": "fontFamily",
-        "$value": "{font.sans}",
-        "$description": "Font family of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic"
-          }
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "$value": "{font.size.sm}",
-        "$description": "Font size of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-label"
-          }
-        }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "$value": "{font.weight.medium}",
-        "$description": "Font weight of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-label--font-weight"
-          }
-        }
-      },
-      "leading": {
-        "$type": "number",
-        "$value": "{font.leading.snug}",
-        "$description": "Unitless line height of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-label--line-height"
-          }
-        }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "$value": "{font.tracking.normal}",
-        "$description": "Letter spacing of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-label--letter-spacing"
-          }
-        }
-      }
-    },
-    "caption": {
-      "family": {
-        "$type": "fontFamily",
-        "$value": "{font.sans}",
-        "$description": "Font family of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic"
-          }
-        }
-      },
-      "size": {
-        "$type": "dimension",
-        "$value": "{font.size.xs}",
-        "$description": "Font size of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-caption"
-          }
-        }
-      },
-      "weight": {
-        "$type": "fontWeight",
-        "$value": "{font.weight.regular}",
-        "$description": "Font weight of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-caption--font-weight"
-          }
-        }
-      },
-      "leading": {
-        "$type": "number",
-        "$value": "{font.leading.snug}",
-        "$description": "Unitless line height of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-caption--line-height"
-          }
-        }
-      },
-      "tracking": {
-        "$type": "dimension",
-        "$value": "{font.tracking.normal}",
-        "$description": "Letter spacing of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-        "$extensions": {
-          "com.byterygon": {
-            "tier": "semantic",
-            "tailwind": "--text-caption--letter-spacing"
-          }
-        }
-      }
-    },
     "code": {
       "family": {
         "$type": "fontFamily",
         "$value": "{font.mono}",
-        "$description": "Font family of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+        "$description": "Font family of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic"
@@ -18135,8 +19011,8 @@
       },
       "size": {
         "$type": "dimension",
-        "$value": "{font.size.sm}",
-        "$description": "Font size of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+        "$value": "{font.size.300}",
+        "$description": "Font size of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -18147,7 +19023,7 @@
       "weight": {
         "$type": "fontWeight",
         "$value": "{font.weight.regular}",
-        "$description": "Font weight of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+        "$description": "Font weight of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -18157,8 +19033,8 @@
       },
       "leading": {
         "$type": "number",
-        "$value": "{font.leading.normal}",
-        "$description": "Unitless line height of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+        "$value": "{font.leading.300}",
+        "$description": "Unitless line height of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -18169,7 +19045,7 @@
       "tracking": {
         "$type": "dimension",
         "$value": "{font.tracking.normal}",
-        "$description": "Letter spacing of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+        "$description": "Letter spacing of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -18191,7 +19067,7 @@
       },
       "size": {
         "$type": "dimension",
-        "$value": "{font.size.xs}",
+        "$value": "{font.size.200}",
         "$description": "Font size of the code-sm text role: dense code: grid cells, log lines, a result set, a diff. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for the main editor: use text.code.",
         "$extensions": {
           "com.byterygon": {
@@ -18213,7 +19089,7 @@
       },
       "leading": {
         "$type": "number",
-        "$value": "{font.leading.normal}",
+        "$value": "{font.leading.200}",
         "$description": "Unitless line height of the code-sm text role: dense code: grid cells, log lines, a result set, a diff. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for the main editor: use text.code.",
         "$extensions": {
           "com.byterygon": {
@@ -18230,6 +19106,454 @@
           "com.byterygon": {
             "tier": "semantic",
             "tailwind": "--text-code-sm--letter-spacing"
+          }
+        }
+      }
+    },
+    "heading-1": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{text.title-2.family}",
+        "$description": "Font family of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{text.title-2.size}",
+        "$description": "Font size of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-1"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{text.title-2.weight}",
+        "$description": "Font weight of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-1--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{text.title-2.leading}",
+        "$description": "Unitless line height of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-1--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{text.title-2.tracking}",
+        "$description": "Letter spacing of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-1--letter-spacing"
+          }
+        }
+      }
+    },
+    "heading-2": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{text.title-3.family}",
+        "$description": "Font family of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{text.title-3.size}",
+        "$description": "Font size of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-2"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{text.title-3.weight}",
+        "$description": "Font weight of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-2--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{text.title-3.leading}",
+        "$description": "Unitless line height of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-2--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{text.title-3.tracking}",
+        "$description": "Letter spacing of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-2--letter-spacing"
+          }
+        }
+      }
+    },
+    "heading-3": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{text.subtitle-1.family}",
+        "$description": "Font family of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{text.subtitle-1.size}",
+        "$description": "Font size of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-3"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{text.subtitle-1.weight}",
+        "$description": "Font weight of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-3--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{text.subtitle-1.leading}",
+        "$description": "Unitless line height of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-3--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{text.subtitle-1.tracking}",
+        "$description": "Letter spacing of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-3--letter-spacing"
+          }
+        }
+      }
+    },
+    "heading-4": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{text.subtitle-2.family}",
+        "$description": "Font family of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{text.subtitle-2.size}",
+        "$description": "Font size of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-4"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{text.subtitle-2.weight}",
+        "$description": "Font weight of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-4--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{text.subtitle-2.leading}",
+        "$description": "Unitless line height of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-4--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{text.subtitle-2.tracking}",
+        "$description": "Letter spacing of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-heading-4--letter-spacing"
+          }
+        }
+      }
+    },
+    "body": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{text.body-1.family}",
+        "$description": "Font family of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{text.body-1.size}",
+        "$description": "Font size of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{text.body-1.weight}",
+        "$description": "Font weight of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{text.body-1.leading}",
+        "$description": "Unitless line height of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{text.body-1.tracking}",
+        "$description": "Letter spacing of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body--letter-spacing"
+          }
+        }
+      }
+    },
+    "body-strong": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{text.body-1-strong.family}",
+        "$description": "Font family of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{text.body-1-strong.size}",
+        "$description": "Font size of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-strong"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{text.body-1-strong.weight}",
+        "$description": "Font weight of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-strong--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{text.body-1-strong.leading}",
+        "$description": "Unitless line height of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-strong--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{text.body-1-strong.tracking}",
+        "$description": "Letter spacing of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-body-strong--letter-spacing"
+          }
+        }
+      }
+    },
+    "label": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{text.body-1.family}",
+        "$description": "Font family of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{text.body-1.size}",
+        "$description": "Font size of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-label"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{text.body-1.weight}",
+        "$description": "Font weight of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-label--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{text.body-1.leading}",
+        "$description": "Unitless line height of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-label--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{text.body-1.tracking}",
+        "$description": "Letter spacing of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-label--letter-spacing"
+          }
+        }
+      }
+    },
+    "caption": {
+      "family": {
+        "$type": "fontFamily",
+        "$value": "{text.caption-1.family}",
+        "$description": "Font family of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic"
+          }
+        }
+      },
+      "size": {
+        "$type": "dimension",
+        "$value": "{text.caption-1.size}",
+        "$description": "Font size of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption"
+          }
+        }
+      },
+      "weight": {
+        "$type": "fontWeight",
+        "$value": "{text.caption-1.weight}",
+        "$description": "Font weight of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption--font-weight"
+          }
+        }
+      },
+      "leading": {
+        "$type": "number",
+        "$value": "{text.caption-1.leading}",
+        "$description": "Unitless line height of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption--line-height"
+          }
+        }
+      },
+      "tracking": {
+        "$type": "dimension",
+        "$value": "{text.caption-1.tracking}",
+        "$description": "Letter spacing of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--text-caption--letter-spacing"
           }
         }
       }

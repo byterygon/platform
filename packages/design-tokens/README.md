@@ -21,6 +21,10 @@ app root, translucent layers on it, control strokes with a darker bottom edge, a
 for fields, a double focus ring, Fluent depth shadows for flyouts and dialogs, and a blur for what
 shows through. Contrast on a layer is checked over the backdrop at its least favourable point.
 
+The text roles are Fluent 2's type ramp (caption, body, subtitle, title, large title, display,
+scaled by the `fontSize` seed) and the motion tokens Fluent 2's durations and curves; the older
+role names remain as aliases.
+
 Everything a contributor or an agent needs (commands, the theme file, the tiers, the rules, how
 to add a role or a preset, what never to do) is in [AGENTS.md](./AGENTS.md).
 

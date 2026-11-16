@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { tokenMs, useLoopAnimation } from "@/lib/motion";
+import { tokens } from "@byterygon/design-tokens/default/tokens";
+import { MOTION_DURATION_MS, MOTION_EASING, durationVar, easingVar, tokenEasing, tokenMs, useLoopAnimation } from "@/lib/motion";
 import { cleanup, render } from "./render.tsx";
 
 afterEach(() => {
@@ -58,6 +59,39 @@ describe("@/lib/motion", () => {
     element.style.setProperty("--by-motion-duration-slow", "0.5s");
     expect(tokenMs(element, "--by-motion-duration-slow", 2, 0)).toBe(1000);
     expect(tokenMs(element, "--by-motion-duration-base", 2, 777)).toBe(777);
+    element.remove();
+  });
+
+  test("the Fluent durations and curves are the default theme's motion tokens", () => {
+    const value = (path: string) => (tokens as Record<string, { values: Record<string, string> }>)[path]?.values["base"];
+    for (const [name, ms] of Object.entries(MOTION_DURATION_MS)) {
+      const path = `motion.duration.${name}`;
+      const raw = value(path);
+      // An alias (base) resolves through its target.
+      const resolved = raw?.startsWith("{") ? value(raw.slice(1, -1)) : raw;
+      expect(resolved, path).toBe(ms === 0 ? "0" : `${ms}ms`);
+      expect(durationVar(name as keyof typeof MOTION_DURATION_MS)).toBe(`--by-${path.replaceAll(".", "-")}`);
+    }
+    const durations = Object.keys(tokens).filter((path) => path.startsWith("motion.duration."));
+    expect(durations.sort()).toEqual(Object.keys(MOTION_DURATION_MS).map((name) => `motion.duration.${name}`).sort());
+    for (const [name, curve] of Object.entries(MOTION_EASING)) {
+      const path = `motion.easing.${name}`;
+      const raw = value(path);
+      const resolved = raw?.startsWith("{") ? value(raw.slice(1, -1)) : raw;
+      expect(resolved, path).toBe(curve);
+      expect(easingVar(name as keyof typeof MOTION_EASING)).toBe(`--by-${path.replaceAll(".", "-")}`);
+    }
+    const curves = Object.keys(tokens).filter((path) => path.startsWith("motion.easing."));
+    expect(curves.sort()).toEqual(Object.keys(MOTION_EASING).map((name) => `motion.easing.${name}`).sort());
+  });
+
+  test("tokenEasing reads the theme's curve and falls back to Fluent's", () => {
+    expect(tokenEasing(null, "decelerate-mid")).toBe("cubic-bezier(0, 0, 0, 1)");
+    const element = document.createElement("div");
+    document.body.append(element);
+    expect(tokenEasing(element, "easy-ease")).toBe(MOTION_EASING["easy-ease"]);
+    element.style.setProperty("--by-motion-easing-easy-ease", "cubic-bezier(0.4, 0, 0.6, 1)");
+    expect(tokenEasing(element, "easy-ease")).toBe("cubic-bezier(0.4, 0, 0.6, 1)");
     element.remove();
   });
 });
