@@ -114,7 +114,7 @@ export function SheetContent({ showClose = true, closeLabel = "Close", className
         <DialogPrimitive.Popup {...scope} data-slot="sheet-content" data-side={side} data-size={size} className={cn(popupClasses, sheetVariants.side[side], sized, className)} {...props}>
           {children}
           {showClose ? (
-            <DialogPrimitive.Close render={<IconButton aria-label={closeLabel} size="sm" />} className={cn(dialogClasses.close)}>
+            <DialogPrimitive.Close render={<IconButton aria-label={closeLabel} size="small" />} className={cn(dialogClasses.close)}>
               <XIcon />
             </DialogPrimitive.Close>
           ) : null}

@@ -113,7 +113,7 @@ export function Alert({ variant = "neutral", layout = "inline", icon, onDismiss,
           ) : null}
           <div className={classes.content}>{children}</div>
           {onDismiss ? (
-            <IconButton aria-label={dismissLabel} size="sm" onClick={onDismiss} className={classes.dismiss}>
+            <IconButton aria-label={dismissLabel} size="small" onClick={onDismiss} className={classes.dismiss}>
               <XIcon />
             </IconButton>
           ) : null}

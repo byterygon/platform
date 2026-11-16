@@ -160,7 +160,7 @@ export function DialogContent({ showClose = true, closeLabel = "Close", classNam
           <DialogPrimitive.Popup data-slot="dialog-content" data-size={size} className={cn(dialogClasses.popup, dialogVariants.size[size], className)} {...props}>
             {children}
             {showClose ? (
-              <DialogPrimitive.Close render={<IconButton aria-label={closeLabel} size="sm" />} className={cn(dialogClasses.close)}>
+              <DialogPrimitive.Close render={<IconButton aria-label={closeLabel} size="small" />} className={cn(dialogClasses.close)}>
                 <XIcon />
               </DialogPrimitive.Close>
             ) : null}
@@ -216,7 +216,7 @@ export interface DialogCloseProps extends DialogPrimitive.Close.Props {
   ref?: Ref<HTMLButtonElement>;
 }
 
-/** Closes the dialog. Unstyled: render a Button through `render` (`render={<Button variant="ghost" />}`). */
+/** Closes the dialog. Unstyled: render a Button through `render` (`render={<Button appearance="subtle" />}`). */
 export function DialogClose(props: DialogCloseProps) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }

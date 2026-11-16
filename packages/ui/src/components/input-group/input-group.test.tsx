@@ -20,8 +20,8 @@ describe("InputGroup", () => {
     expect(root.querySelector("input")!.dataset.slot).toBe("input-group-input");
     const button = root.querySelector("button")!;
     expect(button.dataset.slot).toBe("input-group-button");
-    expect(button.dataset.variant).toBe("ghost");
-    expect(button.dataset.size).toBe("sm");
+    expect(button.dataset.appearance).toBe("subtle");
+    expect(button.dataset.size).toBe("small");
     expect(button.type).toBe("button");
     expect(await axeViolations(container)).toEqual([]);
   });
@@ -40,9 +40,9 @@ describe("InputGroup", () => {
       return result;
     });
     expect(sizes).toEqual([
-      ["sm", true],
-      ["sm", false],
-      ["md", false],
+      ["small", true],
+      ["small", false],
+      ["medium", false],
     ]);
   });
 

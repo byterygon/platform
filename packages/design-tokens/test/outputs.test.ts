@@ -84,7 +84,7 @@ test("tokens.css: primitives once, roles per mode, references by var()", async (
   assert.deepEqual(declarations(css, ".dark"), dark);
   assert.equal(dark.has("--by-color-neutral-1"), false, "primitives are not repeated per mode");
   assert.equal(dark.has("--by-size-control-md"), false, "density roles are not in the theme block");
-  assert.equal(root.get("--by-size-control-md"), "36px");
+  assert.equal(root.get("--by-size-control-md"), "32px");
   assert.equal(compact.get("--by-size-control-md"), "28px");
   assert.equal(root.get("--by-radius-md"), "4px");
   assert.equal(root.get("--by-font-mono"), '"Cascadia Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace');
@@ -186,7 +186,7 @@ test("tokens.dtcg.json is a DTCG document with every mode", async () => {
   assert.deepEqual(role.$extensions[EXTENSION].modes, { light: "{color.neutral.2}", dark: "{color.neutral-dark.3}" });
   assert.equal(role.$extensions[EXTENSION].axis, "theme");
   assert.ok(role.$description.length > 20);
-  assert.deepEqual(dtcg.size.control.md.$value, { value: 36, unit: "px" });
+  assert.deepEqual(dtcg.size.control.md.$value, { value: 32, unit: "px" });
   assert.equal(dtcg.shadow.raised.$value[0].color, "{color.black.a2}");
   assert.deepEqual(dtcg.$extensions[EXTENSION].axes.map((a: { name: string }) => a.name), ["theme", "density"]);
 });
@@ -204,7 +204,7 @@ test("figma-variables.json groups variables into collections with modes", async 
   const canvas = variable("Theme", "color/bg/canvas");
   assert.deepEqual(canvas.valuesByMode.Dark, { type: "VARIABLE_ALIAS", collection: "Primitives", name: "color/neutral-dark/3" });
   assert.equal(canvas.codeSyntax.WEB, "var(--by-color-bg-canvas)");
-  assert.deepEqual(variable("Density", "size/control/md").valuesByMode, { Comfortable: 36, Compact: 28 });
+  assert.deepEqual(variable("Density", "size/control/md").valuesByMode, { Comfortable: 32, Compact: 28 });
   assert.deepEqual(variable("Semantic", "radius/md").valuesByMode, { Value: 4 });
   assert.equal(variable("Semantic", "font/sans").valuesByMode.Value, "Segoe UI Variable Text");
   // Figma has no variable for a shadow or an easing curve; everything else is a variable.

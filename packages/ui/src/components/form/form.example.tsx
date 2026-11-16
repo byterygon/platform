@@ -151,7 +151,7 @@ export function FormRealistic() {
       </form.Field>
       <div className="flex items-center gap-inline-md">
         <form.Subscribe selector={(state) => state.isSubmitting}>{(submitting) => <Button type="submit" loading={submitting}>Save connection</Button>}</form.Subscribe>
-        <Button variant="ghost" onClick={() => form.reset()}>
+        <Button appearance="subtle" onClick={() => form.reset()}>
           Reset
         </Button>
         <p role="status" className="text-caption text-fg-muted">

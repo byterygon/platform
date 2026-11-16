@@ -28,7 +28,7 @@ function Example({ onRename, onClose }: { onRename?: () => void; onClose?: () =>
   return (
     <div>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="secondary" />}>Actions</DropdownMenuTrigger>
+        <DropdownMenuTrigger render={<Button appearance="secondary" />}>Actions</DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuGroup>
             <DropdownMenuLabel>Tab</DropdownMenuLabel>

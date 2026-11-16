@@ -25,16 +25,28 @@ const pressed = (container: HTMLElement) =>
   [...container.querySelectorAll("button")].filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent);
 
 describe("ToggleGroup", () => {
-  test("renders a named group of toggle buttons, outline and md by default", async () => {
+  test("renders a named group of toggle buttons, outline and medium by default", async () => {
     const { container } = render(<Views />);
     const group = container.querySelector('[data-slot="toggle-group"]') as HTMLElement;
     expect(group.getAttribute("role")).toBe("group");
-    expect(group.dataset.variant).toBe("outline");
-    expect(group.dataset.size).toBe("md");
+    expect(group.dataset.appearance).toBe("outline");
+    expect(group.dataset.size).toBe("medium");
     expect(group.dataset.orientation).toBe("horizontal");
     expect(container.querySelectorAll('[data-slot="toggle-group-item"]')).toHaveLength(3);
     expect(pressed(container)).toEqual(["Grid"]);
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  test("keeps the old variant and size names as aliases for one release", () => {
+    for (const [variant, appearance] of [["ghost", "subtle"], ["outline", "outline"]] as const) {
+      for (const [size, fluent] of [["sm", "small"], ["md", "medium"], ["lg", "large"]] as const) {
+        const { container, unmount } = render(<Views variant={variant} size={size} />);
+        const group = container.querySelector('[data-slot="toggle-group"]') as HTMLElement;
+        expect(group.dataset.appearance).toBe(appearance);
+        expect(group.dataset.size).toBe(fluent);
+        unmount();
+      }
+    }
   });
 
   test("single: pressing an item releases the others and reports the value", () => {

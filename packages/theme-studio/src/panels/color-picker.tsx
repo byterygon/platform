@@ -140,7 +140,7 @@ export function ColorSeed({ label, ramp, hue, chroma, lightness, kind, set, onCh
     <div className="flex items-center gap-inline-md">
       <Popover>
         <PopoverTrigger
-          render={<Button variant="ghost" className="h-auto w-full justify-start gap-inline-md px-inline-sm py-inline-sm" />}
+          render={<Button appearance="subtle" className="h-auto w-full justify-start gap-inline-md px-inline-sm py-inline-sm" />}
           aria-label={`${label}: hue ${current.hue}, chroma ${current.chroma}. Choose a colour`}
         >
           <span aria-hidden="true" className="inline-block size-control-md shrink-0 rounded-md border border-border" style={{ background: `var(--by-color-${ramp}-9)` }} />

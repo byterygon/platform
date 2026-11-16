@@ -143,7 +143,7 @@ test("overrides: aliases, literals and single modes", () => {
   assert.deepEqual(set.tokens.get("radius.lg")!.value, { value: 12, unit: "px" });
   assert.deepEqual(set.tokens.get("font.sans")!.value, ["IBM Plex Sans", "sans-serif"]);
   assert.deepEqual((set.tokens.get("color.brand.9")!.value as ColorValue).components, [0.5, 0.08, 230]);
-  assert.deepEqual(set.tokens.get("size.control.md")!.modes, { comfortable: { value: 36, unit: "px" }, compact: { value: 30, unit: "px" } });
+  assert.deepEqual(set.tokens.get("size.control.md")!.modes, { comfortable: { value: 32, unit: "px" }, compact: { value: 30, unit: "px" } });
   assert.equal(set.tokens.get("color.bg.canvas")!.overridden, undefined);
 });
 

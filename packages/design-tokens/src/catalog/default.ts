@@ -80,6 +80,14 @@ const background: RoleDef[] = [
     use: "The translucent backdrop behind a modal dialog, a drawer or a sheet.",
     avoid: "Not a surface and not a hover wash: nothing is read on it. Use color.bg.overlay for the dialog itself.",
   },
+  {
+    path: "color.bg.disabled",
+    type: "color",
+    value: ramp("neutral", 3, 2),
+    tailwind: "--color-disabled",
+    use: "The fill of a disabled filled control (a primary, secondary, outline or danger button, a checked checkbox), as Fluent 2's neutral disabled background; its text is color.fg.disabled.",
+    avoid: "Not for content or a recessed area (use color.bg.inset); quiet controls (subtle, transparent) stay transparent when disabled.",
+  },
 ];
 
 const foreground: RoleDef[] = [
@@ -165,6 +173,14 @@ const border: RoleDef[] = [
     tailwind: "--color-border-focus",
     use: "The border of a focused input, where the ring is drawn as the border itself.",
     avoid: "Not the outline drawn around a focused element: use ring.color with ring.width.",
+  },
+  {
+    path: "color.border.disabled",
+    type: "color",
+    value: ramp("neutral", 5),
+    tailwind: "--color-border-disabled",
+    use: "The outline of a disabled control that has one (secondary and outline buttons, fields), as Fluent 2's neutral disabled stroke.",
+    avoid: "Not for enabled controls (use color.border.subtle or color.border.strong) and not for separators (use color.border.default).",
   },
   {
     path: "color.ring",
@@ -493,25 +509,25 @@ const density: RoleDef[] = [
   {
     path: "size.control.sm",
     type: "dimension",
-    value: byDensity(px(28), px(22)),
+    value: byDensity(px(24), px(22)),
     tailwind: "--spacing-control-sm",
-    use: "Height of small controls and of dense rows (toolbars, grid rows).",
+    use: "Height of small controls (Fluent 2's small, 24 px when comfortable) and of dense rows (toolbars, grid rows).",
     avoid: "Not for forms a user fills in at length: use size.control.md.",
   },
   {
     path: "size.control.md",
     type: "dimension",
-    value: byDensity(px(36), px(28)),
+    value: byDensity(px(32), px(28)),
     tailwind: "--spacing-control-md",
-    use: "Height of standard controls: buttons, inputs, selects.",
-    avoid: "Not a fixed pixel value: never hard-code 36px, the density mode changes it.",
+    use: "Height of standard controls: buttons, inputs, selects (Fluent 2's medium, 32 px when comfortable).",
+    avoid: "Not a fixed pixel value: never hard-code 32px, the density mode changes it.",
   },
   {
     path: "size.control.lg",
     type: "dimension",
-    value: byDensity(px(44), px(34)),
+    value: byDensity(px(40), px(34)),
     tailwind: "--spacing-control-lg",
-    use: "Height of large controls: the main call to action, touch-first layouts.",
+    use: "Height of large controls (Fluent 2's large, 40 px when comfortable): the main call to action, touch-first layouts.",
     avoid: "Not inside dense tools such as grids and toolbars.",
   },
   {

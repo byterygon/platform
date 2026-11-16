@@ -59,6 +59,11 @@ export const LIBS: Record<string, { dependencies: string[]; description: string;
     description: "Class-name merging that knows the Tailwind names of the Byterygon token roles. Every Byterygon component imports it from @/lib/cn.",
     llms: "class-name merging that knows the role names; every component depends on it.",
   },
+  control: {
+    dependencies: [],
+    description: "What every Byterygon control shares (Fluent 2): the double focus ring (focusRing, focusRingWithin), Fluent's size names small/medium/large and the sm/md/lg and variant aliases kept for one release (controlSize, controlAppearance). Button, IconButton, ToggleButton, ToggleGroup and SplitButton import it from @/lib/control.",
+    llms: "the double focus ring and the size and appearance names (with the aliases kept for one release); every control depends on it.",
+  },
   "theme-scope": {
     dependencies: [],
     description: "Gives a popup in a portal the data-theme and data-density of the control that opened it, and reads length tokens in px. Select, Combobox and MultiSelect import it from @/lib/theme-scope.",
@@ -228,7 +233,7 @@ function llmsTxt(items: Item[]): string {
     lines.push(`- Wraps: ${manifest.base ?? "no Base UI part"}`);
     if (manifest.parts?.length) lines.push(`- Parts: ${manifest.parts.map((p) => `${p.name} (data-slot ${p.slot}): ${p.description}`).join("; ")}`);
     for (const [prop, values] of Object.entries(manifest.variants)) lines.push(`- ${prop}: ${values.join(", ")}`);
-    lines.push(`- Props: ${manifest.props.map((p) => `${p.name} (${p.type}${p.default !== undefined ? `, default ${JSON.stringify(p.default)}` : ""})`).join("; ")}`);
+    lines.push(`- Props: ${manifest.props.map((p) => `${p.name} (${p.type}${p.default !== undefined ? `, default ${JSON.stringify(p.default)}` : ""}${p.deprecated ? `, deprecated: ${p.deprecated}` : ""})`).join("; ")}`);
     lines.push(`- States: ${manifest.states.map((s) => `${s.name} (${s.variant})`).join(", ")}`);
     lines.push(`- Tokens: ${manifest.tokens.join(", ")}`);
     lines.push(`- Accessibility: ${manifest.accessibility.join(" ")}`, "");

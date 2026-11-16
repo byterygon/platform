@@ -17,7 +17,7 @@ import { Button } from "@/components/button/button";
 export function AlertDialogMinimal() {
   return (
     <AlertDialog size="sm">
-      <AlertDialogTrigger render={<Button variant="danger" />}>Delete connection</AlertDialogTrigger>
+      <AlertDialogTrigger render={<Button appearance="danger" />}>Delete connection</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete “orders-prod”?</AlertDialogTitle>
@@ -49,7 +49,7 @@ export function AlertDialogRealistic() {
   return (
     <div className="flex flex-wrap items-center gap-inline-sm">
       <AlertDialog>
-        <AlertDialogTrigger render={<Button variant="secondary" />}>Run TRUNCATE</AlertDialogTrigger>
+        <AlertDialogTrigger render={<Button appearance="secondary" />}>Run TRUNCATE</AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>This statement can destroy data</AlertDialogTitle>

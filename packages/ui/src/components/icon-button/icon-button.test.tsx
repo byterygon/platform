@@ -1,15 +1,17 @@
 import { createRef } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { buttonVariants } from "@/components/button/button";
+import { Icon as FluentIcon } from "@/components/icon/icon";
+import { Copy } from "@/lib/icons";
 import { act, axeViolations, cleanup, render } from "../../../test/render.tsx";
 import { IconButton, iconButtonVariants } from "./icon-button";
 
 afterEach(cleanup);
 
-const Icon = () => <svg aria-hidden="true" viewBox="0 0 16 16" />;
+const Icon = () => <FluentIcon icon={Copy} />;
 
 describe("IconButton", () => {
-  test("renders a native button named by aria-label, ghost and md by default", async () => {
+  test("renders a native button named by aria-label, subtle and medium by default", async () => {
     const { container } = render(
       <IconButton aria-label="Copy">
         <Icon />
@@ -19,8 +21,8 @@ describe("IconButton", () => {
     expect(button.getAttribute("aria-label")).toBe("Copy");
     expect(button.type).toBe("button");
     expect(button.dataset.slot).toBe("icon-button");
-    expect(button.dataset.variant).toBe("ghost");
-    expect(button.dataset.size).toBe("md");
+    expect(button.dataset.appearance).toBe("subtle");
+    expect(button.dataset.size).toBe("medium");
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -32,8 +34,25 @@ describe("IconButton", () => {
     expect([missing, labelledBy]).toHaveLength(2);
   });
 
-  test("uses Button's colours for each variant", () => {
-    expect(iconButtonVariants.variant).toBe(buttonVariants.variant);
+  test("uses Button's appearances", () => {
+    expect(iconButtonVariants.appearance).toBe(buttonVariants.appearance);
+  });
+
+  test("keeps the old variant and size names as aliases for one release", () => {
+    for (const [variant, appearance] of [["ghost", "subtle"], ["primary", "primary"], ["secondary", "secondary"], ["danger", "danger"]] as const) {
+      for (const [size, fluent] of [["sm", "small"], ["md", "medium"], ["lg", "large"]] as const) {
+        const { container, unmount } = render(
+          <IconButton aria-label="Copy" variant={variant} size={size}>
+            <Icon />
+          </IconButton>,
+        );
+        const button = container.querySelector("button")!;
+        expect(button.dataset.appearance).toBe(appearance);
+        expect(button.dataset.size).toBe(fluent);
+        expect(button.className.split(" ")).toEqual(expect.arrayContaining(iconButtonVariants.size[fluent].split(" ")));
+        unmount();
+      }
+    }
   });
 
   test("forwards the ref and reports clicks", () => {

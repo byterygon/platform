@@ -119,12 +119,13 @@
       "name": "button",
       "type": "registry:ui",
       "title": "Button",
-      "description": "An action button: primary, secondary, ghost and danger variants in three density-aware sizes, with disabled and loading states.",
+      "description": "Fluent 2's Button: primary, secondary, outline, subtle and transparent appearances (plus Byterygon's danger) in small, medium and large, with hover, pressed, focus (the double ring), disabled and loading states.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -545,13 +546,14 @@
       "name": "icon-button",
       "type": "registry:ui",
       "title": "IconButton",
-      "description": "A square, icon-only action button with Button's four variants in three density-aware sizes, disabled and loading states, and a required aria-label.",
+      "description": "A square, icon-only action button (Fluent 2's icon-only Button) with Button's appearances in small, medium and large, disabled and loading states, and a required aria-label.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
         "@byterygon/button",
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -1011,13 +1013,16 @@
       "name": "split-button",
       "type": "registry:ui",
       "title": "SplitButton",
-      "description": "A primary action joined to a menu of its variants: a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in three variants and three sizes.",
+      "description": "Fluent 2's SplitButton: a main action joined to a menu of its variants, a Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu), in Button's primary, secondary, outline, subtle and transparent appearances and small, medium and large.",
       "dependencies": [],
       "registryDependencies": [
         "@byterygon/button",
         "@byterygon/cn",
+        "@byterygon/control",
         "@byterygon/dropdown-menu",
-        "@byterygon/icon-button"
+        "@byterygon/icon",
+        "@byterygon/icon-button",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -1231,12 +1236,14 @@
       "name": "toggle-button",
       "type": "registry:ui",
       "title": "ToggleButton",
-      "description": "A button that stays pressed or unpressed, on Base UI's Toggle, in a ghost or outline variant and three density-aware sizes.",
+      "description": "Fluent 2's ToggleButton on Base UI's Toggle: a Button that stays checked, in Button's primary, secondary, outline, subtle and transparent appearances and small, medium and large.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/button",
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -1249,12 +1256,13 @@
       "name": "toggle-group",
       "type": "registry:ui",
       "title": "ToggleGroup",
-      "description": "Toggle buttons with one shared value, on Base UI's ToggleGroup: a segmented outline track or quiet ghost items, single or multiple selection, horizontal or vertical, in three density-aware sizes.",
+      "description": "Toggle buttons with one shared value, on Base UI's ToggleGroup: a segmented outline track (a layer with a hairline and a darker bottom edge) or separate subtle items, single or multiple selection, horizontal or vertical, small, medium or large.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
         "@byterygon/toggle-button"
       ],
       "files": [
@@ -1347,6 +1355,19 @@
       "files": [
         {
           "path": "lib/cn.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
+      "name": "control",
+      "type": "registry:lib",
+      "title": "control",
+      "description": "What every Byterygon control shares (Fluent 2): the double focus ring (focusRing, focusRingWithin), Fluent's size names small/medium/large and the sm/md/lg and variant aliases kept for one release (controlSize, controlAppearance). Button, IconButton, ToggleButton, ToggleGroup and SplitButton import it from @/lib/control.",
+      "dependencies": [],
+      "files": [
+        {
+          "path": "lib/control.ts",
           "type": "registry:lib"
         }
       ]

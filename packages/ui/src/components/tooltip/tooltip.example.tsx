@@ -42,7 +42,7 @@ export function TooltipRealistic() {
     <TooltipProvider delay={400}>
       <div className="flex items-center gap-inline-xs">
         <Tooltip>
-          <TooltipTrigger render={<IconButton aria-label="Run statement" variant="primary" />}>
+          <TooltipTrigger render={<IconButton aria-label="Run statement" appearance="primary" />}>
             <PlayIcon />
           </TooltipTrigger>
           <TooltipContent>
@@ -66,7 +66,7 @@ export function TooltipRealistic() {
           </TooltipContent>
         </Tooltip>
         <Tooltip defaultOpen>
-          <TooltipTrigger render={<Button variant="ghost" size="sm" />}>Run first statement</TooltipTrigger>
+          <TooltipTrigger render={<Button appearance="subtle" size="small" />}>Run first statement</TooltipTrigger>
           <TooltipContent side="bottom">
             The selection holds three statements; one run takes one. <TooltipShortcut>Ctrl+Enter</TooltipShortcut>
           </TooltipContent>

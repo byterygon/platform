@@ -88,7 +88,7 @@ export function TabsRealistic() {
             Read-only
           </TabsTrigger>
         </TabsList>
-        <IconButton aria-label="New query tab" size="sm" onClick={add}>
+        <IconButton aria-label="New query tab" size="small" onClick={add}>
           <PlusIcon />
         </IconButton>
       </div>

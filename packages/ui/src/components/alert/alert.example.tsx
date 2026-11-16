@@ -28,7 +28,7 @@ export function AlertRealistic() {
           <code>42P01</code> relation &quot;public.order_itemz&quot; does not exist at line 3, column 15. Check the table name or refresh the schema.
         </AlertDescription>
         <AlertActions>
-          <Button size="sm" variant="secondary">
+          <Button size="small" appearance="secondary">
             Refresh schema
           </Button>
         </AlertActions>

@@ -22,7 +22,7 @@ function Example({ children, ...props }: { size?: DialogSize; onOpenChange?: (op
           {children}
         </DialogBody>
         <DialogFooter>
-          <DialogClose render={<Button variant="ghost" />}>Cancel</DialogClose>
+          <DialogClose render={<Button appearance="subtle" />}>Cancel</DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>

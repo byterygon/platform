@@ -76,16 +76,29 @@ describe("SplitButton", () => {
     expect(menuButton().hasAttribute("data-disabled")).toBe(true);
   });
 
-  test("the ref reaches the action's button; variant and size reach both halves", () => {
+  test("the ref reaches the action's button; appearance and size reach both halves", () => {
     const ref = createRef<HTMLButtonElement>();
     render(
-      <SplitButton ref={ref} variant="ghost" size="sm" menu={null}>
+      <SplitButton ref={ref} appearance="outline" size="small" menu={null}>
         Copy
       </SplitButton>,
     );
     expect(ref.current).toBe(action());
-    expect(action().dataset.variant).toBe("ghost");
-    expect(menuButton().dataset.size).toBe("sm");
+    expect(action().dataset.appearance).toBe("outline");
+    expect(menuButton().dataset.appearance).toBe("outline");
+    expect(menuButton().dataset.size).toBe("small");
     expect(menuButton().className).toContain("border-s-border");
+    expect(menuButton().querySelector('[data-slot="icon"]')?.getAttribute("data-icon")).toBe("chevron-down");
+  });
+
+  test("keeps the old variant and size names as aliases for one release", () => {
+    render(
+      <SplitButton variant="ghost" size="sm" menu={null}>
+        Copy
+      </SplitButton>,
+    );
+    expect(action().dataset.appearance).toBe("subtle");
+    expect(action().dataset.size).toBe("small");
+    expect(menuButton().dataset.size).toBe("small");
   });
 });

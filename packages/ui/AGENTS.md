@@ -12,6 +12,7 @@ src/components/<name>/<name>.tsx            the component (Base UI part + token 
                      /<name>.example.tsx    a minimal and a realistic example (rendered by tests)
                      /<name>.test.tsx       behaviour tests (keyboard, events, ARIA)
 src/lib/cn.ts                               class merging that knows the role names
+src/lib/control.ts                          the double focus ring, Fluent's size names and the aliases kept for one release
 src/lib/theme-scope.ts                      a popup in a portal takes its trigger's theme and density
 src/lib/monaco.ts                           Monaco loaded lazily and offline, and its theme from the tokens
                                             (its colour mapping is @byterygon/design-tokens/monaco)
@@ -87,6 +88,41 @@ What `test/conventions.test.tsx` enforces for every component:
   `aria-haspopup` trigger in the examples so the parts inside the popup are checked;
 - the examples render without axe violations (WCAG 2.x A/AA) in Light and Dark, Comfortable and
   Compact. Colour contrast is not measured in jsdom: the token build checks every pair.
+
+## Fluent 2 API (TSK-53)
+
+Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open question 104 (c)).
+
+- **Appearance**: Button, IconButton, ToggleButton and SplitButton take `appearance` = `primary` |
+  `secondary` | `outline` | `subtle` | `transparent` (Button and IconButton also Byterygon's
+  `danger`: Fluent has none). Primary is the accent solid; secondary a translucent layer
+  (`bg-layer`) with a hairline (`border-border-subtle`) and a darker bottom edge
+  (`border-b-border-control-bottom-subtle`); outline an edge with no fill; subtle a wash on hover with
+  the icon turning accent; transparent no fill ever, accent text on hover. ToggleGroup is `outline`
+  (a segmented track) or `subtle`. Defaults stay what they were (Button and SplitButton primary,
+  IconButton and ToggleButton subtle, ToggleGroup outline), so code without the prop looks as meant.
+- **Size**: `small` | `medium` | `large` (default medium). Comfortable is Fluent's 24, 32 and 40 px
+  (`size.control.sm`, `md`, `lg`); compact maps the same names onto 22, 28 and 34 px. Text:
+  `text-caption-1`, `text-body-1-strong`, `text-subtitle-2`; icon: `size-icon-md`, `lg`, `xl` (16,
+  20, 24 px); padding `inset-xs`, `control-x`, `inset-md` (Fluent's 8, 12, 16 px when comfortable).
+- **Aliases for one release**: the old `variant` (`ghost` is `subtle`; ToggleButton's and ToggleGroup's
+  `outline` is `outline`) and `sm`/`md`/`lg` still work. They are `@deprecated` in the types, listed in
+  the manifest's `props` with `deprecated` (what to use instead; `llms.txt` prints it), mapped by
+  `controlAppearance` and `controlSize` from `@/lib/control`, and tested. `appearance` wins over
+  `variant`. The rendered element always carries the Fluent names (`data-appearance`, `data-size`).
+  DBee keeps the old names until TSK-55; the next release removes the aliases.
+- **Focus**: every control uses `focusRing` (or `focusRingWithin` when focus sits on an element
+  inside it) from `@/lib/control`: an outline in `ring.color` (`ring.width`, offset by
+  `ring.inner-width`) around a box-shadow in `ring.inner-color`. Forced-colours mode keeps the
+  outline. Never write the focus classes again in a component. Joined controls (SplitButton, the
+  outline ToggleGroup) lift the focused part (`focus-visible:relative`) so its ring is never covered.
+- **Disabled**: filled appearances take `bg-disabled` and `border-border-disabled`, every appearance
+  `text-fg-disabled` (Fluent's disabled colours, not an opacity); loading shows as disabled, as
+  Fluent's `disabledFocusable`.
+- **Checked** (ToggleButton, ToggleGroup items): `bg-selected` (hover `bg-selected-hover`) with the
+  default text, the accent's pressed solid on primary, accent text on transparent. Pass the Icon
+  `filled` while pressed, as Fluent does.
+- **Motion**: hover and state changes `duration-[var(--by-motion-duration-faster)] ease-easy-ease`.
 
 ## Forms
 
@@ -331,11 +367,14 @@ registry item, which `@byterygon/icon` depends on.
   `node scripts/check-licenses.mjs` and `test/icons.test.ts` fail on a changed, missing or unlisted
   file, a stale module or a missing licence.
 - The components still draw their own SVGs; TSK-53/55 swap them for these, in this mapping
-  (`REPLACEMENTS` in `test/icons.test.ts`, which checks every icon below is vendored):
+  (`REPLACEMENTS` in `test/icons.test.ts`, which checks every icon below is vendored). A component
+  leaves `REPLACEMENTS` when its svgs are swapped, and the test then fails if its component or
+  example draws an `<svg>` again (Icon, Spinner and Chart draw on purpose). Done: Button,
+  IconButton, ToggleButton, ToggleGroup, SplitButton (TSK-53 batch 1).
 
 | Hand-drawn today | Fluent icon |
 | --- | --- |
-| Accordion, Select, Combobox, NavigationMenu, SplitButton chevron | ChevronDown |
+| Accordion, Select, Combobox, NavigationMenu chevron (SplitButton: done) | ChevronDown |
 | Breadcrumb, Collapsible, JsonViewer, Tree, submenu, Pagination next | ChevronRight |
 | Pagination previous, Calendar previous month | ChevronLeft (and ChevronRight) |
 | Table sort (none / ascending / descending) | ArrowSort, ArrowSortUp, ArrowSortDown |
@@ -390,8 +429,10 @@ QuestionCircle, ChevronUp, MoreVertical, Star.
   (`duration-[var(--by-motion-duration-fast)]`, `ease-easy-ease`, `z-[var(--by-z-modal)]`,
   `outline-[length:var(--by-ring-width)]`). Breakpoints are not CSS variables; read
   `tokens.ts` if you need the number.
-- Focus: `outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)]
-  focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring`.
+- Focus: `focusRing` from `@/lib/control` (Fluent's double ring; see "Fluent 2 API"). Components
+  not yet moved by TSK-53 still write the single ring (`outline-none focus-visible:outline-solid
+  focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)]
+  focus-visible:outline-ring`).
 - When no role fits, add one to `@byterygon/design-tokens` (its AGENTS.md), never a raw value here.
 - Write every class out in full in the source, never assembled from template strings: Tailwind
   finds classes by scanning the installed files as text.

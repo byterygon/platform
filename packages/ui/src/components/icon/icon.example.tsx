@@ -39,7 +39,7 @@ export function IconRealistic() {
           <Icon icon={Play} filled />
           Run
         </Button>
-        <Button variant="secondary">
+        <Button appearance="secondary">
           <Icon icon={ArrowDownload} />
           Export
         </Button>
