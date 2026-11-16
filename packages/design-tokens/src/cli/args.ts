@@ -97,7 +97,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     name: "export",
     usage: "by-tokens export <css|tailwind|shadcn|ts|dtcg|figma|monaco|registry|theme> [--theme <name|file>] [--out <file>]",
-    summary: "Print one output to stdout (or to a file): the same bytes the Theme Studio exports. `monaco` is monaco-theme.ts, `registry` the shadcn registry:theme item, `theme` the theme with every seed spelled out.",
+    summary: "Print one output to stdout (or to a file): the same bytes the Theme Studio exports for the same theme file. `monaco` is monaco-theme.ts, `registry` the shadcn registry:theme item, `theme` the theme with every seed spelled out. With --json the document also has `install`, the install note the Studio shows.",
     options: [THEME, { name: "--out", value: "<file>", summary: "write to this file instead of stdout" }, JSON_FLAG],
   },
   {

@@ -22,7 +22,16 @@ pnpm --filter @byterygon/theme-studio dev        # Vite dev server
 pnpm --filter @byterygon/theme-studio build      # dist/: index.html, studio.js, studio.css
 pnpm --filter @byterygon/theme-studio test       # Vitest (jsdom): state, persistence, the app, dist/
 pnpm --filter @byterygon/theme-studio typecheck
+pnpm --filter @byterygon/theme-studio check:browser   # the built Studio in Chromium: file://, server, every export
 ```
+
+`check:browser` builds `dist/`, then drives a Chromium-family browser over the DevTools protocol
+from `file://` and from a loopback server. It fails on any request outside the Studio's own files,
+any script error, an edit that does not apply or persist, Monaco not starting, or an export
+(downloaded through the Export dialog for every preset and format) that differs from
+`by-tokens export`. Without a browser it skips unless `BYTERYGON_REQUIRE_BROWSER=1` (CI, in a
+network namespace); `BYTERYGON_BROWSER` names one; `--presets a,b` and `--screenshot <dir>` help
+locally.
 
 Open `dist/index.html` directly, or serve `dist/` from any static server. Nothing else is needed.
 
@@ -40,11 +49,23 @@ The Studio's whole state is a theme file and a view, so every edit is a change t
 | Problems tab, a token's contrast pairs | `by-tokens validate --theme <file> --contrast --json` |
 | A token's resolved values and alias chain | `by-tokens explain <token> --theme <file>` |
 | The address bar (state) | `by-tokens hash encode --theme <file> --mode dark` / `by-tokens hash decode '<hash or url>'` |
-| Export (TSK-48 batch 3) | `by-tokens export <css\|tailwind\|shadcn\|dtcg\|figma\|ts\|monaco\|registry\|theme> --theme <file>` |
+| Export dialog (Copy, Download, install note) | `by-tokens export <css\|tailwind\|shadcn\|dtcg\|figma\|ts\|monaco\|registry\|theme> --theme <name>.theme.json` (`--json` adds the same install note) |
 
 The hash and the theme file are versioned and documented in
 `packages/design-tokens/AGENTS.md` ("Studio state"). To open a theme in the Studio, append its
 hash to the Studio URL: `file:///opt/theme-studio/index.html#by=1&theme=...`.
+
+## Export
+
+The Export dialog lists `EXPORT_FORMATS` of `@byterygon/design-tokens` (label, file name, install
+note) and shows `exportTheme(theme, format)`, the function `by-tokens export` calls. Generated
+headers name the source `<name>.theme.json`, which is what the theme-file export saves, so
+`by-tokens export <format> --theme <name>.theme.json` on that file prints the same bytes.
+`test/parity.test.ts` proves it for every preset, a new theme and an edited one, in every format
+(in-process and through the installed binary); `check:browser` proves it for the real downloads.
+A theme that breaks a rule exports nothing, as with `by-tokens` (exit 1). Copy uses the Clipboard
+API with a selected-textarea fallback; Download is a blob URL, which works from `file://`.
+Never format an export in the Studio: add the format to `src/export.ts` of the token package.
 
 ## State
 

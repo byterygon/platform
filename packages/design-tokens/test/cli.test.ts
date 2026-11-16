@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { OUTPUT_FILES } from "../src/build.js";
+import { EXPORT_FORMATS, OUTPUT_ALIASES, OUTPUT_FILES, exportFormat } from "../src/build.js";
 import { EXIT, run } from "../src/cli/main.js";
 import { ROOT, themeWith } from "./helpers.js";
 
@@ -223,6 +223,18 @@ test("export monaco and registry print the committed Monaco theme and registry i
     assert.equal(out.json.content, readFileSync(join(ROOT, "generated", "default", file), "utf8"));
   }
   assert.equal(JSON.parse((await cli("export", "registry", "--theme", "paper")).stdout).name, "theme-paper");
+});
+
+test("every export format is listed once, with a file name and an install note the --json document carries", async () => {
+  assert.deepEqual(EXPORT_FORMATS.map((info) => info.format).sort(), [...Object.keys(OUTPUT_ALIASES), "theme"].sort());
+  for (const info of EXPORT_FORMATS) {
+    assert.ok(info.install.length > 120, `${info.format}: install note`);
+    const out = await cli("export", info.format, "--theme", "slate", "--json");
+    assert.equal(out.code, EXIT.ok, info.format);
+    assert.equal(out.json.install, info.install);
+    assert.equal(out.json.file, info.file("slate"));
+  }
+  assert.equal(exportFormat("registry")!.download("slate"), "theme-slate.json");
 });
 
 test("hash encode and decode round-trip a theme file and the view", async () => {

@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/tabs/tabs
 import { ToggleGroup, ToggleGroupItem } from "@/components/toggle-group/toggle-group";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { derive } from "./engine.ts";
+import { ExportPanel } from "./panels/export-panel.tsx";
 import { SeedsPanel } from "./panels/seeds-panel.tsx";
 import { TokenDetail, TokenList } from "./panels/token-editor.tsx";
 import { Gallery, SwatchBoard } from "./panels/preview.tsx";
@@ -127,6 +128,7 @@ export function App({ initial, save = saveState }: AppProps) {
         <div className="ms-auto flex flex-wrap items-center gap-inline-md">
           <Choice label="Colour mode" value={view.mode} options={[["light", "Light"], ["dark", "Dark"]]} onChange={(mode) => setView({ ...view, mode })} />
           <Choice label="Density" value={view.density} options={[["comfortable", "Comfortable"], ["compact", "Compact"]]} onChange={(density) => setView({ ...view, density })} />
+          <ExportPanel theme={theme} />
           <AlertDialog size="sm">
             <AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Start over</AlertDialogTrigger>
             <AlertDialogContent>

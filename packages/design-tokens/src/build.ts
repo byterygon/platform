@@ -56,3 +56,5 @@ export async function buildTheme(theme: unknown, options: BuildOptions = {}): Pr
   const source = options.source ?? `themes/${generated.set.name}.theme.json`;
   return { ...base, files: await renderOutputs(generated.set, source) };
 }
+
+export { EXPORT_FORMATS, type ExportFormat, type ExportFormatInfo, type ExportOptions, type ExportResult, exportFormat, exportTheme, formatThemeFile } from "./export.js";

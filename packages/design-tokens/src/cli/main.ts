@@ -6,7 +6,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { basename, dirname, join, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { type BuildResult, OUTPUT_ALIASES, OUTPUT_FILES, type OutputFile, buildTheme, committedOutputs } from "../build.js";
+import { type BuildResult, OUTPUT_FILES, type OutputFile, buildTheme, committedOutputs } from "../build.js";
+import { EXPORT_FORMATS, type ExportFormat, exportFormat, exportTheme } from "../export.js";
 import { generateTokens } from "../generate.js";
 import { type Diagnostic, type ModeContext, type Token, type TokenSet, SCHEMA_VERSION, TIERS, hasErrors } from "../model.js";
 import { dependentAxes, ownValues, referencedBy, resolve } from "../resolve.js";
@@ -477,38 +478,30 @@ async function preset(args: ParsedArgs, io: Io): Promise<Outcome> {
 
 async function exportCommand(args: ParsedArgs, io: Io): Promise<Outcome> {
   const format = args.positionals[0];
-  const formats = [...Object.keys(OUTPUT_ALIASES), "theme"];
-  if (!format || args.positionals.length > 1 || !formats.includes(format)) {
+  const formats = EXPORT_FORMATS.map((info) => info.format);
+  if (!format || args.positionals.length > 1 || !(formats as readonly string[]).includes(format)) {
     throw new UsageError("usage", format ? `unknown export format "${format}"` : "export needs a format", `Formats: ${formats.join(", ")}. Usage: by-tokens export <format> [--theme <name|file>] [--out <file>]`);
   }
   const loaded = loadTheme(themeFlag(args), io);
-  const result: BuildResult = await buildTheme(loaded.theme, { source: loaded.source, render: format !== "theme" });
+  // The same function as the Theme Studio's Export panel: the same theme file gives the same bytes.
+  const result = await exportTheme(loaded.theme, format as ExportFormat, { source: loaded.source });
+  const install = exportFormat(format)!.install;
   if (!result.ok) {
-    return { exitCode: EXIT.invalid, data: { theme: result.set.name, format, diagnostics: result.diagnostics }, text: [...diagnosticsText(result.diagnostics), "export failed: the theme breaks a rule"].join("\n") };
+    return { exitCode: EXIT.invalid, data: { theme: result.theme, format, diagnostics: result.diagnostics }, text: [...diagnosticsText(result.diagnostics), "export failed: the theme breaks a rule"].join("\n") };
   }
-  let file: string;
-  let content: string;
-  if (format === "theme") {
-    file = `${result.set.name}${PRESET_SUFFIX}`;
-    content = stableJson({
-      schemaVersion: SCHEMA_VERSION,
-      name: result.set.name,
-      ...(result.set.description ? { description: result.set.description } : {}),
-      seeds: result.seeds,
-      overrides: isPlainObject(loaded.theme) && isPlainObject(loaded.theme["overrides"]) ? loaded.theme["overrides"] : {},
-    });
-  } else {
-    file = OUTPUT_ALIASES[format]!;
-    content = result.files!.get(OUTPUT_ALIASES[format]!)!;
-  }
+  const content = result.content!;
   const outFlag = flag(args, "--out");
   if (outFlag) {
     const target = resolvePath(io.cwd, outFlag);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, content);
-    return { exitCode: EXIT.ok, data: { theme: result.set.name, format, file, written: display(io, target), bytes: Buffer.byteLength(content), diagnostics: result.diagnostics }, text: `wrote ${display(io, target)} (${Buffer.byteLength(content)} bytes)` };
+    return {
+      exitCode: EXIT.ok,
+      data: { theme: result.theme, format, file: result.file, written: display(io, target), bytes: Buffer.byteLength(content), install, diagnostics: result.diagnostics },
+      text: `wrote ${display(io, target)} (${Buffer.byteLength(content)} bytes)\n${install}`,
+    };
   }
-  return { exitCode: EXIT.ok, data: { theme: result.set.name, format, file, content, diagnostics: result.diagnostics }, text: "", raw: content };
+  return { exitCode: EXIT.ok, data: { theme: result.theme, format, file: result.file, content, install, diagnostics: result.diagnostics }, text: "", raw: content };
 }
 
 async function hash(args: ParsedArgs, io: Io): Promise<Outcome> {

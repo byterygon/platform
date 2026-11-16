@@ -15,7 +15,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:browser": "node scripts/browser-check.ts"
   },
   "dependencies": {
     "@byterygon/design-tokens": "workspace:*",
