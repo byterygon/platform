@@ -15,9 +15,11 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useState } from "r
 import { derive } from "./engine.ts";
 import { ExportPanel } from "./panels/export-panel.tsx";
 import { SeedsPanel } from "./panels/seeds-panel.tsx";
+import { SharePanel } from "./panels/share-panel.tsx";
+import { ThemesPanel } from "./panels/themes-panel.tsx";
 import { TokenDetail, TokenList } from "./panels/token-editor.tsx";
 import { Gallery, SwatchBoard } from "./panels/preview.tsx";
-import { type Loaded, type View, loadState, saveState, startingTheme, stateHash } from "./state/persist.ts";
+import { type Loaded, type View, loadState, saveState, startingTheme, stateHash, viewOf } from "./state/persist.ts";
 import type { ThemeDoc } from "./state/theme-edit.ts";
 
 /** The element the generated `tokens.css` is written into. */
@@ -128,6 +130,17 @@ export function App({ initial, save = saveState }: AppProps) {
         <div className="ms-auto flex flex-wrap items-center gap-inline-md">
           <Choice label="Colour mode" value={view.mode} options={[["light", "Light"], ["dark", "Dark"]]} onChange={(mode) => setView({ ...view, mode })} />
           <Choice label="Density" value={view.density} options={[["comfortable", "Comfortable"], ["compact", "Compact"]]} onChange={(density) => setView({ ...view, density })} />
+          <ThemesPanel
+            theme={theme}
+            view={view}
+            onOpen={(next) => {
+              setTheme(next);
+              setView(viewOf(next));
+              setSelected(undefined);
+              setNotices([]);
+            }}
+          />
+          <SharePanel theme={theme} view={view} />
           <ExportPanel theme={theme} />
           <AlertDialog size="sm">
             <AlertDialogTrigger render={<Button appearance="subtle" size="small" />}>Start over</AlertDialogTrigger>

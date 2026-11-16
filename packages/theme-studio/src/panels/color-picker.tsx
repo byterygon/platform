@@ -28,7 +28,8 @@ export function paletteOf(kind: PaletteKind): { hue: number; chroma: number }[] 
 }
 
 const round = (n: number, step: number) => Math.round(n / step) * step;
-const tidy = (hue: number, chroma: number) => ({ hue: Math.round(((hue % 360) + 360) % 360), chroma: Number(round(chroma, 0.001).toFixed(3)) });
+/** A seed as shown and written: hue to one decimal (Aurora's 282.5 stays 282.5), chroma to three. */
+export const tidy = (hue: number, chroma: number) => ({ hue: Math.round((((hue % 360) + 360) % 360) * 10) / 10, chroma: Number(round(chroma, 0.001).toFixed(3)) });
 
 export interface ColorSeedProps {
   /** "Brand", "Neutral", "Red (danger)". */

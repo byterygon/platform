@@ -335,6 +335,41 @@ async function main(argv: string[]): Promise<number> {
     await until(page, `document.documentElement.dataset.theme === "dark"`, "the Dark switch");
     check((await page.evaluate<string>(`getComputedStyle(document.querySelector("main")).colorScheme`)) === "dark", "Dark mode sets color-scheme: dark");
 
+    // 2b. The presets gallery: a card per preset drawn by its own scoped tokens.css, Duplicate
+    //     (opens and saves a copy), then the share link, opened in a fresh load.
+    const presetRadius = (name: string) => (JSON.parse(readFileSync(join(TOKENS, "themes", `${name}.theme.json`), "utf8")) as { seeds?: { radius?: number } }).seeds?.radius ?? 4;
+    check(await page.evaluate<boolean>(CLICK("button", "Themes")), "the Themes button exists");
+    await until(page, `document.querySelectorAll('section[aria-label="Presets"] li').length === ${allPresets.length}`, "a card for every preset");
+    for (const name of allPresets) {
+      const own = await page.evaluate<string>(`getComputedStyle(document.querySelector('[data-studio-preview="preset-${name}"]')).getPropertyValue("--by-radius-md").trim()`);
+      check(own === `${presetRadius(name)}px`, `gallery: the ${name} card shows its own radius.md (${own})`);
+    }
+    if (shots) {
+      // After the dialog's entry transition; then the same in Light, for the PR.
+      await sleep(600);
+      await page.screenshot(join(shots, "gallery-dark.png"));
+      await page.key("Escape", "Escape", 27);
+      await sleep(400);
+      await page.evaluate(CLICK("button", "Light"));
+      await page.evaluate(CLICK("button", "Themes"));
+      await sleep(800);
+      await page.screenshot(join(shots, "gallery-light.png"));
+    }
+    check(await page.evaluate<boolean>(`(() => { const b = document.querySelector('button[aria-label="Duplicate Terminal"]'); if (!b) return false; b.click(); return true; })()`), "gallery: Duplicate Terminal");
+    await until(page, `${VAR("--by-radius-md")} === "${presetRadius("terminal")}px" && document.querySelector('input[aria-label="Theme name"]').value === "terminal-copy"`, "the terminal copy to open");
+    check(await page.evaluate<boolean>(`JSON.parse(localStorage.getItem("byterygon.theme-studio.library")).themes[0].theme.name === "terminal-copy"`), "gallery: the copy is saved in the browser");
+    check(await page.evaluate<boolean>(CLICK("button", "Share")), "the Share button exists");
+    const link = await until<string>(page, `document.querySelector('input[aria-label="Share link"]')?.value`, "the share link");
+    check(link.startsWith(`${studio}#by=1&theme=`), `share link: the Studio's address with the state hash (${link.slice(0, 80)})`);
+    await page.key("Escape", "Escape", 27);
+    await page.navigate(link);
+    await until(page, READY, "the Studio from the share link");
+    check(
+      (await page.evaluate<string>(`document.querySelector('input[aria-label="Theme name"]').value`)) === "terminal-copy" && (await page.evaluate<string>(VAR("--by-radius-md"))) === `${presetRadius("terminal")}px`,
+      "share link: opens the shared theme",
+    );
+    check((await page.evaluate<string>(`document.documentElement.dataset.theme`)) === "dark", "share link: opens the shared view (Terminal is dark first)");
+
     // 3. Every preset from its hash, every export through the dialog, against by-tokens.
     const exportsChecked: string[] = [];
     for (const preset of presets) {

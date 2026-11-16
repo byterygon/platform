@@ -153,7 +153,13 @@ density   the density the Studio shows; optional
 
 Seven themes ship in `themes/`. All seven pass every contrast pair in both colour modes (and, because
 colour roles never depend on density, in both densities), with no warning. The name in the first
-column is the theme name; the second is how the Theme Studio will label it.
+column is the theme name; the second is its label, `PRESET_LABELS` in `src/presets.ts`, which also
+gives the order of `by-tokens preset list` and of the Theme Studio's gallery (`presetOrder`). A test
+fails when a file in `themes/` has no label or a label has no file: add both together.
+
+`src/presets.ts` also holds `duplicateTheme` (what `preset create --from` writes, and the Studio's
+Duplicate) and `copyName` (`<name>-copy`, `-copy-2`...). It holds no theme data: the files are the
+presets, read from `themes/` by the CLI and bundled by the Studio.
 
 `default` is Aurora (DOC-17 open question 104, TSK-57): its file is the former `aurora.theme.json`
 with every seed spelled out, so `@byterygon/design-tokens/default/*`, `theme-default` and
@@ -164,7 +170,7 @@ with no consumer). The previous default is `classic`. DBee's appearance list
 
 | Theme | Label | Look |
 | --- | --- | --- |
-| `default` | Byterygon | Aurora, the Fluent 2 layered look chosen on 2026-11-16 (TSK-52), the default since TSK-57: violet brand `#6b4eff` (hue 282.5; light steps 9-11 overridden to the full chroma 0.2474, which the dark solid cannot show, so the seed chroma is 0.165), cool near-grey neutral (hue 275, chroma 0.012, tint 0.006), backdrop glows `brand.4`/`teal.3` (dark `brand-dark.6`/`teal-dark.6`) over a canvas one step up (`neutral.2`, dark `neutral-dark.3`, with surface, raised and overlay following), radius 4 with `radius.lg` 8, a black and white focus ring (`color.ring`), `color.border.focus` and `grid.selection-border` on the accent, `color.neutral-dark.10` lifted by the printed fix so subtle text holds on a field over the brightest glow. DBee takes it through `default` and sets `data-density="compact"` itself |
+| `default` | Aurora | Aurora, the Fluent 2 layered look chosen on 2026-11-16 (TSK-52), the default since TSK-57: violet brand `#6b4eff` (hue 282.5; light steps 9-11 overridden to the full chroma 0.2474, which the dark solid cannot show, so the seed chroma is 0.165), cool near-grey neutral (hue 275, chroma 0.012, tint 0.006), backdrop glows `brand.4`/`teal.3` (dark `brand-dark.6`/`teal-dark.6`) over a canvas one step up (`neutral.2`, dark `neutral-dark.3`, with surface, raised and overlay following), radius 4 with `radius.lg` 8, a black and white focus ring (`color.ring`), `color.border.focus` and `grid.selection-border` on the accent, `color.neutral-dark.10` lifted by the printed fix so subtle text holds on a field over the brightest glow. DBee takes it through `default` and sets `data-density="compact"` itself |
 | `classic` | Classic | the default before TSK-57, values unchanged: cool neutral, blue-teal brand (hue 230), radius 6, light, comfortable, no glows; `font.sans` (Inter first, no Segoe) and `font.mono` (JetBrains Mono first, no Cascadia) as before TSK-57 |
 | `slate` | Slate | near-greyscale, muted slate-blue accent, radius 4 |
 | `paper` | Paper | warm cream (neutral tint), rust accent, 15 px text with relaxed body leading, radius 8; its orange (the warning colour) at hue 65, so warning stays apart from the rust brand |
@@ -409,9 +415,9 @@ build or run time, and a browser only downloads Inter where no Segoe UI is insta
 
 | Import | What |
 | --- | --- |
-| `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), and the Monaco and registry modules |
+| `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), the presets' labels and order (`PRESET_LABELS`, `presetLabel`, `presetOrder`, `duplicateTheme`, `copyName`), and the Monaco and registry modules |
 | `@byterygon/design-tokens/color` | the colour module alone: OKLCH conversion, sRGB gamut mapping, WCAG and APCA contrast, the lightness solver, `generateRamp` |
-| `@byterygon/design-tokens/build` | `buildTheme`, `renderOutputs`, `monacoThemeFor`, and `renderTokensCss` (`tokens.css` alone, synchronous, in a few milliseconds, byte for byte the `renderOutputs` one: the Theme Studio's live preview), and `exportTheme` with `EXPORT_FORMATS` (`src/export.ts`: every export, its file name and install note; `by-tokens export` and the Studio's Export dialog both call it) (Style Dictionary; runs in Node and in the browser) |
+| `@byterygon/design-tokens/build` | `buildTheme`, `renderOutputs`, `monacoThemeFor`, and `renderTokensCss` (`tokens.css` alone, synchronous, in a few milliseconds, byte for byte the `renderOutputs` one: the Theme Studio's live preview; with `{ scope }` the same declarations on the elements a selector matches instead of `:root`, mode selectors matching the scope element or its ancestors: the Studio's gallery cards), and `exportTheme` with `EXPORT_FORMATS` (`src/export.ts`: every export, its file name and install note; `by-tokens export` and the Studio's Export dialog both call it) (Style Dictionary; runs in Node and in the browser) |
 | `@byterygon/design-tokens/monaco` | `src/monaco.ts` as source: `MONACO_COLORS`, `MONACO_TOKENS`, `monacoTheme(read)` |
 | `@byterygon/design-tokens/registry-theme` | `src/registry-theme.ts` as source: `registryThemeItem`, `formatRegistryThemeItem`, the small CSS reader |
 | `@byterygon/design-tokens/default/*` | the committed outputs of the default theme (`tokens.css`, `tailwind-theme.css`, `shadcn-alias.css`, `tokens.dtcg.json`, `figma-variables.json`, `monaco-theme.ts`, `registry-theme.json`) |

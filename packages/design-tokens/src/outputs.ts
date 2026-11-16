@@ -262,7 +262,16 @@ const transformedLiteral =
   (token, context) =>
     input.transformed.get(contextKey(context, input.set.axes))!.css.get(token.path)!;
 
-function formatTokensCss(input: Pick<FormatInput, "set" | "source">, literalCss: LiteralCss): string {
+/**
+ * A selector of tokens.css moved into a scope: `:root` becomes the scope element itself, and a mode
+ * selector matches the scope element carrying it or the scope inside an element carrying it.
+ */
+function scopedSelectors(selectors: readonly string[], scope: string | undefined): readonly string[] {
+  if (scope === undefined) return selectors;
+  return selectors.flatMap((selector) => (selector === ":root" ? [scope] : [`${scope}${selector}`, `${selector} ${scope}`]));
+}
+
+function formatTokensCss(input: Pick<FormatInput, "set" | "source">, literalCss: LiteralCss, scope?: string): string {
   const { set } = input;
   const asVar = (alias: Alias) => `var(${cssVarName(aliasTarget(alias))})`;
   /** The declaration of a token in a context: the transformed literal, or `var()` for aliases. */
@@ -286,7 +295,7 @@ function formatTokensCss(input: Pick<FormatInput, "set" | "source">, literalCss:
 
   const section = (title: string, selectors: readonly string[], lines: readonly string[]) => {
     if (lines.length === 0) return;
-    blocks.push(`/* ${title} */\n${selectors.join(",\n")} {\n${lines.join("\n")}\n}`);
+    blocks.push(`/* ${title} */\n${scopedSelectors(selectors, scope).join(",\n")} {\n${lines.join("\n")}\n}`);
   };
 
   const base = defaultContext(set);
@@ -583,12 +592,22 @@ function formatMonacoTheme(input: FormatInput): string {
  * literals go through the same value transforms Style Dictionary applies (a token whose own value
  * is a literal has no references to resolve) and the same formatter, so the text is byte for byte
  * the `tokens.css` of `renderOutputs`; a test compares the two for every preset.
+ *
+ * `options.scope` (a selector, such as `[data-preview="slate"]`) declares the variables on the
+ * elements it matches instead of `:root`, so several themes can show on one page (the Studio's
+ * presets gallery): `:root` becomes the scope, and each mode selector matches the scope element
+ * carrying it (`[data-preview="slate"][data-theme="dark"]`) or the scope inside an element carrying
+ * it (`[data-theme="dark"] [data-preview="slate"]`). Without it the text is exactly tokens.css.
  */
-export function renderTokensCss(set: TokenSet, source: string): string {
-  return formatTokensCss({ set, source }, (token, context) => {
-    const literal = { $type: token.type, $value: valueIn(token, context) } as unknown as TransformedToken;
-    return String(token.type === "shadow" ? cssShadowTransform(literal) : token.type === "gradient" ? cssGradientTransform(literal) : cssTransform(literal));
-  });
+export function renderTokensCss(set: TokenSet, source: string, options: { readonly scope?: string } = {}): string {
+  return formatTokensCss(
+    { set, source },
+    (token, context) => {
+      const literal = { $type: token.type, $value: valueIn(token, context) } as unknown as TransformedToken;
+      return String(token.type === "shadow" ? cssShadowTransform(literal) : token.type === "gradient" ? cssGradientTransform(literal) : cssTransform(literal));
+    },
+    options.scope,
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
