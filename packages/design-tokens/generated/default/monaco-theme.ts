@@ -91,7 +91,7 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
     "rules": [
       {
         "token": "",
-        "foreground": "151c1f"
+        "foreground": "1a1a1d"
       },
       {
         "token": "keyword",
@@ -99,11 +99,11 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       },
       {
         "token": "operator",
-        "foreground": "4c5b62"
+        "foreground": "56585e"
       },
       {
         "token": "delimiter",
-        "foreground": "4c5b62"
+        "foreground": "56585e"
       },
       {
         "token": "predefined",
@@ -123,7 +123,7 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       },
       {
         "token": "comment",
-        "foreground": "566870"
+        "foreground": "62646c"
       },
       {
         "token": "type",
@@ -131,7 +131,7 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       },
       {
         "token": "identifier",
-        "foreground": "151c1f"
+        "foreground": "1a1a1d"
       },
       {
         "token": "constant",
@@ -147,7 +147,7 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       },
       {
         "token": "operator.sql",
-        "foreground": "4c5b62"
+        "foreground": "56585e"
       },
       {
         "token": "predefined.sql",
@@ -156,46 +156,46 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
     ],
     "colors": {
       "editor.background": "#ffffff",
-      "editor.foreground": "#151c1f",
+      "editor.foreground": "#1a1a1d",
       "editorGutter.background": "#ffffff",
-      "editor.selectionBackground": "#007dbe37",
-      "editor.inactiveSelectionBackground": "#007dbe37",
+      "editor.selectionBackground": "#0014ff27",
+      "editor.inactiveSelectionBackground": "#0014ff27",
       "editor.selectionHighlightBackground": "#c9700042",
-      "editor.lineHighlightBackground": "#05213d09",
-      "editor.lineHighlightBorder": "#05213d09",
-      "editorCursor.foreground": "#151c1f",
-      "editorLineNumber.foreground": "#566870",
-      "editorLineNumber.activeForeground": "#151c1f",
+      "editor.lineHighlightBackground": "#051e9b0a",
+      "editor.lineHighlightBorder": "#051e9b0a",
+      "editorCursor.foreground": "#1a1a1d",
+      "editorLineNumber.foreground": "#62646c",
+      "editorLineNumber.activeForeground": "#1a1a1d",
       "editor.findMatchBackground": "#c9700042",
       "editor.findMatchHighlightBackground": "#c9700042",
       "editor.wordHighlightBackground": "#c9700042",
       "editorBracketMatch.background": "#c9700042",
-      "editorBracketMatch.border": "#808d93",
-      "editorIndentGuide.background1": "#d9dfe2",
-      "editorWhitespace.foreground": "#d0d7db",
+      "editorBracketMatch.border": "#898a90",
+      "editorIndentGuide.background1": "#dbdde7",
+      "editorWhitespace.foreground": "#d5d6d9",
       "editorError.foreground": "#a21a1b",
       "editorWarning.foreground": "#874300",
       "editorInfo.foreground": "#0b57a6",
-      "editorOverviewRuler.border": "#d9dfe2",
+      "editorOverviewRuler.border": "#dbdde7",
       "editorWidget.background": "#ffffff",
-      "editorWidget.foreground": "#151c1f",
-      "editorWidget.border": "#d0d7db",
+      "editorWidget.foreground": "#1a1a1d",
+      "editorWidget.border": "#d5d6d9",
       "editorHoverWidget.background": "#ffffff",
-      "editorHoverWidget.foreground": "#151c1f",
-      "editorHoverWidget.border": "#d0d7db",
+      "editorHoverWidget.foreground": "#1a1a1d",
+      "editorHoverWidget.border": "#d5d6d9",
       "menu.background": "#ffffff",
-      "menu.foreground": "#151c1f",
-      "menu.selectionBackground": "#012e3d11",
-      "menu.selectionForeground": "#151c1f",
-      "menu.separatorBackground": "#d0d7db",
+      "menu.foreground": "#1a1a1d",
+      "menu.selectionBackground": "#011f7911",
+      "menu.selectionForeground": "#1a1a1d",
+      "menu.separatorBackground": "#d5d6d9",
       "input.background": "#ffffff",
-      "input.foreground": "#151c1f",
-      "input.border": "#808d93",
-      "inputOption.activeBorder": "#007ca5",
-      "focusBorder": "#007ca5",
-      "scrollbarSlider.background": "#012e3d11",
-      "scrollbarSlider.hoverBackground": "#002f421b",
-      "scrollbarSlider.activeBackground": "#002f421b"
+      "input.foreground": "#1a1a1d",
+      "input.border": "#898a90",
+      "inputOption.activeBorder": "#000000",
+      "focusBorder": "#000000",
+      "scrollbarSlider.background": "#011f7911",
+      "scrollbarSlider.hoverBackground": "#0014621a",
+      "scrollbarSlider.activeBackground": "#0014621a"
     }
   },
   dark: {
@@ -204,7 +204,7 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
     "rules": [
       {
         "token": "",
-        "foreground": "ecf1f4"
+        "foreground": "eff0f2"
       },
       {
         "token": "keyword",
@@ -212,11 +212,11 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       },
       {
         "token": "operator",
-        "foreground": "b9c6cd"
+        "foreground": "c2c4ca"
       },
       {
         "token": "delimiter",
-        "foreground": "b9c6cd"
+        "foreground": "c2c4ca"
       },
       {
         "token": "predefined",
@@ -236,7 +236,7 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       },
       {
         "token": "comment",
-        "foreground": "a6b7c0"
+        "foreground": "b6b8bf"
       },
       {
         "token": "type",
@@ -244,7 +244,7 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       },
       {
         "token": "identifier",
-        "foreground": "ecf1f4"
+        "foreground": "eff0f2"
       },
       {
         "token": "constant",
@@ -260,7 +260,7 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       },
       {
         "token": "operator.sql",
-        "foreground": "b9c6cd"
+        "foreground": "c2c4ca"
       },
       {
         "token": "predefined.sql",
@@ -268,47 +268,47 @@ export const monacoThemes: Record<"light" | "dark", MonacoThemeData> = {
       }
     ],
     "colors": {
-      "editor.background": "#16191a",
-      "editor.foreground": "#ecf1f4",
-      "editorGutter.background": "#16191a",
-      "editor.selectionBackground": "#24b9fe3b",
-      "editor.inactiveSelectionBackground": "#24b9fe3b",
-      "editor.selectionHighlightBackground": "#ff8a003c",
-      "editor.lineHighlightBackground": "#cce6fe0b",
-      "editor.lineHighlightBorder": "#cce6fe0b",
-      "editorCursor.foreground": "#ecf1f4",
-      "editorLineNumber.foreground": "#a6b7c0",
-      "editorLineNumber.activeForeground": "#ecf1f4",
-      "editor.findMatchBackground": "#ff8a003c",
-      "editor.findMatchHighlightBackground": "#ff8a003c",
-      "editor.wordHighlightBackground": "#ff8a003c",
-      "editorBracketMatch.background": "#ff8a003c",
-      "editorBracketMatch.border": "#68747a",
-      "editorIndentGuide.background1": "#242a2d",
-      "editorWhitespace.foreground": "#2d3438",
+      "editor.background": "#202127",
+      "editor.foreground": "#eff0f2",
+      "editorGutter.background": "#202127",
+      "editor.selectionBackground": "#7976fe4a",
+      "editor.inactiveSelectionBackground": "#7976fe4a",
+      "editor.selectionHighlightBackground": "#fe8f003c",
+      "editor.lineHighlightBackground": "#c9e0fb0b",
+      "editor.lineHighlightBorder": "#c9e0fb0b",
+      "editorCursor.foreground": "#eff0f2",
+      "editorLineNumber.foreground": "#b6b8bf",
+      "editorLineNumber.activeForeground": "#eff0f2",
+      "editor.findMatchBackground": "#fe8f003c",
+      "editor.findMatchHighlightBackground": "#fe8f003c",
+      "editor.wordHighlightBackground": "#fe8f003c",
+      "editorBracketMatch.background": "#fe8f003c",
+      "editorBracketMatch.border": "#707177",
+      "editorIndentGuide.background1": "#272830",
+      "editorWhitespace.foreground": "#323336",
       "editorError.foreground": "#ffaba1",
       "editorWarning.foreground": "#fdb07c",
       "editorInfo.foreground": "#9cc7ff",
-      "editorOverviewRuler.border": "#242a2d",
-      "editorWidget.background": "#242a2d",
-      "editorWidget.foreground": "#ecf1f4",
-      "editorWidget.border": "#2d3438",
-      "editorHoverWidget.background": "#242a2d",
-      "editorHoverWidget.foreground": "#ecf1f4",
-      "editorHoverWidget.border": "#2d3438",
-      "menu.background": "#242a2d",
-      "menu.foreground": "#ecf1f4",
-      "menu.selectionBackground": "#c4ddff16",
-      "menu.selectionForeground": "#ecf1f4",
-      "menu.separatorBackground": "#2d3438",
-      "input.background": "#16191a",
-      "input.foreground": "#ecf1f4",
-      "input.border": "#68747a",
-      "inputOption.activeBorder": "#50b1dc",
-      "focusBorder": "#50b1dc",
-      "scrollbarSlider.background": "#c4ddff16",
-      "scrollbarSlider.hoverBackground": "#c2e5fe1f",
-      "scrollbarSlider.activeBackground": "#c2e5fe1f"
+      "editorOverviewRuler.border": "#272830",
+      "editorWidget.background": "#272830",
+      "editorWidget.foreground": "#eff0f2",
+      "editorWidget.border": "#323336",
+      "editorHoverWidget.background": "#272830",
+      "editorHoverWidget.foreground": "#eff0f2",
+      "editorHoverWidget.border": "#323336",
+      "menu.background": "#272830",
+      "menu.foreground": "#eff0f2",
+      "menu.selectionBackground": "#ced9fe17",
+      "menu.selectionForeground": "#eff0f2",
+      "menu.separatorBackground": "#323336",
+      "input.background": "#202127",
+      "input.foreground": "#eff0f2",
+      "input.border": "#707177",
+      "inputOption.activeBorder": "#ffffff",
+      "focusBorder": "#ffffff",
+      "scrollbarSlider.background": "#ced9fe17",
+      "scrollbarSlider.hoverBackground": "#ccd4fe20",
+      "scrollbarSlider.activeBackground": "#ccd4fe20"
     }
   },
 };

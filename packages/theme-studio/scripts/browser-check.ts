@@ -313,7 +313,8 @@ async function main(argv: string[]): Promise<number> {
     await page.navigate(studio);
     await until(page, READY, "the Studio to render");
     report["interactiveMs"] = Date.now() - start;
-    check((await page.evaluate<string>(VAR("--by-radius-md"))) === "6px", "file://: the default theme's radius.md is 6px");
+    // A new theme takes the engine defaults: the default preset's seeds (Aurora, radius 4).
+    check((await page.evaluate<string>(VAR("--by-radius-md"))) === "4px", "file://: the engine default radius.md is 4px");
     await until(page, `document.querySelector('[data-slot="sql-editor"] .monaco-editor') !== null`, "Monaco to start from file://", 30_000);
     if (shots) await page.screenshot(join(shots, "default-file.png"));
 
@@ -324,12 +325,12 @@ async function main(argv: string[]): Promise<number> {
     );
     const before = await page.evaluate<string>(`location.hash`);
     for (let i = 0; i < 4; i += 1) await page.click(x, y);
-    await until(page, `${VAR("--by-radius-md")} === "10px"`, "the radius edit to apply");
+    await until(page, `${VAR("--by-radius-md")} === "8px"`, "the radius edit to apply");
     // The Studio saves 150 ms after the last change: wait for the edited state in both places.
     await until(page, `location.hash.startsWith("#by=1&theme=") && location.hash !== ${JSON.stringify(before)} && localStorage.getItem("byterygon.theme-studio.state") === location.hash`, "the edited state to reach the URL hash and storage");
     await page.navigate(studio);
     await until(page, READY, "the Studio to render again");
-    check((await page.evaluate<string>(VAR("--by-radius-md"))) === "10px", "a reload without the hash restores the edited theme from browser storage");
+    check((await page.evaluate<string>(VAR("--by-radius-md"))) === "8px", "a reload without the hash restores the edited theme from browser storage");
     check(await page.evaluate<boolean>(CLICK("button", "Dark")), "the Dark switch exists");
     await until(page, `document.documentElement.dataset.theme === "dark"`, "the Dark switch");
     check((await page.evaluate<string>(`getComputedStyle(document.querySelector("main")).colorScheme`)) === "dark", "Dark mode sets color-scheme: dark");
@@ -343,7 +344,7 @@ async function main(argv: string[]): Promise<number> {
       const hash = await encodeState({ theme });
       await page.navigate(`${studio}${hash}`);
       await until(page, READY, `${preset} to render`);
-      const radius = (theme["seeds"] as { radius?: number }).radius ?? 6;
+      const radius = (theme["seeds"] as { radius?: number }).radius ?? 4;
       check((await page.evaluate<string>(VAR("--by-radius-md"))) === `${radius}px`, `${preset}: radius.md is ${radius}px in the page`);
       check(await page.evaluate<boolean>(CLICK("button", "Export")), `${preset}: the Export button exists`);
       await until(page, `${EXPORT_DIALOG} !== undefined`, `${preset}: the Export dialog`);

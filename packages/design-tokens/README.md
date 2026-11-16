@@ -11,7 +11,8 @@ pnpm --filter @byterygon/design-tokens build     # compile the engine and the CL
 pnpm --filter @byterygon/design-tokens tokens help
 ```
 
-Seven presets (Byterygon `default`, Slate, Paper, Midnight, Terminal, High contrast, Aurora) are checked for
+Seven presets (Byterygon `default`, which is Aurora, the Fluent 2 look; Classic, the earlier
+blue-teal default; Slate, Paper, Midnight, Terminal, High contrast) are checked for
 WCAG 2.2 contrast in both colour modes. The interface font is the system's Segoe UI Variable where
 it is installed (it is never shipped), else Selawik; Selawik, JetBrains Mono and Inter ship in
 `fonts/` under the SIL Open Font License (the package's code is MIT OR Apache-2.0; the fonts are not, see

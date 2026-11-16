@@ -28,8 +28,9 @@ test("every preset round-trips through the hash, with the view", async () => {
     const hash = await encodeState({ theme, mode: "dark", density: "compact" });
     assert.match(hash, /^#by=1&theme=[A-Za-z0-9_-]+&mode=dark&density=compact$/);
     assert.equal(hash, await encodeState({ theme, mode: "dark", density: "compact" }), "deterministic");
-    // Six presets fit in 600 characters; Aurora's 14 overrides take about 750.
-    assert.ok(hash.length < 800, `${file}: ${hash.length} characters`);
+    // Six presets fit in 600 characters; the default (Aurora) spells out every seed, as
+    // DEFAULT_SEEDS does, and carries 14 overrides: about 900.
+    assert.ok(hash.length < 1000, `${file}: ${hash.length} characters`);
     const decoded = await decodeState(`file:///opt/theme-studio/index.html${hash}`);
     assert.equal(decoded.ok, true);
     assert.deepEqual(decoded.diagnostics, []);

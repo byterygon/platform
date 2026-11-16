@@ -1,0 +1,29 @@
+{
+  "$schema": "../theme.schema.json",
+  "schemaVersion": 1,
+  "name": "classic",
+  "description": "Classic: the Byterygon default before Fluent 2 (TSK-57): a blue-teal brand on a neutral tinted with the same hue, light by default, comfortable density, WCAG 2.2 AA, and the fonts it had (Inter, then JetBrains Mono).",
+  "seeds": {
+    "colors": {
+      "neutral": { "chroma": 0.025 },
+      "brand": { "hue": 230, "chroma": 0.11 },
+      "red": { "hue": 27, "chroma": 0.2 },
+      "amber": { "hue": 75, "chroma": 0.15, "solid": { "light": 0.8, "dark": 0.8 } },
+      "green": { "hue": 150, "chroma": 0.14 },
+      "blue": { "hue": 255, "chroma": 0.17 },
+      "violet": { "hue": 305, "chroma": 0.15 },
+      "orange": { "hue": 55, "chroma": 0.16 },
+      "teal": { "hue": 190, "chroma": 0.11 },
+      "pink": { "hue": 350, "chroma": 0.16 }
+    },
+    "radius": 6,
+    "fontSize": 14,
+    "colorScheme": "light",
+    "density": "comfortable",
+    "contrast": { "level": "AA" }
+  },
+  "overrides": {
+    "font.sans": ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+    "font.mono": ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"]
+  }
+}

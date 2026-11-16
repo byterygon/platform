@@ -71,8 +71,10 @@ Never format an export in the Studio: add the format to `src/export.ts` of the t
 
 - `theme` is a theme file (`schemaVersion`, `name`, `seeds?`, `overrides?`), edited only through
   the pure functions of `src/state/theme-edit.ts`. A new theme is `{ schemaVersion: 1, name:
-  "my-theme" }`: no seeds, so every value is the engine default (the `default` preset's tokens) and
-  each edit is one line of the file. Reset deletes a seed or an override; it never writes a default.
+  "my-theme" }`: no seeds, so every value is the engine default and each edit is one line of the
+  file. The engine defaults are the `default` preset's seeds (Aurora's violet brand and cool grey,
+  radius 4) but not its overrides, so a new theme has no backdrop glows, a brand focus ring and
+  the canvas on step 1; open the `default` preset's hash to start from the full Aurora look. Reset deletes a seed or an override; it never writes a default.
 - `view` is `{ mode, density }`: `data-theme` and `data-density` on `<html>`.
 - Persistence: the state is the versioned hash, written to the address bar (`replaceState`, no
   history entries) and to `localStorage["byterygon.theme-studio.state"]`, 150 ms after the last

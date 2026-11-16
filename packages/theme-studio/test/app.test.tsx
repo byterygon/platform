@@ -97,11 +97,12 @@ describe("Theme Studio", () => {
     act(() => radius.focus());
     key(radius, "ArrowUp");
     key(radius, "ArrowUp");
-    await waitFor(() => expect(styleText()).toContain("--by-radius-md: 8px;"));
-    expect((await lastSavedTheme(saved)).theme).toEqual({ ...startingTheme(), seeds: { radius: 8 } });
+    // The engine default (the default preset's seed, Aurora) is 4 px.
+    await waitFor(() => expect(styleText()).toContain("--by-radius-md: 6px;"));
+    expect((await lastSavedTheme(saved)).theme).toEqual({ ...startingTheme(), seeds: { radius: 6 } });
 
     click($('button[aria-label="Reset shape and type"]')!);
-    await waitFor(() => expect(styleText()).toContain("--by-radius-md: 6px;"));
+    await waitFor(() => expect(styleText()).toContain("--by-radius-md: 4px;"));
     expect((await lastSavedTheme(saved)).theme).toEqual(startingTheme());
   });
 
@@ -109,7 +110,8 @@ describe("Theme Studio", () => {
     const saved = mount();
     const brand9 = () => styleText().match(/--by-color-brand-9: ([^;]+);/)![1];
     const before = brand9();
-    click($('button[aria-label^="Brand: hue 230, chroma 0.11"]')!);
+    // The engine default brand is Aurora's (hue 282.5); the swatch label rounds the hue.
+    click($('button[aria-label^="Brand: hue 283, chroma 0.165"]')!);
     await waitFor(() => expect($('[role="group"][aria-label="Ready colours"]')).toBeTruthy());
 
     click($('button[aria-label="hue 135, chroma 0.12"]')!);

@@ -88,7 +88,7 @@ export const COMMANDS: readonly CommandSpec[] = [
     usage: "by-tokens preset list | show <name> | create <name> [--from <preset>] [--set <path>=<value>]... [--out <file>]",
     summary: "List the built-in themes, print one, or start a new theme file from one.",
     options: [
-      { name: "--from", value: "<preset>", summary: "the preset to start from (default: default)" },
+      { name: "--from", value: "<preset>", summary: "the preset to start from (default: none, the engine defaults)" },
       { name: "--set", value: "<path>=<value>", repeat: true, summary: "change a seed or an override, for example seeds.colors.brand.hue=150 or overrides.color.fg.link={color.brand.12}" },
       { name: "--out", value: "<file>", summary: "where to write the new theme (default: ./<name>.theme.json)" },
       JSON_FLAG,

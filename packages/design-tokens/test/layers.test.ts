@@ -11,12 +11,12 @@ import type { ColorValue, ThemeFile } from "../src/model.js";
 import { renderTokensCss } from "../src/outputs.js";
 import { resolve } from "../src/resolve.js";
 import { validate } from "../src/validate.js";
-import { ROOT, defaultTheme, themeWith } from "./helpers.js";
+import { ROOT, classicTheme, defaultTheme, themeWith } from "./helpers.js";
 
 const LIGHT = { theme: "light", density: "comfortable" };
 const DARK = { theme: "dark", density: "comfortable" };
 
-/** The aurora backdrop, written as a theme file writes it. */
+/** The Aurora backdrop (the default theme's), written as a theme file writes it. */
 const GLOWS = {
   light: [
     { kind: "radial", color: "{color.brand.4}", radiusX: "1100px", radiusY: "700px", x: 0.08, y: 0, fade: 0.6 },
@@ -106,8 +106,8 @@ test("warning is orange, apart from danger's red and from every preset's brand",
   }
 });
 
-test("the backdrop's glows are the canvas colour unless a theme colours them, so the default backdrop is flat", () => {
-  const { set } = generateTokens(defaultTheme());
+test("the backdrop's glows are the canvas colour unless a theme colours them, so a theme without glows is flat", () => {
+  const { set } = generateTokens(classicTheme());
   for (const context of [LIGHT, DARK]) {
     const canvas = resolve(set, "color.bg.canvas", context);
     for (const glow of ["color.backdrop.glow-1", "color.backdrop.glow-2"]) {

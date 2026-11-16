@@ -18,7 +18,7 @@ const PRESETS = readdirSync(join(ROOT, "themes"))
   .sort();
 
 test("the presets are the six the spec names and Aurora (TSK-52)", () => {
-  assert.deepEqual(PRESETS, ["aurora", "default", "high-contrast", "midnight", "paper", "slate", "terminal"]);
+  assert.deepEqual(PRESETS, ["classic", "default", "high-contrast", "midnight", "paper", "slate", "terminal"]);
 });
 
 for (const preset of PRESETS) {
@@ -76,8 +76,9 @@ test("tokens.css: primitives once, roles per mode, references by var()", async (
   const compact = declarations(css, '[data-density="compact"]');
 
   assert.match(root.get("--by-color-neutral-1")!, /^oklch\(/);
-  assert.equal(root.get("--by-color-bg-canvas"), "var(--by-color-neutral-1)");
-  assert.equal(dark.get("--by-color-bg-canvas"), "var(--by-color-neutral-dark-2)");
+  // The default (Aurora) lifts the canvas one step: neutral 2, dark neutral-dark 3.
+  assert.equal(root.get("--by-color-bg-canvas"), "var(--by-color-neutral-2)");
+  assert.equal(dark.get("--by-color-bg-canvas"), "var(--by-color-neutral-dark-3)");
   assert.equal(root.get("color-scheme"), "light");
   assert.equal(dark.get("color-scheme"), "dark");
   assert.deepEqual(declarations(css, ".dark"), dark);
@@ -85,7 +86,7 @@ test("tokens.css: primitives once, roles per mode, references by var()", async (
   assert.equal(dark.has("--by-size-control-md"), false, "density roles are not in the theme block");
   assert.equal(root.get("--by-size-control-md"), "36px");
   assert.equal(compact.get("--by-size-control-md"), "28px");
-  assert.equal(root.get("--by-radius-md"), "6px");
+  assert.equal(root.get("--by-radius-md"), "4px");
   assert.equal(root.get("--by-font-mono"), '"Cascadia Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace');
   assert.equal(root.get("--by-shadow-raised"), "0 1px 2px 0 var(--by-color-black-a2), 0 1px 1px 0 var(--by-color-black-a1)");
   // No raw colour outside the primitive tier: every colour role is a var().
@@ -181,8 +182,8 @@ test("tokens.dtcg.json is a DTCG document with every mode", async () => {
   assert.match(primitive.$value.hex, /^#[0-9a-f]{6}$/);
   assert.equal(primitive.$extensions[EXTENSION].tier, "primitive");
   const role = dtcg.color.bg.canvas;
-  assert.equal(role.$value, "{color.neutral.1}");
-  assert.deepEqual(role.$extensions[EXTENSION].modes, { light: "{color.neutral.1}", dark: "{color.neutral-dark.2}" });
+  assert.equal(role.$value, "{color.neutral.2}");
+  assert.deepEqual(role.$extensions[EXTENSION].modes, { light: "{color.neutral.2}", dark: "{color.neutral-dark.3}" });
   assert.equal(role.$extensions[EXTENSION].axis, "theme");
   assert.ok(role.$description.length > 20);
   assert.deepEqual(dtcg.size.control.md.$value, { value: 36, unit: "px" });
@@ -201,10 +202,10 @@ test("figma-variables.json groups variables into collections with modes", async 
   assert.deepEqual(white.valuesByMode, { Value: { r: 1, g: 1, b: 1, a: 1 } });
   assert.deepEqual([white.type, white.scopes, white.hiddenFromPublishing], ["COLOR", [], true]);
   const canvas = variable("Theme", "color/bg/canvas");
-  assert.deepEqual(canvas.valuesByMode.Dark, { type: "VARIABLE_ALIAS", collection: "Primitives", name: "color/neutral-dark/2" });
+  assert.deepEqual(canvas.valuesByMode.Dark, { type: "VARIABLE_ALIAS", collection: "Primitives", name: "color/neutral-dark/3" });
   assert.equal(canvas.codeSyntax.WEB, "var(--by-color-bg-canvas)");
   assert.deepEqual(variable("Density", "size/control/md").valuesByMode, { Comfortable: 36, Compact: 28 });
-  assert.deepEqual(variable("Semantic", "radius/md").valuesByMode, { Value: 6 });
+  assert.deepEqual(variable("Semantic", "radius/md").valuesByMode, { Value: 4 });
   assert.equal(variable("Semantic", "font/sans").valuesByMode.Value, "Segoe UI Variable Text");
   // Figma has no variable for a shadow or an easing curve; everything else is a variable.
   const skipped = figma.skipped.map((s: { token: string }) => s.token);
@@ -234,8 +235,8 @@ test("tokens.ts exports typed constants with the resolved value per mode", async
   assert.equal(module.theme.name, "default");
   assert.equal(module.tokens["color.bg.surface"].cssVar, "--by-color-bg-surface");
   assert.equal(module.tokens["color.bg.surface"].values.light, "oklch(1 0 0)");
-  assert.match(module.tokens["color.bg.surface"].values.dark, /^oklch\(0\.21 /);
-  assert.equal(module.tokens["radius.md"].values.base, "6px");
+  assert.match(module.tokens["color.bg.surface"].values.dark, /^oklch\(0\.25 /);
+  assert.equal(module.tokens["radius.md"].values.base, "4px");
   assert.equal(module.tokens["size.control.md"].values.compact, "28px");
   assert.equal(module.cssVar("color.fg.muted"), "var(--by-color-fg-muted)");
   assert.ok(module.tokens["color.fg.muted"].description.length > 20);
