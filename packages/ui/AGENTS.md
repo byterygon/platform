@@ -15,6 +15,9 @@ src/lib/cn.ts                               class merging that knows the role na
 src/lib/theme-scope.ts                      a popup in a portal takes its trigger's theme and density
 src/lib/monaco.ts                           Monaco loaded lazily and offline, and its theme from the tokens
                                             (its colour mapping is @byterygon/design-tokens/monaco)
+src/lib/icons.ts                            Fluent UI System Icons as path data (generated from icons/, committed)
+icons/                                      the vendored Fluent icons: fluent/*.svg, manifest.json, LICENSE (MIT)
+scripts/icons.ts                            icons build / add / refresh / list (offline)
 gallery/                                    every example in Light/Dark x Comfortable/Compact
 scripts/registry.ts                         writes registry/ (committed, drift-tested)
 scripts/new-component.ts                    pnpm ui:new
@@ -34,11 +37,14 @@ pnpm --filter @byterygon/ui registry                 # rewrite registry/ (commit
 pnpm --filter @byterygon/ui registry:check           # exit 3 if registry/ is stale
 pnpm --filter @byterygon/ui verify:install           # real shadcn CLI, offline, folder and static server
 pnpm --filter @byterygon/ui check:browser            # editors in Chromium: bundle, theme, keyboard, 1 MB, report
+pnpm --filter @byterygon/ui icons build [--check]    # write src/lib/icons.ts from icons/ (exit 3 if stale)
+pnpm --filter @byterygon/ui icons add <name...> --from <tgz|dir>   # vendor Fluent icons from a copy on disk
+pnpm --filter @byterygon/ui icons list               # the vendored icons and their sizes
 pnpm --filter @byterygon/ui gallery                  # serve the gallery (vite)
 pnpm --filter @byterygon/ui build                    # build the gallery into dist/gallery
 ```
 
-`registry`, `ui:new` and `verify:install` take `--json` (one document on stdout). Exit codes: 0 ok,
+`registry`, `ui:new`, `icons` and `verify:install` take `--json` (one document on stdout). Exit codes: 0 ok,
 1 a rule is broken (the document lists the problems), 2 bad command line, 3 stale registry/.
 
 ## Adding a component
@@ -295,6 +301,72 @@ What `test/conventions.test.tsx` enforces for every component:
 - `test/licenses.test.ts` checks every npm package a registry item installs, transitively, against
   the `allow` list of `deny.toml`.
 
+## Icons (TSK-57)
+
+Fluent UI System Icons (MIT), vendored in `icons/` as a curated set: 83 icons, each in regular
+and filled at 16, 20 and 24 px where Fluent draws them. The source is `@fluentui/svg-icons` 1.1.346
+(`microsoft/fluentui-system-icons`, commit `ba34950`), pinned in `icons/manifest.json` with the
+tarball's sha256 and every file's sha256 (vendored and upstream). The files are Fluent's artwork
+reduced to path data in `currentColor` (width, height and the namespace are dropped, `viewBox` is
+kept); `scripts/icons.ts` refuses anything else (colour icons, other shapes). `src/lib/icons.ts` is
+generated from them (`icons build`), carries the MIT notice, and ships as the `@byterygon/icons`
+registry item, which `@byterygon/icon` depends on.
+
+- **Use**: `<Icon icon={ChevronDown} />`, with an export of `@/lib/icons` (PascalCase of the
+  Fluent name: `chevron-down` -> `ChevronDown`, `text-align-left` -> `TextAlignLeft`). Import only
+  what you use; the rest is tree-shaken. `size` is `size.icon.*` (`xs` 12, `sm` 14, `md` 16, `lg`
+  20, `xl` 24 px; `xs` to `md` draw the 16 px artwork, `lg` the 20, `xl` the 24, the nearest drawn
+  size when Fluent has no drawing). Colour is `currentColor`; `tone` picks a text role (`muted`,
+  `subtle`, `accent`, `danger`, `warning`, `success`, `info`). `filled` is Fluent's solid style,
+  for a selected or active state. An icon beside text is `aria-hidden`; a standalone one takes
+  `label` (`role="img"`) or sits in an `IconButton` with `aria-label`.
+- **Add an icon** (offline): get the upstream copy once, on a connected machine or from your
+  mirror (`npm pack @fluentui/svg-icons@1.1.346`: a `.tgz`; its extracted folder or a
+  `fluentui-system-icons` checkout work too), then
+  `pnpm --filter @byterygon/ui icons add <name...> --from <that path>` (Fluent names, `chevron-down` or
+  `chevron_down`; browse them in the upstream `icons/` folder), `pnpm --filter @byterygon/ui registry`,
+  and commit `icons/`, `src/lib/icons.ts` and `registry/`. Every icon comes from one release: to
+  move to a newer one, `icons refresh --from <newer copy>` re-vendors them all.
+- Never edit a file in `icons/` or `src/lib/icons.ts`, and never draw an icon by hand in new code:
+  `node scripts/check-licenses.mjs` and `test/icons.test.ts` fail on a changed, missing or unlisted
+  file, a stale module or a missing licence.
+- The components still draw their own SVGs; TSK-53/55 swap them for these, in this mapping
+  (`REPLACEMENTS` in `test/icons.test.ts`, which checks every icon below is vendored):
+
+| Hand-drawn today | Fluent icon |
+| --- | --- |
+| Accordion, Select, Combobox, NavigationMenu, SplitButton chevron | ChevronDown |
+| Breadcrumb, Collapsible, JsonViewer, Tree, submenu, Pagination next | ChevronRight |
+| Pagination previous, Calendar previous month | ChevronLeft (and ChevronRight) |
+| Table sort (none / ascending / descending) | ArrowSort, ArrowSortUp, ArrowSortDown |
+| Alert info / success / warning / danger, Stepper error | Info, CheckmarkCircle, Warning, ErrorCircle |
+| Close (Alert, Dialog, Sheet, Popover, Tabs, Tag, Toast) and clear (Combobox, SearchInput, FileInput) | Dismiss |
+| Checkbox, Select, menu items, CodeBlock copied, Stepper done | Checkmark |
+| Checkbox indeterminate, NumberInput decrement, Stat flat | Subtract |
+| NumberInput increment, Tabs new tab | Add |
+| RadioGroup and menu radio dot | Circle (filled) |
+| Breadcrumb ellipsis, menus' more | MoreHorizontal |
+| CodeBlock and IconButton copy | Copy |
+| CommandPalette, SearchInput, InputGroup search | Search |
+| DatePicker | CalendarLtr |
+| PasswordInput show / hide | Eye, EyeOff |
+| Popover example filters (sliders) | Options |
+| Sidebar history, settings, collapse | History, Settings, PanelLeft |
+| Stat trend up / down | ArrowUp, ArrowDown |
+| ToggleButton wrap; ToggleGroup align | TextWrap; TextAlignLeft, TextAlignCenter, TextAlignRight |
+| Run / stop / download (Toolbar, Tooltip, IconButton examples) | Play, Stop, ArrowDownload |
+| Tree folder, table, database (Tree, CommandPalette, Sidebar, Avatar, EmptyState, StatusBar examples) | Folder, Table, Database |
+| IconButton refresh, delete | ArrowClockwise, Delete |
+| Spinner | none: it stays an animated arc |
+| DBee shell (apps/dbee/ui/src/app/icons.tsx): Plus, Play, Stop, Database, Schema, Table, View, Column, Gear, Download, More, Refresh, Help | Add, Play, Stop, Database, Folder, Table, Eye, ColumnTriple, Settings, ArrowDownload, MoreHorizontal, ArrowClockwise, QuestionCircle |
+
+DBee also gets the icons its screens will need (TSK-55): Key, Link, Filter, Document, Save, Code,
+Braces, NumberSymbol, TextT, CalendarClock, Clock, LockClosed, Shield, Server, PlugConnected,
+PlugDisconnected, Pin, ArrowExport, ArrowImport, ArrowUpload, Edit, ArrowUndo, ArrowRedo, Person,
+SignOut, Flash, Window, PanelBottom, SplitVertical, List, BookOpen, AddCircle, TextNumberFormat,
+DatabaseMultiple, TableSimple, FolderOpen, Pause, ArrowCounterclockwise, DismissCircle,
+QuestionCircle, ChevronUp, MoreVertical, Star.
+
 ## Styling rules
 
 - Roles, not primitives. Colours: `bg-surface`, `bg-inset`, `text-fg`, `text-fg-muted`,
@@ -385,5 +457,6 @@ components. See `gallery/gallery.css`.
 - Never use bare `accent` colour utilities; use the `accent-solid` names.
 - Never edit `registry/` by hand; change the component or the manifest and run `registry`.
 - Never fetch, load a font or script from a CDN, or name a URL in a component.
+- Never draw an icon by hand in new code or edit a vendored one: `icons add` it (see "Icons").
 - Never depend on AGPL code (`apps/`); this package is MIT OR Apache-2.0 and the licence check fails.
 - Never skip the manifest: the registry build stops on an invalid one.

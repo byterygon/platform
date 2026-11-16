@@ -4266,6 +4266,13 @@ export const tokens = {
     description: "Edge of a lg icon (20 px): the size-icon-lg utility. Not for the size of a control: use size.control.*, which follows the density mode.",
     values: { "base": "20px" },
   },
+  "size.icon.xl": {
+    cssVar: "--by-size-icon-xl",
+    type: "dimension",
+    tier: "primitive",
+    description: "Edge of a xl icon (24 px): the size-icon-xl utility. Not for the size of a control: use size.control.*, which follows the density mode.",
+    values: { "base": "24px" },
+  },
   "size.track": {
     cssVar: "--by-size-track",
     type: "dimension",

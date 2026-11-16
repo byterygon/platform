@@ -48,7 +48,7 @@ const ITEMS = [
   "resizable", "toolbar", "status-bar", "badge", "tag",
   "avatar", "progress", "spinner", "skeleton", "empty-state", "alert",
   "table", "description-list", "stat", "code", "type-badge", "relative-time",
-  "code-block", "json-viewer", "chart",
+  "code-block", "json-viewer", "chart", "icon",
 ];
 
 const DEAD_PROXY = "http://127.0.0.1:9";
@@ -150,7 +150,7 @@ function serve(dir: string): Promise<Server> {
 const itemContent = (name: string) => (JSON.parse(readFileSync(join(REGISTRY, `${name}.json`), "utf8")) as { files: { content: string }[] }).files[0]!.content;
 
 function checkInstalledFiles(app: string, label: string): void {
-  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ["src/lib/monaco.ts", "monaco"], ["src/lib/motion.ts", "motion"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
+  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ["src/lib/monaco.ts", "monaco"], ["src/lib/motion.ts", "motion"], ["src/lib/icons.ts", "icons"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
     const full = join(app, path);
     if (check(existsSync(full), `${label}: ${path} was not installed`)) {
       check(readFileSync(full, "utf8") === itemContent(item), `${label}: ${path} differs from the registry item ${item}`);

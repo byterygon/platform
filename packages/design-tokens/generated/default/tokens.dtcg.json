@@ -15130,6 +15130,20 @@
             "tailwind": "--spacing-icon-lg"
           }
         }
+      },
+      "xl": {
+        "$type": "dimension",
+        "$value": {
+          "value": 24,
+          "unit": "px"
+        },
+        "$description": "Edge of a xl icon (24 px): the size-icon-xl utility. Not for the size of a control: use size.control.*, which follows the density mode.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive",
+            "tailwind": "--spacing-icon-xl"
+          }
+        }
       }
     },
     "track": {

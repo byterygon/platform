@@ -1,0 +1,136 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "icon",
+  "type": "registry:ui",
+  "title": "Icon",
+  "description": "A Fluent UI System Icon (vendored offline, MIT) as an inline svg: regular or filled artwork, sized by size.icon.*, coloured by currentColor or a token text role.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/icons"
+  ],
+  "files": [
+    {
+      "path": "ui/icon.tsx",
+      "type": "registry:ui",
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/cn\";\nimport type { IconDefinition, IconSize } from \"@/lib/icons\";\n\n// A Fluent UI System Icon (vendored in packages/ui/icons, MIT) as an inline <svg> on Base UI's\n// useRender. The artwork comes from @/lib/icons, one export per icon (`ChevronDown`), so an app\n// bundles only the icons it imports. The edge follows size.icon.*, the colour is currentColor:\n// the text colour of where the icon sits, or a token role through `tone`.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const iconVariants = {\n  size: {\n    xs: \"size-icon-xs\",\n    sm: \"size-icon-sm\",\n    md: \"size-icon-md\",\n    lg: \"size-icon-lg\",\n    xl: \"size-icon-xl\",\n  },\n  tone: {\n    inherit: \"\",\n    default: \"text-fg\",\n    muted: \"text-fg-muted\",\n    subtle: \"text-fg-subtle\",\n    accent: \"text-accent-subtle-fg\",\n    danger: \"text-danger-fg\",\n    warning: \"text-warning-fg\",\n    success: \"text-success-fg\",\n    info: \"text-info-fg\",\n  },\n} as const;\n\nconst base = [\"inline-block shrink-0 select-none\"];\n\n/**\n * The Fluent drawing each size uses: the smallest artwork at least as large as the edge (Fluent\n * draws 16, 20 and 24 px; 12 and 14 px scale the 16 px drawing down).\n */\nexport const iconArtworkSize: Record<keyof typeof iconVariants.size, IconSize> = { xs: 16, sm: 16, md: 16, lg: 20, xl: 24 };\n\nconst DRAWN: readonly IconSize[] = [16, 20, 24];\n\n/** The artwork of `icon` for `size` in a style, or the nearest drawn size when Fluent has no drawing at that one. */\nexport function iconArtwork(icon: IconDefinition, size: IconSize, filled: boolean): { size: IconSize; paths: readonly string[] } {\n  const styles = filled ? [icon.filled, icon.regular] : [icon.regular, icon.filled];\n  for (const art of styles) {\n    const exact = art[size];\n    if (exact) return { size, paths: exact };\n    const nearest = [...DRAWN].filter((drawn) => art[drawn]).sort((a, b) => Math.abs(a - size) - Math.abs(b - size) || b - a)[0];\n    if (nearest) return { size: nearest, paths: art[nearest]! };\n  }\n  throw new Error(`Icon ${icon.name} has no artwork`);\n}\n\nexport interface IconProps extends Omit<useRender.ComponentProps<\"svg\">, \"className\" | \"children\"> {\n  /** The icon, an export of `@/lib/icons` (`ChevronDown`, `Database`). */\n  icon: IconDefinition;\n  /** Edge from size.icon.* (12, 14, 16, 20, 24 px). */\n  size?: keyof typeof iconVariants.size;\n  /** Colour from a text role; `inherit` (the default) keeps the surrounding text colour. */\n  tone?: keyof typeof iconVariants.tone;\n  /** Fluent's filled style, for a selected or active state; regular (outline) otherwise. */\n  filled?: boolean;\n  /** Names the icon for screen readers (role=\"img\"). Without it the icon is decorative and hidden. */\n  label?: string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A Fluent UI System Icon: `<Icon icon={ChevronDown} />`. Decorative unless `label` names it.\n * Built on Base UI's useRender: `render` swaps the element, the ref reaches it.\n */\nexport function Icon({ icon, size = \"md\", tone = \"inherit\", filled = false, label, className, render, ...props }: IconProps) {\n  // Without an icon (a value still loading) it keeps its box, empty, rather than throwing.\n  const art = icon ? iconArtwork(icon, iconArtworkSize[size], filled) : { size: iconArtworkSize[size], paths: [] };\n  const name = label ?? props[\"aria-label\"];\n  return useRender({\n    defaultTagName: \"svg\",\n    render,\n    props: {\n      \"data-slot\": \"icon\",\n      \"data-icon\": icon?.name,\n      \"data-size\": size,\n      \"data-tone\": tone,\n      \"data-filled\": filled ? \"\" : undefined,\n      viewBox: `0 0 ${art.size} ${art.size}`,\n      fill: \"currentColor\",\n      focusable: \"false\",\n      ...props,\n      ...(name ? { role: \"img\", \"aria-label\": name } : { \"aria-hidden\": true }),\n      className: cn(base, iconVariants.size[size], iconVariants.tone[tone], className),\n      children: art.paths.map((d) => <path key={d} d={d} />),\n    },\n  });\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "icon",
+      "title": "Icon",
+      "description": "A Fluent UI System Icon (vendored offline, MIT) as an inline svg: regular or filled artwork, sized by size.icon.*, coloured by currentColor or a token text role.",
+      "usage": "Use Icon for every pictogram: <Icon icon={ChevronDown} /> with an export of @/lib/icons (ChevronDown, Database, Search, Dismiss). It takes the surrounding text colour (tone=\"inherit\"), or a role through tone (muted, accent, danger, warning, success, info). size follows size.icon.* (xs 12, sm 14, md 16, lg 20, xl 24 px) and picks Fluent's 16, 20 or 24 px drawing. filled is Fluent's solid style, for a selected or active state. An icon beside text is decorative (hidden from screen readers); one that stands alone needs label, or put it in an IconButton with aria-label. Import only the icons you use. To add an icon, vendor it with pnpm --filter @byterygon/ui icons add <name> --from <@fluentui/svg-icons tarball> (offline), never draw one by hand.",
+      "status": "experimental",
+      "base": "@base-ui/react/use-render",
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "icon",
+          "type": "IconDefinition",
+          "description": "The icon: an export of @/lib/icons (ChevronDown, Database). Without one it renders an empty box of its size."
+        },
+        {
+          "name": "size",
+          "type": "\"xs\" | \"sm\" | \"md\" | \"lg\" | \"xl\"",
+          "default": "md",
+          "description": "Edge from size.icon.* (12, 14, 16, 20, 24 px); xs to md draw Fluent's 16 px artwork, lg the 20 px, xl the 24 px."
+        },
+        {
+          "name": "tone",
+          "type": "\"inherit\" | \"default\" | \"muted\" | \"subtle\" | \"accent\" | \"danger\" | \"warning\" | \"success\" | \"info\"",
+          "default": "inherit",
+          "description": "Colour from a text role; inherit keeps the surrounding text colour (currentColor)."
+        },
+        {
+          "name": "filled",
+          "type": "boolean",
+          "default": false,
+          "description": "Fluent's filled (solid) style, for a selected or active state; sets data-filled."
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "description": "Names a standalone icon for screen readers (role=\"img\", aria-label); without it the icon is aria-hidden."
+        },
+        {
+          "name": "render",
+          "type": "ReactElement | ((props, state) => ReactElement)",
+          "description": "Base UI render prop: render another element with the icon's props."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<SVGSVGElement>",
+          "description": "Reaches the svg element."
+        }
+      ],
+      "variants": {
+        "size": [
+          "xs",
+          "sm",
+          "md",
+          "lg",
+          "xl"
+        ],
+        "tone": [
+          "inherit",
+          "default",
+          "muted",
+          "subtle",
+          "accent",
+          "danger",
+          "warning",
+          "success",
+          "info"
+        ]
+      },
+      "slots": [
+        {
+          "name": "root",
+          "element": "svg",
+          "description": "The icon; data-slot=\"icon\", data-icon (its Fluent name), data-size, data-tone, data-filled."
+        }
+      ],
+      "states": [],
+      "tokens": [
+        "color.accent.subtle-fg",
+        "color.fg.default",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.status.danger.fg",
+        "color.status.info.fg",
+        "color.status.success.fg",
+        "color.status.warning.fg",
+        "size.icon.lg",
+        "size.icon.md",
+        "size.icon.sm",
+        "size.icon.xl",
+        "size.icon.xs"
+      ],
+      "examples": {
+        "minimal": "IconMinimal",
+        "realistic": "IconRealistic"
+      },
+      "accessibility": [
+        "Renders an inline svg with focusable=\"false\"; it is never in the tab order.",
+        "Decorative by default (aria-hidden): the text next to it says what it means. A standalone icon takes label (role=\"img\" with aria-label), or sits in an IconButton whose aria-label says what the button does.",
+        "Colour is never the only cue: a status icon (Info, Warning, ErrorCircle, CheckmarkCircle) differs in shape too, and status text goes with it. Tones use text roles checked at 4.5:1 on their surfaces."
+      ]
+    },
+    "example": "import { Button } from \"@/components/button/button\";\nimport { Icon } from \"@/components/icon/icon\";\nimport { IconButton } from \"@/components/icon-button/icon-button\";\nimport { ArrowClockwise, ArrowDownload, CheckmarkCircle, Database, ErrorCircle, Info, Play, Search, Settings, Star, Warning } from \"@/lib/icons\";\n\n/** The smallest useful Icon: decorative beside text, which already says what it means. */\nexport function IconMinimal() {\n  return (\n    <span className=\"inline-flex items-center gap-inline-xs text-body-1 text-fg\">\n      <Icon icon={Database} />\n      orders_db\n    </span>\n  );\n}\n\n/** Icon where it is really used: every size, the tones, regular and filled, inside a button, and named when it stands alone. */\nexport function IconRealistic() {\n  return (\n    <div className=\"flex flex-col gap-stack-md text-fg\">\n      <div className=\"flex items-end gap-inline-md\">\n        <Icon icon={Settings} size=\"xs\" />\n        <Icon icon={Settings} size=\"sm\" />\n        <Icon icon={Settings} size=\"md\" />\n        <Icon icon={Settings} size=\"lg\" />\n        <Icon icon={Settings} size=\"xl\" />\n        <Icon icon={Star} size=\"xl\" filled tone=\"accent\" label=\"Starred\" />\n      </div>\n      <div className=\"flex items-center gap-inline-md\">\n        <Icon icon={Search} tone=\"default\" />\n        <Icon icon={Search} tone=\"muted\" />\n        <Icon icon={Search} tone=\"subtle\" />\n        <Icon icon={Info} tone=\"info\" label=\"Information\" />\n        <Icon icon={CheckmarkCircle} tone=\"success\" label=\"Succeeded\" />\n        <Icon icon={Warning} tone=\"warning\" label=\"Warning\" />\n        <Icon icon={ErrorCircle} tone=\"danger\" label=\"Failed\" />\n      </div>\n      <div className=\"flex items-center gap-inline-sm\">\n        <Button>\n          <Icon icon={Play} filled />\n          Run\n        </Button>\n        <Button variant=\"secondary\">\n          <Icon icon={ArrowDownload} />\n          Export\n        </Button>\n        <IconButton aria-label=\"Refresh\">\n          <Icon icon={ArrowClockwise} />\n        </IconButton>\n      </div>\n    </div>\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}
