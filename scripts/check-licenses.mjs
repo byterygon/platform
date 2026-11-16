@@ -131,8 +131,8 @@ for (const [name, { path, json }] of npm) {
   }
 }
 
-// Fonts: the manifest is the list of what may be vendored. OFL-1.1 is the licence of Selawik, Inter
-// and JetBrains Mono; it permits bundling with software, but the licence text must travel with the files.
+// Fonts: the manifest is the list of what may be vendored. OFL-1.1 is the licence of Inter and
+// JetBrains Mono; it permits bundling with software, but the licence text must travel with the files.
 const FONT_LICENSES = { "OFL-1.1": /SIL OPEN FONT LICENSE/i };
 const FONT_FILE = /\.(woff2?|ttf|otf|ttc)$/i;
 const listFiles = (dir) =>

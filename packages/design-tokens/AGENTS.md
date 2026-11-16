@@ -165,7 +165,7 @@ with no consumer). The previous default is `classic`. DBee's appearance list
 | Theme | Label | Look |
 | --- | --- | --- |
 | `default` | Byterygon | Aurora, the Fluent 2 layered look chosen on 2026-11-16 (TSK-52), the default since TSK-57: violet brand `#6b4eff` (hue 282.5; light steps 9-11 overridden to the full chroma 0.2474, which the dark solid cannot show, so the seed chroma is 0.165), cool near-grey neutral (hue 275, chroma 0.012, tint 0.006), backdrop glows `brand.4`/`teal.3` (dark `brand-dark.6`/`teal-dark.6`) over a canvas one step up (`neutral.2`, dark `neutral-dark.3`, with surface, raised and overlay following), radius 4 with `radius.lg` 8, a black and white focus ring (`color.ring`), `color.border.focus` and `grid.selection-border` on the accent, `color.neutral-dark.10` lifted by the printed fix so subtle text holds on a field over the brightest glow. DBee takes it through `default` and sets `data-density="compact"` itself |
-| `classic` | Classic | the default before TSK-57, values unchanged: cool neutral, blue-teal brand (hue 230), radius 6, light, comfortable, no glows; `font.sans` and `font.mono` overridden back to Inter and JetBrains Mono first |
+| `classic` | Classic | the default before TSK-57, values unchanged: cool neutral, blue-teal brand (hue 230), radius 6, light, comfortable, no glows; `font.sans` (Inter first, no Segoe) and `font.mono` (JetBrains Mono first, no Cascadia) as before TSK-57 |
 | `slate` | Slate | near-greyscale, muted slate-blue accent, radius 4 |
 | `paper` | Paper | warm cream (neutral tint), rust accent, 15 px text with relaxed body leading, radius 8; its orange (the warning colour) at hue 65, so warning stays apart from the rust brand |
 | `midnight` | Midnight | dark first, deep blue neutral, periwinkle accent |
@@ -380,20 +380,22 @@ package is a reference, never a dependency. `test/catalog.test.ts` pins every va
 
 ## Fonts
 
-`font.sans` is `"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", Selawik, system-ui,
+`font.sans` is `"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", Inter, system-ui,
 sans-serif` and `font.mono` is `"Cascadia Mono", "JetBrains Mono", ui-monospace, SFMono-Regular,
-Menlo, monospace` (DOC-17 open question 104 (d)). Segoe UI Variable and Cascadia Mono are the
-system's on Windows 11 and are never shipped: Microsoft's licence does not allow redistributing
+Menlo, monospace` (DOC-17 open questions 104 (d) and 109). Segoe UI Variable and Cascadia Mono are
+the system's on Windows 11 and are never shipped: Microsoft's licence does not allow redistributing
 Segoe; Cascadia is OFL and could be vendored, but JetBrains Mono already covers every platform.
+The fallback after Segoe is Inter, not Selawik (TSK-58): Selawik 1.01 has 349 characters and lacks
+96 of the 134 Vietnamese letters, so Vietnamese text mixed two fonts inside a word. Check a
+candidate font's character map for Vietnamese (Latin Extended Additional, U+1EA0-1EF9, and ơ, ư, đ)
+before making it the interface font.
 
-`fonts/` holds Selawik 1.01 (Microsoft's open, metric-compatible fallback for Segoe UI: 400, 600,
-700, Microsoft's own woff2 files, unmodified because "Selawik" is a Reserved Font Name), Inter
-(variable, one file; no longer in `font.sans`, kept for themes that name it) and JetBrains Mono
-(400, 500, 600, 700), all SIL OFL 1.1, with their licence texts, `manifest.json` (version, source
-URL, sha256 of every file) and `fonts.css` (`@font-face`, hand-written, the same for every theme).
-`node scripts/check-licenses.mjs` fails on a missing licence text, a changed file or an unlisted
-font file; `test/fonts.test.ts` also fails if a Segoe or Cascadia file appears. Nothing is fetched
-at build or run time, and a browser only downloads Selawik where no Segoe UI is installed.
+`fonts/` holds Inter (variable, one file, 100-900) and JetBrains Mono (400, 500, 600, 700), both
+SIL OFL 1.1, with their licence texts, `manifest.json` (version, source URL, sha256 of every file)
+and `fonts.css` (`@font-face`, hand-written, the same for every theme). `node
+scripts/check-licenses.mjs` fails on a missing licence text, a changed file or an unlisted font
+file; `test/fonts.test.ts` also fails if a Segoe or Cascadia file appears. Nothing is fetched at
+build or run time, and a browser only downloads Inter where no Segoe UI is installed.
 
 ## Exports
 

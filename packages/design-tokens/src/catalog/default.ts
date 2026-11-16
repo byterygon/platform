@@ -448,11 +448,11 @@ const font: RoleDef[] = [
     path: "font.sans",
     type: "fontFamily",
     // Segoe UI Variable is the system's (Windows 11) and is never shipped: Microsoft's licence does
-    // not allow redistribution. Selawik is its open (SIL OFL) metric-compatible fallback, vendored
-    // in fonts/ (DOC-17 open question 104 (d)).
-    value: ["Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Selawik", "system-ui", "sans-serif"],
+    // not allow redistribution. Inter (vendored in fonts/, SIL OFL) is the fallback: Selawik, the
+    // first choice, lacks most Vietnamese letters (TSK-58; DOC-17 open questions 104 (d), 109).
+    value: ["Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Inter", "system-ui", "sans-serif"],
     tailwind: "--font-sans",
-    use: "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Selawik (fonts/fonts.css).",
+    use: "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Inter (fonts/fonts.css).",
     avoid: "Not for code, identifiers or tabular data that must align: use font.mono.",
   },
   {

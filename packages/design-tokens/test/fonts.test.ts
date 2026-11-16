@@ -14,8 +14,8 @@ interface Manifest {
 const fonts = join(ROOT, "fonts");
 const manifest = JSON.parse(readFileSync(join(fonts, "manifest.json"), "utf8")) as Manifest;
 
-test("Selawik, Inter and JetBrains Mono are vendored under the OFL with their licence texts and checksums", () => {
-  assert.deepEqual(manifest.fonts.map((font) => font.family), ["Selawik", "Inter", "JetBrains Mono"]);
+test("Inter and JetBrains Mono are vendored under the OFL with their licence texts and checksums", () => {
+  assert.deepEqual(manifest.fonts.map((font) => font.family), ["Inter", "JetBrains Mono"]);
   for (const font of manifest.fonts) {
     assert.equal(font.license, "OFL-1.1");
     for (const file of font.licenseFiles) assert.ok(existsSync(join(fonts, file)), file);
@@ -35,16 +35,16 @@ test("fonts.css declares exactly the vendored files, and the font roles name tho
 
   const { set } = generateTokens(defaultTheme());
   const families = new Set([...css.matchAll(/font-family: "([^"]+)"/g)].map((match) => match[1]!));
-  assert.deepEqual([...families].sort(), ["Inter", "JetBrains Mono", "Selawik"]);
-  // The system's Segoe UI Variable first (never shipped), then the vendored Selawik.
-  assert.deepEqual(set.tokens.get("font.sans")!.value, ["Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Selawik", "system-ui", "sans-serif"]);
+  assert.deepEqual([...families].sort(), ["Inter", "JetBrains Mono"]);
+  // The system's Segoe UI Variable first (never shipped), then the vendored Inter, which has
+  // Vietnamese (Selawik, the first choice, lacked most of it: TSK-58).
+  assert.deepEqual(set.tokens.get("font.sans")!.value, ["Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", "Inter", "system-ui", "sans-serif"]);
   // The system's Cascadia Mono first (not vendored), then the vendored JetBrains Mono.
   assert.deepEqual((set.tokens.get("font.mono")!.value as string[]).slice(0, 2), ["Cascadia Mono", "JetBrains Mono"]);
   // No Segoe or Cascadia file is ever shipped: Microsoft's licence does not allow Segoe's.
   for (const font of manifest.fonts) for (const file of font.files) assert.doesNotMatch(file.path, /segoe|cascadia/i);
-  // Selawik has the weights Fluent's ramp asks for (400, 600, 700).
-  const selawik = [...css.matchAll(/font-family: "Selawik";\s+font-style: normal;\s+font-weight: (\d+)/g)].map((match) => Number(match[1]));
-  assert.deepEqual(selawik, [400, 600, 700]);
+  // Inter is variable: every weight Fluent's ramp asks for (400, 600, 700) is in its range.
+  assert.match(css, /font-family: "Inter";\s+font-style: normal;\s+font-weight: 100 900;/);
   // The weights the type scale asks of the mono font are all there.
   const weights = [...css.matchAll(/font-family: "JetBrains Mono";\s+font-style: normal;\s+font-weight: (\d+)/g)].map((match) => Number(match[1]));
   assert.deepEqual(weights, [400, 500, 600, 700]);

@@ -5068,8 +5068,8 @@ export const tokens = {
     cssVar: "--by-font-sans",
     type: "fontFamily",
     tier: "semantic",
-    description: "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Selawik (fonts/fonts.css). Not for code, identifiers or tabular data that must align: use font.mono.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    description: "All interface text: the system's Segoe UI Variable where it is installed, else the vendored Inter (fonts/fonts.css). Not for code, identifiers or tabular data that must align: use font.mono.",
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "font.mono": {
     cssVar: "--by-font-mono",
@@ -5615,7 +5615,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.caption-2.size": {
     cssVar: "--by-text-caption-2-size",
@@ -5650,7 +5650,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.caption-2-strong.size": {
     cssVar: "--by-text-caption-2-strong-size",
@@ -5685,7 +5685,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.caption-1.size": {
     cssVar: "--by-text-caption-1-size",
@@ -5720,7 +5720,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.caption-1-strong.size": {
     cssVar: "--by-text-caption-1-strong-size",
@@ -5755,7 +5755,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.caption-1-stronger.size": {
     cssVar: "--by-text-caption-1-stronger-size",
@@ -5790,7 +5790,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.body-1.size": {
     cssVar: "--by-text-body-1-size",
@@ -5825,7 +5825,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.body-1-strong.size": {
     cssVar: "--by-text-body-1-strong-size",
@@ -5860,7 +5860,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.body-1-stronger.size": {
     cssVar: "--by-text-body-1-stronger-size",
@@ -5895,7 +5895,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.body-2.size": {
     cssVar: "--by-text-body-2-size",
@@ -5930,7 +5930,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.subtitle-2.size": {
     cssVar: "--by-text-subtitle-2-size",
@@ -5965,7 +5965,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.subtitle-2-stronger.size": {
     cssVar: "--by-text-subtitle-2-stronger-size",
@@ -6000,7 +6000,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.subtitle-1.size": {
     cssVar: "--by-text-subtitle-1-size",
@@ -6035,7 +6035,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.title-3.size": {
     cssVar: "--by-text-title-3-size",
@@ -6070,7 +6070,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.title-2.size": {
     cssVar: "--by-text-title-2-size",
@@ -6105,7 +6105,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.title-1.size": {
     cssVar: "--by-text-title-1-size",
@@ -6140,7 +6140,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.large-title.size": {
     cssVar: "--by-text-large-title-size",
@@ -6175,7 +6175,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.display.size": {
     cssVar: "--by-text-display-size",
@@ -6280,7 +6280,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.heading-1.size": {
     cssVar: "--by-text-heading-1-size",
@@ -6315,7 +6315,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.heading-2.size": {
     cssVar: "--by-text-heading-2-size",
@@ -6350,7 +6350,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.heading-3.size": {
     cssVar: "--by-text-heading-3-size",
@@ -6385,7 +6385,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.heading-4.size": {
     cssVar: "--by-text-heading-4-size",
@@ -6420,7 +6420,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.body.size": {
     cssVar: "--by-text-body-size",
@@ -6455,7 +6455,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.body-strong.size": {
     cssVar: "--by-text-body-strong-size",
@@ -6490,7 +6490,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.label.size": {
     cssVar: "--by-text-label-size",
@@ -6525,7 +6525,7 @@ export const tokens = {
     type: "fontFamily",
     tier: "semantic",
     description: "Font family of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
-    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Selawik, system-ui, sans-serif" },
+    values: { "base": "\"Segoe UI Variable Text\", \"Segoe UI Variable\", \"Segoe UI\", Inter, system-ui, sans-serif" },
   },
   "text.caption.size": {
     cssVar: "--by-text-caption-size",
