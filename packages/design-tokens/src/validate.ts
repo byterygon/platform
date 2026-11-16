@@ -50,6 +50,8 @@ export interface ContrastMeasurement {
   /** APCA lightness contrast (signed Lc), one decimal. Informative unless the theme sets a target. */
   readonly apca: number;
   readonly pass: boolean;
+  /** For a failing pair: the same fix as its diagnostic (ready to apply with `applyFix`). */
+  readonly fix?: Fix;
 }
 
 export interface ValidationResult {
@@ -342,7 +344,7 @@ function measureContrast(set: TokenSet, diagnostics: Diagnostic[]): ContrastMeas
       const apca = Math.round(apcaContrast(fgRgb, bgRgb) * 10) / 10;
       const apcaRequired = set.contrast.apca?.[pair.kind];
       const apcaPass = apcaRequired === undefined || Math.abs(apca) >= apcaRequired;
-      const measurement: ContrastMeasurement = {
+      const measurement: { -readonly [K in keyof ContrastMeasurement]: ContrastMeasurement[K] } = {
         fg: pair.fg,
         bg: pair.bg,
         ...(pair.over ? { over: pair.over } : {}),
@@ -358,7 +360,9 @@ function measureContrast(set: TokenSet, diagnostics: Diagnostic[]): ContrastMeas
 
       const where = `${overText(pair.over)}${bases.length > 1 ? " (at its least favourable point)" : ""}${describeMode(context)}`;
       if (exact < required) {
-        failures.push(() =>
+        failures.push(() => {
+          const fix = contrastFix(set, pair, context, fg.chain, fg.value as ColorValue, background, backgrounds.get(key)!);
+          measurement.fix = fix;
           diagnostics.push({
             severity: "error",
             rule: "contrast",
@@ -368,10 +372,12 @@ function measureContrast(set: TokenSet, diagnostics: Diagnostic[]): ContrastMeas
             message: `${pair.fg} on ${pair.bg}${where}: contrast ${ratio}:1 is below the ${required}:1 required for ${pair.kind === "text" ? "text" : "UI components"} (WCAG 2.2 ${set.contrast.level})`,
             measured: ratio,
             required,
-            fix: contrastFix(set, pair, context, fg.chain, fg.value as ColorValue, background, backgrounds.get(key)!),
-          }),
-        );
+            fix,
+          });
+        });
       } else if (!apcaPass) {
+        const fix: Fix = { summary: `Increase the lightness difference between the two roles, or lower seeds.contrast.apca.${pair.kind}.` };
+        measurement.fix = fix;
         diagnostics.push({
           severity: "error",
           rule: "contrast-apca",
@@ -381,7 +387,7 @@ function measureContrast(set: TokenSet, diagnostics: Diagnostic[]): ContrastMeas
           message: `${pair.fg} on ${pair.bg}${where}: APCA Lc ${Math.abs(apca)} is below the theme's target of ${apcaRequired}`,
           measured: Math.abs(apca),
           required: apcaRequired!,
-          fix: { summary: `Increase the lightness difference between the two roles, or lower seeds.contrast.apca.${pair.kind}.` },
+          fix,
         });
       }
     }

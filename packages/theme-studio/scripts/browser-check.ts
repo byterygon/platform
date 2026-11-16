@@ -370,6 +370,30 @@ async function main(argv: string[]): Promise<number> {
     );
     check((await page.evaluate<string>(`document.documentElement.dataset.theme`)) === "dark", "share link: opens the shared view (Terminal is dark first)");
 
+    // 2c. The contrast report: a theme whose muted text fails in light mode, the one-click fix.
+    const faded = { schemaVersion: 1, name: "faded", overrides: { "color.neutral.11": "oklch(0.7 0.012 275)" } };
+    for (const mode of ["light", "dark"] as const) {
+      await page.navigate(`${studio}${await encodeState({ theme: faded, mode })}`);
+      await until(page, READY, "the faded theme to render");
+      check(await page.evaluate<boolean>(CLICK('[role="tab"]', "Contrast (28)")), `contrast (${mode}): the tab counts 28 failing measurements`);
+      await until(page, `document.querySelector('ul[aria-label^="Contrast pairs"]') !== null || document.body.textContent.includes("No pair fails")`, "the contrast report");
+      if (shots) {
+        await sleep(300);
+        await page.screenshot(join(shots, `contrast-${mode}.png`));
+      }
+    }
+    // The view is dark now; the failures are in light mode.
+    check(await page.evaluate<boolean>(CLICK('[aria-label="Mode combination"] button', "light · comfortable28")), "contrast: the light combination lists its failures");
+    await until(page, `document.querySelector('ul[aria-label="Contrast pairs, light · comfortable"] > li[aria-label="color.fg.muted"]') !== null`, "the light failures of color.fg.muted");
+    const unfixed = await page.evaluate<string>(`location.hash`);
+    check(await page.evaluate<boolean>(CLICK("button", "Apply fix")), "contrast: the Apply fix button");
+    await until(page, `[...document.querySelectorAll('[role="tab"]')].some((t) => t.textContent === "Contrast (0)")`, "the fix to clear every failure");
+    await until(page, `location.hash !== ${JSON.stringify(unfixed)} && localStorage.getItem("byterygon.theme-studio.state") === location.hash`, "the fixed theme to be saved");
+    const fixedHash = await page.evaluate<string>(`location.hash`);
+    const { decodeState } = await import("@byterygon/design-tokens");
+    const fixedTheme = (await decodeState(fixedHash)).state?.theme as { overrides?: Record<string, unknown> } | undefined;
+    check(fixedTheme?.overrides?.["color.neutral.11"] === "oklch(0.49 0.012 275)", `contrast: the fix lands in the theme file (${JSON.stringify(fixedTheme?.overrides)})`);
+
     // 3. Every preset from its hash, every export through the dialog, against by-tokens.
     const exportsChecked: string[] = [];
     for (const preset of presets) {

@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/tabs/tabs
 import { ToggleGroup, ToggleGroupItem } from "@/components/toggle-group/toggle-group";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { derive } from "./engine.ts";
+import { ContrastReport } from "./panels/contrast-report.tsx";
 import { ExportPanel } from "./panels/export-panel.tsx";
 import { SeedsPanel } from "./panels/seeds-panel.tsx";
 import { SharePanel } from "./panels/share-panel.tsx";
@@ -209,6 +210,7 @@ export function App({ initial, save = saveState }: AppProps) {
             <TabsList className="px-inset-lg">
               <TabsTrigger value="components">Components</TabsTrigger>
               <TabsTrigger value="swatches">Swatches</TabsTrigger>
+              <TabsTrigger value="contrast">Contrast ({derived.contrast.filter((m) => !m.pass).length})</TabsTrigger>
               <TabsTrigger value="problems">Problems ({derived.diagnostics.length})</TabsTrigger>
             </TabsList>
             <TabsContent value="components" className="min-h-0 flex-1">
@@ -222,6 +224,13 @@ export function App({ initial, save = saveState }: AppProps) {
               <ScrollArea className="h-full" aria-label="Swatches">
                 <div className="p-inset-lg">
                   <SwatchBoard set={derived.set} />
+                </div>
+              </ScrollArea>
+            </TabsContent>
+            <TabsContent value="contrast" className="min-h-0 flex-1">
+              <ScrollArea className="h-full" aria-label="Contrast">
+                <div className="p-inset-lg">
+                  <ContrastReport theme={theme} derived={derived} view={view} onChange={setTheme} onSelect={setSelected} />
                 </div>
               </ScrollArea>
             </TabsContent>

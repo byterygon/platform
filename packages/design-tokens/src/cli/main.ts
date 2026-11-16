@@ -12,6 +12,7 @@ import { generateTokens } from "../generate.js";
 import { type Diagnostic, type ModeContext, type Token, type TokenSet, SCHEMA_VERSION, TIERS, hasErrors } from "../model.js";
 import { dependentAxes, ownValues, referencedBy, resolve } from "../resolve.js";
 import { duplicateTheme, presetLabel, presetOrder } from "../presets.js";
+import { fixAll } from "../fix.js";
 import { STATE_DENSITIES, STATE_MODES, decodeState, encodeState } from "../state.js";
 import { closest, isPlainObject, stableJson } from "../util.js";
 import { type ContrastMeasurement, contextsFor, overStack, overText, validate } from "../validate.js";
@@ -222,6 +223,41 @@ async function validateCommand(args: ParsedArgs, io: Io): Promise<Outcome> {
     exitCode: result.ok ? EXIT.ok : EXIT.invalid,
     data: { theme: result.set.name, tokens: tokenCounts(result.set), contrast: summary, diagnostics: result.diagnostics },
     text,
+  };
+}
+
+async function fixCommand(args: ParsedArgs, io: Io): Promise<Outcome> {
+  if (args.positionals.length > 0) throw new UsageError("usage", "fix takes no positional arguments", "Usage: by-tokens fix [--theme <name|file>] [--out <file>] [--dry-run]");
+  const loaded = loadTheme(themeFlag(args), io);
+  const dryRun = args.flags.has("--dry-run");
+  const outFlag = flag(args, "--out");
+  if (loaded.builtIn && !outFlag && !dryRun) {
+    throw new UsageError("out-required", "a built-in preset is not changed in place", "Pass --out <file> to write the fixed theme, or --dry-run to print it.");
+  }
+  const result = fixAll(loaded.theme);
+  const content = stableJson(result.theme);
+  const target = outFlag ? resolvePath(io.cwd, outFlag) : loaded.file;
+  const write = !dryRun && result.applied.length > 0;
+  if (write) {
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, content);
+  }
+  const errors = result.diagnostics.filter((d) => d.severity === "error").length;
+  const applied = result.applied.map((d) => ({ rule: d.rule, ...(d.token ? { token: d.token } : {}), ...(d.related ? { related: d.related } : {}), ...(d.mode ? { mode: d.mode } : {}), fix: d.fix }));
+  const lines = [
+    ...result.applied.map((d) => `fixed ${d.rule}: ${d.message}\n  ${d.fix!.summary}`),
+    ...diagnosticsText(result.diagnostics),
+    result.applied.length === 0 ? "nothing to fix" : write ? `wrote ${display(io, target)} (${result.applied.length} fix${result.applied.length === 1 ? "" : "es"})` : `${result.applied.length} fix${result.applied.length === 1 ? "" : "es"} (dry run, nothing written)`,
+  ];
+  // A dry run prints the fixed theme file to stdout and the report to stderr.
+  if (dryRun && !args.json) {
+    io.stderr(`${lines.join("\n")}\n`);
+    return { exitCode: errors > 0 ? EXIT.invalid : EXIT.ok, data: {}, text: "", raw: content };
+  }
+  return {
+    exitCode: errors > 0 ? EXIT.invalid : EXIT.ok,
+    data: { theme: result.theme, applied, diagnostics: result.diagnostics, written: write ? display(io, target) : false },
+    text: lines.join("\n"),
   };
 }
 
@@ -584,6 +620,7 @@ function version(): Outcome {
 const HANDLERS: Readonly<Record<string, (args: ParsedArgs, io: Io) => Promise<Outcome> | Outcome>> = {
   build,
   validate: validateCommand,
+  fix: fixCommand,
   explain,
   search,
   diff,
