@@ -252,7 +252,10 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
-        "@byterygon/icon-button"
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icon-button",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -645,6 +648,9 @@
       "dependencies": [],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/theme-scope"
       ],
       "files": [
@@ -868,6 +874,7 @@
       "dependencies": [],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
         "@byterygon/tooltip"
       ],
       "files": [
@@ -1126,7 +1133,9 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {

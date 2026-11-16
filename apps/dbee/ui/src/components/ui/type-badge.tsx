@@ -26,7 +26,7 @@ type DataType = keyof typeof typeBadgeVariants.type;
 const base = ["inline-flex min-w-0 max-w-full items-center gap-inline-xs font-mono text-code-sm whitespace-nowrap align-middle"];
 
 const classes = {
-  glyph: "inline-flex min-w-icon-md shrink-0 items-center justify-center rounded-xs border border-current px-inline-xs leading-none",
+  glyph: "inline-flex min-w-icon-md shrink-0 items-center justify-center rounded-sm border border-current px-inline-xs leading-none",
   label: "min-w-0 truncate text-fg-muted",
   hidden: "sr-only",
 } as const;

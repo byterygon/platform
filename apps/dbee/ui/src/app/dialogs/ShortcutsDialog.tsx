@@ -76,7 +76,7 @@ export function ShortcutsDialog({ open, onOpenChange, shell }: ShortcutsDialogPr
           </Table>
         </DialogBody>
         <DialogFooter>
-          <DialogClose render={<Button variant="primary" />}>Close</DialogClose>
+          <DialogClose render={<Button appearance="primary" />}>Close</DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>

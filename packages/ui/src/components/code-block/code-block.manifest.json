@@ -147,7 +147,7 @@
   ],
   "tokens": [
     "color.accent.subtle-fg",
-    "color.border.default",
+    "color.border.subtle",
     "color.fg.default",
     "color.fg.disabled",
     "color.fg.muted",
@@ -163,6 +163,7 @@
     "font.sans",
     "motion.duration.faster",
     "motion.easing.easy-ease",
+    "radius.lg",
     "radius.md",
     "ring.inner-width",
     "ring.width",
@@ -180,14 +181,14 @@
     "syntax.operator",
     "syntax.string",
     "syntax.type",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight",
     "text.code.leading",
     "text.code.size",
     "text.code.tracking",
-    "text.code.weight",
-    "text.label.leading",
-    "text.label.size",
-    "text.label.tracking",
-    "text.label.weight"
+    "text.code.weight"
   ],
   "examples": {
     "minimal": "CodeBlockMinimal",

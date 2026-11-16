@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const codeVariants = {
   variant: {
-    default: "rounded-xs bg-inset px-inline-xs text-fg",
+    default: "rounded-sm border border-border-subtle bg-layer-alt px-inline-xs text-fg",
     plain: "text-fg",
   },
 } as const;

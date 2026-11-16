@@ -2,8 +2,11 @@ import { jsonLanguage } from "@codemirror/lang-json";
 import { PostgreSQL } from "@codemirror/lang-sql";
 import { highlightCode, tagHighlighter, tags as t } from "@lezer/highlight";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { Icon } from "@/components/icon/icon";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { Checkmark, Copy } from "@/lib/icons";
 
 // Read-only code: a statement in the history, the DDL of a table, a plugin's manifest, the About
 // diagnostics. A <pre><code> in editor.* and syntax.* colours (the same roles as SqlEditor and
@@ -20,12 +23,12 @@ export const codeBlockVariants = {} as const;
 export type CodeBlockLanguage = "text" | "sql" | "json";
 
 const classes = {
-  root: "flex min-w-0 flex-col overflow-hidden rounded-md border border-border bg-editor font-mono text-code text-editor-fg",
-  header: "flex h-control-sm shrink-0 items-center gap-inline-sm border-b border-border ps-inset-sm pe-inline-xs font-sans text-label text-fg-muted",
+  root: "flex min-w-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-editor font-mono text-code text-editor-fg",
+  header: "flex h-control-sm shrink-0 items-center gap-inline-sm border-b border-border-subtle ps-inset-sm pe-inline-xs font-sans text-caption-1 text-fg-muted",
   title: "min-w-0 flex-1 truncate",
   scroller: [
     "relative min-h-0 flex-1 overflow-auto overscroll-contain py-inset-xs",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring",
+    focusRing,
   ],
   pre: "m-0 min-w-full w-max font-mono text-code data-wrap:w-full",
   line: "flex min-w-full whitespace-pre data-highlighted:bg-editor-line data-wrap:whitespace-pre-wrap data-wrap:wrap-break-word data-wrap:w-full",
@@ -65,17 +68,6 @@ function lineIndex(code: string): { starts: number[]; longest: number } {
   return { starts, longest };
 }
 
-const CopyIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
-    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
-    <path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
-  </svg>
-);
-const CheckIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m3.5 8.5 3 3 6-7" />
-  </svg>
-);
 
 export interface CodeBlockProps {
   /** The text to show. */
@@ -218,7 +210,7 @@ export function CodeBlock({
 
   const copyButton = copyable ? (
     <IconButton aria-label={copied ? "Copied" : "Copy code"} size="small" onClick={copy} className={classes.copy}>
-      {copied ? <CheckIcon /> : <CopyIcon />}
+      <Icon icon={copied ? Checkmark : Copy} />
     </IconButton>
   ) : null;
 

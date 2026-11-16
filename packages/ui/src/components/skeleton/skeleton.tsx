@@ -12,7 +12,7 @@ import { tokenMs, useLoopAnimation } from "@/lib/motion";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const skeletonVariants = {
   variant: {
-    text: "h-[var(--by-text-body-size)] w-full rounded-xs",
+    text: "h-[var(--by-text-body-size)] w-full rounded-sm",
     block: "rounded-md",
     circle: "aspect-square rounded-full",
   },

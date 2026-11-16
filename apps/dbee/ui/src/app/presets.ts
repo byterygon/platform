@@ -1,7 +1,8 @@
-// Appearance (DBee spec §3.9, Decision 24): the six token presets, the colour scheme (system,
+// Appearance (DBee spec §3.9, Decision 24): the seven token presets (Aurora, the default, and Classic first), the colour scheme (system,
 // light, dark) and the density. The presets' tokens.css files are bundled as text and the chosen
 // one is swapped into a <style> element; the role names are the same in every preset, so the
 // Tailwind theme loaded by index.css applies to all of them. Nothing is fetched.
+import classicCss from "@byterygon/design-tokens/presets/classic/tokens.css?inline";
 import defaultCss from "@byterygon/design-tokens/default/tokens.css?inline";
 import highContrastCss from "@byterygon/design-tokens/presets/high-contrast/tokens.css?inline";
 import midnightCss from "@byterygon/design-tokens/presets/midnight/tokens.css?inline";
@@ -9,13 +10,14 @@ import paperCss from "@byterygon/design-tokens/presets/paper/tokens.css?inline";
 import slateCss from "@byterygon/design-tokens/presets/slate/tokens.css?inline";
 import terminalCss from "@byterygon/design-tokens/presets/terminal/tokens.css?inline";
 
-export const PRESETS = ["default", "high-contrast", "midnight", "paper", "slate", "terminal"] as const;
+export const PRESETS = ["default", "classic", "high-contrast", "midnight", "paper", "slate", "terminal"] as const;
 export type Preset = (typeof PRESETS)[number];
 export type ColorScheme = "system" | "light" | "dark";
 export type Density = "compact" | "comfortable";
 
 export const PRESET_LABELS: Record<Preset, string> = {
-  default: "Default",
+  default: "Aurora (default)",
+  classic: "Classic",
   "high-contrast": "High contrast",
   midnight: "Midnight",
   paper: "Paper",
@@ -25,6 +27,7 @@ export const PRESET_LABELS: Record<Preset, string> = {
 
 const CSS: Record<Preset, string> = {
   default: defaultCss,
+  classic: classicCss,
   "high-contrast": highContrastCss,
   midnight: midnightCss,
   paper: paperCss,

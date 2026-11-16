@@ -10,11 +10,11 @@ export const kbdVariants = {} as const;
 
 const base = [
   "inline-flex h-control-xs min-w-control-xs shrink-0 select-none items-center justify-center gap-inline-xs",
-  "rounded-sm border border-border bg-inset px-inline-sm font-mono text-code text-fg-muted",
+  "rounded-md border border-border-subtle border-b-border-control-bottom bg-layer-alt px-inline-sm font-mono text-code text-fg-muted",
   "[&_svg]:size-icon-xs [&_svg]:shrink-0",
 ];
 
-const groupClasses = ["inline-flex items-center gap-inline-xs font-sans text-caption text-fg-muted"];
+const groupClasses = ["inline-flex items-center gap-inline-xs font-sans text-caption-1 text-fg-muted"];
 
 export interface KbdProps extends Omit<useRender.ComponentProps<"kbd">, "className"> {
   /** Extra classes, merged after the component's own so they win. */

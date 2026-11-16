@@ -1,6 +1,7 @@
 import { useEffect, useState, type Ref } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/tooltip/tooltip";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 
 // A time relative to now ("in 14 min", "2 s ago") in a <time datetime>, kept current while it is
 // on screen, with the absolute time in a Tooltip and as hidden text for screen readers (a
@@ -14,9 +15,9 @@ export const relativeTimeVariants = {} as const;
 
 const classes = {
   root: [
-    "whitespace-nowrap rounded-xs tabular-nums",
+    "whitespace-nowrap rounded-md tabular-nums",
     "data-tooltip:underline data-tooltip:decoration-fg-subtle data-tooltip:decoration-dotted data-tooltip:underline-offset-4",
-    "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
+    focusRing,
   ],
   hidden: "sr-only",
 } as const;

@@ -11,9 +11,9 @@ import { cn } from "@/lib/cn";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const avatarVariants = {
   size: {
-    sm: "size-control-xs text-caption",
-    md: "size-control-sm text-label",
-    lg: "size-control-lg text-body-strong",
+    sm: "size-control-xs text-caption-2-strong",
+    md: "size-control-sm text-caption-1-strong",
+    lg: "size-control-lg text-body-1-strong",
   },
   shape: {
     circle: "rounded-full",

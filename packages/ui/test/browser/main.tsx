@@ -128,7 +128,7 @@ function sampleCode(index: number) {
   const content = root.querySelector<HTMLElement>(".cm-content")!;
   const result = {
     background: rgb(getComputedStyle(root).backgroundColor),
-    expectedBackground: reader.color("--by-color-bg-surface"),
+    expectedBackground: reader.color("--by-color-bg-layer-alt"),
     keyword: keyword ? rgb(getComputedStyle(keyword).color) : null,
     expectedKeyword: reader.color("--by-syntax-keyword"),
     string: string ? rgb(getComputedStyle(string).color) : null,

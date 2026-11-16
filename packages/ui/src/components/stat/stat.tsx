@@ -1,6 +1,8 @@
 import { useRender } from "@base-ui/react/use-render";
 import type { ReactNode } from "react";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { ArrowDown, ArrowUp, Subtract } from "@/lib/icons";
 
 // One number that matters, with its label and change: rows returned, query time, a table's size.
 // Stat > StatLabel, StatValue, StatDelta, StatDescription, on Base UI's useRender. StatValue
@@ -11,22 +13,22 @@ import { cn } from "@/lib/cn";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const statVariants = {
   size: {
-    sm: "[&_[data-slot=stat-value]]:text-heading-4",
-    md: "[&_[data-slot=stat-value]]:text-heading-2",
+    sm: "[&_[data-slot=stat-value]]:text-subtitle-1",
+    md: "[&_[data-slot=stat-value]]:text-title-2",
   },
 } as const;
 
 const base = ["flex min-w-0 flex-col gap-stack-xs font-sans"];
 
 const parts = {
-  label: "min-w-0 truncate text-label text-fg-muted",
+  label: "min-w-0 truncate text-body-1 text-fg-muted",
   value: "min-w-0 truncate text-fg tabular-nums",
   delta: [
-    "inline-flex items-center gap-inline-xs text-label tabular-nums",
+    "inline-flex items-center gap-inline-xs text-body-1-strong tabular-nums",
     "data-[intent=positive]:text-success-fg data-[intent=negative]:text-danger-fg data-[intent=neutral]:text-fg-muted",
     "[&_svg]:size-icon-xs [&_svg]:shrink-0",
   ],
-  description: "min-w-0 text-caption text-fg-muted wrap-break-word",
+  description: "min-w-0 text-caption-1 text-fg-muted wrap-break-word",
 } as const;
 
 type DivProps = Omit<useRender.ComponentProps<"div">, "className"> & { className?: string };
@@ -51,11 +53,7 @@ export function StatValue({ className, render, ...props }: DivProps) {
   return useRender({ defaultTagName: "div", render, props: { "data-slot": "stat-value", ...props, className: cn(parts.value, className) } });
 }
 
-const Arrow = ({ trend }: { trend: StatDeltaProps["trend"] }) => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    {trend === "up" ? <path d="M8 12.5v-9m-4 4 4-4 4 4" /> : trend === "down" ? <path d="M8 3.5v9m-4-4 4 4 4-4" /> : <path d="M3.5 8h9" />}
-  </svg>
-);
+const Arrow = ({ trend }: { trend: StatDeltaProps["trend"] }) => <Icon icon={trend === "up" ? ArrowUp : trend === "down" ? ArrowDown : Subtract} />;
 
 export interface StatDeltaProps extends Omit<useRender.ComponentProps<"span">, "className"> {
   /** Which way the number moved. */

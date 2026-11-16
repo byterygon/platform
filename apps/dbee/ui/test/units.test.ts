@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 import { readCell, typeFamily } from "@/app/arrow-cells";
 import { describeError, formatElapsed } from "@/app/messages";
 import { DEFAULT_PERSISTED, DOCUMENT_VERSION, LEGACY_STORAGE_KEY, clearLegacy, fromDocuments, readLegacy, toDocuments } from "@/app/persistence";
+import { PRESETS, PRESET_LABELS, applyAppearance, isPreset } from "@/app/presets";
 import { ACTIONS, actionFor, bindingsOf, displayBinding, matchesBinding } from "@/app/shortcuts";
 import { sampleIpc } from "./support/fake-client";
 
@@ -141,5 +142,22 @@ describe("persistence (spec Decision 26): the workspace documents", () => {
     const throwing = { getItem: () => { throw new Error("denied"); }, setItem: () => {}, removeItem: () => { throw new Error("denied"); } };
     expect(readLegacy(throwing)).toBeNull();
     expect(() => clearLegacy(throwing)).not.toThrow();
+  });
+});
+
+describe("appearance presets", () => {
+  test("Aurora is the default and Classic, the earlier look, is a preset of its own", () => {
+    expect(PRESETS.slice(0, 2)).toEqual(["default", "classic"]);
+    expect(PRESET_LABELS.default).toContain("Aurora");
+    expect(isPreset("classic")).toBe(true);
+    expect(DEFAULT_PERSISTED.settings.preset).toBe("default");
+  });
+
+  test("applying Classic swaps its tokens in and applying the default removes them", () => {
+    applyAppearance({ preset: "classic", colorScheme: "light", density: "compact" });
+    expect(document.getElementById("dbee-tokens")).not.toBeNull();
+    expect(document.documentElement.dataset["preset"]).toBe("classic");
+    applyAppearance({ preset: "default", colorScheme: "light", density: "compact" });
+    expect(document.getElementById("dbee-tokens")).toBeNull();
   });
 });

@@ -15,12 +15,12 @@ export const emptyStateVariants = {
   },
 } as const;
 
-const base = ["flex min-w-0 font-sans text-body text-fg"];
+const base = ["flex min-w-0 font-sans text-body-1 text-fg"];
 
 const parts = {
   icon: "flex shrink-0 items-center justify-center rounded-full bg-inset text-fg-muted size-control-lg [&_svg]:size-icon-lg in-data-[variant=inline]:size-control-sm in-data-[variant=inline]:[&_svg]:size-icon-sm",
-  title: "min-w-0 text-heading-4 text-fg wrap-break-word in-data-[variant=inline]:text-body-strong",
-  description: "min-w-0 text-body text-fg-muted wrap-break-word in-data-[variant=inline]:basis-full",
+  title: "min-w-0 text-subtitle-2 text-fg wrap-break-word in-data-[variant=inline]:text-body-1-strong",
+  description: "min-w-0 text-body-1 text-fg-muted wrap-break-word in-data-[variant=inline]:basis-full",
   actions: "flex flex-wrap items-center justify-center gap-inline-sm pt-inset-xs in-data-[variant=inline]:pt-0",
 } as const;
 

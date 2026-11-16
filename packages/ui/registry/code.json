@@ -14,7 +14,7 @@
     {
       "path": "ui/code.tsx",
       "type": "registry:ui",
-      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/cn\";\n\n// Inline code in running text: a SQLSTATE (42P01), an identifier (public.orders), a digest or a\n// fingerprint, as a <code> in the code-sm type role, like Kbd for keys. Long unbroken values\n// (digests) may break anywhere so they never overflow their container. For several lines use\n// CodeBlock; for keys use Kbd.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const codeVariants = {\n  variant: {\n    default: \"rounded-xs bg-inset px-inline-xs text-fg\",\n    plain: \"text-fg\",\n  },\n} as const;\n\nconst base = [\"font-mono text-code-sm break-all\"];\n\nexport interface CodeProps extends Omit<useRender.ComponentProps<\"code\">, \"className\"> {\n  /** default on a subtle inset background; plain without one (inside a table cell or a CodeBlock-like surface). */\n  variant?: keyof typeof codeVariants.variant;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** An inline `<code>`; `render` swaps the element (a `<samp>` for program output). The ref reaches it. */\nexport function Code({ variant = \"default\", className, render, ...props }: CodeProps) {\n  return useRender({\n    defaultTagName: \"code\",\n    render,\n    props: { \"data-slot\": \"code\", \"data-variant\": variant, ...props, className: cn(base, codeVariants.variant[variant], className) },\n  });\n}\n"
+      "content": "import { useRender } from \"@base-ui/react/use-render\";\nimport { cn } from \"@/lib/cn\";\n\n// Inline code in running text: a SQLSTATE (42P01), an identifier (public.orders), a digest or a\n// fingerprint, as a <code> in the code-sm type role, like Kbd for keys. Long unbroken values\n// (digests) may break anywhere so they never overflow their container. For several lines use\n// CodeBlock; for keys use Kbd.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const codeVariants = {\n  variant: {\n    default: \"rounded-sm border border-border-subtle bg-layer-alt px-inline-xs text-fg\",\n    plain: \"text-fg\",\n  },\n} as const;\n\nconst base = [\"font-mono text-code-sm break-all\"];\n\nexport interface CodeProps extends Omit<useRender.ComponentProps<\"code\">, \"className\"> {\n  /** default on a subtle inset background; plain without one (inside a table cell or a CodeBlock-like surface). */\n  variant?: keyof typeof codeVariants.variant;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** An inline `<code>`; `render` swaps the element (a `<samp>` for program output). The ref reaches it. */\nexport function Code({ variant = \"default\", className, render, ...props }: CodeProps) {\n  return useRender({\n    defaultTagName: \"code\",\n    render,\n    props: { \"data-slot\": \"code\", \"data-variant\": variant, ...props, className: cn(base, codeVariants.variant[variant], className) },\n  });\n}\n"
     }
   ],
   "meta": {
@@ -72,10 +72,11 @@
       ],
       "states": [],
       "tokens": [
-        "color.bg.inset",
+        "color.bg.layer-alt",
+        "color.border.subtle",
         "color.fg.default",
         "font.mono",
-        "radius.xs",
+        "radius.sm",
         "space.inline.xs",
         "text.code-sm.leading",
         "text.code-sm.size",

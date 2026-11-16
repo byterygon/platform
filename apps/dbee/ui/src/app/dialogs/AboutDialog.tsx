@@ -72,7 +72,7 @@ export function AboutDialog({ open, onOpenChange, info, diagnostics }: AboutDial
           </div>
         </DialogBody>
         <DialogFooter>
-          <DialogClose render={<Button variant="primary" />}>Close</DialogClose>
+          <DialogClose render={<Button appearance="primary" />}>Close</DialogClose>
         </DialogFooter>
       </DialogContent>
     </Dialog>

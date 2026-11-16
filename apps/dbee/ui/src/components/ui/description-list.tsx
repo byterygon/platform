@@ -16,14 +16,14 @@ export const descriptionListVariants = {
 } as const;
 
 const base = [
-  "flex min-w-0 flex-col font-sans text-body not-data-divided:gap-stack-sm",
+  "flex min-w-0 flex-col font-sans text-body-1 not-data-divided:gap-stack-sm",
   "data-divided:[&_[data-slot=description-list-item]]:border-b data-divided:[&_[data-slot=description-list-item]]:border-border-muted data-divided:[&_[data-slot=description-list-item]]:py-inset-xs data-divided:[&_[data-slot=description-list-item]:last-child]:border-b-0",
 ];
 
 const parts = {
   item: "flex min-w-0 gap-x-inline-md gap-y-stack-xs",
-  term: "min-w-0 text-label text-fg-muted wrap-break-word",
-  details: "min-w-0 flex-1 text-body text-fg wrap-break-word",
+  term: "min-w-0 text-body-1-strong text-fg-muted wrap-break-word",
+  details: "min-w-0 flex-1 text-body-1 text-fg wrap-break-word",
 } as const;
 
 export interface DescriptionListProps extends Omit<useRender.ComponentProps<"dl">, "className"> {

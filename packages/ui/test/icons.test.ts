@@ -25,25 +25,7 @@ const temp = () => {
  * same table. A component leaves a key when its svgs are swapped (TSK-53/55); from then on the
  * test below fails if one comes back.
  */
-export const REPLACEMENTS: Record<string, string> = {
-  "json-viewer: chevron": "chevron-right",
-    "code-block copied": "checkmark",
-  "DBee new": "add",
-  "DBee more": "more-horizontal",
-  "code-block copy": "copy",
-  "DBee settings (gear)": "settings",
-  "stat trend up": "arrow-up",
-  "stat trend down": "arrow-down",
-  "stat trend flat": "subtract",
-  "DBee download": "arrow-download",
-  "DBee schema": "folder",
-  "DBee table": "table",
-  "avatar, empty-state, DBee database": "database",
-  "DBee refresh": "arrow-clockwise",
-  "DBee view": "eye",
-  "DBee column": "column-triple",
-  "DBee help": "question-circle",
-};
+export const REPLACEMENTS: Record<string, string> = {};
 
 /** Components that draw svgs on purpose: the Icon itself, Spinner's animated arc, Chart's plots. */
 const DRAWS_SVG = new Set(["icon", "spinner", "chart"]);
@@ -69,9 +51,26 @@ describe("hand-drawn icons", () => {
     done.push("dialog", "alert-dialog", "sheet", "toast", "command-palette", "alert", "badge", "tag"); // batch 4
     done.push("card", "sidebar", "tabs", "accordion", "collapsible", "scroll-area", "resizable", "status-bar", "toolbar", "separator"); // TSK-55 batch 1
     done.push("breadcrumb", "pagination", "stepper", "navigation-menu", "tree"); // TSK-55 batch 2
+    done.push("json-viewer", "code-block", "stat", "avatar", "empty-state"); // TSK-55 batch 3 (the rest of the viewers never drew an svg)
     for (const name of done) {
       expect(Object.keys(REPLACEMENTS).filter((key) => new RegExp(`(?<![a-z-])${name}(?![a-z-])`).test(key)), name).toEqual([]);
     }
+  });
+});
+
+describe("DBee icons", () => {
+  test("apps/dbee/ui draws no svg of its own: its icons are Fluent icons through Icon", () => {
+    const src = join(import.meta.dirname, "..", "..", "..", "apps", "dbee", "ui", "src");
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (/\.tsx$/.test(entry.name) && !path.includes(join("components", "ui", "")) && /<svg[\s>]/.test(readFileSync(path, "utf8"))) offenders.push(path.slice(src.length + 1));
+      }
+    };
+    walk(src);
+    expect(offenders).toEqual([]);
   });
 });
 

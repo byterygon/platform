@@ -57,7 +57,7 @@
   "tokens": [
     "color.bg.inset",
     "radius.md",
-    "radius.xs",
+    "radius.sm",
     "text.body.size"
   ],
   "examples": {

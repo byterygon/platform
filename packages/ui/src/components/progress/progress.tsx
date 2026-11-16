@@ -26,11 +26,11 @@ export const progressVariants = {
 const base = ["flex w-full min-w-0 flex-wrap items-center justify-between gap-x-inline-md gap-y-stack-xs font-sans"];
 
 const classes = {
-  label: "min-w-0 truncate text-label text-fg",
-  value: "ms-auto shrink-0 text-caption text-fg-muted tabular-nums",
+  label: "min-w-0 truncate text-body-1 text-fg",
+  value: "ms-auto shrink-0 text-caption-1 text-fg-muted tabular-nums",
   track: "relative basis-full overflow-hidden rounded-full bg-inset",
   indicator: [
-    "h-full rounded-full transition-all duration-[var(--by-motion-duration-base)] ease-standard motion-reduce:transition-none",
+    "h-full rounded-full transition-all duration-[var(--by-motion-duration-normal)] ease-easy-ease motion-reduce:transition-none",
     "data-indeterminate:w-1/3",
   ],
 } as const;

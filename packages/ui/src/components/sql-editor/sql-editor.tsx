@@ -10,14 +10,14 @@ import { applyTheme, isEditorStylesheet, loadMonaco, MONACO_SCOPE_ATTRIBUTE, mon
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const sqlEditorVariants = {
   variant: {
-    outline: "rounded-md border border-border-strong data-readonly:border-border",
+    outline: "rounded-lg border border-border-subtle border-b-border-control-bottom data-readonly:border-b-border-subtle",
     ghost: "",
   },
 } as const;
 
 const base = [
   "relative flex h-panel-xs w-full min-h-0 min-w-0 flex-col overflow-hidden bg-editor text-editor-fg",
-  "outline-none data-focused:outline-solid data-focused:outline-[length:var(--by-ring-width)] data-focused:outline-offset-[var(--by-ring-offset)] data-focused:outline-ring",
+  "outline-none data-focused:outline-solid data-focused:outline-[length:var(--by-ring-width)] data-focused:outline-offset-[var(--by-ring-inner-width)] data-focused:outline-ring data-focused:ring-[length:var(--by-ring-inner-width)] data-focused:ring-ring-inner",
   "data-loading:cursor-progress",
 ];
 

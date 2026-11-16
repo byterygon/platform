@@ -207,12 +207,12 @@ export function ExportDialog({ open, onOpenChange, sessionId, sql, shell, ensure
         </DialogBody>
         <DialogFooter>
           {phase.kind === "running" ? (
-            <Button variant="secondary" onClick={() => controller?.abort()}>
+            <Button appearance="secondary" onClick={() => controller?.abort()}>
               Cancel
             </Button>
           ) : (
             <>
-              <DialogClose render={<Button variant="ghost" />}>Close</DialogClose>
+              <DialogClose render={<Button appearance="subtle" />}>Close</DialogClose>
               {phase.kind !== "done" ? (
                 <Button onClick={() => void start()}>{shell === "desktop" ? "Choose file…" : "Download"}</Button>
               ) : null}

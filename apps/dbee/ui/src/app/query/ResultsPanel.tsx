@@ -129,22 +129,22 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel }: ResultsPanel
     <div className="flex h-full min-h-0 flex-col" data-pane="results">
       <Toolbar aria-label="Results" variant="plain" className="shrink-0">
         <ToolbarGroup>
-          <ToolbarButton render={<Button variant="ghost" size="sm" />} disabled={run.rows === 0} onClick={() => copy("tsv", false)}>
+          <ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={run.rows === 0} onClick={() => copy("tsv", false)}>
             Copy
           </ToolbarButton>
           <DropdownMenu>
-            <DropdownMenuTrigger render={<ToolbarButton render={<Button variant="ghost" size="sm" />} disabled={run.rows === 0} />}>Copy with headers</DropdownMenuTrigger>
+            <DropdownMenuTrigger render={<ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={run.rows === 0} />}>Copy with headers</DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => copy("tsv", true)}>TSV</DropdownMenuItem>
               <DropdownMenuItem onClick={() => copy("csv", true)}>CSV</DropdownMenuItem>
               <DropdownMenuItem onClick={() => copy("json", true)}>JSON</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <ToolbarButton render={<Button variant="ghost" size="sm" />} disabled={run.status === "running"} onClick={onExport}>
+          <ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={run.status === "running"} onClick={onExport}>
             Export
           </ToolbarButton>
           {run.status === "running" ? (
-            <ToolbarButton render={<Button variant="secondary" size="sm" />} onClick={onCancel}>
+            <ToolbarButton render={<Button appearance="secondary" size="small" />} onClick={onCancel}>
               Cancel
             </ToolbarButton>
           ) : null}
@@ -173,7 +173,7 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel }: ResultsPanel
           </AlertDescription>
           {run.error.remedy && onRemedy ? (
             <AlertActions>
-              <Button size="sm" variant="secondary" onClick={() => onRemedy(run.error!.remedy!)}>
+              <Button size="small" appearance="secondary" onClick={() => onRemedy(run.error!.remedy!)}>
                 {run.error.remedyLabel}
               </Button>
             </AlertActions>
@@ -263,7 +263,7 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel }: ResultsPanel
             {current && current.kind === "value" ? (
               <>
                 <CodeInput aria-label="Cell value" multiline rows={12} readOnly pretty language={cell && families[cell.column] === "json" ? "json" : "text"} value={current.text} />
-                <Button variant="secondary" size="sm" onClick={() => void navigator.clipboard?.writeText(current.text)}>
+                <Button appearance="secondary" size="small" onClick={() => void navigator.clipboard?.writeText(current.text)}>
                   Copy value
                 </Button>
               </>
