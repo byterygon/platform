@@ -51,14 +51,14 @@ export const TOGGLE_GROUP_VARIANT_ALIASES: Readonly<Record<ToggleGroupVariant, k
 
 export interface ToggleGroupProps extends Omit<ToggleGroupPrimitive.Props, "className"> {
   /** A segmented track (outline) or separate quiet items (subtle). */
-  appearance?: keyof typeof toggleGroupVariants.appearance;
+  appearance?: keyof typeof toggleGroupVariants.appearance | undefined;
   /**
    * The old name of `appearance` (`ghost` is `subtle`).
    * @deprecated Use `appearance`. Kept for one release.
    */
-  variant?: ToggleGroupVariant;
+  variant?: ToggleGroupVariant | undefined;
   /** Item height: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
-  size?: ControlSizeProp;
+  size?: ControlSizeProp | undefined;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }

@@ -55,7 +55,7 @@ export function MultiSelectRealistic() {
       </Field>
       <Field name="schemas">
         <FieldLabel>Schemas</FieldLabel>
-        <MultiSelect items={schemas} placeholder="Search schemas" emptyMessage="No schema matches." size="sm">
+        <MultiSelect items={schemas} placeholder="Search schemas" emptyMessage="No schema matches." size="small" appearance="filled-lighter">
           {(schema: string) => (
             <ComboboxItem key={schema} value={schema}>
               {schema}
@@ -87,7 +87,7 @@ export function MultiSelectRealistic() {
       </Field>
       <Field name="notify">
         <FieldLabel>Notify</FieldLabel>
-        <MultiSelect items={["on-call", "data-team", "security"]} defaultValue={["on-call"]} size="lg">
+        <MultiSelect items={["on-call", "data-team", "security"]} defaultValue={["on-call"]} size="large" appearance="underline">
           {(team: string) => (
             <ComboboxItem key={team} value={team}>
               {team}

@@ -2,6 +2,7 @@ import { Input as InputPrimitive } from "@base-ui/react/input";
 import { useLayoutEffect, useRef, useState, type ClipboardEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type Ref } from "react";
 import { inputVariants } from "@/components/input/input";
 import { cn } from "@/lib/cn";
+import { controlSize, fieldAppearance, fieldFrame, fieldStates, type ControlSizeProp, type FieldAppearance } from "@/lib/control";
 
 // A time of day typed into segments: hours, minutes, optionally seconds, and AM/PM in the 12-hour
 // cycle. Base UI has no time field, and a native <input type="time"> looks and behaves differently
@@ -9,20 +10,19 @@ import { cn } from "@/lib/cn";
 // (so a Field labels, describes and validates it like any input) that edits its text a segment
 // at a time: the selection is always one segment, the digits fill it and move on, the arrow keys
 // step it. The value is "HH:mm" or "HH:mm:ss" on the 24-hour clock, or null until every segment
-// has a value.
+// has a value. It looks like Input (Fluent's appearances, sizes, focus underline and states).
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const timePickerVariants = {
+  appearance: inputVariants.appearance,
   size: inputVariants.size,
 } as const;
 
 const base = [
-  "flex w-full min-w-0 rounded-md border border-border-strong bg-surface font-sans text-body tabular-nums text-fg",
-  "placeholder:text-fg-subtle selection:bg-selected selection:text-fg",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-  "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
-  "aria-invalid:border-danger-border data-invalid:border-danger-border",
-  "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
+  "flex w-full min-w-0 tabular-nums",
+  fieldFrame,
+  fieldStates,
+  "placeholder:text-fg-subtle selection:bg-selected selection:text-fg data-disabled:placeholder:text-fg-disabled",
 ];
 
 type Kind = "hour" | "minute" | "second" | "period";
@@ -100,8 +100,10 @@ export interface TimePickerProps extends Omit<InputPrimitive.Props, "className" 
   hourCycle?: 12 | 24;
   /** How far ArrowUp and ArrowDown move the minutes. */
   minuteStep?: number;
-  /** Control height, from the density-aware `size.control.*` roles. */
-  size?: keyof typeof timePickerVariants.size;
+  /** Fluent's field appearance: outline (default), underline, filled-darker or filled-lighter. */
+  appearance?: FieldAppearance | undefined;
+  /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
   /** Reaches the `<input>`. */
@@ -119,7 +121,8 @@ export function TimePicker({
   seconds = false,
   hourCycle = 24,
   minuteStep = 1,
-  size = "md",
+  appearance,
+  size,
   placeholder,
   readOnly,
   className,
@@ -132,6 +135,8 @@ export function TimePicker({
   onPaste,
   ...props
 }: TimePickerProps) {
+  const look = fieldAppearance(appearance);
+  const height = controlSize(size);
   const kinds: Kind[] = ["hour", "minute"];
   if (seconds) kinds.push("second");
   if (hourCycle === 12) kinds.push("period");
@@ -308,7 +313,8 @@ export function TimePicker({
     <InputPrimitive
       ref={setRef}
       data-slot="time-picker"
-      data-size={size}
+      data-appearance={look}
+      data-size={height}
       type="text"
       inputMode={hourCycle === 24 ? "numeric" : "text"}
       autoComplete="off"
@@ -332,7 +338,7 @@ export function TimePicker({
         pointer.current = true;
       }}
       onMouseUp={handleMouseUp}
-      className={cn(base, timePickerVariants.size[size], className)}
+      className={cn(base, timePickerVariants.appearance[look], timePickerVariants.size[height], className)}
       {...props}
     />
   );

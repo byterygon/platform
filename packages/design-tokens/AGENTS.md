@@ -302,6 +302,8 @@ per mode), or replaces the whole `gradient.backdrop` with its own list of layers
   `ring.inner-width`) with a `box-shadow: 0 0 0 var(--by-ring-inner-width)
   var(--by-ring-inner-color)` inside it. The outline survives forced-colours mode; the shadow
   does not need to.
+- The danger solid is also a `ui` pair on `color.bg.layer-alt` (over the backdrop and a layer) and on
+  every opaque surface: it is the bottom edge of an invalid field (TSK-53).
 - Contrast: text on `color.bg.layer` over the backdrop, text and the field strokes on
   `color.bg.layer-alt` over the backdrop and a layer, the focus ring and the solids on a layer.
 - `elevation.flyout` and `elevation.dialog` use `color.bg.overlay`, opaque: a component that wants

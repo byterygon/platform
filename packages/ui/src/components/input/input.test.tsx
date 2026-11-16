@@ -2,7 +2,8 @@ import { Field } from "@base-ui/react/field";
 import { createRef } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, axeViolations, cleanup, render } from "../../../test/render.tsx";
-import { Input } from "./input";
+import { FIELD_APPEARANCES } from "@/lib/control";
+import { Input, inputVariants } from "./input";
 
 afterEach(cleanup);
 
@@ -19,7 +20,29 @@ describe("Input", () => {
     const { container } = render(<Input aria-label="Name" />);
     const input = container.querySelector("input")!;
     expect(input.dataset.slot).toBe("input");
-    expect(input.dataset.size).toBe("md");
+    expect(input.dataset.size).toBe("medium");
+    expect(input.dataset.appearance).toBe("outline");
+  });
+
+  test("takes Fluent's field appearances and sizes, and sm/md/lg as aliases for one release", () => {
+    for (const appearance of FIELD_APPEARANCES) {
+      const { container, unmount } = render(<Input aria-label="Name" appearance={appearance} />);
+      const input = container.querySelector("input")!;
+      expect(input.dataset.appearance).toBe(appearance);
+      expect(input.className.split(" ")).toEqual(expect.arrayContaining(inputVariants.appearance[appearance].split(" ").filter((c) => c !== "rounded-none" || appearance === "underline")));
+      unmount();
+    }
+    for (const [size, fluent] of [["sm", "small"], ["md", "medium"], ["lg", "large"], ["small", "small"], ["large", "large"]] as const) {
+      const { container, unmount } = render(<Input aria-label="Name" size={size} />);
+      expect(container.querySelector("input")!.dataset.size).toBe(fluent);
+      unmount();
+    }
+  });
+
+  test("focus is Fluent's accent underline; invalid turns the bottom edge danger", () => {
+    const { container } = render(<Input aria-label="Name" aria-invalid="true" />);
+    const classes = container.querySelector("input")!.className.split(" ");
+    expect(classes).toEqual(expect.arrayContaining(["focus-visible:shadow-focus-underline", "aria-invalid:border-b-danger", "border-b-border-control-bottom"]));
   });
 
   test("forwards the ref to the input element", () => {

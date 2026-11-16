@@ -1,7 +1,9 @@
 import { Field as FieldPrimitive } from "@base-ui/react/field";
 import { Fieldset as FieldsetPrimitive } from "@base-ui/react/fieldset";
 import { createContext, use } from "react";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
+import { ErrorCircle } from "@/lib/icons";
 
 // Field groups a label, a control, a description and an error on Base UI's Field parts. Base UI
 // links them (the label's htmlFor, the control's aria-describedby and aria-invalid) and sets
@@ -18,25 +20,27 @@ export const fieldVariants = {} as const;
 const base = ["flex min-w-0 flex-col gap-stack-xs font-sans"];
 
 const labelClasses = [
-  "inline-flex w-fit items-center gap-inline-sm text-label text-fg",
+  "inline-flex w-fit items-center gap-inline-sm text-body-1 text-fg",
   // An option of a group keeps its colour; the group says it is invalid through FieldLegend.
   "not-in-data-[slot=field-item]:data-invalid:text-danger-fg",
-  "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
+  "data-disabled:cursor-not-allowed data-disabled:text-fg-disabled",
 ];
 
-const descriptionClasses = ["text-caption text-fg-muted"];
+const descriptionClasses = ["text-caption-1 text-fg-muted"];
 
 const itemClasses = ["flex min-w-0 flex-col gap-stack-xs"];
 
 const setClasses = ["flex min-w-0 flex-col gap-stack-md"];
 
 const legendClasses = [
-  "text-label text-fg",
+  "text-body-1-strong text-fg",
   "in-data-invalid:text-danger-fg",
-  "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
+  "data-disabled:cursor-not-allowed data-disabled:text-fg-disabled",
 ];
 
-const errorClasses = ["text-caption text-danger-fg"];
+// Fluent's validation message: caption-1 in the danger text colour after a filled ErrorCircle.
+const errorClasses = ["flex items-start gap-inline-xs text-caption-1 text-danger-fg"];
+const errorIconClasses = "flex h-lh shrink-0 items-center";
 
 /**
  * What Field reads from a TanStack Form field, the argument of `form.Field`'s render function.
@@ -142,7 +146,14 @@ export function FieldError({ errors, match, children, className, ...props }: Fie
   const context = use(FieldErrorsContext);
   const messages = errorMessages(errors ?? context?.errors ?? []);
   const content = children ?? (messages.length > 1 ? messages.map((message) => <span key={message} className="block">{message}</span>) : messages[0]);
-  return <FieldPrimitive.Error data-slot="field-error" match={match ?? context?.invalid} className={cn(errorClasses, className)} {...props}>{content}</FieldPrimitive.Error>;
+  return (
+    <FieldPrimitive.Error data-slot="field-error" match={match ?? context?.invalid} className={cn(errorClasses, className)} {...props}>
+      <span className={errorIconClasses}>
+        <Icon icon={ErrorCircle} filled size="xs" />
+      </span>
+      <span className="min-w-0">{content}</span>
+    </FieldPrimitive.Error>
+  );
 }
 
 export interface FieldItemProps extends Omit<FieldPrimitive.Item.Props, "className"> {

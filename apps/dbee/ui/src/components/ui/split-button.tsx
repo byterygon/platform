@@ -48,14 +48,14 @@ export interface SplitButtonProps extends Omit<ComponentProps<"div">, "className
   /** The accessible name of the menu button. */
   menuLabel?: string;
   /** Button appearance of both halves. */
-  appearance?: keyof typeof splitButtonVariants.appearance;
+  appearance?: keyof typeof splitButtonVariants.appearance | undefined;
   /**
    * The old name of `appearance` (`ghost` is `subtle`).
    * @deprecated Use `appearance`. Kept for one release.
    */
-  variant?: Exclude<ButtonVariant, "danger">;
+  variant?: Exclude<ButtonVariant, "danger"> | undefined;
   /** Height of both halves: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
-  size?: ControlSizeProp;
+  size?: ControlSizeProp | undefined;
   /** Disables both halves. */
   disabled?: boolean;
   /** The main action is running: its Button shows loading; the menu stays usable. */

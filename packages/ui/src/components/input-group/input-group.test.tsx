@@ -16,7 +16,8 @@ describe("InputGroup", () => {
       </InputGroup>,
     );
     const root = container.querySelector('[data-slot="input-group"]')!;
-    expect((root as HTMLElement).dataset.size).toBe("md");
+    expect((root as HTMLElement).dataset.size).toBe("medium");
+    expect((root as HTMLElement).dataset.appearance).toBe("outline");
     expect(root.querySelector("input")!.dataset.slot).toBe("input-group-input");
     const button = root.querySelector("button")!;
     expect(button.dataset.slot).toBe("input-group-button");
@@ -26,8 +27,22 @@ describe("InputGroup", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  test("keeps sm/md/lg as aliases for one release, and takes Fluent's field appearances", () => {
+    for (const [size, fluent] of [["sm", "small"], ["md", "medium"], ["lg", "large"]] as const) {
+      const { container, unmount } = render(
+        <InputGroup size={size} appearance="underline">
+          <InputGroupInput aria-label="Host" />
+        </InputGroup>,
+      );
+      const root = container.querySelector('[data-slot="input-group"]') as HTMLElement;
+      expect(root.dataset.size).toBe(fluent);
+      expect(root.dataset.appearance).toBe("underline");
+      unmount();
+    }
+  });
+
   test("the button is one size smaller than the group", () => {
-    const sizes = (["sm", "md", "lg"] as const).map((size) => {
+    const sizes = (["small", "medium", "large"] as const).map((size) => {
       const { container, unmount } = render(
         <InputGroup size={size}>
           <InputGroupInput aria-label="Value" />

@@ -1,21 +1,14 @@
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/field/field";
+import { Icon } from "@/components/icon/icon";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/input-group/input-group";
-
-function SearchIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
-      <circle cx="7" cy="7" r="4.5" />
-      <path d="m10.5 10.5 3 3" />
-    </svg>
-  );
-}
+import { Search } from "@/lib/icons";
 
 /** The smallest useful InputGroup: a search field with an icon. */
 export function InputGroupMinimal() {
   return (
     <InputGroup>
       <InputGroupAddon>
-        <SearchIcon />
+        <Icon icon={Search} />
       </InputGroupAddon>
       <InputGroupInput aria-label="Search tables" placeholder="Search tables" />
     </InputGroup>
@@ -37,7 +30,7 @@ export function InputGroupRealistic() {
       </Field>
       <Field invalid>
         <FieldLabel>Statement timeout</FieldLabel>
-        <InputGroup size="sm">
+        <InputGroup size="small" appearance="filled-darker">
           <InputGroupInput defaultValue="-5" inputMode="numeric" />
           <InputGroupAddon>ms</InputGroupAddon>
           <InputGroupButton>Reset</InputGroupButton>
@@ -46,7 +39,7 @@ export function InputGroupRealistic() {
       </Field>
       <Field disabled>
         <FieldLabel>Socket directory</FieldLabel>
-        <InputGroup size="lg">
+        <InputGroup size="large" appearance="underline">
           <InputGroupAddon>unix:</InputGroupAddon>
           <InputGroupInput defaultValue="/var/run/postgresql" />
         </InputGroup>

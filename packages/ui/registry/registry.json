@@ -146,7 +146,10 @@
       "registryDependencies": [
         "@byterygon/button",
         "@byterygon/cn",
-        "@byterygon/icon-button"
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icon-button",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -299,6 +302,9 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/select",
         "@byterygon/theme-scope"
       ],
@@ -361,6 +367,9 @@
       "registryDependencies": [
         "@byterygon/calendar",
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/input-group",
         "@byterygon/select",
         "@byterygon/theme-scope"
@@ -456,7 +465,9 @@
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -475,7 +486,10 @@
       ],
       "registryDependencies": [
         "@byterygon/button",
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -566,12 +580,13 @@
       "name": "input",
       "type": "registry:ui",
       "title": "Input",
-      "description": "A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.",
+      "description": "A single-line text input in Fluent's small, medium and large, with placeholder, invalid and disabled states; works inside a Base UI Field.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -590,7 +605,8 @@
       ],
       "registryDependencies": [
         "@byterygon/button",
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -665,6 +681,7 @@
       "registryDependencies": [
         "@byterygon/cn",
         "@byterygon/combobox",
+        "@byterygon/control",
         "@byterygon/theme-scope"
       ],
       "files": [
@@ -697,12 +714,15 @@
       "name": "number-input",
       "type": "registry:ui",
       "title": "NumberInput",
-      "description": "A number input on Base UI's NumberField with decrement and increment buttons, bounds, steps, locale formatting, and three density-aware sizes.",
+      "description": "A number input on Base UI's NumberField with decrement and increment buttons, bounds, steps, locale formatting, and Fluent's small, medium and large.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons"
       ],
       "files": [
         {
@@ -733,12 +753,15 @@
       "name": "password-input",
       "type": "registry:ui",
       "title": "PasswordInput",
-      "description": "A password input with a show/hide button, on InputGroup and Base UI's Input, in three density-aware sizes.",
+      "description": "A password input with a show/hide button, on InputGroup and Base UI's Input, in Fluent's small, medium and large.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/input-group"
       ],
       "files": [
@@ -859,12 +882,15 @@
       "name": "search-input",
       "type": "registry:ui",
       "title": "SearchInput",
-      "description": "A search box on InputGroup and Base UI's Input: a search icon, type=\"search\", and a Clear button (and Escape) while there is text, in three density-aware sizes.",
+      "description": "A search box on InputGroup and Base UI's Input: a search icon, type=\"search\", and a Clear button (and Escape) while there is text, in Fluent's small, medium and large.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/input-group"
       ],
       "files": [
@@ -884,7 +910,9 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
-        "@byterygon/input",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icons",
         "@byterygon/theme-scope"
       ],
       "files": [
@@ -1177,12 +1205,13 @@
       "name": "textarea",
       "type": "registry:ui",
       "title": "Textarea",
-      "description": "A multi-line text input on Base UI's Input rendering a <textarea>, in Input's three sizes, with placeholder, invalid and disabled states; works inside a Field.",
+      "description": "A multi-line text input on Base UI's Input rendering a <textarea>, in Input's appearances and sizes, with placeholder, invalid and disabled states; works inside a Field.",
       "dependencies": [
         "@base-ui/react"
       ],
       "registryDependencies": [
-        "@byterygon/cn"
+        "@byterygon/cn",
+        "@byterygon/control"
       ],
       "files": [
         {
@@ -1201,6 +1230,7 @@
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
         "@byterygon/input"
       ],
       "files": [

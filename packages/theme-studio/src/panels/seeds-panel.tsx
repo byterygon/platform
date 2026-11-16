@@ -79,7 +79,7 @@ function NumberSeed({ label, value, set, min, max, step, description, onChange }
         <NumberInput
           aria-label={label}
           className="w-36 shrink-0"
-          size="sm"
+          size="small"
           min={min}
           max={max}
           step={step}
@@ -181,7 +181,7 @@ function FontSeed({ token, label, theme, onChange }: { token: string; label: str
         {current === undefined && <Badge appearance="outline">default</Badge>}
       </div>
       <Input
-        size="sm"
+        size="small"
         placeholder={token === "font.sans" ? "Segoe UI Variable Text, Segoe UI Variable, Segoe UI, Inter, system-ui, sans-serif" : "Cascadia Mono, JetBrains Mono, ui-monospace, monospace"}
         value={overrideText(current)}
         onValueChange={(text: string) => onChange(setOverride(theme, token, text.trim() === "" ? undefined : parseOverrideText("fontFamily", text)))}

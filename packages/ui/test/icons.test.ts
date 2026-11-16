@@ -26,9 +26,9 @@ const temp = () => {
  * test below fails if one comes back.
  */
 export const REPLACEMENTS: Record<string, string> = {
-  "accordion, select, combobox, navigation-menu: chevron": "chevron-down",
+  "accordion, navigation-menu: chevron": "chevron-down",
   "breadcrumb, collapsible, json-viewer, tree, dropdown-menu submenu, pagination next: chevron": "chevron-right",
-  "pagination previous, calendar previous month": "chevron-left",
+  "pagination previous": "chevron-left",
   "table sort (none / ascending / descending)": "arrow-sort",
   "table sort ascending": "arrow-sort-up",
   "table sort descending": "arrow-sort-down",
@@ -37,17 +37,13 @@ export const REPLACEMENTS: Record<string, string> = {
   "alert warning": "warning",
   "alert danger, stepper error": "error-circle",
   "alert, dialog, sheet, popover, tabs, tag, toast close": "dismiss",
-  "combobox, search-input, file-input clear": "dismiss",
-  "checkbox, select, dropdown-menu, code-block copied, stepper done": "checkmark",
-  "checkbox indeterminate, number-input decrement": "subtract",
-  "number-input increment, tabs new, DBee new": "add",
+  "checkbox, dropdown-menu, code-block copied, stepper done": "checkmark",
+  "checkbox indeterminate": "subtract",
+  "tabs new, DBee new": "add",
   "radio-group and menu radio dot": "circle",
   "breadcrumb, dropdown-menu, DBee more": "more-horizontal",
   "code-block copy": "copy",
-  "command-palette, search-input, input-group search": "search",
-  "date-picker": "calendar-ltr",
-  "password-input show": "eye",
-  "password-input hide": "eye-off",
+  "command-palette search": "search",
   "popover filters (sliders)": "options",
   "sidebar history": "history",
   "sidebar, DBee settings (gear)": "settings",
@@ -84,8 +80,10 @@ describe("hand-drawn icons", () => {
     expect(offenders, "use <Icon icon={...} /> from @/lib/icons (packages/ui/AGENTS.md, Icons)").toEqual([]);
   });
 
-  test("the components TSK-53 batch 1 moved to Fluent icons are no longer pending", () => {
-    for (const name of ["button", "icon-button", "toggle-button", "toggle-group", "split-button"]) {
+  test("the components TSK-53 moved to Fluent icons are no longer pending", () => {
+    const done = ["button", "icon-button", "toggle-button", "toggle-group", "split-button"]; // batch 1
+    done.push("input", "textarea", "input-group", "number-input", "search-input", "password-input", "file-input", "date-picker", "calendar", "time-picker", "select", "combobox", "multi-select", "field"); // batch 2
+    for (const name of done) {
       expect(Object.keys(REPLACEMENTS).filter((key) => new RegExp(`(?<![a-z-])${name}(?![a-z-])`).test(key)), name).toEqual([]);
     }
   });
