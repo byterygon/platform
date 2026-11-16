@@ -17,6 +17,8 @@ use security_types::{Authorizer, AuthzRequest, Decision, PrincipalKind, Reason, 
 /// the local human.
 pub const PERMISSIONS: &[&str] = &[
     "app.read",
+    "workspace.read",
+    "workspace.write",
     "connections.read",
     "connections.create",
     "connections.update",

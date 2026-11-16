@@ -6,18 +6,21 @@ import { RpcError } from "@byterygon/ambidex";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { App } from "@/app/App";
 import { ServicesContext } from "@/app/client";
-import { DEFAULT_PERSISTED, type Persisted, STORAGE_KEY } from "@/app/persistence";
+import { DEFAULT_PERSISTED, LEGACY_STORAGE_KEY, type Persisted, fromDocuments, toDocuments } from "@/app/persistence";
 import { StoreProvider } from "@/app/store";
+import { WorkspaceSaver, loadWorkspace } from "@/app/workspace";
 import { createFakeServices } from "./support/fake-client";
 import { act, axeViolations, blur, byRole, byText, cleanup, click, dialogWith, key, render, settle, type, waitFor } from "./support/render";
 
 type Fake = ReturnType<typeof createFakeServices>;
 
-function mount(fake: Fake, options: { persisted?: Partial<Persisted>; shell?: "desktop" | "web"; theme?: "light" | "dark"; density?: "compact" | "comfortable" } = {}) {
+function mount(fake: Fake, options: { persisted?: Partial<Persisted>; saver?: WorkspaceSaver; shell?: "desktop" | "web"; theme?: "light" | "dark"; density?: "compact" | "comfortable" } = {}) {
   const persisted: Persisted = { ...DEFAULT_PERSISTED, ...options.persisted };
+  // The fake core's workspace at its current revision, written shortly after each change.
+  const saver = options.saver ?? new WorkspaceSaver(fake.client, { revision: `rev-${fake.state.workspace.writes}`, delayMs: 10 });
   return render(
     <ServicesContext.Provider value={fake}>
-      <StoreProvider persisted={persisted}>
+      <StoreProvider persisted={persisted} saver={saver}>
         <App shell={options.shell ?? "desktop"} />
       </StoreProvider>
     </ServicesContext.Provider>,
@@ -252,7 +255,7 @@ describe("keyboard and palette (spec §9)", () => {
 });
 
 describe("persistence and settings (spec §3.9, §14)", () => {
-  test("tabs, the active tab and settings survive a remount; the density and scheme toggles apply", async () => {
+  test("tabs, the active tab and settings go to the workspace and come back after a restart", async () => {
     const fake = createFakeServices({ connections: [connection()] });
     const first = mount(fake);
     await waitFor(() => document.querySelector("[role=tree]") !== null, "tree");
@@ -262,13 +265,54 @@ describe("persistence and settings (spec §3.9, §14)", () => {
     await click(byRole("button", "compact"));
     await settle();
     expect(document.documentElement.dataset["density"]).toBe("comfortable");
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!) as Persisted;
+    await waitFor(() => fromDocuments(fake.state.workspace.settings, fake.state.workspace.tabs)?.settings.density === "comfortable", "settings.json");
+    const saved = fromDocuments(fake.state.workspace.settings, fake.state.workspace.tabs)!;
     expect(saved.tabs[0]?.sql).toBe("select 42");
-    expect(saved.settings.density).toBe("comfortable");
+    expect(saved.activeTab).toBe(saved.tabs[0]?.id);
+    // Nothing goes to the webview's storage any more.
+    expect(localStorage.length).toBe(0);
     first.unmount();
-    mount(createFakeServices({ connections: [connection()] }), { persisted: saved });
+
+    // A restart: a new UI on the same core reads the workspace before its first render.
+    const again = createFakeServices({ connections: [connection()], workspace: fake.state.workspace });
+    const loaded = await loadWorkspace(again.client, { storage: localStorage, delayMs: 10 });
+    mount(again, { persisted: loaded.persisted, saver: loaded.saver });
     await waitFor(() => document.querySelector("textarea[aria-label='SQL editor']") !== null, "editor again");
     expect(document.querySelector<HTMLTextAreaElement>("textarea[aria-label='SQL editor']")!.value).toBe("select 42");
+    expect(document.documentElement.dataset["density"]).toBe("comfortable");
+  });
+
+  test("tabs kept in the webview by an earlier version move to the workspace on the first start", async () => {
+    const legacy: Persisted = { ...DEFAULT_PERSISTED, tabs: [{ id: "old-1", connectionId: "conn-1", sql: "select 'kept'", maxRows: 50 }], activeTab: "old-1" };
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(legacy));
+    const fake = createFakeServices({ connections: [connection()] });
+    const loaded = await loadWorkspace(fake.client, { storage: localStorage, delayMs: 10 });
+    expect(fake.state.workspace.tabs).toEqual(toDocuments(legacy).tabs);
+    expect(localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
+    mount(fake, { persisted: loaded.persisted, saver: loaded.saver });
+    await waitFor(() => document.querySelector("textarea[aria-label='SQL editor']") !== null, "editor");
+    expect(document.querySelector<HTMLTextAreaElement>("textarea[aria-label='SQL editor']")!.value).toBe("select 'kept'");
+  });
+
+  test("a write from another window stops this one from saving and offers Reload", async () => {
+    const fake = createFakeServices({ connections: [connection()] });
+    mount(fake, { persisted: { tabs: [{ id: "t1", connectionId: "conn-1", sql: "select 1", maxRows: null }], activeTab: "t1" } });
+    await waitFor(() => fake.state.workspace.writes === 1, "the first write");
+    fake.state.workspace = { ...fake.state.workspace, writes: 2 };
+    await type(document.querySelector<HTMLTextAreaElement>("textarea[aria-label='SQL editor']")!, "select 2");
+    await waitFor(() => byText("The workspace changed in another window") !== null, "the conflict toast");
+    expect(byRole("button", "Reload")).not.toBeNull();
+    expect(JSON.stringify(fake.state.workspace.tabs)).not.toContain("select 2");
+  });
+
+  test("an unreadable workspace is reported and nothing is written", async () => {
+    const fake = createFakeServices({ connections: [connection()], failNext: { "app.getWorkspace": new RpcError("Internal", "internal error", { correlation_id: "corr-ws" }) } });
+    const loaded = await loadWorkspace(fake.client, { storage: localStorage, delayMs: 10 });
+    mount(fake, { persisted: loaded.persisted, saver: loaded.saver });
+    await waitFor(() => byText("Could not read the workspace") !== null, "the toast");
+    await click(byRole("button", "New query tab"));
+    await settle(6);
+    expect(fake.state.calls.some((c) => c.procedure === "app.setWorkspace")).toBe(false);
   });
 
   test("Settings and About show the paths and the schema hash; no telemetry toggle exists", async () => {

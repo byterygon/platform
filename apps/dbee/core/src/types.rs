@@ -73,6 +73,82 @@ pub struct AppInfo {
     pub audit_log_path: String,
 }
 
+/// Output of `app.getWorkspace`: the UI's documents of the workspace (`settings.json`,
+/// `tabs.json`) and their revision. The core stores the documents whole and never interprets
+/// them; their layout and its version are the UI's.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDocuments {
+    /// `null` until the UI first writes it.
+    pub settings: serde_json::Value,
+    /// `null` until the UI first writes it.
+    pub tabs: serde_json::Value,
+    /// Changes with every write; opaque. Pass it back as `baseRevision`.
+    pub revision: String,
+}
+
+/// Input of `app.setWorkspace`. A document left out (or `null`) is not changed; a document given
+/// must be a JSON object of at most [`MAX_WORKSPACE_DOCUMENT_BYTES`] serialized.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetWorkspaceInput {
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub settings: Option<serde_json::Value>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub tabs: Option<serde_json::Value>,
+    /// The revision the client last read or wrote; a different current revision is a
+    /// `Conflict` and nothing is written.
+    pub base_revision: String,
+}
+
+/// Largest document `app.setWorkspace` accepts, serialized (4 MiB, a quarter of the frame limit).
+pub const MAX_WORKSPACE_DOCUMENT_BYTES: usize = 4 * 1024 * 1024;
+
+/// Output of `app.setWorkspace`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetWorkspaceOutput {
+    pub revision: String,
+}
+
+/// Typed errors of `app.setWorkspace`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(tag = "kind", rename_all_fields = "camelCase")]
+pub enum WorkspaceSaveError {
+    /// The documents changed since `baseRevision` (another window wrote them); nothing was
+    /// written. `revision` is the current one.
+    Conflict { revision: String },
+    /// `document` (`settings` or `tabs`) is not a JSON object or is too large.
+    InvalidDocument { document: String, message: String },
+    /// A workspace file could not be written; nothing changed. (Not `Internal`: the router
+    /// scrubs those, and the UI shows this message.)
+    WriteFailed { message: String },
+}
+
+impl DomainError for WorkspaceSaveError {
+    fn code(&self) -> Code {
+        match self {
+            WorkspaceSaveError::Conflict { .. } => Code::FailedPrecondition,
+            WorkspaceSaveError::InvalidDocument { .. } => Code::InvalidArgument,
+            WorkspaceSaveError::WriteFailed { .. } => Code::FailedPrecondition,
+        }
+    }
+
+    fn message(&self) -> String {
+        match self {
+            WorkspaceSaveError::Conflict { .. } => {
+                "the workspace changed since it was read; read it again".into()
+            }
+            WorkspaceSaveError::InvalidDocument { document, message } => {
+                format!("{document}: {message}")
+            }
+            WorkspaceSaveError::WriteFailed { message } => message.clone(),
+        }
+    }
+}
+
 /// Status of a connection as the tree shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "lowercase")]

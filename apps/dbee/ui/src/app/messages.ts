@@ -2,7 +2,7 @@
 // Ambidex code and the typed details, never from a backend string alone, and every error carries
 // its correlation id so it can be matched with the audit log.
 import { isRpcError } from "@byterygon/ambidex";
-import type { ConnectionError, QueryError, SessionError } from "@/gen/api";
+import type { ConnectionError, QueryError, SessionError, WorkspaceSaveError } from "@/gen/api";
 
 export type Remedy = "editConnection" | "renewAccess" | "widenAddresses" | "reconnect" | "retry" | "openDiagnostics" | "enterPassword" | "reload" | "continueWithoutPassword";
 
@@ -106,6 +106,17 @@ function connectionError(e: ConnectionError): Described {
   }
 }
 
+function workspaceError(e: WorkspaceSaveError): Described {
+  switch (e.kind) {
+    case "Conflict":
+      return withRemedy({ title: "The workspace changed in another window" }, "reload");
+    case "InvalidDocument":
+      return { title: `The ${e.document} could not be saved`, description: e.message };
+    case "WriteFailed":
+      return { title: "Could not save tabs and settings", description: e.message };
+  }
+}
+
 export function tlsName(kind: string): string {
   switch (kind) {
     case "deployment-ca":
@@ -124,7 +135,7 @@ export function tlsName(kind: string): string {
 const isKind = (d: unknown): d is { kind: string } => typeof d === "object" && d !== null && "kind" in d;
 
 /** The text, remedy and correlation id of any error a call failed with (spec §8). */
-export function describeError(error: unknown, context: "connect" | "run" | "export" | "approve" | "general" = "general"): Described {
+export function describeError(error: unknown, context: "connect" | "run" | "export" | "approve" | "workspace" | "general" = "general"): Described {
   if (!isRpcError(error)) {
     const message = error instanceof Error ? error.message : String(error);
     return { title: "Something went wrong", description: message };
@@ -136,6 +147,7 @@ export function describeError(error: unknown, context: "connect" | "run" | "expo
     if (context === "connect") return sessionError(details as SessionError);
     if (context === "run" || context === "export") return queryError(details as QueryError);
     if (context === "approve") return connectionError(details as ConnectionError);
+    if (context === "workspace") return workspaceError(details as WorkspaceSaveError);
     return undefined;
   };
   switch (error.code) {

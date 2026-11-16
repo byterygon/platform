@@ -65,7 +65,9 @@ connection manager. A shell calls `Core::start(CoreConfig)` and serves `Core::ro
 
 - **Workspace** (`workspace.rs`): `DBEE_WORKSPACE` or `dirs::data_dir()/dbee/workspace`;
   `connections.json` (grants as approved, driver settings, a secret *reference*, never a value),
-  `settings.json`, `tabs.json`, written atomically. The audit log is `audit/log.jsonl`.
+  `settings.json`, `tabs.json` (the UI's documents, read and written whole through
+  `app.getWorkspace` / `app.setWorkspace` under one revision; a write against a stale revision is
+  a `Conflict`), written atomically. The audit log is `audit/log.jsonl`.
 - **Secrets** (`secrets.rs`): the OS keychain through `keyring` (service `dbee`, account = the
   secret reference), probed at startup. Without a keychain nothing is persisted: creating a
   connection with a password fails with `SecretStoreUnavailable`, and a password given later
@@ -156,8 +158,10 @@ buffers directly (Int64 as BigInt, NULL from the validity bitmap) until the data
 Screens: the shell (sidebar tree, query tabs, status bar, command palette, toasts), the connection
 form (TanStack Form) and the approval dialog built from the core's preview, the schema browser,
 query tabs on SqlEditor with the destructive-statement confirmation, results with the cell viewer,
-export, settings, about and the shortcuts dialog. Tabs, sizes and settings persist in the
-webview's storage. Errors follow spec §8 with the correlation id behind a Details disclosure.
+export, settings, about and the shortcuts dialog. Tabs, sizes and settings live in the workspace
+(`src/app/workspace.ts`): read once with `app.getWorkspace` before the first render, written with
+`app.setWorkspace` after a short pause, and moved once from the webview storage an earlier build
+used. Errors follow spec §8 with the correlation id behind a Details disclosure.
 
 ```sh
 pnpm --filter @byterygon/dbee build        # dist/ (the desktop's frontendDist, the server's --ui)
@@ -168,7 +172,8 @@ pnpm --filter @byterygon/dbee dev          # Vite dev server on 127.0.0.1 (devel
 
 ## Ambidex procedures the skeleton builds
 
-`app.info`, `app.events` (subscription); `connections.list`, `connections.prepare`,
+`app.info`, `app.events` (subscription), `app.getWorkspace`, `app.setWorkspace` (the UI's
+settings and tabs); `connections.list`, `connections.prepare`,
 `connections.create`, `connections.update`, `connections.setSecret`, `connections.delete`;
 `sessions.open`, `sessions.close`; `schema.schemas`, `schema.tables`, `schema.columns`;
 `query.classify`, `query.execute` (stream of Arrow IPC chunks, 5 min default and 1 h maximum);

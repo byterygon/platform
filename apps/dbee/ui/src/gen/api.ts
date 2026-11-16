@@ -10,7 +10,7 @@ export const API_VERSION = "0.0.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:4d742f3b601d2f07b6eeb0e40bee58b457490bc1b272042d0300e44de5b70577";
+export const SCHEMA_HASH = "sha256:e97f6c09cbf3f07516fb056642a3bde2c11a3aa8eff38e76117570f9dd081b48";
 
 // ---- Types
 
@@ -268,6 +268,8 @@ export type GrantSummary = { id: string, state: GrantState,
  */
 expiresAt: number | null, createdAt: number, };
 
+export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]: JsonValue } | null;
+
 export type LineEnding = "lf" | "crlf";
 
 export type OpenSessionInput = { connectionId: string, purpose: SessionPurpose, };
@@ -315,6 +317,22 @@ export type SessionPurpose = "editor" | "browser";
 export type SetSecretInput = { id: string, password: string | null, };
 
 export type SetSecretOutput = { hasSecret: boolean, };
+
+/**
+ * Input of `app.setWorkspace`. A document left out (or `null`) is not changed; a document given
+ * must be a JSON object of at most [`MAX_WORKSPACE_DOCUMENT_BYTES`] serialized.
+ */
+export type SetWorkspaceInput = { settings?: JsonValue | null, tabs?: JsonValue | null, 
+/**
+ * The revision the client last read or wrote; a different current revision is a
+ * `Conflict` and nothing is written.
+ */
+baseRevision: string, };
+
+/**
+ * Output of `app.setWorkspace`.
+ */
+export type SetWorkspaceOutput = { revision: string, };
 
 /**
  * Risk of a statement, as the fail-closed classifier sees it (Ambidex spec §8).
@@ -379,6 +397,30 @@ description?: string | null,
  */
 colour?: string | null, };
 
+/**
+ * Output of `app.getWorkspace`: the UI's documents of the workspace (`settings.json`,
+ * `tabs.json`) and their revision. The core stores the documents whole and never interprets
+ * them; their layout and its version are the UI's.
+ */
+export type WorkspaceDocuments = { 
+/**
+ * `null` until the UI first writes it.
+ */
+settings: JsonValue, 
+/**
+ * `null` until the UI first writes it.
+ */
+tabs: JsonValue, 
+/**
+ * Changes with every write; opaque. Pass it back as `baseRevision`.
+ */
+revision: string, };
+
+/**
+ * Typed errors of `app.setWorkspace`.
+ */
+export type WorkspaceSaveError = { "kind": "Conflict", revision: string, } | { "kind": "InvalidDocument", document: string, message: string, } | { "kind": "WriteFailed", message: string, };
+
 // ---- Errors
 
 /**
@@ -439,7 +481,9 @@ export interface ProcedureDef<
 /** Every procedure by full name. */
 export interface Procedures {
   readonly "app.events": ProcedureDef<"subscription", Empty, AppEvent, never>;
+  readonly "app.getWorkspace": ProcedureDef<"query", Empty, WorkspaceDocuments, never>;
   readonly "app.info": ProcedureDef<"query", Empty, AppInfo, never>;
+  readonly "app.setWorkspace": ProcedureDef<"mutation", SetWorkspaceInput, SetWorkspaceOutput, WorkspaceSaveError>;
   readonly "connections.create": ProcedureDef<"mutation", CreateConnectionInput, ConnectionSummary, ConnectionError>;
   readonly "connections.delete": ProcedureDef<"mutation", ConnectionId, Empty, ConnectionError>;
   readonly "connections.list": ProcedureDef<"query", Empty, Array<ConnectionSummary>, never>;
@@ -461,7 +505,9 @@ export interface Procedures {
 export interface Api {
   readonly app: {
     readonly events: Procedures["app.events"];
+    readonly getWorkspace: Procedures["app.getWorkspace"];
     readonly info: Procedures["app.info"];
+    readonly setWorkspace: Procedures["app.setWorkspace"];
   };
   readonly connections: {
     readonly create: Procedures["connections.create"];
@@ -505,11 +551,31 @@ export const procedures: Api = {
       timeoutDefaultMs: null,
       timeoutMaxMs: null,
     },
+    getWorkspace: {
+      name: "app.getWorkspace",
+      kind: "query",
+      perm: "workspace.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
     info: {
       name: "app.info",
       kind: "query",
       perm: "app.read",
       risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    setWorkspace: {
+      name: "app.setWorkspace",
+      kind: "mutation",
+      perm: "workspace.write",
+      risk: "Write",
       agent: "hidden",
       deprecated: false,
       timeoutDefaultMs: 30000,

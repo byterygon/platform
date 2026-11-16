@@ -1,11 +1,12 @@
 // Application state (DBee spec §3): the connections and their live status, the schema cache, the
 // query tabs with their runs, the open dialogs and the settings. One reducer, one context; what
-// must survive a restart goes through persistence.ts.
+// must survive a restart goes to the workspace through the WorkspaceSaver (workspace.ts).
 import type { ArrowBatch, ArrowField } from "@byterygon/ambidex/arrow";
 import { type Dispatch, type ReactNode, createContext, useContext, useEffect, useMemo, useReducer } from "react";
 import type { AppInfo, ColumnInfo, ConnectionStatus, ConnectionSummary, ExecuteSummary, TableInfo } from "@/gen/api";
 import type { Described } from "./messages";
-import { type Persisted, type PersistedTab, type Settings, load, save } from "./persistence";
+import { DEFAULT_PERSISTED, type Persisted, type PersistedTab, type Settings } from "./persistence";
+import type { WorkspaceProblem, WorkspaceSaver } from "./workspace";
 
 export type RunStatus = "idle" | "running" | "done" | "error" | "cancelled";
 
@@ -68,6 +69,8 @@ export interface State extends Persisted {
   paletteOpen: boolean;
   /** The pane with focus, for F6. */
   pane: "tree" | "editor" | "results";
+  /** Why tabs and settings are not being saved, if they are not. */
+  workspaceProblem: WorkspaceProblem | null;
 }
 
 export type Action =
@@ -94,7 +97,8 @@ export type Action =
   | { type: "pane"; pane: State["pane"] }
   | { type: "sizes"; shellSizes?: number[]; splitSizes?: number[] }
   | { type: "sidebar"; open: boolean }
-  | { type: "settings"; settings: Partial<Settings> };
+  | { type: "settings"; settings: Partial<Settings> }
+  | { type: "workspaceProblem"; problem: WorkspaceProblem | null };
 
 export const emptyCache = (): SchemaCache => ({ schemas: { loading: false }, tables: {}, columns: {} });
 
@@ -203,6 +207,8 @@ export function reducer(state: State, action: Action): State {
       return { ...state, sidebarOpen: action.open };
     case "settings":
       return { ...state, settings: { ...state.settings, ...action.settings, confirmDestructive: true } };
+    case "workspaceProblem":
+      return { ...state, workspaceProblem: action.problem };
   }
 }
 
@@ -222,6 +228,7 @@ export function initialState(persisted: Persisted): State {
     dialog: { kind: "none" },
     paletteOpen: false,
     pane: "editor",
+    workspaceProblem: null,
   };
 }
 
@@ -241,12 +248,14 @@ export function tabOf(state: State, id: string | null): Tab | undefined {
   return tab && runtime ? { ...tab, ...runtime } : undefined;
 }
 
-export function StoreProvider({ children, persisted = load(), persist = true }: { children: ReactNode; persisted?: Persisted; persist?: boolean }) {
+/** The store; with a `saver`, every change of the persisted part is handed to it. */
+export function StoreProvider({ children, persisted = DEFAULT_PERSISTED, saver }: { children: ReactNode; persisted?: Persisted; saver?: WorkspaceSaver }) {
   const [state, dispatch] = useReducer(reducer, persisted, initialState);
   const value = useMemo(() => ({ state, dispatch }), [state]);
   const { tabs, activeTab, shellSizes, splitSizes, sidebarOpen, settings } = state;
+  useEffect(() => saver?.subscribe((problem) => dispatch({ type: "workspaceProblem", problem })), [saver]);
   useEffect(() => {
-    if (persist) save({ tabs, activeTab, shellSizes, splitSizes, sidebarOpen, settings });
-  }, [persist, tabs, activeTab, shellSizes, splitSizes, sidebarOpen, settings]);
+    saver?.schedule({ tabs, activeTab, shellSizes, splitSizes, sidebarOpen, settings });
+  }, [saver, tabs, activeTab, shellSizes, splitSizes, sidebarOpen, settings]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
