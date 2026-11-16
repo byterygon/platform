@@ -1,58 +1,74 @@
 import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
+import { buttonBase, buttonVariants } from "@/components/button/button";
 import { cn } from "@/lib/cn";
+import { controlAppearance, controlSize, type ControlSizeProp } from "@/lib/control";
 
-// A two-state button on Base UI's Toggle: aria-pressed and data-pressed follow `pressed`. Unpressed
-// it is quiet (color.fg.muted); pressed it takes color.interactive.selected and color.fg.default,
-// so the state does not rest on colour alone. ToggleGroup reuses the base and the variants.
+// Fluent 2's ToggleButton on Base UI's Toggle: a Button (same appearances, sizes, focus ring and
+// disabled look) that stays checked. aria-pressed and data-pressed follow `pressed`; checked
+// takes color.interactive.selected or the accent, never colour alone: the fill changes too and
+// aria-pressed is announced. ToggleGroup's items reuse the subtle look.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const toggleButtonVariants = {
-  variant: {
-    /** No border: toolbars and dense rows. */
-    ghost: "border-transparent",
-    /** A strong border, for a toggle that stands alone next to inputs. */
-    outline: "border-border-strong bg-surface",
+  appearance: {
+    /** Checked: the accent's pressed solid. */
+    primary: `${buttonVariants.appearance.primary} data-pressed:bg-accent-solid-active`,
+    /** Checked: the selected wash with the default text. */
+    secondary: `${buttonVariants.appearance.secondary} data-pressed:bg-selected data-pressed:text-fg data-pressed:hover:bg-selected-hover`,
+    /** Checked: the selected wash and the strong edge. */
+    outline: `${buttonVariants.appearance.outline} data-pressed:border-border-strong data-pressed:bg-selected data-pressed:hover:bg-selected-hover`,
+    /** Checked: the selected wash, the default text and an accent icon. Toolbars. */
+    subtle: `${buttonVariants.appearance.subtle} data-pressed:bg-selected data-pressed:text-fg data-pressed:hover:bg-selected-hover data-pressed:[&_svg]:text-accent-subtle-fg`,
+    /** Checked: accent text, no fill. */
+    transparent: `${buttonVariants.appearance.transparent} data-pressed:text-accent-subtle-fg`,
   },
-  size: {
-    sm: "h-control-sm px-inset-sm text-label",
-    md: "h-control-md px-control-x text-label",
-    lg: "h-control-lg px-inset-lg text-body-strong",
-  },
+  size: buttonVariants.size,
 } as const;
 
-/** The classes every variant and size shares; ToggleGroupItem reuses them. */
-export const toggleButtonBase = [
-  "inline-flex shrink-0 select-none items-center justify-center gap-inline-sm whitespace-nowrap",
-  "rounded-md border font-sans text-fg-muted",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-  "hover:bg-hover hover:text-fg active:bg-pressed",
-  "data-pressed:bg-selected data-pressed:text-fg data-pressed:hover:bg-selected-hover",
-  "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
-  "data-disabled:pointer-events-none data-disabled:opacity-[var(--by-opacity-disabled)]",
-  "[&_svg]:size-icon-sm [&_svg]:shrink-0",
-];
+/** The classes every appearance and size shares; ToggleGroupItem reuses them. */
+export const toggleButtonBase = buttonBase;
+
+/**
+ * The `variant` names from before TSK-53.
+ * @deprecated Use `appearance`. Kept for one release.
+ */
+export type ToggleButtonVariant = "ghost" | "outline";
+
+/** The deprecated `variant` values and the appearances they map to. */
+export const TOGGLE_BUTTON_VARIANT_ALIASES: Readonly<Record<ToggleButtonVariant, keyof typeof toggleButtonVariants.appearance>> = {
+  ghost: "subtle",
+  outline: "outline",
+};
 
 export interface ToggleButtonProps extends Omit<TogglePrimitive.Props, "className" | "value"> {
-  /** Border or none. */
-  variant?: keyof typeof toggleButtonVariants.variant;
-  /** Control height, from the density-aware `size.control.*` roles. */
-  size?: keyof typeof toggleButtonVariants.size;
+  /** Button's appearances; subtle by default, for toolbars. */
+  appearance?: keyof typeof toggleButtonVariants.appearance | undefined;
+  /**
+   * The old name of `appearance` (`ghost` is `subtle`).
+   * @deprecated Use `appearance`. Kept for one release.
+   */
+  variant?: ToggleButtonVariant | undefined;
+  /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }
 
 /**
  * A button that stays on or off (bold, word wrap, "show nulls"), on Base UI's Toggle: a native
- * `<button>` with aria-pressed. Use `pressed` and `onPressedChange`, or `defaultPressed`. For one
- * of several options use ToggleGroup. The ref reaches the `<button>`.
+ * `<button>` with aria-pressed. Use `pressed` and `onPressedChange`, or `defaultPressed`; pass the
+ * icon `filled` while pressed, as Fluent does. For one of several options use ToggleGroup. The ref
+ * reaches the `<button>`.
  */
-export function ToggleButton({ variant = "ghost", size = "md", className, ...props }: ToggleButtonProps) {
+export function ToggleButton({ appearance, variant, size, className, ...props }: ToggleButtonProps) {
+  const look = controlAppearance(appearance, variant, TOGGLE_BUTTON_VARIANT_ALIASES, "subtle");
+  const height = controlSize(size);
   return (
     <TogglePrimitive
       data-slot="toggle-button"
-      data-variant={variant}
-      data-size={size}
-      className={cn(toggleButtonBase, toggleButtonVariants.variant[variant], toggleButtonVariants.size[size], className)}
+      data-appearance={look}
+      data-size={height}
+      className={cn(toggleButtonBase, toggleButtonVariants.appearance[look], toggleButtonVariants.size[height], className)}
       {...props}
     />
   );

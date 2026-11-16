@@ -1,13 +1,17 @@
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { useRef, useState, type DragEvent, type MouseEvent, type Ref } from "react";
 import { Button } from "@/components/button/button";
+import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
+import { controlSize, fieldAppearance, fieldAppearances, fieldFrame, fieldSizes, type ControlSizeProp, type FieldAppearance } from "@/lib/control";
+import { Dismiss } from "@/lib/icons";
 
 // Base UI has no file input, so this is a native <input type="file"> rendered by Base UI's Input
 // (Field.Control: it takes a Field's label, description and validity) inside a styled frame. The
 // input stays in the page, visually hidden but focusable: Tab, Space and the FieldLabel open the
 // system picker, and screen readers announce the input and the chosen file as usual. The frame's
 // look (a "Choose file" chip and the file names) is aria-hidden. Files never leave the browser.
+// The frame takes Input's Fluent appearances, sizes, focus underline and states.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const fileInputVariants = {
@@ -17,36 +21,35 @@ export const fileInputVariants = {
     /** A larger dashed area that also takes files dropped on it. */
     dropzone: "h-auto flex-col justify-center gap-stack-sm border-dashed p-inset-lg text-center",
   },
+  appearance: fieldAppearances,
   size: {
-    sm: "h-control-sm [&_[data-slot=file-input-chip]]:h-control-xs",
-    md: "h-control-md [&_[data-slot=file-input-chip]]:h-control-sm",
-    lg: "h-control-lg [&_[data-slot=file-input-chip]]:h-control-md",
+    small: `${fieldSizes.small} [&_[data-slot=file-input-chip]]:h-control-xs`,
+    medium: `${fieldSizes.medium} [&_[data-slot=file-input-chip]]:h-control-sm`,
+    large: `${fieldSizes.large} [&_[data-slot=file-input-chip]]:h-control-md`,
   },
 } as const;
 
 // Written out in full (no template strings): Tailwind finds classes by scanning the source as text.
 const base = [
-  "relative flex w-full min-w-0 cursor-pointer items-center gap-inline-sm rounded-md border border-border-strong bg-surface font-sans text-body text-fg",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
+  "relative flex w-full min-w-0 cursor-pointer items-center gap-inline-sm",
+  fieldFrame,
   // Only the dropzone sets data-dragging.
   "data-dragging:border-accent-solid data-dragging:bg-accent-subtle",
-  "has-[[data-slot=file-input-input]:focus-visible]:outline-solid has-[[data-slot=file-input-input]:focus-visible]:outline-[length:var(--by-ring-width)]",
-  "has-[[data-slot=file-input-input]:focus-visible]:outline-offset-[var(--by-ring-offset)] has-[[data-slot=file-input-input]:focus-visible]:outline-ring",
-  "has-[[data-slot=file-input-input][aria-invalid=true]]:border-danger-border has-[[data-slot=file-input-input][data-invalid]]:border-danger-border",
-  "has-[[data-slot=file-input-input][data-disabled]]:cursor-not-allowed has-[[data-slot=file-input-input][data-disabled]]:opacity-[var(--by-opacity-disabled)]",
+  "has-[[data-slot=file-input-input]:focus-visible]:shadow-focus-underline",
+  "has-[[data-slot=file-input-input][aria-invalid=true]]:border-danger-border has-[[data-slot=file-input-input][aria-invalid=true]]:border-b-danger",
+  "has-[[data-slot=file-input-input][data-invalid]]:border-danger-border has-[[data-slot=file-input-input][data-invalid]]:border-b-danger",
+  "has-[[data-slot=file-input-input][data-disabled]]:cursor-not-allowed has-[[data-slot=file-input-input][data-disabled]]:border-border-disabled",
+  "has-[[data-slot=file-input-input][data-disabled]]:bg-transparent has-[[data-slot=file-input-input][data-disabled]]:text-fg-disabled",
 ];
 
-const chipClasses = ["inline-flex shrink-0 items-center rounded-sm bg-neutral-subtle px-inset-sm text-label text-neutral-subtle-fg"];
+// The "Choose file" chip looks like a small secondary Button (decoration: the input is the control).
+const chipClasses = [
+  "inline-flex shrink-0 items-center rounded-sm border border-border-subtle border-b-border-control-bottom-subtle bg-layer px-inset-xs text-caption-1 text-fg",
+];
 
 const namesClasses = ["min-w-0 flex-1 truncate text-start", "data-empty:text-fg-subtle"];
 
 const clearClasses = ["h-control-xs px-inset-xs text-fg-muted hover:text-fg"];
-
-const ClearIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <path d="m4.5 4.5 7 7m0-7-7 7" />
-  </svg>
-);
 
 /** Whether a file matches an `accept` list: extensions (".pem"), MIME types and wildcards ("image/*"). */
 export function acceptsFile(accept: string | undefined, file: File): boolean {
@@ -64,9 +67,11 @@ export function acceptsFile(accept: string | undefined, file: File): boolean {
 
 export interface FileInputProps extends Omit<InputPrimitive.Props, "className" | "size" | "type" | "value" | "defaultValue" | "onValueChange" | "children"> {
   /** One line like an Input, or a dashed area that also takes dropped files. */
-  variant?: keyof typeof fileInputVariants.variant;
-  /** Height of the field variant, from the density-aware `size.control.*` roles. */
-  size?: keyof typeof fileInputVariants.size;
+  variant?: keyof typeof fileInputVariants.variant | undefined;
+  /** Fluent's field appearance of the frame: outline (default), underline, filled-darker or filled-lighter. */
+  appearance?: FieldAppearance | undefined;
+  /** Height of the field variant: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Called with the chosen (or dropped) files; [] when cleared. */
   onFilesChange?: (files: File[]) => void;
   /** The chip's text. */
@@ -89,7 +94,8 @@ export interface FileInputProps extends Omit<InputPrimitive.Props, "className" |
  */
 export function FileInput({
   variant = "field",
-  size = "md",
+  appearance,
+  size,
   onFilesChange,
   onChange,
   chooseLabel = "Choose file",
@@ -155,13 +161,16 @@ export function FileInput({
   };
 
   const names = files.map((file) => file.name).join(", ");
+  const look = fieldAppearance(appearance);
+  const height = controlSize(size);
   return (
     <div
       data-slot="file-input"
       data-variant={variant}
-      data-size={size}
+      data-appearance={look}
+      data-size={height}
       data-dragging={dragging ? "" : undefined}
-      className={cn(base, fileInputVariants.size[size], fileInputVariants.variant[variant], className)}
+      className={cn(base, fileInputVariants.appearance[look], fileInputVariants.size[height], fileInputVariants.variant[variant], className)}
       onClick={open}
       onDragOver={dragOver}
       onDragLeave={() => setDragging(false)}
@@ -189,8 +198,8 @@ export function FileInput({
       <span aria-hidden="true" data-slot="file-input-names" data-empty={files.length === 0 ? "" : undefined} className={cn(namesClasses)}>
         {files.length === 0 ? emptyLabel : names}
       </span>
-      <Button variant="ghost" size="sm" aria-label={clearLabel} hidden={files.length === 0 || disabled} onClick={clear} className={cn(clearClasses)}>
-        <ClearIcon />
+      <Button appearance="subtle" size="small" aria-label={clearLabel} hidden={files.length === 0 || disabled} onClick={clear} className={cn(clearClasses)}>
+        <Icon icon={Dismiss} />
       </Button>
     </div>
   );

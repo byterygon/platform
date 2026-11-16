@@ -247,7 +247,7 @@ test("size and space follow the density axis; shadows and colours follow the the
     const value = resolve(set, "grid.row-height", context);
     return value.ok ? value.value : undefined;
   };
-  assert.deepEqual(row(comfortable), { value: 36, unit: "px" });
+  assert.deepEqual(row(comfortable), { value: 32, unit: "px" });
   assert.deepEqual(row(compact), { value: 22, unit: "px" });
   // Compact is never looser than comfortable.
   for (const family of ["inline", "stack", "inset", "gap"]) {

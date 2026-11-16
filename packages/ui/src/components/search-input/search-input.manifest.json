@@ -3,81 +3,205 @@
   "schemaVersion": 1,
   "name": "search-input",
   "title": "SearchInput",
-  "description": "A search box on InputGroup and Base UI's Input: a search icon, type=\"search\", and a Clear button (and Escape) while there is text, in three density-aware sizes.",
-  "usage": "Use SearchInput to filter or search a list as the user types: tables in a schema browser, rows of a result, settings. Name it with a FieldLabel or an aria-label (\"Search tables\"); the placeholder is not a name. Wire value and onValueChange (called with \"\" when cleared) and announce the result count in a role=\"status\" element. Escape clears the text, and only passes through when there is nothing to clear. For a query that runs on Enter only, use it the same way and act in onKeyDown; for picking one option from a list, use Combobox.",
+  "description": "A search box on InputGroup and Base UI's Input: a search icon, type=\"search\", and a Clear button (and Escape) while there is text, in Fluent's small, medium and large.",
+  "usage": "Use SearchInput to filter or search a list as the user types: tables in a schema browser, rows of a result, settings. Name it with a FieldLabel or an aria-label (\"Search tables\"); the placeholder is not a name. Wire value and onValueChange (called with \"\" when cleared) and announce the result count in a role=\"status\" element. Escape clears the text, and only passes through when there is nothing to clear. For a query that runs on Enter only, use it the same way and act in onKeyDown; for picking one option from a list, use Combobox. Appearance outline is the default; underline for dense or inline forms, filled-darker on white surfaces, filled-lighter on grey ones. The old sizes sm/md/lg still work for one release.",
   "status": "experimental",
   "base": "@base-ui/react/input",
-  "dependencies": ["@base-ui/react"],
+  "dependencies": [
+    "@base-ui/react"
+  ],
   "props": [
-    { "name": "value", "type": "string", "description": "Controlled text." },
-    { "name": "defaultValue", "type": "string", "default": "", "description": "Initial text when uncontrolled." },
-    { "name": "onValueChange", "type": "(value: string) => void", "description": "Called on every change, with \"\" when cleared." },
-    { "name": "clearLabel", "type": "string", "default": "Clear search", "description": "The Clear button's accessible name." },
-    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Height from size.control.*, which follows data-density." },
-    { "name": "placeholder", "type": "string", "description": "A hint shown while empty; not a label." },
-    { "name": "disabled", "type": "boolean", "default": false, "description": "Disables the input and hides the Clear button." },
-    { "name": "readOnly", "type": "boolean", "default": false, "description": "Focusable, cannot be changed or cleared." },
-    { "name": "className", "type": "string", "description": "Extra classes for the frame, merged after the component's own." },
-    { "name": "ref", "type": "Ref<HTMLInputElement>", "description": "Reaches the <input>." }
+    {
+      "name": "value",
+      "type": "string",
+      "description": "Controlled text."
+    },
+    {
+      "name": "defaultValue",
+      "type": "string",
+      "default": "",
+      "description": "Initial text when uncontrolled."
+    },
+    {
+      "name": "onValueChange",
+      "type": "(value: string) => void",
+      "description": "Called on every change, with \"\" when cleared."
+    },
+    {
+      "name": "clearLabel",
+      "type": "string",
+      "default": "Clear search",
+      "description": "The Clear button's accessible name."
+    },
+    {
+      "name": "appearance",
+      "type": "\"outline\" | \"underline\" | \"filled-darker\" | \"filled-lighter\"",
+      "default": "outline",
+      "description": "Fluent's field appearance: outline (a light fill, a hairline and the darker bottom edge), underline (the bottom edge only), filled-darker (color.bg.inset) or filled-lighter (color.bg.surface)."
+    },
+    {
+      "name": "size",
+      "type": "\"small\" | \"medium\" | \"large\"",
+      "default": "medium",
+      "description": "Fluent's field sizes: 24, 32 and 40 px when comfortable (caption-1, body-1, body-2), 22, 28 and 34 px when compact (size.control.sm, md, lg)."
+    },
+    {
+      "name": "size (sm, md, lg)",
+      "type": "\"sm\" | \"md\" | \"lg\"",
+      "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+      "deprecated": "use small, medium or large"
+    },
+    {
+      "name": "placeholder",
+      "type": "string",
+      "description": "A hint shown while empty; not a label."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Disables the input and hides the Clear button."
+    },
+    {
+      "name": "readOnly",
+      "type": "boolean",
+      "default": false,
+      "description": "Focusable, cannot be changed or cleared."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes for the frame, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLInputElement>",
+      "description": "Reaches the <input>."
+    }
   ],
   "variants": {
-    "size": ["sm", "md", "lg"]
+    "appearance": [
+      "outline",
+      "underline",
+      "filled-darker",
+      "filled-lighter"
+    ],
+    "size": [
+      "small",
+      "medium",
+      "large"
+    ]
   },
   "slots": [
-    { "name": "root", "element": "div", "description": "The InputGroup frame; data-slot=\"search-input\" and data-size." },
-    { "name": "icon", "element": "div", "description": "The search icon, an InputGroupAddon; clicking it focuses the input." },
-    { "name": "input", "element": "input", "description": "The text control, type=\"search\"; data-slot=\"input-group-input\"." },
-    { "name": "clear", "element": "button", "description": "The Clear button, hidden while there is nothing to clear; data-slot=\"input-group-button\"." }
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The InputGroup frame; data-slot=\"search-input\" and data-size."
+    },
+    {
+      "name": "icon",
+      "element": "div",
+      "description": "The search icon, an InputGroupAddon; clicking it focuses the input."
+    },
+    {
+      "name": "input",
+      "element": "input",
+      "description": "The text control, type=\"search\"; data-slot=\"input-group-input\"."
+    },
+    {
+      "name": "clear",
+      "element": "button",
+      "description": "The Clear button, hidden while there is nothing to clear; data-slot=\"input-group-button\"."
+    }
   ],
   "states": [
-    { "name": "hover", "variant": "hover", "description": "Pointer over the Clear button: color.interactive.hover and color.fg.default." },
-    { "name": "focus-visible", "variant": "has-[[data-slot=input-group-input]:focus-visible]", "description": "Keyboard focus in the input: a ring of ring.width in color.ring around the frame." },
-    { "name": "invalid", "variant": "has-[[data-slot=input-group-input][data-invalid]]", "description": "In an invalid Field (or with aria-invalid): the frame's border is color.status.danger.border." },
-    { "name": "disabled", "variant": "has-[[data-slot=input-group-input][data-disabled]]", "props": { "disabled": true }, "description": "Ignores interaction; the frame dims to opacity.disabled." }
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over the Clear button: color.interactive.hover and color.fg.default."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "has-[[data-slot=input-group-input]:focus-visible]",
+      "description": "Keyboard focus in the input: Fluent's accent underline (shadow.focus-underline) around the frame."
+    },
+    {
+      "name": "invalid",
+      "variant": "has-[[data-slot=input-group-input][data-invalid]]",
+      "description": "In an invalid Field (or with aria-invalid): the frame's border is color.status.danger.border."
+    },
+    {
+      "name": "disabled",
+      "variant": "has-[[data-slot=input-group-input][data-disabled]]",
+      "props": {
+        "disabled": true
+      },
+      "description": "Ignores interaction; the frame drops its fill and takes Fluent's disabled stroke and text."
+    }
   ],
   "tokens": [
+    "color.accent.subtle-fg",
+    "color.bg.inset",
+    "color.bg.layer-alt",
     "color.bg.surface",
-    "color.border.strong",
+    "color.border.control-bottom",
+    "color.border.disabled",
+    "color.border.subtle",
     "color.fg.default",
+    "color.fg.disabled",
     "color.fg.muted",
     "color.fg.subtle",
     "color.interactive.active",
     "color.interactive.hover",
     "color.ring",
+    "color.ring-inner",
     "color.status.danger.border",
+    "color.status.danger.solid",
     "font.sans",
-    "motion.duration.fast",
-    "motion.easing.standard",
-    "opacity.disabled",
+    "motion.duration.faster",
+    "motion.easing.easy-ease",
     "radius.md",
-    "ring.offset",
+    "ring.inner-width",
     "ring.width",
+    "shadow.focus-underline",
     "size.control.lg",
     "size.control.md",
     "size.control.sm",
     "size.control.xs",
-    "size.icon.sm",
+    "size.icon.lg",
+    "size.icon.md",
+    "size.icon.xl",
     "space.control.x",
     "space.inline.md",
     "space.inline.sm",
     "space.inline.xs",
-    "space.inset.sm",
     "space.inset.xs",
-    "text.body.leading",
-    "text.body.size",
-    "text.body.tracking",
-    "text.body.weight",
-    "text.label.leading",
-    "text.label.size",
-    "text.label.tracking",
-    "text.label.weight"
+    "text.body-1-strong.leading",
+    "text.body-1-strong.size",
+    "text.body-1-strong.tracking",
+    "text.body-1-strong.weight",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
+    "text.body-2.leading",
+    "text.body-2.size",
+    "text.body-2.tracking",
+    "text.body-2.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight"
   ],
-  "examples": { "minimal": "SearchInputMinimal", "realistic": "SearchInputRealistic" },
+  "examples": {
+    "minimal": "SearchInputMinimal",
+    "realistic": "SearchInputRealistic"
+  },
   "accessibility": [
     "The text control is a native <input type=\"search\"> (role searchbox); name it with a FieldLabel or aria-label, not only a placeholder.",
     "The Clear button is a native <button> named \"Clear search\"; it returns focus to the input. Escape clears as well, and is left to the page (a dialog) when the box is empty.",
     "Announce how many results match in a role=\"status\" element next to it; the box itself does not.",
     "The search icon is decorative (aria-hidden) and clicking it focuses the input.",
-    "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+    "Focus shows Fluent's accent underline (shadow.focus-underline) (3:1 on every surface)."
   ]
 }

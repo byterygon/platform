@@ -69,7 +69,7 @@ describe("Field", () => {
     expect(input.getAttribute("aria-invalid")).toBe("true");
     expect(input.name).toBe("port");
     const error = container.querySelector('[data-slot="field-error"]')!;
-    expect([...error.querySelectorAll("span")].map((s) => s.textContent)).toEqual(["Enter a port.", "Use 1 to 65535."]);
+    expect([...error.querySelectorAll("span.block")].map((s) => s.textContent)).toEqual(["Enter a port.", "Use 1 to 65535."]);
     expect(input.getAttribute("aria-describedby")).toContain(error.id);
     expect(await axeViolations(container)).toEqual([]);
   });

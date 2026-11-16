@@ -3,6 +3,7 @@ import { Menubar as MenubarPrimitive } from "@base-ui/react/menubar";
 import { useContext, type ReactNode, type Ref } from "react";
 import { createMenuParts, menuClasses, menuOffset, menuPopupStyle, MenuScopeContext, useMenuScope } from "@/components/dropdown-menu/dropdown-menu";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 import { useMergedRef } from "@/lib/theme-scope";
 
 // A row of menus, as at the top of a desktop window, on Base UI's Menubar: `Menubar` is the row
@@ -14,12 +15,13 @@ import { useMergedRef } from "@/lib/theme-scope";
 export const menubarVariants = {} as const;
 
 const classes = {
-  root: "flex items-center gap-inline-xs rounded-md border border-border bg-surface p-inset-xs font-sans",
+  // A Fluent toolbar-like row: a layer with a hairline; titles are subtle buttons.
+  root: "flex items-center gap-inline-xs rounded-md border border-border-subtle bg-layer p-inline-xs font-sans",
   trigger: [
-    "flex h-control-sm cursor-default select-none items-center rounded-sm px-inset-sm text-label text-fg outline-none",
-    "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-    "hover:bg-hover data-popup-open:bg-hover",
-    "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
+    "flex h-control-sm cursor-default select-none items-center rounded-md px-inline-md text-body-1 text-fg",
+    "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
+    "hover:bg-hover active:bg-pressed data-popup-open:bg-pressed",
+    focusRing,
     "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
   ],
 } as const;

@@ -73,7 +73,7 @@ export function ComboboxRealistic() {
       </Field>
       <Field name="role">
         <FieldLabel>Run as role</FieldLabel>
-        <Combobox items={roles} placeholder="Search roles" status="Loading roles…" size="sm">
+        <Combobox items={roles} placeholder="Search roles" status="Loading roles…" size="small" appearance="filled-darker">
           {(role: string) => (
             <ComboboxItem key={role} value={role}>
               {role}
@@ -105,7 +105,7 @@ export function ComboboxRealistic() {
       </Field>
       <Field name="search-path">
         <FieldLabel>Search path</FieldLabel>
-        <Combobox items={schemas} defaultValue="analytics" size="lg">
+        <Combobox items={schemas} defaultValue="analytics" size="large" appearance="underline">
           {(schema: string) => (
             <ComboboxItem key={schema} value={schema}>
               {schema}

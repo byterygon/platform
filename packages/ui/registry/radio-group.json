@@ -8,13 +8,16 @@
     "@base-ui/react"
   ],
   "registryDependencies": [
-    "@byterygon/cn"
+    "@byterygon/cn",
+    "@byterygon/control",
+    "@byterygon/icon",
+    "@byterygon/icons"
   ],
   "files": [
     {
       "path": "ui/radio-group.tsx",
       "type": "registry:ui",
-      "content": "import { Fieldset as FieldsetPrimitive } from \"@base-ui/react/fieldset\";\nimport { Radio as RadioPrimitive } from \"@base-ui/react/radio\";\nimport { RadioGroup as RadioGroupPrimitive } from \"@base-ui/react/radio-group\";\nimport { cn } from \"@/lib/cn\";\n\n// One choice out of several, on Base UI's RadioGroup and Radio: a <div role=\"radiogroup\"> of\n// focusable <span role=\"radio\">s with hidden inputs for forms. Arrow keys move the selection,\n// Tab leaves the group. The group is a fieldset (Base UI's pattern), so a FieldLegend inside\n// names it; each option is a FieldItem whose FieldLabel wraps a RadioGroupItem.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const radioGroupVariants = {\n  size: {\n    sm: \"[&_[role=radio]]:size-icon-sm\",\n    md: \"[&_[role=radio]]:size-icon-md\",\n    lg: \"[&_[role=radio]]:size-icon-lg\",\n  },\n} as const;\n\nconst base = [\"flex min-w-0 flex-col gap-stack-sm\"];\n\nconst itemClasses = [\n  \"inline-flex shrink-0 items-center justify-center rounded-full border border-border-strong bg-surface text-accent-solid-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"hover:bg-hover\",\n  \"data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n  \"[&_svg]:block [&_svg]:size-full\",\n];\n\nconst Dot = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"currentColor\">\n    <circle cx=\"8\" cy=\"8\" r=\"3\" />\n  </svg>\n);\n\nexport interface RadioGroupProps extends Omit<RadioGroupPrimitive.Props<string>, \"className\" | \"render\"> {\n  /** Size of every radio in the group, from the `size.icon.*` roles. */\n  size?: keyof typeof radioGroupVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A set of options of which exactly one is chosen, on Base UI's RadioGroup. Use `value` and\n * `onValueChange`, or `defaultValue`. Put a FieldLegend first, then a FieldItem per option with a\n * FieldLabel around a RadioGroupItem and its text. The ref reaches the group's `<div>`.\n */\nexport function RadioGroup({ size = \"md\", className, disabled, ref, children, ...props }: RadioGroupProps) {\n  // Base UI's pattern for a labelled group: a Fieldset.Root rendered as the RadioGroup.\n  return (\n    <FieldsetPrimitive.Root\n      data-slot=\"radio-group\"\n      data-size={size}\n      ref={ref}\n      disabled={disabled}\n      className={cn(base, radioGroupVariants.size[size], className)}\n      render={<RadioGroupPrimitive disabled={disabled} {...props} />}\n    >\n      {children}\n    </FieldsetPrimitive.Root>\n  );\n}\n\nexport interface RadioGroupItemProps extends Omit<RadioPrimitive.Root.Props<string>, \"className\" | \"children\"> {\n  /** The value the group takes when this radio is chosen. */\n  value: string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** One radio of a RadioGroup, a `<span role=\"radio\">`; wrap it in a FieldLabel with its text. */\nexport function RadioGroupItem({ className, ...props }: RadioGroupItemProps) {\n  return (\n    <RadioPrimitive.Root data-slot=\"radio-group-item\" className={cn(itemClasses, className)} {...props}>\n      <RadioPrimitive.Indicator className=\"size-full\">\n        <Dot />\n      </RadioPrimitive.Indicator>\n    </RadioPrimitive.Root>\n  );\n}\n"
+      "content": "import { Fieldset as FieldsetPrimitive } from \"@base-ui/react/fieldset\";\nimport { Radio as RadioPrimitive } from \"@base-ui/react/radio\";\nimport { RadioGroup as RadioGroupPrimitive } from \"@base-ui/react/radio-group\";\nimport { Icon } from \"@/components/ui/icon\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, focusRing, type ControlSizeProp } from \"@/lib/control\";\nimport { Circle } from \"@/lib/icons\";\n\n// One choice out of several, on Base UI's RadioGroup and Radio: a <div role=\"radiogroup\"> of\n// focusable <span role=\"radio\">s with hidden inputs for forms. Arrow keys move the selection,\n// Tab leaves the group. The group is a fieldset (Base UI's pattern), so a FieldLegend inside\n// names it; each option is a FieldItem whose FieldLabel wraps a RadioGroupItem. Fluent 2's Radio:\n// a circle with the accessible stroke; chosen, the stroke and a filled dot take the accent.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const radioGroupVariants = {\n  size: {\n    small: \"[&_[role=radio]]:size-icon-sm [&_[role=radio]_svg]:size-icon-xs\",\n    medium: \"[&_[role=radio]]:size-icon-md [&_[role=radio]_svg]:size-icon-sm\",\n    large: \"[&_[role=radio]]:size-icon-lg [&_[role=radio]_svg]:size-icon-md\",\n  },\n} as const;\n\nconst base = [\"flex min-w-0 flex-col gap-stack-sm\"];\n\nconst itemClasses = [\n  \"inline-flex shrink-0 items-center justify-center rounded-full border border-border-strong bg-layer-alt text-accent-solid\",\n  \"transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease\",\n  \"hover:bg-hover\",\n  \"data-checked:border-accent-solid data-checked:hover:border-accent-solid-hover data-checked:hover:text-accent-solid-hover\",\n  focusRing,\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled\",\n  \"[&_svg]:block\",\n];\n\n\nexport interface RadioGroupProps extends Omit<RadioGroupPrimitive.Props<string>, \"className\" | \"render\"> {\n  /** Size of every radio: small 14, medium 16 (Fluent's), large 20 px (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A set of options of which exactly one is chosen, on Base UI's RadioGroup. Use `value` and\n * `onValueChange`, or `defaultValue`. Put a FieldLegend first, then a FieldItem per option with a\n * FieldLabel around a RadioGroupItem and its text. The ref reaches the group's `<div>`.\n */\nexport function RadioGroup({ size, className, disabled, ref, children, ...props }: RadioGroupProps) {\n  const box = controlSize(size);\n  // Base UI's pattern for a labelled group: a Fieldset.Root rendered as the RadioGroup.\n  return (\n    <FieldsetPrimitive.Root\n      data-slot=\"radio-group\"\n      data-size={box}\n      ref={ref}\n      disabled={disabled}\n      className={cn(base, radioGroupVariants.size[box], className)}\n      render={<RadioGroupPrimitive disabled={disabled} {...props} />}\n    >\n      {children}\n    </FieldsetPrimitive.Root>\n  );\n}\n\nexport interface RadioGroupItemProps extends Omit<RadioPrimitive.Root.Props<string>, \"className\" | \"children\"> {\n  /** The value the group takes when this radio is chosen. */\n  value: string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/** One radio of a RadioGroup, a `<span role=\"radio\">`; wrap it in a FieldLabel with its text. */\nexport function RadioGroupItem({ className, ...props }: RadioGroupItemProps) {\n  return (\n    <RadioPrimitive.Root data-slot=\"radio-group-item\" className={cn(itemClasses, className)} {...props}>\n      <RadioPrimitive.Indicator className=\"flex size-full items-center justify-center\">\n        <Icon icon={Circle} filled />\n      </RadioPrimitive.Indicator>\n    </RadioPrimitive.Root>\n  );\n}\n"
     }
   ],
   "meta": {
@@ -23,7 +26,7 @@
       "name": "radio-group",
       "title": "RadioGroup",
       "description": "One choice out of several, on Base UI's RadioGroup and Radio: a fieldset of radios named by a FieldLegend, each option in a FieldItem with its own label and description, in three sizes.",
-      "usage": "Use RadioGroup when the user must pick exactly one of two to about six options and should see them all at once (TLS mode, line endings). Put it in a Field, a FieldLegend first, then a FieldItem per option with a FieldLabel around a RadioGroupItem and its text, and a FieldDescription when the option needs explaining. With TanStack Form wire value, onValueChange and onBlur to the field; an empty value means nothing is chosen yet. For more options use Select; for a choice that applies at once in a toolbar, ToggleGroup; for yes/no, Checkbox or Switch.",
+      "usage": "Use RadioGroup when the user must pick exactly one of two to about six options and should see them all at once (TLS mode, line endings). Put it in a Field, a FieldLegend first, then a FieldItem per option with a FieldLabel around a RadioGroupItem and its text, and a FieldDescription when the option needs explaining. With TanStack Form wire value, onValueChange and onBlur to the field; an empty value means nothing is chosen yet. For more options use Select; for a choice that applies at once in a toolbar, ToggleGroup; for yes/no, Checkbox or Switch. The old sizes sm/md/lg still work for one release.",
       "status": "experimental",
       "base": "@base-ui/react/radio-group",
       "dependencies": [
@@ -47,9 +50,15 @@
         },
         {
           "name": "size",
+          "type": "\"small\" | \"medium\" | \"large\"",
+          "default": "medium",
+          "description": "Radio size: small 14, medium 16 (Fluent's), large 20 px (size.icon.sm, md, lg); the dot is a filled Fluent Circle."
+        },
+        {
+          "name": "size (sm, md, lg)",
           "type": "\"sm\" | \"md\" | \"lg\"",
-          "default": "md",
-          "description": "Radio size from size.icon.sm, md or lg."
+          "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+          "deprecated": "use small, medium or large"
         },
         {
           "name": "name",
@@ -87,16 +96,16 @@
       ],
       "variants": {
         "size": [
-          "sm",
-          "md",
-          "lg"
+          "small",
+          "medium",
+          "large"
         ]
       },
       "slots": [
         {
           "name": "root",
           "element": "div",
-          "description": "The group, role=\"radiogroup\", a column with gap space.stack.sm; data-slot=\"radio-group\" and data-size name it."
+          "description": "The group, role=\"radiogroup\", a column with gap space.stack.sm; data-slot=\"radio-group\" and data-appearance and data-size name it."
         },
         {
           "name": "item",
@@ -120,17 +129,17 @@
         {
           "name": "hover",
           "variant": "hover",
-          "description": "Pointer over a radio: color.interactive.hover, or the accent solid's hover colour when chosen."
+          "description": "Pointer over a radio: color.interactive.hover; chosen, the accent's hover colour on the stroke and the dot."
         },
         {
           "name": "checked",
           "variant": "data-checked",
-          "description": "The chosen radio: the accent solid with a dot."
+          "description": "The chosen radio: an accent stroke and a filled accent dot (Fluent's Circle)."
         },
         {
           "name": "focus-visible",
           "variant": "focus-visible",
-          "description": "Keyboard focus: a ring of ring.width in color.ring."
+          "description": "Keyboard focus: Fluent's double ring (@/lib/control focusRing)."
         },
         {
           "name": "invalid",
@@ -143,26 +152,28 @@
           "props": {
             "disabled": true
           },
-          "description": "Ignores interaction, at opacity.disabled."
+          "description": "Ignores interaction: Fluent's disabled stroke and dot, no fill."
         }
       ],
       "tokens": [
         "color.accent.bg",
         "color.accent.bg-hover",
-        "color.accent.fg",
-        "color.bg.surface",
+        "color.bg.layer-alt",
+        "color.border.disabled",
         "color.border.strong",
+        "color.fg.disabled",
         "color.interactive.hover",
         "color.ring",
+        "color.ring-inner",
         "color.status.danger.border",
-        "motion.duration.fast",
-        "motion.easing.standard",
-        "opacity.disabled",
-        "ring.offset",
+        "motion.duration.faster",
+        "motion.easing.easy-ease",
+        "ring.inner-width",
         "ring.width",
         "size.icon.lg",
         "size.icon.md",
         "size.icon.sm",
+        "size.icon.xs",
         "space.stack.sm"
       ],
       "examples": {
@@ -173,11 +184,11 @@
         "Renders a <div role=\"radiogroup\"> named by its FieldLegend (aria-labelledby), with a <span role=\"radio\"> and aria-checked per option, and hidden native inputs for forms.",
         "Tab enters the group at the chosen radio (or the first) and leaves it; arrow keys move the choice, skipping disabled radios.",
         "Wrap each radio and its text in a FieldLabel: the text chooses it too, which enlarges the target beyond the 14 to 20 px circle (WCAG 2.2 target size). A FieldDescription inside the FieldItem describes that option only.",
-        "The chosen radio shows a dot as well as the accent fill; the border is color.border.strong (3:1 against the surface).",
-        "Focus shows a ring of ring.width in color.ring (3:1 on every surface)."
+        "The chosen radio shows a dot as well as the accent stroke (the accent solid is 3:1 on every surface); the border is color.border.strong (3:1).",
+        "Focus shows Fluent's accent underline (shadow.focus-underline) (3:1 on every surface)."
       ]
     },
-    "example": "import { useState } from \"react\";\nimport { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend } from \"@/components/field/field\";\nimport { RadioGroup, RadioGroupItem } from \"@/components/radio-group/radio-group\";\n\n/** The smallest useful RadioGroup: a named choice of two. */\nexport function RadioGroupMinimal() {\n  return (\n    <Field>\n      <RadioGroup defaultValue=\"ssd\">\n        <FieldLegend>Storage</FieldLegend>\n        <FieldItem>\n          <FieldLabel>\n            <RadioGroupItem value=\"ssd\" />\n            SSD\n          </FieldLabel>\n        </FieldItem>\n        <FieldItem>\n          <FieldLabel>\n            <RadioGroupItem value=\"hdd\" />\n            HDD\n          </FieldLabel>\n        </FieldItem>\n      </RadioGroup>\n    </Field>\n  );\n}\n\nconst modes = [\n  { value: \"require\", label: \"Require\", hint: \"Encrypt, and fail if the server does not support TLS.\" },\n  { value: \"verify-full\", label: \"Verify full\", hint: \"Encrypt, and check the certificate and host name.\" },\n  { value: \"disable\", label: \"Disable\", hint: \"Send everything in clear text.\" },\n];\n\n/**\n * The TLS mode of a connection: a description per option, an option the policy forbids, an error\n * until one is chosen, and the small and large sizes.\n */\nexport function RadioGroupRealistic() {\n  const [mode, setMode] = useState(\"\");\n  return (\n    <div className=\"flex flex-col gap-stack-lg\">\n      <Field name=\"sslmode\" invalid={mode === \"\"}>\n        <RadioGroup value={mode} onValueChange={setMode}>\n          <FieldLegend>TLS mode</FieldLegend>\n          {modes.map((option) => (\n            <FieldItem key={option.value} disabled={option.value === \"disable\"}>\n              <FieldLabel>\n                <RadioGroupItem value={option.value} />\n                {option.label}\n              </FieldLabel>\n              <FieldDescription className=\"ps-inset-lg\">{option.hint}</FieldDescription>\n            </FieldItem>\n          ))}\n        </RadioGroup>\n        <FieldError>Choose how the connection is encrypted.</FieldError>\n      </Field>\n      <div className=\"flex flex-wrap gap-inline-xl\">\n        <Field>\n          <RadioGroup size=\"sm\" defaultValue=\"lf\">\n            <FieldLegend>Line endings</FieldLegend>\n            <FieldItem>\n              <FieldLabel className=\"text-caption\">\n                <RadioGroupItem value=\"lf\" />\n                LF\n              </FieldLabel>\n            </FieldItem>\n            <FieldItem>\n              <FieldLabel className=\"text-caption\">\n                <RadioGroupItem value=\"crlf\" />\n                CRLF\n              </FieldLabel>\n            </FieldItem>\n          </RadioGroup>\n        </Field>\n        <Field>\n          <RadioGroup size=\"lg\" defaultValue=\"utf8\">\n            <FieldLegend>Encoding</FieldLegend>\n            <FieldItem>\n              <FieldLabel className=\"text-body\">\n                <RadioGroupItem value=\"utf8\" />\n                UTF-8\n              </FieldLabel>\n            </FieldItem>\n            <FieldItem>\n              <FieldLabel className=\"text-body\">\n                <RadioGroupItem value=\"latin1\" />\n                Latin-1\n              </FieldLabel>\n            </FieldItem>\n          </RadioGroup>\n        </Field>\n      </div>\n    </div>\n  );\n}\n",
+    "example": "import { useState } from \"react\";\nimport { Field, FieldDescription, FieldError, FieldItem, FieldLabel, FieldLegend } from \"@/components/field/field\";\nimport { RadioGroup, RadioGroupItem } from \"@/components/radio-group/radio-group\";\n\n/** The smallest useful RadioGroup: a named choice of two. */\nexport function RadioGroupMinimal() {\n  return (\n    <Field>\n      <RadioGroup defaultValue=\"ssd\">\n        <FieldLegend>Storage</FieldLegend>\n        <FieldItem>\n          <FieldLabel>\n            <RadioGroupItem value=\"ssd\" />\n            SSD\n          </FieldLabel>\n        </FieldItem>\n        <FieldItem>\n          <FieldLabel>\n            <RadioGroupItem value=\"hdd\" />\n            HDD\n          </FieldLabel>\n        </FieldItem>\n      </RadioGroup>\n    </Field>\n  );\n}\n\nconst modes = [\n  { value: \"require\", label: \"Require\", hint: \"Encrypt, and fail if the server does not support TLS.\" },\n  { value: \"verify-full\", label: \"Verify full\", hint: \"Encrypt, and check the certificate and host name.\" },\n  { value: \"disable\", label: \"Disable\", hint: \"Send everything in clear text.\" },\n];\n\n/**\n * The TLS mode of a connection: a description per option, an option the policy forbids, an error\n * until one is chosen, and the small and large sizes.\n */\nexport function RadioGroupRealistic() {\n  const [mode, setMode] = useState(\"\");\n  return (\n    <div className=\"flex flex-col gap-stack-lg\">\n      <Field name=\"sslmode\" invalid={mode === \"\"}>\n        <RadioGroup value={mode} onValueChange={setMode}>\n          <FieldLegend>TLS mode</FieldLegend>\n          {modes.map((option) => (\n            <FieldItem key={option.value} disabled={option.value === \"disable\"}>\n              <FieldLabel>\n                <RadioGroupItem value={option.value} />\n                {option.label}\n              </FieldLabel>\n              <FieldDescription className=\"ps-inset-lg\">{option.hint}</FieldDescription>\n            </FieldItem>\n          ))}\n        </RadioGroup>\n        <FieldError>Choose how the connection is encrypted.</FieldError>\n      </Field>\n      <div className=\"flex flex-wrap gap-inline-xl\">\n        <Field>\n          <RadioGroup size=\"small\" defaultValue=\"lf\">\n            <FieldLegend>Line endings</FieldLegend>\n            <FieldItem>\n              <FieldLabel className=\"text-caption\">\n                <RadioGroupItem value=\"lf\" />\n                LF\n              </FieldLabel>\n            </FieldItem>\n            <FieldItem>\n              <FieldLabel className=\"text-caption\">\n                <RadioGroupItem value=\"crlf\" />\n                CRLF\n              </FieldLabel>\n            </FieldItem>\n          </RadioGroup>\n        </Field>\n        <Field>\n          <RadioGroup size=\"large\" defaultValue=\"utf8\">\n            <FieldLegend>Encoding</FieldLegend>\n            <FieldItem>\n              <FieldLabel className=\"text-body\">\n                <RadioGroupItem value=\"utf8\" />\n                UTF-8\n              </FieldLabel>\n            </FieldItem>\n            <FieldItem>\n              <FieldLabel className=\"text-body\">\n                <RadioGroupItem value=\"latin1\" />\n                Latin-1\n              </FieldLabel>\n            </FieldItem>\n          </RadioGroup>\n        </Field>\n      </div>\n    </div>\n  );\n}\n",
     "dependencyVersions": {
       "@base-ui/react": "1.9.0"
     }

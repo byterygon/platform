@@ -2,6 +2,7 @@ import { createRef } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { Field, FieldError, FieldLabel } from "@/components/field/field";
 import { act, axeViolations, cleanup, render } from "../../../test/render.tsx";
+import { FIELD_APPEARANCES } from "@/lib/control";
 import { Textarea } from "./textarea";
 
 afterEach(cleanup);
@@ -19,9 +20,23 @@ describe("Textarea", () => {
     const { container } = render(<Textarea aria-label="Notes" />);
     const textarea = container.querySelector("textarea")!;
     expect(textarea.dataset.slot).toBe("textarea");
-    expect(textarea.dataset.size).toBe("md");
+    expect(textarea.dataset.size).toBe("medium");
+    expect(textarea.dataset.appearance).toBe("outline");
     expect(textarea.rows).toBe(3);
     expect(container.querySelector("input")).toBeNull();
+  });
+
+  test("takes Fluent's field appearances and sizes, and sm/md/lg as aliases for one release", () => {
+    for (const appearance of FIELD_APPEARANCES) {
+      const { container, unmount } = render(<Textarea aria-label="Notes" appearance={appearance} />);
+      expect(container.querySelector("textarea")!.dataset.appearance).toBe(appearance);
+      unmount();
+    }
+    for (const [size, fluent] of [["sm", "small"], ["md", "medium"], ["lg", "large"]] as const) {
+      const { container, unmount } = render(<Textarea aria-label="Notes" size={size} />);
+      expect(container.querySelector("textarea")!.dataset.size).toBe(fluent);
+      unmount();
+    }
   });
 
   test("forwards the ref to the textarea element", () => {

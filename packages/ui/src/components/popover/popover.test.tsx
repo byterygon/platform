@@ -11,13 +11,13 @@ function Example({ onOpenChange, triggerRef = null }: { onOpenChange?: (open: bo
   return (
     <div>
       <Popover {...(onOpenChange ? { onOpenChange } : {})}>
-        <PopoverTrigger ref={triggerRef} render={<Button variant="ghost" />}>
+        <PopoverTrigger ref={triggerRef} render={<Button appearance="subtle" />}>
           Grant
         </PopoverTrigger>
         <PopoverContent side="right">
           <PopoverTitle>Access</PopoverTitle>
           <PopoverDescription>TLS required.</PopoverDescription>
-          <PopoverClose render={<Button size="sm" />}>OK</PopoverClose>
+          <PopoverClose render={<Button size="small" />}>OK</PopoverClose>
         </PopoverContent>
       </Popover>
       <button type="button">Outside</button>

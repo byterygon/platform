@@ -2,9 +2,12 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { format as formatDate, isAfter, isBefore, isValid, parse, startOfDay, type Locale } from "date-fns";
 import { useLayoutEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type Ref } from "react";
 import { Calendar, type DateRange, type Matcher } from "@/components/ui/calendar";
+import { Icon } from "@/components/ui/icon";
 import { InputGroup, InputGroupButton, InputGroupInput, inputGroupVariants } from "@/components/ui/input-group";
 import { popupClasses, popupOffset } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
+import type { ControlSizeProp, FieldAppearance } from "@/lib/control";
+import { CalendarLtr } from "@/lib/icons";
 import { useThemeScope } from "@/lib/theme-scope";
 
 // A date (or a range of dates) typed into a text field or picked from a Calendar in a popup, on
@@ -16,6 +19,7 @@ import { useThemeScope } from "@/lib/theme-scope";
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const datePickerVariants = {
+  appearance: inputGroupVariants.appearance,
   size: inputGroupVariants.size,
 } as const;
 
@@ -29,12 +33,6 @@ export interface DatePickerRange {
   to: Date;
 }
 
-const CalendarIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2.5" y="3.5" width="11" height="10" rx="1.5" />
-    <path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" />
-  </svg>
-);
 
 // Range text: "2026-11-01 – 2026-11-14"; an en or em dash, "to", ".." or a spaced hyphen between.
 const RANGE_SEPARATOR = /\s*[–—]\s*|\s+-\s+|\s+to\s+|\s*\.\.\s*/i;
@@ -55,8 +53,10 @@ interface CommonProps {
   weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   /** Months side by side in the popup; two by default for a range. */
   numberOfMonths?: number;
-  /** Control height, from the density-aware `size.control.*` roles. */
-  size?: keyof typeof datePickerVariants.size;
+  /** Fluent's field appearance: outline (default), underline, filled-darker or filled-lighter. */
+  appearance?: FieldAppearance | undefined;
+  /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Shown while the text is empty; the format by default. */
   placeholder?: string;
   /** Accessible name of the calendar button. */
@@ -133,7 +133,8 @@ export function DatePicker(props: DatePickerProps) {
     disabledDays,
     weekStartsOn,
     numberOfMonths = mode === "range" ? 2 : 1,
-    size = "md",
+    appearance,
+    size,
     placeholder,
     calendarLabel = mode === "range" ? "Choose dates" : "Choose date",
     open: openProp,
@@ -271,7 +272,7 @@ export function DatePicker(props: DatePickerProps) {
 
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={(next) => setOpen(next)}>
-      <InputGroup ref={frameRef} data-slot="date-picker" size={size} className={cn(className)}>
+      <InputGroup ref={frameRef} data-slot="date-picker" appearance={appearance} size={size} className={cn(className)}>
         <InputGroupInput
           ref={setInputRef}
           value={text}
@@ -296,7 +297,7 @@ export function DatePicker(props: DatePickerProps) {
           disabled={triggerDisabled}
           render={
             <InputGroupButton data-slot="date-picker-trigger" aria-label={calendarLabel} className={cn(triggerClasses)}>
-              <CalendarIcon />
+              <Icon icon={CalendarLtr} />
             </InputGroupButton>
           }
         />

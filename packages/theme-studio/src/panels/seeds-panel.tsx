@@ -43,7 +43,7 @@ function Section({ title, set, onReset, children }: { title: string; set: boolea
     <section className="flex flex-col gap-stack-md border-b border-border-muted pb-inset-lg" aria-label={title}>
       <div className="flex items-center justify-between gap-inline-sm">
         <h3 className="text-heading-4 text-fg">{title}</h3>
-        <Button variant="ghost" size="sm" disabled={!set} onClick={onReset} aria-label={`Reset ${title.toLowerCase()}`}>
+        <Button appearance="subtle" size="small" disabled={!set} onClick={onReset} aria-label={`Reset ${title.toLowerCase()}`}>
           Reset
         </Button>
       </div>
@@ -79,7 +79,7 @@ function NumberSeed({ label, value, set, min, max, step, description, onChange }
         <NumberInput
           aria-label={label}
           className="w-36 shrink-0"
-          size="sm"
+          size="small"
           min={min}
           max={max}
           step={step}
@@ -113,7 +113,7 @@ function ChoiceSeed<T extends string>({ label, value, set, options, onChange }: 
         </span>
         {!set && <Badge appearance="outline">default</Badge>}
       </div>
-      <ToggleGroup aria-labelledby={id} size="sm" value={[value]} onValueChange={(next: unknown[]) => next[0] !== undefined && onChange(next[0] as T)}>
+      <ToggleGroup aria-labelledby={id} size="small" value={[value]} onValueChange={(next: unknown[]) => next[0] !== undefined && onChange(next[0] as T)}>
         {options.map((option) => (
           <ToggleGroupItem key={option.value} value={option.value}>
             {option.label}
@@ -181,7 +181,7 @@ function FontSeed({ token, label, theme, onChange }: { token: string; label: str
         {current === undefined && <Badge appearance="outline">default</Badge>}
       </div>
       <Input
-        size="sm"
+        size="small"
         placeholder={token === "font.sans" ? "Segoe UI Variable Text, Segoe UI Variable, Segoe UI, Inter, system-ui, sans-serif" : "Cascadia Mono, JetBrains Mono, ui-monospace, monospace"}
         value={overrideText(current)}
         onValueChange={(text: string) => onChange(setOverride(theme, token, text.trim() === "" ? undefined : parseOverrideText("fontFamily", text)))}
@@ -239,7 +239,7 @@ export function SeedsPanel({ theme, seeds, set, onChange }: SeedsPanelProps) {
               <AccordionPanel>
                 <div className="flex flex-col gap-stack-md">
                   <RampSeeds ramp={ramp} label={LABELS[ramp] ?? ramp} theme={theme} seeds={seeds} set={set} onChange={onChange} />
-                  <Button variant="ghost" size="sm" className="self-start" disabled={!anySet(rampSeedPaths(ramp))} onClick={() => onChange(resetSeeds(theme, rampSeedPaths(ramp)))}>
+                  <Button appearance="subtle" size="small" className="self-start" disabled={!anySet(rampSeedPaths(ramp))} onClick={() => onChange(resetSeeds(theme, rampSeedPaths(ramp)))}>
                     Reset {LABELS[ramp] ?? ramp}
                   </Button>
                 </div>

@@ -1,44 +1,43 @@
 import { Fieldset as FieldsetPrimitive } from "@base-ui/react/fieldset";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
+import { controlSize, focusRing, type ControlSizeProp } from "@/lib/control";
+import { Circle } from "@/lib/icons";
 
 // One choice out of several, on Base UI's RadioGroup and Radio: a <div role="radiogroup"> of
 // focusable <span role="radio">s with hidden inputs for forms. Arrow keys move the selection,
 // Tab leaves the group. The group is a fieldset (Base UI's pattern), so a FieldLegend inside
-// names it; each option is a FieldItem whose FieldLabel wraps a RadioGroupItem.
+// names it; each option is a FieldItem whose FieldLabel wraps a RadioGroupItem. Fluent 2's Radio:
+// a circle with the accessible stroke; chosen, the stroke and a filled dot take the accent.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const radioGroupVariants = {
   size: {
-    sm: "[&_[role=radio]]:size-icon-sm",
-    md: "[&_[role=radio]]:size-icon-md",
-    lg: "[&_[role=radio]]:size-icon-lg",
+    small: "[&_[role=radio]]:size-icon-sm [&_[role=radio]_svg]:size-icon-xs",
+    medium: "[&_[role=radio]]:size-icon-md [&_[role=radio]_svg]:size-icon-sm",
+    large: "[&_[role=radio]]:size-icon-lg [&_[role=radio]_svg]:size-icon-md",
   },
 } as const;
 
 const base = ["flex min-w-0 flex-col gap-stack-sm"];
 
 const itemClasses = [
-  "inline-flex shrink-0 items-center justify-center rounded-full border border-border-strong bg-surface text-accent-solid-fg",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
+  "inline-flex shrink-0 items-center justify-center rounded-full border border-border-strong bg-layer-alt text-accent-solid",
+  "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
   "hover:bg-hover",
-  "data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover",
-  "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
+  "data-checked:border-accent-solid data-checked:hover:border-accent-solid-hover data-checked:hover:text-accent-solid-hover",
+  focusRing,
   "aria-invalid:border-danger-border data-invalid:border-danger-border",
-  "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
-  "[&_svg]:block [&_svg]:size-full",
+  "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",
+  "[&_svg]:block",
 ];
 
-const Dot = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor">
-    <circle cx="8" cy="8" r="3" />
-  </svg>
-);
 
 export interface RadioGroupProps extends Omit<RadioGroupPrimitive.Props<string>, "className" | "render"> {
-  /** Size of every radio in the group, from the `size.icon.*` roles. */
-  size?: keyof typeof radioGroupVariants.size;
+  /** Size of every radio: small 14, medium 16 (Fluent's), large 20 px (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }
@@ -48,15 +47,16 @@ export interface RadioGroupProps extends Omit<RadioGroupPrimitive.Props<string>,
  * `onValueChange`, or `defaultValue`. Put a FieldLegend first, then a FieldItem per option with a
  * FieldLabel around a RadioGroupItem and its text. The ref reaches the group's `<div>`.
  */
-export function RadioGroup({ size = "md", className, disabled, ref, children, ...props }: RadioGroupProps) {
+export function RadioGroup({ size, className, disabled, ref, children, ...props }: RadioGroupProps) {
+  const box = controlSize(size);
   // Base UI's pattern for a labelled group: a Fieldset.Root rendered as the RadioGroup.
   return (
     <FieldsetPrimitive.Root
       data-slot="radio-group"
-      data-size={size}
+      data-size={box}
       ref={ref}
       disabled={disabled}
-      className={cn(base, radioGroupVariants.size[size], className)}
+      className={cn(base, radioGroupVariants.size[box], className)}
       render={<RadioGroupPrimitive disabled={disabled} {...props} />}
     >
       {children}
@@ -75,8 +75,8 @@ export interface RadioGroupItemProps extends Omit<RadioPrimitive.Root.Props<stri
 export function RadioGroupItem({ className, ...props }: RadioGroupItemProps) {
   return (
     <RadioPrimitive.Root data-slot="radio-group-item" className={cn(itemClasses, className)} {...props}>
-      <RadioPrimitive.Indicator className="size-full">
-        <Dot />
+      <RadioPrimitive.Indicator className="flex size-full items-center justify-center">
+        <Icon icon={Circle} filled />
       </RadioPrimitive.Indicator>
     </RadioPrimitive.Root>
   );

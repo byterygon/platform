@@ -37,7 +37,7 @@ export function DatePickerRealistic() {
       </Field>
       <Field name="since">
         <FieldLabel>Changed since</FieldLabel>
-        <DatePicker size="sm" format="dd/MM/yyyy" max={today} />
+        <DatePicker size="small" appearance="filled-darker" format="dd/MM/yyyy" max={today} />
       </Field>
     </div>
   );

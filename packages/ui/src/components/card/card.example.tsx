@@ -22,7 +22,7 @@ export function CardRealistic() {
           <CardTitle>orders-prod</CardTitle>
           <CardDescription>Read-only grant, expires in 52 minutes</CardDescription>
           <CardAction>
-            <Button variant="ghost" size="sm">
+            <Button appearance="subtle" size="small">
               Edit
             </Button>
           </CardAction>
@@ -31,8 +31,8 @@ export function CardRealistic() {
           <p className="text-caption text-fg-muted">db.internal:5432 · TLS verified · user analyst</p>
         </CardContent>
         <CardFooter>
-          <Button size="sm">Connect</Button>
-          <Button variant="secondary" size="sm">
+          <Button size="small">Connect</Button>
+          <Button appearance="secondary" size="small">
             New query
           </Button>
         </CardFooter>
@@ -42,7 +42,7 @@ export function CardRealistic() {
           <CardTitle>analytics_warehouse_replica_eu_central_1_long_name_for_overflow</CardTitle>
           <CardDescription>A name with no spaces wraps inside the card instead of pushing it wider.</CardDescription>
           <CardAction>
-            <Button variant="ghost" size="sm">
+            <Button appearance="subtle" size="small">
               Edit
             </Button>
           </CardAction>

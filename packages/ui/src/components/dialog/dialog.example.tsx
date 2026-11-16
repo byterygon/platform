@@ -9,7 +9,7 @@ import { Select, SelectItem } from "@/components/select/select";
 export function DialogMinimal() {
   return (
     <Dialog>
-      <DialogTrigger render={<Button variant="secondary" />}>About DBee</DialogTrigger>
+      <DialogTrigger render={<Button appearance="secondary" />}>About DBee</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>About DBee</DialogTitle>
@@ -43,7 +43,7 @@ export function DialogRealistic() {
   return (
     <div className="flex flex-wrap items-center gap-inline-sm">
       <Dialog size="sm">
-        <DialogTrigger render={<Button variant="ghost" />}>Rename tab</DialogTrigger>
+        <DialogTrigger render={<Button appearance="subtle" />}>Rename tab</DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename tab</DialogTitle>
@@ -53,14 +53,14 @@ export function DialogRealistic() {
             <Input defaultValue="Orders by region" />
           </Field>
           <DialogFooter>
-            <DialogClose render={<Button variant="ghost" />}>Cancel</DialogClose>
+            <DialogClose render={<Button appearance="subtle" />}>Cancel</DialogClose>
             <DialogClose render={<Button />}>Rename</DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog>
-        <DialogTrigger render={<Button variant="secondary" />}>Export result</DialogTrigger>
+        <DialogTrigger render={<Button appearance="secondary" />}>Export result</DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Export result</DialogTitle>
@@ -84,14 +84,14 @@ export function DialogRealistic() {
             </Field>
           </DialogBody>
           <DialogFooter>
-            <DialogClose render={<Button variant="ghost" />}>Cancel</DialogClose>
+            <DialogClose render={<Button appearance="subtle" />}>Cancel</DialogClose>
             <Button>Choose file…</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog size="lg">
-        <DialogTrigger render={<Button variant="ghost" />}>Keyboard shortcuts</DialogTrigger>
+        <DialogTrigger render={<Button appearance="subtle" />}>Keyboard shortcuts</DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Keyboard shortcuts</DialogTitle>
@@ -115,14 +115,14 @@ export function DialogRealistic() {
       </Dialog>
 
       <Dialog size="xl">
-        <DialogTrigger render={<Button variant="ghost" />}>Column details</DialogTrigger>
+        <DialogTrigger render={<Button appearance="subtle" />}>Column details</DialogTrigger>
         <DialogContent showClose={false}>
           <DialogHeader>
             <DialogTitle>orders.created_at</DialogTitle>
             <DialogDescription>timestamp with time zone, not null, default now()</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <DialogClose render={<Button variant="secondary" />}>Close</DialogClose>
+            <DialogClose render={<Button appearance="secondary" />}>Close</DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>

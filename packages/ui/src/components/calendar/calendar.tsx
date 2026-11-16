@@ -1,8 +1,11 @@
 import { useEffect, useRef } from "react";
 import { DayPicker, type ChevronProps, type ClassNames, type DayButtonProps, type DayPickerProps, type RootProps } from "react-day-picker";
 import { buttonBase } from "@/components/button/button";
+import { Icon } from "@/components/icon/icon";
 import { iconButtonVariants } from "@/components/icon-button/icon-button";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "@/lib/icons";
 
 // A month grid to pick a day, several days or a range, on react-day-picker (dates on date-fns),
 // as shadcn's Calendar is. Base UI has no calendar. Every class react-day-picker would add is
@@ -17,11 +20,11 @@ export type { DateRange, Matcher } from "react-day-picker";
 export const calendarVariants = {} as const;
 
 const dayButton = [
-  "flex size-control-md select-none items-center justify-center rounded-md border border-transparent bg-transparent font-sans text-body tabular-nums text-fg",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
+  "flex size-control-md select-none items-center justify-center rounded-md border border-transparent bg-transparent font-sans text-body-1 tabular-nums text-fg",
+  "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
   "hover:bg-hover active:bg-pressed",
-  "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
-  "data-today:border-accent-solid data-today:text-body-strong",
+  focusRing,
+  "data-today:border-accent-solid data-today:text-body-1-strong",
   "data-outside:text-fg-subtle",
   "data-selected:bg-accent-solid data-selected:text-accent-solid-fg data-selected:hover:bg-accent-solid-hover data-selected:active:bg-accent-solid-active",
   "data-range-start:rounded-e-none data-range-end:rounded-s-none",
@@ -29,7 +32,7 @@ const dayButton = [
   "data-disabled:pointer-events-none data-disabled:text-fg-disabled data-disabled:line-through",
 ];
 
-const rootClasses = "w-fit font-sans text-body text-fg";
+const rootClasses = "w-fit font-sans text-body-1 text-fg";
 
 const cell = "p-0 text-center align-middle";
 
@@ -44,21 +47,21 @@ const classNames: ClassNames = {
   months: "flex flex-wrap gap-inline-xl",
   month: "flex flex-wrap items-center gap-y-stack-sm",
   month_caption: "flex h-control-sm flex-1 items-center justify-center",
-  caption_label: "select-none text-label text-fg",
+  caption_label: "select-none text-body-1-strong text-fg",
   nav: "flex items-center gap-inline-xs",
-  button_previous: cn(buttonBase, iconButtonVariants.variant.ghost, iconButtonVariants.size.sm, "aria-disabled:pointer-events-none aria-disabled:opacity-[var(--by-opacity-disabled)]"),
-  button_next: cn(buttonBase, iconButtonVariants.variant.ghost, iconButtonVariants.size.sm, "aria-disabled:pointer-events-none aria-disabled:opacity-[var(--by-opacity-disabled)]"),
+  button_previous: cn(buttonBase, iconButtonVariants.appearance.subtle, iconButtonVariants.size.small, "aria-disabled:pointer-events-none aria-disabled:text-fg-disabled"),
+  button_next: cn(buttonBase, iconButtonVariants.appearance.subtle, iconButtonVariants.size.small, "aria-disabled:pointer-events-none aria-disabled:text-fg-disabled"),
   chevron: "",
   month_grid: "basis-full border-collapse",
   weekdays: "",
-  weekday: cn(cell, "h-control-sm text-caption text-fg-muted"),
+  weekday: cn(cell, "h-control-sm text-caption-1 text-fg-muted"),
   weeks: "",
   week: "",
-  week_number_header: cn(cell, "w-control-md text-caption text-fg-subtle"),
-  week_number: cn(cell, "w-control-md text-caption tabular-nums text-fg-subtle"),
+  week_number_header: cn(cell, "w-control-md text-caption-1 text-fg-subtle"),
+  week_number: cn(cell, "w-control-md text-caption-1 tabular-nums text-fg-subtle"),
   day: cell,
   day_button: cn(dayButton),
-  footer: "basis-full pt-stack-sm text-caption text-fg-muted",
+  footer: "basis-full pt-stack-sm text-caption-1 text-fg-muted",
   // The day cell, by flag. The button inside shows them (data attributes below), not the cell.
   today: "",
   outside: "",
@@ -90,13 +93,11 @@ function CalendarRoot({ rootRef, ...props }: RootProps) {
   return <div data-slot="calendar" ref={rootRef} {...props} />;
 }
 
+const CHEVRONS = { left: ChevronLeft, right: ChevronRight, up: ChevronUp, down: ChevronDown } as const;
+
+/** react-day-picker's navigation chevron, as Fluent's ChevronLeft/Right/Up/Down. */
 function CalendarChevron({ orientation = "down", className }: ChevronProps) {
-  const path = { left: "m10 4-4 4 4 4", right: "m6 4 4 4-4 4", up: "m4 10 4-4 4 4", down: "m4 6 4 4 4-4" }[orientation];
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className || undefined}>
-      <path d={path} />
-    </svg>
-  );
+  return <Icon icon={CHEVRONS[orientation]} {...(className ? { className } : {})} />;
 }
 
 /**

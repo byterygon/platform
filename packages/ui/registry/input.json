@@ -3,18 +3,19 @@
   "name": "input",
   "type": "registry:ui",
   "title": "Input",
-  "description": "A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.",
+  "description": "A single-line text input in Fluent's small, medium and large, with placeholder, invalid and disabled states; works inside a Base UI Field.",
   "dependencies": [
     "@base-ui/react"
   ],
   "registryDependencies": [
-    "@byterygon/cn"
+    "@byterygon/cn",
+    "@byterygon/control"
   ],
   "files": [
     {
       "path": "ui/input.tsx",
       "type": "registry:ui",
-      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { cn } from \"@/lib/cn\";\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const inputVariants = {\n  size: {\n    sm: \"h-control-sm px-inset-sm\",\n    md: \"h-control-md px-control-x\",\n    lg: \"h-control-lg px-inset-lg\",\n  },\n} as const;\n\nconst base = [\n  \"flex w-full min-w-0 rounded-md border border-border-strong bg-surface font-sans text-body text-fg\",\n  \"placeholder:text-fg-subtle\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  \"outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring\",\n  \"aria-invalid:border-danger-border data-invalid:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]\",\n];\n\nexport interface InputProps extends Omit<InputPrimitive.Props, \"className\" | \"size\"> {\n  /** Control height, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof inputVariants.size;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A single-line text input on Base UI's Input. Inside a Base UI Field it takes the field's label,\n * description and validity; on its own, set `aria-invalid` to mark it invalid. The ref reaches\n * the `<input>`.\n */\nexport function Input({ size = \"md\", className, ...props }: InputProps) {\n  return <InputPrimitive data-slot=\"input\" data-size={size} className={cn(base, inputVariants.size[size], className)} {...props} />;\n}\n"
+      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, fieldAppearance, fieldAppearances, fieldFrame, fieldPadding, fieldSizes, fieldStates, type ControlSizeProp, type FieldAppearance } from \"@/lib/control\";\n\n// Fluent 2's Input on Base UI's Input: appearance outline (default), underline, filled-darker or\n// filled-lighter; sizes small, medium and large. The frame is a hairline with a darker bottom\n// edge (what makes the field 3:1); focus is the accent underline; invalid turns the edges danger.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const inputVariants = {\n  appearance: fieldAppearances,\n  size: {\n    small: `${fieldSizes.small} ${fieldPadding.small}`,\n    medium: `${fieldSizes.medium} ${fieldPadding.medium}`,\n    large: `${fieldSizes.large} ${fieldPadding.large}`,\n  },\n} as const;\n\nconst base = [\"flex w-full min-w-0\", fieldFrame, fieldStates, \"placeholder:text-fg-subtle data-disabled:placeholder:text-fg-disabled\"];\n\nexport interface InputProps extends Omit<InputPrimitive.Props, \"className\" | \"size\"> {\n  /** Fluent's field appearance: outline (default), underline, filled-darker or filled-lighter. */\n  appearance?: FieldAppearance | undefined;\n  /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A single-line text input on Base UI's Input. Inside a Base UI Field it takes the field's label,\n * description and validity; on its own, set `aria-invalid` to mark it invalid. The ref reaches\n * the `<input>`.\n */\nexport function Input({ appearance, size, className, ...props }: InputProps) {\n  const look = fieldAppearance(appearance);\n  const height = controlSize(size);\n  return (\n    <InputPrimitive\n      data-slot=\"input\"\n      data-appearance={look}\n      data-size={height}\n      className={cn(base, inputVariants.appearance[look], inputVariants.size[height], className)}\n      {...props}\n    />\n  );\n}\n"
     }
   ],
   "meta": {
@@ -22,8 +23,8 @@
       "schemaVersion": 1,
       "name": "input",
       "title": "Input",
-      "description": "A single-line text input in three density-aware sizes, with placeholder, invalid and disabled states; works inside a Base UI Field.",
-      "usage": "Put Input inside a Field with a FieldLabel (and FieldDescription and FieldError as needed); it takes the label, description and validity from it. Use Textarea for multi-line text and InputGroup for an icon, a unit or a button attached to the input. Match the size to the controls beside it.",
+      "description": "A single-line text input in Fluent's small, medium and large, with placeholder, invalid and disabled states; works inside a Base UI Field.",
+      "usage": "Put Input inside a Field with a FieldLabel (and FieldDescription and FieldError as needed); it takes the label, description and validity from it. Use Textarea for multi-line text and InputGroup for an icon, a unit or a button attached to the input. Match the size to the controls beside it. Appearance outline is the default; underline for dense or inline forms, filled-darker on white surfaces, filled-lighter on grey ones. The old sizes sm/md/lg still work for one release.",
       "status": "experimental",
       "base": "@base-ui/react/input",
       "dependencies": [
@@ -31,10 +32,22 @@
       ],
       "props": [
         {
+          "name": "appearance",
+          "type": "\"outline\" | \"underline\" | \"filled-darker\" | \"filled-lighter\"",
+          "default": "outline",
+          "description": "Fluent's field appearance: outline (a light fill, a hairline and the darker bottom edge), underline (the bottom edge only), filled-darker (color.bg.inset) or filled-lighter (color.bg.surface)."
+        },
+        {
           "name": "size",
+          "type": "\"small\" | \"medium\" | \"large\"",
+          "default": "medium",
+          "description": "Fluent's field sizes: 24, 32 and 40 px when comfortable (caption-1, body-1, body-2), 22, 28 and 34 px when compact (size.control.sm, md, lg)."
+        },
+        {
+          "name": "size (sm, md, lg)",
           "type": "\"sm\" | \"md\" | \"lg\"",
-          "default": "md",
-          "description": "Control height from size.control.*, which follows data-density."
+          "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+          "deprecated": "use small, medium or large"
         },
         {
           "name": "value",
@@ -74,24 +87,30 @@
         }
       ],
       "variants": {
+        "appearance": [
+          "outline",
+          "underline",
+          "filled-darker",
+          "filled-lighter"
+        ],
         "size": [
-          "sm",
-          "md",
-          "lg"
+          "small",
+          "medium",
+          "large"
         ]
       },
       "slots": [
         {
           "name": "root",
           "element": "input",
-          "description": "The input; data-slot=\"input\" and data-size name it."
+          "description": "The input; data-slot=\"input\" and data-appearance and data-size name it."
         }
       ],
       "states": [
         {
           "name": "focus-visible",
           "variant": "focus-visible",
-          "description": "Focused: a ring of ring.width in color.ring, offset by ring.offset."
+          "description": "Focused: Fluent's accent underline (shadow.focus-underline)."
         },
         {
           "name": "invalid",
@@ -99,7 +118,7 @@
           "props": {
             "aria-invalid": true
           },
-          "description": "Invalid value: the danger border. Inside a Field the same style follows data-invalid."
+          "description": "Invalid value: the danger hairline and bottom edge. Inside a Field the same style follows data-invalid."
         },
         {
           "name": "invalid-in-field",
@@ -112,33 +131,44 @@
           "props": {
             "disabled": true
           },
-          "description": "Ignores interaction, at opacity.disabled."
+          "description": "Ignores interaction, with Fluent's disabled stroke and text, no fill."
         }
       ],
       "tokens": [
+        "color.bg.inset",
+        "color.bg.layer-alt",
         "color.bg.surface",
-        "color.border.strong",
+        "color.border.control-bottom",
+        "color.border.disabled",
+        "color.border.subtle",
         "color.fg.default",
+        "color.fg.disabled",
         "color.fg.subtle",
-        "color.ring",
         "color.status.danger.border",
+        "color.status.danger.solid",
         "font.sans",
-        "motion.duration.fast",
-        "motion.easing.standard",
-        "opacity.disabled",
+        "motion.duration.faster",
+        "motion.easing.easy-ease",
         "radius.md",
-        "ring.offset",
-        "ring.width",
+        "shadow.focus-underline",
         "size.control.lg",
         "size.control.md",
         "size.control.sm",
         "space.control.x",
-        "space.inset.lg",
-        "space.inset.sm",
-        "text.body.leading",
-        "text.body.size",
-        "text.body.tracking",
-        "text.body.weight"
+        "space.inset.md",
+        "space.inset.xs",
+        "text.body-1.leading",
+        "text.body-1.size",
+        "text.body-1.tracking",
+        "text.body-1.weight",
+        "text.body-2.leading",
+        "text.body-2.size",
+        "text.body-2.tracking",
+        "text.body-2.weight",
+        "text.caption-1.leading",
+        "text.caption-1.size",
+        "text.caption-1.tracking",
+        "text.caption-1.weight"
       ],
       "examples": {
         "minimal": "InputMinimal",
@@ -147,12 +177,12 @@
       "accessibility": [
         "Renders a native <input>; give it a visible <label> (or a Base UI Field.Label), or aria-label when there is no room for one.",
         "Placeholder text is a hint, not a label; it uses color.fg.subtle, contrast-checked on every surface.",
-        "Mark errors with aria-invalid and point aria-describedby at the message; the danger border is not the only signal.",
-        "The border (color.border.strong) meets 3:1 against every surface, as WCAG 1.4.11 asks of a control's outline.",
-        "Focus shows a ring of ring.width in color.ring."
+        "Mark errors with aria-invalid and point aria-describedby at the message; the danger hairline and bottom edge is not the only signal.",
+        "The bottom edge (color.border.control-bottom) meets 3:1 on every fill and surface a field takes, as WCAG 1.4.11 asks of a control's boundary; the hairline (color.border.subtle) is decoration.",
+        "Focus shows Fluent's accent underline (shadow.focus-underline)."
       ]
     },
-    "example": "import { Input } from \"@/components/input/input\";\n\n/** The smallest useful Input: a labelled text field. */\nexport function InputMinimal() {\n  return <Input aria-label=\"Table name\" placeholder=\"customers\" />;\n}\n\n/** A connection form: labels, a hint, an invalid field with its message, and a disabled field. */\nexport function InputRealistic() {\n  return (\n    <form className=\"flex flex-col gap-stack-md\">\n      <label className=\"flex flex-col gap-stack-xs text-label text-fg\">\n        Host\n        <Input name=\"host\" defaultValue=\"db.internal\" aria-describedby=\"host-hint\" />\n        <span id=\"host-hint\" className=\"text-caption text-fg-muted\">\n          A name or address on your network.\n        </span>\n      </label>\n      <label className=\"flex flex-col gap-stack-xs text-label text-fg\">\n        Port\n        <Input name=\"port\" size=\"sm\" defaultValue=\"99999\" aria-invalid=\"true\" aria-describedby=\"port-error\" />\n        <span id=\"port-error\" className=\"text-caption text-danger-fg\">\n          The port must be between 1 and 65535.\n        </span>\n      </label>\n      <label className=\"flex flex-col gap-stack-xs text-label text-fg\">\n        Driver\n        <Input name=\"driver\" defaultValue=\"postgres\" disabled />\n      </label>\n    </form>\n  );\n}\n",
+    "example": "import { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { Input } from \"@/components/input/input\";\n\n/** The smallest useful Input: a labelled text field. */\nexport function InputMinimal() {\n  return <Input aria-label=\"Table name\" placeholder=\"customers\" />;\n}\n\n/**\n * A connection form: the four Fluent appearances, the three sizes, a hint, an invalid field with\n * its message, and a disabled field.\n */\nexport function InputRealistic() {\n  return (\n    <form className=\"flex flex-col gap-stack-md\">\n      <Field>\n        <FieldLabel>Host</FieldLabel>\n        <Input name=\"host\" defaultValue=\"db.internal\" />\n        <FieldDescription>A name or address on your network.</FieldDescription>\n      </Field>\n      <Field invalid>\n        <FieldLabel>Port</FieldLabel>\n        <Input name=\"port\" size=\"small\" defaultValue=\"99999\" />\n        <FieldError>The port must be between 1 and 65535.</FieldError>\n      </Field>\n      <Field>\n        <FieldLabel>Database</FieldLabel>\n        <Input name=\"database\" appearance=\"underline\" placeholder=\"postgres\" />\n      </Field>\n      <Field>\n        <FieldLabel>User</FieldLabel>\n        <Input name=\"user\" appearance=\"filled-darker\" defaultValue=\"analyst\" />\n      </Field>\n      <Field>\n        <FieldLabel>Ghi chú</FieldLabel>\n        <Input name=\"note\" appearance=\"filled-lighter\" size=\"large\" defaultValue=\"Kết nối chỉ đọc cho báo cáo\" />\n      </Field>\n      <Field disabled>\n        <FieldLabel>Driver</FieldLabel>\n        <Input name=\"driver\" defaultValue=\"postgres\" />\n      </Field>\n    </form>\n  );\n}\n",
     "dependencyVersions": {
       "@base-ui/react": "1.9.0"
     }

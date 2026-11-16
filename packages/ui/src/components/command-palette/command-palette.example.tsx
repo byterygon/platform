@@ -19,7 +19,7 @@ export function CommandPaletteMinimal() {
   ];
   return (
     <>
-      <Button variant="secondary" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+      <Button appearance="secondary" aria-haspopup="dialog" onClick={() => setOpen(true)}>
         Commands <Kbd>Ctrl+K</Kbd>
       </Button>
       <CommandPalette groups={groups} open={open} onOpenChange={setOpen} hotkeys={["Mod+K"]} />

@@ -30,7 +30,7 @@ export function EmptyStateRealistic() {
         <EmptyStateDescription>Add a PostgreSQL connection. You approve what it may reach before it is created.</EmptyStateDescription>
         <EmptyStateActions>
           <Button>Add connection</Button>
-          <Button variant="ghost">Import from file</Button>
+          <Button appearance="subtle">Import from file</Button>
         </EmptyStateActions>
       </EmptyState>
       <EmptyState variant="inline" className="w-panel-xs rounded-md bg-inset">

@@ -3,73 +3,184 @@
   "schemaVersion": 1,
   "name": "icon-button",
   "title": "IconButton",
-  "description": "A square, icon-only action button with Button's four variants in three density-aware sizes, disabled and loading states, and a required aria-label.",
-  "usage": "Use IconButton where a familiar icon says enough and space is tight: toolbars, table rows, inside an InputGroup. Put an <svg aria-hidden> inside and describe the action in aria-label (\"Copy connection string\", not \"Copy icon\"); the type requires it. Ghost is the default; use primary for the one main action of a toolbar. When the icon is not obvious, use a Button with text instead.",
+  "description": "A square, icon-only action button (Fluent 2's icon-only Button) with Button's appearances in small, medium and large, disabled and loading states, and a required aria-label.",
+  "usage": "Use IconButton where a familiar icon says enough and space is tight: toolbars, table rows, inside an InputGroup. Put an Icon (`<Icon icon={Copy} />`, @/lib/icons) inside and describe the action in aria-label (\"Copy connection string\", not \"Copy icon\"); the type requires it. Subtle is the default; use primary for the one main action of a toolbar. When the icon is not obvious, use a Button with text instead. The old variant prop (ghost is subtle) and sm/md/lg still work for one release.",
   "status": "experimental",
   "base": "@base-ui/react/button",
-  "dependencies": ["@base-ui/react"],
+  "dependencies": [
+    "@base-ui/react"
+  ],
   "props": [
-    { "name": "aria-label", "type": "string", "required": true, "description": "The accessible name: what the button does. Required by the type." },
-    { "name": "variant", "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"", "default": "ghost", "description": "Visual weight, the same colours as Button's variants." },
-    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "A square of size.control.*, which follows data-density; the icon is size.icon.sm (md at lg)." },
-    { "name": "loading", "type": "boolean", "default": false, "description": "Running: aria-busy and data-loading, ignores clicks, stays focusable." },
-    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction and sets data-disabled." },
-    { "name": "type", "type": "\"button\" | \"submit\" | \"reset\"", "default": "button", "description": "The native button type." },
-    { "name": "render", "type": "ReactElement | ((props, state) => ReactElement)", "description": "Base UI render prop: render another element (a link) with the button's props." },
-    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
-    { "name": "ref", "type": "Ref<HTMLButtonElement>", "description": "Reaches the rendered element." }
+    {
+      "name": "aria-label",
+      "type": "string",
+      "required": true,
+      "description": "The accessible name: what the button does. Required by the type."
+    },
+    {
+      "name": "appearance",
+      "type": "\"primary\" | \"secondary\" | \"outline\" | \"subtle\" | \"transparent\" | \"danger\"",
+      "default": "subtle",
+      "description": "Button's appearances, the same classes."
+    },
+    {
+      "name": "size",
+      "type": "\"small\" | \"medium\" | \"large\"",
+      "default": "medium",
+      "description": "A square of size.control.* (24, 32, 40 px comfortable; 22, 28, 34 compact) with Fluent's 16, 20 or 24 px icon."
+    },
+    {
+      "name": "variant",
+      "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"",
+      "description": "The old name of appearance; ghost maps to subtle. Kept for one release.",
+      "deprecated": "use appearance (ghost is subtle)"
+    },
+    {
+      "name": "size (sm, md, lg)",
+      "type": "\"sm\" | \"md\" | \"lg\"",
+      "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+      "deprecated": "use small, medium or large"
+    },
+    {
+      "name": "loading",
+      "type": "boolean",
+      "default": false,
+      "description": "Running: aria-busy and data-loading, ignores clicks, stays focusable."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Ignores interaction and sets data-disabled."
+    },
+    {
+      "name": "type",
+      "type": "\"button\" | \"submit\" | \"reset\"",
+      "default": "button",
+      "description": "The native button type."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element (a link) with the button's props."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLButtonElement>",
+      "description": "Reaches the rendered element."
+    }
   ],
   "variants": {
-    "variant": ["primary", "secondary", "ghost", "danger"],
-    "size": ["sm", "md", "lg"]
+    "appearance": [
+      "primary",
+      "secondary",
+      "outline",
+      "subtle",
+      "transparent",
+      "danger"
+    ],
+    "size": [
+      "small",
+      "medium",
+      "large"
+    ]
   },
   "slots": [
-    { "name": "root", "element": "button", "description": "The button; data-slot=\"icon-button\", data-variant, data-size and data-loading name it." },
-    { "name": "icon", "element": "svg", "description": "The child icon, sized to size.icon.sm (size.icon.md at lg)." }
+    {
+      "name": "root",
+      "element": "button",
+      "description": "The button; data-slot=\"icon-button\", data-appearance, data-size and data-loading name it."
+    },
+    {
+      "name": "icon",
+      "element": "svg",
+      "description": "The child Icon, sized to size.icon.md, lg or xl (16, 20, 24 px) by the button's size."
+    }
   ],
   "states": [
-    { "name": "hover", "variant": "hover", "description": "Pointer over the button: the variant's hover colour." },
-    { "name": "active", "variant": "active", "description": "Pressed: the variant's pressed colour." },
-    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus: a ring of ring.width in color.ring, offset by ring.offset." },
-    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." },
-    { "name": "loading", "variant": "data-loading", "props": { "loading": true }, "description": "Running: aria-busy, ignores clicks, stays focusable." }
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over the button: the appearance's hover fill (subtle turns its icon to the accent)."
+    },
+    {
+      "name": "active",
+      "variant": "active",
+      "description": "Pressed: the appearance's pressed fill."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus: Fluent's double ring (@/lib/control focusRing)."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "props": {
+        "disabled": true
+      },
+      "description": "Ignores interaction: Fluent's disabled fill and text."
+    },
+    {
+      "name": "loading",
+      "variant": "data-loading",
+      "props": {
+        "loading": true
+      },
+      "description": "Running: aria-busy, ignores clicks, stays focusable, shown as disabled."
+    }
   ],
   "tokens": [
     "color.accent.bg",
     "color.accent.bg-active",
     "color.accent.bg-hover",
     "color.accent.fg",
+    "color.accent.subtle-fg",
+    "color.bg.disabled",
+    "color.bg.layer",
+    "color.border.control-bottom-subtle",
+    "color.border.default",
+    "color.border.disabled",
+    "color.border.strong",
+    "color.border.subtle",
     "color.fg.default",
+    "color.fg.disabled",
+    "color.fg.muted",
     "color.interactive.active",
     "color.interactive.hover",
-    "color.neutral.bg",
-    "color.neutral.bg-active",
-    "color.neutral.bg-hover",
-    "color.neutral.fg",
     "color.ring",
+    "color.ring-inner",
     "color.status.danger.solid",
     "color.status.danger.solid-fg",
     "color.status.danger.solid-hover",
     "font.sans",
-    "motion.duration.fast",
-    "motion.easing.standard",
-    "opacity.disabled",
+    "motion.duration.faster",
+    "motion.easing.easy-ease",
     "radius.md",
-    "ring.offset",
+    "ring.inner-width",
     "ring.width",
     "size.control.lg",
     "size.control.md",
     "size.control.sm",
+    "size.icon.lg",
     "size.icon.md",
-    "size.icon.sm",
+    "size.icon.xl",
     "space.inline.sm"
   ],
-  "examples": { "minimal": "IconButtonMinimal", "realistic": "IconButtonRealistic" },
+  "examples": {
+    "minimal": "IconButtonMinimal",
+    "realistic": "IconButtonRealistic"
+  },
   "accessibility": [
     "Renders a native <button> with type=\"button\" unless type is set, so Enter and Space activate it.",
-    "aria-label is required by the type and names the action; mark the icon aria-hidden so it is not read twice.",
+    "aria-label is required by the type and names the action; Icon is aria-hidden without its own label, so the name is not read twice.",
     "Disabled uses the native disabled attribute; loading keeps the button focusable so focus is not lost mid-action, and sets aria-busy.",
-    "The smallest size (size.control.sm, 22 px in compact) passes WCAG 2.2 target size (minimum 24 px) only with spacing around it; keep IconButtons at least gap-inline-xs apart, or use md in dense toolbars.",
-    "The focus ring shows for keyboard focus only and meets 3:1 against every surface; every variant's colours are contrast-checked by the token build."
+    "The small size (size.control.sm, 22 px in compact) passes WCAG 2.2 target size (minimum 24 px) only with spacing around it; keep IconButtons at least gap-inline-xs apart, or use medium in dense toolbars.",
+    "The focus ring shows for keyboard focus only: an outline in color.ring (kept in forced-colours mode) around color.ring-inner, at least 3:1 on every surface and layer; every appearance's colours are contrast-checked by the token build."
   ]
 }

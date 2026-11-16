@@ -22,7 +22,7 @@ describe("Checkbox", () => {
     );
     const checkbox = box(container);
     expect(checkbox.dataset.slot).toBe("checkbox");
-    expect(checkbox.dataset.size).toBe("md");
+    expect(checkbox.dataset.size).toBe("medium");
     expect(checkbox.getAttribute("aria-checked")).toBe("false");
     expect(await axeViolations(container)).toEqual([]);
     act(() => container.querySelector("label")!.click());
@@ -47,7 +47,7 @@ describe("Checkbox", () => {
     const checkbox = box(container);
     expect(checkbox.getAttribute("aria-checked")).toBe("mixed");
     expect(checkbox.hasAttribute("data-indeterminate")).toBe(true);
-    expect(checkbox.querySelector("svg path")?.getAttribute("d")).toBe("M4 8h8");
+    expect(checkbox.querySelector("svg")?.getAttribute("data-icon")).toBe("subtract");
   });
 
   test("an invalid Field marks it invalid", () => {
@@ -166,5 +166,12 @@ describe("CheckboxGroup", () => {
       </CheckboxGroup>,
     );
     for (const checkbox of container.querySelectorAll('[role="checkbox"]')) expect(checkbox.hasAttribute("data-disabled")).toBe(true);
+  });
+  test("takes Fluent's sizes, and sm/md/lg as aliases for one release", () => {
+    for (const [size, fluent] of [["small", "small"], ["large", "large"], ["sm", "small"], ["md", "medium"], ["lg", "large"]] as const) {
+      const { container, unmount } = render(<Checkbox aria-label="Read only" size={size} />);
+      expect((container.querySelector('[data-slot="checkbox"]') as HTMLElement).dataset.size).toBe(fluent);
+      unmount();
+    }
   });
 });

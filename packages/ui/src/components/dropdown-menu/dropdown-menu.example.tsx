@@ -16,22 +16,16 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/dropdown-menu/dropdown-menu";
+import { Icon } from "@/components/icon/icon";
 import { IconButton } from "@/components/icon-button/icon-button";
-
-const MoreIcon = () => (
-  <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-    <circle cx="3.5" cy="8" r="1.25" />
-    <circle cx="8" cy="8" r="1.25" />
-    <circle cx="12.5" cy="8" r="1.25" />
-  </svg>
-);
+import { MoreHorizontal } from "@/lib/icons";
 
 /** The smallest useful DropdownMenu: a few actions under an icon button. */
 export function DropdownMenuMinimal() {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<IconButton aria-label="Tab actions" variant="ghost" />}>
-        <MoreIcon />
+      <DropdownMenuTrigger render={<IconButton aria-label="Tab actions" appearance="subtle" />}>
+        <Icon icon={MoreHorizontal} />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuItem>Rename</DropdownMenuItem>
@@ -52,7 +46,7 @@ export function DropdownMenuRealistic() {
   const [headers, setHeaders] = useState(true);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="secondary" size="sm" />}>Copy</DropdownMenuTrigger>
+      <DropdownMenuTrigger render={<Button appearance="secondary" size="small" />}>Copy</DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuGroup>
           <DropdownMenuLabel>Selection</DropdownMenuLabel>

@@ -302,6 +302,8 @@ per mode), or replaces the whole `gradient.backdrop` with its own list of layers
   `ring.inner-width`) with a `box-shadow: 0 0 0 var(--by-ring-inner-width)
   var(--by-ring-inner-color)` inside it. The outline survives forced-colours mode; the shadow
   does not need to.
+- The danger solid is also a `ui` pair on `color.bg.layer-alt` (over the backdrop and a layer) and on
+  every opaque surface: it is the bottom edge of an invalid field (TSK-53).
 - Contrast: text on `color.bg.layer` over the backdrop, text and the field strokes on
   `color.bg.layer-alt` over the backdrop and a layer, the focus ring and the solids on a layer.
 - `elevation.flyout` and `elevation.dialog` use `color.bg.overlay`, opaque: a component that wants
@@ -359,6 +361,12 @@ package is a reference, never a dependency. `test/catalog.test.ts` pins every va
 ## Catalogue notes
 
 - A half step of the space scale is written `0-5`, `1-5` (a path segment cannot hold a dot).
+- `size.control.{sm,md,lg}` are Fluent 2's small, medium and large when comfortable (24, 32, 40 px;
+  28, 36, 44 before TSK-53) and 22, 28, 34 px when compact; `xs` is 20 / 18. `grid.row-height`
+  follows `md` / `sm`.
+- `color.bg.disabled` (`bg-disabled`, neutral step 3 / dark 2) and `color.border.disabled`
+  (`border-border-disabled`, step 5) are Fluent's disabled fill and stroke (TSK-53), with
+  `color.fg.disabled` for the text. Disabled controls are exempt from contrast, so they have no pair.
 - `size.icon.{xs,sm,md,lg,xl}` are 12, 14, 16, 20 and 24 px; `xl` (TSK-57) is Fluent's largest
   drawing size, so `@byterygon/ui`'s Icon shows the 16, 20 and 24 px artwork at its own size.
 - Shadows and colours vary by `theme`; size and space roles vary by `density`. A token never varies

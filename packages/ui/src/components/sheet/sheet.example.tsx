@@ -10,7 +10,7 @@ import { Switch } from "@/components/switch/switch";
 export function SheetMinimal() {
   return (
     <Sheet>
-      <SheetTrigger render={<Button variant="secondary" />}>Open cell value</SheetTrigger>
+      <SheetTrigger render={<Button appearance="secondary" />}>Open cell value</SheetTrigger>
       <SheetContent>
         <SheetHeader>
           <SheetTitle>orders.notes</SheetTitle>
@@ -64,14 +64,14 @@ export function SheetRealistic() {
             </Field>
           </SheetBody>
           <SheetFooter>
-            <SheetClose render={<Button variant="ghost" />}>Cancel</SheetClose>
+            <SheetClose render={<Button appearance="subtle" />}>Cancel</SheetClose>
             <Button>Continue</Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>
 
       <Sheet side="left" size="sm">
-        <SheetTrigger render={<Button variant="ghost" />}>Filters</SheetTrigger>
+        <SheetTrigger render={<Button appearance="subtle" />}>Filters</SheetTrigger>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Filter the tree</SheetTitle>
@@ -88,7 +88,7 @@ export function SheetRealistic() {
       </Sheet>
 
       <Sheet side="bottom">
-        <SheetTrigger render={<Button variant="ghost" />}>Notices (2)</SheetTrigger>
+        <SheetTrigger render={<Button appearance="subtle" />}>Notices (2)</SheetTrigger>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Notices</SheetTitle>
@@ -100,7 +100,7 @@ export function SheetRealistic() {
       </Sheet>
 
       <Sheet side="top">
-        <SheetTrigger render={<Button variant="ghost" />}>Find in workspace</SheetTrigger>
+        <SheetTrigger render={<Button appearance="subtle" />}>Find in workspace</SheetTrigger>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Find in workspace</SheetTitle>

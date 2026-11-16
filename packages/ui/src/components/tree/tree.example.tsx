@@ -76,7 +76,7 @@ export function TreeRealistic() {
   };
   return (
     <div className="flex w-full flex-col gap-stack-sm">
-      <SearchInput aria-label="Filter the tree" placeholder="Filter loaded nodes" size="sm" value={filter} onValueChange={setFilter} />
+      <SearchInput aria-label="Filter the tree" placeholder="Filter loaded nodes" size="small" value={filter} onValueChange={setFilter} />
       <Tree
         nodes={nodes}
         defaultExpanded={["orders-prod", "orders-prod.public", "staging"]}

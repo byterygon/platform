@@ -9,13 +9,16 @@
   ],
   "registryDependencies": [
     "@byterygon/button",
-    "@byterygon/cn"
+    "@byterygon/cn",
+    "@byterygon/control",
+    "@byterygon/icon",
+    "@byterygon/icons"
   ],
   "files": [
     {
       "path": "ui/file-input.tsx",
       "type": "registry:ui",
-      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { useRef, useState, type DragEvent, type MouseEvent, type Ref } from \"react\";\nimport { Button } from \"@/components/ui/button\";\nimport { cn } from \"@/lib/cn\";\n\n// Base UI has no file input, so this is a native <input type=\"file\"> rendered by Base UI's Input\n// (Field.Control: it takes a Field's label, description and validity) inside a styled frame. The\n// input stays in the page, visually hidden but focusable: Tab, Space and the FieldLabel open the\n// system picker, and screen readers announce the input and the chosen file as usual. The frame's\n// look (a \"Choose file\" chip and the file names) is aria-hidden. Files never leave the browser.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const fileInputVariants = {\n  variant: {\n    /** One line, the height of an Input: a chip and the file names. */\n    field: \"ps-inline-xs pe-inline-xs\",\n    /** A larger dashed area that also takes files dropped on it. */\n    dropzone: \"h-auto flex-col justify-center gap-stack-sm border-dashed p-inset-lg text-center\",\n  },\n  size: {\n    sm: \"h-control-sm [&_[data-slot=file-input-chip]]:h-control-xs\",\n    md: \"h-control-md [&_[data-slot=file-input-chip]]:h-control-sm\",\n    lg: \"h-control-lg [&_[data-slot=file-input-chip]]:h-control-md\",\n  },\n} as const;\n\n// Written out in full (no template strings): Tailwind finds classes by scanning the source as text.\nconst base = [\n  \"relative flex w-full min-w-0 cursor-pointer items-center gap-inline-sm rounded-md border border-border-strong bg-surface font-sans text-body text-fg\",\n  \"transition-colors duration-[var(--by-motion-duration-fast)] ease-standard\",\n  // Only the dropzone sets data-dragging.\n  \"data-dragging:border-accent-solid data-dragging:bg-accent-subtle\",\n  \"has-[[data-slot=file-input-input]:focus-visible]:outline-solid has-[[data-slot=file-input-input]:focus-visible]:outline-[length:var(--by-ring-width)]\",\n  \"has-[[data-slot=file-input-input]:focus-visible]:outline-offset-[var(--by-ring-offset)] has-[[data-slot=file-input-input]:focus-visible]:outline-ring\",\n  \"has-[[data-slot=file-input-input][aria-invalid=true]]:border-danger-border has-[[data-slot=file-input-input][data-invalid]]:border-danger-border\",\n  \"has-[[data-slot=file-input-input][data-disabled]]:cursor-not-allowed has-[[data-slot=file-input-input][data-disabled]]:opacity-[var(--by-opacity-disabled)]\",\n];\n\nconst chipClasses = [\"inline-flex shrink-0 items-center rounded-sm bg-neutral-subtle px-inset-sm text-label text-neutral-subtle-fg\"];\n\nconst namesClasses = [\"min-w-0 flex-1 truncate text-start\", \"data-empty:text-fg-subtle\"];\n\nconst clearClasses = [\"h-control-xs px-inset-xs text-fg-muted hover:text-fg\"];\n\nconst ClearIcon = () => (\n  <svg aria-hidden=\"true\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" strokeWidth=\"1.5\" strokeLinecap=\"round\">\n    <path d=\"m4.5 4.5 7 7m0-7-7 7\" />\n  </svg>\n);\n\n/** Whether a file matches an `accept` list: extensions (\".pem\"), MIME types and wildcards (\"image/*\"). */\nexport function acceptsFile(accept: string | undefined, file: File): boolean {\n  if (!accept) return true;\n  const name = file.name.toLowerCase();\n  const type = file.type.toLowerCase();\n  return accept.split(\",\").some((raw) => {\n    const rule = raw.trim().toLowerCase();\n    if (!rule) return false;\n    if (rule.startsWith(\".\")) return name.endsWith(rule);\n    if (rule.endsWith(\"/*\")) return type.startsWith(rule.slice(0, -1));\n    return type === rule;\n  });\n}\n\nexport interface FileInputProps extends Omit<InputPrimitive.Props, \"className\" | \"size\" | \"type\" | \"value\" | \"defaultValue\" | \"onValueChange\" | \"children\"> {\n  /** One line like an Input, or a dashed area that also takes dropped files. */\n  variant?: keyof typeof fileInputVariants.variant;\n  /** Height of the field variant, from the density-aware `size.control.*` roles. */\n  size?: keyof typeof fileInputVariants.size;\n  /** Called with the chosen (or dropped) files; [] when cleared. */\n  onFilesChange?: (files: File[]) => void;\n  /** The chip's text. */\n  chooseLabel?: string;\n  /** Shown while no file is chosen. */\n  emptyLabel?: string;\n  /** The dropzone's instruction. */\n  dropLabel?: string;\n  /** The Clear button's accessible name. */\n  clearLabel?: string;\n  /** Extra classes for the frame, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A file picker on a native `<input type=\"file\">` (Base UI's Input), with a dropzone variant.\n * `accept` and `multiple` work as on the native input and also filter dropped files. Read the\n * files from `onFilesChange`; they also submit with the form. The ref reaches the `<input>`;\n * className the frame.\n */\nexport function FileInput({\n  variant = \"field\",\n  size = \"md\",\n  onFilesChange,\n  onChange,\n  chooseLabel = \"Choose file\",\n  emptyLabel = \"No file chosen\",\n  dropLabel = \"Drop a file here, or\",\n  clearLabel = \"Clear file\",\n  accept,\n  multiple,\n  disabled,\n  ref,\n  className,\n  ...props\n}: FileInputProps) {\n  const input = useRef<HTMLInputElement | null>(null);\n  const [files, setFiles] = useState<File[]>([]);\n  const [dragging, setDragging] = useState(false);\n\n  const update = (next: File[]) => {\n    setFiles(next);\n    onFilesChange?.(next);\n  };\n  const changed = (event: Parameters<NonNullable<InputPrimitive.Props[\"onChange\"]>>[0]) => {\n    onChange?.(event);\n    update(Array.from(event.currentTarget.files ?? []));\n  };\n  const open = (event: MouseEvent<HTMLDivElement>) => {\n    if (disabled || (event.target as Element).closest(\"button, input, label\")) return;\n    input.current?.click();\n  };\n  const clear = () => {\n    if (input.current) input.current.value = \"\";\n    update([]);\n    input.current?.focus();\n  };\n  const dragOver = (event: DragEvent<HTMLDivElement>) => {\n    if (variant !== \"dropzone\" || disabled) return;\n    event.preventDefault();\n    setDragging(true);\n  };\n  const drop = (event: DragEvent<HTMLDivElement>) => {\n    if (variant !== \"dropzone\" || disabled) return;\n    event.preventDefault();\n    setDragging(false);\n    const dropped = Array.from(event.dataTransfer?.files ?? []).filter((file) => acceptsFile(accept, file));\n    const next = multiple ? dropped : dropped.slice(0, 1);\n    if (next.length === 0) return;\n    // Hand the files to the input too, so they submit with the form (where the browser allows it).\n    try {\n      if (input.current && typeof DataTransfer !== \"undefined\") {\n        const transfer = new DataTransfer();\n        for (const file of next) transfer.items.add(file);\n        input.current.files = transfer.files;\n      }\n    } catch {\n      // Some engines refuse to set files; onFilesChange still has them.\n    }\n    update(next);\n  };\n  const setRef = (element: HTMLInputElement | null) => {\n    input.current = element;\n    if (typeof ref === \"function\") ref(element);\n    else if (ref) (ref as { current: HTMLInputElement | null }).current = element;\n  };\n\n  const names = files.map((file) => file.name).join(\", \");\n  return (\n    <div\n      data-slot=\"file-input\"\n      data-variant={variant}\n      data-size={size}\n      data-dragging={dragging ? \"\" : undefined}\n      className={cn(base, fileInputVariants.size[size], fileInputVariants.variant[variant], className)}\n      onClick={open}\n      onDragOver={dragOver}\n      onDragLeave={() => setDragging(false)}\n      onDrop={drop}\n    >\n      <InputPrimitive\n        ref={setRef as Ref<HTMLInputElement>}\n        data-slot=\"file-input-input\"\n        type=\"file\"\n        accept={accept}\n        multiple={multiple}\n        disabled={disabled}\n        onChange={changed}\n        className=\"sr-only\"\n        {...props}\n      />\n      {variant === \"dropzone\" ? (\n        <span aria-hidden=\"true\" className=\"text-fg-muted\">\n          {dropLabel}\n        </span>\n      ) : null}\n      <span aria-hidden=\"true\" data-slot=\"file-input-chip\" className={cn(chipClasses)}>\n        {chooseLabel}\n      </span>\n      <span aria-hidden=\"true\" data-slot=\"file-input-names\" data-empty={files.length === 0 ? \"\" : undefined} className={cn(namesClasses)}>\n        {files.length === 0 ? emptyLabel : names}\n      </span>\n      <Button variant=\"ghost\" size=\"sm\" aria-label={clearLabel} hidden={files.length === 0 || disabled} onClick={clear} className={cn(clearClasses)}>\n        <ClearIcon />\n      </Button>\n    </div>\n  );\n}\n"
+      "content": "import { Input as InputPrimitive } from \"@base-ui/react/input\";\nimport { useRef, useState, type DragEvent, type MouseEvent, type Ref } from \"react\";\nimport { Button } from \"@/components/ui/button\";\nimport { Icon } from \"@/components/ui/icon\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, fieldAppearance, fieldAppearances, fieldFrame, fieldSizes, type ControlSizeProp, type FieldAppearance } from \"@/lib/control\";\nimport { Dismiss } from \"@/lib/icons\";\n\n// Base UI has no file input, so this is a native <input type=\"file\"> rendered by Base UI's Input\n// (Field.Control: it takes a Field's label, description and validity) inside a styled frame. The\n// input stays in the page, visually hidden but focusable: Tab, Space and the FieldLabel open the\n// system picker, and screen readers announce the input and the chosen file as usual. The frame's\n// look (a \"Choose file\" chip and the file names) is aria-hidden. Files never leave the browser.\n// The frame takes Input's Fluent appearances, sizes, focus underline and states.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const fileInputVariants = {\n  variant: {\n    /** One line, the height of an Input: a chip and the file names. */\n    field: \"ps-inline-xs pe-inline-xs\",\n    /** A larger dashed area that also takes files dropped on it. */\n    dropzone: \"h-auto flex-col justify-center gap-stack-sm border-dashed p-inset-lg text-center\",\n  },\n  appearance: fieldAppearances,\n  size: {\n    small: `${fieldSizes.small} [&_[data-slot=file-input-chip]]:h-control-xs`,\n    medium: `${fieldSizes.medium} [&_[data-slot=file-input-chip]]:h-control-sm`,\n    large: `${fieldSizes.large} [&_[data-slot=file-input-chip]]:h-control-md`,\n  },\n} as const;\n\n// Written out in full (no template strings): Tailwind finds classes by scanning the source as text.\nconst base = [\n  \"relative flex w-full min-w-0 cursor-pointer items-center gap-inline-sm\",\n  fieldFrame,\n  // Only the dropzone sets data-dragging.\n  \"data-dragging:border-accent-solid data-dragging:bg-accent-subtle\",\n  \"has-[[data-slot=file-input-input]:focus-visible]:shadow-focus-underline\",\n  \"has-[[data-slot=file-input-input][aria-invalid=true]]:border-danger-border has-[[data-slot=file-input-input][aria-invalid=true]]:border-b-danger\",\n  \"has-[[data-slot=file-input-input][data-invalid]]:border-danger-border has-[[data-slot=file-input-input][data-invalid]]:border-b-danger\",\n  \"has-[[data-slot=file-input-input][data-disabled]]:cursor-not-allowed has-[[data-slot=file-input-input][data-disabled]]:border-border-disabled\",\n  \"has-[[data-slot=file-input-input][data-disabled]]:bg-transparent has-[[data-slot=file-input-input][data-disabled]]:text-fg-disabled\",\n];\n\n// The \"Choose file\" chip looks like a small secondary Button (decoration: the input is the control).\nconst chipClasses = [\n  \"inline-flex shrink-0 items-center rounded-sm border border-border-subtle border-b-border-control-bottom-subtle bg-layer px-inset-xs text-caption-1 text-fg\",\n];\n\nconst namesClasses = [\"min-w-0 flex-1 truncate text-start\", \"data-empty:text-fg-subtle\"];\n\nconst clearClasses = [\"h-control-xs px-inset-xs text-fg-muted hover:text-fg\"];\n\n/** Whether a file matches an `accept` list: extensions (\".pem\"), MIME types and wildcards (\"image/*\"). */\nexport function acceptsFile(accept: string | undefined, file: File): boolean {\n  if (!accept) return true;\n  const name = file.name.toLowerCase();\n  const type = file.type.toLowerCase();\n  return accept.split(\",\").some((raw) => {\n    const rule = raw.trim().toLowerCase();\n    if (!rule) return false;\n    if (rule.startsWith(\".\")) return name.endsWith(rule);\n    if (rule.endsWith(\"/*\")) return type.startsWith(rule.slice(0, -1));\n    return type === rule;\n  });\n}\n\nexport interface FileInputProps extends Omit<InputPrimitive.Props, \"className\" | \"size\" | \"type\" | \"value\" | \"defaultValue\" | \"onValueChange\" | \"children\"> {\n  /** One line like an Input, or a dashed area that also takes dropped files. */\n  variant?: keyof typeof fileInputVariants.variant | undefined;\n  /** Fluent's field appearance of the frame: outline (default), underline, filled-darker or filled-lighter. */\n  appearance?: FieldAppearance | undefined;\n  /** Height of the field variant: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Called with the chosen (or dropped) files; [] when cleared. */\n  onFilesChange?: (files: File[]) => void;\n  /** The chip's text. */\n  chooseLabel?: string;\n  /** Shown while no file is chosen. */\n  emptyLabel?: string;\n  /** The dropzone's instruction. */\n  dropLabel?: string;\n  /** The Clear button's accessible name. */\n  clearLabel?: string;\n  /** Extra classes for the frame, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A file picker on a native `<input type=\"file\">` (Base UI's Input), with a dropzone variant.\n * `accept` and `multiple` work as on the native input and also filter dropped files. Read the\n * files from `onFilesChange`; they also submit with the form. The ref reaches the `<input>`;\n * className the frame.\n */\nexport function FileInput({\n  variant = \"field\",\n  appearance,\n  size,\n  onFilesChange,\n  onChange,\n  chooseLabel = \"Choose file\",\n  emptyLabel = \"No file chosen\",\n  dropLabel = \"Drop a file here, or\",\n  clearLabel = \"Clear file\",\n  accept,\n  multiple,\n  disabled,\n  ref,\n  className,\n  ...props\n}: FileInputProps) {\n  const input = useRef<HTMLInputElement | null>(null);\n  const [files, setFiles] = useState<File[]>([]);\n  const [dragging, setDragging] = useState(false);\n\n  const update = (next: File[]) => {\n    setFiles(next);\n    onFilesChange?.(next);\n  };\n  const changed = (event: Parameters<NonNullable<InputPrimitive.Props[\"onChange\"]>>[0]) => {\n    onChange?.(event);\n    update(Array.from(event.currentTarget.files ?? []));\n  };\n  const open = (event: MouseEvent<HTMLDivElement>) => {\n    if (disabled || (event.target as Element).closest(\"button, input, label\")) return;\n    input.current?.click();\n  };\n  const clear = () => {\n    if (input.current) input.current.value = \"\";\n    update([]);\n    input.current?.focus();\n  };\n  const dragOver = (event: DragEvent<HTMLDivElement>) => {\n    if (variant !== \"dropzone\" || disabled) return;\n    event.preventDefault();\n    setDragging(true);\n  };\n  const drop = (event: DragEvent<HTMLDivElement>) => {\n    if (variant !== \"dropzone\" || disabled) return;\n    event.preventDefault();\n    setDragging(false);\n    const dropped = Array.from(event.dataTransfer?.files ?? []).filter((file) => acceptsFile(accept, file));\n    const next = multiple ? dropped : dropped.slice(0, 1);\n    if (next.length === 0) return;\n    // Hand the files to the input too, so they submit with the form (where the browser allows it).\n    try {\n      if (input.current && typeof DataTransfer !== \"undefined\") {\n        const transfer = new DataTransfer();\n        for (const file of next) transfer.items.add(file);\n        input.current.files = transfer.files;\n      }\n    } catch {\n      // Some engines refuse to set files; onFilesChange still has them.\n    }\n    update(next);\n  };\n  const setRef = (element: HTMLInputElement | null) => {\n    input.current = element;\n    if (typeof ref === \"function\") ref(element);\n    else if (ref) (ref as { current: HTMLInputElement | null }).current = element;\n  };\n\n  const names = files.map((file) => file.name).join(\", \");\n  const look = fieldAppearance(appearance);\n  const height = controlSize(size);\n  return (\n    <div\n      data-slot=\"file-input\"\n      data-variant={variant}\n      data-appearance={look}\n      data-size={height}\n      data-dragging={dragging ? \"\" : undefined}\n      className={cn(base, fileInputVariants.appearance[look], fileInputVariants.size[height], fileInputVariants.variant[variant], className)}\n      onClick={open}\n      onDragOver={dragOver}\n      onDragLeave={() => setDragging(false)}\n      onDrop={drop}\n    >\n      <InputPrimitive\n        ref={setRef as Ref<HTMLInputElement>}\n        data-slot=\"file-input-input\"\n        type=\"file\"\n        accept={accept}\n        multiple={multiple}\n        disabled={disabled}\n        onChange={changed}\n        className=\"sr-only\"\n        {...props}\n      />\n      {variant === \"dropzone\" ? (\n        <span aria-hidden=\"true\" className=\"text-fg-muted\">\n          {dropLabel}\n        </span>\n      ) : null}\n      <span aria-hidden=\"true\" data-slot=\"file-input-chip\" className={cn(chipClasses)}>\n        {chooseLabel}\n      </span>\n      <span aria-hidden=\"true\" data-slot=\"file-input-names\" data-empty={files.length === 0 ? \"\" : undefined} className={cn(namesClasses)}>\n        {files.length === 0 ? emptyLabel : names}\n      </span>\n      <Button appearance=\"subtle\" size=\"small\" aria-label={clearLabel} hidden={files.length === 0 || disabled} onClick={clear} className={cn(clearClasses)}>\n        <Icon icon={Dismiss} />\n      </Button>\n    </div>\n  );\n}\n"
     }
   ],
   "meta": {
@@ -24,7 +27,7 @@
       "name": "file-input",
       "title": "FileInput",
       "description": "A file picker on a native <input type=\"file\"> (Base UI's Input), as one line like an Input or as a dashed dropzone, with a Clear button and accept filtering of dropped files.",
-      "usage": "Use FileInput to pick local files the app reads in the browser or sends with the form: a CA certificate, a key, SQL scripts to import. Put it in a Field with a FieldLabel; set accept (\".pem,.crt\", \"image/*\") and multiple as on the native input. Read the files from onFilesChange ([] when cleared); with TanStack Form, keep File[] in the field and call field.handleChange from onFilesChange. The dropzone variant also takes dropped files (filtered by accept) and suits imports; the field variant suits settings forms. Nothing is uploaded by the component; it has no network code.",
+      "usage": "Use FileInput to pick local files the app reads in the browser or sends with the form: a CA certificate, a key, SQL scripts to import. Put it in a Field with a FieldLabel; set accept (\".pem,.crt\", \"image/*\") and multiple as on the native input. Read the files from onFilesChange ([] when cleared); with TanStack Form, keep File[] in the field and call field.handleChange from onFilesChange. The dropzone variant also takes dropped files (filtered by accept) and suits imports; the field variant suits settings forms. Nothing is uploaded by the component; it has no network code. Appearance outline is the default; underline for dense or inline forms, filled-darker on white surfaces, filled-lighter on grey ones. The old sizes sm/md/lg still work for one release.",
       "status": "experimental",
       "base": "@base-ui/react/input",
       "dependencies": [
@@ -54,10 +57,22 @@
           "description": "One line like an Input, or a dashed area that takes dropped files."
         },
         {
+          "name": "appearance",
+          "type": "\"outline\" | \"underline\" | \"filled-darker\" | \"filled-lighter\"",
+          "default": "outline",
+          "description": "Fluent's field appearance: outline (a light fill, a hairline and the darker bottom edge), underline (the bottom edge only), filled-darker (color.bg.inset) or filled-lighter (color.bg.surface)."
+        },
+        {
           "name": "size",
+          "type": "\"small\" | \"medium\" | \"large\"",
+          "default": "medium",
+          "description": "Fluent's field sizes: 24, 32 and 40 px when comfortable (caption-1, body-1, body-2), 22, 28 and 34 px when compact (size.control.sm, md, lg)."
+        },
+        {
+          "name": "size (sm, md, lg)",
           "type": "\"sm\" | \"md\" | \"lg\"",
-          "default": "md",
-          "description": "Height of the field variant from size.control.*, which follows data-density."
+          "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+          "deprecated": "use small, medium or large"
         },
         {
           "name": "chooseLabel",
@@ -112,14 +127,20 @@
         }
       ],
       "variants": {
+        "appearance": [
+          "outline",
+          "underline",
+          "filled-darker",
+          "filled-lighter"
+        ],
+        "size": [
+          "small",
+          "medium",
+          "large"
+        ],
         "variant": [
           "field",
           "dropzone"
-        ],
-        "size": [
-          "sm",
-          "md",
-          "lg"
         ]
       },
       "slots": [
@@ -158,7 +179,7 @@
         {
           "name": "focus-visible",
           "variant": "has-[[data-slot=file-input-input]:focus-visible]",
-          "description": "Keyboard focus on the input: a ring of ring.width in color.ring around the frame."
+          "description": "Keyboard focus on the input: Fluent's accent underline (shadow.focus-underline) along the frame's bottom."
         },
         {
           "name": "dragging",
@@ -173,7 +194,7 @@
         {
           "name": "invalid",
           "variant": "has-[[data-slot=file-input-input][data-invalid]]",
-          "description": "In an invalid Field (or with aria-invalid): the frame's border is color.status.danger.border."
+          "description": "In an invalid Field (or with aria-invalid): the frame's hairline is color.status.danger.border and its bottom edge color.status.danger.solid."
         },
         {
           "name": "disabled",
@@ -181,50 +202,61 @@
           "props": {
             "disabled": true
           },
-          "description": "Ignores interaction; the frame dims to opacity.disabled."
+          "description": "Ignores interaction; the frame drops its fill and takes Fluent's disabled stroke and text."
         }
       ],
       "tokens": [
         "color.accent.bg",
         "color.accent.subtle-bg",
+        "color.accent.subtle-fg",
+        "color.bg.inset",
+        "color.bg.layer",
+        "color.bg.layer-alt",
         "color.bg.surface",
-        "color.border.strong",
+        "color.border.control-bottom",
+        "color.border.control-bottom-subtle",
+        "color.border.disabled",
+        "color.border.subtle",
         "color.fg.default",
+        "color.fg.disabled",
         "color.fg.muted",
         "color.fg.subtle",
         "color.interactive.active",
         "color.interactive.hover",
-        "color.neutral.subtle-bg",
-        "color.neutral.subtle-fg",
         "color.ring",
+        "color.ring-inner",
         "color.status.danger.border",
+        "color.status.danger.solid",
         "font.sans",
-        "motion.duration.fast",
-        "motion.easing.standard",
-        "opacity.disabled",
+        "motion.duration.faster",
+        "motion.easing.easy-ease",
         "radius.md",
         "radius.sm",
-        "ring.offset",
+        "ring.inner-width",
         "ring.width",
+        "shadow.focus-underline",
         "size.control.lg",
         "size.control.md",
         "size.control.sm",
         "size.control.xs",
-        "size.icon.sm",
+        "size.icon.md",
         "space.inline.sm",
         "space.inline.xs",
         "space.inset.lg",
-        "space.inset.sm",
         "space.inset.xs",
         "space.stack.sm",
-        "text.body.leading",
-        "text.body.size",
-        "text.body.tracking",
-        "text.body.weight",
-        "text.label.leading",
-        "text.label.size",
-        "text.label.tracking",
-        "text.label.weight"
+        "text.body-1.leading",
+        "text.body-1.size",
+        "text.body-1.tracking",
+        "text.body-1.weight",
+        "text.body-2.leading",
+        "text.body-2.size",
+        "text.body-2.tracking",
+        "text.body-2.weight",
+        "text.caption-1.leading",
+        "text.caption-1.size",
+        "text.caption-1.tracking",
+        "text.caption-1.weight"
       ],
       "examples": {
         "minimal": "FileInputMinimal",
@@ -235,10 +267,10 @@
         "The chip and the file names repeat what the input announces, so they are aria-hidden; the FieldLabel names the input and clicking it opens the picker.",
         "Dropping files is a pointer shortcut only; the same files can always be chosen with the keyboard. Announce what was added in a role=\"status\" element.",
         "The Clear button is named \"Clear file\" and returns focus to the input.",
-        "Focus shows a ring of ring.width in color.ring around the frame (3:1 on every surface)."
+        "Focus shows Fluent's accent underline (shadow.focus-underline) along the frame's bottom, 3:1 on every fill and surface."
       ]
     },
-    "example": "import { useState } from \"react\";\nimport { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { FileInput } from \"@/components/file-input/file-input\";\n\n/** The smallest useful FileInput: a labelled file picker. */\nexport function FileInputMinimal() {\n  return (\n    <Field>\n      <FieldLabel>CA certificate</FieldLabel>\n      <FileInput accept=\".pem,.crt\" />\n    </Field>\n  );\n}\n\n/**\n * TLS files of a connection and an SQL import: a certificate with a hint, a required key that is\n * missing, a disabled picker, the small and large sizes, and a dropzone for several scripts that\n * lists what was dropped.\n */\nexport function FileInputRealistic() {\n  const [scripts, setScripts] = useState<File[]>([]);\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <Field name=\"cert\">\n        <FieldLabel>Client certificate</FieldLabel>\n        <FileInput accept=\".pem,.crt\" />\n        <FieldDescription>PEM or DER. Read on this machine, never uploaded.</FieldDescription>\n      </Field>\n      <Field name=\"key\" invalid>\n        <FieldLabel>Client key</FieldLabel>\n        <FileInput accept=\".pem,.key\" size=\"sm\" />\n        <FieldError>Choose the key that matches the certificate.</FieldError>\n      </Field>\n      <Field name=\"root\" disabled>\n        <FieldLabel>Root certificate</FieldLabel>\n        <FileInput />\n        <FieldDescription>Provided by the workspace.</FieldDescription>\n      </Field>\n      <Field name=\"ssh\">\n        <FieldLabel>SSH identity</FieldLabel>\n        <FileInput size=\"lg\" />\n      </Field>\n      <Field name=\"scripts\">\n        <FieldLabel>SQL scripts</FieldLabel>\n        <FileInput variant=\"dropzone\" accept=\".sql\" multiple chooseLabel=\"Choose files\" emptyLabel=\"No scripts yet\" onFilesChange={setScripts} />\n        <FieldDescription role=\"status\">\n          {scripts.length === 0 ? \"Scripts run in the order you add them.\" : `${scripts.length} script${scripts.length === 1 ? \"\" : \"s\"} ready to run.`}\n        </FieldDescription>\n      </Field>\n    </div>\n  );\n}\n",
+    "example": "import { useState } from \"react\";\nimport { Field, FieldDescription, FieldError, FieldLabel } from \"@/components/field/field\";\nimport { FileInput } from \"@/components/file-input/file-input\";\n\n/** The smallest useful FileInput: a labelled file picker. */\nexport function FileInputMinimal() {\n  return (\n    <Field>\n      <FieldLabel>CA certificate</FieldLabel>\n      <FileInput accept=\".pem,.crt\" />\n    </Field>\n  );\n}\n\n/**\n * TLS files of a connection and an SQL import: a certificate with a hint, a required key that is\n * missing, a disabled picker, the small and large sizes, and a dropzone for several scripts that\n * lists what was dropped.\n */\nexport function FileInputRealistic() {\n  const [scripts, setScripts] = useState<File[]>([]);\n  return (\n    <div className=\"flex flex-col gap-stack-md\">\n      <Field name=\"cert\">\n        <FieldLabel>Client certificate</FieldLabel>\n        <FileInput accept=\".pem,.crt\" />\n        <FieldDescription>PEM or DER. Read on this machine, never uploaded.</FieldDescription>\n      </Field>\n      <Field name=\"key\" invalid>\n        <FieldLabel>Client key</FieldLabel>\n        <FileInput accept=\".pem,.key\" size=\"small\" appearance=\"filled-darker\" />\n        <FieldError>Choose the key that matches the certificate.</FieldError>\n      </Field>\n      <Field name=\"root\" disabled>\n        <FieldLabel>Root certificate</FieldLabel>\n        <FileInput />\n        <FieldDescription>Provided by the workspace.</FieldDescription>\n      </Field>\n      <Field name=\"ssh\">\n        <FieldLabel>SSH identity</FieldLabel>\n        <FileInput size=\"large\" appearance=\"underline\" />\n      </Field>\n      <Field name=\"scripts\">\n        <FieldLabel>SQL scripts</FieldLabel>\n        <FileInput variant=\"dropzone\" accept=\".sql\" multiple chooseLabel=\"Choose files\" emptyLabel=\"No scripts yet\" onFilesChange={setScripts} />\n        <FieldDescription role=\"status\">\n          {scripts.length === 0 ? \"Scripts run in the order you add them.\" : `${scripts.length} script${scripts.length === 1 ? \"\" : \"s\"} ready to run.`}\n        </FieldDescription>\n      </Field>\n    </div>\n  );\n}\n",
     "dependencyVersions": {
       "@base-ui/react": "1.9.0"
     }

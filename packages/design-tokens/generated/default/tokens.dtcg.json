@@ -13137,6 +13137,22 @@
           }
         }
       },
+      "disabled": {
+        "$type": "color",
+        "$value": "{color.neutral.3}",
+        "$description": "The fill of a disabled filled control (a primary, secondary, outline or danger button, a checked checkbox), as Fluent 2's neutral disabled background; its text is color.fg.disabled. Not for content or a recessed area (use color.bg.inset); quiet controls (subtle, transparent) stay transparent when disabled.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.neutral.3}",
+              "dark": "{color.neutral-dark.2}"
+            },
+            "tailwind": "--color-disabled"
+          }
+        }
+      },
       "layer": {
         "$type": "color",
         "$value": "{color.white.alpha-72}",
@@ -13326,6 +13342,22 @@
             "tier": "semantic",
             "tailwind": "--color-border-focus",
             "overridden": true
+          }
+        }
+      },
+      "disabled": {
+        "$type": "color",
+        "$value": "{color.neutral.5}",
+        "$description": "The outline of a disabled control that has one (secondary and outline buttons, fields), as Fluent 2's neutral disabled stroke. Not for enabled controls (use color.border.subtle or color.border.strong) and not for separators (use color.border.default).",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.neutral.5}",
+              "dark": "{color.neutral-dark.5}"
+            },
+            "tailwind": "--color-border-disabled"
           }
         }
       },
@@ -15284,17 +15316,17 @@
       "sm": {
         "$type": "dimension",
         "$value": {
-          "value": 28,
+          "value": 24,
           "unit": "px"
         },
-        "$description": "Height of small controls and of dense rows (toolbars, grid rows). Not for forms a user fills in at length: use size.control.md.",
+        "$description": "Height of small controls (Fluent 2's small, 24 px when comfortable) and of dense rows (toolbars, grid rows). Not for forms a user fills in at length: use size.control.md.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
             "axis": "density",
             "modes": {
               "comfortable": {
-                "value": 28,
+                "value": 24,
                 "unit": "px"
               },
               "compact": {
@@ -15309,17 +15341,17 @@
       "md": {
         "$type": "dimension",
         "$value": {
-          "value": 36,
+          "value": 32,
           "unit": "px"
         },
-        "$description": "Height of standard controls: buttons, inputs, selects. Not a fixed pixel value: never hard-code 36px, the density mode changes it.",
+        "$description": "Height of standard controls: buttons, inputs, selects (Fluent 2's medium, 32 px when comfortable). Not a fixed pixel value: never hard-code 32px, the density mode changes it.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
             "axis": "density",
             "modes": {
               "comfortable": {
-                "value": 36,
+                "value": 32,
                 "unit": "px"
               },
               "compact": {
@@ -15334,17 +15366,17 @@
       "lg": {
         "$type": "dimension",
         "$value": {
-          "value": 44,
+          "value": 40,
           "unit": "px"
         },
-        "$description": "Height of large controls: the main call to action, touch-first layouts. Not inside dense tools such as grids and toolbars.",
+        "$description": "Height of large controls (Fluent 2's large, 40 px when comfortable): the main call to action, touch-first layouts. Not inside dense tools such as grids and toolbars.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
             "axis": "density",
             "modes": {
               "comfortable": {
-                "value": 44,
+                "value": 40,
                 "unit": "px"
               },
               "compact": {

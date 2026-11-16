@@ -3,81 +3,188 @@
   "schemaVersion": 1,
   "name": "button",
   "title": "Button",
-  "description": "An action button: primary, secondary, ghost and danger variants in three density-aware sizes, with disabled and loading states.",
-  "usage": "Use one primary Button per view for the main action, secondary next to it, ghost in toolbars and dense rows, danger for destructive actions. Give it a visible text label; for an icon alone use IconButton. Set loading while the action runs instead of disabling it, and type=\"submit\" inside a form.",
+  "description": "Fluent 2's Button: primary, secondary, outline, subtle and transparent appearances (plus Byterygon's danger) in small, medium and large, with hover, pressed, focus (the double ring), disabled and loading states.",
+  "usage": "Use one primary Button per view for the main action, secondary for the others, outline where an edge without a fill reads better, subtle in toolbars and dense rows, transparent for a link-like action, danger for one that destroys data. Medium is the default size; small in dense rows, large for a main call to action. Give it a visible text label (an Icon from @/lib/icons may go before it); for an icon alone use IconButton. Set loading while the action runs instead of disabling it, and type=\"submit\" inside a form. The old variant prop (ghost is subtle) and the sm/md/lg sizes still work for one release.",
   "status": "experimental",
   "base": "@base-ui/react/button",
-  "dependencies": ["@base-ui/react"],
+  "dependencies": [
+    "@base-ui/react"
+  ],
   "props": [
-    { "name": "variant", "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"", "default": "primary", "description": "Visual weight. One primary action per view; danger for actions that destroy data." },
-    { "name": "size", "type": "\"sm\" | \"md\" | \"lg\"", "default": "md", "description": "Control height from size.control.*, which follows data-density." },
-    { "name": "loading", "type": "boolean", "default": false, "description": "The action is running: focusable, ignores clicks, sets aria-busy and data-loading." },
-    { "name": "disabled", "type": "boolean", "default": false, "description": "Ignores interaction and sets data-disabled." },
-    { "name": "type", "type": "\"button\" | \"submit\" | \"reset\"", "default": "button", "description": "The native button type. Defaults to button so a Button inside a form does not submit it." },
-    { "name": "render", "type": "ReactElement | ((props, state) => ReactElement)", "description": "Base UI render prop: render another element (a link) with the button's props and behaviour." },
-    { "name": "className", "type": "string", "description": "Extra classes, merged after the component's own." },
-    { "name": "ref", "type": "Ref<HTMLButtonElement>", "description": "Reaches the rendered element." }
+    {
+      "name": "appearance",
+      "type": "\"primary\" | \"secondary\" | \"outline\" | \"subtle\" | \"transparent\" | \"danger\"",
+      "default": "primary",
+      "description": "Fluent's appearance. One primary action per view; secondary for the others; subtle in toolbars; danger (Byterygon's) for actions that destroy data."
+    },
+    {
+      "name": "size",
+      "type": "\"small\" | \"medium\" | \"large\"",
+      "default": "medium",
+      "description": "Fluent's sizes: 24, 32 and 40 px when comfortable, 22, 28 and 34 px when compact (size.control.sm, md, lg)."
+    },
+    {
+      "name": "variant",
+      "type": "\"primary\" | \"secondary\" | \"ghost\" | \"danger\"",
+      "description": "The old name of appearance; ghost maps to subtle. Kept for one release.",
+      "deprecated": "use appearance (ghost is subtle)"
+    },
+    {
+      "name": "size (sm, md, lg)",
+      "type": "\"sm\" | \"md\" | \"lg\"",
+      "description": "The old size names, mapped to small, medium and large. Kept for one release.",
+      "deprecated": "use small, medium or large"
+    },
+    {
+      "name": "loading",
+      "type": "boolean",
+      "default": false,
+      "description": "The action is running: focusable, ignores clicks, sets aria-busy and data-loading."
+    },
+    {
+      "name": "disabled",
+      "type": "boolean",
+      "default": false,
+      "description": "Ignores interaction and sets data-disabled."
+    },
+    {
+      "name": "type",
+      "type": "\"button\" | \"submit\" | \"reset\"",
+      "default": "button",
+      "description": "The native button type. Defaults to button so a Button inside a form does not submit it."
+    },
+    {
+      "name": "render",
+      "type": "ReactElement | ((props, state) => ReactElement)",
+      "description": "Base UI render prop: render another element (a link) with the button's props and behaviour."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLButtonElement>",
+      "description": "Reaches the rendered element."
+    }
   ],
   "variants": {
-    "variant": ["primary", "secondary", "ghost", "danger"],
-    "size": ["sm", "md", "lg"]
+    "appearance": [
+      "primary",
+      "secondary",
+      "outline",
+      "subtle",
+      "transparent",
+      "danger"
+    ],
+    "size": [
+      "small",
+      "medium",
+      "large"
+    ]
   },
   "slots": [
-    { "name": "root", "element": "button", "description": "The button; data-slot=\"button\", data-variant and data-size name its variant." }
+    {
+      "name": "root",
+      "element": "button",
+      "description": "The button; data-slot=\"button\", data-appearance and data-size name its look (the Fluent names, also when an alias was passed)."
+    }
   ],
   "states": [
-    { "name": "hover", "variant": "hover", "description": "Pointer over the button: the variant's hover colour." },
-    { "name": "active", "variant": "active", "description": "Pressed: the variant's pressed colour." },
-    { "name": "focus-visible", "variant": "focus-visible", "description": "Keyboard focus: a ring of ring.width in color.ring, offset by ring.offset." },
-    { "name": "disabled", "variant": "data-disabled", "props": { "disabled": true }, "description": "Ignores interaction, at opacity.disabled." },
-    { "name": "loading", "variant": "data-loading", "props": { "loading": true }, "description": "Running: aria-busy, ignores clicks, stays focusable." }
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over the button: the appearance's hover fill, edge or text (subtle turns its icon to the accent)."
+    },
+    {
+      "name": "active",
+      "variant": "active",
+      "description": "Pressed: the appearance's pressed fill."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus: Fluent's double ring, ring.color outside ring.inner-color (@/lib/control focusRing)."
+    },
+    {
+      "name": "disabled",
+      "variant": "data-disabled",
+      "props": {
+        "disabled": true
+      },
+      "description": "Ignores interaction: color.bg.disabled and color.border.disabled on filled appearances, color.fg.disabled text."
+    },
+    {
+      "name": "loading",
+      "variant": "data-loading",
+      "props": {
+        "loading": true
+      },
+      "description": "Running: aria-busy, ignores clicks, stays focusable, shown as disabled (as Fluent's disabledFocusable)."
+    }
   ],
   "tokens": [
     "color.accent.bg",
     "color.accent.bg-active",
     "color.accent.bg-hover",
     "color.accent.fg",
+    "color.accent.subtle-fg",
+    "color.bg.disabled",
+    "color.bg.layer",
+    "color.border.control-bottom-subtle",
+    "color.border.default",
+    "color.border.disabled",
+    "color.border.strong",
+    "color.border.subtle",
     "color.fg.default",
+    "color.fg.disabled",
+    "color.fg.muted",
     "color.interactive.active",
     "color.interactive.hover",
-    "color.neutral.bg",
-    "color.neutral.bg-active",
-    "color.neutral.bg-hover",
-    "color.neutral.fg",
     "color.ring",
+    "color.ring-inner",
     "color.status.danger.solid",
     "color.status.danger.solid-fg",
     "color.status.danger.solid-hover",
     "font.sans",
-    "motion.duration.fast",
-    "motion.easing.standard",
-    "opacity.disabled",
+    "motion.duration.faster",
+    "motion.easing.easy-ease",
     "radius.md",
-    "ring.offset",
+    "ring.inner-width",
     "ring.width",
     "size.control.lg",
     "size.control.md",
     "size.control.sm",
-    "size.icon.sm",
+    "size.icon.lg",
+    "size.icon.md",
+    "size.icon.xl",
     "space.control.x",
     "space.inline.sm",
-    "space.inset.lg",
-    "space.inset.sm",
-    "text.body-strong.leading",
-    "text.body-strong.size",
-    "text.body-strong.tracking",
-    "text.body-strong.weight",
-    "text.label.leading",
-    "text.label.size",
-    "text.label.tracking",
-    "text.label.weight"
+    "space.inset.md",
+    "space.inset.xs",
+    "text.body-1-strong.leading",
+    "text.body-1-strong.size",
+    "text.body-1-strong.tracking",
+    "text.body-1-strong.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight",
+    "text.subtitle-2.leading",
+    "text.subtitle-2.size",
+    "text.subtitle-2.tracking",
+    "text.subtitle-2.weight"
   ],
-  "examples": { "minimal": "ButtonMinimal", "realistic": "ButtonRealistic" },
+  "examples": {
+    "minimal": "ButtonMinimal",
+    "realistic": "ButtonRealistic"
+  },
   "accessibility": [
     "Renders a native <button> with type=\"button\" unless type is set, so Enter and Space activate it.",
-    "An icon-only button needs aria-label.",
+    "An icon-only button needs aria-label (use IconButton, whose type requires it).",
     "Disabled uses the native disabled attribute; loading keeps the button focusable (aria-disabled) so focus is not lost mid-action, and sets aria-busy.",
-    "The focus ring shows for keyboard focus only (focus-visible) and meets 3:1 against every surface (token pair color.ring).",
-    "Text and background pairs of every variant are contrast-checked by the token build in light and dark."
+    "The focus ring shows for keyboard focus only (focus-visible): an outline in color.ring, which forced-colours mode keeps, around an inner stroke in color.ring-inner; color.ring meets 3:1 on every surface and layer (token pairs).",
+    "Text and fill pairs of every appearance are contrast-checked by the token build in light and dark; disabled text is exempt (WCAG 1.4.3)."
   ]
 }

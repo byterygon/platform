@@ -25,7 +25,7 @@ export function PasswordInputRealistic() {
       </Field>
       <Field name="passphrase" invalid>
         <FieldLabel>Key passphrase</FieldLabel>
-        <PasswordInput autoComplete="new-password" defaultValue="abc" size="sm" />
+        <PasswordInput autoComplete="new-password" defaultValue="abc" size="small" />
         <FieldError>Use at least 12 characters.</FieldError>
       </Field>
       <Field name="vault" disabled>
@@ -35,7 +35,7 @@ export function PasswordInputRealistic() {
       </Field>
       <Field name="admin">
         <FieldLabel>Administrator password</FieldLabel>
-        <PasswordInput size="lg" />
+        <PasswordInput size="large" appearance="filled-darker" />
       </Field>
     </div>
   );

@@ -1,34 +1,42 @@
 import type { ComponentProps, MouseEventHandler, ReactNode, Ref } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonVariant } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, type DropdownMenuProps } from "@/components/ui/dropdown-menu";
+import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/cn";
+import { controlAppearance, controlSize, type ControlSizeProp } from "@/lib/control";
+import { ChevronDown } from "@/lib/icons";
 
-// A primary action with a menu of its variants, joined into one control: a Button and an
-// IconButton that opens a DropdownMenu (Base UI's Menu). DBee's Run is one: Run, with "Run
-// selection" and "Run statement" in the menu. The menu's content is DropdownMenu's parts.
+// Fluent 2's SplitButton: a primary action with a menu of its variants, joined into one control: a
+// Button and a chevron IconButton that opens a DropdownMenu (Base UI's Menu). DBee's Run is one:
+// Run, with "Run selection" and "Run statement" in the menu. The menu's content is DropdownMenu's
+// parts. Both halves take Button's appearance and size; a focused half is lifted above the other
+// so its double ring is never covered.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const splitButtonVariants = {
-  /** The Button variant of both halves; the classes are the divider and the open menu button. */
-  variant: {
+  /** The Button appearance of both halves; the classes are the divider and the open menu button. */
+  appearance: {
     primary: "border-s-accent-solid-active data-popup-open:bg-accent-solid-active",
-    secondary: "border-s-neutral-solid-active data-popup-open:bg-neutral-solid-active",
-    ghost: "border-s-border data-popup-open:bg-pressed",
+    secondary: "border-s-border-subtle data-popup-open:bg-pressed",
+    outline: "border-s-border data-popup-open:bg-pressed",
+    subtle: "border-s-border-subtle data-popup-open:bg-pressed",
+    transparent: "border-s-transparent data-popup-open:text-accent-subtle-fg",
   },
   /** The height of both halves, from `size.control.*`; the menu button is square. */
   size: {
-    sm: "border-s",
-    md: "border-s",
-    lg: "border-s",
+    small: "border-s",
+    medium: "border-s",
+    large: "border-s",
   },
 } as const;
 
-const ChevronDownIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m4 6 4 4 4-4" />
-  </svg>
-);
+/** The deprecated `variant` values SplitButton took, and the appearances they map to. */
+const VARIANT_ALIASES: Readonly<Record<Exclude<ButtonVariant, "danger">, keyof typeof splitButtonVariants.appearance>> = {
+  primary: "primary",
+  secondary: "secondary",
+  ghost: "subtle",
+};
 
 export interface SplitButtonProps extends Omit<ComponentProps<"div">, "className" | "onClick" | "children" | "ref"> {
   /** The main action's label. */
@@ -39,10 +47,15 @@ export interface SplitButtonProps extends Omit<ComponentProps<"div">, "className
   menu?: ReactNode;
   /** The accessible name of the menu button. */
   menuLabel?: string;
-  /** Button variant of both halves. */
-  variant?: keyof typeof splitButtonVariants.variant;
-  /** Height of both halves. */
-  size?: keyof typeof splitButtonVariants.size;
+  /** Button appearance of both halves. */
+  appearance?: keyof typeof splitButtonVariants.appearance | undefined;
+  /**
+   * The old name of `appearance` (`ghost` is `subtle`).
+   * @deprecated Use `appearance`. Kept for one release.
+   */
+  variant?: Exclude<ButtonVariant, "danger"> | undefined;
+  /** Height of both halves: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Disables both halves. */
   disabled?: boolean;
   /** The main action is running: its Button shows loading; the menu stays usable. */
@@ -65,8 +78,9 @@ export function SplitButton({
   onClick,
   menu,
   menuLabel = "More options",
-  variant = "primary",
-  size = "md",
+  appearance,
+  variant,
+  size,
   disabled = false,
   loading = false,
   align = "end",
@@ -77,19 +91,21 @@ export function SplitButton({
   ref,
   ...props
 }: SplitButtonProps) {
+  const look = controlAppearance(appearance, variant, VARIANT_ALIASES, "primary");
+  const height = controlSize(size);
   const menuState = { ...(open === undefined ? {} : { open }), ...(defaultOpen === undefined ? {} : { defaultOpen }), ...(onOpenChange ? { onOpenChange } : {}) };
   return (
-    <div data-slot="split-button" data-variant={variant} data-size={size} role="group" className={cn("inline-flex items-stretch", className)} {...props}>
-      <Button ref={ref} variant={variant} size={size} disabled={disabled} loading={loading} className="rounded-e-none" {...(onClick ? { onClick } : {})}>
+    <div data-slot="split-button" data-appearance={look} data-size={height} role="group" className={cn("inline-flex items-stretch", className)} {...props}>
+      <Button ref={ref} appearance={look} size={height} disabled={disabled} loading={loading} className="rounded-e-none focus-visible:relative" {...(onClick ? { onClick } : {})}>
         {children}
       </Button>
       <DropdownMenu {...menuState}>
         <DropdownMenuTrigger
           disabled={disabled}
-          render={<IconButton aria-label={menuLabel} variant={variant} size={size} />}
-          className={cn("rounded-s-none", splitButtonVariants.variant[variant], splitButtonVariants.size[size])}
+          render={<IconButton aria-label={menuLabel} appearance={look} size={height} />}
+          className={cn("rounded-s-none focus-visible:relative", splitButtonVariants.appearance[look], splitButtonVariants.size[height])}
         >
-          <ChevronDownIcon />
+          <Icon icon={ChevronDown} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align={align}>{menu}</DropdownMenuContent>
       </DropdownMenu>

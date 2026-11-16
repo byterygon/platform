@@ -83,7 +83,7 @@ export function TokenList({ theme, derived, onChange, selected, onSelect }: Toke
   return (
     <div className="flex flex-col gap-stack-md">
       <SearchInput aria-label="Search tokens" placeholder="Search tokens (path or description)" value={query} onValueChange={setQuery} />
-      <ToggleGroup aria-label="Tier" size="sm" value={[tier]} onValueChange={(next: unknown[]) => next[0] !== undefined && setTier(next[0] as TierFilter)}>
+      <ToggleGroup aria-label="Tier" size="small" value={[tier]} onValueChange={(next: unknown[]) => next[0] !== undefined && setTier(next[0] as TierFilter)}>
         <ToggleGroupItem value="semantic">Semantic</ToggleGroupItem>
         <ToggleGroupItem value="component">Component</ToggleGroupItem>
         <ToggleGroupItem value="primitive">Primitive</ToggleGroupItem>
@@ -109,7 +109,7 @@ export function TokenList({ theme, derived, onChange, selected, onSelect }: Toke
                   <span className="text-caption text-fg-muted">{tokens.length}</span>
                 </CollapsibleTrigger>
                 {groupEdited && (
-                  <Button variant="ghost" size="sm" onClick={() => onChange(resetGroup(theme, group))} aria-label={`Reset group ${group}`}>
+                  <Button appearance="subtle" size="small" onClick={() => onChange(resetGroup(theme, group))} aria-label={`Reset group ${group}`}>
                     Reset group
                   </Button>
                 )}
@@ -182,10 +182,10 @@ export function TokenDetail({ theme, derived, onChange, selected, onSelect }: To
         <p className="text-body text-fg-muted">{token.description}</p>
         <p className="font-mono text-caption text-fg-muted">--by-{token.path.replace(/\./g, "-")}</p>
         <div className="flex gap-inline-sm">
-          <Button variant="secondary" size="sm" disabled={own === undefined} onClick={() => onChange(setOverride(theme, token.path, undefined))}>
+          <Button appearance="secondary" size="small" disabled={own === undefined} onClick={() => onChange(setOverride(theme, token.path, undefined))}>
             Reset token
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => onSelect(undefined)}>
+          <Button appearance="subtle" size="small" onClick={() => onSelect(undefined)}>
             Close
           </Button>
         </div>
@@ -272,7 +272,7 @@ export function TokenDetail({ theme, derived, onChange, selected, onSelect }: To
               <Field>
                 <FieldLabel>Value as written in the theme file</FieldLabel>
                 <Input
-                  size="sm"
+                  size="small"
                   className="font-mono"
                   placeholder={view.chain.length > 1 ? `{${view.chain[1]}}` : view.css}
                   value={overrideText(written)}

@@ -1,10 +1,13 @@
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import type { ReactNode, Ref } from "react";
-import { inputVariants } from "@/components/ui/input";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
+import { controlSize, fieldAppearance, fieldAppearances, fieldFrame, fieldPadding, fieldSizes, fieldStates, flyoutItem, flyoutLabel, flyoutMotion, flyoutSeparator, flyoutSurface, type ControlSizeProp, type FieldAppearance } from "@/lib/control";
+import { Checkmark, ChevronDown } from "@/lib/icons";
 import { tokenPx, useThemeScope } from "@/lib/theme-scope";
 
-// One choice from a list, on Base UI's Select: a trigger that looks like an Input and shows the
+// One choice from a list (Fluent 2's Dropdown), on Base UI's Select: a trigger that looks like an
+// Input (its appearances, sizes, focus underline and states) and shows the
 // chosen item's label, and a listbox popup below it. `Select` renders the trigger and the popup;
 // its children are the popup's content (SelectItem, SelectGroup with SelectGroupLabel,
 // SelectSeparator). The popup is placed under the trigger (not over it, as a native macOS menu
@@ -12,21 +15,25 @@ import { tokenPx, useThemeScope } from "@/lib/theme-scope";
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const selectVariants = {
-  size: inputVariants.size,
+  appearance: fieldAppearances,
+  size: {
+    small: `${fieldSizes.small} ${fieldPadding.small} [&_[data-slot=select-icon]_svg]:size-icon-md`,
+    medium: `${fieldSizes.medium} ${fieldPadding.medium} [&_[data-slot=select-icon]_svg]:size-icon-lg`,
+    large: `${fieldSizes.large} ${fieldPadding.large} [&_[data-slot=select-icon]_svg]:size-icon-xl`,
+  },
 } as const;
 
 const triggerClasses = [
-  "flex w-full min-w-0 cursor-default select-none items-center gap-inline-sm rounded-md border border-border-strong bg-surface text-start font-sans text-body text-fg",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-  "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
-  "data-popup-open:border-border-focus",
-  "aria-invalid:border-danger-border data-invalid:border-danger-border",
-  "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
+  "flex w-full min-w-0 cursor-default select-none items-center gap-inline-sm text-start",
+  fieldFrame,
+  fieldStates,
+  // Open: the underline stays while the list is up, as Fluent's Dropdown keeps it.
+  "data-popup-open:shadow-focus-underline",
 ];
 
 const valueClasses = ["min-w-0 flex-1 truncate data-placeholder:text-fg-subtle"];
 
-const iconClasses = ["flex shrink-0 text-fg-muted [&_svg]:size-icon-sm"];
+const iconClasses = ["flex shrink-0 text-fg-muted in-data-disabled:text-fg-disabled"];
 
 /**
  * The popup's positioner and popup. Shared with Combobox and MultiSelect through the class
@@ -34,19 +41,11 @@ const iconClasses = ["flex shrink-0 text-fg-muted [&_svg]:size-icon-sm"];
  */
 export const popupClasses = {
   positioner: "z-[var(--by-z-popover)] outline-none",
-  popup: [
-    "flex flex-col overflow-y-auto overscroll-contain rounded-md border border-border bg-overlay p-inset-xs font-sans text-body text-fg shadow-overlay outline-none",
-    "transition-opacity duration-[var(--by-motion-duration-fast)] ease-enter",
-    "data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:ease-exit",
-  ],
-  item: [
-    "flex min-h-control-sm cursor-default select-none items-center gap-inline-sm rounded-sm px-inset-sm text-body text-fg outline-none",
-    "data-highlighted:bg-hover",
-    "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
-  ],
-  indicator: "ms-auto flex shrink-0 [&_svg]:size-icon-sm",
-  groupLabel: "flex min-h-control-xs select-none items-center px-inset-sm text-caption text-fg-subtle",
-  separator: "-mx-inset-xs my-inset-xs h-px shrink-0 bg-border",
+  popup: ["flex flex-col overflow-y-auto overscroll-contain p-inline-xs", flyoutSurface, flyoutMotion],
+  item: [flyoutItem, "data-selected:text-body-1-strong"],
+  indicator: "ms-auto flex shrink-0 text-accent-subtle-fg",
+  groupLabel: flyoutLabel,
+  separator: flyoutSeparator,
 } as const;
 
 /**
@@ -62,21 +61,14 @@ export const popupStyle = {
 /** The gap between the trigger and the popup: space.inline.xs where the trigger is. */
 export const popupOffset = (anchor: Element | null) => tokenPx(anchor, "--by-space-inline-xs", 4);
 
-const ChevronIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m4 6 4 4 4-4" />
-  </svg>
-);
-
-export const CheckIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m3.5 8.5 3 3 6-7" />
-  </svg>
-);
+/** The check mark of a chosen option (Fluent's Checkmark); Combobox and MultiSelect reuse it. */
+export const CheckIcon = () => <Icon icon={Checkmark} />;
 
 export interface SelectProps<Value> extends Omit<SelectPrimitive.Root.Props<Value, false>, "multiple" | "children"> {
-  /** Trigger height, from the density-aware `size.control.*` roles. */
-  size?: keyof typeof selectVariants.size;
+  /** Fluent's field appearance of the trigger: outline (default), underline, filled-darker or filled-lighter. */
+  appearance?: FieldAppearance | undefined;
+  /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Shown in the trigger while nothing is chosen. */
   placeholder?: ReactNode;
   /** Accessible name when there is no FieldLabel; set on the trigger. */
@@ -94,8 +86,10 @@ export interface SelectProps<Value> extends Omit<SelectPrimitive.Root.Props<Valu
  * objects) so the trigger can show the chosen label before the popup has ever opened. Inside a
  * Field it takes the label, description and validity; the ref reaches the trigger.
  */
-export function Select<Value>({ size = "md", placeholder, "aria-label": ariaLabel, children, className, ref, onOpenChange, ...props }: SelectProps<Value>) {
+export function Select<Value>({ appearance, size, placeholder, "aria-label": ariaLabel, children, className, ref, onOpenChange, ...props }: SelectProps<Value>) {
   const { ref: anchorRef, anchor, scope, refresh } = useThemeScope<HTMLButtonElement>(ref);
+  const look = fieldAppearance(appearance);
+  const height = controlSize(size);
   return (
     <SelectPrimitive.Root<Value>
       onOpenChange={(open, details) => {
@@ -104,10 +98,17 @@ export function Select<Value>({ size = "md", placeholder, "aria-label": ariaLabe
       }}
       {...props}
     >
-      <SelectPrimitive.Trigger ref={anchorRef} data-slot="select" data-size={size} aria-label={ariaLabel} className={cn(triggerClasses, selectVariants.size[size], className)}>
+      <SelectPrimitive.Trigger
+        ref={anchorRef}
+        data-slot="select"
+        data-appearance={look}
+        data-size={height}
+        aria-label={ariaLabel}
+        className={cn(triggerClasses, selectVariants.appearance[look], selectVariants.size[height], className)}
+      >
         <SelectPrimitive.Value data-slot="select-value" placeholder={placeholder} className={cn(valueClasses)} />
         <SelectPrimitive.Icon data-slot="select-icon" className={cn(iconClasses)}>
-          <ChevronIcon />
+          <Icon icon={ChevronDown} />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>

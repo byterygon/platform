@@ -35,7 +35,7 @@ function applyThemeCss(css: string, doc: Document = document): void {
 
 function Choice<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly [T, string][]; onChange: (value: T) => void }) {
   return (
-    <ToggleGroup aria-label={label} size="sm" value={[value]} onValueChange={(next: unknown[]) => next[0] !== undefined && onChange(next[0] as T)}>
+    <ToggleGroup aria-label={label} size="small" value={[value]} onValueChange={(next: unknown[]) => next[0] !== undefined && onChange(next[0] as T)}>
       {options.map(([option, text]) => (
         <ToggleGroupItem key={option} value={option}>
           {text}
@@ -122,7 +122,7 @@ export function App({ initial, save = saveState }: AppProps) {
         <h1 className="text-heading-3 text-fg">Theme Studio</h1>
         <Field className="w-panel-xs">
           <FieldLabel className="sr-only">Theme name</FieldLabel>
-          <Input size="sm" className="font-mono" value={name} onValueChange={(text: string) => setTheme({ ...theme, name: text })} aria-label="Theme name" />
+          <Input size="small" className="font-mono" value={name} onValueChange={(text: string) => setTheme({ ...theme, name: text })} aria-label="Theme name" />
         </Field>
         <Status errors={derived.errors} warnings={derived.warnings} checks={checks} />
         <div className="ms-auto flex flex-wrap items-center gap-inline-md">
@@ -130,7 +130,7 @@ export function App({ initial, save = saveState }: AppProps) {
           <Choice label="Density" value={view.density} options={[["comfortable", "Comfortable"], ["compact", "Compact"]]} onChange={(density) => setView({ ...view, density })} />
           <ExportPanel theme={theme} />
           <AlertDialog size="sm">
-            <AlertDialogTrigger render={<Button variant="ghost" size="sm" />}>Start over</AlertDialogTrigger>
+            <AlertDialogTrigger render={<Button appearance="subtle" size="small" />}>Start over</AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Start over?</AlertDialogTitle>
@@ -246,7 +246,7 @@ function Problems({ derived, onSelect }: { derived: ReturnType<typeof derive>; o
           <span className="flex flex-wrap items-center gap-inline-sm">
             <Badge variant={d.severity === "error" ? "danger" : "warning"}>{d.rule}</Badge>
             {d.token && derived.set.tokens.has(d.token) ? (
-              <Button variant="ghost" size="sm" className="font-mono" onClick={() => onSelect(d.token!)}>
+              <Button appearance="subtle" size="small" className="font-mono" onClick={() => onSelect(d.token!)}>
                 {d.token}
               </Button>
             ) : (

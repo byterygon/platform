@@ -64,4 +64,11 @@ describe("Slider", () => {
     expect(ref.current?.hasAttribute("data-disabled")).toBe(true);
     expect((container.querySelector('input[type="range"]') as HTMLInputElement).disabled).toBe(true);
   });
+  test("takes Fluent's sizes, and sm/md/lg as aliases for one release", () => {
+    for (const [size, fluent] of [["small", "small"], ["large", "large"], ["sm", "small"], ["md", "medium"], ["lg", "large"]] as const) {
+      const { container, unmount } = render(<Slider aria-label="Rows" size={size} defaultValue={4} />);
+      expect((container.querySelector('[data-slot="slider"]') as HTMLElement).dataset.size).toBe(fluent);
+      unmount();
+    }
+  });
 });

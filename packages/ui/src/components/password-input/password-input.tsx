@@ -1,7 +1,10 @@
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { useState } from "react";
+import { Icon } from "@/components/icon/icon";
 import { InputGroup, InputGroupButton, InputGroupInput, inputGroupVariants } from "@/components/input-group/input-group";
 import { cn } from "@/lib/cn";
+import type { ControlSizeProp, FieldAppearance } from "@/lib/control";
+import { Eye, EyeOff } from "@/lib/icons";
 
 // A password field: an InputGroup with Base UI's Input (so it works inside a Field) and a button
 // that shows or hides the text. The button keeps one name ("Show password") and reports its state
@@ -9,28 +12,18 @@ import { cn } from "@/lib/cn";
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const passwordInputVariants = {
-  /** InputGroup applies these; listed here so the manifest and the tests see every size. */
+  /** InputGroup applies these; listed here so the manifest and the tests see every value. */
+  appearance: inputGroupVariants.appearance,
   size: inputGroupVariants.size,
 } as const;
 
 const toggleClasses = ["text-fg-muted hover:text-fg aria-pressed:text-fg"];
 
-const EyeIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8Z" />
-    <circle cx="8" cy="8" r="2" />
-  </svg>
-);
-
-const EyeOffIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2 2l12 12M6.6 6.7a2 2 0 0 0 2.7 2.7M4.2 4.4C2.5 5.6 1.5 8 1.5 8s2.4 4.5 6.5 4.5c1.4 0 2.6-.5 3.6-1.2M7 3.6c.3 0 .7-.1 1-.1 4.1 0 6.5 4.5 6.5 4.5s-.6 1.1-1.6 2.3" />
-  </svg>
-);
-
 export interface PasswordInputProps extends Omit<InputPrimitive.Props, "className" | "size" | "type"> {
-  /** Height, from the density-aware `size.control.*` roles. */
-  size?: keyof typeof inputGroupVariants.size;
+  /** Fluent's field appearance: outline (default), underline, filled-darker or filled-lighter. */
+  appearance?: FieldAppearance | undefined;
+  /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Controlled: whether the text is shown. */
   visible?: boolean;
   /** Initially shown when uncontrolled. */
@@ -49,7 +42,8 @@ export interface PasswordInputProps extends Omit<InputPrimitive.Props, "classNam
  * "new-password" when the user sets one. The ref reaches the `<input>`; className the frame.
  */
 export function PasswordInput({
-  size = "md",
+  appearance,
+  size,
   visible,
   defaultVisible = false,
   onVisibleChange,
@@ -66,10 +60,10 @@ export function PasswordInput({
     onVisibleChange?.(!shown);
   };
   return (
-    <InputGroup data-slot="password-input" size={size} className={cn(className)}>
+    <InputGroup data-slot="password-input" appearance={appearance} size={size} className={cn(className)}>
       <InputGroupInput type={shown ? "text" : "password"} autoComplete={autoComplete} spellCheck={false} disabled={disabled} {...props} />
       <InputGroupButton aria-label={toggleLabel} aria-pressed={shown} disabled={disabled} onClick={toggle} className={cn(toggleClasses)}>
-        {shown ? <EyeOffIcon /> : <EyeIcon />}
+        <Icon icon={shown ? EyeOff : Eye} />
       </InputGroupButton>
     </InputGroup>
   );

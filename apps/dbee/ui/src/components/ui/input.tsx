@@ -1,27 +1,28 @@
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { cn } from "@/lib/cn";
+import { controlSize, fieldAppearance, fieldAppearances, fieldFrame, fieldPadding, fieldSizes, fieldStates, type ControlSizeProp, type FieldAppearance } from "@/lib/control";
+
+// Fluent 2's Input on Base UI's Input: appearance outline (default), underline, filled-darker or
+// filled-lighter; sizes small, medium and large. The frame is a hairline with a darker bottom
+// edge (what makes the field 3:1); focus is the accent underline; invalid turns the edges danger.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const inputVariants = {
+  appearance: fieldAppearances,
   size: {
-    sm: "h-control-sm px-inset-sm",
-    md: "h-control-md px-control-x",
-    lg: "h-control-lg px-inset-lg",
+    small: `${fieldSizes.small} ${fieldPadding.small}`,
+    medium: `${fieldSizes.medium} ${fieldPadding.medium}`,
+    large: `${fieldSizes.large} ${fieldPadding.large}`,
   },
 } as const;
 
-const base = [
-  "flex w-full min-w-0 rounded-md border border-border-strong bg-surface font-sans text-body text-fg",
-  "placeholder:text-fg-subtle",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-  "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
-  "aria-invalid:border-danger-border data-invalid:border-danger-border",
-  "data-disabled:cursor-not-allowed data-disabled:opacity-[var(--by-opacity-disabled)]",
-];
+const base = ["flex w-full min-w-0", fieldFrame, fieldStates, "placeholder:text-fg-subtle data-disabled:placeholder:text-fg-disabled"];
 
 export interface InputProps extends Omit<InputPrimitive.Props, "className" | "size"> {
-  /** Control height, from the density-aware `size.control.*` roles. */
-  size?: keyof typeof inputVariants.size;
+  /** Fluent's field appearance: outline (default), underline, filled-darker or filled-lighter. */
+  appearance?: FieldAppearance | undefined;
+  /** Fluent's size: small, medium or large (`sm`, `md`, `lg` are deprecated aliases). */
+  size?: ControlSizeProp | undefined;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }
@@ -31,6 +32,16 @@ export interface InputProps extends Omit<InputPrimitive.Props, "className" | "si
  * description and validity; on its own, set `aria-invalid` to mark it invalid. The ref reaches
  * the `<input>`.
  */
-export function Input({ size = "md", className, ...props }: InputProps) {
-  return <InputPrimitive data-slot="input" data-size={size} className={cn(base, inputVariants.size[size], className)} {...props} />;
+export function Input({ appearance, size, className, ...props }: InputProps) {
+  const look = fieldAppearance(appearance);
+  const height = controlSize(size);
+  return (
+    <InputPrimitive
+      data-slot="input"
+      data-appearance={look}
+      data-size={height}
+      className={cn(base, inputVariants.appearance[look], inputVariants.size[height], className)}
+      {...props}
+    />
+  );
 }

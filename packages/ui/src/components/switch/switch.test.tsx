@@ -21,7 +21,7 @@ describe("Switch", () => {
     );
     const root = control(container);
     expect(root.dataset.slot).toBe("switch");
-    expect(root.dataset.size).toBe("md");
+    expect(root.dataset.size).toBe("medium");
     expect(root.getAttribute("aria-checked")).toBe("false");
     expect(root.querySelector('[data-slot="switch-thumb"]')).not.toBeNull();
     const description = container.querySelector('[data-slot="field-description"]')!;
@@ -74,5 +74,12 @@ describe("Switch", () => {
     const ref = createRef<HTMLSpanElement>();
     render(<Switch ref={ref} aria-label="Wrap" />);
     expect(ref.current?.dataset.slot).toBe("switch");
+  });
+  test("takes Fluent's sizes, and sm/md/lg as aliases for one release", () => {
+    for (const [size, fluent] of [["small", "small"], ["large", "large"], ["sm", "small"], ["md", "medium"], ["lg", "large"]] as const) {
+      const { container, unmount } = render(<Switch aria-label="Read only" size={size} />);
+      expect((container.querySelector('[data-slot="switch"]') as HTMLElement).dataset.size).toBe(fluent);
+      unmount();
+    }
   });
 });
