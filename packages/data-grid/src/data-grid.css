@@ -1,0 +1,221 @@
+/*
+ * @byterygon/data-grid: every value is a design-token role (CSS variables of
+ * @byterygon/design-tokens, which the application loads). test/conventions.test.ts checks that
+ * each var() names a token and that no raw colour, length or font appears. The row height is
+ * grid.row-height (follows data-density); the grid reads it from the probe below.
+ */
+
+.bdg {
+  position: relative;
+  block-size: 100%;
+  min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+  background: var(--by-grid-row-bg);
+  color: var(--by-color-fg-default);
+  font-family: var(--by-text-code-sm-family);
+  font-size: var(--by-text-code-sm-size);
+  font-weight: var(--by-text-code-sm-weight);
+  line-height: var(--by-text-code-sm-leading);
+  letter-spacing: var(--by-text-code-sm-tracking);
+}
+
+.bdg-scroller {
+  position: relative;
+  block-size: 100%;
+  inline-size: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+
+/* The scroll range: its height and width are set by the cell layer. */
+.bdg-sizer {
+  position: relative;
+}
+
+.bdg-head {
+  position: sticky;
+  inset-block-start: var(--by-border-width-0);
+  z-index: 2;
+}
+
+.bdg-header-row {
+  position: relative;
+  block-size: var(--by-grid-row-height);
+  background: var(--by-grid-header-bg);
+  box-shadow: inset 0 calc(-1 * var(--by-border-width-1)) 0 var(--by-grid-cell-border);
+}
+
+.bdg-columnheader,
+.bdg-corner {
+  position: absolute;
+  inset-block-start: var(--by-border-width-0);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--by-space-inline-xs);
+  block-size: 100%;
+  padding-inline: var(--by-grid-cell-padding-x);
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--by-text-caption-1-strong-family);
+  font-size: var(--by-text-caption-1-strong-size);
+  font-weight: var(--by-text-caption-1-strong-weight);
+  line-height: var(--by-text-caption-1-strong-leading);
+  color: var(--by-color-fg-default);
+  box-shadow: inset calc(-1 * var(--by-border-width-1)) 0 0 var(--by-grid-cell-border);
+}
+
+.bdg-corner {
+  position: sticky;
+  inset-inline-start: var(--by-border-width-0);
+  z-index: 1;
+  justify-content: flex-end;
+  background: var(--by-grid-header-bg);
+  color: var(--by-color-fg-subtle);
+}
+
+.bdg-columnheader.bdg-end {
+  justify-content: flex-end;
+}
+
+.bdg-glyph {
+  flex: none;
+  font-family: var(--by-text-code-sm-family);
+  font-size: var(--by-text-code-sm-size);
+}
+
+.bdg-glyph[data-family="integer"] { color: var(--by-data-type-integer); }
+.bdg-glyph[data-family="decimal"] { color: var(--by-data-type-decimal); }
+.bdg-glyph[data-family="text"] { color: var(--by-data-type-text); }
+.bdg-glyph[data-family="boolean"] { color: var(--by-data-type-boolean); }
+.bdg-glyph[data-family="datetime"] { color: var(--by-data-type-datetime); }
+.bdg-glyph[data-family="json"] { color: var(--by-data-type-json); }
+.bdg-glyph[data-family="binary"] { color: var(--by-data-type-binary); }
+.bdg-glyph[data-family="uuid"] { color: var(--by-data-type-uuid); }
+
+.bdg-name {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bdg-type {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  font-family: var(--by-text-caption-1-family);
+  font-weight: var(--by-text-caption-1-weight);
+  color: var(--by-color-fg-muted);
+}
+
+.bdg-body {
+  position: absolute;
+  inset-block-start: var(--by-border-width-0);
+  inset-inline-start: var(--by-border-width-0);
+}
+
+.bdg-row {
+  position: absolute;
+  inset-block-start: var(--by-border-width-0);
+  inset-inline-start: var(--by-border-width-0);
+  background: var(--by-grid-row-bg);
+}
+
+.bdg-row.bdg-alt {
+  background: var(--by-grid-row-bg-alt);
+}
+
+.bdg-row:hover {
+  background: var(--by-grid-row-hover);
+}
+
+.bdg-rownum,
+.bdg-cell {
+  box-sizing: border-box;
+  block-size: 100%;
+  padding-inline: var(--by-grid-cell-padding-x);
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+  line-height: var(--by-grid-row-height);
+  box-shadow: inset calc(-1 * var(--by-border-width-1)) calc(-1 * var(--by-border-width-1)) 0 var(--by-grid-cell-border);
+}
+
+.bdg-rownum {
+  position: sticky;
+  inset-inline-start: var(--by-border-width-0);
+  z-index: 1;
+  text-align: end;
+  background: var(--by-grid-header-bg);
+  color: var(--by-color-fg-subtle);
+}
+
+.bdg-cell {
+  position: absolute;
+  inset-block-start: var(--by-border-width-0);
+  outline: none;
+}
+
+.bdg-end {
+  text-align: end;
+}
+
+.bdg-center {
+  text-align: center;
+}
+
+.bdg-null {
+  font-style: italic;
+  color: var(--by-grid-null-fg);
+}
+
+.bdg-cell.bdg-selected {
+  background: var(--by-grid-selection-bg);
+}
+
+.bdg-row.bdg-row-selected > .bdg-rownum,
+.bdg-columnheader.bdg-selected {
+  background: var(--by-grid-selection-bg);
+}
+
+/* The active cell: the double focus ring (ring.*) inside the cell, so neighbours do not hide it. */
+.bdg-cell.bdg-active {
+  box-shadow: inset 0 0 0 var(--by-ring-inner-width) var(--by-grid-selection-border);
+}
+
+.bdg-cell:focus-visible,
+.bdg-scroller:focus-visible {
+  outline: var(--by-ring-width) solid var(--by-ring-color);
+  outline-offset: calc(-1 * var(--by-ring-width));
+  box-shadow: inset 0 0 0 calc(var(--by-ring-width) + var(--by-ring-inner-width)) var(--by-ring-inner-color);
+}
+
+/* Measures grid.row-height and the width of ten cell characters (see DataGrid). */
+.bdg-probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  inset-block-start: var(--by-border-width-0);
+  inset-inline-start: var(--by-border-width-0);
+  block-size: var(--by-grid-row-height);
+  padding-inline: var(--by-grid-cell-padding-x);
+  white-space: pre;
+}
+
+.bdg-sr-only {
+  position: absolute;
+  inline-size: var(--by-border-width-1);
+  block-size: var(--by-border-width-1);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bdg-scroller {
+    scroll-behavior: auto;
+  }
+}
