@@ -214,7 +214,10 @@ test("figma-variables.json groups variables into collections with modes", async 
     Comfortable: { type: "VARIABLE_ALIAS", collection: "Primitives", name: "space/2" },
     Compact: { type: "VARIABLE_ALIAS", collection: "Primitives", name: "space/1-5" },
   });
-  assert.deepEqual(variable("Primitives", "motion/duration/base").valuesByMode, { Value: 160 });
+  assert.deepEqual(variable("Primitives", "motion/duration/normal").valuesByMode, { Value: 200 });
+  assert.deepEqual(variable("Semantic", "motion/duration/base").valuesByMode, {
+    Value: { type: "VARIABLE_ALIAS", collection: "Primitives", name: "motion/duration/normal" },
+  });
   assert.deepEqual(variable("Primitives", "z/modal").valuesByMode, { Value: 400 });
   // Every alias points at a variable that exists.
   for (const c of figma.collections) {

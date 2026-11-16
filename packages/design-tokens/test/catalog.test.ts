@@ -96,18 +96,137 @@ test("the contract the first components were written against is only added to", 
 
 test("text roles are five tokens each, and they point at the scales", () => {
   const { set } = generateTokens(defaultTheme());
-  const body = ["family", "size", "weight", "leading", "tracking"].map((field) => set.tokens.get(`text.body.${field}`)!);
+  const body = ["family", "size", "weight", "leading", "tracking"].map((field) => set.tokens.get(`text.body-1.${field}`)!);
   assert.deepEqual(body.map((token) => token.type), ["fontFamily", "dimension", "fontWeight", "number", "dimension"]);
-  assert.deepEqual(body.map((token) => token.value), ["{font.sans}", "{font.size.base}", "{font.weight.regular}", "{font.leading.normal}", "{font.tracking.normal}"]);
+  assert.deepEqual(body.map((token) => token.value), ["{font.sans}", "{font.size.300}", "{font.weight.regular}", "{font.leading.300}", "{font.tracking.normal}"]);
   assert.equal(set.tokens.get("text.code.family")!.value, "{font.mono}");
   const context = { theme: "light", density: "comfortable" };
   const size = resolve(set, "text.body.size", context);
   assert.deepEqual(size.ok && size.value, { value: 14, unit: "px" });
-  // The type scale is derived from the fontSize seed.
+  // The legacy type scale is still derived from the fontSize seed.
   const dense = generateTokens(themeWith({}, { fontSize: 13 })).set;
   const base = resolve(dense, "font.size.base", context);
   const big = resolve(dense, "font.size.4xl", context);
   assert.deepEqual([base.ok && base.value, big.ok && big.value], [{ value: 13, unit: "px" }, { value: 29, unit: "px" }]);
+});
+
+/** Fluent 2's typographyStyles (@fluentui/tokens 1.0.0-alpha.24): size, line height, weight. */
+const FLUENT_STYLES: Record<string, [number, number, number]> = {
+  "caption-2": [10, 14, 400],
+  "caption-2-strong": [10, 14, 600],
+  "caption-1": [12, 16, 400],
+  "caption-1-strong": [12, 16, 600],
+  "caption-1-stronger": [12, 16, 700],
+  "body-1": [14, 20, 400],
+  "body-1-strong": [14, 20, 600],
+  "body-1-stronger": [14, 20, 700],
+  "body-2": [16, 22, 400],
+  "subtitle-2": [16, 22, 600],
+  "subtitle-2-stronger": [16, 22, 700],
+  "subtitle-1": [20, 28, 600],
+  "title-3": [24, 32, 600],
+  "title-2": [28, 36, 600],
+  "title-1": [32, 40, 600],
+  "large-title": [40, 52, 600],
+  display: [68, 92, 600],
+};
+
+function textStyle(set: ReturnType<typeof generateTokens>["set"], role: string, density = "comfortable"): [number, number, number] {
+  const context = { theme: "light", density };
+  const read = (field: string) => {
+    const result = resolve(set, `text.${role}.${field}`, context);
+    assert.ok(result.ok, `text.${role}.${field}`);
+    return result.value as unknown;
+  };
+  const size = (read("size") as { value: number }).value;
+  return [size, Math.round(size * (read("leading") as number) * 100) / 100, read("weight") as number];
+}
+
+test("the text roles are Fluent 2's type ramp at the default body size, in both densities", () => {
+  const { set } = generateTokens(defaultTheme());
+  for (const density of ["comfortable", "compact"]) {
+    for (const [role, style] of Object.entries(FLUENT_STYLES)) assert.deepEqual(textStyle(set, role, density), style, `${role} (${density})`);
+  }
+  for (const role of Object.keys(FLUENT_STYLES)) {
+    assert.equal(set.tokens.get(`text.${role}.family`)!.value, "{font.sans}");
+    assert.equal(set.tokens.get(`text.${role}.tracking`)!.value, "{font.tracking.normal}");
+    assert.equal(set.tokens.get(`text.${role}.size`)!.tailwind, `--text-${role}`);
+  }
+  assert.deepEqual(textStyle(set, "code"), [14, 20, 400]);
+  assert.deepEqual(textStyle(set, "code-sm"), [12, 16, 400]);
+});
+
+test("the names from before Fluent's ramp alias the Fluent role with the same job", () => {
+  const { set } = generateTokens(defaultTheme());
+  const aliases: Record<string, string> = {
+    "heading-1": "title-2",
+    "heading-2": "title-3",
+    "heading-3": "subtitle-1",
+    "heading-4": "subtitle-2",
+    body: "body-1",
+    "body-strong": "body-1-strong",
+    label: "body-1",
+    caption: "caption-1",
+  };
+  for (const [name, target] of Object.entries(aliases)) {
+    for (const field of ["family", "size", "weight", "leading", "tracking"]) {
+      const token = set.tokens.get(`text.${name}.${field}`)!;
+      assert.equal(token.value, `{text.${target}.${field}}`, `text.${name}.${field}`);
+    }
+    assert.equal(set.tokens.get(`text.${name}.size`)!.tailwind, `--text-${name}`);
+    assert.deepEqual(textStyle(set, name), FLUENT_STYLES[target]);
+  }
+});
+
+test("seeds.fontSize is body-1's size and scales the whole ramp, line heights in whole px", () => {
+  const ramp = (fontSize: number) => {
+    const { set } = generateTokens(themeWith({}, { fontSize }));
+    return Object.keys(FLUENT_STYLES).filter((role) => !role.includes("strong")).map((role): [number, number] => { const [size, lineHeight] = textStyle(set, role); return [size, lineHeight]; });
+  };
+  // caption-2, caption-1, body-1, body-2, subtitle-2, subtitle-1, title-3, title-2, title-1, large-title, display.
+  assert.deepEqual(ramp(13), [[10, 14], [11, 15], [13, 19], [15, 21], [15, 21], [19, 27], [22, 29], [26, 33], [30, 38], [37, 48], [63, 85]]);
+  for (const fontSize of [11, 12, 13, 14, 15, 16, 17, 18]) {
+    const steps = ramp(fontSize);
+    for (const [size, lineHeight] of steps) {
+      assert.ok(size >= 10 && Number.isInteger(size), `size ${size} at ${fontSize}`);
+      assert.ok(Number.isInteger(lineHeight) && lineHeight > size, `line height ${lineHeight} on ${size} at ${fontSize}`);
+    }
+    assert.equal(steps[2]![0], fontSize, "body-1 is the fontSize seed");
+  }
+});
+
+test("motion is Fluent 2's durations and curves; the first names alias them", () => {
+  const { set } = generateTokens(defaultTheme());
+  const context = { theme: "light", density: "comfortable" };
+  const value = (path: string) => {
+    const result = resolve(set, path, context);
+    assert.ok(result.ok, path);
+    return result.value;
+  };
+  const durations: Record<string, number> = { instant: 0, "ultra-fast": 50, faster: 100, fast: 150, normal: 200, gentle: 250, slow: 300, slower: 400, "ultra-slow": 500, base: 200 };
+  for (const [name, ms] of Object.entries(durations)) assert.deepEqual(value(`motion.duration.${name}`), { value: ms, unit: "ms" }, name);
+  const curves: Record<string, number[]> = {
+    "accelerate-max": [0.9, 0.1, 1, 0.2],
+    "accelerate-mid": [1, 0, 1, 1],
+    "accelerate-min": [0.8, 0, 0.78, 1],
+    "decelerate-max": [0.1, 0.9, 0.2, 1],
+    "decelerate-mid": [0, 0, 0, 1],
+    "decelerate-min": [0.33, 0, 0.1, 1],
+    "easy-ease-max": [0.8, 0, 0.2, 1],
+    "easy-ease": [0.33, 0, 0.67, 1],
+    linear: [0, 0, 1, 1],
+  };
+  for (const [name, curve] of Object.entries(curves)) {
+    assert.deepEqual(value(`motion.easing.${name}`), curve, name);
+    assert.equal(set.tokens.get(`motion.easing.${name}`)!.tier, "primitive");
+  }
+  const aliases: Record<string, string> = { standard: "easy-ease", enter: "decelerate-mid", exit: "accelerate-mid", emphasized: "easy-ease-max" };
+  for (const [name, target] of Object.entries(aliases)) {
+    assert.equal(set.tokens.get(`motion.easing.${name}`)!.value, `{motion.easing.${target}}`);
+    assert.equal(set.tokens.get(`motion.easing.${name}`)!.tailwind, `--ease-${name}`);
+  }
+  assert.equal(set.tokens.get("motion.duration.base")!.value, "{motion.duration.normal}");
+  assert.equal(set.tokens.get("motion.easing.linear")!.tailwind, undefined, "Tailwind's own ease-linear");
 });
 
 test("size and space follow the density axis; shadows and colours follow the theme axis; nothing follows both", () => {

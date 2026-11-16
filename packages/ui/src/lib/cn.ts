@@ -7,7 +7,37 @@ import { createCn } from "cn/config";
  */
 export const roleNames = {
   /** `text-<role>`: the type roles (size, weight, leading, tracking together). */
-  text: ["display", "heading-1", "heading-2", "heading-3", "heading-4", "body", "body-strong", "label", "caption", "code", "code-sm"],
+  text: [
+    // Fluent 2's type ramp (TSK-57) and the code roles.
+    "caption-2",
+    "caption-2-strong",
+    "caption-1",
+    "caption-1-strong",
+    "caption-1-stronger",
+    "body-1",
+    "body-1-strong",
+    "body-1-stronger",
+    "body-2",
+    "subtitle-2",
+    "subtitle-2-stronger",
+    "subtitle-1",
+    "title-3",
+    "title-2",
+    "title-1",
+    "large-title",
+    "display",
+    "code",
+    "code-sm",
+    // The names from before, aliases of the Fluent roles.
+    "heading-1",
+    "heading-2",
+    "heading-3",
+    "heading-4",
+    "body",
+    "body-strong",
+    "label",
+    "caption",
+  ],
   /** `h-<role>`, `p-<role>`, `gap-<role>`, `size-<role>`: the density-aware size and space roles. */
   spacing: [
     "icon-xs", "icon-sm", "icon-md", "icon-lg", "track",
@@ -24,7 +54,22 @@ export const roleNames = {
   /** `blur-<role>`, `backdrop-blur-<role>`: the blur behind translucent layers. */
   blur: ["acrylic"],
   /** `ease-<role>`: motion curves. */
-  ease: ["standard", "enter", "exit", "emphasized"],
+  ease: [
+    // Fluent 2's curves (TSK-57); linear is Tailwind's own ease-linear.
+    "accelerate-max",
+    "accelerate-mid",
+    "accelerate-min",
+    "decelerate-max",
+    "decelerate-mid",
+    "decelerate-min",
+    "easy-ease-max",
+    "easy-ease",
+    // The names from before, aliases of the Fluent curves.
+    "standard",
+    "enter",
+    "exit",
+    "emphasized",
+  ],
 } as const;
 
 /** Joins class names (strings, arrays, objects, falsy values) and lets later Tailwind classes win. */

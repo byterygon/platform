@@ -10074,7 +10074,7 @@
         {
           "name": "font/size/2xs",
           "type": "FLOAT",
-          "description": "The 2xs step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The 2xs step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10087,7 +10087,7 @@
         {
           "name": "font/size/xs",
           "type": "FLOAT",
-          "description": "The xs step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The xs step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10100,7 +10100,7 @@
         {
           "name": "font/size/sm",
           "type": "FLOAT",
-          "description": "The sm step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The sm step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10113,7 +10113,7 @@
         {
           "name": "font/size/base",
           "type": "FLOAT",
-          "description": "The base step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The base step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10126,7 +10126,7 @@
         {
           "name": "font/size/lg",
           "type": "FLOAT",
-          "description": "The lg step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The lg step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10139,7 +10139,7 @@
         {
           "name": "font/size/xl",
           "type": "FLOAT",
-          "description": "The xl step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The xl step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10152,7 +10152,7 @@
         {
           "name": "font/size/2xl",
           "type": "FLOAT",
-          "description": "The 2xl step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The 2xl step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10165,7 +10165,7 @@
         {
           "name": "font/size/3xl",
           "type": "FLOAT",
-          "description": "The 3xl step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The 3xl step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10178,7 +10178,7 @@
         {
           "name": "font/size/4xl",
           "type": "FLOAT",
-          "description": "The 4xl step of the type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body, text.label, text.heading-2) that has it.",
+          "description": "The 4xl step of the legacy type scale, derived from the fontSize seed (the base step is the body size). Primitive: reference it through a role, never from a component. Not for a new role: the text roles use Fluent's ramp (font.size.100 to font.size.1000); not for a one-off size: pick the text role (text.body-1, text.subtitle-2) that has it.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10186,6 +10186,136 @@
           },
           "valuesByMode": {
             "Value": 30
+          }
+        },
+        {
+          "name": "font/size/100",
+          "type": "FLOAT",
+          "description": "Step 100 of Fluent 2's type ramp: 10 px at the default body size (line height 14 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-100)"
+          },
+          "valuesByMode": {
+            "Value": 10
+          }
+        },
+        {
+          "name": "font/size/200",
+          "type": "FLOAT",
+          "description": "Step 200 of Fluent 2's type ramp: 12 px at the default body size (line height 16 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-200)"
+          },
+          "valuesByMode": {
+            "Value": 12
+          }
+        },
+        {
+          "name": "font/size/300",
+          "type": "FLOAT",
+          "description": "Step 300 of Fluent 2's type ramp: 14 px at the default body size (line height 20 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-300)"
+          },
+          "valuesByMode": {
+            "Value": 14
+          }
+        },
+        {
+          "name": "font/size/400",
+          "type": "FLOAT",
+          "description": "Step 400 of Fluent 2's type ramp: 16 px at the default body size (line height 22 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-400)"
+          },
+          "valuesByMode": {
+            "Value": 16
+          }
+        },
+        {
+          "name": "font/size/500",
+          "type": "FLOAT",
+          "description": "Step 500 of Fluent 2's type ramp: 20 px at the default body size (line height 28 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-500)"
+          },
+          "valuesByMode": {
+            "Value": 20
+          }
+        },
+        {
+          "name": "font/size/600",
+          "type": "FLOAT",
+          "description": "Step 600 of Fluent 2's type ramp: 24 px at the default body size (line height 32 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-600)"
+          },
+          "valuesByMode": {
+            "Value": 24
+          }
+        },
+        {
+          "name": "font/size/700",
+          "type": "FLOAT",
+          "description": "Step 700 of Fluent 2's type ramp: 28 px at the default body size (line height 36 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-700)"
+          },
+          "valuesByMode": {
+            "Value": 28
+          }
+        },
+        {
+          "name": "font/size/800",
+          "type": "FLOAT",
+          "description": "Step 800 of Fluent 2's type ramp: 32 px at the default body size (line height 40 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-800)"
+          },
+          "valuesByMode": {
+            "Value": 32
+          }
+        },
+        {
+          "name": "font/size/900",
+          "type": "FLOAT",
+          "description": "Step 900 of Fluent 2's type ramp: 40 px at the default body size (line height 52 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-900)"
+          },
+          "valuesByMode": {
+            "Value": 40
+          }
+        },
+        {
+          "name": "font/size/1000",
+          "type": "FLOAT",
+          "description": "Step 1000 of Fluent 2's type ramp: 68 px at the default body size (line height 92 px), scaled by the fontSize seed. Primitive: reference it through a role, never from a component. Not for a one-off size: pick the text role (text.body-1, text.caption-1, text.title-3) that has it.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-size-1000)"
+          },
+          "valuesByMode": {
+            "Value": 68
           }
         },
         {
@@ -10290,6 +10420,136 @@
           },
           "valuesByMode": {
             "Value": 1.65
+          }
+        },
+        {
+          "name": "font/leading/100",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 100 of Fluent 2's type ramp (14 px on 10 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-100)"
+          },
+          "valuesByMode": {
+            "Value": 1.4
+          }
+        },
+        {
+          "name": "font/leading/200",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 200 of Fluent 2's type ramp (16 px on 12 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-200)"
+          },
+          "valuesByMode": {
+            "Value": 1.3333
+          }
+        },
+        {
+          "name": "font/leading/300",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 300 of Fluent 2's type ramp (20 px on 14 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-300)"
+          },
+          "valuesByMode": {
+            "Value": 1.4286
+          }
+        },
+        {
+          "name": "font/leading/400",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 400 of Fluent 2's type ramp (22 px on 16 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-400)"
+          },
+          "valuesByMode": {
+            "Value": 1.375
+          }
+        },
+        {
+          "name": "font/leading/500",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 500 of Fluent 2's type ramp (28 px on 20 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-500)"
+          },
+          "valuesByMode": {
+            "Value": 1.4
+          }
+        },
+        {
+          "name": "font/leading/600",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 600 of Fluent 2's type ramp (32 px on 24 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-600)"
+          },
+          "valuesByMode": {
+            "Value": 1.3333
+          }
+        },
+        {
+          "name": "font/leading/700",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 700 of Fluent 2's type ramp (36 px on 28 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-700)"
+          },
+          "valuesByMode": {
+            "Value": 1.2857
+          }
+        },
+        {
+          "name": "font/leading/800",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 800 of Fluent 2's type ramp (40 px on 32 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-800)"
+          },
+          "valuesByMode": {
+            "Value": 1.25
+          }
+        },
+        {
+          "name": "font/leading/900",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 900 of Fluent 2's type ramp (52 px on 40 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-900)"
+          },
+          "valuesByMode": {
+            "Value": 1.3
+          }
+        },
+        {
+          "name": "font/leading/1000",
+          "type": "FLOAT",
+          "description": "Unitless line height of step 1000 of Fluent 2's type ramp (92 px on 68 px at the default body size, kept a whole px when the fontSize seed scales it). Primitive: reference it through a role, never from a component. Not with another step's font size: the ratio only gives Fluent's line height on its own step (font.size.<same step>).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-font-leading-1000)"
+          },
+          "valuesByMode": {
+            "Value": 1.3529
           }
         },
         {
@@ -10711,7 +10971,7 @@
         {
           "name": "motion/duration/instant",
           "type": "FLOAT",
-          "description": "0 ms, for changes that must not animate (reduced motion, drag following the pointer). Primitive: reference it through a role, never from a component. Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "description": "0 ms, for changes that must not animate (reduced motion, drag following the pointer). Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -10722,42 +10982,107 @@
           }
         },
         {
-          "name": "motion/duration/fast",
+          "name": "motion/duration/ultra-fast",
           "type": "FLOAT",
-          "description": "100 ms, for hover and focus feedback, small toggles. Primitive: reference it through a role, never from a component. Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "description": "50 ms (Fluent's duration ultra-fast), for the smallest feedback: a press, a check mark, a colour change under the pointer. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
-            "WEB": "var(--by-motion-duration-fast)"
+            "WEB": "var(--by-motion-duration-ultra-fast)"
+          },
+          "valuesByMode": {
+            "Value": 50
+          }
+        },
+        {
+          "name": "motion/duration/faster",
+          "type": "FLOAT",
+          "description": "100 ms (Fluent's duration faster), for hover and focus feedback, small toggles. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-motion-duration-faster)"
           },
           "valuesByMode": {
             "Value": 100
           }
         },
         {
-          "name": "motion/duration/base",
+          "name": "motion/duration/fast",
           "type": "FLOAT",
-          "description": "160 ms, for menus, popovers, tooltips and most transitions. Primitive: reference it through a role, never from a component. Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "description": "150 ms (Fluent's duration fast), for small elements that appear or change: tooltips, badges, a switch thumb. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
-            "WEB": "var(--by-motion-duration-base)"
+            "WEB": "var(--by-motion-duration-fast)"
           },
           "valuesByMode": {
-            "Value": 160
+            "Value": 150
+          }
+        },
+        {
+          "name": "motion/duration/normal",
+          "type": "FLOAT",
+          "description": "200 ms (Fluent's duration normal), for menus, popovers, fades and most transitions. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-motion-duration-normal)"
+          },
+          "valuesByMode": {
+            "Value": 200
+          }
+        },
+        {
+          "name": "motion/duration/gentle",
+          "type": "FLOAT",
+          "description": "250 ms (Fluent's duration gentle), for dialogs and medium elements entering or leaving. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-motion-duration-gentle)"
+          },
+          "valuesByMode": {
+            "Value": 250
           }
         },
         {
           "name": "motion/duration/slow",
           "type": "FLOAT",
-          "description": "240 ms, for dialogs, drawers and layout changes. Primitive: reference it through a role, never from a component. Not above 240 ms for interface feedback, and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "description": "300 ms (Fluent's duration slow), for drawers, sheets and large elements; the period unit of looping indicators. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
             "WEB": "var(--by-motion-duration-slow)"
           },
           "valuesByMode": {
-            "Value": 240
+            "Value": 300
+          }
+        },
+        {
+          "name": "motion/duration/slower",
+          "type": "FLOAT",
+          "description": "400 ms (Fluent's duration slower), for full-width panels and layout changes. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-motion-duration-slower)"
+          },
+          "valuesByMode": {
+            "Value": 400
+          }
+        },
+        {
+          "name": "motion/duration/ultra-slow",
+          "type": "FLOAT",
+          "description": "500 ms (Fluent's duration ultra-slow), for page-sized transitions that must be followed by the eye. Primitive: reference it through a role, never from a component. Not a longer step for a small element: larger elements take longer, small ones stay short; and not when the user prefers reduced motion: switch to motion.duration.instant.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-motion-duration-ultra-slow)"
+          },
+          "valuesByMode": {
+            "Value": 500
           }
         }
       ]
@@ -10769,6 +11094,25 @@
       ],
       "defaultMode": "Value",
       "variables": [
+        {
+          "name": "motion/duration/base",
+          "type": "FLOAT",
+          "description": "Alias of motion.duration.normal (200 ms; 160 ms before TSK-57), kept so code written against the first motion scale keeps working. Not in new code: use motion.duration.normal.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-motion-duration-base)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "motion/duration/normal"
+            }
+          }
+        },
         {
           "name": "radius/none",
           "type": "FLOAT",
@@ -10965,9 +11309,1529 @@
           }
         },
         {
+          "name": "text/caption-2/family",
+          "type": "STRING",
+          "description": "Font family of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2/size",
+          "type": "FLOAT",
+          "description": "Font size of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/100"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/regular"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/100"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the caption-2 text role: the smallest text: a badge count, a keyboard hint, a dense status bar. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text the user must read to act: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2-strong/family",
+          "type": "STRING",
+          "description": "Font family of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-strong-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2-strong/size",
+          "type": "FLOAT",
+          "description": "Font size of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-strong-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/100"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2-strong/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-strong-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2-strong/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-strong-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/100"
+            }
+          }
+        },
+        {
+          "name": "text/caption-2-strong/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the caption-2-strong text role: the smallest emphasised text: a tiny badge or a tag label. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for running text: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-2-strong-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1/family",
+          "type": "STRING",
+          "description": "Font family of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1/size",
+          "type": "FLOAT",
+          "description": "Font size of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/200"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/regular"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/200"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the caption-1 text role: hints, timestamps, helper and error text under a field, secondary lines. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-strong/family",
+          "type": "STRING",
+          "description": "Font family of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-strong-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-strong/size",
+          "type": "FLOAT",
+          "description": "Font size of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-strong-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/200"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-strong/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-strong-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-strong/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-strong-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/200"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-strong/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the caption-1-strong text role: emphasised small text: a section overline, a small label beside a value. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-strong-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-stronger/family",
+          "type": "STRING",
+          "description": "Font family of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-stronger-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-stronger/size",
+          "type": "FLOAT",
+          "description": "Font size of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-stronger-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/200"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-stronger/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-stronger-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/bold"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-stronger/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-stronger-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/200"
+            }
+          }
+        },
+        {
+          "name": "text/caption-1-stronger/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the caption-1-stronger text role: the strongest small text: a count or a key figure in a caption line. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-1-stronger-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/body-1/family",
+          "type": "STRING",
+          "description": "Font family of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/body-1/size",
+          "type": "FLOAT",
+          "description": "Font size of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/300"
+            }
+          }
+        },
+        {
+          "name": "text/body-1/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/regular"
+            }
+          }
+        },
+        {
+          "name": "text/body-1/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/300"
+            }
+          }
+        },
+        {
+          "name": "text/body-1/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the body-1 text role: running text, descriptions, form labels, menu items, the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption-1, and not for code: use text.code.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-strong/family",
+          "type": "STRING",
+          "description": "Font family of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-strong-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-strong/size",
+          "type": "FLOAT",
+          "description": "Font size of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-strong-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/300"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-strong/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-strong-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-strong/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-strong-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/300"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-strong/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the body-1-strong text role: emphasis inside running text, button text, key values, selected tab titles, a card title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.subtitle-2 or a title role.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-strong-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-stronger/family",
+          "type": "STRING",
+          "description": "Font family of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-stronger-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-stronger/size",
+          "type": "FLOAT",
+          "description": "Font size of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-stronger-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/300"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-stronger/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-stronger-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/bold"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-stronger/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-stronger-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/300"
+            }
+          }
+        },
+        {
+          "name": "text/body-1-stronger/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the body-1-stronger text role: the strongest emphasis at body size: a number that must stand out in a row. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for whole sentences: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-1-stronger-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/body-2/family",
+          "type": "STRING",
+          "description": "Font family of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-2-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/body-2/size",
+          "type": "FLOAT",
+          "description": "Font size of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-2-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/400"
+            }
+          }
+        },
+        {
+          "name": "text/body-2/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-2-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/regular"
+            }
+          }
+        },
+        {
+          "name": "text/body-2/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-2-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/400"
+            }
+          }
+        },
+        {
+          "name": "text/body-2/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the body-2 text role: larger running text: an intro paragraph, an empty state's sentence. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in dense tools' panels: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-2-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2/family",
+          "type": "STRING",
+          "description": "Font family of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2/size",
+          "type": "FLOAT",
+          "description": "Font size of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/400"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/400"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the subtitle-2 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2-stronger/family",
+          "type": "STRING",
+          "description": "Font family of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-stronger-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2-stronger/size",
+          "type": "FLOAT",
+          "description": "Font size of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-stronger-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/400"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2-stronger/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-stronger-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/bold"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2-stronger/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-stronger-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/400"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-2-stronger/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the subtitle-2-stronger text role: a subsection title that must stand out among others. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not instead of a larger step: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-2-stronger-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-1/family",
+          "type": "STRING",
+          "description": "Font family of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-1-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-1/size",
+          "type": "FLOAT",
+          "description": "Font size of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-1-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/500"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-1/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-1-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-1/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-1-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/500"
+            }
+          }
+        },
+        {
+          "name": "text/subtitle-1/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the subtitle-1 text role: a dialog, panel or drawer title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-subtitle-1-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/title-3/family",
+          "type": "STRING",
+          "description": "Font family of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-3-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/title-3/size",
+          "type": "FLOAT",
+          "description": "Font size of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-3-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/600"
+            }
+          }
+        },
+        {
+          "name": "text/title-3/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-3-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/title-3/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-3-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/600"
+            }
+          }
+        },
+        {
+          "name": "text/title-3/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the title-3 text role: a major section of a page. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-3-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/title-2/family",
+          "type": "STRING",
+          "description": "Font family of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-2-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/title-2/size",
+          "type": "FLOAT",
+          "description": "Font size of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-2-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/700"
+            }
+          }
+        },
+        {
+          "name": "text/title-2/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-2-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/title-2/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-2-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/700"
+            }
+          }
+        },
+        {
+          "name": "text/title-2/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the title-2 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-2-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/title-1/family",
+          "type": "STRING",
+          "description": "Font family of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-1-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/title-1/size",
+          "type": "FLOAT",
+          "description": "Font size of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-1-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/800"
+            }
+          }
+        },
+        {
+          "name": "text/title-1/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-1-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/title-1/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-1-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/800"
+            }
+          }
+        },
+        {
+          "name": "text/title-1/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the title-1 text role: the title of a spacious page: a settings home, an overview. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not inside a dense tool's panels: use text.title-2 or smaller.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-title-1-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/large-title/family",
+          "type": "STRING",
+          "description": "Font family of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-large-title-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "font/sans"
+            }
+          }
+        },
+        {
+          "name": "text/large-title/size",
+          "type": "FLOAT",
+          "description": "Font size of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-large-title-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/size/900"
+            }
+          }
+        },
+        {
+          "name": "text/large-title/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-large-title-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/weight/semibold"
+            }
+          }
+        },
+        {
+          "name": "text/large-title/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-large-title-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/leading/900"
+            }
+          }
+        },
+        {
+          "name": "text/large-title/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the large-title text role: a landing or welcome title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-large-title-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
           "name": "text/display/family",
           "type": "STRING",
-          "description": "Font family of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+          "description": "Font family of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -10986,7 +12850,7 @@
         {
           "name": "text/display/size",
           "type": "FLOAT",
-          "description": "Font size of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+          "description": "Font size of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -10998,14 +12862,14 @@
             "Value": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "font/size/4xl"
+              "name": "font/size/1000"
             }
           }
         },
         {
           "name": "text/display/weight",
           "type": "FLOAT",
-          "description": "Font weight of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+          "description": "Font weight of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11024,7 +12888,7 @@
         {
           "name": "text/display/leading",
           "type": "FLOAT",
-          "description": "Unitless line height of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+          "description": "Unitless line height of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11036,780 +12900,20 @@
             "Value": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "font/leading/tight"
+              "name": "font/leading/1000"
             }
           }
         },
         {
           "name": "text/display/tracking",
           "type": "FLOAT",
-          "description": "Letter spacing of the display text role: the largest text: a landing or empty-state title, a big number on a dashboard. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for page headings inside a tool: use text.heading-1.",
+          "description": "Letter spacing of the display text role: the largest text: a hero title or one very large figure. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than once on a screen, and never inside a tool's panels: use text.large-title or smaller.",
           "scopes": [
             "ALL_SCOPES"
           ],
           "hiddenFromPublishing": false,
           "codeSyntax": {
             "WEB": "var(--by-text-display-tracking)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/tracking/tight"
-            }
-          }
-        },
-        {
-          "name": "text/heading-1/family",
-          "type": "STRING",
-          "description": "Font family of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-1-family)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Semantic",
-              "name": "font/sans"
-            }
-          }
-        },
-        {
-          "name": "text/heading-1/size",
-          "type": "FLOAT",
-          "description": "Font size of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-1-size)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/size/3xl"
-            }
-          }
-        },
-        {
-          "name": "text/heading-1/weight",
-          "type": "FLOAT",
-          "description": "Font weight of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-1-weight)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/weight/semibold"
-            }
-          }
-        },
-        {
-          "name": "text/heading-1/leading",
-          "type": "FLOAT",
-          "description": "Unitless line height of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-1-leading)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/leading/tight"
-            }
-          }
-        },
-        {
-          "name": "text/heading-1/tracking",
-          "type": "FLOAT",
-          "description": "Letter spacing of the heading-1 text role: the title of a page or a full-screen view. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not more than one per view, and not for a panel title: use text.heading-3.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-1-tracking)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/tracking/tight"
-            }
-          }
-        },
-        {
-          "name": "text/heading-2/family",
-          "type": "STRING",
-          "description": "Font family of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-2-family)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Semantic",
-              "name": "font/sans"
-            }
-          }
-        },
-        {
-          "name": "text/heading-2/size",
-          "type": "FLOAT",
-          "description": "Font size of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-2-size)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/size/2xl"
-            }
-          }
-        },
-        {
-          "name": "text/heading-2/weight",
-          "type": "FLOAT",
-          "description": "Font weight of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-2-weight)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/weight/semibold"
-            }
-          }
-        },
-        {
-          "name": "text/heading-2/leading",
-          "type": "FLOAT",
-          "description": "Unitless line height of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-2-leading)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/leading/snug"
-            }
-          }
-        },
-        {
-          "name": "text/heading-2/tracking",
-          "type": "FLOAT",
-          "description": "Letter spacing of the heading-2 text role: a major section of a page, a dialog title in a spacious layout. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for text that only needs emphasis: use text.body-strong.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-2-tracking)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/tracking/normal"
-            }
-          }
-        },
-        {
-          "name": "text/heading-3/family",
-          "type": "STRING",
-          "description": "Font family of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-3-family)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Semantic",
-              "name": "font/sans"
-            }
-          }
-        },
-        {
-          "name": "text/heading-3/size",
-          "type": "FLOAT",
-          "description": "Font size of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-3-size)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/size/xl"
-            }
-          }
-        },
-        {
-          "name": "text/heading-3/weight",
-          "type": "FLOAT",
-          "description": "Font weight of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-3-weight)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/weight/semibold"
-            }
-          }
-        },
-        {
-          "name": "text/heading-3/leading",
-          "type": "FLOAT",
-          "description": "Unitless line height of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-3-leading)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/leading/snug"
-            }
-          }
-        },
-        {
-          "name": "text/heading-3/tracking",
-          "type": "FLOAT",
-          "description": "Letter spacing of the heading-3 text role: a panel, card or dialog title. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a table or grid header: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-3-tracking)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/tracking/normal"
-            }
-          }
-        },
-        {
-          "name": "text/heading-4/family",
-          "type": "STRING",
-          "description": "Font family of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-4-family)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Semantic",
-              "name": "font/sans"
-            }
-          }
-        },
-        {
-          "name": "text/heading-4/size",
-          "type": "FLOAT",
-          "description": "Font size of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-4-size)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/size/lg"
-            }
-          }
-        },
-        {
-          "name": "text/heading-4/weight",
-          "type": "FLOAT",
-          "description": "Font weight of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-4-weight)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/weight/semibold"
-            }
-          }
-        },
-        {
-          "name": "text/heading-4/leading",
-          "type": "FLOAT",
-          "description": "Unitless line height of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-4-leading)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/leading/snug"
-            }
-          }
-        },
-        {
-          "name": "text/heading-4/tracking",
-          "type": "FLOAT",
-          "description": "Letter spacing of the heading-4 text role: a subsection title and the heading of a group of fields. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for a form label: use text.label.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-heading-4-tracking)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/tracking/normal"
-            }
-          }
-        },
-        {
-          "name": "text/body/family",
-          "type": "STRING",
-          "description": "Font family of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-family)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Semantic",
-              "name": "font/sans"
-            }
-          }
-        },
-        {
-          "name": "text/body/size",
-          "type": "FLOAT",
-          "description": "Font size of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-size)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/size/base"
-            }
-          }
-        },
-        {
-          "name": "text/body/weight",
-          "type": "FLOAT",
-          "description": "Font weight of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-weight)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/weight/regular"
-            }
-          }
-        },
-        {
-          "name": "text/body/leading",
-          "type": "FLOAT",
-          "description": "Unitless line height of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-leading)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/leading/normal"
-            }
-          }
-        },
-        {
-          "name": "text/body/tracking",
-          "type": "FLOAT",
-          "description": "Letter spacing of the body text role: running text, descriptions and the value inside an input. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for secondary text: use text.caption, and not for code: use text.code.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-tracking)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/tracking/normal"
-            }
-          }
-        },
-        {
-          "name": "text/body-strong/family",
-          "type": "STRING",
-          "description": "Font family of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-strong-family)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Semantic",
-              "name": "font/sans"
-            }
-          }
-        },
-        {
-          "name": "text/body-strong/size",
-          "type": "FLOAT",
-          "description": "Font size of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-strong-size)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/size/base"
-            }
-          }
-        },
-        {
-          "name": "text/body-strong/weight",
-          "type": "FLOAT",
-          "description": "Font weight of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-strong-weight)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/weight/semibold"
-            }
-          }
-        },
-        {
-          "name": "text/body-strong/leading",
-          "type": "FLOAT",
-          "description": "Unitless line height of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-strong-leading)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/leading/normal"
-            }
-          }
-        },
-        {
-          "name": "text/body-strong/tracking",
-          "type": "FLOAT",
-          "description": "Letter spacing of the body-strong text role: emphasis inside running text, key values, selected tab titles. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for headings: use text.heading-*.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-body-strong-tracking)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/tracking/normal"
-            }
-          }
-        },
-        {
-          "name": "text/label/family",
-          "type": "STRING",
-          "description": "Font family of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-label-family)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Semantic",
-              "name": "font/sans"
-            }
-          }
-        },
-        {
-          "name": "text/label/size",
-          "type": "FLOAT",
-          "description": "Font size of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-label-size)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/size/sm"
-            }
-          }
-        },
-        {
-          "name": "text/label/weight",
-          "type": "FLOAT",
-          "description": "Font weight of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-label-weight)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/weight/medium"
-            }
-          }
-        },
-        {
-          "name": "text/label/leading",
-          "type": "FLOAT",
-          "description": "Unitless line height of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-label-leading)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/leading/snug"
-            }
-          }
-        },
-        {
-          "name": "text/label/tracking",
-          "type": "FLOAT",
-          "description": "Letter spacing of the label text role: form labels, button text, menu items, table and grid headers. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for sentences: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-label-tracking)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/tracking/normal"
-            }
-          }
-        },
-        {
-          "name": "text/caption/family",
-          "type": "STRING",
-          "description": "Font family of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-caption-family)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Semantic",
-              "name": "font/sans"
-            }
-          }
-        },
-        {
-          "name": "text/caption/size",
-          "type": "FLOAT",
-          "description": "Font size of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-caption-size)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/size/xs"
-            }
-          }
-        },
-        {
-          "name": "text/caption/weight",
-          "type": "FLOAT",
-          "description": "Font weight of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-caption-weight)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/weight/regular"
-            }
-          }
-        },
-        {
-          "name": "text/caption/leading",
-          "type": "FLOAT",
-          "description": "Unitless line height of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-caption-leading)"
-          },
-          "valuesByMode": {
-            "Value": {
-              "type": "VARIABLE_ALIAS",
-              "collection": "Primitives",
-              "name": "font/leading/snug"
-            }
-          }
-        },
-        {
-          "name": "text/caption/tracking",
-          "type": "FLOAT",
-          "description": "Letter spacing of the caption text role: hints, timestamps, helper and error text under a field, status bar text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for anything the user must read first: use text.body.",
-          "scopes": [
-            "ALL_SCOPES"
-          ],
-          "hiddenFromPublishing": false,
-          "codeSyntax": {
-            "WEB": "var(--by-text-caption-tracking)"
           },
           "valuesByMode": {
             "Value": {
@@ -11822,7 +12926,7 @@
         {
           "name": "text/code/family",
           "type": "STRING",
-          "description": "Font family of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+          "description": "Font family of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11841,7 +12945,7 @@
         {
           "name": "text/code/size",
           "type": "FLOAT",
-          "description": "Font size of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+          "description": "Font size of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11853,14 +12957,14 @@
             "Value": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "font/size/sm"
+              "name": "font/size/300"
             }
           }
         },
         {
           "name": "text/code/weight",
           "type": "FLOAT",
-          "description": "Font weight of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+          "description": "Font weight of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11879,7 +12983,7 @@
         {
           "name": "text/code/leading",
           "type": "FLOAT",
-          "description": "Unitless line height of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+          "description": "Unitless line height of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11891,14 +12995,14 @@
             "Value": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "font/leading/normal"
+              "name": "font/leading/300"
             }
           }
         },
         {
           "name": "text/code/tracking",
           "type": "FLOAT",
-          "description": "Letter spacing of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body.",
+          "description": "Letter spacing of the code text role: code, SQL, identifiers and inline code in text. Do not set it alone: set family, size, weight, leading and tracking of the role together. Not for labels or prose: use text.body-1.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -11948,7 +13052,7 @@
             "Value": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "font/size/xs"
+              "name": "font/size/200"
             }
           }
         },
@@ -11986,7 +13090,7 @@
             "Value": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "font/leading/normal"
+              "name": "font/leading/200"
             }
           }
         },
@@ -12006,6 +13110,766 @@
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
               "name": "font/tracking/normal"
+            }
+          }
+        },
+        {
+          "name": "text/heading-1/family",
+          "type": "STRING",
+          "description": "Font family of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-1-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-2/family"
+            }
+          }
+        },
+        {
+          "name": "text/heading-1/size",
+          "type": "FLOAT",
+          "description": "Font size of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-1-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-2/size"
+            }
+          }
+        },
+        {
+          "name": "text/heading-1/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-1-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-2/weight"
+            }
+          }
+        },
+        {
+          "name": "text/heading-1/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-1-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-2/leading"
+            }
+          }
+        },
+        {
+          "name": "text/heading-1/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the heading-1 text role, an alias of text.title-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-1-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-2/tracking"
+            }
+          }
+        },
+        {
+          "name": "text/heading-2/family",
+          "type": "STRING",
+          "description": "Font family of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-2-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-3/family"
+            }
+          }
+        },
+        {
+          "name": "text/heading-2/size",
+          "type": "FLOAT",
+          "description": "Font size of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-2-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-3/size"
+            }
+          }
+        },
+        {
+          "name": "text/heading-2/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-2-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-3/weight"
+            }
+          }
+        },
+        {
+          "name": "text/heading-2/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-2-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-3/leading"
+            }
+          }
+        },
+        {
+          "name": "text/heading-2/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the heading-2 text role, an alias of text.title-3 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.title-3.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-2-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/title-3/tracking"
+            }
+          }
+        },
+        {
+          "name": "text/heading-3/family",
+          "type": "STRING",
+          "description": "Font family of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-3-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-1/family"
+            }
+          }
+        },
+        {
+          "name": "text/heading-3/size",
+          "type": "FLOAT",
+          "description": "Font size of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-3-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-1/size"
+            }
+          }
+        },
+        {
+          "name": "text/heading-3/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-3-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-1/weight"
+            }
+          }
+        },
+        {
+          "name": "text/heading-3/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-3-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-1/leading"
+            }
+          }
+        },
+        {
+          "name": "text/heading-3/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the heading-3 text role, an alias of text.subtitle-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-3-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-1/tracking"
+            }
+          }
+        },
+        {
+          "name": "text/heading-4/family",
+          "type": "STRING",
+          "description": "Font family of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-4-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-2/family"
+            }
+          }
+        },
+        {
+          "name": "text/heading-4/size",
+          "type": "FLOAT",
+          "description": "Font size of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-4-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-2/size"
+            }
+          }
+        },
+        {
+          "name": "text/heading-4/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-4-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-2/weight"
+            }
+          }
+        },
+        {
+          "name": "text/heading-4/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-4-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-2/leading"
+            }
+          }
+        },
+        {
+          "name": "text/heading-4/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the heading-4 text role, an alias of text.subtitle-2 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.subtitle-2.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-heading-4-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/subtitle-2/tracking"
+            }
+          }
+        },
+        {
+          "name": "text/body/family",
+          "type": "STRING",
+          "description": "Font family of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/family"
+            }
+          }
+        },
+        {
+          "name": "text/body/size",
+          "type": "FLOAT",
+          "description": "Font size of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/size"
+            }
+          }
+        },
+        {
+          "name": "text/body/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/weight"
+            }
+          }
+        },
+        {
+          "name": "text/body/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/leading"
+            }
+          }
+        },
+        {
+          "name": "text/body/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the body text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/tracking"
+            }
+          }
+        },
+        {
+          "name": "text/body-strong/family",
+          "type": "STRING",
+          "description": "Font family of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-strong-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1-strong/family"
+            }
+          }
+        },
+        {
+          "name": "text/body-strong/size",
+          "type": "FLOAT",
+          "description": "Font size of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-strong-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1-strong/size"
+            }
+          }
+        },
+        {
+          "name": "text/body-strong/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-strong-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1-strong/weight"
+            }
+          }
+        },
+        {
+          "name": "text/body-strong/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-strong-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1-strong/leading"
+            }
+          }
+        },
+        {
+          "name": "text/body-strong/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the body-strong text role, an alias of text.body-1-strong kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1-strong.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-body-strong-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1-strong/tracking"
+            }
+          }
+        },
+        {
+          "name": "text/label/family",
+          "type": "STRING",
+          "description": "Font family of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-label-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/family"
+            }
+          }
+        },
+        {
+          "name": "text/label/size",
+          "type": "FLOAT",
+          "description": "Font size of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-label-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/size"
+            }
+          }
+        },
+        {
+          "name": "text/label/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-label-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/weight"
+            }
+          }
+        },
+        {
+          "name": "text/label/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-label-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/leading"
+            }
+          }
+        },
+        {
+          "name": "text/label/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the label text role, an alias of text.body-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.body-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-label-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/body-1/tracking"
+            }
+          }
+        },
+        {
+          "name": "text/caption/family",
+          "type": "STRING",
+          "description": "Font family of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-family)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/caption-1/family"
+            }
+          }
+        },
+        {
+          "name": "text/caption/size",
+          "type": "FLOAT",
+          "description": "Font size of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-size)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/caption-1/size"
+            }
+          }
+        },
+        {
+          "name": "text/caption/weight",
+          "type": "FLOAT",
+          "description": "Font weight of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-weight)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/caption-1/weight"
+            }
+          }
+        },
+        {
+          "name": "text/caption/leading",
+          "type": "FLOAT",
+          "description": "Unitless line height of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-leading)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/caption-1/leading"
+            }
+          }
+        },
+        {
+          "name": "text/caption/tracking",
+          "type": "FLOAT",
+          "description": "Letter spacing of the caption text role, an alias of text.caption-1 kept from before Fluent's ramp (TSK-57). Do not set it alone: set family, size, weight, leading and tracking of the role together. Not in new code: use text.caption-1.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-text-caption-tracking)"
+          },
+          "valuesByMode": {
+            "Value": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Semantic",
+              "name": "text/caption-1/tracking"
             }
           }
         }
@@ -16241,6 +18105,42 @@
     }
   ],
   "skipped": [
+    {
+      "token": "motion.easing.accelerate-max",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
+    {
+      "token": "motion.easing.accelerate-mid",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
+    {
+      "token": "motion.easing.accelerate-min",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
+    {
+      "token": "motion.easing.decelerate-max",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
+    {
+      "token": "motion.easing.decelerate-mid",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
+    {
+      "token": "motion.easing.decelerate-min",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
+    {
+      "token": "motion.easing.easy-ease-max",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
+    {
+      "token": "motion.easing.easy-ease",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
+    {
+      "token": "motion.easing.linear",
+      "reason": "Figma has no variable type for cubicBezier; create a style instead"
+    },
     {
       "token": "motion.easing.standard",
       "reason": "Figma has no variable type for cubicBezier; create a style instead"
