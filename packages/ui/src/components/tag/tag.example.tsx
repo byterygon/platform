@@ -13,7 +13,7 @@ const initial = [
   { label: "customer_lifetime_value_by_region", swatch: 4 },
 ] as const;
 
-/** A saved query's labels: removable with swatches, an accent tag, a disabled one, a long label that truncates. */
+/** A saved query's labels: removable with swatches, an accent tag, a warning tag, a disabled one, a long label that truncates. */
 export function TagRealistic() {
   const [tags, setTags] = useState<readonly { label: string; swatch: 1 | 2 | 3 | 4 }[]>(initial);
   return (
@@ -41,6 +41,9 @@ export function TagRealistic() {
         </Tag>
         <Tag role="listitem" size="md">
           read-only
+        </Tag>
+        <Tag role="listitem" variant="warning" size="md">
+          grant expires in 14 min
         </Tag>
       </TagGroup>
     </div>

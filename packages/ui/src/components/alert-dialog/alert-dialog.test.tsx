@@ -27,7 +27,7 @@ function Example({ onAction, onOpenChange }: { onAction?: () => void; onOpenChan
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction variant="danger" onClick={onAction}>
+          <AlertDialogAction appearance="danger" onClick={onAction}>
             Delete
           </AlertDialogAction>
         </AlertDialogFooter>

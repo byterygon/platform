@@ -32,16 +32,12 @@ export const REPLACEMENTS: Record<string, string> = {
   "table sort (none / ascending / descending)": "arrow-sort",
   "table sort ascending": "arrow-sort-up",
   "table sort descending": "arrow-sort-down",
-  "alert info": "info",
-  "alert success": "checkmark-circle",
-  "alert warning": "warning",
-  "alert danger, stepper error": "error-circle",
-  "alert, dialog, sheet, tabs, tag, toast close": "dismiss",
+  "stepper error": "error-circle",
+  "tabs close": "dismiss",
   "code-block copied, stepper done": "checkmark",
   "tabs new, DBee new": "add",
   "breadcrumb, DBee more": "more-horizontal",
   "code-block copy": "copy",
-  "command-palette search": "search",
   "sidebar history": "history",
   "sidebar, DBee settings (gear)": "settings",
   "sidebar collapse": "panel-left",
@@ -52,7 +48,7 @@ export const REPLACEMENTS: Record<string, string> = {
   "toolbar, DBee stop": "stop",
   "DBee download": "arrow-download",
   "tree folder, DBee schema": "folder",
-  "tree, command-palette, DBee table": "table",
+  "tree, DBee table": "table",
   "tree, sidebar, avatar, empty-state, status-bar, DBee database": "database",
   "DBee refresh": "arrow-clockwise",
   "DBee view": "eye",
@@ -81,6 +77,7 @@ describe("hand-drawn icons", () => {
     const done = ["button", "icon-button", "toggle-button", "toggle-group", "split-button"]; // batch 1
     done.push("input", "textarea", "input-group", "number-input", "search-input", "password-input", "file-input", "date-picker", "calendar", "time-picker", "select", "combobox", "multi-select", "field"); // batch 2
     done.push("checkbox", "radio-group", "switch", "slider", "dropdown-menu", "context-menu", "menubar", "popover", "hover-card", "tooltip"); // batch 3
+    done.push("dialog", "alert-dialog", "sheet", "toast", "command-palette", "alert", "badge", "tag"); // batch 4
     for (const name of done) {
       expect(Object.keys(REPLACEMENTS).filter((key) => new RegExp(`(?<![a-z-])${name}(?![a-z-])`).test(key)), name).toEqual([]);
     }

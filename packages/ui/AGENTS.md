@@ -157,6 +157,16 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   contrast-checked (DOC-17).
 - **Tooltip** takes `appearance` on its root: `normal` (default, the light flyout surface) or
   `inverted` (the neutral solid, the look before TSK-53).
+- **Overlays** (batch 4): Dialog, AlertDialog and Sheet are elevation.dialog (`bg-overlay`,
+  `border-border-subtle`, `shadow-dialog`, `rounded-lg` for dialogs), titled in `text-subtitle-1`;
+  dialogs scale and fade in over `gentle` (decelerate) and out over `fast` (accelerate), sheets slide
+  in over `gentle` and out over `normal`; the close button is Fluent's Dismiss. AlertDialogCancel is a
+  secondary Button by default (Fluent's dialog actions). CommandPalette's search row is an
+  underline SearchBox (body-2, Fluent's Search icon).
+- **Status** (batch 4): Alert is Fluent's MessageBar: `intent` (`variant` is the alias for one
+  release) tints the box and colours a filled icon (Info, CheckmarkCircle, Warning, ErrorCircle);
+  Toast leads with the same filled intent icon instead of a coloured edge. Warning is always the
+  orange status role and Fluent's Warning icon; Tag gains a `warning` tone, Badge already has one.
 
 ## Forms
 
@@ -407,7 +417,8 @@ registry item, which `@byterygon/icon` depends on.
   IconButton, ToggleButton, ToggleGroup, SplitButton (TSK-53 batch 1); Input, Textarea, InputGroup,
   NumberInput, SearchInput, PasswordInput, FileInput, DatePicker, Calendar, TimePicker, Select,
   Combobox, MultiSelect, Field (batch 2); Checkbox, RadioGroup, Switch, Slider, DropdownMenu,
-  ContextMenu, Menubar, Popover, HoverCard, Tooltip (batch 3).
+  ContextMenu, Menubar, Popover, HoverCard, Tooltip (batch 3); Dialog, AlertDialog, Sheet, Toast,
+  CommandPalette, Alert, Badge, Tag (batch 4).
 
 | Hand-drawn today | Fluent icon |
 | --- | --- |

@@ -5,7 +5,7 @@ import { Button } from "@/components/button/button";
 /** The smallest useful Alert: a title and a sentence. */
 export function AlertMinimal() {
   return (
-    <Alert variant="info">
+    <Alert intent="info">
       <AlertTitle>Read-only connection</AlertTitle>
       <AlertDescription>Statements that write are refused.</AlertDescription>
     </Alert>
@@ -18,11 +18,11 @@ export function AlertRealistic() {
   return (
     <div className="flex max-w-panel-lg flex-col gap-stack-sm">
       {banner ? (
-        <Alert variant="warning" layout="banner" onDismiss={() => setBanner(false)} dismissLabel="Dismiss expiry warning">
+        <Alert intent="warning" layout="banner" onDismiss={() => setBanner(false)} dismissLabel="Dismiss expiry warning">
           <AlertDescription>Access to orders-prod expires in 15 minutes. Ask for a new grant before then.</AlertDescription>
         </Alert>
       ) : null}
-      <Alert variant="danger">
+      <Alert intent="danger">
         <AlertTitle>Query failed</AlertTitle>
         <AlertDescription>
           <code>42P01</code> relation &quot;public.order_itemz&quot; does not exist at line 3, column 15. Check the table name or refresh the schema.
@@ -33,14 +33,14 @@ export function AlertRealistic() {
           </Button>
         </AlertActions>
       </Alert>
-      <Alert variant="warning">
+      <Alert intent="warning">
         <AlertTitle>Plaintext connection</AlertTitle>
         <AlertDescription>Without TLS, the password and every row cross the network unencrypted.</AlertDescription>
       </Alert>
-      <Alert variant="success">
+      <Alert intent="success">
         <AlertDescription>Exported 1,000,000 rows to orders.csv.</AlertDescription>
       </Alert>
-      <Alert variant="neutral" icon={false}>
+      <Alert intent="neutral" icon={false}>
         <AlertDescription>A_very_long_identifier_without_spaces_public.customer_lifetime_value_by_region_and_month_partition_2026_11 wraps.</AlertDescription>
       </Alert>
     </div>

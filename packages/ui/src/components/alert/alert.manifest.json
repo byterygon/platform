@@ -4,7 +4,7 @@
   "name": "alert",
   "title": "Alert",
   "description": "A message in the page flow, in five tones with a status icon, a title, a description, actions and an optional close button; inline box or full-width banner.",
-  "usage": "Use Alert for a message that belongs to a place on the page and stays until the condition changes: a query error under the editor (with SQLSTATE in <code>), a plaintext warning in the connection form, a grant about to expire across the top (layout=\"banner\"). Compose Alert > AlertTitle, AlertDescription, AlertActions. Render it when the condition occurs: danger and warning are role=\"alert\" and are announced at once. For a transient confirmation use Toast; for a decision the user must make, AlertDialog; for an empty view, EmptyState.",
+  "usage": "Use Alert for a message that belongs to a place on the page and stays until the condition changes: a query error under the editor (with SQLSTATE in <code>), a plaintext warning in the connection form, a grant about to expire across the top (layout=\"banner\"). Compose Alert > AlertTitle, AlertDescription, AlertActions. Render it when the condition occurs: danger and warning are role=\"alert\" and are announced at once. For a transient confirmation use Toast; for a decision the user must make, AlertDialog; for an empty view, EmptyState. The old variant prop still works for one release.",
   "status": "experimental",
   "base": "@base-ui/react/use-render",
   "dependencies": [
@@ -12,10 +12,16 @@
   ],
   "props": [
     {
-      "name": "variant",
+      "name": "intent",
       "type": "\"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\"",
       "default": "neutral",
-      "description": "Colours, icon and role (alert for danger and warning, status otherwise)."
+      "description": "Fluent's MessageBar intent: the tint, the filled icon (Info, CheckmarkCircle, Warning on orange, ErrorCircle) and the role (alert for warning and danger)."
+    },
+    {
+      "name": "variant",
+      "type": "\"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\"",
+      "description": "The old name of intent. Kept for one release.",
+      "deprecated": "use intent"
     },
     {
       "name": "layout",
@@ -61,7 +67,7 @@
     }
   ],
   "variants": {
-    "variant": [
+    "intent": [
       "neutral",
       "info",
       "success",
@@ -77,17 +83,17 @@
     {
       "name": "root",
       "element": "div",
-      "description": "role=\"alert\" or \"status\"; data-slot=\"alert\", data-variant, data-layout."
+      "description": "role=\"alert\" or \"status\"; data-slot=\"alert\", data-intent, data-layout."
     },
     {
       "name": "icon",
       "element": "span",
-      "description": "The status icon, aria-hidden; data-slot=\"alert-icon\"."
+      "description": "The intent's Fluent icon (filled for info, success, warning, danger), aria-hidden, in the status colour; data-slot=\"alert-icon\"."
     },
     {
       "name": "title",
       "element": "p",
-      "description": "text.body-strong in the status fg; data-slot=\"alert-title\"."
+      "description": "text.body-1-strong in the default text colour (Fluent's MessageBar title); data-slot=\"alert-title\"."
     },
     {
       "name": "description",
@@ -119,8 +125,8 @@
   ],
   "states": [],
   "tokens": [
-    "color.bg.surface",
-    "color.border.default",
+    "color.bg.layer",
+    "color.border.subtle",
     "color.fg.default",
     "color.fg.muted",
     "color.status.danger.bg",
@@ -138,20 +144,21 @@
     "font.mono",
     "font.sans",
     "radius.md",
+    "size.icon.lg",
     "size.icon.md",
     "space.inline.sm",
     "space.inset.md",
     "space.inset.sm",
     "space.inset.xs",
     "space.stack.xs",
-    "text.body-strong.leading",
-    "text.body-strong.size",
-    "text.body-strong.tracking",
-    "text.body-strong.weight",
-    "text.body.leading",
-    "text.body.size",
-    "text.body.tracking",
-    "text.body.weight",
+    "text.body-1-strong.leading",
+    "text.body-1-strong.size",
+    "text.body-1-strong.tracking",
+    "text.body-1-strong.weight",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
     "text.code.leading",
     "text.code.size",
     "text.code.tracking",

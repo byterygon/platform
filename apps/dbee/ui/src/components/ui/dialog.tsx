@@ -1,13 +1,17 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { createContext, useContext, useEffect, type ComponentProps, type ReactNode, type Ref } from "react";
+import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/cn";
+import { Dismiss } from "@/lib/icons";
 import { useThemeScope, type ThemeScope } from "@/lib/theme-scope";
 
 // A modal dialog on Base UI's Dialog: `Dialog` is the root (no element of its own) and the parts
 // compose it as shadcn's do: DialogTrigger, DialogContent (portal, scrim, centred popup and a
 // close button), DialogHeader with DialogTitle and DialogDescription, DialogBody, DialogFooter and
-// DialogClose. AlertDialog and Sheet reuse `dialogClasses` and `useDialogScope`.
+// DialogClose. AlertDialog and Sheet reuse `dialogClasses` and `useDialogScope`. Fluent 2's
+// Dialog: elevation.dialog (an opaque surface, depth 64), radius.lg, a subtitle-1 title, a scale
+// and fade in over motion.duration.gentle (decelerate) and out over fast (accelerate).
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const dialogVariants = {
@@ -26,28 +30,26 @@ export type DialogSize = keyof typeof dialogVariants.size;
 export const dialogClasses = {
   backdrop: [
     "fixed inset-0 z-[var(--by-z-overlay)] bg-scrim",
-    "transition-opacity duration-[var(--by-motion-duration-slow)] ease-standard motion-reduce:transition-none",
-    "data-starting-style:opacity-0 data-ending-style:opacity-0",
+    "transition-opacity duration-[var(--by-motion-duration-gentle)] ease-decelerate-mid motion-reduce:transition-none",
+    "data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-[var(--by-motion-duration-fast)] data-ending-style:ease-accelerate-mid",
   ],
   viewport: "fixed inset-0 z-[var(--by-z-modal)] flex items-center justify-center overflow-y-auto p-inset-lg",
   popup: [
-    "relative flex max-h-full w-full flex-col gap-stack-md overflow-hidden rounded-lg border border-border bg-overlay p-inset-lg font-sans text-body text-fg shadow-modal outline-none",
-    "transition duration-[var(--by-motion-duration-slow)] ease-emphasized motion-reduce:transition-none",
-    "data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0 data-ending-style:ease-exit",
+    "relative flex max-h-full w-full flex-col gap-stack-md overflow-hidden rounded-lg border border-border-subtle bg-overlay p-inset-lg font-sans text-body-1 text-fg shadow-dialog outline-none",
+    "transition duration-[var(--by-motion-duration-gentle)] ease-decelerate-mid motion-reduce:transition-none",
+    "data-starting-style:scale-95 data-starting-style:opacity-0 data-ending-style:scale-95 data-ending-style:opacity-0",
+    "data-ending-style:duration-[var(--by-motion-duration-fast)] data-ending-style:ease-accelerate-mid",
   ],
   header: "flex flex-col gap-stack-xs",
-  title: "text-heading-4 text-fg",
-  description: "text-body text-fg-muted",
+  title: "text-subtitle-1 text-fg",
+  description: "text-body-1 text-fg-muted",
   body: "-mx-inset-lg flex min-h-0 flex-1 flex-col gap-stack-md overflow-y-auto px-inset-lg",
   footer: "flex flex-wrap items-center justify-end gap-inline-sm",
   close: "absolute top-inset-md right-inset-md",
 } as const;
 
-const XIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <path d="m4 4 8 8M12 4l-8 8" />
-  </svg>
-);
+/** Fluent's Dismiss, the close button's icon. */
+const XIcon = () => <Icon icon={Dismiss} />;
 
 /** The close button's icon, shared with Sheet. */
 export { XIcon };

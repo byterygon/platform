@@ -3,7 +3,9 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { dialogClasses, ScopeAnchor, useDialogScope } from "@/components/ui/dialog";
 import { menuClasses } from "@/components/ui/dropdown-menu";
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
+import { Search } from "@/lib/icons";
 
 // The searchable list of every action, opened with a shortcut (Ctrl+K), on Base UI: a Dialog whose
 // content is an Autocomplete rendered inline (the list sits under the search field, not in a
@@ -16,11 +18,12 @@ export const commandPaletteVariants = {} as const;
 const classes = {
   viewport: "items-start",
   popup: "gap-0 p-0 max-w-panel-lg",
-  search: "flex items-center gap-inline-sm border-b border-border px-inset-md text-fg-muted [&_svg]:size-icon-md [&_svg]:shrink-0",
-  input: "h-control-lg min-w-0 flex-1 bg-transparent font-sans text-body text-fg outline-none placeholder:text-fg-subtle",
+  // Fluent's SearchBox in an underline look across the top of the dialog.
+  search: "flex items-center gap-inline-sm border-b border-border-subtle px-inset-md text-fg-muted [&_svg]:size-icon-lg [&_svg]:shrink-0",
+  input: "h-control-lg min-w-0 flex-1 bg-transparent font-sans text-body-2 text-fg outline-none placeholder:text-fg-subtle",
   list: "flex max-h-panel-sm flex-col overflow-y-auto overscroll-contain p-inset-xs outline-none empty:hidden",
   group: "flex flex-col",
-  empty: "px-inset-md py-inset-lg text-center text-body text-fg-muted empty:hidden",
+  empty: "px-inset-md py-inset-lg text-center text-body-1 text-fg-muted empty:hidden",
 } as const;
 
 export interface Command {
@@ -72,12 +75,6 @@ export function matchesHotkey(event: KeyboardEvent, hotkey: string): boolean {
   return event.key.toLowerCase() === keyName && event.ctrlKey === want.ctrl && event.metaKey === want.meta && event.shiftKey === want.shift && event.altKey === want.alt;
 }
 
-const SearchIcon = () => (
-  <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <circle cx="7" cy="7" r="4.5" />
-    <path d="m10.5 10.5 3 3" />
-  </svg>
-);
 
 export interface CommandPaletteItemProps {
   /** The command the row shows. */
@@ -180,7 +177,7 @@ export function CommandPalette({
                 itemToStringValue={(command: Command) => command.label}
               >
                 <div data-slot="command-palette-search" className={cn(classes.search)}>
-                  <SearchIcon />
+                  <Icon icon={Search} />
                   <AutocompletePrimitive.Input data-slot="command-palette-input" aria-label={title} placeholder={placeholder} className={cn(classes.input)} />
                 </div>
                 <AutocompletePrimitive.Empty data-slot="command-palette-empty" className={cn(classes.empty)}>

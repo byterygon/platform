@@ -150,9 +150,15 @@ export interface AlertDialogCancelProps extends Omit<ButtonProps, "render"> {
   ref?: Ref<HTMLButtonElement>;
 }
 
-/** Closes the dialog without acting: a ghost Button by default. Focused when the dialog opens. */
-export function AlertDialogCancel({ variant = "ghost", size = "md", loading = false, ...props }: AlertDialogCancelProps) {
-  return <AlertDialogPrimitive.Close data-slot="alert-dialog-cancel" render={<Button variant={variant} size={size} loading={loading} />} {...props} />;
+/** Closes the dialog without acting: a secondary Button by default (Fluent's dialog actions). Focused when the dialog opens. */
+export function AlertDialogCancel({ appearance, variant, size, loading = false, ...props }: AlertDialogCancelProps) {
+  return (
+    <AlertDialogPrimitive.Close
+      data-slot="alert-dialog-cancel"
+      render={<Button appearance={appearance ?? (variant === undefined ? "secondary" : undefined)} variant={variant} size={size} loading={loading} />}
+      {...props}
+    />
+  );
 }
 
 export interface AlertDialogActionProps extends ButtonProps {
@@ -161,7 +167,7 @@ export interface AlertDialogActionProps extends ButtonProps {
 }
 
 /**
- * The action the dialog asks for: a primary Button by default, `variant="danger"` when it destroys
+ * The action the dialog asks for: a primary Button by default, `appearance="danger"` when it destroys
  * data. It does not close the dialog: do the work (show `loading`), then set `open` to false.
  */
 export function AlertDialogAction(props: AlertDialogActionProps) {
