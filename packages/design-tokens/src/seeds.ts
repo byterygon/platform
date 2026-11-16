@@ -44,8 +44,8 @@ export interface ResolvedSeeds extends Omit<Seeds, "colors"> {
 const RESERVED_RAMPS = new Set(["base", "white", "black"]);
 const RAMP_NAME = /^[a-z][a-z0-9]*$/;
 
-const SEED_KEYS = ["colors", "radius", "fontSize", "colorScheme", "density", "contrast"] as const;
-const RAMP_KEYS = ["hue", "chroma", "solid", "tint"] as const;
+export const SEED_KEYS = ["colors", "radius", "fontSize", "colorScheme", "density", "contrast"] as const;
+export const RAMP_KEYS = ["hue", "chroma", "solid", "tint"] as const;
 
 export function resolveSeeds(input: SeedsInput | undefined): { seeds: ResolvedSeeds; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];

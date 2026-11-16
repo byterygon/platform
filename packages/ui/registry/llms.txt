@@ -966,4 +966,5 @@ Usage: Use TypeBadge wherever a column's type is shown: the schema tree's column
 - [cn.json](cn.json): class-name merging that knows the role names; every component depends on it.
 - [theme-scope.json](theme-scope.json): gives popups in a portal the theme and density of their trigger; the popup components depend on it.
 - [monaco.json](monaco.json): loads Monaco lazily and offline (Vite ?worker) and turns the token roles in scope into a Monaco theme; SqlEditor depends on it.
+- [monaco-theme.json](monaco-theme.json): which token role colours each Monaco colour id and SQL token type; the monaco helper depends on it.
 - [motion.json](motion.json): looping animations through the Web Animations API, off under reduced motion; Spinner, Progress and Skeleton depend on it.

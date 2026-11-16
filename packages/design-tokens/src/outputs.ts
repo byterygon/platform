@@ -9,6 +9,8 @@
  *   tokens.ts             typed constants: path, CSS variable, description, resolved values
  *   tokens.dtcg.json      the token set itself, as a DTCG document
  *   figma-variables.json  Figma variable collections and modes
+ *   monaco-theme.ts       Monaco editor themes (Light and Dark) from the editor and syntax roles
+ *   registry-theme.json   the shadcn `registry:theme` item, built from the three CSS outputs
  *
  * Nothing is written to disk here and nothing is read: the caller gets file contents.
  */
@@ -32,7 +34,9 @@ import {
   aliasTarget,
   isAlias,
 } from "./model.js";
-import { allContexts, defaultContext, dependentAxes, valueIn } from "./resolve.js";
+import { MONACO_COLORS, MONACO_TOKENS, type MonacoThemeData, monacoTheme } from "./monaco.js";
+import { formatRegistryThemeItem } from "./registry-theme.js";
+import { allContexts, defaultContext, dependentAxes, resolve, valueIn } from "./resolve.js";
 import { round, stableJson } from "./util.js";
 import { aliasesIn, cssValue, cssVarName } from "./values.js";
 
@@ -43,6 +47,8 @@ export const OUTPUT_FILES = [
   "tokens.ts",
   "tokens.dtcg.json",
   "figma-variables.json",
+  "monaco-theme.ts",
+  "registry-theme.json",
 ] as const;
 export type OutputFile = (typeof OUTPUT_FILES)[number];
 
@@ -54,6 +60,8 @@ export const OUTPUT_ALIASES: Readonly<Record<string, OutputFile>> = {
   ts: "tokens.ts",
   dtcg: "tokens.dtcg.json",
   figma: "figma-variables.json",
+  monaco: "monaco-theme.ts",
+  registry: "registry-theme.json",
 };
 
 const contextKey = (context: ModeContext, axes: readonly Axis[]) => axes.map((axis) => context[axis.name]).join("/");
@@ -478,6 +486,58 @@ function formatFigmaVariables(input: FormatInput): string {
   });
 }
 
+const hex2 = (n: number) => n.toString(16).padStart(2, "0");
+
+/** The Monaco theme of one colour mode, from the resolved token colours (`#rrggbb`, or `#rrggbbaa` when translucent). */
+export function monacoThemeFor(set: TokenSet, theme: string): MonacoThemeData {
+  const pathOfVar = new Map([...set.tokens.keys()].map((path) => [cssVarName(path), path]));
+  const context: ModeContext = { ...defaultContext(set), theme };
+  return monacoTheme({
+    color(cssVar) {
+      const path = pathOfVar.get(cssVar);
+      if (!path) throw new Error(`the Monaco theme reads ${cssVar}, which is not a token`);
+      const resolved = resolve(set, path, context);
+      if (!resolved.ok || set.tokens.get(path)!.type !== "color") throw new Error(`the Monaco theme reads ${cssVar}, which does not resolve to a colour`);
+      const color = resolved.value as ColorValue;
+      const alpha = color.alpha ?? 1;
+      return alpha >= 1 ? color.hex : `${color.hex}${hex2(Math.round(alpha * 255))}`;
+    },
+  });
+}
+
+function formatMonacoTheme(input: FormatInput): string {
+  const { set } = input;
+  const axis = set.axes.find((candidate) => candidate.name === "theme")!;
+  const themes = modesInOrder(axis).map((mode) => `  ${mode}: ${JSON.stringify(monacoThemeFor(set, mode), null, 2).replace(/\n/g, "\n  ")},`);
+  return [
+    header(input, [
+      "",
+      "Monaco editor themes for each colour mode, from the editor.*, syntax.* and overlay roles",
+      "(@byterygon/design-tokens src/monaco.ts maps them). Monaco's defineTheme takes hex, so the",
+      "colours are the sRGB values of the tokens. Usage:",
+      `  monaco.editor.defineTheme("byterygon-${set.name}-dark", monacoThemes.dark);`,
+      "Byterygon UI's SqlEditor builds the same theme from the CSS variables at the editor instead,",
+      "so it follows data-theme regions and swapped stylesheets; this file is for other editors.",
+    ]),
+    "",
+    "/** The shape of Monaco's `editor.IStandaloneThemeData`. */",
+    "export interface MonacoThemeData {",
+    '  base: "vs" | "vs-dark" | "hc-black" | "hc-light";',
+    "  inherit: boolean;",
+    "  rules: { token: string; foreground?: string }[];",
+    "  colors: Record<string, string>;",
+    "}",
+    "",
+    `/** Monaco colour ids and token types, with the token variable each one reads. */`,
+    `export const sources = ${JSON.stringify({ colors: MONACO_COLORS, tokens: MONACO_TOKENS }, null, 2)} as const;`,
+    "",
+    `export const monacoThemes: Record<${axis.modes.map((mode) => JSON.stringify(mode)).join(" | ")}, MonacoThemeData> = {`,
+    ...themes,
+    "};",
+    "",
+  ].join("\n");
+}
+
 // ---------------------------------------------------------------------------------------------
 
 /**
@@ -499,6 +559,7 @@ export async function renderOutputs(set: TokenSet, source: string): Promise<Map<
       "by/ts/tokens": () => formatTokensTs(input),
       "by/json/dtcg": () => stableJson(toDtcg(set)),
       "by/json/figma-variables": () => formatFigmaVariables(input),
+      "by/ts/monaco-theme": () => formatMonacoTheme(input),
     },
     {
       css: [
@@ -507,6 +568,7 @@ export async function renderOutputs(set: TokenSet, source: string): Promise<Map<
         { destination: "shadcn-alias.css", format: "by/css/shadcn-alias" },
         { destination: "tokens.ts", format: "by/ts/tokens" },
         { destination: "tokens.dtcg.json", format: "by/json/dtcg" },
+        { destination: "monaco-theme.ts", format: "by/ts/monaco-theme" },
       ],
       figma: [{ destination: "figma-variables.json", format: "by/json/figma-variables" }],
     },
@@ -516,5 +578,16 @@ export async function renderOutputs(set: TokenSet, source: string): Promise<Map<
   for (const platform of ["css", "figma"]) {
     for (const file of await sd.formatPlatform(platform)) rendered.set(file.destination as string, file.output as string);
   }
+  // The registry item is made from the three CSS files, as @byterygon/ui's registry makes it from the committed ones.
+  rendered.set(
+    "registry-theme.json",
+    formatRegistryThemeItem({
+      name: set.name,
+      ...(set.description ? { description: set.description } : {}),
+      tokensCss: rendered.get("tokens.css")!,
+      tailwindCss: rendered.get("tailwind-theme.css")!,
+      shadcnCss: rendered.get("shadcn-alias.css")!,
+    }),
+  );
   return new Map(OUTPUT_FILES.map((name) => [name, rendered.get(name)!]));
 }

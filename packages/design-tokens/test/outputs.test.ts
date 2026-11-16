@@ -4,6 +4,9 @@ import { dirname, join, resolve as resolvePath } from "node:path";
 import { test } from "node:test";
 
 import { OUTPUT_FILES, buildTheme, committedOutputs } from "../src/build.js";
+import { MONACO_COLORS, MONACO_TOKENS } from "../src/monaco.js";
+import { monacoThemeFor } from "../src/outputs.js";
+import { generateTokens } from "../src/generate.js";
 import { EXTENSION } from "../src/model.js";
 import { ROOT, defaultTheme, themeWith } from "./helpers.js";
 
@@ -35,7 +38,7 @@ for (const preset of PRESETS) {
   });
 }
 
-test("the default theme commits all six outputs, the other presets the three CSS files", () => {
+test("the default theme commits all eight outputs, the other presets the three CSS files", () => {
   assert.deepEqual([...committedOutputs("default")], [...OUTPUT_FILES]);
   for (const preset of PRESETS.filter((name) => name !== "default")) {
     assert.deepEqual([...committedOutputs(preset)], ["tokens.css", "tailwind-theme.css", "shadcn-alias.css"]);
@@ -233,6 +236,71 @@ test("tokens.ts exports typed constants with the resolved value per mode", async
   assert.equal(module.tokens["size.control.md"].values.compact, "28px");
   assert.equal(module.cssVar("color.fg.muted"), "var(--by-color-fg-muted)");
   assert.ok(module.tokens["color.fg.muted"].description.length > 20);
+});
+
+test("the registry theme item is the one @byterygon/ui's registry holds, for every preset", async () => {
+  const registry = resolvePath(ROOT, "..", "ui", "registry");
+  for (const preset of PRESETS) {
+    const theme = JSON.parse(readFileSync(join(ROOT, "themes", `${preset}.theme.json`), "utf8"));
+    const result = await buildTheme(theme, { source: `themes/${preset}.theme.json` });
+    const item = result.files!.get("registry-theme.json")!;
+    const parsed = JSON.parse(item);
+    assert.deepEqual([parsed.name, parsed.type, parsed.$schema], [`theme-${preset}`, "registry:theme", "https://ui.shadcn.com/schema/registry-item.json"]);
+    const light = Object.entries(parsed.css).find(([selector]) => selector.split(", ").includes('[data-theme="light"]'));
+    assert.ok((light?.[1] as Record<string, string>)["--by-color-bg-surface"], "the light roles are in css");
+    assert.equal(parsed.cssVars.theme["color-surface"], "var(--by-color-bg-surface)");
+    if (existsSync(registry)) {
+      assert.ok(item === readFileSync(join(registry, `theme-${preset}.json`), "utf8"), `packages/ui/registry/theme-${preset}.json differs; run \`pnpm --filter @byterygon/ui registry\``);
+    }
+  }
+});
+
+test("the Monaco theme reads every source from a colour token, per colour mode", async () => {
+  const { set } = generateTokens(JSON.parse(readFileSync(join(ROOT, "themes", "midnight.theme.json"), "utf8")));
+  const light = monacoThemeFor(set, "light");
+  const dark = monacoThemeFor(set, "dark");
+  assert.deepEqual([light.base, dark.base], ["vs", "vs-dark"]);
+  assert.deepEqual(Object.keys(dark.colors), Object.keys(MONACO_COLORS));
+  assert.deepEqual(dark.rules.map((rule) => rule.token), Object.keys(MONACO_TOKENS));
+  for (const value of Object.values(dark.colors)) assert.match(value, /^#[0-9a-f]{6}([0-9a-f]{2})?$/);
+  for (const rule of dark.rules) assert.match(rule.foreground!, /^[0-9a-f]{6}$/);
+  assert.notEqual(light.colors["editor.background"], dark.colors["editor.background"]);
+  assert.match(dark.colors["menu.selectionBackground"]!, /^#[0-9a-f]{8}$/, "translucent roles keep their alpha");
+
+  const file = readFileSync(generated("monaco-theme.ts"), "utf8");
+  const module = (await import("../generated/default/monaco-theme.js")) as typeof import("../generated/default/monaco-theme.js");
+  const { set: defaults } = generateTokens(JSON.parse(readFileSync(join(ROOT, "themes", "default.theme.json"), "utf8")));
+  assert.deepEqual(module.monacoThemes.dark, monacoThemeFor(defaults, "dark"));
+  assert.deepEqual(module.sources.colors, MONACO_COLORS);
+  assert.match(file, /defineTheme\("byterygon-default-dark", monacoThemes\.dark\)/);
+});
+
+test("the shared Monaco and registry modules are self-contained (no imports), so they ship as source", () => {
+  const src = resolvePath(dirname(new URL(import.meta.url).pathname), "..", "..", "src");
+  for (const file of ["monaco.ts", "registry-theme.ts"]) {
+    const text = readFileSync(join(src, file), "utf8");
+    assert.doesNotMatch(text, /^\s*(import|export\s+\*|export\s+\{[^}]*\}\s+from)\b/m, `src/${file} must not import anything`);
+    assert.doesNotMatch(text, /\benum\b|\bnamespace\b/, `src/${file} must run under Node type stripping`);
+  }
+});
+
+test("the outputs (Style Dictionary included) are browser-safe: no Node APIs on the render path", () => {
+  const build = resolvePath(dirname(new URL(import.meta.url).pathname), "..", "src");
+  const seen = new Set<string>();
+  const packages = new Set<string>();
+  const visit = (entry: string) => {
+    if (seen.has(entry)) return;
+    seen.add(entry);
+    const text = readFileSync(entry, "utf8");
+    assert.doesNotMatch(text, /\bprocess\.|\bBuffer\b|\brequire\(/, `${entry} uses a Node global`);
+    for (const [, specifier] of text.matchAll(/(?:from|import)\s+"([^"]+)"/g)) {
+      if (specifier!.startsWith(".")) visit(resolvePath(dirname(entry), specifier!));
+      else packages.add(specifier!);
+    }
+  };
+  visit(join(build, "build.js"));
+  assert.deepEqual([...packages].sort(), ["style-dictionary"], "the render path imports Style Dictionary and nothing else from outside the package");
+  assert.ok(![...seen].some((file) => /cli/.test(file)));
 });
 
 test("the engine and the colour module are browser-safe: no Node, no dependencies", () => {

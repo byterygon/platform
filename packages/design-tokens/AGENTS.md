@@ -2,7 +2,9 @@
 
 The token engine of Byterygon UI (spec "Byterygon UI: design tokens, Theme Studio and component
 set", sections 2 to 4 and 9a). A theme file of seeds plus overrides becomes DTCG tokens, and the
-tokens become CSS, Tailwind, shadcn, TypeScript and Figma outputs. Pure TypeScript; no network at
+tokens become CSS, Tailwind, shadcn, TypeScript, Figma and Monaco outputs and a shadcn registry
+theme item. The Theme Studio (`packages/theme-studio`) runs this same code in the browser, so
+everything it exports is what `by-tokens export` prints, byte for byte. Pure TypeScript; no network at
 any point; the build fails when a rule is broken.
 
 ```
@@ -13,9 +15,12 @@ theme file (seeds + overrides)
   -> overrides from the theme                           src/generate.ts
   -> rules: aliases, tiers, raw colours, contrast       src/validate.ts
   -> Style Dictionary transforms and formats            src/outputs.ts
+     Monaco theme (one source with @byterygon/ui)       src/monaco.ts
+     shadcn registry:theme item (same)                  src/registry-theme.ts
   -> generated/<theme>/{tokens.css, tailwind-theme.css, shadcn-alias.css,
-                        tokens.ts, tokens.dtcg.json, figma-variables.json}
-     (the default theme commits all six, the other presets the three CSS files)
+                        tokens.ts, tokens.dtcg.json, figma-variables.json,
+                        monaco-theme.ts, registry-theme.json}
+     (the default theme commits all eight, the other presets the three CSS files)
 ```
 
 ## Commands
@@ -27,13 +32,16 @@ command is non-interactive and takes `--json`.
 pnpm --filter @byterygon/design-tokens tokens build            # regenerate generated/default
 pnpm --filter @byterygon/design-tokens tokens build --theme paper    # a preset (see "Presets")
 pnpm --filter @byterygon/design-tokens tokens build --check    # exit 3 if generated/ is stale
-pnpm --filter @byterygon/design-tokens tokens build --theme paper --all   # all six files, not only the committed ones
+pnpm --filter @byterygon/design-tokens tokens build --theme paper --all   # all eight files, not only the committed ones
 pnpm --filter @byterygon/design-tokens tokens validate         # rules only, writes nothing
 pnpm --filter @byterygon/design-tokens tokens explain color.bg.surface
 pnpm --filter @byterygon/design-tokens tokens search hover background
 pnpm --filter @byterygon/design-tokens tokens diff default ./my.theme.json
 pnpm --filter @byterygon/design-tokens tokens preset create my-theme --set seeds.colors.brand.hue=150
 pnpm --filter @byterygon/design-tokens tokens export css --theme ./my.theme.json
+pnpm --filter @byterygon/design-tokens tokens export monaco --theme paper      # also registry, ts, dtcg, figma, tailwind, shadcn, theme
+pnpm --filter @byterygon/design-tokens tokens hash encode --theme ./my.theme.json --mode dark   # a Theme Studio URL hash
+pnpm --filter @byterygon/design-tokens tokens hash decode '#by=1&theme=...' --out my.theme.json # what a human tuned
 pnpm --filter @byterygon/design-tokens tokens help --json      # commands, options, exit codes
 pnpm --filter @byterygon/design-tokens test                    # includes the drift test
 ```
@@ -99,6 +107,35 @@ that role's failures. Command-line mistakes come back as `"error": { "code", "me
 - `seeds.contrast.level` is `AA` (4.5:1 text, 3:1 UI) or `AAA` (7:1, 4.5:1). `seeds.contrast.apca`
   (`{ text, ui }`, absolute Lc) adds an APCA minimum; without it APCA is reported, not enforced.
 
+## Studio state (URL hash), versioned
+
+The Theme Studio keeps its state in the URL hash and in browser storage, and both hold a theme
+file (above), so an agent can open a Studio state, generate one, or read back what a human tuned.
+`src/state.ts` is the only implementation; the Studio and `by-tokens hash` call it.
+
+```
+#by=1&theme=<payload>[&mode=light|dark][&density=comfortable|compact]
+
+by        hash schema version, an integer (now 1); required
+theme     base64url, no padding, of the deflate-raw compressed UTF-8 JSON of a theme file; required
+mode      the colour mode the Studio shows; optional
+density   the density the Studio shows; optional
+```
+
+- Readers ignore parameters they do not know, so a later version can add view state (a panel, a
+  selected token) without breaking this one. A bad `mode` or `density` is ignored with a
+  `state-value-ignored` warning.
+- A hash with a newer `by` still opens: the payload encoding never changes, and the decoder
+  reports a `state-newer-version` warning. Change the payload encoding only together with a new
+  parameter name, never under `theme`.
+- A theme file with a newer `schemaVersion` opens through `readThemeFile`: the top-level keys,
+  seeds, ramp fields and contrast fields this version knows are kept, the file is labelled
+  `schemaVersion` 1, and each dropped key is a `theme-key-dropped` warning. `by-tokens build`
+  and the other commands still reject such a file (exit 1); only the hash is lenient.
+- A malformed hash is one `state-invalid` error with a fix (exit 2 from `hash decode`).
+- `encodeState` is deterministic: the same theme object and view give the same hash. Key order
+  is the theme object's own.
+
 ## Presets
 
 Six themes ship in `themes/`. All six pass every contrast pair in both colour modes (and, because
@@ -114,11 +151,13 @@ theme name; the second is how the Theme Studio will label it.
 | `terminal` | Terminal | dark first, green accent, `font.sans` set to the mono stack, 13 px, radius 2, compact |
 | `high-contrast` | High contrast | WCAG AAA (7:1 text, 4.5:1 UI), pure grey, 3 px focus ring, `color.neutral.11` pushed to pass AAA |
 
-`generated/default/` holds all six outputs. The other presets commit `tokens.css`,
+`generated/default/` holds all eight outputs. The other presets commit `tokens.css`,
 `tailwind-theme.css` and `shadcn-alias.css`, which is what a project copies in: the other three are
 about 1.4 MB per theme together, change with every catalogue edit, and `tokens build --theme <name> --all`
-or `tokens export <format> --theme <name>` produce them on demand. The drift test renders all six for
-every preset and compares the committed ones byte for byte.
+or `tokens export <format> --theme <name>` produce them on demand. The drift test renders all eight for
+every preset and compares the committed ones byte for byte. `registry-theme.json` of every preset
+is also `packages/ui/registry/theme-<preset>.json`, made by the same function from the committed
+CSS; a test compares the two.
 
 A theme whose brand solid is light enough to take dark text (a yellow, a lime) needs overrides the
 catalogue cannot make for it: `color.accent.bg-active` points at step 11, a dark text step, so dark
@@ -178,7 +217,7 @@ a translucent background is composited over the surface under it first.
   pick up every file in `themes/`.
 - **A text role**: five tokens, `text.<role>.{family,size,weight,leading,tracking}`, aliasing the
   `font.*` scales (`type.ts`). It is five tokens and not a DTCG `typography` composite because the
-  engine handles every type it has in all six outputs and Figma has no typography variable.
+  engine handles every type it has in all its outputs and Figma has no typography variable.
   Tracking is a px dimension (DTCG has no em).
 - **A token type**: add it to `ValueByType` in `src/model.ts` and to the switches in
   `src/values.ts` (parse, check, CSS) and `figmaTransform` in `src/outputs.ts`.
@@ -197,8 +236,12 @@ test fails otherwise.
   or change the colours.
 - Never add a token without `use` and `avoid` sentences.
 - Never import Node APIs or a package into `src/color/` or anything `src/index.ts` exports: the
-  engine runs in the browser (Theme Studio). Node and Style Dictionary belong in `src/outputs.ts`,
-  `src/build.ts` and `src/cli/`. A test enforces this.
+  engine runs in the browser (Theme Studio). Style Dictionary belongs in `src/outputs.ts` and
+  `src/build.ts`, which also run in the browser (Style Dictionary reads nothing from disk here; the
+  Studio bundles it), so they import no Node API either. Node belongs in `src/cli/`. Tests enforce
+  both.
+- Never add an import to `src/monaco.ts` or `src/registry-theme.ts`: `@byterygon/ui` imports them
+  as TypeScript source and its registry ships `monaco.ts` as the `@byterygon/monaco-theme` item.
 - Never fetch anything at build or run time.
 
 ## Catalogue notes
@@ -229,11 +272,13 @@ missing licence text, a changed file or an unlisted font file. Nothing is fetche
 
 | Import | What |
 | --- | --- |
-| `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `resolve`, `toDtcg`, the catalogue vocabulary, and the colour module |
+| `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), and the Monaco and registry modules |
 | `@byterygon/design-tokens/color` | the colour module alone: OKLCH conversion, sRGB gamut mapping, WCAG and APCA contrast, the lightness solver, `generateRamp` |
-| `@byterygon/design-tokens/build` | `buildTheme` and `renderOutputs` (Node, Style Dictionary) |
-| `@byterygon/design-tokens/default/*` | the committed outputs of the default theme (`tokens.css`, `tailwind-theme.css`, `shadcn-alias.css`, `tokens.dtcg.json`, `figma-variables.json`) |
-| `@byterygon/design-tokens/presets/<name>/*` | the committed outputs of a preset (the three CSS files; all six for `default`) |
+| `@byterygon/design-tokens/build` | `buildTheme`, `renderOutputs` and `monacoThemeFor` (Style Dictionary; runs in Node and in the browser) |
+| `@byterygon/design-tokens/monaco` | `src/monaco.ts` as source: `MONACO_COLORS`, `MONACO_TOKENS`, `monacoTheme(read)` |
+| `@byterygon/design-tokens/registry-theme` | `src/registry-theme.ts` as source: `registryThemeItem`, `formatRegistryThemeItem`, the small CSS reader |
+| `@byterygon/design-tokens/default/*` | the committed outputs of the default theme (`tokens.css`, `tailwind-theme.css`, `shadcn-alias.css`, `tokens.dtcg.json`, `figma-variables.json`, `monaco-theme.ts`, `registry-theme.json`) |
+| `@byterygon/design-tokens/presets/<name>/*` | the committed outputs of a preset (the three CSS files; all eight for `default`) |
 | `@byterygon/design-tokens/fonts/*` | `fonts.css` and the vendored font files |
 | `@byterygon/design-tokens/default/tokens` | `tokens.ts`: typed paths, CSS variables, descriptions and resolved values |
 

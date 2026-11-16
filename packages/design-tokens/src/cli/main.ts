@@ -10,6 +10,7 @@ import { type BuildResult, OUTPUT_ALIASES, OUTPUT_FILES, type OutputFile, buildT
 import { generateTokens } from "../generate.js";
 import { type Diagnostic, type ModeContext, type Token, type TokenSet, SCHEMA_VERSION, TIERS, hasErrors } from "../model.js";
 import { dependentAxes, ownValues, referencedBy, resolve } from "../resolve.js";
+import { STATE_DENSITIES, STATE_MODES, decodeState, encodeState } from "../state.js";
 import { closest, isPlainObject, stableJson } from "../util.js";
 import { type ContrastMeasurement, contextsFor, validate } from "../validate.js";
 import { TOKEN_TYPES, cssValue, cssVarName } from "../values.js";
@@ -510,12 +511,64 @@ async function exportCommand(args: ParsedArgs, io: Io): Promise<Outcome> {
   return { exitCode: EXIT.ok, data: { theme: result.set.name, format, file, content, diagnostics: result.diagnostics }, text: "", raw: content };
 }
 
+async function hash(args: ParsedArgs, io: Io): Promise<Outcome> {
+  const [action, ...rest] = args.positionals;
+  const usage = "Usage: by-tokens hash encode [--theme <name|file>] [--mode <light|dark>] [--density <comfortable|compact>] [--url <studio-url>] | hash decode <hash|url> [--out <file>]";
+  const only = (allowed: readonly string[]) => {
+    for (const name of args.flags.keys()) if (!allowed.includes(name)) throw new UsageError("usage", `hash ${action} does not take ${name}`, usage);
+  };
+  if (action === "encode") {
+    if (rest.length > 0) throw new UsageError("usage", "hash encode takes no positional arguments; pass the theme with --theme", usage);
+    only(["--theme", "--mode", "--density", "--url"]);
+    const choice = <T extends string>(name: string, options: readonly T[]): T | undefined => {
+      const value = flag(args, name);
+      if (value === undefined) return undefined;
+      if (!(options as readonly string[]).includes(value)) throw new UsageError("usage", `${name} must be ${options.join(" or ")}`, usage);
+      return value as T;
+    };
+    const mode = choice("--mode", STATE_MODES);
+    const density = choice("--density", STATE_DENSITIES);
+    const loaded = loadTheme(themeFlag(args), io);
+    if (!isPlainObject(loaded.theme)) throw new UsageError("theme-invalid", "a theme file must be a JSON object", "A theme is { schemaVersion, name, seeds, overrides }.");
+    const fragment = await encodeState({ theme: loaded.theme, ...(mode ? { mode } : {}), ...(density ? { density } : {}) });
+    const base = flag(args, "--url");
+    const url = base === undefined ? undefined : `${base.split("#")[0]}${fragment}`;
+    return { exitCode: EXIT.ok, data: { hash: fragment, ...(url ? { url } : {}), diagnostics: [] }, text: url ?? fragment };
+  }
+  if (action === "decode") {
+    if (rest.length !== 1) throw new UsageError("usage", "hash decode needs one hash or Studio URL", usage);
+    only(["--out"]);
+    const decoded = await decodeState(rest[0]!);
+    if (!decoded.ok) {
+      return { exitCode: EXIT.usage, data: { diagnostics: decoded.diagnostics }, text: [...diagnosticsText(decoded.diagnostics), "decode failed: not a Theme Studio hash"].join("\n") };
+    }
+    const { theme, mode, density } = decoded.state!;
+    const content = stableJson(theme);
+    const view = { ...(mode ? { mode } : {}), ...(density ? { density } : {}) };
+    const outFlag = flag(args, "--out");
+    if (outFlag) {
+      const target = resolvePath(io.cwd, outFlag);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, content);
+      return {
+        exitCode: EXIT.ok,
+        data: { theme, ...view, written: display(io, target), diagnostics: decoded.diagnostics },
+        text: [...diagnosticsText(decoded.diagnostics), `wrote ${display(io, target)}`].join("\n"),
+      };
+    }
+    // Warnings go to stderr so stdout stays the theme file.
+    if (!args.json && decoded.diagnostics.length > 0) io.stderr(`${diagnosticsText(decoded.diagnostics).join("\n")}\n`);
+    return { exitCode: EXIT.ok, data: { theme, ...view, diagnostics: decoded.diagnostics }, text: "", raw: content };
+  }
+  throw new UsageError("usage", action ? `unknown hash action "${action}"` : "hash needs an action: encode or decode", usage);
+}
+
 function help(args: ParsedArgs): Outcome {
   const topic = args.positionals[0];
   const commands = topic ? COMMANDS.filter((command) => command.name === topic) : COMMANDS;
   if (commands.length === 0) throw new UsageError("unknown-command", `unknown command "${topic}"`, `Commands: ${COMMANDS.map((command) => command.name).join(", ")}.`);
   const text = [
-    "by-tokens: Byterygon design tokens (seeds plus overrides -> DTCG tokens -> CSS, Tailwind, shadcn, TypeScript, Figma).",
+    "by-tokens: Byterygon design tokens (seeds plus overrides -> DTCG tokens -> CSS, Tailwind, shadcn, TypeScript, Figma, Monaco, registry item).",
     "",
     ...commands.flatMap((command) => [command.usage, `  ${command.summary}`, ...command.options.map((option) => `    ${`${option.name}${option.value ? ` ${option.value}` : ""}`.padEnd(34)} ${option.summary}`), ""]),
     "Every command takes --json and then prints one JSON document to stdout:",
@@ -541,6 +594,7 @@ const HANDLERS: Readonly<Record<string, (args: ParsedArgs, io: Io) => Promise<Ou
   diff,
   preset,
   export: exportCommand,
+  hash,
   help,
   version,
 };

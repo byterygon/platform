@@ -1,4 +1,5 @@
 import type * as MonacoNamespace from "monaco-editor/editor/editor.api";
+import { MONACO_COLORS, MONACO_TOKENS, monacoTheme as themeFromTokens } from "@byterygon/design-tokens/monaco";
 
 // Monaco for Byterygon UI (spec section 7): loaded lazily from the app's own bundle, never from a
 // CDN or through Monaco's AMD loader, with its one web worker bundled by Vite (`?worker`), and a
@@ -182,89 +183,14 @@ export function tokenReader(element: HTMLElement): TokenReader & { dispose: () =
   };
 }
 
-/**
- * Token roles per Monaco colour id. `editor.*` and `syntax.*` (spec section 3) drive the text area;
- * the widgets Monaco draws (find, hover, context menu, suggestions) take the overlay roles, so they
- * look like Byterygon popovers.
- */
-export const MONACO_COLORS: Readonly<Record<string, string>> = {
-  "editor.background": "--by-editor-bg",
-  "editor.foreground": "--by-editor-fg",
-  "editorGutter.background": "--by-editor-bg",
-  "editor.selectionBackground": "--by-editor-selection",
-  "editor.inactiveSelectionBackground": "--by-editor-selection",
-  "editor.selectionHighlightBackground": "--by-editor-match",
-  "editor.lineHighlightBackground": "--by-editor-line-highlight",
-  "editor.lineHighlightBorder": "--by-editor-line-highlight",
-  "editorCursor.foreground": "--by-editor-cursor",
-  "editorLineNumber.foreground": "--by-editor-gutter",
-  "editorLineNumber.activeForeground": "--by-editor-fg",
-  "editor.findMatchBackground": "--by-editor-match",
-  "editor.findMatchHighlightBackground": "--by-editor-match",
-  "editor.wordHighlightBackground": "--by-editor-match",
-  "editorBracketMatch.background": "--by-editor-match",
-  "editorBracketMatch.border": "--by-color-border-strong",
-  "editorIndentGuide.background1": "--by-color-border-muted",
-  "editorWhitespace.foreground": "--by-color-border-default",
-  "editorError.foreground": "--by-syntax-error",
-  "editorWarning.foreground": "--by-color-status-warning-fg",
-  "editorInfo.foreground": "--by-color-status-info-fg",
-  "editorOverviewRuler.border": "--by-color-border-muted",
-  "editorWidget.background": "--by-color-bg-overlay",
-  "editorWidget.foreground": "--by-color-fg-default",
-  "editorWidget.border": "--by-color-border-default",
-  "editorHoverWidget.background": "--by-color-bg-overlay",
-  "editorHoverWidget.foreground": "--by-color-fg-default",
-  "editorHoverWidget.border": "--by-color-border-default",
-  "menu.background": "--by-color-bg-overlay",
-  "menu.foreground": "--by-color-fg-default",
-  "menu.selectionBackground": "--by-color-interactive-hover",
-  "menu.selectionForeground": "--by-color-fg-default",
-  "menu.separatorBackground": "--by-color-border-default",
-  "input.background": "--by-color-bg-surface",
-  "input.foreground": "--by-color-fg-default",
-  "input.border": "--by-color-border-strong",
-  "inputOption.activeBorder": "--by-color-ring",
-  "focusBorder": "--by-color-ring",
-  "scrollbarSlider.background": "--by-color-interactive-hover",
-  "scrollbarSlider.hoverBackground": "--by-color-interactive-active",
-  "scrollbarSlider.activeBackground": "--by-color-interactive-active",
-};
-
-/** Token roles per Monaco token type of the `pgsql` and `sql` grammars (and the common names). */
-export const MONACO_TOKENS: Readonly<Record<string, string>> = {
-  "": "--by-editor-fg",
-  keyword: "--by-syntax-keyword",
-  operator: "--by-syntax-operator",
-  delimiter: "--by-syntax-operator",
-  predefined: "--by-syntax-function",
-  "support.function": "--by-syntax-function",
-  string: "--by-syntax-string",
-  number: "--by-syntax-number",
-  comment: "--by-syntax-comment",
-  type: "--by-syntax-type",
-  identifier: "--by-syntax-identifier",
-  constant: "--by-syntax-constant",
-  invalid: "--by-syntax-error",
-  // Monaco's base themes colour these SQL tokens themselves (red strings, magenta functions).
-  "string.sql": "--by-syntax-string",
-  "operator.sql": "--by-syntax-operator",
-  "predefined.sql": "--by-syntax-function",
-};
-
-/** Relative luminance of `#rrggbb`, to pick Monaco's light or dark base for what the tokens leave out. */
-const luminance = (hex: string) => {
-  const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
-  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  return 0.2126 * lin(r!) + 0.7152 * lin(g!) + 0.0722 * lin(b!);
-};
+// The colour ids and token types Monaco is given, the role each one reads, and the theme function
+// are one source with the `monaco-theme.ts` output of @byterygon/design-tokens (and the Theme
+// Studio's Monaco export): its src/monaco.ts, installed beside this file as `@/lib/monaco-theme`.
+export { MONACO_COLORS, MONACO_TOKENS, luminance } from "@byterygon/design-tokens/monaco";
 
 /** The Monaco theme for the tokens a reader resolves. Pure: the same tokens give the same theme. */
 export function monacoTheme(read: Pick<TokenReader, "color">): MonacoThemeData {
-  const colors = Object.fromEntries(Object.entries(MONACO_COLORS).map(([id, cssVar]) => [id, read.color(cssVar)]));
-  const rules = Object.entries(MONACO_TOKENS).map(([token, cssVar]) => ({ token, foreground: read.color(cssVar).slice(1, 7) }));
-  const dark = luminance(colors["editor.background"]!.slice(0, 7)) < 0.2;
-  return { base: dark ? "vs-dark" : "vs", inherit: true, rules, colors };
+  return themeFromTokens(read);
 }
 
 /** Text metrics from the density-aware `text.code` and `space.inset` roles, as Monaco options. */

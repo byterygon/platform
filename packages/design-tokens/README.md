@@ -3,7 +3,8 @@
 Byterygon design tokens: a theme file of seeds plus overrides becomes DTCG tokens (OKLCH ramps,
 roles with light/dark and comfortable/compact modes, contrast checked in every mode) and the
 outputs an app needs: `tokens.css`, `tailwind-theme.css`, `shadcn-alias.css`, `tokens.ts`,
-`tokens.dtcg.json` and `figma-variables.json`.
+`tokens.dtcg.json`, `figma-variables.json`, `monaco-theme.ts` and a shadcn registry theme item
+(`registry-theme.json`). The same code runs in the browser for the Theme Studio.
 
 ```sh
 pnpm --filter @byterygon/design-tokens build     # compile the engine and the CLI

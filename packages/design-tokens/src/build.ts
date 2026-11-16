@@ -14,10 +14,11 @@ export { OUTPUT_ALIASES, OUTPUT_FILES, type OutputFile, renderOutputs } from "./
 
 /**
  * The files of a built-in preset that are committed under `generated/<theme>/`. The default theme
- * commits all six (the component package imports them). The other presets commit the three CSS
+ * commits all eight (the component package imports them). The other presets commit the three CSS
  * files, which is what a project copies in; `tokens.ts`, `tokens.dtcg.json` and
- * `figma-variables.json` are about 1.4 MB per theme together, change with every catalogue edit, and are one
- * `by-tokens export` away. The drift test still renders all six for every preset.
+ * `figma-variables.json` are about 1.4 MB per theme together, change with every catalogue edit, and
+ * they, the Monaco theme and the registry item (which `@byterygon/ui`'s registry holds for every
+ * preset) are one `by-tokens export` away. The drift test still renders all eight for every preset.
  */
 export const PRESET_COMMITTED_OUTPUTS: readonly OutputFile[] = ["tokens.css", "tailwind-theme.css", "shadcn-alias.css"];
 
