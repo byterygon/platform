@@ -113,6 +113,44 @@ function Shell({ shell }: { shell: Shell }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services]);
 
+  // Tabs and settings that are not being saved (workspace.ts): one toast per new problem.
+  const shownProblem = useRef<string | null>(null);
+  useEffect(() => {
+    const problem = state.workspaceProblem;
+    const key = problem === null ? null : problem.kind === "conflict" ? "conflict" : `${problem.kind}:${problem.error.title}`;
+    if (key === shownProblem.current) return;
+    shownProblem.current = key;
+    if (problem === null) return;
+    switch (problem.kind) {
+      case "unreadable": {
+        const d = problem.error;
+        if (d.correlationId) setDiagnostics((list) => [`${new Date().toISOString()} ${d.code ?? ""} ${d.correlationId} ${d.title}`, ...list].slice(0, 100));
+        toast.add({
+          title: "Could not read the workspace",
+          description: `${problem.error.title}. Tabs and settings are not saved in this session, so nothing in the workspace is overwritten.`,
+          type: "danger",
+          timeout: 0,
+          actionProps: { children: "Open diagnostics", onClick: () => dispatch({ type: "dialog", dialog: { kind: "about" } }) },
+        });
+        break;
+      }
+      case "conflict":
+        toast.add({
+          title: "The workspace changed in another window",
+          description: "This window stopped saving its tabs and settings. Reload to continue with the saved ones.",
+          type: "warning",
+          timeout: 0,
+          priority: "high",
+          actionProps: { children: "Reload", onClick: () => location.reload() },
+        });
+        break;
+      case "failed":
+        toast.add({ title: "Could not save tabs and settings", description: `${problem.error.description ?? problem.error.title} It is tried again with the next change.`, type: "danger" });
+        break;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.workspaceProblem]);
+
   function handleEvent(event: AppEvent) {
     const current = stateRef.current;
     const name = (id: string) => current.connections?.find((c) => c.id === id)?.name ?? id;

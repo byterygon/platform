@@ -874,3 +874,206 @@ async fn app_events_subscription_carries_status_changes() {
     assert_eq!(event["status"], "connected");
     client.unsubscribe(1).await;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Workspace documents (app.getWorkspace / app.setWorkspace, spec §5 and Open question 11)
+// ---------------------------------------------------------------------------------------------
+
+/// SQL text a tab holds; it must reach tabs.json and nothing else (spec §4: no SQL in the audit).
+const TAB_SQL: &str = "select 'tab-text-6c1e' from accounts";
+
+#[tokio::test]
+async fn tabs_and_settings_survive_a_restart_and_a_stale_revision_conflicts() {
+    let first = TestCore::start().await;
+    let empty = first.ok("app.getWorkspace", json!({})).await;
+    assert_eq!(empty["settings"], json!(null));
+    assert_eq!(empty["tabs"], json!(null));
+    let base = empty["revision"].as_str().unwrap().to_owned();
+
+    let settings = json!({ "version": 1, "settings": { "density": "comfortable" } });
+    let tabs = json!({ "version": 1, "tabs": [{ "id": "t1", "sql": TAB_SQL }], "activeTab": "t1" });
+    let written = first
+        .ok(
+            "app.setWorkspace",
+            json!({ "settings": settings, "tabs": tabs, "baseRevision": base }),
+        )
+        .await;
+    let revision = written["revision"].as_str().unwrap().to_owned();
+    assert_ne!(revision, base);
+
+    // A second window still holding the first revision writes nothing.
+    let err = first
+        .err(
+            "app.setWorkspace",
+            json!({ "tabs": { "version": 1, "tabs": [] }, "baseRevision": base }),
+        )
+        .await;
+    assert_eq!(
+        (err.code, kind(&err).as_str()),
+        (Code::FailedPrecondition, "Conflict")
+    );
+    assert_eq!(err.details.as_ref().unwrap()["revision"], revision);
+
+    // Only the document given changes; the other keeps its value.
+    let only_settings = json!({ "version": 1, "settings": { "density": "compact" } });
+    let revision = first
+        .ok(
+            "app.setWorkspace",
+            json!({ "settings": only_settings, "baseRevision": revision }),
+        )
+        .await["revision"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let read = first.ok("app.getWorkspace", json!({})).await;
+    assert_eq!(read["settings"], only_settings);
+    assert_eq!(read["tabs"], tabs);
+    assert_eq!(read["revision"], revision);
+
+    // The files are the documents, and the tab text is in tabs.json only.
+    let on_disk: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(first.workspace_dir().join("tabs.json")).unwrap())
+            .unwrap();
+    assert_eq!(on_disk, tabs);
+    let audit_text = std::fs::read_to_string(first.audit_path()).unwrap();
+    assert!(
+        !audit_text.contains("tab-text-6c1e"),
+        "tab SQL leaked into the audit log"
+    );
+    let entries: Vec<_> = first
+        .audit_records()
+        .into_iter()
+        .map(|r| r.entry)
+        .filter(|e| e.action.name == "app.setWorkspace")
+        .collect();
+    // Admission and completion of three calls, at Write risk with the workspace permission.
+    assert_eq!(entries.len(), 6);
+    assert!(entries.iter().all(|e| e.risk == Risk::Write));
+    assert!(
+        entries
+            .iter()
+            .all(|e| e.action.perm.as_str() == "workspace.write")
+    );
+    assert_eq!(
+        entries
+            .iter()
+            .filter(|e| e.outcome == Outcome::Success)
+            .count(),
+        2
+    );
+
+    // Restart on the same workspace: the documents are back under a new revision.
+    let TestCore {
+        core,
+        dir,
+        keychain,
+        ..
+    } = first;
+    drop(core);
+    let again = TestCore::with(Options {
+        secret_store: Some(SecretStoreConfig::Store(keychain as Arc<dyn SecretStore>)),
+        dir: Some(dir),
+        ..Options::default()
+    })
+    .await;
+    let restored = again.ok("app.getWorkspace", json!({})).await;
+    assert_eq!(restored["settings"], only_settings);
+    assert_eq!(restored["tabs"], tabs);
+    assert_ne!(restored["revision"], json!(revision));
+    let err = again
+        .err(
+            "app.setWorkspace",
+            json!({ "tabs": tabs, "baseRevision": revision }),
+        )
+        .await;
+    assert_eq!(kind(&err), "Conflict");
+}
+
+#[tokio::test]
+async fn set_workspace_takes_objects_within_the_cap_only() {
+    let t = TestCore::start().await;
+    let base = t.ok("app.getWorkspace", json!({})).await["revision"].clone();
+    let err = t
+        .err(
+            "app.setWorkspace",
+            json!({ "tabs": [TAB_SQL], "baseRevision": base }),
+        )
+        .await;
+    assert_eq!(
+        (err.code, kind(&err).as_str()),
+        (Code::InvalidArgument, "InvalidDocument")
+    );
+    assert_eq!(err.details.as_ref().unwrap()["document"], "tabs");
+    assert!(!err.message.contains("tab-text-6c1e"));
+
+    let big = "x".repeat(dbee_core::types::MAX_WORKSPACE_DOCUMENT_BYTES);
+    let err = t
+        .err(
+            "app.setWorkspace",
+            json!({ "settings": { "v": big }, "baseRevision": base }),
+        )
+        .await;
+    assert_eq!(kind(&err), "InvalidDocument");
+    assert_eq!(err.details.as_ref().unwrap()["document"], "settings");
+
+    // A write the disk refuses reports the file, not the directory, and changes nothing.
+    std::fs::create_dir(t.workspace_dir().join("tabs.json")).unwrap();
+    let err = t
+        .err(
+            "app.setWorkspace",
+            json!({ "tabs": { "v": 1 }, "baseRevision": base }),
+        )
+        .await;
+    assert_eq!(
+        (err.code, kind(&err).as_str()),
+        (Code::FailedPrecondition, "WriteFailed")
+    );
+    let message = err.details.as_ref().unwrap()["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("could not write tabs.json"),
+        "{message}"
+    );
+    assert!(!message.contains(&*t.workspace_dir().to_string_lossy()));
+    let read = t.ok("app.getWorkspace", json!({})).await;
+    assert_eq!((&read["tabs"], &read["revision"]), (&json!(null), &base));
+}
+
+#[tokio::test]
+async fn workspace_documents_follow_the_audit_policy_and_hide_from_agents() {
+    // Without an audit log the read runs (human Reads run and report); the write does not.
+    let t = TestCore::with(Options {
+        audit: Some(AuditConfig::Sink(Arc::new(UnavailableAuditSink(
+            "disk full".into(),
+        )))),
+        ..Options::default()
+    })
+    .await;
+    let base = t.ok("app.getWorkspace", json!({})).await["revision"].clone();
+    let err = t
+        .err(
+            "app.setWorkspace",
+            json!({ "tabs": { "version": 1 }, "baseRevision": base }),
+        )
+        .await;
+    assert_eq!(err.code, Code::Unavailable);
+    assert!(!t.workspace_dir().join("tabs.json").exists());
+    assert_eq!(t.ok("app.getWorkspace", json!({})).await["revision"], base);
+
+    // Both are Hidden: an agent's chain does not find them.
+    let t = TestCore::start().await;
+    let mut agent = tester();
+    agent.kind = PrincipalKind::Agent;
+    agent.id = "agent:token:a".into();
+    agent.on_behalf_of = Some(Box::new(tester()));
+    for (procedure, input) in [
+        ("app.getWorkspace", json!({})),
+        (
+            "app.setWorkspace",
+            json!({ "tabs": {}, "baseRevision": "x" }),
+        ),
+    ] {
+        let err = t.call_as(&agent, procedure, input).await.unwrap_err();
+        assert_eq!(err.code, Code::NotFound, "{procedure}");
+    }
+    assert!(!t.workspace_dir().join("tabs.json").exists());
+}

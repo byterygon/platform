@@ -21,7 +21,7 @@ fn committed_artifacts_match_the_router() {
 
 /// The table of DBee spec §5: name, kind, permission, risk, agent exposure, timeouts.
 #[test]
-fn the_seventeen_procedures_of_the_spec() {
+fn the_nineteen_procedures_of_the_spec() {
     let min = |m: u64| Some(Duration::from_secs(m * 60));
     let defaults = (Some(Duration::from_secs(30)), min(5));
     type Row = (
@@ -42,10 +42,26 @@ fn the_seventeen_procedures_of_the_spec() {
             (None, None),
         ),
         (
+            "app.getWorkspace",
+            ProcedureKind::Query,
+            "workspace.read",
+            Risk::Read,
+            Agent::Hidden,
+            defaults,
+        ),
+        (
             "app.info",
             ProcedureKind::Query,
             "app.read",
             Risk::Read,
+            Agent::Hidden,
+            defaults,
+        ),
+        (
+            "app.setWorkspace",
+            ProcedureKind::Mutation,
+            "workspace.write",
+            Risk::Write,
             Agent::Hidden,
             defaults,
         ),
@@ -171,7 +187,7 @@ fn the_seventeen_procedures_of_the_spec() {
         ),
     ];
     let procedures = codegen_router().procedures();
-    assert_eq!(procedures.len(), 17);
+    assert_eq!(procedures.len(), 19);
     for (meta, (name, kind, perm, risk, agent, timeouts)) in procedures.iter().zip(&expected) {
         assert_eq!(meta.name, *name);
         assert_eq!(meta.kind, *kind, "{name}");

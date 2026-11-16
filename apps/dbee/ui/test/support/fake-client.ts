@@ -1,6 +1,7 @@
 // An in-memory DBee core behind the generated API: enough of spec §5 for the screens to be driven
 // end to end in jsdom (prepare, create, list, open sessions, schema, classify, execute as Arrow
-// IPC, export, events). Every call is recorded; errors are injected per procedure.
+// IPC, export, events, the workspace documents with their revision). Every call is recorded;
+// errors are injected per procedure.
 import { RpcError, type StreamCall, type Subscription } from "@byterygon/ambidex";
 import { inThreadArrowDecoder } from "@byterygon/ambidex/arrow-decoder";
 import { Table, tableFromArrays, tableToIPC } from "apache-arrow";
@@ -18,6 +19,8 @@ export interface FakeState {
   rows: number;
   events: ((event: api.AppEvent) => void)[];
   resolved: string[];
+  /** settings.json and tabs.json, as the core stores them, and the write count of the revision. */
+  workspace: { settings: api.JsonValue; tabs: api.JsonValue; writes: number };
 }
 
 export const PREVIEW_DIGEST = "sha256:preview";
@@ -121,6 +124,7 @@ export function createFakeServices(overrides: Partial<FakeState> = {}): Services
     rows: 5,
     events: [],
     resolved: ["127.0.0.1"],
+    workspace: { settings: null, tabs: null, writes: 0 },
     ...overrides,
   };
   const record = <K extends keyof api.Procedures>(procedure: K, input: unknown) => {
@@ -152,6 +156,22 @@ export function createFakeServices(overrides: Partial<FakeState> = {}): Services
       events: (input) => {
         record("app.events", input);
         return subscription<api.AppEvent>(state);
+      },
+      getWorkspace: async (input) => {
+        record("app.getWorkspace", input);
+        const w = state.workspace;
+        return { settings: structuredClone(w.settings), tabs: structuredClone(w.tabs), revision: `rev-${w.writes}` };
+      },
+      setWorkspace: async (input) => {
+        record("app.setWorkspace", input);
+        const w = state.workspace;
+        if (input.baseRevision !== `rev-${w.writes}`) {
+          throw new RpcError<api.WorkspaceSaveError>("FailedPrecondition", "the workspace changed since it was read; read it again", { details: { kind: "Conflict", revision: `rev-${w.writes}` }, correlation_id: "corr-conflict" });
+        }
+        if (input.settings !== undefined && input.settings !== null) w.settings = structuredClone(input.settings);
+        if (input.tabs !== undefined && input.tabs !== null) w.tabs = structuredClone(input.tabs);
+        w.writes += 1;
+        return { revision: `rev-${w.writes}` };
       },
     },
     connections: {

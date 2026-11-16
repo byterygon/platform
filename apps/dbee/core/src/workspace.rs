@@ -2,8 +2,10 @@
 //!
 //! `<workspace>/connections.json` holds the connection records: the grant as approved (never a
 //! credential, only the opaque secret reference), the driver settings a grant does not cover,
-//! and the display fields. `settings.json` and `tabs.json` are JSON documents the UI owns; the
-//! core stores them whole. Every write goes to a temporary file in the same directory, is
+//! and the display fields. `settings.json` and `tabs.json` are JSON documents the UI owns
+//! (`app.getWorkspace` / `app.setWorkspace`, DBee spec §5); the core stores them whole, under one
+//! revision that changes on every write so a second window cannot overwrite what it has not read.
+//! Every write goes to a temporary file in the same directory, is
 //! fsynced and renamed over the old file, so a crash leaves either the old or the new file.
 //! `audit/log.jsonl` is the audit sink's (see [`crate::audit`]).
 //!
@@ -162,12 +164,35 @@ struct Documents {
     connections: Vec<ConnectionRecord>,
     settings: Value,
     tabs: Value,
+    /// Counts the writes of `settings` and `tabs` since the store was opened.
+    writes: u64,
+}
+
+/// The UI's two documents as last written, and their revision.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UiDocuments {
+    /// `settings.json`; `Null` until the UI first writes it.
+    pub settings: Value,
+    /// `tabs.json`; `Null` until the UI first writes it.
+    pub tabs: Value,
+    pub revision: String,
+}
+
+/// Why [`Workspace::set_ui_documents`] wrote nothing.
+#[derive(Debug)]
+pub enum SetDocumentsError {
+    /// The documents changed since `base_revision`; `revision` is the current one.
+    Conflict { revision: String },
+    /// A file could not be written; memory and disk keep the previous documents.
+    Write(WorkspaceError),
 }
 
 /// The workspace store. `dir` is `None` for a store that lives in memory only (codegen, tests).
 pub struct Workspace {
     dir: Option<PathBuf>,
     documents: Mutex<Documents>,
+    /// Random per opened store, so a revision from before a restart never matches one after.
+    epoch: String,
 }
 
 impl Workspace {
@@ -195,7 +220,9 @@ impl Workspace {
                 connections,
                 settings,
                 tabs,
+                writes: 0,
             }),
+            epoch: new_epoch(),
         })
     }
 
@@ -204,6 +231,7 @@ impl Workspace {
         Workspace {
             dir: None,
             documents: Mutex::default(),
+            epoch: new_epoch(),
         }
     }
 
@@ -250,31 +278,95 @@ impl Workspace {
         self.lock().settings.clone()
     }
 
-    pub fn set_settings(&self, value: Value) -> Result<(), WorkspaceError> {
-        let mut docs = self.lock();
-        if let Some(dir) = &self.dir {
-            write_json(&dir.join(SETTINGS_FILE), &value)?;
-        }
-        docs.settings = value;
-        Ok(())
-    }
-
     pub fn tabs(&self) -> Value {
         self.lock().tabs.clone()
     }
 
-    pub fn set_tabs(&self, value: Value) -> Result<(), WorkspaceError> {
-        let mut docs = self.lock();
-        if let Some(dir) = &self.dir {
-            write_json(&dir.join(TABS_FILE), &value)?;
+    /// Both UI documents and their revision, read under one lock.
+    pub fn ui_documents(&self) -> UiDocuments {
+        let docs = self.lock();
+        UiDocuments {
+            settings: docs.settings.clone(),
+            tabs: docs.tabs.clone(),
+            revision: self.revision(docs.writes),
         }
-        docs.tabs = value;
-        Ok(())
+    }
+
+    /// Replaces the given documents (`None` leaves one as it is) if `base_revision` is the
+    /// current revision, and returns the new revision. Each file is replaced atomically; when the
+    /// second of two writes fails, the first file is put back, so memory and disk keep the
+    /// previous pair and the revision does not change.
+    pub fn set_ui_documents(
+        &self,
+        settings: Option<Value>,
+        tabs: Option<Value>,
+        base_revision: &str,
+    ) -> Result<String, SetDocumentsError> {
+        let mut docs = self.lock();
+        let current = self.revision(docs.writes);
+        if base_revision != current {
+            return Err(SetDocumentsError::Conflict { revision: current });
+        }
+        if let Some(dir) = &self.dir {
+            let mut written: Option<(&str, &Value)> = None;
+            for (file, value, previous) in [
+                (SETTINGS_FILE, &settings, &docs.settings),
+                (TABS_FILE, &tabs, &docs.tabs),
+            ] {
+                let Some(value) = value else { continue };
+                if let Err(e) = write_json(&dir.join(file), value) {
+                    if let Some((first, before)) = written {
+                        // Best effort: the first file goes back to what memory still holds.
+                        let _ = restore_json(&dir.join(first), before);
+                    }
+                    return Err(SetDocumentsError::Write(e));
+                }
+                written = Some((file, previous));
+            }
+        }
+        if let Some(settings) = settings {
+            docs.settings = settings;
+        }
+        if let Some(tabs) = tabs {
+            docs.tabs = tabs;
+        }
+        docs.writes += 1;
+        Ok(self.revision(docs.writes))
+    }
+
+    fn revision(&self, writes: u64) -> String {
+        format!("{}.{writes}", self.epoch)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Documents> {
         self.documents.lock().unwrap_or_else(|e| e.into_inner())
     }
+}
+
+/// A random id for [`Workspace::epoch`]; the clock when the OS has no randomness to give.
+fn new_epoch() -> String {
+    security_types::new_correlation_id().unwrap_or_else(|_| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        format!("t{nanos:x}")
+    })
+}
+
+/// Puts a document back after a failed pair write: the file is removed when the document was
+/// never written (`Null`), rewritten otherwise.
+fn restore_json(path: &Path, value: &Value) -> Result<(), WorkspaceError> {
+    if value.is_null() {
+        return match fs::remove_file(path) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(WorkspaceError::Io {
+                path: path.to_path_buf(),
+                error: e,
+            }),
+            _ => Ok(()),
+        };
+    }
+    write_json(path, value)
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<Option<T>, WorkspaceError> {
@@ -380,10 +472,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::open(dir.path()).unwrap();
         ws.update_connections(|c| c.push(record("a"))).unwrap();
-        ws.set_settings(serde_json::json!({ "density": "compact" }))
-            .unwrap();
-        ws.set_tabs(serde_json::json!([{ "sql": "select 1" }]))
-            .unwrap();
+        let base = ws.ui_documents().revision;
+        ws.set_ui_documents(
+            Some(serde_json::json!({ "density": "compact" })),
+            Some(serde_json::json!([{ "sql": "select 1" }])),
+            &base,
+        )
+        .unwrap();
         assert!(dir.path().join(CONNECTIONS_FILE).is_file());
         assert!(
             !dir.path()
@@ -409,6 +504,79 @@ mod tests {
         let err = ws.update_connections(|c| c.push(record("b"))).unwrap_err();
         assert!(matches!(err, WorkspaceError::Io { .. }));
         assert_eq!(ws.connections().len(), 1);
+    }
+
+    #[test]
+    fn a_stale_revision_writes_nothing_and_a_reopened_store_has_a_new_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        let first = ws.ui_documents();
+        assert_eq!((&first.settings, &first.tabs), (&Value::Null, &Value::Null));
+        let second = ws
+            .set_ui_documents(None, Some(serde_json::json!({ "v": 1 })), &first.revision)
+            .unwrap();
+        assert_ne!(second, first.revision);
+        // Only the document given was written.
+        assert!(!dir.path().join(SETTINGS_FILE).exists());
+        match ws.set_ui_documents(Some(serde_json::json!({})), None, &first.revision) {
+            Err(SetDocumentsError::Conflict { revision }) => assert_eq!(revision, second),
+            other => panic!("expected a conflict, got {other:?}"),
+        }
+        assert!(!dir.path().join(SETTINGS_FILE).exists());
+        assert_eq!(ws.ui_documents().revision, second);
+
+        let again = Workspace::open(dir.path()).unwrap();
+        let reopened = again.ui_documents();
+        assert_eq!(reopened.tabs, serde_json::json!({ "v": 1 }));
+        assert_ne!(reopened.revision, second);
+        assert!(matches!(
+            again.set_ui_documents(None, None, &second),
+            Err(SetDocumentsError::Conflict { .. })
+        ));
+    }
+
+    #[test]
+    fn a_failed_second_write_puts_the_first_file_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        let base = ws.ui_documents().revision;
+        let base = ws
+            .set_ui_documents(Some(serde_json::json!({ "n": 1 })), None, &base)
+            .unwrap();
+        // tabs.json cannot be replaced: a directory has its name.
+        fs::create_dir(dir.path().join(TABS_FILE)).unwrap();
+        let err = ws
+            .set_ui_documents(
+                Some(serde_json::json!({ "n": 2 })),
+                Some(serde_json::json!({ "t": 1 })),
+                &base,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            SetDocumentsError::Write(WorkspaceError::Io { .. })
+        ));
+        let docs = ws.ui_documents();
+        assert_eq!(docs.revision, base);
+        assert_eq!(docs.settings, serde_json::json!({ "n": 1 }));
+        let on_disk: Value =
+            serde_json::from_slice(&fs::read(dir.path().join(SETTINGS_FILE)).unwrap()).unwrap();
+        assert_eq!(on_disk, serde_json::json!({ "n": 1 }));
+
+        // A first-ever write that fails half way leaves no settings file behind.
+        let fresh = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(fresh.path()).unwrap();
+        fs::create_dir(fresh.path().join(TABS_FILE)).unwrap();
+        let base = ws.ui_documents().revision;
+        assert!(
+            ws.set_ui_documents(
+                Some(serde_json::json!({})),
+                Some(serde_json::json!({})),
+                &base
+            )
+            .is_err()
+        );
+        assert!(!fresh.path().join(SETTINGS_FILE).exists());
     }
 
     #[test]

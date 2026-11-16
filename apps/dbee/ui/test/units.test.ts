@@ -6,7 +6,7 @@ import { inThreadArrowDecoder } from "@byterygon/ambidex/arrow-decoder";
 import { describe, expect, test } from "vitest";
 import { readCell, typeFamily } from "@/app/arrow-cells";
 import { describeError, formatElapsed } from "@/app/messages";
-import { DEFAULT_PERSISTED, STORAGE_KEY, load, save } from "@/app/persistence";
+import { DEFAULT_PERSISTED, DOCUMENT_VERSION, LEGACY_STORAGE_KEY, clearLegacy, fromDocuments, readLegacy, toDocuments } from "@/app/persistence";
 import { ACTIONS, actionFor, bindingsOf, displayBinding, matchesBinding } from "@/app/shortcuts";
 import { sampleIpc } from "./support/fake-client";
 
@@ -107,20 +107,39 @@ describe("cells from Arrow buffers (spec §6)", () => {
   });
 });
 
-describe("persistence (spec Decision 26)", () => {
-  function memory(initial?: string) {
+describe("persistence (spec Decision 26): the workspace documents", () => {
+  const state = { ...DEFAULT_PERSISTED, tabs: [{ id: "t1", connectionId: "c1", sql: "select 1", maxRows: 100 }], activeTab: "t1", shellSizes: [30, 70], sidebarOpen: false, settings: { ...DEFAULT_PERSISTED.settings, preset: "midnight" as const, density: "comfortable" as const } };
+
+  test("tabs, sizes and settings round-trip through settings.json and tabs.json", () => {
+    const docs = toDocuments(state);
+    expect(docs.settings["version"]).toBe(DOCUMENT_VERSION);
+    expect(docs.tabs["version"]).toBe(DOCUMENT_VERSION);
+    // Tab text is in tabs.json only; settings.json holds no SQL.
+    expect(JSON.stringify(docs.settings)).not.toContain("select 1");
+    expect(fromDocuments(JSON.parse(JSON.stringify(docs.settings)), JSON.parse(JSON.stringify(docs.tabs)))).toEqual(state);
+  });
+
+  test("never-written documents are null; malformed fields take their defaults", () => {
+    expect(fromDocuments(null, null)).toBeNull();
+    expect(fromDocuments({ version: 1, settings: { preset: "nope", density: "huge" }, layout: { shellSizes: [0, 100] } }, { version: 1, tabs: [{ id: 1 }] })).toEqual(DEFAULT_PERSISTED);
+    expect(fromDocuments(null, { tabs: [{ id: "a", sql: "x" }], activeTab: "missing" })!.activeTab).toBe("a");
+    // A newer layout still opens with what this version understands.
+    expect(fromDocuments({ version: 9, settings: { density: "comfortable", future: true } }, "not an object")!.settings.density).toBe("comfortable");
+  });
+
+  test("the legacy webview state is read tolerantly and removed on request", () => {
     const store = new Map<string, string>();
-    if (initial !== undefined) store.set(STORAGE_KEY, initial);
-    return { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
-  }
-  test("tabs, sizes and settings round-trip; malformed input falls back to defaults", () => {
-    const storage = memory();
-    const state = { ...DEFAULT_PERSISTED, tabs: [{ id: "t1", connectionId: "c1", sql: "select 1", maxRows: 100 }], activeTab: "t1", shellSizes: [30, 70], settings: { ...DEFAULT_PERSISTED.settings, preset: "midnight" as const, density: "comfortable" as const } };
-    save(state, storage);
-    expect(load(storage)).toEqual(state);
-    expect(load(memory("not json"))).toEqual(DEFAULT_PERSISTED);
-    expect(load(memory(JSON.stringify({ tabs: [{ id: 1 }], settings: { preset: "nope", density: "huge" }, shellSizes: [0, 100] })))).toEqual(DEFAULT_PERSISTED);
-    expect(load(memory(JSON.stringify({ tabs: [{ id: "a", sql: "x" }], activeTab: "missing" }))).activeTab).toBe("a");
-    expect(load(undefined)).toEqual(DEFAULT_PERSISTED);
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+    expect(readLegacy(storage)).toBeNull();
+    store.set(LEGACY_STORAGE_KEY, "not json");
+    expect(readLegacy(storage)).toBeNull();
+    store.set(LEGACY_STORAGE_KEY, JSON.stringify(state));
+    expect(readLegacy(storage)).toEqual(state);
+    clearLegacy(storage);
+    expect(store.has(LEGACY_STORAGE_KEY)).toBe(false);
+    expect(readLegacy(undefined)).toBeNull();
+    const throwing = { getItem: () => { throw new Error("denied"); }, setItem: () => {}, removeItem: () => { throw new Error("denied"); } };
+    expect(readLegacy(throwing)).toBeNull();
+    expect(() => clearLegacy(throwing)).not.toThrow();
   });
 });

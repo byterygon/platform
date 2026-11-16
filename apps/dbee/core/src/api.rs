@@ -1,4 +1,4 @@
-//! The 17 procedures of DBee spec §5, one `#[rpc::router]` per namespace.
+//! The 19 procedures of DBee spec §5, one `#[rpc::router]` per namespace.
 //!
 //! Every handler gets its state through [`CoreState`]. Permissions, risks, agent exposure and
 //! timeouts are exactly the spec's table: queries and mutations keep the 30 s / 5 min defaults,
@@ -23,6 +23,7 @@ use crate::export::{EncodeError, Encoder, IpcDecoder};
 use crate::manager::{Manager, schema_error};
 use crate::secrets::Secret;
 use crate::types::*;
+use crate::workspace::{SetDocumentsError, WorkspaceError};
 use crate::{Failure, random_id};
 
 /// Opens the native save dialog (desktop only; DBee spec §5 `files.chooseSavePath`).
@@ -82,6 +83,54 @@ impl AppApi {
         })
     }
 
+    /// The UI's settings and query tabs from the workspace, with their revision.
+    #[rpc::query(perm = "workspace.read", risk = Risk::Read, name = "getWorkspace")]
+    async fn get_workspace(
+        &self,
+        _ctx: Ctx,
+        _input: Empty,
+    ) -> Result<WorkspaceDocuments, RpcError> {
+        let docs = self.0.manager.workspace().ui_documents();
+        Ok(WorkspaceDocuments {
+            settings: docs.settings,
+            tabs: docs.tabs,
+            revision: docs.revision,
+        })
+    }
+
+    /// Replaces the settings, the tabs or both if nothing wrote them since `baseRevision`. The
+    /// audit entries carry the input digest only, never the documents (tab text is SQL).
+    #[rpc::mutation(perm = "workspace.write", risk = Risk::Write, name = "setWorkspace")]
+    async fn set_workspace(
+        &self,
+        _ctx: Ctx,
+        input: SetWorkspaceInput,
+    ) -> Result<SetWorkspaceOutput, RpcError<WorkspaceSaveError>> {
+        for (name, document) in [("settings", &input.settings), ("tabs", &input.tabs)] {
+            if let Some(document) = document {
+                check_document(name, document)?;
+            }
+        }
+        let written = self.0.manager.workspace().set_ui_documents(
+            input.settings,
+            input.tabs,
+            &input.base_revision,
+        );
+        match written {
+            Ok(revision) => Ok(SetWorkspaceOutput { revision }),
+            Err(SetDocumentsError::Conflict { revision }) => {
+                Err(WorkspaceSaveError::Conflict { revision }.into())
+            }
+            Err(SetDocumentsError::Write(e)) => {
+                eprintln!("dbee: app.setWorkspace: {e}");
+                Err(WorkspaceSaveError::WriteFailed {
+                    message: write_failure_message(&e),
+                }
+                .into())
+            }
+        }
+    }
+
     /// Connection status, grant expiry and session events. One per UI.
     #[rpc::subscription(perm = "app.read", risk = Risk::Read)]
     async fn events(
@@ -103,6 +152,45 @@ impl AppApi {
                 },
             }
         }
+    }
+}
+
+/// A document `app.setWorkspace` stores: a JSON object no larger than the cap.
+fn check_document(
+    name: &str,
+    document: &serde_json::Value,
+) -> Result<(), RpcError<WorkspaceSaveError>> {
+    let invalid = |message: String| {
+        RpcError::from(WorkspaceSaveError::InvalidDocument {
+            document: name.into(),
+            message,
+        })
+    };
+    if !document.is_object() {
+        return Err(invalid("must be a JSON object".into()));
+    }
+    let size = serde_json::to_vec(document)
+        .map_err(|_| invalid("cannot be serialized".into()))?
+        .len();
+    if size > MAX_WORKSPACE_DOCUMENT_BYTES {
+        return Err(invalid(format!(
+            "is {size} bytes, more than the {MAX_WORKSPACE_DOCUMENT_BYTES} allowed"
+        )));
+    }
+    Ok(())
+}
+
+/// What the client is told about a failed workspace write: the file's name and the OS error, not
+/// the directory (the server shell's paths stay on the server; the core log has them).
+fn write_failure_message(e: &WorkspaceError) -> String {
+    match e {
+        WorkspaceError::Io { path, error } => format!(
+            "could not write {}: {error}",
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        ),
+        WorkspaceError::Malformed { .. } => "could not write the workspace".into(),
     }
 }
 

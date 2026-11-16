@@ -1505,6 +1505,37 @@
       ],
       "type": "object"
     },
+    "SetWorkspaceInput": {
+      "description": "Input of `app.setWorkspace`. A document left out (or `null`) is not changed; a document given\nmust be a JSON object of at most [`MAX_WORKSPACE_DOCUMENT_BYTES`] serialized.",
+      "properties": {
+        "baseRevision": {
+          "description": "The revision the client last read or wrote; a different current revision is a\n`Conflict` and nothing is written.",
+          "type": "string"
+        },
+        "settings": {
+          "default": null
+        },
+        "tabs": {
+          "default": null
+        }
+      },
+      "required": [
+        "baseRevision"
+      ],
+      "type": "object"
+    },
+    "SetWorkspaceOutput": {
+      "description": "Output of `app.setWorkspace`.",
+      "properties": {
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "type": "object"
+    },
     "SqlRisk": {
       "description": "Risk of a statement, as the fail-closed classifier sees it (Ambidex spec §8).",
       "enum": [
@@ -1728,6 +1759,87 @@
         "id"
       ],
       "type": "object"
+    },
+    "WorkspaceDocuments": {
+      "description": "Output of `app.getWorkspace`: the UI's documents of the workspace (`settings.json`,\n`tabs.json`) and their revision. The core stores the documents whole and never interprets\nthem; their layout and its version are the UI's.",
+      "properties": {
+        "revision": {
+          "description": "Changes with every write; opaque. Pass it back as `baseRevision`.",
+          "type": "string"
+        },
+        "settings": {
+          "description": "`null` until the UI first writes it."
+        },
+        "tabs": {
+          "description": "`null` until the UI first writes it."
+        }
+      },
+      "required": [
+        "settings",
+        "tabs",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "WorkspaceSaveError": {
+      "description": "Typed errors of `app.setWorkspace`.",
+      "oneOf": [
+        {
+          "description": "The documents changed since `baseRevision` (another window wrote them); nothing was\nwritten. `revision` is the current one.",
+          "properties": {
+            "kind": {
+              "const": "Conflict",
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "revision"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "`document` (`settings` or `tabs`) is not a JSON object or is too large.",
+          "properties": {
+            "document": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "InvalidDocument",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "document",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A workspace file could not be written; nothing changed. (Not `Internal`: the router\nscrubs those, and the UI shows this message.)",
+          "properties": {
+            "kind": {
+              "const": "WriteFailed",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "type": "object"
+        }
+      ]
     }
   },
   "api": {
@@ -1767,6 +1879,25 @@
       },
       "kind": "query",
       "log_input": false,
+      "name": "app.getWorkspace",
+      "output": {
+        "$ref": "#/$defs/WorkspaceDocuments"
+      },
+      "perm": "workspace.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
       "name": "app.info",
       "output": {
         "$ref": "#/$defs/AppInfo"
@@ -1774,6 +1905,27 @@
       "perm": "app.read",
       "redact": [],
       "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/WorkspaceSaveError"
+      },
+      "input": {
+        "$ref": "#/$defs/SetWorkspaceInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "app.setWorkspace",
+      "output": {
+        "$ref": "#/$defs/SetWorkspaceOutput"
+      },
+      "perm": "workspace.write",
+      "redact": [],
+      "risk": "Write",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
     },
@@ -2105,5 +2257,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:4d742f3b601d2f07b6eeb0e40bee58b457490bc1b272042d0300e44de5b70577"
+  "schema_hash": "sha256:e97f6c09cbf3f07516fb056642a3bde2c11a3aa8eff38e76117570f9dd081b48"
 }
