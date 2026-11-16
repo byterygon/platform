@@ -30,8 +30,9 @@ from `file://` and from a loopback server. It fails on any request outside the S
 any script error, an edit that does not apply or persist, Monaco not starting, or an export
 (downloaded through the Export dialog for every preset and format) that differs from
 `by-tokens export`, a gallery card that does not show its preset's own tokens, a Duplicate that
-does not open and save the copy, a share link that does not reopen the same theme and view, or a
-contrast fix that does not clear the failures and land in the theme file.
+does not open and save the copy, a share link that does not reopen the same theme and view, a
+contrast fix that does not clear the failures and land in the theme file, or an import (a pasted
+shadcn globals.css) that does not open with its radius and land on the contrast report.
 Without a browser it skips unless `BYTERYGON_REQUIRE_BROWSER=1` (CI, in a
 network namespace); `BYTERYGON_BROWSER` names one; `--presets a,b` and `--screenshot <dir>` help
 locally.
@@ -52,6 +53,7 @@ The Studio's whole state is a theme file and a view, so every edit is a change t
 | Problems tab, a token's contrast pairs, the Contrast tab | `by-tokens validate --theme <file> --contrast --json` (a failing measurement carries its `fix`) |
 | Contrast tab: Apply fix, Apply (an alternative) | merge the diagnostic's `fix.overrides` / `fix.seeds` into the file (the engine's `applyFix`) |
 | Contrast tab: Fix all | `by-tokens fix --theme <file>` (`--dry-run` prints the fixed file; the engine's `fixAll`) |
+| Import dialog | `by-tokens import <file> [--format css\|dtcg\|shadcn\|theme] [--name <name>] [--out <file>]` (the engine's `importTheme`: the same file, byte for byte) |
 | A token's resolved values and alias chain | `by-tokens explain <token> --theme <file>` |
 | The address bar (state) | `by-tokens hash encode --theme <file> --mode dark` / `by-tokens hash decode '<hash or url>'` |
 | Themes dialog: the presets and their order | `by-tokens preset list` (same order and labels, from `PRESET_LABELS`), `by-tokens preset show <name>` |
@@ -119,6 +121,17 @@ unless it has none and another has.
 - Gamut warnings (a seed chroma sRGB cannot show) are listed with their fix (the reduced chroma
   as the seed). Keeping the reduced colour is also valid, so Fix all leaves warnings alone.
 
+## Import
+
+Import (header) takes pasted text or a loaded file (`.css`, `.json`), a format (Detect, or one of
+`IMPORT_FORMATS`) and an optional name, and shows `studioImport` = the engine's `importTheme`:
+the format it read, how much it read, every note (what was approximated or left out) and the
+theme file (`result.text`, the bytes `by-tokens import` prints; `test/parity.test.ts` compares them
+for the shadcn fixtures, a preset's tokens.css, a theme file and a DTCG export through the installed
+binary). **Open this theme** opens it like a preset (its own view); when it breaks a rule the main
+tabs switch to Contrast, where the engine's fixes are. What each format gives is in
+`packages/design-tokens/AGENTS.md` ("Import").
+
 ## Share link
 
 Share (header) shows the Studio's address with the state's hash (`encodeState`, the same
@@ -185,4 +198,5 @@ Dictionary for the exports, the engine, React and Base UI) because nothing is lo
   the engine's `themes/` and `presetOrder`/`presetLabel`.
 - A fix is always the engine's: show `measurement.fix` / `diagnostic.fix` and apply it with
   `applyFix`. Never write a fix, a lightness or an alias choice in the Studio.
-- Import is the next TSK-49 batch.
+- Never parse or map an imported format in the Studio: `importTheme` of the token package does it,
+  for the Studio and `by-tokens import` alike.

@@ -324,7 +324,7 @@ test("help lists every command and the exit codes; version prints the package", 
   const help = await cli("help", "--json");
   assert.deepEqual(
     help.json.commands.map((c: { name: string }) => c.name),
-    ["build", "validate", "fix", "explain", "search", "diff", "preset", "export", "hash", "help"],
+    ["build", "validate", "fix", "import", "explain", "search", "diff", "preset", "export", "hash", "help"],
   );
   assert.deepEqual(help.json.exitCodes.map((e: { code: number }) => e.code), [0, 1, 2, 3, 70]);
   assert.match((await cli()).stdout, /by-tokens build/);

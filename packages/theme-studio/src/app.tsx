@@ -15,6 +15,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useMemo, useState } from "r
 import { derive } from "./engine.ts";
 import { ContrastReport } from "./panels/contrast-report.tsx";
 import { ExportPanel } from "./panels/export-panel.tsx";
+import { ImportPanel } from "./panels/import-panel.tsx";
 import { SeedsPanel } from "./panels/seeds-panel.tsx";
 import { SharePanel } from "./panels/share-panel.tsx";
 import { ThemesPanel } from "./panels/themes-panel.tsx";
@@ -73,6 +74,7 @@ export function App({ initial, save = saveState }: AppProps) {
   const [theme, setTheme] = useState<ThemeDoc>(initial.theme);
   const [view, setView] = useState<View>(initial.view);
   const [selected, setSelected] = useState<string>();
+  const [tab, setTab] = useState("components");
   const [notices, setNotices] = useState(initial.diagnostics);
   // About 10 ms per edit. The gallery is memoised and reads only CSS variables, so an edit does not
   // re-render it (a deferred value never committed in a browser: the examples keep scheduling
@@ -116,6 +118,14 @@ export function App({ initial, save = saveState }: AppProps) {
     return () => window.removeEventListener("hashchange", onHash);
   }, [theme, view]);
 
+  /** Replaces the edited theme (a preset, a saved theme, an import) and shows it in its own view. */
+  const openTheme = (next: ThemeDoc) => {
+    setTheme(next);
+    setView(viewOf(next));
+    setSelected(undefined);
+    setNotices([]);
+  };
+
   const name = typeof theme["name"] === "string" ? theme["name"] : "";
   const checks = derived.contrast.length;
 
@@ -131,14 +141,12 @@ export function App({ initial, save = saveState }: AppProps) {
         <div className="ms-auto flex flex-wrap items-center gap-inline-md">
           <Choice label="Colour mode" value={view.mode} options={[["light", "Light"], ["dark", "Dark"]]} onChange={(mode) => setView({ ...view, mode })} />
           <Choice label="Density" value={view.density} options={[["comfortable", "Comfortable"], ["compact", "Compact"]]} onChange={(density) => setView({ ...view, density })} />
-          <ThemesPanel
-            theme={theme}
-            view={view}
+          <ThemesPanel theme={theme} view={view} onOpen={openTheme} />
+          <ImportPanel
             onOpen={(next) => {
-              setTheme(next);
-              setView(viewOf(next));
-              setSelected(undefined);
-              setNotices([]);
+              openTheme(next);
+              // An imported theme that breaks a rule opens on the contrast report and its fixes.
+              if (derive(next).errors > 0) setTab("contrast");
             }}
           />
           <SharePanel theme={theme} view={view} />
@@ -206,7 +214,7 @@ export function App({ initial, save = saveState }: AppProps) {
               <TokenDetail theme={theme} derived={derived} onChange={setTheme} selected={selected} onSelect={setSelected} />
             </Pane>
           )}
-          <Tabs defaultValue="components" className="flex min-h-0 flex-1 flex-col">
+          <Tabs value={tab} onValueChange={(next: unknown) => setTab(String(next))} className="flex min-h-0 flex-1 flex-col">
             <TabsList className="px-inset-lg">
               <TabsTrigger value="components">Components</TabsTrigger>
               <TabsTrigger value="swatches">Swatches</TabsTrigger>

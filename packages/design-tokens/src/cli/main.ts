@@ -13,6 +13,7 @@ import { type Diagnostic, type ModeContext, type Token, type TokenSet, SCHEMA_VE
 import { dependentAxes, ownValues, referencedBy, resolve } from "../resolve.js";
 import { duplicateTheme, presetLabel, presetOrder } from "../presets.js";
 import { fixAll } from "../fix.js";
+import { IMPORT_FORMATS, IMPORT_FORMAT_LABELS, type ImportFormat, importTheme } from "../import.js";
 import { STATE_DENSITIES, STATE_MODES, decodeState, encodeState } from "../state.js";
 import { closest, isPlainObject, stableJson } from "../util.js";
 import { type ContrastMeasurement, contextsFor, overStack, overText, validate } from "../validate.js";
@@ -259,6 +260,33 @@ async function fixCommand(args: ParsedArgs, io: Io): Promise<Outcome> {
     data: { theme: result.theme, applied, diagnostics: result.diagnostics, written: write ? display(io, target) : false },
     text: lines.join("\n"),
   };
+}
+
+async function importCommand(args: ParsedArgs, io: Io): Promise<Outcome> {
+  const usage = "Usage: by-tokens import <file> [--format <css|dtcg|shadcn|theme>] [--name <name>] [--out <file>]";
+  if (args.positionals.length !== 1) throw new UsageError("usage", "import takes one file", usage);
+  const file = resolvePath(io.cwd, args.positionals[0]!);
+  if (!existsSync(file)) throw new UsageError("file-not-found", `no file at ${display(io, file)}`, usage);
+  const format = flag(args, "--format");
+  if (format !== undefined && !(IMPORT_FORMATS as readonly string[]).includes(format)) throw new UsageError("usage", `--format must be one of ${IMPORT_FORMATS.join(", ")}`, usage);
+  const name = flag(args, "--name");
+  const result = importTheme(readFileSync(file, "utf8"), { ...(name !== undefined ? { name } : {}), ...(format !== undefined ? { format: format as ImportFormat } : {}) });
+  if (!result.ok) return { exitCode: EXIT.usage, data: { diagnostics: result.diagnostics }, text: [...diagnosticsText(result.diagnostics), "import failed"].join("\n") };
+  const checked = await buildTheme(result.theme, { render: false });
+  const errors = checked.diagnostics.filter((d) => d.severity === "error").length;
+  const exitCode = errors > 0 ? EXIT.invalid : EXIT.ok;
+  const summary = `imported ${IMPORT_FORMAT_LABELS[result.format!]}: ${result.mapped} read${errors > 0 ? `; the theme breaks ${errors} rule${errors === 1 ? "" : "s"} (by-tokens fix applies the suggested fixes)` : ""}`;
+  const data = { format: result.format, theme: result.theme, mapped: result.mapped, notes: result.diagnostics, diagnostics: checked.diagnostics };
+  const outFlag = flag(args, "--out");
+  if (outFlag) {
+    const target = resolvePath(io.cwd, outFlag);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, result.text!);
+    return { exitCode, data: { ...data, written: display(io, target) }, text: [...diagnosticsText([...result.diagnostics, ...checked.diagnostics]), summary, `wrote ${display(io, target)}`].join("\n") };
+  }
+  // The theme file goes to stdout; the notes and the summary to stderr.
+  if (!args.json) io.stderr(`${[...diagnosticsText([...result.diagnostics, ...checked.diagnostics]), summary].join("\n")}\n`);
+  return { exitCode, data, text: "", raw: result.text! };
 }
 
 /** Finds a token by dot path, `--by-` variable or Tailwind variable. */
@@ -621,6 +649,7 @@ const HANDLERS: Readonly<Record<string, (args: ParsedArgs, io: Io) => Promise<Ou
   build,
   validate: validateCommand,
   fix: fixCommand,
+  import: importCommand,
   explain,
   search,
   diff,

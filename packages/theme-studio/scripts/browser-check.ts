@@ -394,6 +394,30 @@ async function main(argv: string[]): Promise<number> {
     const fixedTheme = (await decodeState(fixedHash)).state?.theme as { overrides?: Record<string, unknown> } | undefined;
     check(fixedTheme?.overrides?.["color.neutral.11"] === "oklch(0.49 0.012 275)", `contrast: the fix lands in the theme file (${JSON.stringify(fixedTheme?.overrides)})`);
 
+    // 2d. Import: a pasted stock shadcn globals.css, read, opened on the contrast report.
+    const shadcn = readFileSync(join(TOKENS, "test", "fixtures", "shadcn-v4.css"), "utf8");
+    for (const mode of ["dark", "light"] as const) {
+      await page.evaluate(CLICK("button", mode === "dark" ? "Dark" : "Light"));
+      check(await page.evaluate<boolean>(CLICK("button", "Import")), "import: the Import button");
+      await until(page, `document.querySelector('[role="dialog"] textarea') !== null`, "the Import dialog");
+      await page.evaluate(
+        `(() => { const area = document.querySelector('[role="dialog"] textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(area, ${JSON.stringify(shadcn)}); area.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`,
+      );
+      await until(page, `(() => { const b = [...document.querySelectorAll('[role="dialog"] button')].find((e) => e.textContent.trim() === "Read"); return b && !b.disabled; })()`, "the Read button to enable");
+      await page.evaluate(CLICK('[role="dialog"] button', "Read"));
+      await until(page, `document.querySelector('section[aria-label="Imported theme"]') !== null`, "the imported theme file");
+      if (shots) {
+        await sleep(400);
+        await page.screenshot(join(shots, `import-${mode}.png`));
+      }
+      if (mode === "light") break;
+      await page.key("Escape", "Escape", 27);
+      await sleep(300);
+    }
+    await page.evaluate(CLICK('[role="dialog"] button', "Open this theme"));
+    await until(page, `${VAR("--by-radius-md")} === "10px"`, "the imported theme (radius 0.625rem) to apply");
+    await until(page, `document.querySelector('main [role="tab"][aria-selected="true"]')?.textContent.startsWith("Contrast (")`, "the contrast report to open after an import that breaks a rule");
+
     // 3. Every preset from its hash, every export through the dialog, against by-tokens.
     const exportsChecked: string[] = [];
     for (const preset of presets) {

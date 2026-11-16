@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { EXPORT_FORMATS } from "@byterygon/design-tokens/build";
 import { afterAll, describe, expect, test } from "vitest";
 import { studioExport } from "../src/panels/export-panel.tsx";
+import { studioImport } from "../src/panels/import-panel.tsx";
 import { setOverride, setSeed } from "../src/state/theme-edit.ts";
 
 const tokens = join(import.meta.dirname, "..", "..", "design-tokens");
@@ -85,5 +86,31 @@ describe("Studio and by-tokens export the same bytes", () => {
     let code = -1;
     await run(["export", "css", "--theme", save(broken)], { stdout: () => {}, stderr: () => {}, cwd: scratch }).then((c) => (code = c));
     expect(code).toBe(1);
+  });
+}, 240_000);
+
+describe("Studio and by-tokens import the same bytes", () => {
+  const fixtures = join(tokens, "test", "fixtures");
+  const sources: [label: string, file: string, format: "auto" | "css" | "dtcg" | "shadcn" | "theme", name: string][] = [
+    ["shadcn v4 (oklch)", join(fixtures, "shadcn-v4.css"), "auto", ""],
+    ["shadcn v3 (HSL), named", join(fixtures, "shadcn-v3.css"), "shadcn", "ocean"],
+    ["a preset's tokens.css", join(tokens, "generated", "paper", "tokens.css"), "auto", ""],
+    ["a theme file", join(tokens, "themes", "terminal.theme.json"), "auto", "my-terminal"],
+  ];
+  for (const [label, file, format, name] of sources) {
+    test(label, async () => {
+      const studio = studioImport(readFileSync(file, "utf8"), format, name);
+      expect(studio.ok).toBe(true);
+      let stdout = "";
+      await run(["import", file, ...(format === "auto" ? [] : ["--format", format]), ...(name ? ["--name", name] : [])], { stdout: (t) => (stdout += t), stderr: () => {}, cwd: scratch });
+      expect(studio.text === stdout, `${label}: the Studio's theme file differs from by-tokens import`).toBe(true);
+    });
+  }
+
+  test("a DTCG export (default), through the installed binary", async () => {
+    const dtcg = join(scratch, "default.tokens.dtcg.json");
+    writeFileSync(dtcg, (await studioExport(PRESETS.find((t) => t["name"] === "default")!, "dtcg")).content!);
+    const printed = execFileSync(process.execPath, [join(tokens, "bin", "by-tokens.js"), "import", dtcg], { cwd: scratch, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    expect(studioImport(readFileSync(dtcg, "utf8"), "auto", "").text === printed).toBe(true);
   });
 }, 240_000);
