@@ -363,8 +363,9 @@ shadcn add /path/to/registry/theme-default.json /path/to/registry/button.json   
   tuned in the Studio installs exactly like a preset. It writes the `--by-*` variables (Light/Dark via `data-theme` or `.dark`,
   Comfortable/Compact via `data-density`), the shadcn aliases, the dark variant, and both Tailwind
   vocabularies into the project CSS. Stock shadcn components are themed with no change. Fonts are
-  not in the item: copy `@byterygon/design-tokens/fonts/` and import `fonts.css`, or the system
-  fallbacks of `font.sans` and `font.mono` are used.
+  not in the item: copy `@byterygon/design-tokens/fonts/` and import `fonts.css` (Selawik, where
+  the system has no Segoe UI Variable, and JetBrains Mono), or the system fallbacks of `font.sans`
+  and `font.mono` are used.
 - Each component item carries its manifest and example in `meta`; `registry/llms.txt` lists them.
 
 ## In this repository

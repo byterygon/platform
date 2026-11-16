@@ -86,7 +86,7 @@ test("tokens.css: primitives once, roles per mode, references by var()", async (
   assert.equal(root.get("--by-size-control-md"), "36px");
   assert.equal(compact.get("--by-size-control-md"), "28px");
   assert.equal(root.get("--by-radius-md"), "6px");
-  assert.equal(root.get("--by-font-mono"), '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace');
+  assert.equal(root.get("--by-font-mono"), '"Cascadia Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace');
   assert.equal(root.get("--by-shadow-raised"), "0 1px 2px 0 var(--by-color-black-a2), 0 1px 1px 0 var(--by-color-black-a1)");
   // No raw colour outside the primitive tier: every colour role is a var().
   for (const block of [root, dark]) {
@@ -205,7 +205,7 @@ test("figma-variables.json groups variables into collections with modes", async 
   assert.equal(canvas.codeSyntax.WEB, "var(--by-color-bg-canvas)");
   assert.deepEqual(variable("Density", "size/control/md").valuesByMode, { Comfortable: 36, Compact: 28 });
   assert.deepEqual(variable("Semantic", "radius/md").valuesByMode, { Value: 6 });
-  assert.equal(variable("Semantic", "font/sans").valuesByMode.Value, "Inter");
+  assert.equal(variable("Semantic", "font/sans").valuesByMode.Value, "Segoe UI Variable Text");
   // Figma has no variable for a shadow or an easing curve; everything else is a variable.
   const skipped = figma.skipped.map((s: { token: string }) => s.token);
   assert.ok(skipped.includes("shadow.raised") && skipped.includes("shadow.3") && skipped.includes("elevation.modal.shadow") && skipped.includes("motion.easing.standard"));

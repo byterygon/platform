@@ -360,14 +360,24 @@ package is a reference, never a dependency. `test/catalog.test.ts` pins every va
   `bg-accent` is a hover background (its `--accent`), so Byterygon components use the
   `accent-solid` names and a project with stock shadcn components keeps shadcn's meaning.
 - `font.sans` and `font.mono` are the font family tokens (the spec calls them `font.family.*`).
-  Override them to change the fonts; `fonts/fonts.css` declares the vendored files.
+  Override them to change the fonts; `fonts/fonts.css` declares the vendored files (see "Fonts").
 
 ## Fonts
 
-`fonts/` holds Inter (variable, one file) and JetBrains Mono (400, 500, 600, 700), both SIL OFL 1.1,
-with their licence texts, `manifest.json` (version, source URL, sha256 of every file) and `fonts.css`
-(`@font-face`, hand-written, the same for every theme). `node scripts/check-licenses.mjs` fails on a
-missing licence text, a changed file or an unlisted font file. Nothing is fetched at build or run time.
+`font.sans` is `"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", Selawik, system-ui,
+sans-serif` and `font.mono` is `"Cascadia Mono", "JetBrains Mono", ui-monospace, SFMono-Regular,
+Menlo, monospace` (DOC-17 open question 104 (d)). Segoe UI Variable and Cascadia Mono are the
+system's on Windows 11 and are never shipped: Microsoft's licence does not allow redistributing
+Segoe; Cascadia is OFL and could be vendored, but JetBrains Mono already covers every platform.
+
+`fonts/` holds Selawik 1.01 (Microsoft's open, metric-compatible fallback for Segoe UI: 400, 600,
+700, Microsoft's own woff2 files, unmodified because "Selawik" is a Reserved Font Name), Inter
+(variable, one file; no longer in `font.sans`, kept for themes that name it) and JetBrains Mono
+(400, 500, 600, 700), all SIL OFL 1.1, with their licence texts, `manifest.json` (version, source
+URL, sha256 of every file) and `fonts.css` (`@font-face`, hand-written, the same for every theme).
+`node scripts/check-licenses.mjs` fails on a missing licence text, a changed file or an unlisted
+font file; `test/fonts.test.ts` also fails if a Segoe or Cascadia file appears. Nothing is fetched
+at build or run time, and a browser only downloads Selawik where no Segoe UI is installed.
 
 ## Exports
 
