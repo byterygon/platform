@@ -16,5 +16,16 @@ fn main() {
         );
         println!(r#"cargo:rustc-env=TAURI_CONFIG={{"build":{{"frontendDist":"ui-placeholder"}}}}"#);
     }
+    // Test binaries link the same WebView2/Win32 stack as the app but get no manifest from
+    // tauri-build (it embeds one for the bin only). Without common controls v6 they fail to start
+    // with STATUS_ENTRYPOINT_NOT_FOUND, so the tests embed a manifest that asks for it.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-test.manifest");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg-tests=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg-tests=/MANIFESTINPUT:{}", manifest.display());
+    }
     tauri_build::build()
 }
