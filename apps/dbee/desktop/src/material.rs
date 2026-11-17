@@ -7,8 +7,8 @@
 //! The UI then makes its canvas transparent; it never guesses from the user agent. Windows 10,
 //! macOS, Linux and the web server never report a material and keep the gradient/canvas.
 //!
-//! The setting `windowMaterial` of `settings.json` (written by the UI, default on) is read at
-//! start: off means the material is not applied. Turning it off while running takes effect at once
+//! The setting `windowMaterial` of `settings.json` (written by the UI, default off until checked on Windows 11) is read at
+//! start: only `true` applies the material. Turning it off while running takes effect at once
 //! in the UI (the opaque canvas covers the material); turning it on again after a start without it
 //! needs a restart, because the shell has no IPC command for it (and gets no new Tauri permission).
 //!
@@ -21,7 +21,7 @@ use std::path::Path;
 /// Event the page listens for after the shell reports its material.
 pub const SHELL_EVENT: &str = "dbee:shell";
 
-/// The settings key (in `settings.json`, under `settings`) that turns the material off.
+/// The settings key (in `settings.json`, under `settings`) that turns the material on (default off).
 pub const SETTING_KEY: &str = "windowMaterial";
 
 /// A window material the shell applied.
@@ -43,11 +43,11 @@ pub trait Backdrop {
     fn apply_mica(&self) -> Result<(), String>;
 }
 
-/// Whether the user wants the material: `settings.json` of `workspace` does not say
-/// `settings.windowMaterial: false`. A missing or unreadable file means on (the default).
+/// Whether the user wants the material: `settings.json` of `workspace` says
+/// `settings.windowMaterial: true`. A missing or unreadable file means off (the default).
 pub fn requested(workspace: &Path) -> bool {
     let Ok(text) = std::fs::read_to_string(workspace.join("settings.json")) else {
-        return true;
+        return false;
     };
     requested_in(&text)
 }
@@ -57,7 +57,7 @@ pub fn requested_in(settings_json: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(settings_json)
         .ok()
         .and_then(|doc| doc.pointer(&format!("/settings/{SETTING_KEY}")).cloned())
-        != Some(serde_json::Value::Bool(false))
+        == Some(serde_json::Value::Bool(true))
 }
 
 /// The material to show: Mica when wanted and the OS accepted it, nothing otherwise.
@@ -123,13 +123,13 @@ mod tests {
     }
 
     #[test]
-    fn the_setting_defaults_on_and_only_false_turns_it_off() {
-        assert!(requested_in("{}"));
-        assert!(requested_in("not json"));
-        assert!(requested_in(r#"{"settings":{"preset":"default"}}"#));
+    fn the_setting_defaults_off_and_only_true_turns_it_on() {
+        assert!(!requested_in("{}"));
+        assert!(!requested_in("not json"));
+        assert!(!requested_in(r#"{"settings":{"preset":"default"}}"#));
         assert!(requested_in(r#"{"settings":{"windowMaterial":true}}"#));
         assert!(!requested_in(r#"{"settings":{"windowMaterial":false}}"#));
-        assert!(requested(Path::new("/nonexistent-dbee-workspace")));
+        assert!(!requested(Path::new("/nonexistent-dbee-workspace")));
     }
 
     #[test]
@@ -137,10 +137,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("settings.json"),
-            r#"{"version":1,"settings":{"windowMaterial":false}}"#,
+            r#"{"version":1,"settings":{"windowMaterial":true}}"#,
         )
         .unwrap();
-        assert!(!requested(dir.path()));
+        assert!(requested(dir.path()));
     }
 
     #[test]

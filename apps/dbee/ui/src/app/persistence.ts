@@ -60,7 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wordWrap: false,
   confirmDestructive: true,
   screenReaderOptimized: false,
-  windowMaterial: true,
+  windowMaterial: false,
 };
 
 export const DEFAULT_PERSISTED: Persisted = {
@@ -122,7 +122,7 @@ function normalize(raw: Record<string, unknown>): Persisted {
     wordWrap: s["wordWrap"] === true,
     confirmDestructive: true,
     screenReaderOptimized: s["screenReaderOptimized"] === true,
-    windowMaterial: s["windowMaterial"] !== false,
+    windowMaterial: s["windowMaterial"] === true,
   };
   const activeTab = typeof raw["activeTab"] === "string" && tabs.some((t) => t.id === raw["activeTab"]) ? raw["activeTab"] : (tabs[0]?.id ?? null);
   return {
