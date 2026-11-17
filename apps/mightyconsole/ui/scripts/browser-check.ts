@@ -22,12 +22,12 @@
 // --ui, so the page and every asset come from the UI compiled into the binary.
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
 import { findBrowser } from "../../../../packages/ui/scripts/browser-check.ts";
+import { type Cdp, type Page, freePort, launchBrowser, openPage, run, sleep, waitForLine, waitUntil } from "./cdp.ts";
 
 const APP = fileURLToPath(new URL("..", import.meta.url));
 const REPO = join(APP, "..", "..", "..");
@@ -38,161 +38,7 @@ const check = (ok: boolean, message: string) => {
   if (!ok) failures.push(message);
   return ok;
 };
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// ---------------------------------------------------------------------------------------------
-// DevTools protocol (as packages/theme-studio's check)
-
-type Params = Record<string, unknown>;
-interface Message {
-  id?: number;
-  method?: string;
-  params?: Params;
-  sessionId?: string;
-  result?: Params;
-  error?: { message: string };
-}
-
-class Cdp {
-  private nextId = 0;
-  private readonly pending = new Map<number, { resolve: (v: Params) => void; reject: (e: Error) => void }>();
-  private readonly listeners = new Set<(m: Message) => void>();
-  private readonly socket: WebSocket;
-  private constructor(socket: WebSocket) {
-    this.socket = socket;
-    socket.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data)) as Message;
-      if (message.id !== undefined) {
-        const waiter = this.pending.get(message.id);
-        this.pending.delete(message.id);
-        if (message.error) waiter?.reject(new Error(message.error.message));
-        else waiter?.resolve(message.result ?? {});
-      } else for (const listener of this.listeners) listener(message);
-    });
-  }
-  static connect(url: string): Promise<Cdp> {
-    return new Promise((resolve, reject) => {
-      const socket = new WebSocket(url);
-      socket.addEventListener("open", () => resolve(new Cdp(socket)), { once: true });
-      socket.addEventListener("error", () => reject(new Error(`cannot connect to ${url}`)), { once: true });
-    });
-  }
-  send(method: string, params: Params = {}, sessionId?: string): Promise<Params> {
-    const id = ++this.nextId;
-    this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
-  }
-  on(listener: (m: Message) => void): void {
-    this.listeners.add(listener);
-  }
-  close(): void {
-    this.socket.close();
-  }
-}
-
-function waitForLine(child: ChildProcess, pattern: RegExp, what: string): Promise<RegExpExecArray> {
-  return new Promise((resolve, reject) => {
-    let output = "";
-    const timer = setTimeout(() => reject(new Error(`${what} did not start:\n${output}`)), 60_000);
-    child.stderr!.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-      const match = pattern.exec(output);
-      if (match) {
-        clearTimeout(timer);
-        resolve(match);
-      }
-    });
-    child.on("exit", (code) => {
-      clearTimeout(timer);
-      reject(new Error(`${what} exited (${code}):\n${output}`));
-    });
-  });
-}
-
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as { port: number };
-      server.close(() => resolve(port));
-    });
-  });
-}
-
-interface Page {
-  evaluate: <T>(expression: string) => Promise<T>;
-  navigate: (url: string) => Promise<void>;
-  requests: string[];
-  errors: string[];
-}
-
-async function openPage(cdp: Cdp): Promise<Page> {
-  const { targetId } = (await cdp.send("Target.createTarget", { url: "about:blank" })) as { targetId: string };
-  const { sessionId } = (await cdp.send("Target.attachToTarget", { targetId, flatten: true })) as { sessionId: string };
-  const send = (method: string, params: Params = {}) => cdp.send(method, params, sessionId);
-  const requests: string[] = [];
-  const errors: string[] = [];
-  let loaded: (() => void) | undefined;
-  cdp.on((m) => {
-    if (m.sessionId !== sessionId) return;
-    if (m.method === "Network.requestWillBeSent") requests.push(String((m.params!["request"] as { url: string }).url));
-    if (m.method === "Network.webSocketCreated") requests.push(String(m.params!["url"]));
-    if (m.method === "Runtime.exceptionThrown") errors.push(JSON.stringify((m.params!["exceptionDetails"] as { exception?: { description?: string } }).exception?.description ?? m.params!["exceptionDetails"]));
-    if (m.method === "Runtime.consoleAPICalled" && m.params!["type"] === "error") errors.push(`console.error: ${JSON.stringify((m.params!["args"] as { value?: unknown; description?: string }[]).map((a) => a.value ?? a.description))}`);
-    if (m.method === "Log.entryAdded") {
-      const entry = m.params!["entry"] as { level: string; text: string; url?: string };
-      if (entry.level === "error") errors.push(`log: ${entry.text} ${entry.url ?? ""}`);
-    }
-    if (m.method === "Page.loadEventFired") loaded?.();
-  });
-  for (const method of ["Page.enable", "Runtime.enable", "Network.enable", "Log.enable"]) await send(method);
-  await send("Emulation.setFocusEmulationEnabled", { enabled: true });
-  return {
-    async evaluate<T>(expression: string): Promise<T> {
-      const result = (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, userGesture: true })) as { result: { value: T }; exceptionDetails?: { exception?: { description?: string }; text: string } };
-      if (result.exceptionDetails) throw new Error(`${expression.slice(0, 120)}: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`);
-      return result.result.value;
-    },
-    async navigate(url) {
-      const done = new Promise<void>((resolve) => (loaded = resolve));
-      await send("Page.navigate", { url });
-      await Promise.race([done, sleep(30_000).then(() => Promise.reject(new Error(`loading ${url} timed out`)))]);
-    },
-    requests,
-    errors,
-  };
-}
-
-/** DOM helpers injected into the page: find by text, type into a React input, click, double-click. */
-const HELPERS = `(() => {
-  const text = (el) => (el.textContent || "").replace(/\\s+/g, " ").trim();
-  window.__mc = {
-    has: (needle) => document.body.innerText.includes(needle),
-    button: (label) => [...document.querySelectorAll("button")].find((b) => text(b) === label || b.getAttribute("aria-label") === label),
-    item: (label) => [...document.querySelectorAll("[role=treeitem]")].find((el) => text(el).startsWith(label)),
-    click: (el) => { if (!el) throw new Error("nothing to click"); el.click(); return true; },
-    dblclick: (el) => { if (!el) throw new Error("nothing to double-click"); el.click(); el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); return true; },
-    field: (label) => { const l = [...document.querySelectorAll("label")].find((x) => text(x) === label); return l && (l.control || document.getElementById(l.htmlFor)); },
-    type: (el, value) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, value); el.dispatchEvent(new Event("input", { bubbles: true })); return true; },
-  };
-  return true;
-})()`;
-
-async function until(page: Page, expression: string, what: string, timeoutMs = 20_000): Promise<boolean> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      if (await page.evaluate<boolean>(`(() => { ${HELPERS}; return Boolean(${expression}); })()`)) return true;
-    } catch {
-      // the page is loading
-    }
-    await sleep(100);
-  }
-  return check(false, `timed out waiting for ${what}`);
-}
-
-const run = (page: Page, expression: string) => page.evaluate(`(() => { ${HELPERS}; return ${expression}; })()`);
+const until = async (page: Page, expression: string, what: string, timeoutMs = 20_000) => (await waitUntil(page, expression, timeoutMs)) || check(false, `timed out waiting for ${what}`);
 
 async function main(): Promise<number> {
   const browser = findBrowser();
@@ -219,32 +65,7 @@ async function main(): Promise<number> {
   try {
     const [startup] = await waitForLine(server, /[\s\S]*open https:\/\/localhost:\d+\//, "mightyconsole-server");
     if (embedded) check(/UI built in \(\d+ files\)/.test(startup ?? ""), "the server does not serve a built-in UI");
-    // The certificate is the server's own self-signed one: the check trusts it for this run only.
-    chrome = spawn(
-      browser,
-      [
-        "--headless=new",
-        "--remote-debugging-port=0",
-        `--user-data-dir=${join(data, "browser")}`,
-        "--ignore-certificate-errors",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-background-networking",
-        "--disable-component-update",
-        "--disable-sync",
-        "--disable-default-apps",
-        "--disable-extensions",
-        "--metrics-recording-only",
-        "--password-store=basic",
-        "--use-mock-keychain",
-        "--window-size=1440,1000",
-        ...(process.platform === "linux" ? ["--no-sandbox"] : []),
-        "about:blank",
-      ],
-      { stdio: ["ignore", "ignore", "pipe"] },
-    );
-    const [, devtools] = await waitForLine(chrome, /DevTools listening on (ws:\/\/\S+)/, "the browser");
-    cdp = await Cdp.connect(devtools!);
+    ({ chrome, cdp } = await launchBrowser(browser, data));
     const page = await openPage(cdp);
     const started = Date.now();
 

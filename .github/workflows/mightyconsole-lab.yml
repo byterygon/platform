@@ -2,14 +2,16 @@ name: Mightyconsole lab
 
 # The Mightyconsole test lab (TSK-79, spec section 14): every service starts healthy and seeded
 # with one command, every port is on 127.0.0.1, LangGraph serves a run with no egress, and it all
-# goes away again. Runs when the lab changes, weekly (pinned images and packages stay pullable),
-# and by hand. Tool tasks add their integration tests against it here.
+# goes away again. Runs when the lab or the acceptance harness changes, weekly (pinned images and
+# packages stay pullable), and by hand. Tool tasks add their integration tests against it here.
+# TSK-87: the acceptance harness runs the foundation's checklist against the running lab and
+# uploads its evidence (summary.md, logs, screenshots).
 on:
   pull_request:
-    paths: ["apps/mightyconsole/lab/**", ".github/workflows/mightyconsole-lab.yml"]
+    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", ".github/workflows/mightyconsole-lab.yml"]
   push:
     branches: [main]
-    paths: ["apps/mightyconsole/lab/**", ".github/workflows/mightyconsole-lab.yml"]
+    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", ".github/workflows/mightyconsole-lab.yml"]
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -21,7 +23,7 @@ jobs:
   lab:
     name: Mightyconsole lab
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -39,6 +41,29 @@ jobs:
           node apps/mightyconsole/lab/lab.mts check
       - name: LangGraph with no egress
         run: node apps/mightyconsole/lab/lab.mts langgraph-offline
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: mightyconsole-acceptance
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - run: pnpm install --frozen-lockfile
+      # cargo-deny is not installed here (the CI job runs it), so that one check is skipped.
+      - name: Acceptance (foundation, against the lab)
+        env:
+          BYTERYGON_REQUIRE_BROWSER: "1"
+        run: |
+          status=0
+          node apps/mightyconsole/acceptance/acceptance.mts foundation || status=$?
+          cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mightyconsole-acceptance-evidence
+          path: apps/mightyconsole/acceptance/evidence
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Logs on failure
         if: failure()
         run: docker compose -f apps/mightyconsole/lab/compose.yaml --profile all logs --tail 200

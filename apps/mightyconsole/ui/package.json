@@ -14,7 +14,8 @@
     "sync:ui:check": "node scripts/sync-ui.ts --check",
     "lint": "eslint . && stylelint \"**/*.css\"",
     "check:browser": "node scripts/browser-check.ts",
-    "lab": "node ../lab/lab.mts"
+    "lab": "node ../lab/lab.mts",
+    "acceptance": "node ../acceptance/acceptance.mts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
