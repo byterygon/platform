@@ -75,5 +75,27 @@ describe("registry", () => {
     const llms = files.get("llms.txt")!;
     for (const name of listComponents(PACKAGE_ROOT)) expect(llms).toContain(`[${name}.json](${name}.json)`);
     expect(llms).toContain("- appearance: primary, secondary, outline, subtle, transparent, danger");
+    expect(llms).toContain("[llms-full.txt](llms-full.txt)");
+  });
+
+  test("llms-full.txt has every component's example file, at installed paths, and every role of the default theme", async () => {
+    const full = files.get("llms-full.txt")!;
+    for (const name of listComponents(PACKAGE_ROOT)) {
+      const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, `src/components/${name}/${name}.manifest.json`), "utf8")) as { examples: { minimal: string; realistic: string } };
+      const example = readFileSync(join(PACKAGE_ROOT, `src/components/${name}/${name}.example.tsx`), "utf8");
+      // The body of the file is there as written; only @/components/<x>/<x> imports move to @/components/ui/<x>.
+      expect(full, name).toContain(shipSource(example, name).content.trimEnd());
+      expect(full).toContain(`export function ${manifest.examples.minimal}`);
+      expect(full).toContain(`export function ${manifest.examples.realistic}`);
+    }
+    expect(full).not.toMatch(/from "@\/components\/([a-z0-9-]+)\/\1"/);
+    const { tokens } = await import("@byterygon/design-tokens/default/tokens");
+    for (const [path, token] of Object.entries(tokens)) {
+      if (token.tier === "primitive") continue;
+      expect(full, path).toContain(`- \`${path}\` (${token.tier} ${token.type}): \`${token.cssVar}\`.`);
+    }
+    expect(full).toContain("- `color.bg.surface` (semantic color): `--by-color-bg-surface`. Tailwind `*-surface` (--color-surface). Values: light oklch(1 0 0), dark");
+    expect(full).toContain("Values: comfortable 12px, compact 8px. Padding inside a container");
+    expect(full).toMatch(/- `space\.\*` \(15 dimension\): .* 2=8px; 3=12px;/);
   });
 });

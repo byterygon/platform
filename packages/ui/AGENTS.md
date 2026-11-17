@@ -24,7 +24,7 @@ scripts/registry.ts                         writes registry/ (committed, drift-t
 scripts/new-component.ts                    pnpm ui:new
 scripts/verify-install.ts                   shadcn CLI install into a blank Vite app, offline
 scripts/browser-check.ts                    the editors in Chromium over the DevTools protocol (test/browser)
-registry/                                   <name>.json, cn.json, theme-scope.json, theme-<preset>.json, registry.json, llms.txt
+registry/                                   <name>.json, cn.json, theme-scope.json, theme-<preset>.json, registry.json, llms.txt, llms-full.txt
 component.manifest.schema.json              the manifest schema (editors); scripts/lib/manifest.ts validates
 ```
 
