@@ -29,6 +29,7 @@ import { ShortcutsDialog } from "./dialogs/ShortcutsDialog";
 import { GearIcon, HelpIcon, PlusIcon } from "./icons";
 import { describeError, formatCount, formatElapsed } from "./messages";
 import { type Appearance, applyAppearance, followSystemScheme } from "./presets";
+import { type ShellMaterial, applyMaterial, materialVisible, watchShell } from "./shell";
 import { ExportDialog } from "./query/ExportDialog";
 import { QueryTab } from "./query/QueryTab";
 import { statusLine } from "./query/ResultsPanel";
@@ -80,6 +81,11 @@ function Shell({ shell }: { shell: Shell }) {
   const appearance: Appearance = useMemo(() => ({ preset: state.settings.preset, colorScheme: state.settings.colorScheme, density: state.settings.density }), [state.settings.preset, state.settings.colorScheme, state.settings.density]);
   useEffect(() => applyAppearance(appearance), [appearance]);
   useEffect(() => followSystemScheme(() => appearance), [appearance]);
+
+  // The desktop shell's window material (Mica) shows only when the shell applied it, the setting is on and the preset is the default.
+  const [shellApplied, setShellApplied] = useState<ShellMaterial | null>(null);
+  useEffect(() => watchShell(setShellApplied), []);
+  useEffect(() => applyMaterial(materialVisible(shellApplied, state.settings.windowMaterial, state.settings.preset)), [shellApplied, state.settings.windowMaterial, state.settings.preset]);
 
   // Start: app.info, the connections, the event subscription.
   useEffect(() => {
@@ -438,7 +444,7 @@ function Shell({ shell }: { shell: Shell }) {
 
   return (
     <SidebarProvider open={state.sidebarOpen} onOpenChange={(open) => dispatch({ type: "sidebar", open })} className="h-full">
-      <div className="flex h-full min-h-0 w-full flex-col bg-canvas text-fg">
+      <div className="dbee-root flex h-full min-h-0 w-full flex-col bg-canvas text-fg">
         <Resizable orientation="horizontal" sizes={state.sidebarOpen ? state.shellSizes : [0, 100]} onSizesChange={(sizes) => state.sidebarOpen && dispatch({ type: "sizes", shellSizes: sizes })} className="min-h-0 flex-1" aria-label="Sidebar and workspace">
           <ResizablePanel minSize={state.sidebarOpen ? 12 : 0} maxSize={state.sidebarOpen ? 50 : 0}>
             <Sidebar aria-label="Connections" collapsible="offcanvas" className="h-full w-full border-e">
@@ -617,7 +623,7 @@ function Shell({ shell }: { shell: Shell }) {
           }}
         />
       ) : null}
-      <SettingsDialog open={dialog.kind === "settings"} onOpenChange={(open) => !open && dispatch({ type: "dialog", dialog: { kind: "none" } })} settings={state.settings} onChange={(settings) => dispatch({ type: "settings", settings })} info={state.info} onOpenDiagnostics={() => dispatch({ type: "dialog", dialog: { kind: "about" } })} />
+      <SettingsDialog open={dialog.kind === "settings"} onOpenChange={(open) => !open && dispatch({ type: "dialog", dialog: { kind: "none" } })} settings={state.settings} onChange={(settings) => dispatch({ type: "settings", settings })} info={state.info} materialAvailable={shellApplied !== null} onOpenDiagnostics={() => dispatch({ type: "dialog", dialog: { kind: "about" } })} />
       <AboutDialog open={dialog.kind === "about"} onOpenChange={(open) => !open && dispatch({ type: "dialog", dialog: { kind: "none" } })} info={state.info} diagnostics={diagnostics} />
       <ShortcutsDialog open={dialog.kind === "shortcuts"} onOpenChange={(open) => !open && dispatch({ type: "dialog", dialog: { kind: "none" } })} shell={shell} />
       {state.connectionsError ? (

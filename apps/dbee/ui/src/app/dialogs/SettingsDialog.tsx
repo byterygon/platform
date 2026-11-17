@@ -20,10 +20,12 @@ export interface SettingsDialogProps {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   info: AppInfo | null;
+  /** The desktop shell applied a window material (Windows 11), so the setting does something. */
+  materialAvailable?: boolean;
   onOpenDiagnostics: () => void;
 }
 
-export function SettingsDialog({ open, onOpenChange, settings, onChange, info, onOpenDiagnostics }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, settings, onChange, info, materialAvailable = false, onOpenDiagnostics }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange} size="lg">
       <DialogContent>
@@ -76,6 +78,14 @@ export function SettingsDialog({ open, onOpenChange, settings, onChange, info, o
                   <ToggleGroupItem value="comfortable">Comfortable</ToggleGroupItem>
                 </ToggleGroup>
               </Field>
+              {materialAvailable && (
+                <Field>
+                  <FieldLabel>
+                    <Switch checked={settings.windowMaterial} onCheckedChange={(v) => onChange({ windowMaterial: v })} /> Window material (Mica)
+                  </FieldLabel>
+                  <FieldDescription>Shows the Windows 11 material through the Aurora theme. Turning it off applies at once; turning it on again after starting without it needs a restart.</FieldDescription>
+                </Field>
+              )}
               <div className="grid grid-cols-2 gap-gap-md">
                 <Field>
                   <FieldLabel>Editor font size</FieldLabel>

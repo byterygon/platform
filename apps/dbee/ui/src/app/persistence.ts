@@ -35,6 +35,8 @@ export interface Settings extends Appearance {
   /** Always on in FUV (Decision 12); shown read-only. */
   confirmDestructive: true;
   screenReaderOptimized: boolean;
+  /** Windows 11 desktop: let the Mica window material show through the default theme (TSK-54). */
+  windowMaterial: boolean;
 }
 
 export interface Persisted {
@@ -56,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wordWrap: false,
   confirmDestructive: true,
   screenReaderOptimized: false,
+  windowMaterial: true,
 };
 
 export const DEFAULT_PERSISTED: Persisted = {
@@ -109,6 +112,7 @@ function normalize(raw: Record<string, unknown>): Persisted {
     wordWrap: s["wordWrap"] === true,
     confirmDestructive: true,
     screenReaderOptimized: s["screenReaderOptimized"] === true,
+    windowMaterial: s["windowMaterial"] !== false,
   };
   const activeTab = typeof raw["activeTab"] === "string" && tabs.some((t) => t.id === raw["activeTab"]) ? raw["activeTab"] : (tabs[0]?.id ?? null);
   return {

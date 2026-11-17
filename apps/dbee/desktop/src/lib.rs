@@ -14,9 +14,13 @@
 //! - `files.chooseSavePath`: the core opens the native save dialog through [`TauriSaveDialog`]
 //!   (`tauri-plugin-dialog`, parented to the main window) and keeps the path behind a one-time
 //!   handle; the webview never sees a path it did not ask for.
+//! - Window material: on Windows 11 the main window gets Mica when the page's setting allows it
+//!   and tells the page, see [`material`].
 //! - Cold start: the time from process start to the main webview's first finished page load is
 //!   printed on stderr; with `DBEE_COLD_START_EXIT=1` the app then exits, which is how CI
 //!   measures it under Xvfb (spec §14).
+
+pub mod material;
 
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -109,6 +113,7 @@ pub struct Desktop {
     dialog: Arc<LateDialog>,
     identity: LocalIdentity,
     started: Instant,
+    workspace: PathBuf,
 }
 
 impl Desktop {
@@ -121,7 +126,7 @@ impl Desktop {
         customize: impl FnOnce(&mut CoreConfig),
     ) -> Result<Desktop, CoreError> {
         let dialog = Arc::new(LateDialog::default());
-        let mut config = CoreConfig::new(workspace, AppMode::Standalone);
+        let mut config = CoreConfig::new(workspace.clone(), AppMode::Standalone);
         config.save_dialog = Some(Arc::clone(&dialog) as Arc<dyn SaveDialog>);
         customize(&mut config);
         let core = Core::start(config).await?;
@@ -130,6 +135,7 @@ impl Desktop {
             dialog,
             identity,
             started,
+            workspace,
         })
     }
 
@@ -150,6 +156,7 @@ impl Desktop {
             dialog,
             identity,
             started,
+            workspace,
         } = self;
         let plugin = AmbidexBuilder::new(identity, core.server_config(), core.router())
             .hub_config(HubConfig::default())
@@ -159,10 +166,21 @@ impl Desktop {
             .plugin(plugin)
             .plugin(tauri_plugin_dialog::init())
             .manage(core)
+            .manage(material::Applied::default())
             .setup(move |app| {
                 dialog.attach(Arc::new(TauriSaveDialog {
                     app: app.handle().clone(),
                 }));
+                if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+                    let chosen = material::choose(
+                        material::requested(&workspace),
+                        &material::WindowBackdrop(&window),
+                    );
+                    *app.state::<material::Applied>()
+                        .0
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = chosen;
+                }
                 Ok(())
             })
             .on_page_load(move |webview, payload| {
@@ -171,6 +189,11 @@ impl Desktop {
                         "dbee-desktop: main page loaded {} ms after process start",
                         started.elapsed().as_millis()
                     );
+                    if let Some(script) =
+                        material::report_script(webview.state::<material::Applied>().get())
+                    {
+                        let _ = webview.eval(script);
+                    }
                     if exit_after_load {
                         webview.app_handle().exit(0);
                     }
