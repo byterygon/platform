@@ -314,7 +314,7 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
     const text = document.querySelector("[role=listbox]")?.textContent ?? "";
     for (const a of ACTIONS) {
       if (a.id === "palette") continue;
-      const label = a.id === "tool1" ? "Switch to Echo" : a.id.startsWith("tool") ? `${a.label} (no tool)` : a.label;
+      const label = a.id === "tool1" ? "Switch to Echo" : a.id === "tool2" ? "Switch to LangGraph" : a.id.startsWith("tool") ? `${a.label} (no tool)` : a.label;
       expect(text, a.id).toContain(label);
       if (a.keys[0]) expect(text, a.id).toContain(displayBinding(a.keys[0]));
     }

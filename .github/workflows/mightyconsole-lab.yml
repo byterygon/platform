@@ -5,7 +5,7 @@ name: Mightyconsole lab
 # goes away again. Runs when the lab or the acceptance harness changes, weekly (pinned images and
 # packages stay pullable), and by hand. Tool tasks add their integration tests against it here.
 # TSK-87: the acceptance harness runs the foundation's checklist against the running lab and
-# uploads its evidence (summary.md, logs, screenshots).
+# uploads its evidence (summary.md, logs, screenshots); TSK-84 adds LangGraph's.
 on:
   pull_request:
     paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", ".github/workflows/mightyconsole-lab.yml"]
@@ -49,12 +49,12 @@ jobs:
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - run: pnpm install --frozen-lockfile
       # cargo-deny is not installed here (the CI job runs it), so that one check is skipped.
-      - name: Acceptance (foundation, against the lab)
+      - name: Acceptance (foundation and LangGraph, against the lab)
         env:
           BYTERYGON_REQUIRE_BROWSER: "1"
         run: |
           status=0
-          node apps/mightyconsole/acceptance/acceptance.mts foundation || status=$?
+          node apps/mightyconsole/acceptance/acceptance.mts foundation langgraph || status=$?
           cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

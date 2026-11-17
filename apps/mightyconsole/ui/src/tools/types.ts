@@ -61,6 +61,8 @@ export interface TabProps {
   onLive(live: LiveState | null): void;
   /** Records an error in About's diagnostics and returns how to show it. */
   note(error: unknown): DescribedError;
+  /** Opens (or focuses) another tab of this tool and profile, e.g. a thread from a list of threads. */
+  openTab(open: { kind: string; params: Record<string, unknown>; title: string }): void;
 }
 
 /** The shell's per-tab actions (spec §3.4). */
