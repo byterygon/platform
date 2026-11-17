@@ -11,6 +11,11 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Compile the built UI (apps/mightyconsole/ui/dist, or $MIGHTYCONSOLE_UI_DIST) into the binary:
+# the release build (TSK-87, build.rs). Off for development and tests.
+embed-ui = []
+
 [[bin]]
 name = "mightyconsole-server"
 path = "src/main.rs"

@@ -17,6 +17,9 @@
 // server is $MIGHTYCONSOLE_SERVER, else target/debug/mightyconsole-server. Without either the
 // check is skipped (exit 0) unless BYTERYGON_REQUIRE_BROWSER=1 (CI). Exit codes: 0 ok or skipped,
 // 1 a check failed. CI runs it in a network namespace with only loopback.
+//
+// MIGHTYCONSOLE_EMBEDDED_UI=1 checks a release binary (TSK-87) instead: no Vite build and no
+// --ui, so the page and every asset come from the UI compiled into the binary.
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
@@ -204,15 +207,18 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  await build({ root: APP, configFile: join(APP, "vite.config.ts"), logLevel: "warn" });
+  const embedded = process.env.MIGHTYCONSOLE_EMBEDDED_UI === "1";
+  if (!embedded) await build({ root: APP, configFile: join(APP, "vite.config.ts"), logLevel: "warn" });
   const data = mkdtempSync(join(tmpdir(), "mightyconsole-check-"));
   const port = await freePort();
   const origin = `https://localhost:${port}`;
-  const server = spawn(serverBinary, ["--listen", `127.0.0.1:${port}`, "--ui", join(APP, "dist"), "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
+  const uiArgs = embedded ? [] : ["--ui", join(APP, "dist")];
+  const server = spawn(serverBinary, ["--listen", `127.0.0.1:${port}`, ...uiArgs, "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
   let chrome: ChildProcess | undefined;
   let cdp: Cdp | undefined;
   try {
-    await waitForLine(server, /open https:\/\/localhost:\d+\//, "mightyconsole-server");
+    const [startup] = await waitForLine(server, /[\s\S]*open https:\/\/localhost:\d+\//, "mightyconsole-server");
+    if (embedded) check(/UI built in \(\d+ files\)/.test(startup ?? ""), "the server does not serve a built-in UI");
     // The certificate is the server's own self-signed one: the check trusts it for this run only.
     chrome = spawn(
       browser,

@@ -13,6 +13,7 @@ shared network; anyone who reaches its port can use every connection opened thro
 | `rpc-gen/` | `mightyconsole-rpc-gen`: writes `ui/src/gen/api.ts` and `api.manifest.json` (drift-checked by `cargo test -p mightyconsole-server`) |
 | `ui/` | `@byterygon/mightyconsole`: the React UI (TSK-79 batch 2) |
 | `lab/` | the docker compose test lab (TSK-79 batch 3) |
+| `release/` | the release (TSK-87): `release.mts`, the shipped `README.md`, the tools' release notes, the image's `Dockerfile` |
 
 ## Run
 
@@ -42,3 +43,31 @@ A tool is one module in `server/src/tools/<tool>/` with one `#[rpc::router(names
 API; `server/src/tools/echo` is the sample every tool copies (connect and disconnect, a query, a
 live stream with a `streamId` and progress, a terminal). See the module docs of
 `server/src/tools/mod.rs` and `server/src/core/mod.rs`.
+
+## Release
+
+Each tool ships when it is done (Uy Son, 2026-11-17). A finished tool adds
+`release/notes/<N>-<tool>.md` (the next N, from its task's "Release after this tool" notes); the
+version follows: `0.1.0-alpha.N`, and `0.1.0` once all six are in. Then run the workflow
+(Actions > Mightyconsole release > Run workflow): it builds one file per platform with the UI
+built in (Linux x64 and arm64 static, macOS Apple silicon and Intel, Windows x64), a container
+image per Linux architecture, the licence, the third-party notices, the README, the release notes
+and `SHA256SUMS`, and checks the binaries and images with no network. Its artifacts are the
+release. It never tags or publishes; a tag `mightyconsole-v<version>` pushed by a person makes a
+draft release for that person to publish.
+
+The same steps by hand:
+
+```sh
+node apps/mightyconsole/release/release.mts check            # the notes are valid; prints the version
+pnpm --filter @byterygon/mightyconsole build
+MIGHTYCONSOLE_VERSION=$(node apps/mightyconsole/release/release.mts version) \
+  cargo build -p mightyconsole-server --release --features embed-ui
+node apps/mightyconsole/release/release.mts smoke --binary target/release/mightyconsole-server
+node scripts/third-party-notices.mjs --app mightyconsole --out target/THIRD-PARTY-NOTICES.txt
+node apps/mightyconsole/release/release.mts package --name linux-x64 \
+  --binary target/release/mightyconsole-server --notices target/THIRD-PARTY-NOTICES.txt
+```
+
+`release.mts image --arch amd64 --binary <static musl binary> --notices …` builds and saves the
+image; `release/image-check.sh` checks a saved one.
