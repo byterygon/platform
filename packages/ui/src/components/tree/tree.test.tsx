@@ -82,6 +82,18 @@ describe("Tree", () => {
     expect(labels()).toEqual(["public", "orders", "idbigint", "customers", "audit"]);
   });
 
+  test("a right click selects its row first, so a context menu acts on that row", async () => {
+    const onSelectedChange = vi.fn();
+    render(<Tree nodes={nodes} defaultExpanded={["public"]} defaultSelected="orders" onSelectedChange={onSelectedChange} aria-label="Schema" />);
+    const customers = items().find((i) => i.textContent === "customers")!;
+    // A right click fires contextmenu, never click.
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+    await act(async () => void customers.dispatchEvent(event));
+    expect(onSelectedChange).toHaveBeenLastCalledWith("customers", expect.objectContaining({ id: "customers" }));
+    expect(items().find((i) => i.textContent === "customers")!.getAttribute("aria-selected")).toBe("true");
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   test("lazy children: the app loads on expand, a loading row shows, then the children; an error row retries", async () => {
     function Lazy({ onRetry }: { onRetry: () => void }) {
       const [audit, setAudit] = useState<Partial<TreeNode>>({ hasChildren: true });
