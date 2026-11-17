@@ -54,6 +54,18 @@ node packages/mcp/bin/by-ui-mcp.js               # stdio; --registry <folder> fo
 claude mcp add byterygon-ui -- node /path/to/platform/packages/mcp/bin/by-ui-mcp.js
 ```
 
+Without an MCP client (a script, an agent with a shell), the same tools answer from the command
+line: the CLI connects an MCP client to the server in process, so the requests and answers are the
+ones a client gets over stdio.
+
+```sh
+node packages/mcp/bin/by-ui-mcp.js tools                                   # the tools and their input schemas
+node packages/mcp/bin/by-ui-mcp.js call search_tokens '{"query":"hover background"}'
+node packages/mcp/bin/by-ui-mcp.js call install_registry_item '{"project":".","items":["button","theme-default"],"dryRun":true}'
+```
+
+`call` prints the tool's JSON and exits 1 when the tool reports an error (2 on a bad command line).
+
 `BYTERYGON_REGISTRY` also names the registry folder. The default is `@byterygon/ui`'s `registry/`.
 
 ## Commands

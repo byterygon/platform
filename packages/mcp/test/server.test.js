@@ -112,3 +112,22 @@ test("install_registry_item: dry run, install, again, into a Vite-like project",
   assert.equal((await call("install_registry_item", { project, items: ["button"] })).doc.files.find((f) => f.path.endsWith("button.tsx")).action, "skip");
   assert.equal(readFileSync(join(project, "src/components/ui/button.tsx"), "utf8"), "// edited\n");
 });
+
+test("by-ui-mcp call and tools: the same tools without an MCP client", () => {
+  const run = (...args) => {
+    try {
+      return { code: 0, out: execFileSync(process.execPath, [bin, ...args], { encoding: "utf8" }) };
+    } catch (error) {
+      return { code: error.status, out: String(error.stdout) };
+    }
+  };
+  const tools = JSON.parse(run("tools").out);
+  assert.ok(tools.some((t) => t.name === "install_registry_item" && t.inputSchema.required.includes("project")));
+  const checked = run("call", "check_classes", '{"classes":"gap-3"}');
+  assert.equal(checked.code, 0);
+  assert.deepEqual(JSON.parse(checked.out).findings[0].suggestions, ["gap-gap-md"]);
+  const missing = run("call", "get_component", '{"name":"nope"}');
+  assert.equal(missing.code, 1);
+  assert.equal(JSON.parse(missing.out).error.code, "unknown-item");
+  assert.equal(run("call").code, 2);
+});
