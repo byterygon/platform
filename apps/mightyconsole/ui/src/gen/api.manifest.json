@@ -1,0 +1,829 @@
+{
+  "$defs": {
+    "AppEvent": {
+      "description": "Pushed on `app.events` (spec §2.7). One subscription per page.",
+      "oneOf": [
+        {
+          "description": "A live handle changed state.",
+          "properties": {
+            "connId": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "ConnectionStatus",
+              "type": "string"
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "$ref": "#/$defs/ConnectionState"
+            },
+            "tool": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "tool",
+            "connId",
+            "status"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Once a second while a stream with a `streamId` runs, and once when it ends (spec §2.5).",
+          "properties": {
+            "bytesPerSec": {
+              "description": "Bytes sent per second over the last interval.",
+              "format": "double",
+              "type": "number"
+            },
+            "decodeErrors": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "done": {
+              "description": "`true` on the last event of the stream.",
+              "type": "boolean"
+            },
+            "dropped": {
+              "description": "Items a push-only source dropped because the client was not reading.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "StreamProgress",
+              "type": "string"
+            },
+            "matched": {
+              "description": "Items that passed the filter and were sent.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ratePerSec": {
+              "description": "Matched items per second over the last interval.",
+              "format": "double",
+              "type": "number"
+            },
+            "scanned": {
+              "description": "Items read from the source.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "streamId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "streamId",
+            "scanned",
+            "matched",
+            "dropped",
+            "decodeErrors",
+            "ratePerSec",
+            "bytesPerSec",
+            "done"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A terminal ended; `term.*` calls on it answer `NotFound` from now on.",
+          "properties": {
+            "exitCode": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "TerminalExit",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "terminalId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "terminalId",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AppInfo": {
+      "description": "Output of `app.info`.",
+      "properties": {
+        "apiVersion": {
+          "type": "string"
+        },
+        "certificateFingerprint": {
+          "description": "SHA-256 of the server certificate, `AB:CD:…`, for About.",
+          "type": "string"
+        },
+        "codecs": {
+          "description": "Payload codecs the server decodes (the messaging core, TSK-80).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "listen": {
+          "description": "The address the server listens on.",
+          "type": "string"
+        },
+        "os": {
+          "type": "string"
+        },
+        "publicOrigin": {
+          "type": "string"
+        },
+        "schemaHash": {
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolInfo"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "apiVersion",
+        "schemaHash",
+        "listen",
+        "publicOrigin",
+        "certificateFingerprint",
+        "os",
+        "tools",
+        "codecs"
+      ],
+      "type": "object"
+    },
+    "ApprovalRequiredDetails": {
+      "description": "`details` of an `ApprovalRequired` error raised by the authorizer: the id of the recorded\napproval request.",
+      "properties": {
+        "approval_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id"
+      ],
+      "type": "object"
+    },
+    "Code": {
+      "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
+      "enum": [
+        "Cancelled",
+        "DeadlineExceeded",
+        "Unauthenticated",
+        "PermissionDenied",
+        "ApprovalRequired",
+        "InvalidArgument",
+        "NotFound",
+        "FailedPrecondition",
+        "ResourceExhausted",
+        "Unavailable",
+        "Unimplemented",
+        "VersionMismatch",
+        "Internal"
+      ],
+      "type": "string"
+    },
+    "ConnectEchoProfile": {
+      "description": "The echo tool's profile as `toConnect` builds it (spec §4.4).",
+      "properties": {
+        "greeting": {
+          "default": null,
+          "description": "Sent back by `echo.ping`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "token": {
+          "default": null,
+          "description": "A stand-in secret: `\"wrong\"` is refused with `Auth`. Never logged.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ConnectionState": {
+      "description": "The state of a live handle (spec §2.2, \"Status\").",
+      "enum": [
+        "connecting",
+        "connected",
+        "reconnecting",
+        "failed",
+        "closed"
+      ],
+      "type": "string"
+    },
+    "EchoConnIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "EchoConnectInput": {
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ConnectEchoProfile"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "EchoConnectOutput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "greeting": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "greeting"
+      ],
+      "type": "object"
+    },
+    "EchoPingInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "text"
+      ],
+      "type": "object"
+    },
+    "EchoPingOutput": {
+      "properties": {
+        "greeting": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "greeting",
+        "text"
+      ],
+      "type": "object"
+    },
+    "EchoShellInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "EchoShellSummary": {
+      "properties": {
+        "exitCode": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "EchoTicksInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "count": {
+          "default": null,
+          "description": "Ticks to send before ending; until stopped when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "intervalMs": {
+          "default": null,
+          "description": "Time between ticks, 0 to 60,000 ms; 100 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "streamId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "streamId"
+      ],
+      "type": "object"
+    },
+    "EchoTicksSummary": {
+      "properties": {
+        "sent": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sent"
+      ],
+      "type": "object"
+    },
+    "Empty": {
+      "description": "The empty object, `{}`.",
+      "type": "object"
+    },
+    "RemoteError": {
+      "description": "The target's own error code, for Details.",
+      "properties": {
+        "code": {
+          "description": "Kafka error name, gRPC status, HTTP status, Kubernetes `Status.reason`, NATS error code.",
+          "type": "string"
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "type": "object"
+    },
+    "TermResizeInput": {
+      "description": "Input of `term.resize`.",
+      "properties": {
+        "cols": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rows": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId",
+        "cols",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "TermSignal": {
+      "description": "What `term.signal` sends.",
+      "enum": [
+        "interrupt",
+        "eof"
+      ],
+      "type": "string"
+    },
+    "TermSignalInput": {
+      "description": "Input of `term.signal`.",
+      "properties": {
+        "signal": {
+          "$ref": "#/$defs/TermSignal"
+        },
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId",
+        "signal"
+      ],
+      "type": "object"
+    },
+    "TermWriteInput": {
+      "description": "Input of `term.write`.",
+      "properties": {
+        "data": {
+          "description": "The bytes typed or pasted, base64; at most 64 KiB decoded.",
+          "type": "string"
+        },
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId",
+        "data"
+      ],
+      "type": "object"
+    },
+    "ToolError": {
+      "description": "`details` of every tool procedure's errors (spec §2.6).",
+      "properties": {
+        "field": {
+          "description": "For `Invalid`: the input field at fault, as the UI names it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ToolErrorKind"
+        },
+        "message": {
+          "type": "string"
+        },
+        "remote": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RemoteError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resource": {
+          "description": "For `NotFound`: what is missing (`connection`, `terminal`, `topic`, ...).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "system": {
+          "description": "The tool id (`nats`, `kafka`, `k8s`, ...), or `app` for shared procedures.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "system",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "ToolErrorKind": {
+      "description": "What went wrong, as the UI needs to know it (spec §2.6).",
+      "oneOf": [
+        {
+          "const": "Connect",
+          "description": "The target refused, timed out or is unreachable.",
+          "type": "string"
+        },
+        {
+          "const": "Auth",
+          "description": "The target rejected the credentials.",
+          "type": "string"
+        },
+        {
+          "const": "Tls",
+          "description": "The TLS handshake or verification failed.",
+          "type": "string"
+        },
+        {
+          "const": "HostKey",
+          "description": "The SSH host key is unknown or changed.",
+          "type": "string"
+        },
+        {
+          "const": "Forbidden",
+          "description": "The target denied the operation (ACL, RBAC, permissions).",
+          "type": "string"
+        },
+        {
+          "const": "NotFound",
+          "description": "The named resource does not exist, or the `connId` is gone (`resource = \"connection\"`).",
+          "type": "string"
+        },
+        {
+          "const": "Conflict",
+          "description": "Exists already, wrong revision, not empty, not running.",
+          "type": "string"
+        },
+        {
+          "const": "Invalid",
+          "description": "Input the target or a codec rejected.",
+          "type": "string"
+        },
+        {
+          "const": "Remote",
+          "description": "Any other target error, with its native code in `remote`.",
+          "type": "string"
+        }
+      ]
+    },
+    "ToolInfo": {
+      "description": "A tool built into the server.",
+      "properties": {
+        "id": {
+          "description": "The tool's namespace: `echo`, `nats`, `kafka`, `k8s`, `temporal`, `docker`, `langgraph`.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The version of the tool's main library, or of the server for built-in samples.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "type": "object"
+    }
+  },
+  "api": {
+    "name": "mightyconsole",
+    "version": "0.1.0"
+  },
+  "approval_required_details": {
+    "$ref": "#/$defs/ApprovalRequiredDetails"
+  },
+  "format": "ambidex.manifest.v1",
+  "procedures": [
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "subscription",
+      "log_input": false,
+      "name": "app.events",
+      "output": {
+        "$ref": "#/$defs/AppEvent"
+      },
+      "perm": "app.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": null,
+      "timeout_max_ms": null
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "app.info",
+      "output": {
+        "$ref": "#/$defs/AppInfo"
+      },
+      "perm": "app.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/EchoConnectInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "echo.connect",
+      "output": {
+        "$ref": "#/$defs/EchoConnectOutput"
+      },
+      "perm": "echo.read",
+      "redact": [
+        "profile.token"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/EchoConnIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "echo.disconnect",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "echo.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/EchoPingInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "echo.ping",
+      "output": {
+        "$ref": "#/$defs/EchoPingOutput"
+      },
+      "perm": "echo.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/EchoShellInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "echo.shell",
+      "output": {
+        "$ref": "#/$defs/EchoShellSummary"
+      },
+      "perm": "echo.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/EchoTicksInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "echo.ticks",
+      "output": {
+        "$ref": "#/$defs/EchoTicksSummary"
+      },
+      "perm": "echo.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TermResizeInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "term.resize",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "term.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TermSignalInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "term.signal",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "term.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TermWriteInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "term.write",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "term.write",
+      "redact": [
+        "data"
+      ],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    }
+  ],
+  "protocol": 1,
+  "schema_hash": "sha256:b02f1126460b72c2c9b542b58a5712a1632f48ccf5b3d34e4fb6a0d015d7b69a"
+}
