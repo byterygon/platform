@@ -21,8 +21,14 @@ export type CellAlign = "start" | "end" | "center";
 export interface ColumnFormat {
   readonly family: TypeFamily;
   readonly align: CellAlign;
-  /** The type the header shows: `pg.type_name` metadata when present, "uuid", else the Arrow type. */
+  /**
+   * The type the header shows, as users name it (TSK-64): `pg.type_name` metadata when present, else
+   * the PostgreSQL name of a built-in type OID (`bigint`, `timestamptz`), else a name derived from
+   * the Arrow type (`integer`, `text`); a type the grid does not know keeps its Arrow name.
+   */
   readonly label: string;
+  /** The Arrow type as the stream carries it (`Int64`, `Dictionary<Int32, Utf8>`), for the header's tooltip. */
+  readonly arrowType: string;
   /** The text in the cell, or `null` for NULL. Cut to `DISPLAY_LIMIT` with newlines as ↵. */
   display(data: ArrowData, row: number): string | null;
   /** The full value (viewer, copy), or `null` for NULL. */
@@ -58,6 +64,40 @@ export const PG_TYPE_NAME = "pg.type_name";
 const EXTENSION = "ARROW:extension:name";
 
 const JSON_OIDS = new Set(["114", "3802"]);
+
+/**
+ * Names of PostgreSQL's built-in types by OID (pg_type.dat; these OIDs are fixed across versions).
+ * Extension types (PostGIS geometry) have per-database OIDs and are not here.
+ */
+const PG_TYPE_NAMES: Readonly<Record<string, string>> = {
+  "16": "boolean", "17": "bytea", "18": "char", "19": "name", "20": "bigint", "21": "smallint", "23": "integer", "25": "text", "26": "oid",
+  "114": "json", "142": "xml", "650": "cidr", "700": "real", "701": "double precision", "790": "money", "829": "macaddr", "869": "inet",
+  "1042": "character", "1043": "varchar", "1082": "date", "1083": "time", "1114": "timestamp", "1184": "timestamptz", "1186": "interval",
+  "1266": "timetz", "1560": "bit", "1562": "varbit", "1700": "numeric", "2950": "uuid", "3614": "tsvector", "3802": "jsonb",
+  "199": "json[]", "1000": "boolean[]", "1005": "smallint[]", "1007": "integer[]", "1009": "text[]", "1015": "varchar[]", "1016": "bigint[]",
+  "1021": "real[]", "1022": "double precision[]", "1115": "timestamp[]", "1182": "date[]", "1185": "timestamptz[]", "1231": "numeric[]",
+  "2951": "uuid[]", "3807": "jsonb[]",
+};
+
+/** A user-facing name from the Arrow type when no PostgreSQL name is known. */
+function arrowLabel(type: string, family: TypeFamily): string {
+  if (family === "uuid") return "uuid";
+  if (family === "json") return "json";
+  if (/^(Large)?Utf8$/.test(type)) return "text";
+  if (type === "Bool") return "boolean";
+  if (type === "Int16") return "smallint";
+  if (type === "Int32") return "integer";
+  if (type === "Int64") return "bigint";
+  if (/^U?Int(8|16|32|64)$/.test(type)) return "integer";
+  if (type === "Float32") return "real";
+  if (type === "Float64") return "double precision";
+  if (/^Decimal/.test(type)) return "numeric";
+  if (/^Date/.test(type)) return "date";
+  if (/^Time(32|64)?</.test(type) || /^Time(32|64)$/.test(type)) return "time";
+  if (/^Timestamp</.test(type)) return /, [^>]+>$/.test(type) ? "timestamptz" : "timestamp";
+  if (/^(Large)?Binary$|^FixedSizeBinary/.test(type)) return "binary";
+  return type;
+}
 const NUMERIC_OID = "1700";
 
 type Read = (data: ArrowData, i: number) => string;
@@ -344,7 +384,8 @@ export function columnFormat(field: ArrowField): ColumnFormat {
   const typeId = dictValue === undefined ? field.typeId : typeIdOfName(dictValue);
   const family = familyOf(field, type, typeId);
   const inner = typeId === TypeId.Null ? undefined : (readersOf(field, type, typeId) ?? unknownReaders(type));
-  const label = field.metadata[PG_TYPE_NAME] ?? (family === "uuid" ? "uuid" : field.type);
+  const oid = field.metadata[PG_TYPE_OID];
+  const label = field.metadata[PG_TYPE_NAME] ?? (oid !== undefined ? PG_TYPE_NAMES[oid] : undefined) ?? arrowLabel(type, family);
 
   const read = (pick: keyof Readers) => {
     if (inner === undefined) return () => null;
@@ -362,7 +403,7 @@ export function columnFormat(field: ArrowField): ColumnFormat {
       return null;
     };
   };
-  return { family, align: alignOf(family), label, display: read("display"), value: read("value") };
+  return { family, align: alignOf(family), label, arrowType: field.type, display: read("display"), value: read("value") };
 }
 
 function typeIdOfName(type: string): number {

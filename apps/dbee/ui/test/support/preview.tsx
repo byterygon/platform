@@ -70,3 +70,12 @@ if (scene === "main" && params.get("run") !== "0") {
     runButton?.click();
   }, 1200);
 }
+
+// open=settings | sheet: opens Settings or the New connection sheet after the first render.
+const open = params.get("open");
+if (open === "settings" || open === "sheet") {
+  setTimeout(() => {
+    const label = open === "settings" ? "Settings" : "Add connection";
+    document.querySelector<HTMLButtonElement>(`button[aria-label='${label}']`)?.click();
+  }, 1600);
+}

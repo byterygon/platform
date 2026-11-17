@@ -262,6 +262,18 @@ describe("keyboard and palette (spec §9)", () => {
 });
 
 describe("Fluent 2 shell (TSK-64)", () => {
+  test("connection rows: medium tree items, the status as a glyph on the database icon and in text, TLS as a lock", async () => {
+    const fake = createFakeServices({ connections: [connection(), { ...connection(), id: "conn-2", name: "Plain", tls: "plaintext" as const }] });
+    mount(fake);
+    await waitFor(() => document.querySelectorAll("[role=tree] [role=treeitem]").length === 2, "two connections");
+    const rows = [...document.querySelectorAll<HTMLElement>("[role=tree] [role=treeitem]")];
+    for (const row of rows) expect(row.className).toContain("h-control-md");
+    expect(rows[0]!.querySelector("[data-status=disconnected]")).not.toBeNull();
+    expect(rows[0]!.textContent).toContain("disconnected");
+    expect(rows[0]!.textContent).toContain("TLS");
+    expect(rows[1]!.textContent).toContain("Plaintext");
+  });
+
   test("tabs sit in the title area; the sidebar, the editor and the results are separate layers", async () => {
     const fake = createFakeServices({ connections: [connection()] });
     mount(fake, { persisted: { tabs: [{ id: "t1", connectionId: "conn-1", sql: "select 1", maxRows: null }], activeTab: "t1" } });
