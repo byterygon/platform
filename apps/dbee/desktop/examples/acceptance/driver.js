@@ -266,6 +266,8 @@
     async connect({ name, expectSchema }) {
       const node = treeItem(name);
       if (!node) throw new Error(`no node ${name}`);
+      const toasts = () => [...document.querySelectorAll('[data-slot="toast"], [role="alert"], [role="alertdialog"], [role="dialog"]')].map((t) => t.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
+      const seen = new Set(toasts());
       activate(node);
       const t0 = now();
       const outcome = await until(() => {
@@ -273,9 +275,9 @@
         if (expectSchema && treeItem(expectSchema)) return { connected: true };
         const err = document.querySelector('[data-slot="tree-error"]');
         if (err) return { connected: false, error: err.textContent.replace(/\s+/g, " ").trim() };
-        if (/error|expired/.test(text.replace(name, ""))) {
-          const alerts = [...document.querySelectorAll('[role="alert"], [data-slot="toast"]')].map((t) => t.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
-          return { connected: false, error: alerts.join(" | ") || text };
+        const fresh = toasts().filter((t) => !seen.has(t));
+        if (/error|expired/.test(text.replace(name, "")) || fresh.some((t) => /password/i.test(t))) {
+          return { connected: false, shown: fresh.join(" | ") || text };
         }
         return null;
       }, 30000, `the outcome of connecting ${name}`);

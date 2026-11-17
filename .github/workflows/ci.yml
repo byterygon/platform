@@ -116,10 +116,12 @@ jobs:
       - name: Measure (3 runs)
         run: |
           apps/dbee/acceptance/local-postgres.sh start "$RUNNER_TEMP/pg" 55432
+          status=0
           timeout 900 xvfb-run -a -s "-screen 0 1920x1080x24" \
-            apps/dbee/acceptance/acceptance.sh perf --port 55432 --runs 3 --no-build --out "$RUNNER_TEMP/dbee-budget"
+            apps/dbee/acceptance/acceptance.sh perf --port 55432 --runs 3 --no-build --out "$RUNNER_TEMP/dbee-budget" || status=$?
           for f in "$RUNNER_TEMP"/dbee-budget/run-*.json; do echo "== $f"; cat "$f"; done
           apps/dbee/acceptance/local-postgres.sh stop "$RUNNER_TEMP/pg"
+          exit "$status"
 
   typescript:
     # Must match the required status check in the protect-main ruleset; do not rename without updating it.

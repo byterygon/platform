@@ -122,13 +122,14 @@ perf() {
     DBEE_WORKSPACE="$workspace" DBEE_COLD_START_EXIT=1 "$target/dbee-desktop" 2>&1 | grep ' ms after process start' | tee -a "$out/cold-start.txt"
     i=$((i + 1))
   done
-  i=1
+  i=1 failed=0
   while [ "$i" -le "$runs" ]; do
     echo "driver run $i:"
-    "$target/examples/acceptance" perf --workspace "$workspace" --out "$out/run-$i.json" > /dev/null
+    # A failed run is reported and the next one still runs; perf fails at the end.
+    "$target/examples/acceptance" perf --workspace "$workspace" --out "$out/run-$i.json" > /dev/null || failed=1
     node -e '
       const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-      if (r.error) { console.log("  error:", r.error); process.exit(1); }
+      if (r.error) { console.log("  error:", r.error.slice(0, 2000)); process.exit(1); }
       const f = (x) => (typeof x === "number" ? x.toFixed(1) : String(x));
       const s = r.run.scroll;
       console.log(`  usable window ${r.usableWindowMs} ms; tree: first level ${f(r.tree.firstLevelMs)} ms, schema expand ${f(r.tree.schemaExpandMs)} ms, Tables group ${f(r.tree.tablesGroupExpandMs)} ms (${r.tree.tableCount} tables)`);
@@ -138,10 +139,11 @@ perf() {
       console.log(`  scroll ${s.seconds} s from the first rows: ${s.frames} frames, p50 ${f(s.p50)} p95 ${f(s.p95)} max ${f(s.max)} ms, over 32 ms ${s.over32}, work p95 ${f(s.workP95)} ms; rows ${s.rowsAtStart} -> ${s.rowsAtEnd} (${s.stateAtEnd}), refresh ${f(r.run.refreshMs)} ms`);
       console.log(`    of which while streaming: ${w.frames} frames, p50 ${f(w.p50)} p95 ${f(w.p95)} max ${f(w.max)} ms, over 32 ms ${w.over32}, work p95 ${f(w.workP95)} ms`);
       console.log(`  cancel at ${r.cancel.page.rowsAtClick} rows: cancel connection in the audit ${r.cancel.cancelConnectionAuditMs} ms after the click; "${r.cancel.page.status}"; RAM after 1M rss ${f(r.memoryAfter1M.totalMiB)} MiB${fp(r.memoryAfter1M)}; audit ${JSON.stringify(r.auditChain)}`);
-    ' "$out/run-$i.json"
+    ' "$out/run-$i.json" || failed=1
     i=$((i + 1))
   done
   echo "reports in $out"
+  return "$failed"
 }
 
 case "${1:-}" in
