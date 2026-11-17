@@ -2,3 +2,4 @@ packages:
   - "packages/*"
   - "apps/*"
   - "apps/dbee/ui"
+  - "apps/mightyconsole/ui"

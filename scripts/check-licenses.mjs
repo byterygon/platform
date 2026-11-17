@@ -60,6 +60,13 @@ for (const dir of ["packages", "apps"]) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name, "package.json");
     if (entry.isDirectory() && existsSync(path)) manifests.push(path);
+    // A product's packages sit one level down (apps/dbee/ui, apps/mightyconsole/ui).
+    if (dir === "apps" && entry.isDirectory()) {
+      for (const sub of readdirSync(join(dir, entry.name), { withFileTypes: true })) {
+        const nested = join(dir, entry.name, sub.name, "package.json");
+        if (sub.isDirectory() && sub.name !== "node_modules" && existsSync(nested)) manifests.push(nested);
+      }
+    }
   }
 }
 const npm = new Map();
