@@ -3,7 +3,7 @@
 // live in the workspace directory (spec §2, Open question 11 decided 2026-11-16) as two documents
 // the core stores whole through `app.getWorkspace` / `app.setWorkspace`:
 //
-//   settings.json  { version: 1, settings: Settings, layout: { shellSizes, splitSizes, sidebarOpen } }
+//   settings.json  { version: 2, settings: Settings, layout: { shellSizes, splitSizes, sidebarOpen } }
 //   tabs.json      { version: 1, tabs: PersistedTab[], activeTab }
 //
 // The layout and its version are the UI's; the core never reads them. Reading is tolerant: a
@@ -16,8 +16,15 @@ import { type Appearance, DEFAULT_APPEARANCE, isPreset } from "./presets";
 /** Where PR #57 kept the state in webview storage; read once for the migration, then removed. */
 export const LEGACY_STORAGE_KEY = "dbee.workspace.v1";
 
-/** Version of the layout of both documents. */
+/** Version of the layout of tabs.json. */
 export const DOCUMENT_VERSION = 1;
+
+/**
+ * Version of the layout of settings.json. Version 2 (TSK-64, DBee spec Open question 17): the
+ * default density became comfortable. A settings document before it saying compact is moved to
+ * comfortable once, because compact was the default then and cannot be told from a choice.
+ */
+export const SETTINGS_VERSION = 2;
 
 export interface PersistedTab {
   id: string;
@@ -94,7 +101,7 @@ function widthsOf(raw: unknown): { columnWidths?: Record<string, number> } {
 }
 
 /** The state from its flat form (the legacy blob, or the two documents merged), defaults for anything missing or malformed. */
-function normalize(raw: Record<string, unknown>): Persisted {
+function normalize(raw: Record<string, unknown>, settingsVersion: number): Persisted {
   const tabs: PersistedTab[] = Array.isArray(raw["tabs"])
     ? raw["tabs"].filter(isRecord).flatMap((t) =>
         typeof t["id"] === "string"
@@ -115,7 +122,7 @@ function normalize(raw: Record<string, unknown>): Persisted {
   const settings: Settings = {
     preset: isPreset(s["preset"]) ? s["preset"] : DEFAULT_SETTINGS.preset,
     colorScheme: s["colorScheme"] === "light" || s["colorScheme"] === "dark" ? s["colorScheme"] : "system",
-    density: s["density"] === "comfortable" ? "comfortable" : "compact",
+    density: s["density"] === "compact" && settingsVersion >= SETTINGS_VERSION ? "compact" : "comfortable",
     editorFontSize: typeof s["editorFontSize"] === "number" ? s["editorFontSize"] : DEFAULT_SETTINGS.editorFontSize,
     gridFontSize: typeof s["gridFontSize"] === "number" ? s["gridFontSize"] : DEFAULT_SETTINGS.gridFontSize,
     tabSize: typeof s["tabSize"] === "number" ? s["tabSize"] : DEFAULT_SETTINGS.tabSize,
@@ -139,7 +146,7 @@ function normalize(raw: Record<string, unknown>): Persisted {
 export function toDocuments(state: Persisted): Documents {
   return {
     settings: {
-      version: DOCUMENT_VERSION,
+      version: SETTINGS_VERSION,
       settings: { ...state.settings },
       layout: { shellSizes: [...state.shellSizes], splitSizes: [...state.splitSizes], sidebarOpen: state.sidebarOpen },
     },
@@ -157,7 +164,8 @@ export function fromDocuments(settings: JsonValue, tabs: JsonValue): Persisted |
   const s = isRecord(settings) ? settings : {};
   const t = isRecord(tabs) ? tabs : {};
   const layout = isRecord(s["layout"]) ? s["layout"] : {};
-  return normalize({ ...layout, settings: s["settings"], tabs: t["tabs"], activeTab: t["activeTab"] });
+  const version = typeof s["version"] === "number" ? s["version"] : 1;
+  return normalize({ ...layout, settings: s["settings"], tabs: t["tabs"], activeTab: t["activeTab"] }, version);
 }
 
 /** The state PR #57 kept in webview storage, if any is there and readable. */
@@ -171,7 +179,8 @@ export function readLegacy(storage: Storage | undefined = defaultStorage()): Per
   if (!text) return null;
   try {
     const raw: unknown = JSON.parse(text);
-    return isRecord(raw) ? normalize(raw) : null;
+    // The webview-storage state predates settings version 2.
+    return isRecord(raw) ? normalize(raw, 1) : null;
   } catch {
     return null;
   }

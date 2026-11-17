@@ -12,7 +12,8 @@
     "test": "node scripts/sync-ui.ts --check && vitest run",
     "sync:ui": "node scripts/sync-ui.ts",
     "sync:ui:check": "node scripts/sync-ui.ts --check",
-    "lint": "eslint . && stylelint \"**/*.css\""
+    "lint": "eslint . && stylelint \"**/*.css\"",
+    "screenshots": "node scripts/screenshots.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

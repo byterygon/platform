@@ -112,13 +112,16 @@ describe("the driver's types", () => {
       const f = columnFormat(column(name).field);
       return [f.family, f.align, f.label];
     };
-    expect(of("b")).toEqual(["boolean", "center", "Bool"]);
-    expect(of("i8")).toEqual(["integer", "end", "Int64"]);
-    expect(of("f8")).toEqual(["decimal", "end", "Float64"]);
-    expect(of("t")).toEqual(["text", "start", "Utf8"]);
-    expect(of("by")).toEqual(["binary", "start", "Binary"]);
+    // The driver's fields carry the type OID: the label is the PostgreSQL name (TSK-64).
+    expect(of("b")).toEqual(["boolean", "center", "boolean"]);
+    expect(of("i8")).toEqual(["integer", "end", "bigint"]);
+    expect(of("f8")).toEqual(["decimal", "end", "double precision"]);
+    expect(of("t")).toEqual(["text", "start", "text"]);
+    expect(of("by")).toEqual(["binary", "start", "bytea"]);
     expect(of("u")).toEqual(["uuid", "start", "uuid"]);
-    expect(of("tz")).toEqual(["datetime", "start", "Timestamp<MICROSECOND, UTC>"]);
+    expect(of("ts")[2]).toBe("timestamp");
+    expect(of("tz")).toEqual(["datetime", "start", "timestamptz"]);
+    expect(columnFormat(column("tz").field).arrowType).toBe("Timestamp<MICROSECOND, UTC>");
   });
 });
 
@@ -143,6 +146,20 @@ describe("other columns", () => {
 
   test("pg.type_name, when the driver sends it, is the header label", () => {
     expect(columnFormat(field("Utf8", 5, { "pg.type_name": "numeric(12,2)" })).label).toBe("numeric(12,2)");
+  });
+
+  test("a built-in PostgreSQL type OID names the type; the Arrow type stays for the tooltip", () => {
+    const of = (type: string, typeId: number, oid: string) => columnFormat(field(type, typeId, { "byterygon.pg.type_oid": oid }));
+    expect(of("Int64", 2, "20").label).toBe("bigint");
+    expect(of("Int32", 2, "23").label).toBe("integer");
+    expect(of("Timestamp<MICROSECOND, UTC>", 10, "1184").label).toBe("timestamptz");
+    expect(of("Utf8", 5, "1700").label).toBe("numeric");
+    expect(of("Utf8", 5, "3802").label).toBe("jsonb");
+    expect(of("Utf8", 5, "1043").label).toBe("varchar");
+    const dict = of("Dictionary<Int32, Utf8>", -1, "25");
+    expect([dict.label, dict.arrowType]).toEqual(["text", "Dictionary<Int32, Utf8>"]);
+    // An extension type (PostGIS geometry: a per-database OID) falls back to the Arrow-derived name.
+    expect(of("Utf8", 5, "18342").label).toBe("text");
   });
 
   test("a type the grid does not read shows its Arrow type", () => {

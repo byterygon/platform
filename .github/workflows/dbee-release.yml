@@ -77,6 +77,26 @@ jobs:
           test -n "$(ls release)"
           (cd release && (sha256sum * 2>/dev/null || shasum -a 256 *) > "SHA256SUMS-${{ matrix.name }}")
           cat "release/SHA256SUMS-${{ matrix.name }}"
+      # TSK-62 batch 3: the packaged app, not a debug build, starts with no network. The .deb is
+      # installed (its WebKitGTK dependency is already on the runner), then the installed binary
+      # does its cold start under Xvfb in a network namespace with only loopback.
+      - name: Install the .deb and cold-start it offline (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends xvfb
+          sudo dpkg -i release/*.deb
+          test -x /usr/bin/dbee-desktop
+          test -f /usr/lib/DBee/LICENSE && test -f /usr/lib/DBee/THIRD-PARTY-NOTICES.txt
+          sudo unshare --net -- sh -c '
+            set -e
+            ip link set lo up
+            if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+              echo "network is reachable"; exit 1
+            fi
+            setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
+              env PATH="$2" HOME="$3" DBEE_WORKSPACE="$1/dbee-workspace" DBEE_COLD_START_EXIT=1 \
+              timeout 180 xvfb-run -a /usr/bin/dbee-desktop
+          ' sh "$RUNNER_TEMP" "$PATH" "$HOME"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dbee-${{ matrix.name }}
@@ -93,11 +113,11 @@ jobs:
       contents: write # a draft release on a tag push; nothing is published
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - run: pnpm install --frozen-lockfile
@@ -113,7 +133,7 @@ jobs:
           cp apps/dbee/RELEASE-NOTES-0.1.0.md release/RELEASE-NOTES.md
           cp apps/dbee/INSTALL.md release/INSTALL.md
           cd release
-          cat SHA256SUMS-* | sort -k2 > SHA256SUMS
+          cat SHA256SUMS-* | grep -v ' \*\?SHA256SUMS-' | sed 's/ \*/  /' | sort -k2 > SHA256SUMS
           rm SHA256SUMS-*
           sha256sum LICENSE THIRD-PARTY-NOTICES.txt INSTALL.md >> SHA256SUMS
           ls -l; cat SHA256SUMS

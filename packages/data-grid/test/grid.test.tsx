@@ -27,7 +27,7 @@ describe("DataGrid", () => {
     expect(grid.getAttribute("aria-colcount")).toBe(String(fields.length + 1));
     const headers = [...el.querySelectorAll("[role=columnheader]")];
     expect(headers.map((h) => h.querySelector(".bdg-name")?.textContent ?? "corner")).toEqual(["corner", ...fields.map((f) => f.name)]);
-    expect(headers[4]!.getAttribute("aria-description")).toBe("Int64");
+    expect(headers[4]!.getAttribute("aria-description")).toBe("bigint");
     expect(headers[10]!.getAttribute("aria-description")).toBe("uuid");
     expect(headers[4]!.querySelector(".bdg-glyph")!.getAttribute("data-family")).toBe("integer");
     const rows = rowsIn(el);

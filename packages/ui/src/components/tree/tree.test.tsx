@@ -24,6 +24,19 @@ const labels = () => items().map((item) => item.textContent);
 const active = () => document.getElementById(tree().getAttribute("aria-activedescendant")!);
 
 describe("Tree", () => {
+  test("size: small rows by default, medium rows (Fluent's medium tree item) on request, loading rows included", () => {
+    render(<Tree nodes={[...nodes, { id: "busy", label: "busy", loading: true }]} defaultExpanded={["public", "busy"]} aria-label="Schema" />);
+    for (const row of items()) expect(row.className).toContain("h-control-sm");
+    cleanup();
+    render(<Tree nodes={[...nodes, { id: "busy", label: "busy", loading: true }]} defaultExpanded={["public", "busy"]} size="medium" aria-label="Schema" />);
+    expect(items().length).toBeGreaterThan(3);
+    for (const row of items()) {
+      expect(row.className).toContain("h-control-md");
+      expect(row.className).not.toContain("h-control-sm");
+      expect(row.dataset["size"]).toBe("medium");
+    }
+  });
+
   test("a named tree of treeitems with level, position and expanded state", async () => {
     const { container } = render(<Tree nodes={nodes} defaultExpanded={["public"]} aria-label="Schema" />);
     expect(tree().getAttribute("aria-label")).toBe("Schema");

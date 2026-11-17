@@ -1,0 +1,46 @@
+{
+  "name": "@byterygon/mightyconsole",
+  "version": "0.1.0",
+  "description": "Mightyconsole user interface: React 19 + Vite + Tailwind v4 on the Byterygon UI registry items and one @byterygon/ambidex client to mightyconsole-server; profiles in IndexedDB.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node scripts/sync-ui.ts --check && vitest run",
+    "sync:ui": "node scripts/sync-ui.ts",
+    "sync:ui:check": "node scripts/sync-ui.ts --check",
+    "lint": "eslint . && stylelint \"**/*.css\"",
+    "check:browser": "node scripts/browser-check.ts"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "@byterygon/ambidex": "workspace:*",
+    "@byterygon/design-tokens": "workspace:*",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-sql": "6.10.0",
+    "@lezer/highlight": "1.2.5",
+    "cn": "0.5.2",
+    "idb": "8.0.4",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@byterygon/lint": "workspace:*",
+    "@byterygon/ui": "workspace:*",
+    "@tailwindcss/vite": "4.3.5",
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "axe-core": "4.14.0",
+    "eslint": "10.14.0",
+    "fake-indexeddb": "6.2.8",
+    "jsdom": "31.0.0",
+    "stylelint": "17.16.0",
+    "tailwindcss": "4.3.5",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}
