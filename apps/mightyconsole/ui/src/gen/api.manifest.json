@@ -190,6 +190,176 @@
       ],
       "type": "object"
     },
+    "Assistant": {
+      "properties": {
+        "assistantId": {
+          "type": "string"
+        },
+        "config": true,
+        "context": true,
+        "createdAt": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "graphId": {
+          "type": "string"
+        },
+        "metadata": true,
+        "name": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "version": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "assistantId",
+        "graphId",
+        "name",
+        "config",
+        "context",
+        "metadata",
+        "createdAt",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "AssistantGraph": {
+      "description": "`GET /assistants/{id}/graph`.",
+      "properties": {
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/GraphEdge"
+          },
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/GraphNode"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "type": "object"
+    },
+    "AssistantGraphInput": {
+      "properties": {
+        "assistantId": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "xray": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Xray"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "assistantId"
+      ],
+      "type": "object"
+    },
+    "AssistantIdInput": {
+      "properties": {
+        "assistantId": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "assistantId"
+      ],
+      "type": "object"
+    },
+    "AssistantSchemas": {
+      "description": "`GET /assistants/{id}/schemas`.",
+      "properties": {
+        "configSchema": true,
+        "contextSchema": true,
+        "graphId": {
+          "type": "string"
+        },
+        "inputSchema": true,
+        "outputSchema": true,
+        "stateSchema": true
+      },
+      "required": [
+        "graphId",
+        "inputSchema",
+        "outputSchema",
+        "stateSchema",
+        "configSchema"
+      ],
+      "type": "object"
+    },
+    "AssistantsSearchInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "graphId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "description": "1 to 1000; 100 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "metadata": {
+          "default": null,
+          "description": "Assistants whose metadata contains these keys and values."
+        },
+        "offset": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
     "Code": {
       "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
       "enum": [
@@ -234,6 +404,52 @@
       },
       "required": [
         "name"
+      ],
+      "type": "object"
+    },
+    "ConnectLanggraphProfile": {
+      "description": "The LangGraph profile as `toConnect` builds it (spec §11.1).",
+      "properties": {
+        "apiKey": {
+          "default": null,
+          "description": "Sent as `x-api-key` when set.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headers": {
+          "description": "Extra headers (custom auth), sent with every request.",
+          "items": {
+            "$ref": "#/$defs/HeaderPair"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "tls": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TlsOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For `https` URLs: a pinned CA, a client certificate, the expected name."
+        },
+        "url": {
+          "description": "The server's base URL, e.g. `http://127.0.0.1:2024`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "url"
       ],
       "type": "object"
     },
@@ -394,6 +610,151 @@
       "description": "The empty object, `{}`.",
       "type": "object"
     },
+    "GraphEdge": {
+      "properties": {
+        "conditional": {
+          "description": "A branch of a conditional edge (drawn dashed).",
+          "type": "boolean"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "target",
+        "conditional"
+      ],
+      "type": "object"
+    },
+    "GraphNode": {
+      "properties": {
+        "id": {
+          "description": "Unique in the graph; with xray, a subgraph's nodes are `<subgraph>:<node>`.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/GraphNodeKind"
+        },
+        "metadata": {
+          "description": "The node's metadata, when it has any."
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "GraphNodeKind": {
+      "enum": [
+        "start",
+        "end",
+        "node"
+      ],
+      "type": "string"
+    },
+    "HeaderPair": {
+      "description": "An extra header of the profile (custom auth); its value is a secret.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Interrupt": {
+      "description": "A pending `interrupt()`: its value is what the graph asks the human.",
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": true
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "LanggraphConnIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "LanggraphConnectInput": {
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ConnectLanggraphProfile"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "LanggraphConnectOutput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "info": {
+          "$ref": "#/$defs/LanggraphInfo"
+        }
+      },
+      "required": [
+        "connId",
+        "info"
+      ],
+      "type": "object"
+    },
+    "LanggraphInfo": {
+      "description": "`GET /info`.",
+      "properties": {
+        "flags": {
+          "description": "The server's feature flags (`assistants`, `crons`, `store`, ...)."
+        },
+        "version": {
+          "description": "The LangGraph API version, when the server says it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "flags"
+      ],
+      "type": "object"
+    },
     "RemoteError": {
       "description": "The target's own error code, for Details.",
       "properties": {
@@ -416,6 +777,469 @@
       },
       "required": [
         "code"
+      ],
+      "type": "object"
+    },
+    "Run": {
+      "properties": {
+        "assistantId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "metadata": true,
+        "multitaskStrategy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        },
+        "status": {
+          "description": "`pending`, `running`, `success`, `error`, `timeout`, `interrupted`.",
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "threadId",
+        "assistantId",
+        "status",
+        "createdAt",
+        "updatedAt",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "RunCommand": {
+      "description": "`Command` of a run: resume an interrupt, update the state, go to a node.",
+      "properties": {
+        "goto": {
+          "default": null,
+          "description": "A node name, or a list of them."
+        },
+        "resume": {
+          "default": null,
+          "description": "The value `interrupt()` returns."
+        },
+        "update": {
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "RunIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "threadId",
+        "runId"
+      ],
+      "type": "object"
+    },
+    "RunStreamSummary": {
+      "description": "The end of `langgraph.runs.stream` and `langgraph.runs.join`.",
+      "properties": {
+        "events": {
+          "description": "Events forwarded.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lastEventId": {
+          "description": "The id of the last event forwarded (for `langgraph.runs.join`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "The run's status when its stream ended (`success`, `error`, `interrupted`, ...).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "events"
+      ],
+      "type": "object"
+    },
+    "RunsJoinInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "lastEventId": {
+          "default": null,
+          "description": "The id of the last event seen: the stream resumes after it. From the run's current\nevent when absent; `-1` replays the run from its start.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        },
+        "streamId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "threadId",
+        "runId",
+        "streamId"
+      ],
+      "type": "object"
+    },
+    "RunsListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "limit": {
+          "default": null,
+          "description": "1 to 1000; 20 when absent. Newest first.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "RunsStreamInput": {
+      "properties": {
+        "assistantId": {
+          "description": "An assistant id or a graph id.",
+          "type": "string"
+        },
+        "checkpointId": {
+          "default": null,
+          "description": "Run from this checkpoint (time travel).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunCommand"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "config": {
+          "default": null
+        },
+        "connId": {
+          "type": "string"
+        },
+        "context": {
+          "default": null
+        },
+        "input": {
+          "default": null
+        },
+        "interruptAfter": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "interruptBefore": {
+          "default": null,
+          "description": "Node names, or `[\"*\"]` for every node.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "multitaskStrategy": {
+          "default": null,
+          "description": "`reject`, `rollback`, `interrupt` or `enqueue` when the thread is busy.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "streamId": {
+          "type": "string"
+        },
+        "streamMode": {
+          "description": "`values`, `updates`, `messages-tuple`, `tasks`, `custom`, `debug`, ...",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "streamSubgraphs": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "threadId": {
+          "description": "The thread to run on; `null` for a run without a thread.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "assistantId",
+        "streamMode",
+        "streamId"
+      ],
+      "type": "object"
+    },
+    "StateTask": {
+      "description": "A task of the next step: the node to run, its error, its interrupts.",
+      "properties": {
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "interrupts": {
+          "items": {
+            "$ref": "#/$defs/Interrupt"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "result": true,
+        "state": {
+          "description": "A subgraph task's own state (when asked for subgraphs)."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "interrupts"
+      ],
+      "type": "object"
+    },
+    "StoreItem": {
+      "properties": {
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "namespace": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "score": {
+          "description": "Relevance of a semantic search hit.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": true
+      },
+      "required": [
+        "namespace",
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    "StoreKeyInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "namespace": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connId",
+        "namespace",
+        "key"
+      ],
+      "type": "object"
+    },
+    "StoreNamespacesInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "maxDepth": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "prefix": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "StorePutInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "namespace": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "value": {
+          "description": "A JSON object."
+        }
+      },
+      "required": [
+        "connId",
+        "namespace",
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    "StoreSearchInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "filter": {
+          "default": null,
+          "description": "Items whose value has these fields and values."
+        },
+        "limit": {
+          "default": null,
+          "description": "1 to 1000; 50 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "namespacePrefix": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "offset": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "default": null,
+          "description": "Natural-language query (semantic search, when the store has an index).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "namespacePrefix"
       ],
       "type": "object"
     },
@@ -484,6 +1308,271 @@
         "terminalId",
         "data"
       ],
+      "type": "object"
+    },
+    "Thread": {
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "metadata": true,
+        "status": {
+          "description": "`idle`, `busy`, `interrupted` or `error`.",
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId",
+        "status",
+        "createdAt",
+        "updatedAt",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "ThreadHistoryInput": {
+      "properties": {
+        "before": {
+          "default": null,
+          "description": "Checkpoints older than this one (the next page).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "limit": {
+          "default": null,
+          "description": "1 to 1000; 50 when absent. Newest first.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadState": {
+      "description": "A thread's state at a checkpoint (`GET /threads/{id}/state`, one entry of the history).",
+      "properties": {
+        "checkpoint": {
+          "description": "The full checkpoint config (`thread_id`, `checkpoint_ns`, `checkpoint_id`, ...)."
+        },
+        "checkpointId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "interrupts": {
+          "description": "Every pending interrupt of the state, its tasks' included.",
+          "items": {
+            "$ref": "#/$defs/Interrupt"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "description": "`step`, `source` (`input`, `loop`, `update`, `fork`), `writes`, ..."
+        },
+        "next": {
+          "description": "The nodes the next step runs; empty when the graph has ended.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "parentCheckpointId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/StateTask"
+          },
+          "type": "array"
+        },
+        "values": true
+      },
+      "required": [
+        "values",
+        "next",
+        "tasks",
+        "checkpoint",
+        "metadata",
+        "interrupts"
+      ],
+      "type": "object"
+    },
+    "ThreadStateInput": {
+      "properties": {
+        "checkpointId": {
+          "default": null,
+          "description": "The state at this checkpoint (time travel); the current state when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "subgraphs": {
+          "default": null,
+          "description": "Include the subgraphs' states in the tasks.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadsCreateInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "metadata": {
+          "default": null
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "ThreadsSearchInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "limit": {
+          "default": null,
+          "description": "1 to 1000; 50 when absent. Newest first.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "metadata": {
+          "default": null
+        },
+        "offset": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "status": {
+          "default": null,
+          "description": "`idle`, `busy`, `interrupted` or `error`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "TlsOptions": {
+      "description": "TLS settings of a profile, as `toConnect` sends them (spec §4.2). `clientKeyPem` comes from\nthe profile's `secrets`; procedures that take it list it in `redact`.",
+      "properties": {
+        "caPem": {
+          "default": null,
+          "description": "PEM certificates of the CA to trust instead of the system's trust store.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientCertPem": {
+          "default": null,
+          "description": "PEM client certificate (chain) for mutual TLS.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientKeyPem": {
+          "default": null,
+          "description": "PEM private key of the client certificate. A secret.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": null,
+          "description": "Use TLS. Tools whose address says it (`https://`) use TLS either way.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "serverName": {
+          "default": null,
+          "description": "The name the server's certificate must carry, when it is not the address's host.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "ToolError": {
@@ -602,6 +1691,70 @@
         "version"
       ],
       "type": "object"
+    },
+    "UpdateStateInput": {
+      "properties": {
+        "asNode": {
+          "default": null,
+          "description": "The node the update is made as (the graph continues from its edges).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checkpointId": {
+          "default": null,
+          "description": "Update the state at this checkpoint, which forks a new branch from it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "values": {
+          "description": "The values to write, as a node's update."
+        }
+      },
+      "required": [
+        "connId",
+        "threadId",
+        "values"
+      ],
+      "type": "object"
+    },
+    "UpdateStateOutput": {
+      "properties": {
+        "checkpoint": true,
+        "checkpointId": {
+          "description": "The new checkpoint.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "checkpoint"
+      ],
+      "type": "object"
+    },
+    "Xray": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "description": "How deep to draw subgraphs: `true` all the way, a number that many levels, `false` none."
     }
   },
   "api": {
@@ -765,6 +1918,514 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/AssistantIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.assistants.get",
+      "output": {
+        "$ref": "#/$defs/Assistant"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/AssistantGraphInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.assistants.graph",
+      "output": {
+        "$ref": "#/$defs/AssistantGraph"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/AssistantIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.assistants.schemas",
+      "output": {
+        "$ref": "#/$defs/AssistantSchemas"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/AssistantsSearchInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.assistants.search",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/Assistant"
+        },
+        "type": "array"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/LanggraphConnectInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.connect",
+      "output": {
+        "$ref": "#/$defs/LanggraphConnectOutput"
+      },
+      "perm": "langgraph.read",
+      "redact": [
+        "profile.apiKey",
+        "profile.headers",
+        "profile.tls.clientKeyPem"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/LanggraphConnIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.disconnect",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RunIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.runs.cancel",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "langgraph.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RunsJoinInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "langgraph.runs.join",
+      "output": {
+        "$ref": "#/$defs/RunStreamSummary"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RunsListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.runs.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/Run"
+        },
+        "type": "array"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RunIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.runs.rollback",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "langgraph.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RunsStreamInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "langgraph.runs.stream",
+      "output": {
+        "$ref": "#/$defs/RunStreamSummary"
+      },
+      "perm": "langgraph.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/StoreKeyInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.store.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "langgraph.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/StoreKeyInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.store.get",
+      "output": {
+        "$ref": "#/$defs/StoreItem"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/StoreNamespacesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.store.namespaces",
+      "output": {
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": "array"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/StorePutInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.store.put",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "langgraph.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/StoreSearchInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.store.search",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/StoreItem"
+        },
+        "type": "array"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ThreadsCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.threads.create",
+      "output": {
+        "$ref": "#/$defs/Thread"
+      },
+      "perm": "langgraph.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ThreadIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.threads.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "langgraph.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ThreadIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.threads.get",
+      "output": {
+        "$ref": "#/$defs/Thread"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ThreadHistoryInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.threads.history",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ThreadState"
+        },
+        "type": "array"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ThreadsSearchInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.threads.search",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/Thread"
+        },
+        "type": "array"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ThreadStateInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.threads.state",
+      "output": {
+        "$ref": "#/$defs/ThreadState"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/UpdateStateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "langgraph.threads.updateState",
+      "output": {
+        "$ref": "#/$defs/UpdateStateOutput"
+      },
+      "perm": "langgraph.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/TermResizeInput"
       },
       "kind": "mutation",
@@ -825,5 +2486,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:b02f1126460b72c2c9b542b58a5712a1632f48ccf5b3d34e4fb6a0d015d7b69a"
+  "schema_hash": "sha256:883baacd369343c1f5d1d22957b0bad5ec3ecd7f3f5d4de3e6505c17b307e47c"
 }

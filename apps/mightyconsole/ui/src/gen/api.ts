@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:b02f1126460b72c2c9b542b58a5712a1632f48ccf5b3d34e4fb6a0d015d7b69a";
+export const SCHEMA_HASH = "sha256:883baacd369343c1f5d1d22957b0bad5ec3ecd7f3f5d4de3e6505c17b307e47c";
 
 // ---- Types
 
@@ -66,6 +66,32 @@ codecs: Array<string>, };
  */
 export type ApprovalRequiredDetails = { approval_id: string, };
 
+export type Assistant = { assistantId: string, graphId: string, name: string, description?: string, version?: number, config: JsonValue, context: JsonValue, metadata: JsonValue, createdAt: string, updatedAt: string, };
+
+/**
+ * `GET /assistants/{id}/graph`.
+ */
+export type AssistantGraph = { nodes: Array<GraphNode>, edges: Array<GraphEdge>, };
+
+export type AssistantGraphInput = { connId: string, assistantId: string, xray?: Xray | null, };
+
+export type AssistantIdInput = { connId: string, assistantId: string, };
+
+/**
+ * `GET /assistants/{id}/schemas`.
+ */
+export type AssistantSchemas = { graphId: string, inputSchema: JsonValue, outputSchema: JsonValue, stateSchema: JsonValue, configSchema: JsonValue, contextSchema?: JsonValue, };
+
+export type AssistantsSearchInput = { connId: string, graphId?: string | null, 
+/**
+ * Assistants whose metadata contains these keys and values.
+ */
+metadata?: JsonValue | null, 
+/**
+ * 1 to 1000; 100 when absent.
+ */
+limit?: number | null, offset?: number | null, };
+
 /**
  * Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on
  * `e.code === "ApprovalRequired"`.
@@ -84,6 +110,27 @@ greeting?: string | null,
  * A stand-in secret: `"wrong"` is refused with `Auth`. Never logged.
  */
 token?: string | null, };
+
+/**
+ * The LangGraph profile as `toConnect` builds it (spec §11.1).
+ */
+export type ConnectLanggraphProfile = { name: string, 
+/**
+ * The server's base URL, e.g. `http://127.0.0.1:2024`.
+ */
+url: string, 
+/**
+ * Sent as `x-api-key` when set.
+ */
+apiKey?: string | null, 
+/**
+ * Extra headers (custom auth), sent with every request.
+ */
+headers?: Array<HeaderPair> | null, 
+/**
+ * For `https` URLs: a pinned CA, a client certificate, the expected name.
+ */
+tls?: TlsOptions | null, };
 
 /**
  * The state of a live handle (spec §2.2, "Status").
@@ -121,6 +168,55 @@ export type EchoTicksSummary = { sent: number, };
  */
 export type Empty = Record<symbol, never>;
 
+export type GraphEdge = { source: string, target: string, 
+/**
+ * A branch of a conditional edge (drawn dashed).
+ */
+conditional: boolean, label?: string, };
+
+export type GraphNode = { 
+/**
+ * Unique in the graph; with xray, a subgraph's nodes are `<subgraph>:<node>`.
+ */
+id: string, name: string, kind: GraphNodeKind, 
+/**
+ * The node's metadata, when it has any.
+ */
+metadata?: JsonValue, };
+
+export type GraphNodeKind = "start" | "end" | "node";
+
+/**
+ * An extra header of the profile (custom auth); its value is a secret.
+ */
+export type HeaderPair = { name: string, value: string, };
+
+/**
+ * A pending `interrupt()`: its value is what the graph asks the human.
+ */
+export type Interrupt = { id?: string, value: JsonValue, };
+
+export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]: JsonValue } | null;
+
+export type LanggraphConnIdInput = { connId: string, };
+
+export type LanggraphConnectInput = { profile: ConnectLanggraphProfile, };
+
+export type LanggraphConnectOutput = { connId: string, info: LanggraphInfo, };
+
+/**
+ * `GET /info`.
+ */
+export type LanggraphInfo = { 
+/**
+ * The LangGraph API version, when the server says it.
+ */
+version?: string, 
+/**
+ * The server's feature flags (`assistants`, `crons`, `store`, ...).
+ */
+flags: JsonValue, };
+
 /**
  * The target's own error code, for Details.
  */
@@ -129,6 +225,122 @@ export type RemoteError = {
  * Kafka error name, gRPC status, HTTP status, Kubernetes `Status.reason`, NATS error code.
  */
 code: string, name?: string, detail?: string, };
+
+export type Run = { runId: string, threadId: string, assistantId: string, 
+/**
+ * `pending`, `running`, `success`, `error`, `timeout`, `interrupted`.
+ */
+status: string, createdAt: string, updatedAt: string, metadata: JsonValue, multitaskStrategy?: string, };
+
+/**
+ * `Command` of a run: resume an interrupt, update the state, go to a node.
+ */
+export type RunCommand = { 
+/**
+ * The value `interrupt()` returns.
+ */
+resume?: JsonValue | null, update?: JsonValue | null, 
+/**
+ * A node name, or a list of them.
+ */
+goto?: JsonValue | null, };
+
+export type RunIdInput = { connId: string, threadId: string, runId: string, };
+
+/**
+ * The end of `langgraph.runs.stream` and `langgraph.runs.join`.
+ */
+export type RunStreamSummary = { runId?: string, 
+/**
+ * The run's status when its stream ended (`success`, `error`, `interrupted`, ...).
+ */
+status: string, 
+/**
+ * Events forwarded.
+ */
+events: number, 
+/**
+ * The id of the last event forwarded (for `langgraph.runs.join`).
+ */
+lastEventId?: string, };
+
+export type RunsJoinInput = { connId: string, threadId: string, runId: string, 
+/**
+ * The id of the last event seen: the stream resumes after it. From the run's current
+ * event when absent; `-1` replays the run from its start.
+ */
+lastEventId?: string | null, streamId: string, };
+
+export type RunsListInput = { connId: string, threadId: string, 
+/**
+ * 1 to 1000; 20 when absent. Newest first.
+ */
+limit?: number | null, };
+
+export type RunsStreamInput = { connId: string, 
+/**
+ * The thread to run on; `null` for a run without a thread.
+ */
+threadId: string | null, 
+/**
+ * An assistant id or a graph id.
+ */
+assistantId: string, input?: JsonValue | null, command?: RunCommand | null, config?: JsonValue | null, context?: JsonValue | null, 
+/**
+ * Run from this checkpoint (time travel).
+ */
+checkpointId?: string | null, 
+/**
+ * `values`, `updates`, `messages-tuple`, `tasks`, `custom`, `debug`, ...
+ */
+streamMode: Array<string>, streamSubgraphs?: boolean | null, 
+/**
+ * Node names, or `["*"]` for every node.
+ */
+interruptBefore?: Array<string> | null, interruptAfter?: Array<string> | null, 
+/**
+ * `reject`, `rollback`, `interrupt` or `enqueue` when the thread is busy.
+ */
+multitaskStrategy?: string | null, streamId: string, };
+
+/**
+ * A task of the next step: the node to run, its error, its interrupts.
+ */
+export type StateTask = { id: string, name: string, error?: string, interrupts: Array<Interrupt>, 
+/**
+ * A subgraph task's own state (when asked for subgraphs).
+ */
+state?: JsonValue, result?: JsonValue, };
+
+export type StoreItem = { namespace: Array<string>, key: string, value: JsonValue, createdAt?: string, updatedAt?: string, 
+/**
+ * Relevance of a semantic search hit.
+ */
+score?: number, };
+
+export type StoreKeyInput = { connId: string, namespace: Array<string>, key: string, };
+
+export type StoreNamespacesInput = { connId: string, prefix?: Array<string> | null, maxDepth?: number | null, };
+
+export type StorePutInput = { connId: string, namespace: Array<string>, key: string, 
+/**
+ * A JSON object.
+ */
+value: JsonValue, };
+
+export type StoreSearchInput = { connId: string, namespacePrefix: Array<string>, 
+/**
+ * Natural-language query (semantic search, when the store has an index).
+ */
+query?: string | null, 
+/**
+ * Items whose value has these fields and values.
+ */
+filter?: JsonValue | null, 
+/**
+ * 1 to 1000; 50 when absent.
+ */
+limit?: number | null, offset?: number | null, };
 
 /**
  * Input of `term.resize`.
@@ -153,6 +365,93 @@ export type TermWriteInput = { terminalId: string,
  * The bytes typed or pasted, base64; at most 64 KiB decoded.
  */
 data: string, };
+
+export type Thread = { threadId: string, 
+/**
+ * `idle`, `busy`, `interrupted` or `error`.
+ */
+status: string, createdAt: string, updatedAt: string, metadata: JsonValue, };
+
+export type ThreadHistoryInput = { connId: string, threadId: string, 
+/**
+ * 1 to 1000; 50 when absent. Newest first.
+ */
+limit?: number | null, 
+/**
+ * Checkpoints older than this one (the next page).
+ */
+before?: string | null, };
+
+export type ThreadIdInput = { connId: string, threadId: string, };
+
+/**
+ * A thread's state at a checkpoint (`GET /threads/{id}/state`, one entry of the history).
+ */
+export type ThreadState = { values: JsonValue, 
+/**
+ * The nodes the next step runs; empty when the graph has ended.
+ */
+next: Array<string>, tasks: Array<StateTask>, checkpointId?: string, parentCheckpointId?: string, 
+/**
+ * The full checkpoint config (`thread_id`, `checkpoint_ns`, `checkpoint_id`, ...).
+ */
+checkpoint: JsonValue, 
+/**
+ * `step`, `source` (`input`, `loop`, `update`, `fork`), `writes`, ...
+ */
+metadata: JsonValue, createdAt?: string, 
+/**
+ * Every pending interrupt of the state, its tasks' included.
+ */
+interrupts: Array<Interrupt>, };
+
+export type ThreadStateInput = { connId: string, threadId: string, 
+/**
+ * The state at this checkpoint (time travel); the current state when absent.
+ */
+checkpointId?: string | null, 
+/**
+ * Include the subgraphs' states in the tasks.
+ */
+subgraphs?: boolean | null, };
+
+export type ThreadsCreateInput = { connId: string, metadata?: JsonValue | null, };
+
+export type ThreadsSearchInput = { connId: string, metadata?: JsonValue | null, 
+/**
+ * `idle`, `busy`, `interrupted` or `error`.
+ */
+status?: string | null, 
+/**
+ * 1 to 1000; 50 when absent. Newest first.
+ */
+limit?: number | null, offset?: number | null, };
+
+/**
+ * TLS settings of a profile, as `toConnect` sends them (spec §4.2). `clientKeyPem` comes from
+ * the profile's `secrets`; procedures that take it list it in `redact`.
+ */
+export type TlsOptions = { 
+/**
+ * Use TLS. Tools whose address says it (`https://`) use TLS either way.
+ */
+enabled?: boolean | null, 
+/**
+ * PEM certificates of the CA to trust instead of the system's trust store.
+ */
+caPem?: string | null, 
+/**
+ * PEM client certificate (chain) for mutual TLS.
+ */
+clientCertPem?: string | null, 
+/**
+ * PEM private key of the client certificate. A secret.
+ */
+clientKeyPem?: string | null, 
+/**
+ * The name the server's certificate must carry, when it is not the address's host.
+ */
+serverName?: string | null, };
 
 /**
  * `details` of every tool procedure's errors (spec §2.6).
@@ -188,6 +487,31 @@ id: string,
  * The version of the tool's main library, or of the server for built-in samples.
  */
 version: string, };
+
+export type UpdateStateInput = { connId: string, threadId: string, 
+/**
+ * The values to write, as a node's update.
+ */
+values: JsonValue, 
+/**
+ * The node the update is made as (the graph continues from its edges).
+ */
+asNode?: string | null, 
+/**
+ * Update the state at this checkpoint, which forks a new branch from it.
+ */
+checkpointId?: string | null, };
+
+export type UpdateStateOutput = { 
+/**
+ * The new checkpoint.
+ */
+checkpointId?: string, checkpoint: JsonValue, };
+
+/**
+ * How deep to draw subgraphs: `true` all the way, a number that many levels, `false` none.
+ */
+export type Xray = boolean | number;
 
 // ---- Errors
 
@@ -255,6 +579,29 @@ export interface Procedures {
   readonly "echo.ping": ProcedureDef<"query", EchoPingInput, EchoPingOutput, ToolError>;
   readonly "echo.shell": ProcedureDef<"stream", EchoShellInput, EchoShellSummary, ToolError>;
   readonly "echo.ticks": ProcedureDef<"stream", EchoTicksInput, EchoTicksSummary, ToolError>;
+  readonly "langgraph.assistants.get": ProcedureDef<"query", AssistantIdInput, Assistant, ToolError>;
+  readonly "langgraph.assistants.graph": ProcedureDef<"query", AssistantGraphInput, AssistantGraph, ToolError>;
+  readonly "langgraph.assistants.schemas": ProcedureDef<"query", AssistantIdInput, AssistantSchemas, ToolError>;
+  readonly "langgraph.assistants.search": ProcedureDef<"query", AssistantsSearchInput, Array<Assistant>, ToolError>;
+  readonly "langgraph.connect": ProcedureDef<"mutation", LanggraphConnectInput, LanggraphConnectOutput, ToolError>;
+  readonly "langgraph.disconnect": ProcedureDef<"mutation", LanggraphConnIdInput, Empty, ToolError>;
+  readonly "langgraph.runs.cancel": ProcedureDef<"mutation", RunIdInput, Empty, ToolError>;
+  readonly "langgraph.runs.join": ProcedureDef<"stream", RunsJoinInput, RunStreamSummary, ToolError>;
+  readonly "langgraph.runs.list": ProcedureDef<"query", RunsListInput, Array<Run>, ToolError>;
+  readonly "langgraph.runs.rollback": ProcedureDef<"mutation", RunIdInput, Empty, ToolError>;
+  readonly "langgraph.runs.stream": ProcedureDef<"stream", RunsStreamInput, RunStreamSummary, ToolError>;
+  readonly "langgraph.store.delete": ProcedureDef<"mutation", StoreKeyInput, Empty, ToolError>;
+  readonly "langgraph.store.get": ProcedureDef<"query", StoreKeyInput, StoreItem, ToolError>;
+  readonly "langgraph.store.namespaces": ProcedureDef<"query", StoreNamespacesInput, Array<Array<string>>, ToolError>;
+  readonly "langgraph.store.put": ProcedureDef<"mutation", StorePutInput, Empty, ToolError>;
+  readonly "langgraph.store.search": ProcedureDef<"query", StoreSearchInput, Array<StoreItem>, ToolError>;
+  readonly "langgraph.threads.create": ProcedureDef<"mutation", ThreadsCreateInput, Thread, ToolError>;
+  readonly "langgraph.threads.delete": ProcedureDef<"mutation", ThreadIdInput, Empty, ToolError>;
+  readonly "langgraph.threads.get": ProcedureDef<"query", ThreadIdInput, Thread, ToolError>;
+  readonly "langgraph.threads.history": ProcedureDef<"query", ThreadHistoryInput, Array<ThreadState>, ToolError>;
+  readonly "langgraph.threads.search": ProcedureDef<"query", ThreadsSearchInput, Array<Thread>, ToolError>;
+  readonly "langgraph.threads.state": ProcedureDef<"query", ThreadStateInput, ThreadState, ToolError>;
+  readonly "langgraph.threads.updateState": ProcedureDef<"mutation", UpdateStateInput, UpdateStateOutput, ToolError>;
   readonly "term.resize": ProcedureDef<"mutation", TermResizeInput, Empty, ToolError>;
   readonly "term.signal": ProcedureDef<"mutation", TermSignalInput, Empty, ToolError>;
   readonly "term.write": ProcedureDef<"mutation", TermWriteInput, Empty, ToolError>;
@@ -272,6 +619,39 @@ export interface Api {
     readonly ping: Procedures["echo.ping"];
     readonly shell: Procedures["echo.shell"];
     readonly ticks: Procedures["echo.ticks"];
+  };
+  readonly langgraph: {
+    readonly assistants: {
+      readonly get: Procedures["langgraph.assistants.get"];
+      readonly graph: Procedures["langgraph.assistants.graph"];
+      readonly schemas: Procedures["langgraph.assistants.schemas"];
+      readonly search: Procedures["langgraph.assistants.search"];
+    };
+    readonly connect: Procedures["langgraph.connect"];
+    readonly disconnect: Procedures["langgraph.disconnect"];
+    readonly runs: {
+      readonly cancel: Procedures["langgraph.runs.cancel"];
+      readonly join: Procedures["langgraph.runs.join"];
+      readonly list: Procedures["langgraph.runs.list"];
+      readonly rollback: Procedures["langgraph.runs.rollback"];
+      readonly stream: Procedures["langgraph.runs.stream"];
+    };
+    readonly store: {
+      readonly delete: Procedures["langgraph.store.delete"];
+      readonly get: Procedures["langgraph.store.get"];
+      readonly namespaces: Procedures["langgraph.store.namespaces"];
+      readonly put: Procedures["langgraph.store.put"];
+      readonly search: Procedures["langgraph.store.search"];
+    };
+    readonly threads: {
+      readonly create: Procedures["langgraph.threads.create"];
+      readonly delete: Procedures["langgraph.threads.delete"];
+      readonly get: Procedures["langgraph.threads.get"];
+      readonly history: Procedures["langgraph.threads.history"];
+      readonly search: Procedures["langgraph.threads.search"];
+      readonly state: Procedures["langgraph.threads.state"];
+      readonly updateState: Procedures["langgraph.threads.updateState"];
+    };
   };
   readonly term: {
     readonly resize: Procedures["term.resize"];
@@ -354,6 +734,246 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 43200000,
+    },
+  },
+  langgraph: {
+    assistants: {
+      get: {
+        name: "langgraph.assistants.get",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      graph: {
+        name: "langgraph.assistants.graph",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      schemas: {
+        name: "langgraph.assistants.schemas",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      search: {
+        name: "langgraph.assistants.search",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    connect: {
+      name: "langgraph.connect",
+      kind: "mutation",
+      perm: "langgraph.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    disconnect: {
+      name: "langgraph.disconnect",
+      kind: "mutation",
+      perm: "langgraph.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    runs: {
+      cancel: {
+        name: "langgraph.runs.cancel",
+        kind: "mutation",
+        perm: "langgraph.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      join: {
+        name: "langgraph.runs.join",
+        kind: "stream",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
+      },
+      list: {
+        name: "langgraph.runs.list",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      rollback: {
+        name: "langgraph.runs.rollback",
+        kind: "mutation",
+        perm: "langgraph.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      stream: {
+        name: "langgraph.runs.stream",
+        kind: "stream",
+        perm: "langgraph.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
+      },
+    },
+    store: {
+      delete: {
+        name: "langgraph.store.delete",
+        kind: "mutation",
+        perm: "langgraph.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "langgraph.store.get",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      namespaces: {
+        name: "langgraph.store.namespaces",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      put: {
+        name: "langgraph.store.put",
+        kind: "mutation",
+        perm: "langgraph.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      search: {
+        name: "langgraph.store.search",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    threads: {
+      create: {
+        name: "langgraph.threads.create",
+        kind: "mutation",
+        perm: "langgraph.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      delete: {
+        name: "langgraph.threads.delete",
+        kind: "mutation",
+        perm: "langgraph.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "langgraph.threads.get",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      history: {
+        name: "langgraph.threads.history",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      search: {
+        name: "langgraph.threads.search",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      state: {
+        name: "langgraph.threads.state",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      updateState: {
+        name: "langgraph.threads.updateState",
+        kind: "mutation",
+        perm: "langgraph.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
     },
   },
   term: {

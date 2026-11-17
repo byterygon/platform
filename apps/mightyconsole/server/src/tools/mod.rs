@@ -22,6 +22,7 @@
 //! [`Hub::busy`]: crate::core::Hub::busy
 
 pub mod echo;
+pub mod langgraph;
 
 use std::sync::Arc;
 
@@ -32,14 +33,22 @@ use crate::core::Hub;
 
 /// Every built-in tool, in the order of the UI's tool rail.
 pub fn infos() -> Vec<ToolInfo> {
-    vec![ToolInfo {
-        id: echo::TOOL.into(),
-        version: env!("CARGO_PKG_VERSION").into(),
-    }]
+    vec![
+        ToolInfo {
+            id: echo::TOOL.into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+        },
+        ToolInfo {
+            id: langgraph::TOOL.into(),
+            // The LangGraph Server API through hyper (spec §11.5).
+            version: "hyper 1.12".into(),
+        },
+    ]
 }
 
 /// Mounts every tool's API on `router`.
 pub fn mount(router: &Router, hub: &Arc<Hub>) -> Result<(), RegistryError> {
     router.mount(echo::EchoApi(Arc::clone(hub)))?;
+    langgraph::mount(router, hub)?;
     Ok(())
 }
