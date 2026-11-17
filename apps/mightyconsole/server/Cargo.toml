@@ -15,6 +15,9 @@ workspace = true
 # Compile the built UI (apps/mightyconsole/ui/dist, or $MIGHTYCONSOLE_UI_DIST) into the binary:
 # the release build (TSK-87, build.rs). Off for development and tests.
 embed-ui = []
+# Integration tests against the test lab (apps/mightyconsole/lab; `lab up <tool>` first). The
+# acceptance harness turns it on; plain `cargo test` leaves those tests out.
+lab-tests = []
 
 [[bin]]
 name = "mightyconsole-server"
@@ -25,10 +28,18 @@ ambidex = { path = "../../../crates/ambidex" }
 ambidex-axum = { path = "../../../crates/ambidex-axum" }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
+bytes = "1.12.1"
 dirs = "7.0.0"
+eventsource-stream = "0.2.3"
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 getrandom = "0.4.3"
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", default-features = false, features = ["client", "http1"] }
+hyper-rustls = { version = "0.27.10", default-features = false, features = ["http1", "ring", "tls12"] }
+hyper-util = { version = "0.1.21", default-features = false, features = ["client-legacy", "http1", "tokio"] }
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8.5"
 rustls-pki-types = { version = "1.15.1", features = ["std"] }
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
 security-types = { path = "../../../crates/security-types", features = ["tokio"] }
@@ -39,6 +50,7 @@ time = { version = "0.3.55", default-features = false, features = ["std"] }
 tokio = { version = "1.54.1", default-features = false, features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7.20", default-features = false }
 ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
+url = "2.5.8"
 
 [dev-dependencies]
 ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false }

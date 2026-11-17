@@ -21,6 +21,10 @@ fn committed_artifacts_match_the_router() {
     assert_eq!(output.schema_hash, *SCHEMA_HASH);
 }
 
+const LG_READ: &str = "langgraph.read";
+const LG_WRITE: &str = "langgraph.write";
+const LG_DESTROY: &str = "langgraph.destroy";
+
 #[test]
 fn the_procedures_of_the_spec() {
     let defaults = (
@@ -52,6 +56,138 @@ fn the_procedures_of_the_spec() {
         ("echo.ping", Query, "echo.read", Risk::Read, defaults),
         ("echo.shell", Stream, "echo.write", Risk::Write, live),
         ("echo.ticks", Stream, "echo.read", Risk::Read, live),
+        // LangGraph, spec §11.4.
+        (
+            "langgraph.assistants.get",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.assistants.graph",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.assistants.schemas",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.assistants.search",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        ("langgraph.connect", Mutation, LG_READ, Risk::Read, defaults),
+        (
+            "langgraph.disconnect",
+            Mutation,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.runs.cancel",
+            Mutation,
+            LG_WRITE,
+            Risk::Write,
+            defaults,
+        ),
+        ("langgraph.runs.join", Stream, LG_READ, Risk::Read, live),
+        ("langgraph.runs.list", Query, LG_READ, Risk::Read, defaults),
+        (
+            "langgraph.runs.rollback",
+            Mutation,
+            LG_DESTROY,
+            Risk::Destructive,
+            defaults,
+        ),
+        ("langgraph.runs.stream", Stream, LG_WRITE, Risk::Write, live),
+        (
+            "langgraph.store.delete",
+            Mutation,
+            LG_DESTROY,
+            Risk::Destructive,
+            defaults,
+        ),
+        ("langgraph.store.get", Query, LG_READ, Risk::Read, defaults),
+        (
+            "langgraph.store.namespaces",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.store.put",
+            Mutation,
+            LG_WRITE,
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "langgraph.store.search",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.threads.create",
+            Mutation,
+            LG_WRITE,
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "langgraph.threads.delete",
+            Mutation,
+            LG_DESTROY,
+            Risk::Destructive,
+            defaults,
+        ),
+        (
+            "langgraph.threads.get",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.threads.history",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.threads.search",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.threads.state",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.threads.updateState",
+            Mutation,
+            LG_WRITE,
+            Risk::Write,
+            defaults,
+        ),
         ("term.resize", Mutation, "term.write", Risk::Write, defaults),
         ("term.signal", Mutation, "term.write", Risk::Write, defaults),
         ("term.write", Mutation, "term.write", Risk::Write, defaults),
@@ -82,4 +218,12 @@ fn the_procedures_of_the_spec() {
     };
     assert_eq!(redact("term.write"), ["data"]);
     assert_eq!(redact("echo.connect"), ["profile.token"]);
+    assert_eq!(
+        redact("langgraph.connect"),
+        [
+            "profile.apiKey",
+            "profile.headers",
+            "profile.tls.clientKeyPem"
+        ]
+    );
 }
