@@ -3,7 +3,8 @@
 //   ?mode=static     all batches up front instead of a stream
 //   ?mode=main       a stream built on the UI thread (default: built in a Worker, as in DBee)
 //   ?budget=MiB      memory budget (default 256)
-//   ?delay=ms        delay before each streamed batch (default 2)
+//   ?delay=ms        delay before each streamed batch of ?mode=main (default 2)
+//   ?pace=ms         delay before each batch of the Worker stream (default 0)
 //   ?density=comfortable, ?theme=dark
 // `window.gridSamples` collects the frame samples; `window.grid` is the DataGridHandle.
 import "@byterygon/design-tokens/default/tokens.css";
@@ -18,6 +19,7 @@ const total = Number(params.get("rows") ?? 1_000_000);
 const mode = params.get("mode") ?? "worker";
 const budget = Number(params.get("budget") ?? 256) * 1024 * 1024;
 const delay = Number(params.get("delay") ?? 2);
+const pace = Number(params.get("pace") ?? 0);
 document.documentElement.dataset["density"] = params.get("density") ?? "compact";
 document.documentElement.dataset["theme"] = params.get("theme") ?? "light";
 
@@ -27,7 +29,7 @@ globals.gridSamples = samples;
 
 function Demo() {
   const started = useMemo(() => performance.now(), []);
-  const stream = useMemo(() => (mode === "worker" ? workerStream(total) : mode === "main" ? syntheticStream(total, 4096, delay) : undefined), []);
+  const stream = useMemo(() => (mode === "worker" ? workerStream(total, 4096, pace) : mode === "main" ? syntheticStream(total, 4096, delay) : undefined), []);
   const batches = useMemo(() => {
     if (mode !== "static") return undefined;
     const out = [];

@@ -121,7 +121,7 @@ export function syntheticStream(total: number, batchRows = 4096, delayMs = 2): A
 }
 
 /** As `syntheticStream`, with the batches built in a Worker and transferred (the realistic path). */
-export function workerStream(total: number, batchRows = 4096): ArrowStream<{ rows: number }> {
+export function workerStream(total: number, batchRows = 4096, paceMs = 0): ArrowStream<{ rows: number }> {
   const worker = new Worker(new URL("./synthetic-worker.ts", import.meta.url), { type: "module" });
   let cancelled = false;
   let iterating = false;
@@ -143,6 +143,8 @@ export function workerStream(total: number, batchRows = 4096): ArrowStream<{ row
         async *[Symbol.asyncIterator]() {
           try {
             for (let start = 0; start < total; start += batchRows) {
+              // A paced stream stands in for a server that sends a batch every `paceMs`.
+              if (paceMs > 0) await new Promise((r) => setTimeout(r, paceMs));
               if (cancelled) throw Object.assign(new Error("call cancelled"), { code: "Cancelled" });
               yield await request(start, Math.min(batchRows, total - start));
             }

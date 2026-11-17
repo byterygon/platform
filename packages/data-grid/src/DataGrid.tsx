@@ -70,8 +70,11 @@ export interface DataGridProps {
   readonly "aria-labelledby"?: string;
   /** Row height in px; by default `grid.row-height` of the current density. */
   readonly rowHeight?: number;
-  /** Column widths in px (persisted by the application); by default from the types and the first 200 rows. */
-  readonly columnWidths?: readonly number[];
+  /**
+   * Column widths in px (persisted by the application); an `undefined` entry, or a missing one,
+   * takes the default width from the type and the first 200 rows.
+   */
+  readonly columnWidths?: readonly (number | undefined)[];
   /** A column was resized (drag or Alt+Shift+Left/Right): the new widths to persist. */
   readonly onColumnWidthsChange?: (widths: readonly number[]) => void;
   /** Rows loaded and the stream's state, after each change (status line, "scroll for more"). */
@@ -158,7 +161,10 @@ export function DataGrid(props: DataGridProps) {
   const sampleRows = Math.min(rowCount, WIDTH_SAMPLE_ROWS);
   const sampleKey = source.live && sampleRows < WIDTH_SAMPLE_ROWS ? sampleRows : WIDTH_SAMPLE_ROWS;
   const autoWidths = useMemo(() => initialWidths(fields, formats, index, metrics), [fields, formats, index, metrics, sampleKey]);
-  const widths = columnWidths ?? userWidths ?? autoWidths;
+  const widths = useMemo(() => {
+    const given = userWidths ?? columnWidths;
+    return given === undefined ? autoWidths : autoWidths.map((w, c) => (given[c] === undefined ? w : clampWidth(given[c]!)));
+  }, [userWidths, columnWidths, autoWidths]);
   const rowHeight = rowHeightProp ?? metrics.rowHeight;
   const rowHeaderWidth = Math.ceil(Math.max(3, String(Math.max(1, rowCount)).length) * metrics.charWidth + metrics.padding);
   const left = useMemo(() => {

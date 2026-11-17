@@ -117,12 +117,14 @@ describe("first run to first rows (spec §3.11 flow 1)", () => {
     await type(editor, "select id, name, active from orders");
     await click(byRole("button", /^Run/));
     await waitFor(() => fake.state.calls.some((c) => c.procedure === "query.execute"), "execute");
-    await waitFor(() => document.querySelector("table[aria-label='Result rows']") !== null, "the table");
+    await waitFor(() => document.querySelector("[role=grid][aria-label='Result rows']") !== null, "the grid");
     await waitFor(() => (byRole("status")?.textContent ?? "").includes("5 rows"), "the status line");
-    const table = document.querySelector("table")!;
-    expect(table.textContent).toContain("row 1");
-    expect(table.querySelectorAll("[data-slot=table-null]").length).toBeGreaterThan(0);
-    expect(table.textContent).toContain("true");
+    const grid = document.querySelector("[role=grid][aria-label='Result rows']")!;
+    // The data grid (spec §6) renders the cells in view; jsdom has no layout, so the first rows and columns.
+    await waitFor(() => (grid.textContent ?? "").includes("row 1"), "the first rows");
+    expect(grid.querySelectorAll(".bdg-null").length).toBeGreaterThan(0);
+    expect(grid.getAttribute("aria-rowcount")).toBe("6");
+    expect([...grid.querySelectorAll("[role=columnheader] .bdg-name")].map((h) => h.textContent)).toEqual(["id", "name", "active"]);
     expect(fake.state.calls.filter((c) => c.procedure === "sessions.open").map((c) => (c.input as { purpose: string }).purpose)).toEqual(["browser", "editor"]);
     expect(await axeViolations(container)).toEqual([]);
   });
@@ -381,7 +383,7 @@ describe("accessibility (spec §10)", () => {
         const { container } = mount(fake, { theme, density, persisted: { tabs: [{ id: "t1", connectionId: "conn-1", sql: "select 1", maxRows: null }], activeTab: "t1" } });
         await waitFor(() => byRole("button", /^Run/) !== null, "run");
         await click(byRole("button", /^Run/));
-        await waitFor(() => document.querySelector("table[aria-label='Result rows']") !== null, "rows");
+        await waitFor(() => document.querySelector("[role=grid][aria-label='Result rows'] [role=gridcell]") !== null, "rows");
         expect(await axeViolations(container)).toEqual([]);
       });
     }

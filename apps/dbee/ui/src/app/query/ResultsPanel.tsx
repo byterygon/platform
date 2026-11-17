@@ -1,8 +1,9 @@
-// The results panel (DBee spec §3.7, §8): a minimal virtualized Table reading the Arrow buffers
-// directly until the data grid (TSK-39); the live status line; notices; the error Alert with
-// SQLSTATE, position and correlation id; copy as TSV with or without headers; the cell value
-// viewer.
-import { useMemo, useState } from "react";
+// The results panel (DBee spec §3.7, §8): the data grid (@byterygon/data-grid, spec §6) reading the
+// run's Arrow stream directly, the live status line, notices, the error Alert with SQLSTATE,
+// position and correlation id, copy as TSV or with headers as TSV, CSV or JSON, and the cell value
+// viewer (Enter, F2 or double click).
+import { type CellPos, columnFormat, DataGrid, type DataGridHandle, type SelectionInfo } from "@byterygon/data-grid";
+import { useMemo, useRef, useState } from "react";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Code } from "@/components/ui/code";
@@ -11,52 +12,10 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState, EmptyStateDescription, EmptyStateTitle } from "@/components/ui/empty-state";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Table, TableCell, TableHead, TableHeader, TableNull, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { Toolbar, ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
-import { TypeBadge } from "@/components/ui/type-badge";
-import { type Cell, readCell, typeFamily, typeLabel } from "../arrow-cells";
+import { benchHook } from "../bench";
 import { formatCount, formatElapsed } from "../messages";
 import type { Run } from "../store";
-
-/** The cell at (row, column) across the batches. */
-export function cellAt(run: Run, row: number, column: number): Cell {
-  let offset = 0;
-  for (const batch of run.batches) {
-    if (row < offset + batch.numRows) {
-      const data = batch.columns[column];
-      const field = run.fields[column];
-      return data && field ? readCell(field, data, row - offset) : { kind: "null" };
-    }
-    offset += batch.numRows;
-  }
-  return { kind: "null" };
-}
-
-const cellText = (c: Cell): string => (c.kind === "null" ? "NULL" : c.kind === "value" ? c.text : `<${c.type}>`);
-
-/** TSV (or CSV) of the rows, optionally with the header, for the clipboard. */
-export function serialize(run: Run, format: "tsv" | "csv" | "json", headers: boolean, maxRows = run.rows): string {
-  const names = run.fields.map((f) => f.name);
-  const rows = Math.min(run.rows, maxRows);
-  if (format === "json") {
-    const out: Record<string, string | null>[] = [];
-    for (let r = 0; r < rows; r++) {
-      const o: Record<string, string | null> = {};
-      names.forEach((n, c) => {
-        const cell = cellAt(run, r, c);
-        o[n] = cell.kind === "null" ? null : cellText(cell);
-      });
-      out.push(o);
-    }
-    return JSON.stringify(out, null, 2);
-  }
-  const sep = format === "tsv" ? "\t" : ",";
-  const esc = (s: string) => (format === "csv" && /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : format === "tsv" ? s.replace(/[\t\n\r]/g, " ") : s);
-  const lines: string[] = [];
-  if (headers) lines.push(names.map(esc).join(sep));
-  for (let r = 0; r < rows; r++) lines.push(names.map((_, c) => esc(cellText(cellAt(run, r, c)))).join(sep));
-  return lines.join("\n");
-}
 
 export function statusLine(run: Run | null): string {
   if (run === null) return "";
@@ -84,38 +43,25 @@ export interface ResultsPanelProps {
   onExport: () => void;
   onRemedy?: (remedy: string) => void;
   onCancel: () => void;
+  /** The tab's column widths by column name (persisted in the workspace). */
+  columnWidths?: Record<string, number> | undefined;
+  onColumnWidths?: (widths: Record<string, number>) => void;
 }
 
-export function ResultsPanel({ run, onExport, onRemedy, onCancel }: ResultsPanelProps) {
-  const [cell, setCell] = useState<{ row: number; column: number } | null>(null);
-  const [viewer, setViewer] = useState(false);
+export function ResultsPanel({ run, onExport, onRemedy, onCancel, columnWidths, onColumnWidths }: ResultsPanelProps) {
+  const grid = useRef<DataGridHandle | null>(null);
+  const [viewer, setViewer] = useState<CellPos | null>(null);
+  const [copyMenu, setCopyMenu] = useState(false);
+  const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const columns = run?.fields ?? [];
-  const families = useMemo(() => columns.map(typeFamily), [columns]);
-  const copy = (format: "tsv" | "csv" | "json", headers: boolean) => {
-    if (!run) return;
-    void navigator.clipboard?.writeText(serialize(run, format, headers));
-  };
-  const current = run && cell ? cellAt(run, cell.row, cell.column) : null;
-  const onKey = (e: React.KeyboardEvent) => {
-    if (!run || run.rows === 0) return;
-    if (e.key === "Enter" || e.key === "F2") {
-      if (cell) {
-        setViewer(true);
-        e.preventDefault();
-      }
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
-      copy("tsv", e.shiftKey);
-      e.preventDefault();
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
-      e.preventDefault();
-    } else if (e.key === "ArrowDown" && cell) setCell({ ...cell, row: Math.min(run.rows - 1, cell.row + 1) });
-    else if (e.key === "ArrowUp" && cell) setCell({ ...cell, row: Math.max(0, cell.row - 1) });
-    else if (e.key === "ArrowRight" && cell) setCell({ ...cell, column: Math.min(columns.length - 1, cell.column + 1) });
-    else if (e.key === "ArrowLeft" && cell) setCell({ ...cell, column: Math.max(0, cell.column - 1) });
-    else if (!cell && e.key.startsWith("Arrow")) setCell({ row: 0, column: 0 });
-    else return;
-    e.preventDefault();
-  };
+  const formats = useMemo(() => columns.map(columnFormat), [columns]);
+  const widths = useMemo(() => columns.map((f) => columnWidths?.[f.name]), [columns, columnWidths]);
+  const bench = benchHook();
+  const rows = run?.rows ?? 0;
+  const copy = (format: "tsv" | "csv" | "json", headers: boolean) => void grid.current?.copy(format, headers);
+  const viewed = viewer && run ? grid.current?.cellValue(viewer.row, viewer.column) : undefined;
+  const viewedField = viewer ? columns[viewer.column] : undefined;
+  const viewedFormat = viewer ? formats[viewer.column] : undefined;
 
   if (run === null) {
     return (
@@ -125,15 +71,17 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel }: ResultsPanel
       </EmptyState>
     );
   }
+  // The empty string reads "empty string" in the status line (spec §6), so it is not mistaken for NULL.
+  const cellNote = selection && selection.cells === 1 && selection.value === "" ? " · empty string" : "";
   return (
     <div className="flex h-full min-h-0 flex-col" data-pane="results">
       <Toolbar aria-label="Results" variant="plain" className="shrink-0">
         <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={run.rows === 0} onClick={() => copy("tsv", false)}>
+          <ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={rows === 0} onClick={() => copy("tsv", false)}>
             Copy
           </ToolbarButton>
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={run.rows === 0} />}>Copy with headers</DropdownMenuTrigger>
+          <DropdownMenu open={copyMenu} onOpenChange={setCopyMenu}>
+            <DropdownMenuTrigger render={<ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={rows === 0} />}>Copy with headers</DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => copy("tsv", true)}>TSV</DropdownMenuItem>
               <DropdownMenuItem onClick={() => copy("csv", true)}>CSV</DropdownMenuItem>
@@ -152,6 +100,7 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel }: ResultsPanel
         <span role="status" aria-live="polite" className="ms-auto truncate px-inset-sm text-caption text-fg-muted">
           {statusLine(run)}
           {run.note && run.status === "done" ? ` · ${run.note}` : ""}
+          {cellNote}
         </span>
       </Toolbar>
       {run.status === "error" && run.error ? (
@@ -194,82 +143,46 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel }: ResultsPanel
           </CollapsiblePanel>
         </Collapsible>
       ) : null}
-      {columns.length > 0 ? (
-        <div className="min-h-0 min-w-0 flex-1" onKeyDown={onKey}>
-          <Table aria-label="Result rows" className="h-full" aria-rowcount={run.status === "running" ? -1 : run.rows + 1}>
-            <TableHeader>
-              <TableRow>
-                {/* eslint-disable-next-line byterygon/no-arbitrary-value -- row numbers up to five digits: a width in characters, which no token measures */}
-                <TableHead align="end" className="w-[6ch] text-fg-subtle">
-                  #
-                </TableHead>
-                {columns.map((f, i) => (
-                  <TableHead key={f.name + i} align={families[i] === "integer" || families[i] === "decimal" ? "end" : "start"}>
-                    <span className="flex items-center gap-inline-xs">
-                      <TypeBadge type={families[i] ?? "text"} label={typeLabel(f)} iconOnly />
-                      <span className="truncate" title={`${f.name}: ${typeLabel(f)}`}>
-                        {f.name}
-                      </span>
-                    </span>
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableVirtualBody
-              count={run.rows}
-              renderRow={(r) => (
-                <TableRow key={r} selected={cell?.row === r}>
-                  <TableCell align="end" className="text-fg-subtle">
-                    {r + 1}
-                  </TableCell>
-                  {columns.map((f, c) => {
-                    const v = cellAt(run, r, c);
-                    const isCell = cell?.row === r && cell.column === c;
-                    return (
-                      <TableCell
-                        key={f.name + c}
-                        align={v.kind === "value" ? v.align : "start"}
-                        {...(isCell ? { className: "outline outline-ring" } : {})}
-                        tabIndex={isCell ? 0 : -1}
-                        onClick={() => setCell({ row: r, column: c })}
-                        onDoubleClick={() => {
-                          setCell({ row: r, column: c });
-                          setViewer(true);
-                        }}
-                        {...(v.kind === "value" ? { title: v.text } : {})}
-                      >
-                        {v.kind === "null" ? <TableNull /> : v.kind === "value" ? v.text : <span className="text-fg-subtle">{`<${v.type}>`}</span>}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              )}
-            />
-          </Table>
+      {columns.length > 0 && run.stream ? (
+        <div className="min-h-0 min-w-0 flex-1">
+          <DataGrid
+            ref={(handle) => {
+              grid.current = handle;
+              if (bench) bench.grid = handle;
+            }}
+            stream={run.stream}
+            aria-label="Result rows"
+            columnWidths={widths}
+            onColumnWidthsChange={(next) => onColumnWidths?.({ ...columnWidths, ...Object.fromEntries(columns.map((f, c) => [f.name, next[c]!])) })}
+            onSelectionChange={setSelection}
+            onOpenCell={setViewer}
+            onCopyWithHeaders={() => setCopyMenu(true)}
+            {...(bench ? { onFrameSample: (sample) => bench.samples.push(sample) } : {})}
+          />
         </div>
       ) : run.status === "done" && run.summary?.rowsReturned === null ? (
         <p className="p-inset-md text-body text-fg-muted">{statusLine(run)}</p>
       ) : run.status === "done" ? (
         <p className="p-inset-md text-body text-fg-muted">0 rows</p>
       ) : null}
-      <Sheet open={viewer && current !== null} onOpenChange={setViewer} side="right" size="md">
+      <Sheet open={viewer !== null && viewed !== undefined} onOpenChange={(open) => !open && setViewer(null)} side="right" size="md">
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>{cell && columns[cell.column] ? columns[cell.column]!.name : "Value"}</SheetTitle>
+            <SheetTitle>{viewedField?.name ?? "Value"}</SheetTitle>
             <SheetDescription>
-              {cell && columns[cell.column] ? typeLabel(columns[cell.column]!) : ""} · row {cell ? cell.row + 1 : ""} · {current?.kind === "null" ? "NULL" : "not null"}
+              {viewedFormat?.label ?? ""} · row {viewer ? viewer.row + 1 : ""} · {viewed === null ? "NULL" : viewed === "" ? "empty string" : "not null"}
             </SheetDescription>
           </SheetHeader>
           <SheetBody className="flex flex-col gap-stack-sm">
-            {current && current.kind === "value" ? (
+            {typeof viewed === "string" ? (
               <>
-                <CodeInput aria-label="Cell value" multiline rows={12} readOnly pretty language={cell && families[cell.column] === "json" ? "json" : "text"} value={current.text} />
-                <Button appearance="secondary" size="small" onClick={() => void navigator.clipboard?.writeText(current.text)}>
+                <CodeInput aria-label="Cell value" multiline rows={12} readOnly pretty language={viewedFormat?.family === "json" ? "json" : "text"} value={viewed} />
+                <Button appearance="secondary" size="small" onClick={() => void navigator.clipboard?.writeText(viewed)}>
                   Copy value
                 </Button>
               </>
             ) : (
-              <p className="text-body text-fg-muted">{current ? cellText(current) : ""}</p>
+              <p className="text-body text-fg-muted">NULL</p>
             )}
           </SheetBody>
         </SheetContent>

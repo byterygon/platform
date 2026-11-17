@@ -262,3 +262,14 @@ describe("streaming", () => {
     expect(await axeViolations(el)).toEqual([]);
   });
 });
+
+describe("widths", () => {
+  test("given widths win per column; a missing entry takes the default", async () => {
+    const { fields, batches } = await decoded(idTable(10, 10));
+    const el = render({ fields, batches, "aria-label": "Result", rowHeight: 20, columnWidths: [undefined, 333] });
+    const headers = el.querySelectorAll<HTMLElement>("[role=columnheader]");
+    expect(Number.parseFloat(headers[2]!.style.width)).toBe(333);
+    expect(Number.parseFloat(headers[1]!.style.width)).toBeGreaterThan(40);
+    expect(Number.parseFloat(headers[1]!.style.width)).not.toBe(333);
+  });
+});

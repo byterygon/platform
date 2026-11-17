@@ -14,5 +14,5 @@
       "@byterygon/ambidex/arrow-decoder": ["../ambidex/src/arrow-decoder.ts"]
     }
   },
-  "include": ["src", "test", "demo", "vite.config.ts"]
+  "include": ["src", "test", "demo", "scripts", "vite.config.ts"]
 }

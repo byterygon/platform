@@ -4,7 +4,7 @@ import { RpcError } from "@byterygon/ambidex";
 import { type ArrowBatch, decodeArrow } from "@byterygon/ambidex/arrow";
 import { inThreadArrowDecoder } from "@byterygon/ambidex/arrow-decoder";
 import { describe, expect, test } from "vitest";
-import { readCell, typeFamily } from "@/app/arrow-cells";
+import { columnFormat } from "@byterygon/data-grid";
 import { describeError, formatElapsed } from "@/app/messages";
 import { DEFAULT_PERSISTED, DOCUMENT_VERSION, LEGACY_STORAGE_KEY, clearLegacy, fromDocuments, readLegacy, toDocuments } from "@/app/persistence";
 import { PRESETS, PRESET_LABELS, applyAppearance, isPreset } from "@/app/presets";
@@ -85,26 +85,22 @@ describe("cells from Arrow buffers (spec §6)", () => {
     for await (const b of stream.batches()) out.push(b);
     return { fields, batches: out };
   }
-  test("Int64 without precision loss, Utf8 per cell, NULL from the validity bitmap, Bool as words", async () => {
+  test("the grid's column formats read the fake's buffers: Int64, Utf8, NULL, Bool (spec §6)", async () => {
     const { fields, batches: b } = await batches(5);
     expect(fields.map((f) => f.name)).toEqual(["id", "name", "active"]);
-    expect(fields.map(typeFamily)).toEqual(["integer", "text", "boolean"]);
+    const formats = fields.map(columnFormat);
+    expect(formats.map((f) => f.family)).toEqual(["integer", "text", "boolean"]);
     const batch = b[0]!;
-    expect(readCell(fields[0]!, batch.columns[0]!, 4)).toEqual({ kind: "value", text: "5", align: "end" });
-    expect(readCell(fields[1]!, batch.columns[1]!, 0)).toEqual({ kind: "value", text: "row 1", align: "start" });
-    expect(readCell(fields[1]!, batch.columns[1]!, 1)).toEqual({ kind: "null" });
-    expect(readCell(fields[2]!, batch.columns[2]!, 0)).toEqual({ kind: "value", text: "true", align: "start" });
-    expect(readCell(fields[2]!, batch.columns[2]!, 1)).toEqual({ kind: "value", text: "false", align: "start" });
+    expect(formats[0]!.display(batch.columns[0]!, 4)).toBe("5");
+    expect(formats[1]!.display(batch.columns[1]!, 0)).toBe("row 1");
+    expect(formats[1]!.display(batch.columns[1]!, 1)).toBeNull();
+    expect(formats[2]!.display(batch.columns[2]!, 0)).toBe("true");
+    expect(formats[2]!.display(batch.columns[2]!, 1)).toBe("false");
   });
   test("a result without rows still has its schema", async () => {
     const { fields, batches: b } = await batches(0);
     expect(fields.length).toBe(3);
     expect(b.reduce((n, x) => n + x.numRows, 0)).toBe(0);
-  });
-  test("big integers keep every digit", () => {
-    const big = 9_007_199_254_740_993n;
-    const data = { type: "Int64", typeId: 9, length: 1, nullCount: 0, offset: 0, values: BigInt64Array.from([big]), children: [] };
-    expect(readCell({ name: "x", type: "Int64", typeId: 9, nullable: false, children: [], metadata: {} }, data, 0)).toEqual({ kind: "value", text: "9007199254740993", align: "end" });
   });
 });
 
@@ -118,6 +114,15 @@ describe("persistence (spec Decision 26): the workspace documents", () => {
     // Tab text is in tabs.json only; settings.json holds no SQL.
     expect(JSON.stringify(docs.settings)).not.toContain("select 1");
     expect(fromDocuments(JSON.parse(JSON.stringify(docs.settings)), JSON.parse(JSON.stringify(docs.tabs)))).toEqual(state);
+  });
+
+  test("result column widths round-trip per tab; malformed entries are dropped (spec §6)", () => {
+    const withWidths = { ...state, tabs: [{ ...state.tabs[0]!, columnWidths: { id: 80, name: 240 } }] };
+    const docs = toDocuments(withWidths);
+    expect(fromDocuments(JSON.parse(JSON.stringify(docs.settings)), JSON.parse(JSON.stringify(docs.tabs)))).toEqual(withWidths);
+    const tabs = JSON.parse(JSON.stringify(docs.tabs));
+    tabs.tabs[0].columnWidths = { id: 80, bad: "x", neg: -3, inf: null };
+    expect(fromDocuments(JSON.parse(JSON.stringify(docs.settings)), tabs)?.tabs[0]?.columnWidths).toEqual({ id: 80 });
   });
 
   test("never-written documents are null; malformed fields take their defaults", () => {

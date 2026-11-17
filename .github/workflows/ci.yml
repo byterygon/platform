@@ -108,7 +108,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       # Byterygon UI spec §9a.4 (TSK-50): the design-token lint rules (@byterygon/lint) on
-      # packages/ui, packages/theme-studio and apps/dbee/ui. Needs the token engine built above.
+      # packages/ui, packages/theme-studio, packages/data-grid and apps/dbee/ui. Needs the token engine built above.
       - run: pnpm lint
       - run: pnpm test
         env:
@@ -191,6 +191,22 @@ jobs:
             fi
             setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
               env PATH="$1" HOME="$2" BYTERYGON_REQUIRE_BROWSER=1 node scripts/browser-check.ts
+          ' sh "$PATH" "$HOME"
+      # TSK-39: the data grid in the runner's Chrome: 1,000,000 x 10 rows streamed from a Worker while
+      # the page scrolls; frame intervals and the grid's work are reported, the JS heap holds no
+      # per-row objects, nothing leaves loopback. Headless pacing makes it a smoke test, not the
+      # benchmark (the gate is not enforced). Same network namespace.
+      - name: Data grid in Chrome (network disconnected)
+        working-directory: packages/data-grid
+        run: |
+          sudo unshare --net -- sh -c '
+            set -e
+            ip link set lo up
+            if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+              echo "network is reachable"; exit 1
+            fi
+            setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
+              env PATH="$1" HOME="$2" BYTERYGON_REQUIRE_BROWSER=1 node scripts/frame-check.ts
           ' sh "$PATH" "$HOME"
 
   licenses:
