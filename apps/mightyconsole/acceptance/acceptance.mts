@@ -113,7 +113,8 @@ function execute(argv: string[], options: { cwd?: string; env?: Record<string, s
   const [program, ...args] = argv;
   const result = spawnSync(program!, args, {
     cwd: options.cwd ?? REPO,
-    env: { ...process.env, ...options.env },
+    // Plain output in the logs, also where CI forces colours.
+    env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", CARGO_TERM_COLOR: "never", ...options.env },
     encoding: "utf8",
     maxBuffer: 256 * 1024 * 1024,
     shell: process.platform === "win32",
@@ -126,7 +127,10 @@ function execute(argv: string[], options: { cwd?: string; env?: Record<string, s
 const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
 /** The number of tests that passed in cargo's or Vitest's output, and whether any failed. */
-export function countTests(output: string): { passed: number; failed: number } {
+export function countTests(raw: string): { passed: number; failed: number } {
+  // CI forces colours on (GitHub Actions); the counts are read without the escape codes.
+  // eslint-disable-next-line no-control-regex -- ANSI escape sequences
+  const output = raw.replace(/\u001b\[[0-9;]*m/g, "");
   let passed = 0;
   let failed = 0;
   for (const m of output.matchAll(/test result: \w+\. (\d+) passed; (\d+) failed/g)) {

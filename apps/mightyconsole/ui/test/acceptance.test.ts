@@ -98,6 +98,8 @@ describe("the harness", () => {
     expect(countTests(" Test Files  1 passed (1)\n      Tests  5 passed | 2 skipped (7)\n")).toEqual({ passed: 5, failed: 0 });
     expect(countTests("      Tests  1 failed | 4 passed (5)\n")).toEqual({ passed: 4, failed: 1 });
     expect(countTests("No test files found")).toEqual({ passed: 0, failed: 0 });
+    // As CI prints it, with colours forced on.
+    expect(countTests("\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m5 passed\u001b[39m\u001b[22m\u001b[90m (5)\u001b[39m")).toEqual({ passed: 5, failed: 0 });
   });
 
   test("reads its options", () => {
