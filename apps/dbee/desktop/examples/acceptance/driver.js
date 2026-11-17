@@ -59,8 +59,8 @@
 
   const steps = {
     // The shell is usable: the connection is in the tree and the editor is mounted.
-    async usable({ connection }) {
-      await until(() => treeItem(connection) && document.querySelector(".monaco-editor"), 60000, "the shell");
+    async usable({ connection, editor = true }) {
+      await until(() => treeItem(connection) && (!editor || document.querySelector(".monaco-editor")), 60000, "the shell");
       return { atMs: now(), userAgent: navigator.userAgent, devicePixelRatio: window.devicePixelRatio };
     },
     // Connect and show the tree: expand the connection (opens the browser session, lists the
@@ -203,7 +203,7 @@
     // validates as on typing), continues to approval and reads the dialog. With `approve`, approves
     // and waits for the connection node.
     async add({ name, host, port, database, user, password, tls, caPem, fingerprint, serverName, approve }) {
-      const opener = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("Add connection") && !b.disabled);
+      const opener = [...document.querySelectorAll("button")].find((b) => (b.textContent.trim().startsWith("Add connection") || (b.getAttribute("aria-label") ?? "").startsWith("Add connection")) && !b.disabled);
       if (!opener) throw new Error("no Add connection button");
       opener.click();
       const sheet = await until(() => [...document.querySelectorAll('[role="dialog"]')].find((d) => d.querySelector("form")), 10000, "the connection sheet");
@@ -269,11 +269,14 @@
       activate(node);
       const t0 = now();
       const outcome = await until(() => {
+        const text = treeItem(name)?.textContent ?? "";
         if (expectSchema && treeItem(expectSchema)) return { connected: true };
         const err = document.querySelector('[data-slot="tree-error"]');
         if (err) return { connected: false, error: err.textContent.replace(/\s+/g, " ").trim() };
-        const toast = [...document.querySelectorAll('[data-slot="toast"], [role="alert"]')].map((t) => t.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
-        if (toast.length) return { connected: false, error: toast.join(" | ") };
+        if (/error|expired/.test(text.replace(name, ""))) {
+          const alerts = [...document.querySelectorAll('[role="alert"], [data-slot="toast"]')].map((t) => t.textContent.replace(/\s+/g, " ").trim()).filter(Boolean);
+          return { connected: false, error: alerts.join(" | ") || text };
+        }
         return null;
       }, 30000, `the outcome of connecting ${name}`);
       await sleep(300);
@@ -287,11 +290,16 @@
       node.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 10, clientY: r.top + 5, button: 2 }));
       const item = await until(() => [...document.querySelectorAll('[role="menuitem"]')].find((m) => m.textContent.trim().startsWith("Open query tab")), 5000, "Open query tab");
       item.click();
-      const textarea = await until(() => document.querySelector('[data-pane="editor"] textarea'), 10000, "the editor");
-      await sleep(200);
+      await sleep(300);
+      const panes = [...document.querySelectorAll('[data-pane="editor"]')].filter((p) => p.offsetParent !== null);
+      const pane = panes.at(-1);
+      const textarea = await until(() => pane?.querySelector("textarea"), 10000, "the editor");
       textarea.focus();
-      document.execCommand("insertText", false, sql);
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      await frame();
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(textarea, sql);
+      textarea.setSelectionRange(sql.length, sql.length);
+      textarea.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: sql }));
+      await until(() => (pane.querySelector(".view-lines")?.textContent ?? "").replace(/\s+/g, " ").includes(sql.slice(0, 20)), 5000, `the editor to show the statement (shows: ${pane.querySelector(".view-lines")?.textContent})`);
       await until(() => toolbarButton("Query", "Run"), 5000, "an enabled Run button");
       toolbarButton("Query", "Run").click();
       await until(() => /rows in|in \d/.test(status()) || document.querySelector('[data-pane="results"] [role="alert"]'), 30000, "the result");
