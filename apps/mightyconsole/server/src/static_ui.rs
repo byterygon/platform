@@ -13,6 +13,10 @@
 //! segment percent-decoded and a plain file name, the file still canonicalizing under the
 //! directory. `assets/` (content-hashed by Vite) is cached for a year.
 //!
+//! **Embedded UI.** A release binary (feature `embed-ui`, TSK-87) carries the built UI in
+//! [`EMBEDDED`] and serves it when no `--ui` directory is given; the same segment checks apply,
+//! and a path is looked up by name in the sorted list, so nothing outside it can be named.
+//!
 //! **Headers.** The Content-Security-Policy of spec §2.3 (with `base-uri` and `form-action`
 //! closed as well), `nosniff`, no referrer, HSTS, same-origin opener.
 
@@ -21,7 +25,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use axum::Router;
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
@@ -36,6 +40,33 @@ const PLACEHOLDER: &str = "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta ch
 <title>Mightyconsole</title>\n</head>\n<body>\n<p>mightyconsole-server is running. The UI is not \
 built: run <code>pnpm --filter @byterygon/mightyconsole build</code> and start the server with \
 <code>--ui apps/mightyconsole/ui/dist</code>.</p>\n</body>\n</html>\n";
+
+mod embedded {
+    include!(concat!(env!("OUT_DIR"), "/embedded_ui.rs"));
+}
+
+/// The UI compiled into this binary (`(path, bytes)` sorted by path); empty unless built with
+/// the `embed-ui` feature.
+pub static EMBEDDED: &[(&str, &[u8])] = embedded::FILES;
+
+/// Where the page and its files come from.
+#[derive(Debug, Clone)]
+pub enum UiSource {
+    /// A directory given with `--ui`.
+    Dir(StaticUi),
+    /// Files compiled into the binary (sorted by path, with an `index.html`).
+    Embedded(&'static [(&'static str, &'static [u8])]),
+}
+
+impl UiSource {
+    /// The UI compiled into this binary, if it has one.
+    pub fn embedded() -> Option<UiSource> {
+        EMBEDDED
+            .binary_search_by(|(name, _)| (*name).cmp("index.html"))
+            .is_ok()
+            .then_some(UiSource::Embedded(EMBEDDED))
+    }
+}
 
 /// A UI directory that exists.
 #[derive(Debug, Clone)]
@@ -62,7 +93,7 @@ impl StaticUi {
 }
 
 struct Shared {
-    ui: Option<StaticUi>,
+    ui: Option<UiSource>,
     sessions: Arc<LocalSessions>,
     cookie_name: String,
     public_origin: String,
@@ -73,7 +104,7 @@ struct Shared {
 
 /// The HTTP routes next to `/rpc/ws`.
 pub fn routes(
-    ui: Option<StaticUi>,
+    ui: Option<UiSource>,
     sessions: Arc<LocalSessions>,
     cookie_name: &str,
     public_origin: &str,
@@ -120,19 +151,29 @@ async fn serve(
         return StatusCode::NOT_FOUND.into_response();
     };
     let target = match &shared.ui {
-        Some(ui) => resolve(ui.root(), &segments).await,
+        Some(UiSource::Dir(ui)) => resolve(ui.root(), &segments).await,
+        Some(UiSource::Embedded(files)) => resolve_embedded(files, &segments),
         None if segments.is_empty() || !has_extension(&segments) => Some(Target::Page(None)),
         None => None,
     };
     match target {
         None => StatusCode::NOT_FOUND.into_response(),
-        Some(Target::Page(path)) => page(&shared, &method, &uri, &headers, path).await,
-        Some(Target::File(path, cache)) => {
+        Some(Target::Page(content)) => page(&shared, &method, &uri, &headers, content).await,
+        Some(Target::File(Content::Path(path), cache)) => {
             let Ok(bytes) = tokio::fs::read(&path).await else {
                 return StatusCode::NOT_FOUND.into_response();
             };
-            respond(&shared, &method, content_type(&path), cache, bytes, None)
+            let kind = content_type(&path.to_string_lossy());
+            respond(&shared, &method, kind, cache, bytes.into(), None)
         }
+        Some(Target::File(Content::Static(name, bytes), cache)) => respond(
+            &shared,
+            &method,
+            content_type(name),
+            cache,
+            Bytes::from_static(bytes),
+            None,
+        ),
     }
 }
 
@@ -142,7 +183,7 @@ async fn page(
     method: &Method,
     uri: &Uri,
     headers: &HeaderMap,
-    path: Option<PathBuf>,
+    content: Option<Content>,
 ) -> Response {
     let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
     if host.is_some_and(|h| !h.eq_ignore_ascii_case(&shared.origin_host)) {
@@ -157,10 +198,14 @@ async fn page(
             Err(_) => StatusCode::BAD_REQUEST.into_response(),
         };
     }
-    let html = match path {
-        Some(path) => match tokio::fs::read_to_string(&path).await {
+    let html = match content {
+        Some(Content::Path(path)) => match tokio::fs::read_to_string(&path).await {
             Ok(html) => html,
             Err(_) => return StatusCode::NOT_FOUND.into_response(),
+        },
+        Some(Content::Static(_, bytes)) => match std::str::from_utf8(bytes) {
+            Ok(html) => html.to_owned(),
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         },
         None => PLACEHOLDER.to_owned(),
     };
@@ -179,7 +224,7 @@ async fn page(
         method,
         "text/html; charset=utf-8",
         "no-store",
-        html.into_bytes(),
+        html.into(),
         set_cookie,
     )
 }
@@ -189,7 +234,7 @@ fn respond(
     method: &Method,
     content_type: &'static str,
     cache: &'static str,
-    bytes: Vec<u8>,
+    bytes: Bytes,
     set_cookie: Option<HeaderValue>,
 ) -> Response {
     let length = bytes.len();
@@ -259,10 +304,19 @@ fn request_cookie<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
     found.filter(|v| !v.is_empty())
 }
 
+/// A file of the UI: on disk, or compiled in (with its name, for the content type).
+#[derive(Debug, PartialEq, Eq)]
+enum Content {
+    Path(PathBuf),
+    Static(&'static str, &'static [u8]),
+}
+
+#[derive(Debug, PartialEq, Eq)]
 enum Target {
     /// The page: the UI's `index.html`, or the placeholder (`None`).
-    Page(Option<PathBuf>),
-    File(PathBuf, &'static str),
+    Page(Option<Content>),
+    /// A file and its `Cache-Control`.
+    File(Content, &'static str),
 }
 
 /// The decoded path segments, or `None` when any segment could reach outside the directory or
@@ -326,7 +380,7 @@ async fn resolve(root: &Path, segments: &[String]) -> Option<Target> {
             .ok()?;
         canonical
             .starts_with(root)
-            .then_some(Target::Page(Some(canonical)))
+            .then_some(Target::Page(Some(Content::Path(canonical))))
     };
     if segments.is_empty() || (segments.len() == 1 && segments[0] == "index.html") {
         return index().await;
@@ -348,16 +402,48 @@ async fn resolve(root: &Path, segments: &[String]) -> Option<Target> {
     if !canonical.starts_with(root) {
         return None;
     }
-    let cache = if segments.first().is_some_and(|s| s == "assets") {
+    Some(Target::File(
+        Content::Path(canonical),
+        cache_control(segments),
+    ))
+}
+
+/// The same answers as [`resolve`] from the files compiled into the binary.
+fn resolve_embedded(
+    files: &'static [(&'static str, &'static [u8])],
+    segments: &[String],
+) -> Option<Target> {
+    let find = |name: &str| {
+        files
+            .binary_search_by(|(n, _)| (*n).cmp(name))
+            .ok()
+            .map(|i| files[i])
+    };
+    let index = || find("index.html").map(|(n, b)| Target::Page(Some(Content::Static(n, b))));
+    if segments.is_empty() || (segments.len() == 1 && segments[0] == "index.html") {
+        return index();
+    }
+    match find(&segments.join("/")) {
+        Some((name, bytes)) => Some(Target::File(
+            Content::Static(name, bytes),
+            cache_control(segments),
+        )),
+        None if has_extension(segments) => None,
+        None => index(),
+    }
+}
+
+/// `assets/` is content-hashed by Vite: cached for a year; the rest is revalidated.
+fn cache_control(segments: &[String]) -> &'static str {
+    if segments.first().is_some_and(|s| s == "assets") {
         "public, max-age=31536000, immutable"
     } else {
         "no-cache"
-    };
-    Some(Target::File(canonical, cache))
+    }
 }
 
-fn content_type(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()) {
+fn content_type(name: &str) -> &'static str {
+    match name.rsplit_once('.').map(|(_, ext)| ext) {
         Some("html") => "text/html; charset=utf-8",
         Some("js" | "mjs") => "text/javascript; charset=utf-8",
         Some("css") => "text/css; charset=utf-8",
@@ -410,6 +496,61 @@ mod tests {
         assert!(csp.contains("frame-ancestors 'none'"));
         assert!(csp.contains("object-src 'none'"));
         assert!(!csp.contains("http:"));
+    }
+
+    #[test]
+    fn embedded_files_resolve_like_the_directory() {
+        static FILES: &[(&str, &[u8])] = &[
+            ("assets/app-1.js", b"js"),
+            ("favicon.svg", b"<svg/>"),
+            ("index.html", b"<html></html>"),
+        ];
+        let seg = |p: &str| segments(p).unwrap();
+        let page = Some(Target::Page(Some(Content::Static(
+            "index.html",
+            b"<html></html>",
+        ))));
+        assert_eq!(resolve_embedded(FILES, &seg("/")), page);
+        assert_eq!(resolve_embedded(FILES, &seg("/index.html")), page);
+        // A client-side route (no extension) is the page; a missing file is not.
+        assert_eq!(resolve_embedded(FILES, &seg("/nats/streams")), page);
+        assert_eq!(resolve_embedded(FILES, &seg("/assets/missing.js")), None);
+        assert_eq!(
+            resolve_embedded(FILES, &seg("/assets/app-1.js")),
+            Some(Target::File(
+                Content::Static("assets/app-1.js", b"js"),
+                "public, max-age=31536000, immutable"
+            ))
+        );
+        assert_eq!(
+            resolve_embedded(FILES, &seg("/favicon.svg")),
+            Some(Target::File(
+                Content::Static("favicon.svg", b"<svg/>"),
+                "no-cache"
+            ))
+        );
+        // Encoded separators never reach the lookup: `segments` refuses them first.
+        assert!(segments("/assets%2fapp-1.js").is_none());
+        assert_eq!(
+            content_type("assets/app-1.js"),
+            "text/javascript; charset=utf-8"
+        );
+        assert_eq!(content_type("index.html"), "text/html; charset=utf-8");
+        assert_eq!(content_type("LICENSE"), "application/octet-stream");
+    }
+
+    #[test]
+    fn the_embedded_list_is_sorted_and_has_a_page_when_present() {
+        assert!(EMBEDDED.windows(2).all(|w| w[0].0 < w[1].0));
+        if cfg!(feature = "embed-ui") {
+            assert!(
+                UiSource::embedded().is_some(),
+                "embed-ui without index.html"
+            );
+        } else {
+            assert!(EMBEDDED.is_empty());
+            assert!(UiSource::embedded().is_none());
+        }
     }
 
     #[test]

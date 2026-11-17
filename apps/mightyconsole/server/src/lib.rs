@@ -54,6 +54,13 @@ pub const API_NAME: &str = "mightyconsole";
 /// The API version written into the generated client.
 pub const API_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The version this build reports (`--version`, `app.info`, About): `MIGHTYCONSOLE_VERSION` at
+/// build time, which the release workflow sets to `0.1.0-alpha.N` (TSK-87), else the crate's.
+pub const VERSION: &str = match option_env!("MIGHTYCONSOLE_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 /// The schema hash of the API, computed from the router as `mightyconsole-rpc-gen` does.
 pub static SCHEMA_HASH: LazyLock<String> = LazyLock::new(|| {
     codegen::schema_hash(&codegen_router(), &api_info()).expect("the Mightyconsole API exports")
@@ -107,7 +114,8 @@ pub struct ServeConfig {
     /// `https://host[:port]` the browser sees; the upgrade's `Origin` must equal it.
     pub public_origin: String,
     pub tls: TlsSource,
-    /// The built UI (`index.html`, `assets/`); a placeholder page without it.
+    /// The built UI (`index.html`, `assets/`). Without it: the UI compiled into the binary
+    /// (feature `embed-ui`), else a placeholder page.
     pub ui: Option<PathBuf>,
 }
 
@@ -116,6 +124,17 @@ impl ServeConfig {
     pub fn is_exposed(&self) -> bool {
         !self.listen.ip().is_loopback()
     }
+}
+
+/// The UI a running server serves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServedUi {
+    /// `--ui DIR` (canonical).
+    Dir(PathBuf),
+    /// The UI compiled into the binary (feature `embed-ui`), with its number of files.
+    Embedded { files: usize },
+    /// No UI: a short page saying how to build one.
+    Placeholder,
 }
 
 /// Why the server did not start.
@@ -166,7 +185,7 @@ pub struct Server {
     sessions: Arc<LocalSessions>,
     tls: ServerTls,
     local_addr: SocketAddr,
-    ui: Option<PathBuf>,
+    ui: ServedUi,
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<io::Result<()>>,
     sweep: Option<JoinHandle<()>>,
@@ -184,17 +203,19 @@ impl Server {
         let tls = tls::load(&config.tls).map_err(StartError::Tls)?;
         let ws_config = WsConfig::new(config.allowed_hosts.clone(), config.public_origin.clone());
         let ui = match &config.ui {
-            Some(path) => {
-                Some(
-                    static_ui::StaticUi::open(path).map_err(|error| StartError::Ui {
-                        path: path.clone(),
-                        error,
-                    })?,
-                )
-            }
-            None => None,
+            Some(path) => Some(static_ui::UiSource::Dir(
+                static_ui::StaticUi::open(path).map_err(|error| StartError::Ui {
+                    path: path.clone(),
+                    error,
+                })?,
+            )),
+            None => static_ui::UiSource::embedded(),
         };
-        let ui_root = ui.as_ref().map(|ui| ui.root().to_path_buf());
+        let served_ui = match &ui {
+            Some(static_ui::UiSource::Dir(dir)) => ServedUi::Dir(dir.root().to_path_buf()),
+            Some(static_ui::UiSource::Embedded(files)) => ServedUi::Embedded { files: files.len() },
+            None => ServedUi::Placeholder,
+        };
 
         let principal = local_principal();
         let hub = Arc::new(Hub::new(options.clock, options.idle_timeout));
@@ -257,7 +278,7 @@ impl Server {
             sessions,
             tls,
             local_addr,
-            ui: ui_root,
+            ui: served_ui,
             stop: Some(stop),
             task,
             sweep,
@@ -283,7 +304,15 @@ impl Server {
 
     /// The canonical UI directory being served, if one is configured.
     pub fn ui_dir(&self) -> Option<&Path> {
-        self.ui.as_deref()
+        match &self.ui {
+            ServedUi::Dir(dir) => Some(dir),
+            _ => None,
+        }
+    }
+
+    /// What the server answers `GET /` with.
+    pub fn ui(&self) -> &ServedUi {
+        &self.ui
     }
 
     /// Stops accepting connections and waits for the accept loop.

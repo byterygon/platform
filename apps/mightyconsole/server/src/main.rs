@@ -4,7 +4,7 @@
 use std::process::ExitCode;
 
 use mightyconsole_server::cli::{Command, USAGE, default_data_dir, parse};
-use mightyconsole_server::{API_VERSION, SCHEMA_HASH, ServeConfig, Server};
+use mightyconsole_server::{API_VERSION, SCHEMA_HASH, ServeConfig, ServedUi, Server, VERSION};
 
 fn main() -> ExitCode {
     let command = match parse(std::env::args().skip(1), default_data_dir()) {
@@ -21,8 +21,7 @@ fn main() -> ExitCode {
         }
         Command::Version => {
             println!(
-                "mightyconsole-server {} (api {API_VERSION}, schema {})",
-                env!("CARGO_PKG_VERSION"),
+                "mightyconsole-server {VERSION} (api {API_VERSION}, schema {})",
                 SCHEMA_HASH.as_str()
             );
             ExitCode::SUCCESS
@@ -70,9 +69,14 @@ async fn serve(config: ServeConfig) -> ExitCode {
         "mightyconsole-server: certificate SHA-256 {}",
         tls.fingerprint
     );
-    match server.ui_dir() {
-        Some(dir) => eprintln!("mightyconsole-server: UI from {}", dir.display()),
-        None => eprintln!("mightyconsole-server: no --ui directory; serving a placeholder page"),
+    match server.ui() {
+        ServedUi::Dir(dir) => eprintln!("mightyconsole-server: UI from {}", dir.display()),
+        ServedUi::Embedded { files } => {
+            eprintln!("mightyconsole-server: {VERSION}, UI built in ({files} files)")
+        }
+        ServedUi::Placeholder => {
+            eprintln!("mightyconsole-server: no --ui directory; serving a placeholder page")
+        }
     }
     if exposed {
         eprintln!(

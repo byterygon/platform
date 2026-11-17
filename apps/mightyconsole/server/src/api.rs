@@ -66,7 +66,7 @@ impl AppApi {
     async fn info(&self, _ctx: Ctx, _input: Empty) -> Result<AppInfo, RpcError> {
         let facts = &self.0.facts;
         Ok(AppInfo {
-            version: env!("CARGO_PKG_VERSION").into(),
+            version: crate::VERSION.into(),
             api_version: crate::API_VERSION.into(),
             schema_hash: crate::SCHEMA_HASH.clone(),
             listen: facts.listen.clone(),

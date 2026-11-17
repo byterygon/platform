@@ -1,0 +1,257 @@
+name: Mightyconsole release
+
+# TSK-87: Mightyconsole as one file per platform with the UI built in, plus a container image,
+# both working offline, with SHA-256 checksums, the AGPL text, third-party notices, a short
+# README and release notes made from the tools' notes (apps/mightyconsole/release/notes). The
+# version comes from those notes: 0.1.0-alpha.N with N finished tools, 0.1.0 with all six.
+#
+# Run it by hand (Actions > Mightyconsole release > Run workflow): the files are the workflow's
+# artifacts. It never creates a tag and never publishes: only a tag `mightyconsole-v<version>`
+# that a person pushes leads to a DRAFT release, for a person to read and publish. Pull requests
+# that touch the release files run it too, as their test. (The build fetches crates and npm
+# packages once; what it makes downloads nothing when installed or run.)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["mightyconsole-v*"]
+  pull_request:
+    paths:
+      - "apps/mightyconsole/release/**"
+      - "apps/mightyconsole/server/build.rs"
+      - "apps/mightyconsole/server/src/static_ui.rs"
+      - "scripts/third-party-notices.mjs"
+      - ".github/workflows/mightyconsole-release.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: UI, notices and release notes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Version from the tools' notes
+        id: version
+        run: |
+          node apps/mightyconsole/release/release.mts check
+          version=$(node apps/mightyconsole/release/release.mts version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "mightyconsole-v$version" ]; then
+            echo "the tag $GITHUB_REF_NAME does not match the notes' version $version (mightyconsole-v$version)"
+            exit 1
+          fi
+      # Built once, so every platform embeds the same UI.
+      - run: pnpm --filter @byterygon/mightyconsole build
+      - name: Third-party notices (Rust, npm, fonts, icons) and release notes
+        run: |
+          mkdir -p meta
+          node scripts/third-party-notices.mjs --app mightyconsole --out meta/THIRD-PARTY-NOTICES.txt
+          node apps/mightyconsole/release/release.mts notes --out meta/RELEASE-NOTES.md
+          cat meta/RELEASE-NOTES.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: prepared-ui
+          path: apps/mightyconsole/ui/dist
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: prepared-meta
+          path: meta
+          if-no-files-found: error
+          retention-days: 7
+
+  binary:
+    name: Binary (${{ matrix.name }})
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux builds are static (musl): one file for any distribution, and the image's binary.
+          - { name: linux-x64, os: ubuntu-24.04, target: x86_64-unknown-linux-musl, native: true }
+          - { name: linux-arm64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, native: true }
+          - { name: macos-arm64, os: macos-latest, target: aarch64-apple-darwin, native: true }
+          - { name: macos-x64, os: macos-latest, target: x86_64-apple-darwin, native: false }
+          - { name: windows-x64, os: windows-latest, target: x86_64-pc-windows-msvc, native: true }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: mightyconsole-release-${{ matrix.target }}
+      - name: musl C toolchain for ring (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends musl-tools
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: matrix.name == 'linux-x64'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: prepared-ui
+          path: ui-dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: prepared-meta
+          path: meta
+      - name: Build with the UI built in
+        env:
+          MIGHTYCONSOLE_UI_DIST: ${{ github.workspace }}/ui-dist
+          MIGHTYCONSOLE_VERSION: ${{ needs.prepare.outputs.version }}
+          CARGO_PROFILE_RELEASE_STRIP: symbols
+          # ring's C code for the static Linux builds.
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
+        run: cargo build -p mightyconsole-server --release --locked --features embed-ui --target ${{ matrix.target }}
+      - name: Locate the binary
+        id: bin
+        run: |
+          exe=target/${{ matrix.target }}/release/mightyconsole-server
+          [ "$RUNNER_OS" = Windows ] && exe="$exe.exe"
+          ls -l "$exe"
+          echo "path=$exe" >> "$GITHUB_OUTPUT"
+      - name: Starts and serves its built-in UI
+        if: matrix.native
+        run: node apps/mightyconsole/release/release.mts smoke --binary "${{ steps.bin.outputs.path }}" --version "${{ needs.prepare.outputs.version }}"
+      # The release binary, not a debug build, in Chrome with no network: the page, its session
+      # and CSP, a profile that connects and streams, a reload; nothing requested elsewhere.
+      - name: In Chrome, network disconnected (Linux x64)
+        if: matrix.name == 'linux-x64'
+        run: |
+          pnpm install --frozen-lockfile
+          sudo unshare --net -- sh -c '
+            set -e
+            ip link set lo up
+            if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+              echo "network is reachable"; exit 1
+            fi
+            setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
+              env PATH="$1" HOME="$2" BYTERYGON_REQUIRE_BROWSER=1 MIGHTYCONSOLE_EMBEDDED_UI=1 \
+              MIGHTYCONSOLE_SERVER="$3" pnpm --filter @byterygon/mightyconsole check:browser
+          ' sh "$PATH" "$HOME" "$PWD/${{ steps.bin.outputs.path }}"
+      - name: Archive
+        run: |
+          node apps/mightyconsole/release/release.mts package --name ${{ matrix.name }} \
+            --binary "${{ steps.bin.outputs.path }}" --notices meta/THIRD-PARTY-NOTICES.txt --out release
+          ls -l release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.name }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  image:
+    name: Container image (${{ matrix.arch }})
+    needs: [prepare, binary]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, os: ubuntu-24.04, binary: linux-x64 }
+          - { arch: arm64, os: ubuntu-24.04-arm, binary: linux-arm64 }
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-${{ matrix.binary }}
+          path: bin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: prepared-meta
+          path: meta
+      - name: Build and save the image (FROM scratch, nothing pulled)
+        run: |
+          tar -xzf "bin/mightyconsole-$VERSION-${{ matrix.binary }}.tar.gz" -C bin
+          node apps/mightyconsole/release/release.mts image --arch ${{ matrix.arch }} \
+            --binary "bin/mightyconsole-$VERSION-${{ matrix.binary }}/mightyconsole-server" \
+            --notices meta/THIRD-PARTY-NOTICES.txt --out release
+          ls -l release
+      - name: Loads from the file, starts with no network, serves on 127.0.0.1
+        run: sh apps/mightyconsole/release/image-check.sh "release/mightyconsole-$VERSION-image-linux-${{ matrix.arch }}.tar.gz" "$VERSION"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-image-${{ matrix.arch }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+  assemble:
+    name: Assemble the release
+    needs: [prepare, binary, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # a draft release on a tag push; nothing is published
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: prepared-meta
+          path: meta
+      - name: Licence, README, notices, release notes and one checksum list
+        run: |
+          node apps/mightyconsole/release/release.mts docs --notices meta/THIRD-PARTY-NOTICES.txt --out release
+          node apps/mightyconsole/release/release.mts checksums release
+          ls -l release
+          (cd release && sha256sum -c SHA256SUMS)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mightyconsole-${{ env.VERSION }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Draft release (tag pushes only; a person publishes it)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" release/* --draft $prerelease --verify-tag \
+            --title "Mightyconsole $VERSION" --notes-file release/RELEASE-NOTES.md
