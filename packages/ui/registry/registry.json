@@ -543,6 +543,29 @@
       ]
     },
     {
+      "name": "graph-view",
+      "type": "registry:ui",
+      "title": "GraphView",
+      "description": "A read-only directed graph laid out in layers (dagre), with pan, zoom, groups, running and visited nodes, and keyboard navigation along its edges.",
+      "dependencies": [
+        "@dagrejs/dagre"
+      ],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/icon",
+        "@byterygon/icon-button",
+        "@byterygon/icons"
+      ],
+      "files": [
+        {
+          "path": "ui/graph-view.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "hover-card",
       "type": "registry:ui",
       "title": "HoverCard",

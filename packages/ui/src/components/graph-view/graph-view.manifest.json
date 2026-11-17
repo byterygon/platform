@@ -1,0 +1,290 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "graph-view",
+  "title": "GraphView",
+  "description": "A read-only directed graph laid out in layers (dagre), with pan, zoom, groups, running and visited nodes, and keyboard navigation along its edges.",
+  "usage": "Use GraphView to show how steps connect: a LangGraph assistant's nodes and edges (Mightyconsole), a workflow, a pipeline. Pass nodes and edges; kind start and end draw small pills, conditional edges are dashed, and nodes with a group are drawn inside that group's box (a subgraph seen with xray). While something runs, pass activeIds (accent fill) and visitedIds (accent edge): the edges between them light up too. selectedId and onNodeSelect make nodes selectable (click or Enter). Give it a height (h-panel-md, h-full in a sized panel); it fits the graph on first draw and when the graph or its size changes. The layout is computed, not measured, so labels longer than about 28 characters are cut with an ellipsis (the full label is the node's tooltip and name). For a hierarchy use Tree; for a timeline of steps, Timeline; to edit a graph, nothing here: it is read-only.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [
+    "@dagrejs/dagre"
+  ],
+  "props": [
+    {
+      "name": "nodes",
+      "type": "{ id: string; label: string; kind?: \"start\" | \"end\" | \"node\" | \"subgraph\"; group?: string }[]",
+      "description": "The nodes; group names a group of groups."
+    },
+    {
+      "name": "edges",
+      "type": "{ source: string; target: string; conditional?: boolean; label?: string }[]",
+      "description": "The edges; edges to unknown nodes are left out."
+    },
+    {
+      "name": "groups",
+      "type": "{ id: string; label: string }[]",
+      "default": "[]",
+      "description": "Boxes drawn around the nodes whose group is their id."
+    },
+    {
+      "name": "direction",
+      "type": "\"TB\" | \"LR\"",
+      "default": "\"TB\"",
+      "description": "Top to bottom or left to right; the arrow keys follow it."
+    },
+    {
+      "name": "activeIds",
+      "type": "string[]",
+      "default": "[]",
+      "description": "Nodes running now: accent fill, and \", running\" in their name."
+    },
+    {
+      "name": "visitedIds",
+      "type": "string[]",
+      "default": "[]",
+      "description": "Nodes that already ran: accent edge, and \", done\" in their name."
+    },
+    {
+      "name": "selectedId",
+      "type": "string | null",
+      "default": "null",
+      "description": "The selected node: color.bg.selected, aria-pressed when onNodeSelect is set."
+    },
+    {
+      "name": "onNodeSelect",
+      "type": "(id: string) => void",
+      "description": "Called on click, Enter or Space on a node."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "default": "\"Graph\"",
+      "description": "The graph's accessible name (and its edge list's)."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes on the root; give it a height."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root element."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "role=\"group\" with aria-roledescription=\"graph\", a layer with a hairline; data-slot=\"graph-view\", data-empty."
+    },
+    {
+      "name": "viewport",
+      "element": "div",
+      "description": "Takes the wheel and the drag; data-slot=\"graph-view-viewport\", data-panning while dragged."
+    },
+    {
+      "name": "canvas",
+      "element": "div",
+      "description": "Translated and scaled by pan and zoom; data-slot=\"graph-view-canvas\"."
+    },
+    {
+      "name": "node",
+      "element": "button",
+      "description": "A node, one tab stop for all of them; data-slot=\"graph-view-node\", data-graph-node (its id), data-kind, data-active, data-visited, data-selected."
+    },
+    {
+      "name": "edge",
+      "element": "g",
+      "description": "An edge's path, arrow and label (SVG, hidden from assistive technology: the edges are a visually hidden list); data-slot=\"graph-view-edge\", data-conditional."
+    },
+    {
+      "name": "group",
+      "element": "div",
+      "description": "A dashed box around a group's nodes with its label above; data-slot=\"graph-view-group\"."
+    },
+    {
+      "name": "controls",
+      "element": "div",
+      "description": "Zoom in, Zoom out and Fit, bottom right; data-slot=\"graph-view-controls\"."
+    }
+  ],
+  "states": [
+    {
+      "name": "active",
+      "variant": "data-active",
+      "props": {
+        "nodes": [
+          {
+            "id": "extract",
+            "label": "extract"
+          },
+          {
+            "id": "transform",
+            "label": "transform"
+          },
+          {
+            "id": "load",
+            "label": "load"
+          }
+        ],
+        "edges": [
+          {
+            "source": "extract",
+            "target": "transform"
+          },
+          {
+            "source": "transform",
+            "target": "load"
+          }
+        ],
+        "activeIds": [
+          "transform"
+        ]
+      },
+      "description": "A running node: color.accent.bg with its foreground; the edge into it in the accent."
+    },
+    {
+      "name": "visited",
+      "variant": "data-visited",
+      "props": {
+        "nodes": [
+          {
+            "id": "extract",
+            "label": "extract"
+          },
+          {
+            "id": "transform",
+            "label": "transform"
+          },
+          {
+            "id": "load",
+            "label": "load"
+          }
+        ],
+        "edges": [
+          {
+            "source": "extract",
+            "target": "transform"
+          },
+          {
+            "source": "transform",
+            "target": "load"
+          }
+        ],
+        "visitedIds": [
+          "extract",
+          "transform"
+        ]
+      },
+      "description": "A node that ran: accent edge and text; edges between visited nodes in the accent."
+    },
+    {
+      "name": "selected",
+      "variant": "data-selected",
+      "props": {
+        "nodes": [
+          {
+            "id": "extract",
+            "label": "extract"
+          },
+          {
+            "id": "transform",
+            "label": "transform"
+          },
+          {
+            "id": "load",
+            "label": "load"
+          }
+        ],
+        "edges": [
+          {
+            "source": "extract",
+            "target": "transform"
+          },
+          {
+            "source": "transform",
+            "target": "load"
+          }
+        ],
+        "selectedId": "load"
+      },
+      "description": "The selected node: color.bg.selected."
+    },
+    {
+      "name": "panning",
+      "variant": "data-panning",
+      "description": "While the background is dragged: the grabbing cursor."
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over a node: color.interactive.hover."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on a node: Fluent's double ring (focusRing from @/lib/control)."
+    }
+  ],
+  "tokens": [
+    "color.accent.bg",
+    "color.accent.bg-hover",
+    "color.accent.fg",
+    "color.accent.subtle-fg",
+    "color.bg.disabled",
+    "color.bg.inset",
+    "color.bg.layer",
+    "color.bg.surface",
+    "color.border.control-bottom-subtle",
+    "color.border.default",
+    "color.border.disabled",
+    "color.border.strong",
+    "color.border.subtle",
+    "color.fg.default",
+    "color.fg.disabled",
+    "color.fg.muted",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.interactive.selected",
+    "color.interactive.selected-hover",
+    "color.ring",
+    "color.ring-inner",
+    "elevation.layer.shadow",
+    "font.sans",
+    "motion.duration.faster",
+    "motion.easing.easy-ease",
+    "radius.lg",
+    "radius.md",
+    "ring.inner-width",
+    "ring.width",
+    "size.control.sm",
+    "size.icon.md",
+    "size.panel.xs",
+    "space.inline.sm",
+    "space.inline.xs",
+    "space.inset.md",
+    "space.inset.xs",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight"
+  ],
+  "examples": {
+    "minimal": "GraphViewMinimal",
+    "realistic": "GraphViewRealistic"
+  },
+  "accessibility": [
+    "The root is a named group (aria-roledescription \"graph\"); the nodes are buttons with one tab stop between them (roving tabindex), in layout order.",
+    "Arrow keys along the direction follow the edges (Down or Right to the next node, Up or Left back); the other two move across the same layer; Home and End go to the first and last node; Enter or Space selects; + and - zoom, 0 fits.",
+    "A node's name says its state (\", running\", \", done\"); the edges are a visually hidden list (\"plan to tools (conditional)\"), so the shape is readable without the drawing.",
+    "Conditional edges differ by their dash, not only by colour; running nodes by their fill and their name.",
+    "Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface)."
+  ]
+}

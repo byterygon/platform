@@ -35,6 +35,7 @@ export const gallery: GalleryEntry[] = [
   { name: "field", load: () => import("@/components/field/field.example") },
   { name: "file-input", load: () => import("@/components/file-input/file-input.example") },
   { name: "form", load: () => import("@/components/form/form.example") },
+  { name: "graph-view", load: () => import("@/components/graph-view/graph-view.example") },
   { name: "hover-card", load: () => import("@/components/hover-card/hover-card.example") },
   { name: "icon", load: () => import("@/components/icon/icon.example") },
   { name: "icon-button", load: () => import("@/components/icon-button/icon-button.example") },
