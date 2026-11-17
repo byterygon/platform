@@ -1,0 +1,16 @@
+# The Compose project `shop` inside the lab's Docker host (TSK-81: containers grouped by project).
+name: shop
+services:
+  web:
+    image: busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
+    command: ["sh", "-c", "mkdir -p /www && echo shop > /www/index.html && httpd -f -p 8080 -h /www"]
+    volumes: [shop-data:/data]
+    networks: [shop-net]
+  worker:
+    image: busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
+    command: ["sh", "-c", "i=0; while true; do i=$$((i+1)); echo \"worker tick $$i\"; echo \"warning $$i\" >&2; sleep 2; done"]
+    networks: [shop-net]
+volumes:
+  shop-data: {}
+networks:
+  shop-net: {}

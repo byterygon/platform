@@ -1,0 +1,14 @@
+# Every image the lab pulls, pinned by digest (TSK-79, spec section 14): the compose services,
+# the bases of the lab's Dockerfiles, the images k3s and the Docker host run inside, and uv for
+# `lab lock`. `lab images check` (and the UI package's test) fails when compose.yaml, a
+# Dockerfile or a seed uses an image that is not listed here, or one without a digest.
+# `lab images save FILE` writes them all, with the three built images, to one tarball.
+apache/kafka:4.1.1@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40
+busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
+confluentinc/cp-schema-registry:8.1.0@sha256:385c157f9cef42aa65e5c95050d85a439bcb0c897826aeabb3e10d36127ea223
+docker:28-dind@sha256:2a232a42256f70d78e3cc5d2b5d6b3276710a0de0596c145f627ecfae90282ac
+ghcr.io/astral-sh/uv:0.9-python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+nats:2.12-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
+python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+rancher/k3s:v1.34.1-k3s1@sha256:5e0707cfd1239b358ef73f3254bc3eadc027dd30cd5ec6ca41e29e47652a1b8c
+temporalio/temporal:1.10.1@sha256:b228dadf9cdb6c7c02a1394b89dd76f827aac9760e458fce42f0899a10141225

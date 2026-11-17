@@ -1,0 +1,143 @@
+"""The lab's Temporal worker (task queue `lab`, namespace `lab`) and its sample workflows (TSK-83):
+a long-running one with a signal and a query, a completed one, a failed one, one with an activity
+that keeps retrying, a parent with a child, one with a Protobuf payload, and a schedule that runs
+every minute. Started once when the worker starts; ids are fixed, so a restart starts nothing
+twice."""
+
+import asyncio
+from datetime import timedelta
+
+from temporalio import activity, workflow
+from temporalio.client import Client, Schedule, ScheduleActionStartWorkflow, ScheduleIntervalSpec, ScheduleSpec
+from temporalio.common import RetryPolicy
+from temporalio.exceptions import ApplicationError
+from temporalio.service import RPCError
+from temporalio.worker import Worker
+
+with workflow.unsafe.imports_passed_through():
+    from . import protos
+    from .common import log
+
+TASK_QUEUE = "lab"
+
+
+@activity.defn
+async def charge(order_id: str) -> str:
+    return f"charged {order_id}"
+
+
+@activity.defn
+async def flaky(order_id: str) -> str:
+    raise ApplicationError(f"the payment provider is down for {order_id}")
+
+
+@workflow.defn
+class Fulfilment:
+    """Waits for `approve`; `status` answers where it is."""
+
+    def __init__(self) -> None:
+        self._approved = False
+        self._status = "waiting for approval"
+
+    @workflow.run
+    async def run(self, order_id: str) -> str:
+        await workflow.wait_condition(lambda: self._approved)
+        self._status = "charging"
+        result = await workflow.execute_activity(charge, order_id, start_to_close_timeout=timedelta(seconds=30))
+        self._status = "done"
+        return result
+
+    @workflow.signal
+    def approve(self, by: str) -> None:
+        self._approved = True
+        self._status = f"approved by {by}"
+
+    @workflow.query
+    def status(self) -> str:
+        return self._status
+
+
+@workflow.defn
+class Completed:
+    @workflow.run
+    async def run(self, order_id: str) -> str:
+        return await workflow.execute_activity(charge, order_id, start_to_close_timeout=timedelta(seconds=30))
+
+
+@workflow.defn
+class Failed:
+    @workflow.run
+    async def run(self, order_id: str) -> str:
+        raise ApplicationError(f"order {order_id} was rejected", type="Rejected", non_retryable=True)
+
+
+@workflow.defn
+class Retrying:
+    @workflow.run
+    async def run(self, order_id: str) -> str:
+        return await workflow.execute_activity(flaky, order_id, start_to_close_timeout=timedelta(seconds=10), retry_policy=RetryPolicy(initial_interval=timedelta(seconds=5), backoff_coefficient=1.0))
+
+
+@workflow.defn
+class Parent:
+    @workflow.run
+    async def run(self, order_id: str) -> str:
+        child = await workflow.execute_child_workflow(Completed.run, f"{order_id}-child", id=f"{workflow.info().workflow_id}-child")
+        return f"parent of {child}"
+
+
+@workflow.defn
+class ProtoOrder:
+    @workflow.run
+    async def run(self, order: protos.Order) -> protos.Order:
+        updated = protos.Order()
+        updated.CopyFrom(order)
+        updated.status = 2
+        return updated
+
+
+async def start_samples(client: Client) -> None:
+    samples = [
+        (Fulfilment.run, "ord-long", "fulfilment-long-running"),
+        (Completed.run, "ord-done", "completed-1"),
+        (Failed.run, "ord-bad", "failed-1"),
+        (Retrying.run, "ord-flaky", "retrying-1"),
+        (Parent.run, "ord-parent", "parent-1"),
+        (ProtoOrder.run, protos.order(7), "proto-1"),
+    ]
+    for run, arg, workflow_id in samples:
+        try:
+            await client.start_workflow(run, arg, id=workflow_id, task_queue=TASK_QUEUE)
+        except Exception as e:  # noqa: BLE001 - already started on an earlier start
+            if "already" not in str(e).lower():
+                raise
+    try:
+        await client.create_schedule(
+            "every-minute",
+            Schedule(action=ScheduleActionStartWorkflow(Completed.run, "ord-scheduled", id="scheduled", task_queue=TASK_QUEUE), spec=ScheduleSpec(intervals=[ScheduleIntervalSpec(every=timedelta(minutes=1))])),
+        )
+    except Exception as e:  # noqa: BLE001
+        if "already" not in str(e).lower():
+            raise
+
+
+async def main() -> None:
+    client = None
+    for _ in range(120):
+        try:
+            client = await Client.connect("temporal:7233", namespace="lab")
+            break
+        except RPCError:
+            await asyncio.sleep(1)
+        except OSError:
+            await asyncio.sleep(1)
+    assert client is not None, "Temporal did not answer"
+    worker = Worker(client, task_queue=TASK_QUEUE, workflows=[Fulfilment, Completed, Failed, Retrying, Parent, ProtoOrder], activities=[charge, flaky])
+    async with worker:
+        await start_samples(client)
+        log("temporal-worker: samples started in namespace lab, schedule every-minute")
+        await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

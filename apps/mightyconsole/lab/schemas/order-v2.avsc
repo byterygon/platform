@@ -1,0 +1,13 @@
+{
+  "type": "record",
+  "name": "Order",
+  "namespace": "lab.orders",
+  "fields": [
+    { "name": "id", "type": "string" },
+    { "name": "customer", "type": "string" },
+    { "name": "amount", "type": { "type": "bytes", "logicalType": "decimal", "precision": 12, "scale": 2 } },
+    { "name": "placedAt", "type": { "type": "long", "logicalType": "timestamp-millis" } },
+    { "name": "note", "type": ["null", "string"], "default": null },
+    { "name": "channel", "type": { "type": "enum", "name": "Channel", "symbols": ["WEB", "STORE", "PHONE"] }, "default": "WEB" }
+  ]
+}
