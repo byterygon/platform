@@ -691,7 +691,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
                           connect={() => void connectProfile(t.profileId)}
                           cancelConnect={() => dispatch({ type: "conn", profileId: t.profileId, conn: DISCONNECTED })}
                           editProfile={() => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.tool, editId: t.profileId } })}
-                          tabProps={{ client, useTabActions: hookFor(t.id), onLive: liveFor(t.id), note }}
+                          tabProps={{ client, useTabActions: hookFor(t.id), onLive: liveFor(t.id), note, openTab: (open) => openResource(t.profileId, { id: "", label: open.title, open }) }}
                         />
                       </section>
                     </TabsContent>
@@ -814,7 +814,7 @@ interface TabBodyProps {
   connect: () => void;
   cancelConnect: () => void;
   editProfile: () => void;
-  tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note">;
+  tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab">;
 }
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */

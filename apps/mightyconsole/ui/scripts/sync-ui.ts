@@ -22,6 +22,8 @@ export const ITEMS = [
   "toast", "command-palette", "sidebar", "tree", "resizable", "toolbar", "status-bar", "separator",
   "scroll-area", "badge", "alert", "empty-state", "spinner", "skeleton", "progress",
   "description-list", "code", "code-block", "json-viewer", "table", "relative-time",
+  // TSK-84 (LangGraph): the run input editor and the assistant graph.
+  "code-input", "graph-view",
 ];
 
 interface Item {
