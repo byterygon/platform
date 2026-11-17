@@ -25,6 +25,8 @@ const row = (n: number, patch: Partial<WorkflowRow> = {}): WorkflowRow => ({
   ...patch,
 });
 
+const opened = vi.fn();
+
 function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ executions: WorkflowRow[]; nextPageToken?: string }>; connId?: string | null; query?: string } = {}) {
   const list = vi.fn(options.list ?? (async () => ({ executions: [row(1), row(2, { status: "Failed", closeTime: "2026-11-18T01:05:03Z", durationMs: 180_000 })] })));
   const count = vi.fn(async () => ({ count: 1234 }));
@@ -44,7 +46,7 @@ function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ execut
     useTabActions: () => {},
     onLive: () => {},
     note: describeError,
-    openTab: () => {},
+    openTab: opened,
   };
   const view = render(<WorkflowsTab {...props} />);
   return { list, count, namespaces, ...view };

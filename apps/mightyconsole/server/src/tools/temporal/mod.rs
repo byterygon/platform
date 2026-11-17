@@ -7,12 +7,15 @@
 //! workflow detail, the actions, the schedules and the task queues follow in the next batches.
 
 mod client;
+mod detail;
+mod detail_types;
+mod payloads;
 mod proto;
 mod types;
 
 use std::sync::Arc;
 
-use ambidex::{Ctx, rpc};
+use ambidex::{BinarySink, Code, Ctx, RpcError, rpc};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use time::OffsetDateTime;
@@ -22,6 +25,7 @@ use self::client::{TemporalClient, status_error};
 use self::proto::temporal::api::workflowservice::v1 as ws;
 use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 
+pub use self::detail_types::*;
 pub use self::types::*;
 
 /// The tool's id and namespace.
@@ -307,6 +311,85 @@ impl TemporalWorkflowsApi {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         Ok(count_workflows(&handle.value, input).await?)
     }
+
+    /// A run's config, pending activities and children, memo and search attributes.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn describe(&self, ctx: Ctx, input: WorkflowRef) -> ToolResult<WorkflowDetail> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(detail::describe(&handle.value, input).await?)
+    }
+
+    /// One page of a run's history, oldest first, payloads decoded.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn history(
+        &self,
+        ctx: Ctx,
+        input: WorkflowHistoryInput,
+    ) -> ToolResult<WorkflowHistoryOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(detail::history(&handle.value, input).await?)
+    }
+
+    /// Runs a query on the workflow; `__stack_trace` is the stack trace.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn query(&self, ctx: Ctx, input: WorkflowQueryInput) -> ToolResult<WorkflowQueryOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(detail::query(&handle.value, input).await?)
+    }
+
+    /// The events of a run after `fromEventId`, as `jsonl` lines (`HistoryEvent`), until the run
+    /// closes. Long-polls the server; the client's credits pace the lines.
+    #[rpc::stream(
+        name = "followHistory",
+        perm = "temporal.read",
+        risk = Risk::Read,
+        timeout_max = "12h"
+    )]
+    async fn follow_history(
+        &self,
+        ctx: Ctx,
+        input: FollowHistoryInput,
+        sink: BinarySink,
+    ) -> ToolResult<FollowHistorySummary> {
+        let session = ctx.session().id.clone();
+        let claim = self.0.claim_stream(&session, TOOL, &input.stream_id)?;
+        let (handle, _busy) = self
+            .0
+            .busy::<TemporalClient>(&session, TOOL, &input.conn_id)?;
+        let progress = self.0.progress(&session, claim.stream_id());
+        let client = &handle.value;
+        let namespace = client.namespace_or_default(input.namespace.as_deref());
+        let gone = || RpcError::new(Code::Cancelled, "the connection was closed");
+        let mut after = i64::try_from(input.from_event_id).unwrap_or(i64::MAX);
+        let mut token = Vec::new();
+        let mut wait = false;
+        loop {
+            let execution = detail::execution(&input.workflow_id, Some(&input.run_id))?;
+            let step = tokio::select! {
+                biased;
+                () = handle.token.cancelled() => return Err(gone()),
+                step = detail::follow_step(client, &namespace, execution, token, wait, after) => step?,
+            };
+            for event in step.events {
+                tokio::select! {
+                    biased;
+                    () = handle.token.cancelled() => return Err(gone()),
+                    ready = sink.ready() => ready?,
+                }
+                let mut line = serde_json::to_vec(&event).expect("an event serializes");
+                line.push(b'\n');
+                progress.scanned(1);
+                progress.matched(1, line.len() as u64);
+                after = after.max(event.event_id);
+                sink.send(line).await?;
+            }
+            if step.token.is_empty() {
+                return Ok(FollowHistorySummary { closed: true });
+            }
+            token = step.token;
+            wait = true;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -344,3 +427,6 @@ mod tests {
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_detail_tests;

@@ -92,15 +92,25 @@ fn collect(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) {
 }
 
 /// Compiles the vendored Temporal API (client only) with `protox`, so that building needs neither
-/// `protoc` nor the network.
+/// `protoc` nor the network. The descriptor set is also written to `$OUT_DIR`, so that the server
+/// can turn any message of the API into JSON at run time (history events, payloads).
 fn compile_temporal_protos() {
     let root = PathBuf::from("proto/temporal");
     println!("cargo::rerun-if-changed={}", root.display());
-    let fds = protox::compile(["temporal/api/workflowservice/v1/service.proto"], [&root])
+    let mut compiler = protox::Compiler::new([&root]).expect("open the vendored Temporal protos");
+    compiler
+        .include_imports(true)
+        .open_file("temporal/api/workflowservice/v1/service.proto")
         .expect("compile the vendored Temporal protos");
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
+    fs::write(
+        out.join("temporal_descriptor.bin"),
+        compiler.encode_file_descriptor_set(),
+    )
+    .expect("write temporal_descriptor.bin");
     tonic_prost_build::configure()
         .build_server(false)
         .build_client(true)
-        .compile_fds(fds)
+        .compile_fds(compiler.file_descriptor_set())
         .expect("generate the Temporal client");
 }

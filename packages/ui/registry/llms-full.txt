@@ -5064,6 +5064,64 @@ export function TimePickerRealistic() {
 }
 ```
 
+### Timeline
+
+[timeline.json](timeline.json): Spans over time in lanes: a workflow's history as bars (a workflow, its activities, timers, child workflows, signals) on a zoomable time axis, with running items that grow to now.
+
+Usage: Use it to show when things happened and how they overlapped, for a history, a trace or a job run: one lane per thing, one bar per span, an instant when start equals end. Pass lanes and items with times in milliseconds on one clock and `now` for the running ones; the app decides which lane an event belongs to. Pair it with a table of the same events for exact values: the Timeline is for shape, not for reading numbers. It is plain DOM (no charting library), windows its lanes, and zooms with + and - (Ctrl+wheel), pans with the arrows (Shift+wheel) and fits with Home.
+
+- Wraps: no Base UI part
+- Props: aria-label (string); lanes ({ id: string; label: string }[], default "[]"); items ({ id: string; laneId: string; start: number; end: number | null; status: TimelineStatus; label: string }[], default "[]"); now (number, default "0"); selectedId (string | null); onSelect ((id: string) => void); origin (number); describeItem ((item, end) => string); emptyLabel (string, default "Nothing to show"); className (string)
+- States: selected (data-selected), hover (hover), focus-visible (focus-visible)
+- Tokens: color.accent.bg, color.bg.layer, color.border.subtle, color.fg.default, color.fg.muted, color.neutral.bg, color.ring, color.ring-inner, color.status.danger.solid, color.status.info.solid, color.status.success.solid, color.status.warning.solid, font.sans, grid.header-bg, radius.lg, radius.sm, ring.inner-width, ring.width, size.control.md, size.control.sm, size.panel.xs, space.inline.sm, space.inline.xs, space.inset.md, space.inset.sm, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight
+- Accessibility: The timeline is a focusable role=group named by aria-label; its keys (+, -, arrows, Home) are announced by a visually hidden hint it is described by. Each bar is a native button whose label is "label, status, duration" (or describeItem), with aria-pressed when a selection is controlled. Status is never colour alone: the label names it. The axis is hidden from assistive technology; the bars carry the times. Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface).
+
+Examples (TimelineMinimal, TimelineRealistic):
+
+```tsx
+import { useState } from "react";
+import { Timeline, type TimelineItem, type TimelineLane } from "@/components/ui/timeline";
+
+const lanes: TimelineLane[] = [
+  { id: "wf", label: "Workflow" },
+  { id: "charge", label: "Activity charge" },
+];
+
+const items: TimelineItem[] = [
+  { id: "wf", laneId: "wf", start: 0, end: 4200, status: "success", label: "FulfilmentWorkflow" },
+  { id: "a1", laneId: "charge", start: 300, end: 1500, status: "success", label: "charge #1" },
+];
+
+/** The smallest useful Timeline: two lanes, one workflow and one activity. */
+export function TimelineMinimal() {
+  return <Timeline aria-label="Example timeline" lanes={lanes} items={items} now={4200} />;
+}
+
+const history: TimelineItem[] = [
+  { id: "wf", laneId: "wf", start: 0, end: null, status: "running", label: "OrderWorkflow" },
+  { id: "a1", laneId: "act", start: 400, end: 2100, status: "success", label: "reserveStock" },
+  { id: "a2", laneId: "act", start: 2200, end: 3900, status: "danger", label: "charge (attempt 1)" },
+  { id: "a3", laneId: "act", start: 5200, end: null, status: "running", label: "charge (attempt 2)" },
+  { id: "t1", laneId: "timer", start: 3900, end: 5200, status: "info", label: "retry timer" },
+  { id: "s1", laneId: "signal", start: 1800, end: 1800, status: "neutral", label: "signal approve" },
+  { id: "c1", laneId: "child", start: 2500, end: 6100, status: "warning", label: "NotifyWorkflow" },
+];
+
+const historyLanes: TimelineLane[] = [
+  { id: "wf", label: "Workflow" },
+  { id: "act", label: "Activities" },
+  { id: "timer", label: "Timers" },
+  { id: "signal", label: "Signals" },
+  { id: "child", label: "Child workflows" },
+];
+
+/** A running workflow's history: the open items grow to `now`; picking a bar selects it. */
+export function TimelineRealistic() {
+  const [selected, setSelected] = useState<string | null>("a2");
+  return <Timeline aria-label="History timeline of order-1" lanes={historyLanes} items={history} now={7000} selectedId={selected} onSelect={setSelected} className="h-panel-md" />;
+}
+```
+
 ### Toast
 
 [toast.json](toast.json): Notifications on Base UI's Toast: a region in a corner of the window (or in the page flow) of toasts with a title, a description, a tone (info, success, warning, danger), an optional action and a close button; sticky toasts and high-priority announcements; no network.

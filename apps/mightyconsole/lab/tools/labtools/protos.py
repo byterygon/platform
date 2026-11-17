@@ -1,7 +1,7 @@
 """The descriptors of schemas/lab/common/money.proto and schemas/lab/orders/order.proto, built in
 code so the lab needs no protoc. Keep them in step with the .proto files."""
 
-from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
+from google.protobuf import descriptor_pb2, descriptor_pool, message_factory, symbol_database
 
 F = descriptor_pb2.FieldDescriptorProto
 
@@ -44,6 +44,11 @@ for _proto in file_protos():
 
 Order = message_factory.GetMessageClass(_pool.FindMessageTypeByName("lab.orders.Order"))
 Money = message_factory.GetMessageClass(_pool.FindMessageTypeByName("lab.common.Money"))
+
+# Temporal's json/protobuf converter looks a message type up by name in the symbol database, which
+# classes made by GetMessageClass are not in until they are registered.
+for _cls in (Money, Order):
+    symbol_database.Default().RegisterMessage(_cls)
 
 
 def order(i: int):
