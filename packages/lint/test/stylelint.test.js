@@ -38,3 +38,11 @@ test("a stylelint disable needs a reason", async () => {
   const { results } = await stylelint.lint({ code, config, codeFilename: fixture("inline.css") });
   assert.deepEqual(results[0]?.warnings.map((w) => [w.line, w.rule]), [[2, "--report-descriptionless-disables"]]);
 });
+
+test("token outputs (tokens.css, an installed theme) are not checked: they define the tokens", async () => {
+  const code = "/* Byterygon design tokens, theme \"default\". */\n:root {\n  --by-color-base-white: oklch(1 0 0);\n  --by-space-inset-sm: 12px;\n}\n";
+  const { results } = await stylelint.lint({ code, config, codeFilename: fixture("byterygon-theme-default.css") });
+  assert.deepEqual(results[0]?.warnings, []);
+  const other = await stylelint.lint({ code: code.replace("Byterygon design tokens", "My tokens"), config, codeFilename: fixture("mine.css") });
+  assert.equal(other.results[0]?.warnings.length, 1);
+});

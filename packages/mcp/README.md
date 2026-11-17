@@ -17,6 +17,7 @@ nothing of its own.
 | `get_component` `{ name, includeSource? }` | the manifest (props with the Fluent names and deprecated aliases, variants, parts, slots, states, tokens, accessibility), the example file with imports at installed paths, dependencies, and the source on request |
 | `list_registry_items` `{ type? }` | `registry.json`: components, helpers, themes |
 | `install_registry_item` `{ project, items, dryRun?, overwrite? }` | writes the items and their registry dependencies into the project (below) |
+| `install_theme` `{ project, theme, dryRun?, overwrite? }` | a preset or a theme file, exported by the engine (`by-tokens export registry`) and written like a theme item: `byterygon-theme-<name>.css` |
 | `check_classes` `{ classes, theme? }` | the `@byterygon/lint` findings for class names, each with the role to use |
 
 Resources: `byterygon-ui://registry/llms.txt` and `byterygon-ui://registry/llms-full.txt`.
@@ -36,7 +37,10 @@ first), then writes:
   and the registry's `@/components/ui/` and `@/lib/` imports rewritten to those aliases;
 - a `registry:theme` item as `byterygon-<theme>.css` next to the project's main CSS
   (`components.json` `tailwind.css`): its `css` blocks and its `@theme inline` names. Import it
-  after Tailwind (the result's `next` says the line to add).
+  after Tailwind (the result's `next` says the line to add). `install_theme` does the same for a
+  theme file of your own. The file opens with the "Byterygon design tokens" header, so the
+  `@byterygon/lint` Stylelint rules leave it alone (it defines the tokens). Fonts are not in it:
+  copy `@byterygon/design-tokens/fonts/` and import `fonts.css` first.
 
 It writes **only inside the project folder**: a target that is absolute, leaves the folder through
 `..` or an alias, or goes through a symbolic link that leads outside refuses the whole install
