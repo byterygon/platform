@@ -66,9 +66,11 @@ jobs:
       # Plugin Host runs under the same constraint. DBee spec §14 (TSK-38): the web shell's
       # end-to-end test runs here too: a server-issued session adds a connection, approves it,
       # runs a query and receives Arrow chunks over the WebSocket, against a throwaway PostgreSQL
-      # on loopback, so the only reachable network is the approved database. Every crate was
-      # already downloaded by the steps above, so nothing is fetched here. The script stops at the
-      # first failing command.
+      # on loopback, so the only reachable network is the approved database. Mightyconsole spec
+      # §18 (TSK-79): the Mightyconsole server end to end (page session, upgrade checks, the tool
+      # contract on the echo sample) runs here too, showing it opens no outbound connection.
+      # Every crate was already downloaded by the steps above, so nothing is fetched here. The
+      # script stops at the first failing command.
       - name: Conformance suite (network disconnected)
         run: |
           sudo unshare --net -- sh -c '
@@ -85,6 +87,7 @@ jobs:
             as_runner "$1" "$2" ambidex-conformance
             as_runner "$1" "$2" plugin-host
             as_runner "$1" "$2" dbee-server
+            as_runner "$1" "$2" mightyconsole-server
           ' sh "$PATH" "$HOME"
 
   typescript:

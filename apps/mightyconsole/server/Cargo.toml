@@ -1,0 +1,44 @@
+[package]
+name = "mightyconsole-server"
+version = "0.1.0"
+description = "Mightyconsole web server: axum + ambidex-axum at /rpc/ws on 127.0.0.1 over rustls TLS (a self-signed certificate made on first start), the local browser session, the tool contract (live handles per connection, terminals, stream progress) and the static UI."
+license = "AGPL-3.0-only"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mightyconsole-server"
+path = "src/main.rs"
+
+[dependencies]
+ambidex = { path = "../../../crates/ambidex" }
+ambidex-axum = { path = "../../../crates/ambidex-axum" }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
+base64 = { version = "0.22.1", default-features = false, features = ["std"] }
+dirs = "7.0.0"
+getrandom = "0.4.3"
+rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = { version = "1.15.1", features = ["std"] }
+schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
+security-types = { path = "../../../crates/security-types", features = ["tokio"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11"
+time = { version = "0.3.55", default-features = false, features = ["std"] }
+tokio = { version = "1.54.1", default-features = false, features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = { version = "0.7.20", default-features = false }
+ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
+
+[dev-dependencies]
+ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["io-util", "process", "test-util"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+tokio-tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"] }
