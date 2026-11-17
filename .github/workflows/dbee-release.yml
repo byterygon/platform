@@ -133,7 +133,7 @@ jobs:
           cp apps/dbee/RELEASE-NOTES-0.1.0.md release/RELEASE-NOTES.md
           cp apps/dbee/INSTALL.md release/INSTALL.md
           cd release
-          cat SHA256SUMS-* | sort -k2 > SHA256SUMS
+          cat SHA256SUMS-* | grep -v ' \*\?SHA256SUMS-' | sed 's/ \*/  /' | sort -k2 > SHA256SUMS
           rm SHA256SUMS-*
           sha256sum LICENSE THIRD-PARTY-NOTICES.txt INSTALL.md >> SHA256SUMS
           ls -l; cat SHA256SUMS
