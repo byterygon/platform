@@ -188,6 +188,41 @@ fn the_procedures_of_the_spec() {
             Risk::Write,
             defaults,
         ),
+        (
+            "temporal.connect",
+            Mutation,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.disconnect",
+            Mutation,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.namespaces.list",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.workflows.count",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.workflows.list",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
         ("term.resize", Mutation, "term.write", Risk::Write, defaults),
         ("term.signal", Mutation, "term.write", Risk::Write, defaults),
         ("term.write", Mutation, "term.write", Risk::Write, defaults),
@@ -218,6 +253,10 @@ fn the_procedures_of_the_spec() {
     };
     assert_eq!(redact("term.write"), ["data"]);
     assert_eq!(redact("echo.connect"), ["profile.token"]);
+    assert_eq!(
+        redact("temporal.connect"),
+        ["profile.clientKeyPem", "profile.apiKey"]
+    );
     assert_eq!(
         redact("langgraph.connect"),
         [

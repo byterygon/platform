@@ -9,6 +9,7 @@ import { App } from "@/app/App";
 import { ServicesContext } from "@/app/client";
 import { ACTIONS, displayBinding } from "@/app/shortcuts";
 import { StoreProvider, loadPersisted } from "@/app/store";
+import { TOOLS } from "@/tools/registry";
 import type { ProfileRecord } from "@/profiles/record";
 import { MemoryStorage } from "@/profiles/storage";
 import { EXPORT_FORMAT } from "@/profiles/transfer";
@@ -314,7 +315,9 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
     const text = document.querySelector("[role=listbox]")?.textContent ?? "";
     for (const a of ACTIONS) {
       if (a.id === "palette") continue;
-      const label = a.id === "tool1" ? "Switch to Echo" : a.id === "tool2" ? "Switch to LangGraph" : a.id.startsWith("tool") ? `${a.label} (no tool)` : a.label;
+      // toolN switches to the Nth tool of the registry, or says there is none.
+      const tool = a.id.startsWith("tool") ? TOOLS[Number(a.id.slice(4)) - 1] : undefined;
+      const label = tool ? `Switch to ${tool.label}` : a.id.startsWith("tool") ? `${a.label} (no tool)` : a.label;
       expect(text, a.id).toContain(label);
       if (a.keys[0]) expect(text, a.id).toContain(displayBinding(a.keys[0]));
     }

@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:883baacd369343c1f5d1d22957b0bad5ec3ecd7f3f5d4de3e6505c17b307e47c";
+export const SCHEMA_HASH = "sha256:9c7c2949fec26eab70f28b16012a40137177031861e9b2b639576e3445c7e4dc";
 
 // ---- Types
 
@@ -133,6 +133,27 @@ headers?: Array<HeaderPair> | null,
 tls?: TlsOptions | null, };
 
 /**
+ * The Temporal profile as `toConnect` builds it (spec §9.1).
+ */
+export type ConnectTemporalProfile = { name: string, 
+/**
+ * `host:port` of the frontend; 127.0.0.1:7233 when empty.
+ */
+address?: string | null, 
+/**
+ * The namespace opened first; `default` when empty.
+ */
+namespace?: string | null, tls?: TemporalTlsOptions | null, 
+/**
+ * The client certificate's private key (PEM); never logged.
+ */
+clientKeyPem?: string | null, 
+/**
+ * Sent as `Authorization: Bearer`; never logged.
+ */
+apiKey?: string | null, };
+
+/**
  * The state of a live handle (spec §2.2, "Status").
  */
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "failed" | "closed";
@@ -216,6 +237,23 @@ version?: string,
  * The server's feature flags (`assistants`, `crons`, `store`, ...).
  */
 flags: JsonValue, };
+
+/**
+ * One namespace of the cluster.
+ */
+export type NamespaceSummary = { name: string, 
+/**
+ * `Registered`, `Deprecated`, `Deleted` or `Unspecified`.
+ */
+state: string, 
+/**
+ * How long closed workflows are kept, in seconds.
+ */
+retentionSecs?: number, description: string, ownerEmail: string, isGlobal: boolean, 
+/**
+ * The namespace the profile opened first.
+ */
+isDefault: boolean, };
 
 /**
  * The target's own error code, for Details.
@@ -341,6 +379,49 @@ filter?: JsonValue | null,
  * 1 to 1000; 50 when absent.
  */
 limit?: number | null, offset?: number | null, };
+
+/**
+ * What the server reports about itself.
+ */
+export type TemporalCapabilities = { 
+/**
+ * Signals and queries carry headers.
+ */
+signalAndQueryHeader: boolean, 
+/**
+ * Which store holds visibility (`cassandra`, `mysql8`, `postgres12`, `sqlite`,
+ * `elasticsearch`, ...); empty when the cluster did not say. Cassandra has basic visibility
+ * only, so the list's query bar is limited (spec §9.3).
+ */
+visibilityStore: string, };
+
+export type TemporalConnIdInput = { connId: string, };
+
+export type TemporalConnectInput = { profile: ConnectTemporalProfile, };
+
+export type TemporalConnectOutput = { connId: string, serverVersion: string, 
+/**
+ * The cluster's name, when it reported one.
+ */
+clusterName?: string, capabilities: TemporalCapabilities, };
+
+/**
+ * TLS settings of a profile (spec §4.2 `TemporalTlsOptions`); `secrets.clientKeyPem` comes beside it as
+ * `clientKeyPem`. There is no "skip verification" (spec Open question 6).
+ */
+export type TemporalTlsOptions = { enabled: boolean, 
+/**
+ * Extra trusted CA certificates (PEM); the operating system's roots are used as well.
+ */
+caPem?: string | null, 
+/**
+ * Client certificate chain (PEM) for mTLS.
+ */
+clientCertPem?: string | null, 
+/**
+ * The name to verify the server certificate against, when it is not the address's host.
+ */
+serverName?: string | null, };
 
 /**
  * Input of `term.resize`.
@@ -509,6 +590,52 @@ export type UpdateStateOutput = {
 checkpointId?: string, checkpoint: JsonValue, };
 
 /**
+ * One row of the workflow list.
+ */
+export type WorkflowRow = { workflowId: string, runId: string, workflowType: string, status: WorkflowStatus, 
+/**
+ * RFC 3339, UTC.
+ */
+startTime?: string, closeTime?: string, 
+/**
+ * Close (or now, while running) minus start, in milliseconds, as the server reports it.
+ */
+durationMs?: number, taskQueue: string, historyLength: number, parentWorkflowId?: string, };
+
+/**
+ * The execution status of a workflow (`WorkflowExecutionStatus`).
+ */
+export type WorkflowStatus = "Running" | "Completed" | "Failed" | "Canceled" | "Terminated" | "ContinuedAsNew" | "TimedOut" | "Paused" | "Unspecified";
+
+export type WorkflowsCountInput = { connId: string, namespace?: string | null, query?: string | null, };
+
+/**
+ * The number of workflows a query matches.
+ */
+export type WorkflowsCountOutput = { count: number, };
+
+export type WorkflowsListInput = { connId: string, namespace?: string | null, 
+/**
+ * A visibility query (`WorkflowType = "Order" AND ExecutionStatus = "Running"`); every
+ * workflow when empty.
+ */
+query?: string | null, 
+/**
+ * 1 to 1,000; 50 when absent.
+ */
+pageSize?: number | null, 
+/**
+ * The `nextPageToken` of the previous page.
+ */
+nextPageToken?: string | null, };
+
+export type WorkflowsListOutput = { executions: Array<WorkflowRow>, 
+/**
+ * Absent on the last page.
+ */
+nextPageToken?: string, };
+
+/**
  * How deep to draw subgraphs: `true` all the way, a number that many levels, `false` none.
  */
 export type Xray = boolean | number;
@@ -602,6 +729,11 @@ export interface Procedures {
   readonly "langgraph.threads.search": ProcedureDef<"query", ThreadsSearchInput, Array<Thread>, ToolError>;
   readonly "langgraph.threads.state": ProcedureDef<"query", ThreadStateInput, ThreadState, ToolError>;
   readonly "langgraph.threads.updateState": ProcedureDef<"mutation", UpdateStateInput, UpdateStateOutput, ToolError>;
+  readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
+  readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
+  readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
+  readonly "temporal.workflows.count": ProcedureDef<"query", WorkflowsCountInput, WorkflowsCountOutput, ToolError>;
+  readonly "temporal.workflows.list": ProcedureDef<"query", WorkflowsListInput, WorkflowsListOutput, ToolError>;
   readonly "term.resize": ProcedureDef<"mutation", TermResizeInput, Empty, ToolError>;
   readonly "term.signal": ProcedureDef<"mutation", TermSignalInput, Empty, ToolError>;
   readonly "term.write": ProcedureDef<"mutation", TermWriteInput, Empty, ToolError>;
@@ -651,6 +783,17 @@ export interface Api {
       readonly search: Procedures["langgraph.threads.search"];
       readonly state: Procedures["langgraph.threads.state"];
       readonly updateState: Procedures["langgraph.threads.updateState"];
+    };
+  };
+  readonly temporal: {
+    readonly connect: Procedures["temporal.connect"];
+    readonly disconnect: Procedures["temporal.disconnect"];
+    readonly namespaces: {
+      readonly list: Procedures["temporal.namespaces.list"];
+    };
+    readonly workflows: {
+      readonly count: Procedures["temporal.workflows.count"];
+      readonly list: Procedures["temporal.workflows.list"];
     };
   };
   readonly term: {
@@ -969,6 +1112,62 @@ export const procedures: Api = {
         kind: "mutation",
         perm: "langgraph.write",
         risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+  },
+  temporal: {
+    connect: {
+      name: "temporal.connect",
+      kind: "mutation",
+      perm: "temporal.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    disconnect: {
+      name: "temporal.disconnect",
+      kind: "mutation",
+      perm: "temporal.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    namespaces: {
+      list: {
+        name: "temporal.namespaces.list",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    workflows: {
+      count: {
+        name: "temporal.workflows.count",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "temporal.workflows.list",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,

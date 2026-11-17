@@ -3,9 +3,10 @@
 // Kubernetes, Temporal, Docker, LangGraph). `echo` is the foundation's sample.
 import { echoTool } from "./echo";
 import { langgraphTool } from "./langgraph";
+import { temporalTool } from "./temporal";
 import type { ToolModule } from "./types";
 
-export const TOOLS: readonly ToolModule[] = [echoTool, langgraphTool];
+export const TOOLS: readonly ToolModule[] = [echoTool, langgraphTool, temporalTool];
 
 export function toolById(tools: readonly ToolModule[], id: string): ToolModule | undefined {
   return tools.find((t) => t.id === id);
