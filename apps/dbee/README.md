@@ -137,7 +137,12 @@ and audit sink as the web shell. `files.chooseSavePath` opens the native save di
 cargo run -p dbee-desktop                      # DBEE_WORKSPACE overrides the workspace directory
 DBEE_COLD_START_EXIT=1 cargo run -p dbee-desktop   # print the cold-start times and exit (CI runs this under Xvfb)
 cargo test -p dbee-desktop                     # the app on Tauri's mock runtime; config and capability pinned
+apps/dbee/acceptance/acceptance.sh perf        # DOC-18 §1 budget on the real app (driver: examples/acceptance)
 ```
+
+`examples/acceptance` (TSK-61) is the acceptance driver: the same app with the TSK-39 bench hook
+and a driver script installed on the `main` window, measuring the spec §1 budget through the UI
+against a real PostgreSQL (`apps/dbee/acceptance`). It is an example, never shipped.
 
 `build.frontendDist` is `../ui/dist`, the built UI; without it `build.rs` embeds `ui-placeholder/`
 and warns, so a Rust-only build still compiles. Secrets go to the OS keychain where one exists;
