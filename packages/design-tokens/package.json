@@ -22,6 +22,10 @@
       "types": "./dist/build.d.ts",
       "import": "./dist/build.js"
     },
+    "./cli": {
+      "types": "./dist/cli/main.d.ts",
+      "import": "./dist/cli/main.js"
+    },
     "./monaco": {
       "types": "./src/monaco.ts",
       "import": "./src/monaco.ts",
