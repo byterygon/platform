@@ -354,6 +354,28 @@ importers:
         specifier: 4.3.5
         version: 4.3.5
 
+  packages/mcp:
+    dependencies:
+      '@byterygon/design-tokens':
+        specifier: workspace:*
+        version: link:../design-tokens
+      '@byterygon/lint':
+        specifier: workspace:*
+        version: link:../lint
+      '@byterygon/ui':
+        specifier: workspace:*
+        version: link:../ui
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.2
+        version: 1.32.2(supports-color@10.2.2)(zod@4.6.7)
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 24.19.2
+        version: 24.19.2
+
   packages/theme-studio:
     dependencies:
       '@byterygon/design-tokens':

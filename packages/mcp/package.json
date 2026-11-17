@@ -1,0 +1,33 @@
+{
+  "name": "@byterygon/ui-mcp",
+  "version": "0.0.0",
+  "description": "A local stdio MCP server for Byterygon UI: search and explain tokens, read component manifests and examples, validate a theme, check classes, list and install registry items. No listener, no network.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "by-ui-mcp": "./bin/by-ui-mcp.js"
+  },
+  "exports": {
+    ".": "./src/server.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@byterygon/design-tokens": "workspace:*",
+    "@byterygon/lint": "workspace:*",
+    "@byterygon/ui": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "paths": {
+      "@byterygon/design-tokens": ["../design-tokens/src/index.ts"],
+      "@byterygon/design-tokens/cli": ["../design-tokens/src/cli/main.ts"]
+    }
+  },
+  "include": ["src", "bin"]
+}
