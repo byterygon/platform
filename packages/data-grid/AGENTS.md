@@ -18,6 +18,7 @@ src/renderer.ts      CellLayer: the body's rows and cells as plain divs, recycle
 src/DataGrid.tsx     the React shell: role="grid" scroller, header, sizer, probe, keyboard, pointer, live region
 src/data-grid.css    token roles only (test/conventions.test.ts)
 demo/                a 1,000,000 x 10 synthetic stream built in a Worker (`pnpm --filter @byterygon/data-grid demo`)
+scripts/frame-check.ts  the demo in Chromium over CDP: frame intervals while streaming, heap, network
 test/                Vitest in jsdom; fixtures written as Arrow IPC and read back through decodeArrow
 ```
 
@@ -71,7 +72,9 @@ the bottom. `aria-rowcount` is -1 until the stream is no longer live.
 ```sh
 pnpm --filter @byterygon/data-grid test        # Vitest (jsdom): cells, model, grid + axe, conventions
 pnpm --filter @byterygon/data-grid typecheck
-pnpm --filter @byterygon/data-grid demo        # http://127.0.0.1:5179/?rows=1000000&density=compact&theme=light
+pnpm --filter @byterygon/data-grid lint        # @byterygon/lint (ESLint + Stylelint token rules)
+pnpm --filter @byterygon/data-grid check:browser   # Chromium over CDP; skips without a browser unless BYTERYGON_REQUIRE_BROWSER=1
+pnpm --filter @byterygon/data-grid demo        # http://127.0.0.1:5179/?rows=1000000&pace=25&budget=256&density=compact&theme=light
 ```
 
 ## Choices made here (DOC-18 Open question 13, decided by Uy Son on 2026-11-17)
@@ -112,6 +115,25 @@ Batch 2 added (DOC-18 Open question 14):
 14. **A single selected cell is not shaded**, only ringed (the active cell); ranges are shaded.
 15. **Page Up/Down** move by the rows in view minus one.
 
+## Frame time (Decision 17)
+
+`check:browser` scrolls 200 px per frame for 3 s while 1,000,000 x 10 rows stream from a Worker
+(a batch of 4,096 rows every 25 ms), then on the loaded result. It reports the frame interval
+(p50/p95/p99/max, frames over 1.5 refresh intervals), the grid's own work per frame, and the JS heap
+after loading. The gate is reported literally (p95 < 16 ms, which a 60 Hz display can never meet)
+and as proposed in DOC-18 Open question 14 (p95 within 1.1 x the refresh interval); `--enforce`
+fails on the proposed one. WebKitGTK is not measured by this script (Chromium only).
+
+Measured on 2026-11-17, Apple Silicon (macOS), Chrome for Testing 1228 headless, 60 Hz:
+
+| Scenario | p50 | p95 | p99 | max | long frames | work p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| streaming (131k to 508k rows during the scroll) | 16.7 ms | 16.8 ms | 16.8 ms | 16.8 ms | 0 | 0.7 ms |
+| static (1M rows loaded) | 16.7 ms | 16.7 ms | 16.8 ms | 16.8 ms | 0 | 0.7 ms |
+
+JS heap after loading 1M rows: 4.2 MiB, with 97.4 MiB of Arrow buffers held outside it (no per-row
+objects).
+
 ## Status
 
-Batches 1 and 2 (this package). Batch 3 wires it into DBee and measures frame time.
+Batches 1 to 3 of TSK-39: the package, streaming and interaction, and DBee's results panel on it.

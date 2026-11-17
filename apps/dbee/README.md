@@ -9,7 +9,7 @@ this directory.
 The product is specified in the Notion Docs page **"DBee: UX and app spec for the first usable
 version"** (TSK-37), summarised below; TSK-38 (app skeleton) and TSK-39 (data grid) implement it.
 The spec is the source of truth; this file only orients a reader. `core/`, `rpc-gen/`,
-`server/`, `desktop/` and `ui/` exist (TSK-38); the data grid is TSK-39.
+`server/`, `desktop/` and `ui/` exist (TSK-38); the results use the data grid (TSK-39, `packages/data-grid`).
 
 ## The first usable version
 
@@ -153,8 +153,15 @@ registry moved on). The app builds one client, `createClient(api, autoTransport(
 generated `src/gen/api.ts`; `autoTransport` picks Tauri IPC in the desktop webview and the
 WebSocket to the page's origin in a browser, and nothing else in the code branches on the shell
 except the shortcut table (browser-owned keys use Alt+Shift on web) and the export destination.
-Arrow chunks are decoded in a Worker (`src/app/arrow-worker.ts`); the results table reads the
-buffers directly (Int64 as BigInt, NULL from the validity bitmap) until the data grid (TSK-39).
+Arrow chunks are decoded in a Worker (`src/app/arrow-worker.ts`). A run keeps the decoded stream
+(`Run.stream`) and the results panel hands it to `DataGrid` (`@byterygon/data-grid`, spec §6),
+which pulls the batches once under its 256 MiB memory budget (its pull rate is the credit
+backpressure), reads the buffers directly and shows "Loaded n rows, scroll for more" when the
+budget paused the stream. `runStatement` follows the same `ResultSource` for the row count and the
+outcome. Resized column widths are kept per tab by column name in `tabs.json`. Copy (Ctrl+C, and
+Ctrl+Shift+C opening the TSV/CSV/JSON menu) and the value viewer (Enter, F2) go through the grid's
+handle. A benchmark harness (TSK-36) sets `globalThis.__DBEE_BENCH__ = {}` before the app loads to
+receive the grid's handle and frame samples (`src/app/bench.ts`); without it nothing is exposed.
 Screens: the shell (sidebar tree, query tabs, status bar, command palette, toasts), the connection
 form (TanStack Form) and the approval dialog built from the core's preview, the schema browser,
 query tabs on SqlEditor with the destructive-statement confirmation, results with the cell viewer,

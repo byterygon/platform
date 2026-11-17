@@ -23,7 +23,7 @@ export interface QueryTabProps {
   shell: Shell;
   splitSizes: number[];
   onSplitSizes: (sizes: number[]) => void;
-  onChange: (patch: { sql?: string; connectionId?: string | null; maxRows?: number | null; statementsInRun?: number }) => void;
+  onChange: (patch: { sql?: string; connectionId?: string | null; maxRows?: number | null; statementsInRun?: number; columnWidths?: Record<string, number> }) => void;
   /** Runs the text; the caller classifies and confirms. */
   onRun: (sql: string) => void;
   onCancel: () => void;
@@ -124,7 +124,7 @@ export function QueryTab({ tab, connections, shell, splitSizes, onSplitSizes, on
         </ResizablePanel>
         <ResizableHandle aria-label="Resize editor and results" withGrip />
         <ResizablePanel minSize={15}>
-          <ResultsPanel run={tab.run} onExport={onExport} onCancel={onCancel} onRemedy={onRemedy} />
+          <ResultsPanel run={tab.run} onExport={onExport} onCancel={onCancel} onRemedy={onRemedy} columnWidths={tab.columnWidths} onColumnWidths={(columnWidths) => onChange({ columnWidths })} />
         </ResizablePanel>
       </Resizable>
     </div>

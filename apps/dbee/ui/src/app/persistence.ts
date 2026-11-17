@@ -25,6 +25,8 @@ export interface PersistedTab {
   sql: string;
   /** Row limit for a run; null is unlimited (Decision 13). */
   maxRows: number | null;
+  /** Result column widths in px by column name (spec §6: resized widths persist per tab). */
+  columnWidths?: Record<string, number>;
 }
 
 export interface Settings extends Appearance {
@@ -84,6 +86,13 @@ export interface Storage {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
+/** Column widths from a document: positive finite numbers by name; nothing when there are none. */
+function widthsOf(raw: unknown): { columnWidths?: Record<string, number> } {
+  if (!isRecord(raw)) return {};
+  const widths = Object.fromEntries(Object.entries(raw).filter((e): e is [string, number] => typeof e[1] === "number" && Number.isFinite(e[1]) && e[1] > 0));
+  return Object.keys(widths).length > 0 ? { columnWidths: widths } : {};
+}
+
 /** The state from its flat form (the legacy blob, or the two documents merged), defaults for anything missing or malformed. */
 function normalize(raw: Record<string, unknown>): Persisted {
   const tabs: PersistedTab[] = Array.isArray(raw["tabs"])
@@ -95,6 +104,7 @@ function normalize(raw: Record<string, unknown>): Persisted {
                 connectionId: typeof t["connectionId"] === "string" ? t["connectionId"] : null,
                 sql: typeof t["sql"] === "string" ? t["sql"] : "",
                 maxRows: typeof t["maxRows"] === "number" ? t["maxRows"] : null,
+                ...widthsOf(t["columnWidths"]),
               },
             ]
           : [],
@@ -135,7 +145,7 @@ export function toDocuments(state: Persisted): Documents {
     },
     tabs: {
       version: DOCUMENT_VERSION,
-      tabs: state.tabs.map((t) => ({ id: t.id, connectionId: t.connectionId, sql: t.sql, maxRows: t.maxRows })),
+      tabs: state.tabs.map((t) => ({ id: t.id, connectionId: t.connectionId, sql: t.sql, maxRows: t.maxRows, ...(t.columnWidths ? { columnWidths: t.columnWidths } : {}) })),
       activeTab: state.activeTab,
     },
   };

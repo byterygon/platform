@@ -22,7 +22,7 @@ const grid = useRef<DataGridHandle>(null);
 | `follow` | keep the newest rows in view while streaming, when at the bottom |
 | `aria-label` / `aria-labelledby` | the grid's name |
 | `rowHeight` | px; default `grid.row-height` of the current density |
-| `columnWidths`, `onColumnWidthsChange` | widths to restore and the widths after a resize |
+| `columnWidths`, `onColumnWidthsChange` | widths to restore (an `undefined` entry takes the default) and the widths after a resize |
 | `onProgress` | rows, bytes and state: `schema`, `streaming`, `paused`, `done`, `cancelled`, `error` |
 | `onSelectionChange` | active cell, range, cell count and the active cell's full value |
 | `onOpenCell` | Enter, F2 or double click on a cell |

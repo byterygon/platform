@@ -1,6 +1,7 @@
 // What the screens do with the core (DBee spec §3.11 flows, §8 states): load and refresh
 // connections, open sessions, browse the schema, run statements, export. Every call goes through
 // the one client; every failure becomes a described error with its correlation id.
+import { sourceFor } from "@byterygon/data-grid";
 import type { Dispatch } from "react";
 import type { ConnectionStatus, ConnectionSummary, ExecuteSummary } from "@/gen/api";
 import { type Services, executeArrow } from "./client";
@@ -100,15 +101,19 @@ export interface RunHandle {
   done: Promise<void>;
 }
 
-/** The memory budget of the minimal table: rows kept in the browser (spec Decision 13, Open question 4). */
-export const ROW_BUDGET = 200_000;
+/** How often the run's row count reaches the store while streaming, in ms (the status line). */
+const PROGRESS_INTERVAL_MS = 250;
 
-/** Runs `sql` in the tab: rows stream into the tab's run as Arrow batches arrive. */
+/**
+ * Runs `sql` in the tab. The decoded stream goes into the tab's run and the data grid pulls its
+ * batches (spec §6): the grid's pull rate is the backpressure and its memory budget bounds what
+ * the browser holds. Here the run follows the grid's source for the row count and the outcome.
+ */
 export function runStatement(ctx: Ctx, tabId: string, sql: string, getState: () => State): RunHandle {
   const { dispatch } = ctx;
   const startedAt = performance.now();
   const controller = new AbortController();
-  let run: Run = { status: "running", startedAt, elapsedMs: 0, fields: [], batches: [], rows: 0 };
+  let run: Run = { status: "running", startedAt, elapsedMs: 0, fields: [], rows: 0 };
   const update = (patch: Partial<Run>) => {
     run = { ...run, ...patch, elapsedMs: performance.now() - startedAt };
     dispatch({ type: "run", id: tabId, run });
@@ -126,30 +131,46 @@ export function runStatement(ctx: Ctx, tabId: string, sql: string, getState: () 
     }
     const tab = tabOf(getState(), tabId);
     const stream = executeArrow(ctx.services, { sessionId, sql, maxRows: tab?.maxRows ?? null }, controller.signal);
+    // The grid's source of this stream; subscribing here starts it even before the grid mounts.
+    const source = sourceFor(stream);
+    let reported = 0;
+    let finished!: () => void;
+    const sourceEnded = new Promise<void>((resolve) => (finished = resolve));
+    const unsubscribe = source.subscribe(() => {
+      const progress = source.progress;
+      const now = performance.now();
+      if (!source.live) finished();
+      if (run.status !== "running") return;
+      const paused = progress.state === "paused";
+      if (paused || now - reported >= PROGRESS_INTERVAL_MS) {
+        reported = now;
+        update({ rows: progress.rows, note: paused ? `Loaded ${progress.rows.toLocaleString("en-US")} rows, scroll for more` : undefined });
+      }
+    });
     try {
       const fields = await stream.schema;
-      update({ fields });
-      for await (const batch of stream.batches()) {
-        if (run.rows >= ROW_BUDGET) {
-          // The budget pauses what the table keeps; the stream is cancelled, the rows stay.
-          stream.cancel();
-          update({ note: `Loaded ${run.rows.toLocaleString("en-US")} rows (memory budget); the rest was not fetched` });
-          break;
-        }
-        update({ batches: [...run.batches, batch], rows: run.rows + batch.numRows });
-      }
-      const summary: ExecuteSummary = await stream.result;
-      update({ status: "done", summary });
+      update({ fields, stream });
+      // The server's end can arrive before the grid took the last batches: wait for both.
+      const [summary] = await Promise.all([stream.result, sourceEnded]);
+      if (source.state === "error") {
+        update({ status: "error", rows: source.index.rowCount, error: { title: "Could not decode the result", description: "The result is not an Arrow stream." } });
+      } else update({ status: "done", summary, rows: source.index.rowCount, note: undefined });
     } catch (e) {
       const described = describeError(e, "run");
-      if (described.code === "Cancelled" || controller.signal.aborted) {
-        update({ status: "cancelled", note: `Cancelled after ${((performance.now() - startedAt) / 1000).toFixed(1)} s, ${run.rows.toLocaleString("en-US")} rows kept` });
-      } else if (run.note !== undefined && described.code === "Cancelled") {
-        update({ status: "done" });
+      const rows = source.index.rowCount;
+      const cancelled = described.code === "Cancelled" || controller.signal.aborted;
+      if (cancelled && source.state === "error" && !controller.signal.aborted) {
+        // decodeArrow cancels the call when the bytes are not Arrow (spec §8, grid streaming).
+        update({ status: "error", rows, error: { title: "Could not decode the result", description: "The result is not an Arrow stream." } });
+      } else if (cancelled) {
+        source.cancel();
+        update({ status: "cancelled", rows, note: `Cancelled after ${((performance.now() - startedAt) / 1000).toFixed(1)} s, ${rows.toLocaleString("en-US")} rows kept` });
       } else {
-        update({ status: "error", error: described });
+        update({ status: "error", rows, error: described });
         if (described.code === "Unavailable" || described.remedy === "reconnect") dispatch({ type: "session", id: tabId, sessionId: null });
       }
+    } finally {
+      unsubscribe();
     }
   })();
   return { cancel: () => controller.abort(), done };

@@ -1,7 +1,7 @@
 // Application state (DBee spec §3): the connections and their live status, the schema cache, the
 // query tabs with their runs, the open dialogs and the settings. One reducer, one context; what
 // must survive a restart goes to the workspace through the WorkspaceSaver (workspace.ts).
-import type { ArrowBatch, ArrowField } from "@byterygon/ambidex/arrow";
+import type { ArrowField, ArrowStream } from "@byterygon/ambidex/arrow";
 import { type Dispatch, type ReactNode, createContext, useContext, useEffect, useMemo, useReducer } from "react";
 import type { AppInfo, ColumnInfo, ConnectionStatus, ConnectionSummary, ExecuteSummary, TableInfo } from "@/gen/api";
 import type { Described } from "./messages";
@@ -15,12 +15,14 @@ export interface Run {
   startedAt: number;
   elapsedMs: number;
   fields: readonly ArrowField[];
-  batches: ArrowBatch[];
+  /** The decoded result; the data grid iterates its batches (spec §6), once. */
+  stream?: ArrowStream<ExecuteSummary>;
+  /** Rows the grid holds (updated a few times a second while streaming). */
   rows: number;
   summary?: ExecuteSummary;
   error?: Described;
   /** Rows kept when the run was cancelled or paused by the memory budget. */
-  note?: string;
+  note?: string | undefined;
 }
 
 export interface Tab extends PersistedTab {
@@ -88,7 +90,7 @@ export type Action =
   | { type: "closeTab"; id: string }
   | { type: "activateTab"; id: string }
   | { type: "reorderTab"; id: string; index: number }
-  | { type: "editTab"; id: string; sql?: string; connectionId?: string | null; maxRows?: number | null; statementsInRun?: number }
+  | { type: "editTab"; id: string; sql?: string; connectionId?: string | null; maxRows?: number | null; statementsInRun?: number; columnWidths?: Record<string, number> }
   | { type: "session"; id: string; sessionId: string | null }
   | { type: "run"; id: string; run: Run | null }
   | { type: "select"; nodeId: string | null }
@@ -167,7 +169,7 @@ export function reducer(state: State, action: Action): State {
       return { ...state, tabs };
     }
     case "editTab": {
-      const tabs = state.tabs.map((t) => (t.id === action.id ? { ...t, ...(action.sql !== undefined ? { sql: action.sql } : {}), ...(action.connectionId !== undefined ? { connectionId: action.connectionId } : {}), ...(action.maxRows !== undefined ? { maxRows: action.maxRows } : {}) } : t));
+      const tabs = state.tabs.map((t) => (t.id === action.id ? { ...t, ...(action.sql !== undefined ? { sql: action.sql } : {}), ...(action.connectionId !== undefined ? { connectionId: action.connectionId } : {}), ...(action.maxRows !== undefined ? { maxRows: action.maxRows } : {}), ...(action.columnWidths !== undefined ? { columnWidths: action.columnWidths } : {}) } : t));
       const current = state.tabsRuntime[action.id];
       if (!current) return { ...state, tabs };
       const changedConnection = action.connectionId !== undefined && action.connectionId !== state.tabs.find((t) => t.id === action.id)?.connectionId;
