@@ -1,11 +1,23 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023"],
-    "types": ["node"],
+    "lib": [
+      "ES2023"
+    ],
+    "types": [
+      "node"
+    ],
     "allowJs": true,
     "checkJs": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@byterygon/design-tokens": [
+        "../design-tokens/src/index.ts"
+      ]
+    }
   },
-  "include": ["src", "stylelint-config.js"]
+  "include": [
+    "src",
+    "stylelint-config.js"
+  ]
 }
