@@ -1,7 +1,7 @@
 // Synthetic record batches shaped like the PostgreSQL driver's (the same Arrow types and buffers
 // decodeArrow yields), built directly in JavaScript: the demo and the browser measurement need
 // a million rows without a database or apache-arrow.
-import type { ArrowBatch, ArrowData, ArrowField } from "@byterygon/ambidex/arrow";
+import type { ArrowBatch, ArrowData, ArrowField, ArrowStream } from "@byterygon/ambidex/arrow";
 
 const field = (name: string, type: string, typeId: number, metadata: Record<string, string> = {}): ArrowField => ({ name, type, typeId, nullable: true, children: [], metadata });
 
@@ -82,5 +82,75 @@ export function syntheticBatch(start: number, rows: number): ArrowBatch {
       strings("Utf8", 5, notes),
       strings("Binary", 4, blobs),
     ],
+  };
+}
+
+/**
+ * A synthetic `ArrowStream` of `total` rows in batches of `batchRows`, each batch after `delayMs`
+ * (a stand-in for the server and the Worker). Like decodeArrow, it builds the next batch only
+ * when the consumer asks for it, so the consumer's pull rate is the backpressure.
+ */
+export function syntheticStream(total: number, batchRows = 4096, delayMs = 2): ArrowStream<{ rows: number }> & { readonly built: number } {
+  let cancelled = false;
+  let built = 0;
+  let iterating = false;
+  return {
+    schema: Promise.resolve(SYNTHETIC_FIELDS),
+    result: Promise.resolve({ rows: total }),
+    get built() {
+      return built;
+    },
+    cancel: () => {
+      cancelled = true;
+    },
+    batches: () => {
+      if (iterating) throw new TypeError("already being iterated");
+      iterating = true;
+      return {
+        async *[Symbol.asyncIterator]() {
+          for (let start = 0; start < total; start += batchRows) {
+            await new Promise((r) => setTimeout(r, delayMs));
+            if (cancelled) throw Object.assign(new Error("call cancelled"), { code: "Cancelled" });
+            built += 1;
+            yield syntheticBatch(start, Math.min(batchRows, total - start));
+          }
+        },
+      };
+    },
+  };
+}
+
+/** As `syntheticStream`, with the batches built in a Worker and transferred (the realistic path). */
+export function workerStream(total: number, batchRows = 4096): ArrowStream<{ rows: number }> {
+  const worker = new Worker(new URL("./synthetic-worker.ts", import.meta.url), { type: "module" });
+  let cancelled = false;
+  let iterating = false;
+  const request = (start: number, rows: number) =>
+    new Promise<ArrowBatch>((resolve) => {
+      worker.onmessage = (e: MessageEvent<ArrowBatch>) => resolve(e.data);
+      worker.postMessage({ start, rows });
+    });
+  return {
+    schema: Promise.resolve(SYNTHETIC_FIELDS),
+    result: Promise.resolve({ rows: total }),
+    cancel: () => {
+      cancelled = true;
+    },
+    batches: () => {
+      if (iterating) throw new TypeError("already being iterated");
+      iterating = true;
+      return {
+        async *[Symbol.asyncIterator]() {
+          try {
+            for (let start = 0; start < total; start += batchRows) {
+              if (cancelled) throw Object.assign(new Error("call cancelled"), { code: "Cancelled" });
+              yield await request(start, Math.min(batchRows, total - start));
+            }
+          } finally {
+            worker.terminate();
+          }
+        },
+      };
+    },
   };
 }

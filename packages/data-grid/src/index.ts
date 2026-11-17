@@ -1,5 +1,22 @@
 // @byterygon/data-grid: the virtualized Arrow data grid (DBee spec §6). See AGENTS.md.
-export { DataGrid, type DataGridProps } from "./DataGrid.tsx";
+export { DataGrid, type DataGridHandle, type DataGridProps, type SelectionInfo } from "./DataGrid.tsx";
+export { type CopyFormat, serializeRange } from "./copy.ts";
+export { DEFAULT_MEMORY_BUDGET, NEAR_END_SCREENS, type ResultProgress, ResultSource, type ResultState, retain, sourceFor } from "./result-source.ts";
+export {
+  type CellPos,
+  type CellRange,
+  cellCount,
+  contains,
+  moveSelection,
+  moveTarget,
+  rangeOf,
+  type Selection,
+  type SelectionKind,
+  selectAll,
+  selectColumns,
+  selectRows,
+  single,
+} from "./selection.ts";
 export { BatchIndex, batchByteLength, dataByteLength } from "./batch-index.ts";
 export {
   BINARY_PREVIEW,

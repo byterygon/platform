@@ -1,56 +1,8 @@
 // DataGrid in jsdom: the shell, the cell layer's rows and cells, scrolling, and axe.
-import axe from "axe-core";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, describe, expect, test } from "vitest";
-import { DataGrid, type DataGridProps } from "../src/index.ts";
+import { describe, expect, test } from "vitest";
+import { axeViolations, render, rowsIn, textOf } from "./render.tsx";
 import { decoded, driverTable, table } from "./support.ts";
-
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// jsdom has no layout: the scroller reports a 640 x 320 viewport, everything else 0.
-const VIEW = { width: 640, height: 320 };
-beforeAll(() => {
-  for (const [prop, size] of [
-    ["clientWidth", VIEW.width],
-    ["clientHeight", VIEW.height],
-  ] as const) {
-    Object.defineProperty(HTMLElement.prototype, prop, {
-      configurable: true,
-      get(this: HTMLElement) {
-        return this.classList.contains("bdg-scroller") ? size : 0;
-      },
-    });
-  }
-});
-
-let root: Root | undefined;
-let container: HTMLElement | undefined;
-afterEach(() => {
-  if (root) act(() => root!.unmount());
-  container?.remove();
-  root = undefined;
-});
-
-function render(props: DataGridProps): HTMLElement {
-  container = document.createElement("main");
-  container.setAttribute("data-density", "compact");
-  document.body.append(container);
-  root = createRoot(container);
-  act(() => root!.render(<DataGrid {...props} />));
-  return container;
-}
-
-async function axeViolations(el: HTMLElement): Promise<string[]> {
-  const result = await axe.run(el, {
-    runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
-    rules: { "color-contrast": { enabled: false } },
-  });
-  return result.violations.map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(" ")).join(", ")})`);
-}
-
-const rowsIn = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>(".bdg-body > [role=row]:not([hidden])")];
-const textOf = (row: HTMLElement) => [...row.querySelectorAll<HTMLElement>("[role=gridcell]:not([hidden])")].map((c) => c.textContent);
 
 async function bigResult(rows: number, batchRows: number) {
   const ids = Array.from({ length: rows }, (_, i) => i);

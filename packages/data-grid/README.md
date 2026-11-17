@@ -8,19 +8,25 @@ validity bitmap), renders only the rows and columns in view, and is styled with
 ```tsx
 import "@byterygon/design-tokens/default/tokens.css";
 import "@byterygon/data-grid/styles.css";
-import { DataGrid } from "@byterygon/data-grid";
+import { DataGrid, type DataGridHandle } from "@byterygon/data-grid";
 
-<DataGrid fields={fields} batches={batches} aria-label="Result" onFrameSample={(s) => log(s.duration)} />;
+const grid = useRef<DataGridHandle>(null);
+<DataGrid ref={grid} stream={decodeArrow(client.query.execute({ sql }), worker)} aria-label="Result" onProgress={setStatus} />;
 ```
 
 | Prop | |
 | --- | --- |
-| `fields` | the schema (`ArrowField[]`) |
-| `batches` | the record batches (`ArrowBatch[]`), kept as given |
+| `stream` | an `ArrowStream` from `decodeArrow`; its `batches()` is iterated once, by the grid |
+| `fields` + `batches` | or a complete result |
+| `memoryBudget` | buffer bytes held before pulling only near the loaded end (default 256 MiB) |
+| `follow` | keep the newest rows in view while streaming, when at the bottom |
 | `aria-label` / `aria-labelledby` | the grid's name |
 | `rowHeight` | px; default `grid.row-height` of the current density |
-| `columnWidths` | px; default from the types and the first 200 rows |
+| `columnWidths`, `onColumnWidthsChange` | widths to restore and the widths after a resize |
+| `onProgress` | rows, bytes and state: `schema`, `streaming`, `paused`, `done`, `cancelled`, `error` |
+| `onSelectionChange` | active cell, range, cell count and the active cell's full value |
+| `onOpenCell` | Enter, F2 or double click on a cell |
+| `onCopyWithHeaders` | Ctrl+Shift+C: show a TSV/CSV/JSON menu, then call `grid.current.copy(format, true)` |
 | `onFrameSample` | frame duration while scrolling; also `performance.measure("dbee.grid.frame")` |
 
-Streaming input, selection, keyboard and copy arrive in the next TSK-39 batch. See
-[AGENTS.md](AGENTS.md) for the design and the rules the tests enforce.
+See [AGENTS.md](AGENTS.md) for the design and the rules the tests enforce.

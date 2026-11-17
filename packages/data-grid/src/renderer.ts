@@ -34,6 +34,8 @@ export interface CellLayerOptions {
   readonly overscanRows?: number;
   readonly overscanColumns?: number;
   readonly onFrameSample?: (sample: FrameSample) => void;
+  /** After each frame: the last row in view and how many rows fit the viewport (see ResultSource). */
+  readonly onViewport?: (lastRow: number, screenRows: number) => void;
 }
 
 interface CellSlot {
@@ -78,6 +80,9 @@ export class CellLayer {
   readonly #overscanRows: number;
   readonly #overscanColumns: number;
   #onFrameSample: ((sample: FrameSample) => void) | undefined;
+  readonly #onViewport: ((lastRow: number, screenRows: number) => void) | undefined;
+  /** The active cell (roving focus target), or undefined. */
+  #active: { row: number; column: number } | undefined;
 
   #index: BatchIndex | undefined;
   #formats: readonly ColumnFormat[] = [];
@@ -104,6 +109,7 @@ export class CellLayer {
     this.#overscanRows = options.overscanRows ?? 4;
     this.#overscanColumns = options.overscanColumns ?? 1;
     this.#onFrameSample = options.onFrameSample;
+    this.#onViewport = options.onViewport;
     this.rows = new RowAxis(32);
     this.#scroller.addEventListener("scroll", this.#onScroll, { passive: true });
   }
@@ -125,18 +131,44 @@ export class CellLayer {
   }
 
   /** Rows were appended to the index: grow the scroll range without moving the rows in view. */
-  rowsAdded(): void {
+  rowsAdded(follow = false): void {
     const index = this.#index;
     if (index === undefined) return;
     const rows = this.rows;
     if (rows.count === index.rowCount) return;
+    const scroller = this.#scroller;
+    // "Follow" applies only when the user is already at the bottom.
+    const atBottom = scroller.scrollTop >= rows.scrollHeight - rows.viewport - 1;
     // Keep the content at the top of the viewport where it is; with a scaled range the same
     // scrollTop would map to another row once the count changes.
-    const virtualTop = rows.toVirtual(this.#scroller.scrollTop);
+    const virtualTop = rows.toVirtual(scroller.scrollTop);
     rows.count = index.rowCount;
     this.#applySize();
-    if (rows.scaled) this.#scroller.scrollTop = rows.toScroll(virtualTop);
+    if (follow && atBottom) scroller.scrollTop = rows.scrollHeight;
+    else if (rows.scaled) scroller.scrollTop = rows.toScroll(virtualTop);
     this.schedule();
+  }
+
+  /** The active cell: it gets tabindex 0 and, while the grid has focus, the focus. */
+  setActive(active: { row: number; column: number } | undefined): void {
+    this.#active = active;
+    this.redecorate();
+  }
+
+  /** Scrolls so that (row, column) is fully in view (no smooth scrolling). */
+  reveal(row: number, column: number): void {
+    const scroller = this.#scroller;
+    const top = this.rows.reveal(row, scroller.scrollTop);
+    if (top !== scroller.scrollTop) scroller.scrollTop = top;
+    const viewport = Math.max(0, scroller.clientWidth - this.#rowHeaderWidth);
+    const left = this.columns.reveal(column, scroller.scrollLeft, viewport);
+    if (left !== scroller.scrollLeft) scroller.scrollLeft = left;
+    this.schedule();
+  }
+
+  /** Rows a Page Up / Page Down moves: the rows that fit the viewport, at least one. */
+  get pageRows(): number {
+    return Math.max(1, Math.floor(this.rows.viewport / this.rows.rowHeight) - 1);
   }
 
   setDecorator(decorator: CellDecorator | undefined): void {
@@ -303,6 +335,9 @@ export class CellLayer {
     this.#dirty = false;
     const index = this.#index;
     if (index === undefined) return { rows: 0, columns: 0 };
+    // Whether the grid holds the focus now: if the focused cell is recycled, focus must follow.
+    const active = document.activeElement;
+    const hadFocus = active !== null && this.#scroller.contains(active);
     const scrollTop = this.#scroller.scrollTop;
     const rows = this.rows;
     const rowSpan = rows.window(scrollTop, this.#overscanRows);
@@ -348,6 +383,16 @@ export class CellLayer {
     }
     // Slots not reused this frame are hidden, not removed: the next scroll takes them back.
     for (const slot of this.#free) if (!slot.el.hidden) slot.el.hidden = true;
+    // Roving focus: the active cell is the tab stop when rendered, the grid element otherwise.
+    const target = this.#active === undefined ? undefined : this.cellElement(this.#active.row, this.#active.column);
+    const scrollerTab = target === undefined ? 0 : -1;
+    if (this.#scroller.tabIndex !== scrollerTab) this.#scroller.tabIndex = scrollerTab;
+    if (hadFocus) {
+      const next = target ?? this.#scroller;
+      if (document.activeElement !== next) next.focus({ preventScroll: true });
+    }
+    const visible = rows.window(scrollTop, 0);
+    this.#onViewport?.(Math.max(0, visible.end - 1), Math.max(1, visible.end - visible.start));
     return { rows: rowSpan.end - rowSpan.start, columns: colSpan.end - colSpan.start };
   }
 
@@ -397,10 +442,12 @@ export class CellLayer {
         cell.width = width;
         cell.el.style.width = `${width}px`;
       }
-      const cls = `bdg-cell${ALIGN_CLASS[this.#formats[column]!.align]}${cell.text === null ? " bdg-null" : ""}${decorator.cellClass(row, column)}`;
+      const isActive = this.#active !== undefined && this.#active.row === row && this.#active.column === column;
+      const cls = `bdg-cell${ALIGN_CLASS[this.#formats[column]!.align]}${cell.text === null ? " bdg-null" : ""}${decorator.cellClass(row, column)}${isActive ? " bdg-active" : ""}`;
       if (cls !== cell.cls) {
         cell.cls = cls;
         cell.el.className = cls;
+        cell.el.tabIndex = isActive ? 0 : -1;
         // Every cell is selectable, so every rendered cell states whether it is selected.
         cell.el.setAttribute("aria-selected", cls.includes(" bdg-selected") ? "true" : "false");
       }
