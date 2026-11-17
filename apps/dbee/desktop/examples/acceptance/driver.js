@@ -86,7 +86,16 @@
     // Run the tab's statement (the toolbar's Run, the same action as Ctrl+Enter), time to the
     // first rows painted, then scroll 200 px per frame for `seconds` while the stream runs, then
     // wait for the end of the stream.
-    async run({ seconds }) {
+    async run({ seconds, tab }) {
+      // The active tab is restored from the workspace, which may be the cancel tab of an earlier run.
+      if (tab) {
+        // Exactly this statement: the cancel tab's title starts with the same text.
+        const tabEl = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent.includes(tab) && !t.textContent.includes(`${tab} cross join`));
+        if (!tabEl) throw new Error(`no tab ${tab}`);
+        tabEl.click();
+        await until(() => tabEl.getAttribute("aria-selected") === "true", 5000, "the bench tab");
+        await frame();
+      }
       const refreshMs = await refresh();
       hook.samples.length = 0;
       const run = toolbarButton("Query", "Run");
@@ -275,7 +284,7 @@
         if (expectSchema && treeItem(expectSchema)) return { connected: true };
         const err = document.querySelector('[data-slot="tree-error"]');
         if (err) return { connected: false, error: err.textContent.replace(/\s+/g, " ").trim() };
-        const fresh = toasts().filter((t) => !seen.has(t));
+        const fresh = toasts().filter((t) => !seen.has(t) && t.startsWith(`${name}:`));
         if (/error|expired/.test(text.replace(name, "")) || fresh.some((t) => /password/i.test(t))) {
           return { connected: false, shown: fresh.join(" | ") || text };
         }

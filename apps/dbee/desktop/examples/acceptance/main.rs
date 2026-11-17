@@ -399,7 +399,7 @@ async fn scenario(
     let run = step(
         &window,
         "run",
-        json!({ "seconds": seconds }),
+        json!({ "seconds": seconds, "tab": TAB_SQL }),
         Duration::from_secs(900),
     )
     .await?;
