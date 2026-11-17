@@ -134,12 +134,14 @@ export interface TreeItemProps {
   active: boolean;
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: () => void;
+  /** A right click (or the context-menu key) on the row; it selects the row first. */
+  onContextMenu?: () => void;
   /** Row height, from the tree's `size`. */
   size?: TreeSize;
 }
 
 /** One node's row (role="treeitem"): chevron, icon, label and meta, indented by level. Tree renders one per visible node. */
-export function TreeItem({ id, node, level, setSize, posInSet, top, expanded, selected, active, onClick, onDoubleClick, size = "small" }: TreeItemProps) {
+export function TreeItem({ id, node, level, setSize, posInSet, top, expanded, selected, active, onClick, onDoubleClick, onContextMenu, size = "small" }: TreeItemProps) {
   return (
     <div
       id={id}
@@ -159,6 +161,7 @@ export function TreeItem({ id, node, level, setSize, posInSet, top, expanded, se
       style={{ top, paddingInlineStart: `calc(${level - 1} * var(--by-size-icon-md) + var(--by-space-inset-xs))` }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
       className={cn(classes.row, treeVariants.size[size])}
     >
       {expanded !== undefined ? (
@@ -467,6 +470,12 @@ export function Tree({
               active={row.key === active?.key}
               onClick={(event) => onRowClick(row, event)}
               onDoubleClick={() => !node.disabled && onAction?.(node)}
+              // A context menu (ContextMenu around the tree) acts on the row it was opened on:
+              // select it first, as a click would. The event is not stopped, so the menu opens.
+              onContextMenu={() => {
+                setActiveKey(row.key);
+                select(node);
+              }}
               size={size}
             />
           );
