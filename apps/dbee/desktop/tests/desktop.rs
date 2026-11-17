@@ -327,6 +327,10 @@ fn the_config_has_the_strict_csp_no_dev_url_and_one_window() {
     let windows = config["app"]["windows"].as_array().unwrap();
     assert_eq!(windows.len(), 1);
     assert_eq!(windows[0]["label"], MAIN_WINDOW);
+    assert!(
+        windows[0].get("transparent").is_none(),
+        "only the Windows file makes the window transparent"
+    );
     assert!(windows[0].get("url").is_none(), "bundled index.html only");
     // The policy itself: nothing remote, the IPC origins only, a worker from the bundle.
     let csp = ambidex_tauri::CSP;
@@ -344,4 +348,27 @@ fn the_config_has_the_strict_csp_no_dev_url_and_one_window() {
         "'unsafe-inline' only for styles"
     );
     assert_eq!(config["identifier"], "com.byterygon.dbee");
+}
+
+#[test]
+fn only_the_windows_config_makes_the_main_window_transparent_and_nothing_else_changes() {
+    let base = manifest("tauri.conf.json");
+    let windows = manifest("tauri.windows.conf.json");
+    assert_eq!(windows["app"].as_object().unwrap().len(), 1, "{windows}");
+    let list = windows["app"]["windows"].as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["label"], MAIN_WINDOW);
+    assert_eq!(list[0]["transparent"], true);
+    // The merge replaces the window list, so the file repeats the base window apart from that flag.
+    let mut expected = base["app"]["windows"][0].clone();
+    expected["transparent"] = json!(true);
+    assert_eq!(list[0], expected);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_app_keeps_the_gradient_where_no_material_was_applied() {
+    let t = start().await;
+    let applied = t.app.state::<dbee_desktop::material::Applied>();
+    assert_eq!(applied.get(), None, "the mock runtime is not Windows 11");
+    assert_eq!(dbee_desktop::material::report_script(applied.get()), None);
 }

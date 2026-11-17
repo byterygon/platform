@@ -25,6 +25,17 @@ body {
   font-family: var(--by-font-sans);
 }
 
+/*
+ * Window material (TSK-54): when the desktop shell applied Mica (src/app/shell.ts sets
+ * data-material on <html>), the canvas is transparent so the material shows under the layers.
+ * Everywhere else the canvas stays the opaque backdrop colour.
+ */
+html[data-material="mica"],
+html[data-material="mica"] body,
+html[data-material="mica"] .dbee-root {
+  background: transparent;
+}
+
 /* Monaco's editor fills the pane it is given. */
 .dbee-editor-pane [data-slot="sql-editor"] {
   height: 100%;
