@@ -48,7 +48,7 @@ describe("ui:new", () => {
       expect(files).toEqual(expect.arrayContaining([`src/components/${name}/${name}.tsx`, `src/components/${name}/${name}.manifest.json`, `src/components/${name}/${name}.example.tsx`, `src/components/${name}/${name}.test.tsx`, "gallery/entries.ts", `registry/${name}.json`]));
       const item = JSON.parse(readFileSync(join(temp, "registry", `${name}.json`), "utf8"));
       expect(registryItemSchema.safeParse(item).success).toBe(true);
-      expect(item.registryDependencies).toEqual(["@byterygon/cn"]);
+      expect(item.registryDependencies).toEqual(["@byterygon/cn", "@byterygon/control"]);
     }
     const entries = readFileSync(join(temp, "gallery", "entries.ts"), "utf8");
     expect(entries.indexOf('"sample-toggle"')).toBeLessThan(entries.indexOf('"sample-widget"'));

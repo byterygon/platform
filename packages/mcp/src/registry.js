@@ -8,6 +8,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readdirSync } from "node:fs";
 
 /** @typedef {Record<string, any>} Item */
 
@@ -181,7 +182,7 @@ export function projectLayout(project) {
 
 /** The CSS of a `registry:theme` item: its `css` blocks and `cssVars.theme` as `@theme inline`. */
 export function themeCss(/** @type {Item} */ item) {
-  const lines = [`/* ${item.title ?? item.name}, from the Byterygon UI registry (${item.name}.json). Import it after Tailwind. */`];
+  const lines = [`/* Byterygon design tokens, ${item.title ?? item.name}, from the Byterygon UI registry (${item.name}). Do not edit: change the theme file and install it again. Import it after Tailwind. */`];
   const block = (/** @type {string} */ selector, /** @type {Record<string, any>} */ body, indent = "") => {
     const entries = Object.entries(body);
     if (entries.length === 0 && selector.startsWith("@")) return lines.push(`${indent}${selector};`);
@@ -202,15 +203,16 @@ export function themeCss(/** @type {Item} */ item) {
 /**
  * Plans (and, unless `dryRun`, performs) the install of registry items into a project folder.
  * @param {Registry} registry
- * @param {{ project: string; items: readonly string[]; dryRun?: boolean; overwrite?: boolean }} options
+ * @param {{ project: string; items: readonly string[]; extra?: readonly Item[]; dryRun?: boolean; overwrite?: boolean }} options
+ *   extra: items that are not in the registry folder (a theme item exported from a theme file)
  */
-export function install(registry, { project, items, dryRun = false, overwrite = false }) {
+export function install(registry, { project, items, extra = [], dryRun = false, overwrite = false }) {
   const root = resolve(project);
   if (!existsSync(root) || !statSync(root).isDirectory()) throw new RegistryError("no-project", `${root} is not a folder`, { fix: "Pass the project folder (the one with package.json) as project." });
   const realRoot = realpathSync(root);
-  if (items.length === 0) throw new RegistryError("no-items", "items is empty", { fix: "Name at least one item, for example button or theme-default." });
+  if (items.length + extra.length === 0) throw new RegistryError("no-items", "items is empty", { fix: "Name at least one item, for example button or theme-default." });
   const layout = projectLayout(realRoot);
-  const ordered = registry.closure(items);
+  const ordered = [...registry.closure(items), ...extra];
 
   /** @type {{ path: string; item: string; action: "create" | "overwrite" | "unchanged" | "skip"; content: string }[]} */
   const files = [];
@@ -264,7 +266,9 @@ export function install(registry, { project, items, dryRun = false, overwrite = 
   const themes = files.filter((f) => f.path.endsWith(".css") && f.item.startsWith("theme-"));
   const next = [
     ...themes.map((f) => `Import ${basename(f.path)} after Tailwind in your main CSS${layout.cssFile ? ` (${layout.cssFile})` : ""}: @import "tailwindcss"; then @import "./${posix.relative(layout.cssDir, f.path)}";`),
-    ...(Object.keys(missing).length > 0 ? [`Add the npm packages from your mirror (no network here): ${Object.entries(missing).map(([n, v]) => `${n}@${v}`).join(" ")}`] : []),
+    ...themes.flatMap((f) => otherThemes(realRoot, layout.cssDir, f.path).map((other) => `${other} is another installed theme: import only one (remove the other import, and the file if it is no longer used).`)),
+    ...(themes.length > 0 ? [`Fonts are not part of a theme: copy the folder ${fontsDir()} into the project and import its fonts.css before the theme, or the system fallbacks of font.sans and font.mono are used.`] : []),
+    ...(Object.keys(missing).length > 0 ? [`npm packages the items import that the project's package.json does not list (npm packages, not registry items: "cn" is the npm package the cn helper imports): ${Object.entries(missing).map(([n, v]) => `${n}@${v}`).join(" ")}. List them in package.json from your mirror (no network here); nothing to do if they are already provided another way.`] : []),
     ...(files.some((f) => f.action === "skip") ? ["Some files exist with other contents and were left alone; pass overwrite: true to replace them."] : []),
     ...(!layout.hasComponentsJson ? ["The project has no components.json; the shadcn default aliases (@/components/ui, @/lib) were used."] : []),
   ];
@@ -276,6 +280,25 @@ export function install(registry, { project, items, dryRun = false, overwrite = 
     missingDependencies: missing,
     next,
   };
+}
+
+/** The vendored fonts folder of @byterygon/design-tokens. */
+function fontsDir() {
+  try {
+    return dirname(fileURLToPath(import.meta.resolve("@byterygon/design-tokens/fonts/fonts.css")));
+  } catch {
+    return "fonts/ of @byterygon/design-tokens";
+  }
+}
+
+/** Other byterygon-theme-*.css files next to `path` in the project's CSS folder. */
+function otherThemes(/** @type {string} */ root, /** @type {string} */ cssDir, /** @type {string} */ path) {
+  const dir = join(root, cssDir);
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /^byterygon-theme-.+\.css$/.test(f))
+    .map((f) => posix.join(cssDir, f))
+    .filter((f) => posix.normalize(f) !== posix.normalize(path));
 }
 
 /** Why `target` may not be written in `root` (a real path), or undefined when it may. */

@@ -41,6 +41,8 @@ pnpm --filter @byterygon/design-tokens tokens search hover background
 pnpm --filter @byterygon/design-tokens tokens diff default ./my.theme.json
 pnpm --filter @byterygon/design-tokens tokens preset create my-theme --set seeds.colors.brand.hue=150   # starts empty (engine defaults)
 pnpm --filter @byterygon/design-tokens tokens preset create my-aurora --from default --set seeds.radius=6   # copies a preset
+pnpm --filter @byterygon/design-tokens tokens preset create ocean --from default --set seeds.colors.brand.hue=200 \
+  --unset overrides.color.brand.9 --unset overrides.color.brand.10 --unset overrides.color.brand.11 --force   # see "Presets"
 pnpm --filter @byterygon/design-tokens tokens export css --theme ./my.theme.json
 pnpm --filter @byterygon/design-tokens tokens export monaco --theme paper      # also registry, ts, dtcg, figma, tailwind, shadcn, theme
 pnpm --filter @byterygon/design-tokens tokens hash encode --theme ./my.theme.json --mode dark   # a Theme Studio URL hash
@@ -50,6 +52,11 @@ pnpm --filter @byterygon/design-tokens test                    # includes the dr
 ```
 
 Inside the package directory the same commands are `node bin/by-tokens.js <command>`.
+
+Agents can also reach `search`, `explain` and `validate` through the Byterygon UI MCP server
+(`packages/mcp`, tools `search_tokens`, `explain_token`, `validate_theme`), which returns these
+same `--json` documents; and `@byterygon/lint` (`packages/lint`) reads this package's catalogue to
+name the role a raw colour, an arbitrary value or a raw space step should be.
 
 `--json` prints exactly one document to stdout and nothing to stderr:
 
@@ -233,6 +240,21 @@ or `tokens export <format> --theme <name>` produce them on demand. The drift tes
 every preset and compares the committed ones byte for byte. `registry-theme.json` of every preset
 is also `packages/ui/registry/theme-<preset>.json`, made by the same function from the committed
 CSS; a test compares the two.
+
+**A new brand hue from `default`.** Aurora pins its light brand steps 9 to 11 by override (the
+full chroma of #6b4eff), so `--set seeds.colors.brand.hue=...` alone leaves the light accent solid
+violet; `preset create` says so in a note and names the `--unset overrides.color.brand.9` (10, 11)
+to add. It also pins `radius.lg` (8 px), which a new `seeds.radius` does not reach (`--unset
+overrides.radius.lg`; the note names it too). Start from `classic` or no `--from` to avoid the pins. `preset create` writes nothing when
+the theme breaks a rule unless `--force` is given (exit 1 still); then run `by-tokens fix` and
+`validate`. At some hues (150, 200 from Aurora's lightness steps) no single `color.brand.contrast`
+passes 4.5:1 on accent steps 9 and 11 at once and `fix` alternates between the two answers: alias
+`color.accent.bg-active` to step 10 (`{ "light": "{color.brand.10}" }`) or move the hue (DOC-17
+open question 122).
+
+To use a theme of your own in a project: the MCP server's `install_theme` (`packages/mcp`), or
+`by-tokens export registry --theme <file>` for the shadcn CLI, or `export css` / `tailwind` /
+`shadcn` for the three CSS files.
 
 A theme whose brand solid is light enough to take dark text (a yellow, a lime) needs overrides the
 catalogue cannot make for it: `color.accent.bg-active` points at step 11, a dark text step, so dark
@@ -466,6 +488,8 @@ build or run time, and a browser only downloads Inter where no Segoe UI is insta
 | `@byterygon/design-tokens` | the engine: `generateTokens`, `validate`, `applyFix` and `fixAll`, `importTheme`, `resolve`, `toDtcg`, the catalogue vocabulary, the colour module, the Studio state (`encodeState`, `decodeState`, `readThemeFile`), the presets' labels and order (`PRESET_LABELS`, `presetLabel`, `presetOrder`, `duplicateTheme`, `copyName`), and the Monaco and registry modules |
 | `@byterygon/design-tokens/color` | the colour module alone: OKLCH conversion, sRGB gamut mapping, WCAG and APCA contrast, the lightness solver, `generateRamp` |
 | `@byterygon/design-tokens/build` | `buildTheme`, `renderOutputs`, `monacoThemeFor`, and `renderTokensCss` (`tokens.css` alone, synchronous, in a few milliseconds, byte for byte the `renderOutputs` one: the Theme Studio's live preview; with `{ scope }` the same declarations on the elements a selector matches instead of `:root`, mode selectors matching the scope element or its ancestors: the Studio's gallery cards), and `exportTheme` with `EXPORT_FORMATS` (`src/export.ts`: every export, its file name and install note; `by-tokens export` and the Studio's Export dialog both call it) (Style Dictionary; runs in Node and in the browser) |
+| `@byterygon/design-tokens/cli` | `run(argv, io)`: `by-tokens` in process (the MCP server calls it; `--json` gives the documents above) |
+| `@byterygon/design-tokens/themes/*` | the preset theme files (`default.theme.json`, ...); `theme.schema.json` is exported too |
 | `@byterygon/design-tokens/monaco` | `src/monaco.ts` as source: `MONACO_COLORS`, `MONACO_TOKENS`, `monacoTheme(read)` |
 | `@byterygon/design-tokens/registry-theme` | `src/registry-theme.ts` as source: `registryThemeItem`, `formatRegistryThemeItem`, the small CSS reader |
 | `@byterygon/design-tokens/default/*` | the committed outputs of the default theme (`tokens.css`, `tailwind-theme.css`, `shadcn-alias.css`, `tokens.dtcg.json`, `figma-variables.json`, `monaco-theme.ts`, `registry-theme.json`) |

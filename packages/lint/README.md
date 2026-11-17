@@ -22,6 +22,10 @@ padding: 13px is off the space scale. Use a space role: var(--by-space-inset-sm)
 | `byterygon/no-off-scale-spacing` | numeric steps of padding, margin, gap, space-between and inset utilities (`p-2`, `gap-3`, `-mt-1.5`: use the role); numeric sizes (`w-`, `h-`, `size-`, `min-`/`max-`, `basis-`) when a size role has that value (`h-8` is `h-control-md`) or when the step is not on the space scale (`w-36`); raw space steps through variables (`p-[var(--by-space-2)]`) | px, rem and em lengths over 1px in padding, margin, gap, inset and scroll-margin/padding properties; `@apply` classes |
 | `byterygon/require-disable-reason` | a directive that turns off a byterygon rule names it and gives a reason after `--`; a directive that names no rule is reported | — |
 
+Token outputs are not checked: a CSS file that opens with the "Byterygon design tokens" header
+(`tokens.css`, `tailwind-theme.css`, a theme installed by the MCP server) defines the tokens, so
+its raw values are the point.
+
 Allowed everywhere: role utilities (`bg-surface`, `text-fg-muted`, `p-inset-sm`, `gap-gap-md`,
 `h-control-md`, `rounded-md`, `text-body-1`, `shadow-layer`), opacity steps on roles
 (`bg-surface/50`), variants (`data-[state=open]:`), keywords and fractions (`w-full`, `w-1/3`,

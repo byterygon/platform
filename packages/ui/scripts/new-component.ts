@@ -42,51 +42,59 @@ export class ScaffoldError extends Error {
 // The tokens the template's classes resolve to; the conventions test checks it, so a template
 // change that adds a token fails until this list is updated.
 const TEMPLATE_TOKENS = [
-  "color.bg.inset",
-  "color.bg.surface",
-  "color.border.default",
+  "color.bg.disabled",
+  "color.bg.layer",
+  "color.border.disabled",
+  "color.border.subtle",
   "color.fg.default",
-  "color.fg.muted",
+  "color.fg.disabled",
   "color.interactive.hover",
   "color.ring",
+  "color.ring-inner",
   "font.sans",
-  "motion.duration.fast",
-  "motion.easing.standard",
-  "opacity.disabled",
+  "motion.duration.faster",
+  "motion.easing.easy-ease",
   "radius.md",
-  "ring.offset",
+  "ring.inner-width",
   "ring.width",
+  "size.control.lg",
   "size.control.md",
   "size.control.sm",
   "space.control.x",
   "space.inline.sm",
-  "space.inset.sm",
-  "text.body.leading",
-  "text.body.size",
-  "text.body.tracking",
-  "text.body.weight",
-  "text.label.leading",
-  "text.label.size",
-  "text.label.tracking",
-  "text.label.weight",
+  "space.inset.md",
+  "space.inset.xs",
+  "text.body-1.leading",
+  "text.body-1.size",
+  "text.body-1.tracking",
+  "text.body-1.weight",
+  "text.body-2.leading",
+  "text.body-2.size",
+  "text.body-2.tracking",
+  "text.body-2.weight",
+  "text.caption-1.leading",
+  "text.caption-1.size",
+  "text.caption-1.tracking",
+  "text.caption-1.weight",
 ];
 
 const STYLES = `export const __camel__Variants = {
-  variant: {
-    default: "border-border bg-surface text-fg hover:bg-hover",
-    subtle: "border-transparent bg-inset text-fg-muted hover:bg-hover",
+  appearance: {
+    secondary: "border-border-subtle bg-layer text-fg hover:bg-hover",
+    subtle: "border-transparent text-fg hover:bg-hover",
   },
   size: {
-    sm: "h-control-sm px-inset-sm text-label",
-    md: "h-control-md px-control-x text-body",
+    small: "h-control-sm px-inset-xs text-caption-1",
+    medium: "h-control-md px-control-x text-body-1",
+    large: "h-control-lg px-inset-md text-body-2",
   },
 } as const;
 
 const base = [
   "inline-flex items-center gap-inline-sm rounded-md border font-sans",
-  "transition-colors duration-[var(--by-motion-duration-fast)] ease-standard",
-  "outline-none focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)] focus-visible:outline-ring",
-  "data-disabled:pointer-events-none data-disabled:opacity-[var(--by-opacity-disabled)]",
+  "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
+  focusRing,
+  "data-disabled:pointer-events-none data-disabled:border-border-disabled data-disabled:bg-disabled data-disabled:text-fg-disabled",
 ];`;
 
 function componentSource(part: string | undefined): string {
@@ -94,27 +102,28 @@ function componentSource(part: string | undefined): string {
     const primitive = `${pascal(part)}Primitive`;
     return `import { ${pascal(part)} as ${primitive} } from "@base-ui/react/${part}";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 
 /** Classes per variant prop. The manifest's \`variants\` lists the same keys; a test compares them. */
 ${STYLES}
 
 export interface __Name__Props extends Omit<${primitive}.Props, "className"> {
-  /** TODO: describe the variants. */
-  variant?: keyof typeof __camel__Variants.variant;
-  /** Control height, from the density-aware \`size.control.*\` roles. */
+  /** TODO: describe the appearances (Fluent 2 names: primary, secondary, outline, subtle, transparent). */
+  appearance?: keyof typeof __camel__Variants.appearance;
+  /** Fluent's small, medium and large, from the density-aware \`size.control.*\` roles. */
   size?: keyof typeof __camel__Variants.size;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }
 
 /** TODO: one sentence on what __Name__ is for. Wraps Base UI's ${pascal(part)}; the ref reaches the rendered element. */
-export function __Name__({ variant = "default", size = "md", className, ...props }: __Name__Props) {
+export function __Name__({ appearance = "secondary", size = "medium", className, ...props }: __Name__Props) {
   return (
     <${primitive}
       data-slot="__name__"
-      data-variant={variant}
+      data-appearance={appearance}
       data-size={size}
-      className={cn(base, __camel__Variants.variant[variant], __camel__Variants.size[size], className)}
+      className={cn(base, __camel__Variants.appearance[appearance], __camel__Variants.size[size], className)}
       {...props}
     />
   );
@@ -123,34 +132,35 @@ export function __Name__({ variant = "default", size = "md", className, ...props
   }
   return `import { useRender } from "@base-ui/react/use-render";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 
 /** Classes per variant prop. The manifest's \`variants\` lists the same keys; a test compares them. */
 ${STYLES}
 
 export interface __Name__Props extends Omit<useRender.ComponentProps<"div">, "className"> {
-  /** TODO: describe the variants. */
-  variant?: keyof typeof __camel__Variants.variant;
-  /** Control height, from the density-aware \`size.control.*\` roles. */
+  /** TODO: describe the appearances (Fluent 2 names: primary, secondary, outline, subtle, transparent). */
+  appearance?: keyof typeof __camel__Variants.appearance;
+  /** Fluent's small, medium and large, from the density-aware \`size.control.*\` roles. */
   size?: keyof typeof __camel__Variants.size;
-  /** Dims the element and sets data-disabled and aria-disabled. */
+  /** Fluent's disabled colours; sets data-disabled and aria-disabled. */
   disabled?: boolean;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }
 
 /** TODO: one sentence on what __Name__ is for. Built on Base UI's useRender: \`render\` swaps the element, the ref reaches it. */
-export function __Name__({ variant = "default", size = "md", disabled = false, className, render, ...props }: __Name__Props) {
+export function __Name__({ appearance = "secondary", size = "medium", disabled = false, className, render, ...props }: __Name__Props) {
   return useRender({
     defaultTagName: "div",
     render,
     state: { disabled },
     props: {
       "data-slot": "__name__",
-      "data-variant": variant,
+      "data-appearance": appearance,
       "data-size": size,
       "aria-disabled": disabled || undefined,
       ...props,
-      className: cn(base, __camel__Variants.variant[variant], __camel__Variants.size[size], className),
+      className: cn(base, __camel__Variants.appearance[appearance], __camel__Variants.size[size], className),
     },
   });
 }
@@ -169,26 +179,26 @@ function manifest(name: string, part: string | undefined): Manifest {
     base: part ? `@base-ui/react/${part}` : "@base-ui/react/use-render",
     dependencies: ["@base-ui/react"],
     props: [
-      { name: "variant", type: '"default" | "subtle"', default: "default", description: "TODO: what each variant is for." },
-      { name: "size", type: '"sm" | "md"', default: "md", description: "Control height from size.control.*, which follows data-density." },
-      { name: "disabled", type: "boolean", default: false, description: "Dims the component and sets data-disabled." },
+      { name: "appearance", type: '"secondary" | "subtle"', default: "secondary", description: "TODO: what each appearance is for (Fluent 2 names)." },
+      { name: "size", type: '"small" | "medium" | "large"', default: "medium", description: "Fluent's sizes: control height from size.control.*, which follows data-density." },
+      { name: "disabled", type: "boolean", default: false, description: "Fluent's disabled colours; sets data-disabled." },
       { name: "render", type: "ReactElement | ((props, state) => ReactElement)", description: "Base UI render prop: render another element with the component's props." },
       { name: "className", type: "string", description: "Extra classes, merged after the component's own." },
       { name: "ref", type: "Ref<HTMLElement>", description: "Reaches the rendered element." },
     ],
-    variants: { variant: ["default", "subtle"], size: ["sm", "md"] },
-    slots: [{ name: "root", element: part ? "TODO: the element Base UI renders" : "div", description: `The root; data-slot="${name}", data-variant and data-size name it.` }],
+    variants: { appearance: ["secondary", "subtle"], size: ["small", "medium", "large"] },
+    slots: [{ name: "root", element: part ? "TODO: the element Base UI renders" : "div", description: `The root; data-slot="${name}", data-appearance and data-size name it.` }],
     states: [
       { name: "hover", variant: "hover", description: "Pointer over it: color.interactive.hover." },
-      { name: "focus-visible", variant: "focus-visible", description: "Keyboard focus: a ring of ring.width in color.ring." },
-      { name: "disabled", variant: "data-disabled", props: { disabled: true }, description: "Ignores interaction, at opacity.disabled." },
+      { name: "focus-visible", variant: "focus-visible", description: "Keyboard focus: Fluent's double ring (focusRing from @/lib/control)." },
+      { name: "disabled", variant: "data-disabled", props: { disabled: true }, description: "Ignores interaction, in Fluent's disabled colours (color.bg.disabled, color.fg.disabled)." },
     ],
     tokens: TEMPLATE_TOKENS,
     examples: { minimal: `${pascal(name)}Minimal`, realistic: `${pascal(name)}Realistic` },
     accessibility: [
       "TODO: the element and role it renders, and how a keyboard user reaches and operates it.",
       "TODO: what needs a label (aria-label, a visible <label>) and what announces state.",
-      "Focus shows a ring of ring.width in color.ring (3:1 on every surface).",
+      "Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface).",
     ],
   };
 }
@@ -204,10 +214,11 @@ export function __Name__Minimal() {
 export function __Name__Realistic() {
   return (
     <div className="flex flex-wrap items-center gap-inline-sm">
-      <__Name__>Default</__Name__>
-      <__Name__ variant="subtle" size="sm">
+      <__Name__>Secondary</__Name__>
+      <__Name__ appearance="subtle" size="small">
         Subtle
       </__Name__>
+      <__Name__ size="large">Large</__Name__>
       <__Name__ disabled>Disabled</__Name__>
     </div>
   );
@@ -224,11 +235,11 @@ afterEach(cleanup);
 // The conventions (layout, manifest, token-only classes, states, axe on the examples) run for every
 // component in test/conventions.test.tsx. Test the behaviour here: keyboard, events, ARIA.
 describe("__Name__", () => {
-  test("renders its slot, variant and size", () => {
+  test("renders its slot, appearance and size", () => {
     const { container } = render(<__Name__>Label</__Name__>);
     const root = container.querySelector('[data-slot="__name__"]') as HTMLElement;
-    expect(root.dataset.variant).toBe("default");
-    expect(root.dataset.size).toBe("md");
+    expect(root.dataset.appearance).toBe("secondary");
+    expect(root.dataset.size).toBe("medium");
   });
 
   test("forwards the ref to the rendered element", () => {

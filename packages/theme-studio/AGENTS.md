@@ -181,6 +181,8 @@ Dictionary for the exports, the engine, React and Base UI) because nothing is lo
 - Byterygon UI components only, imported from `@/components/<name>/<name>` (the alias points at
   `packages/ui/src`); Base UI only underneath, never Radix or another primitive library. Style with
   the token roles (`bg-surface`, `text-fg-muted`, `p-inset-lg`), as `packages/ui/AGENTS.md` says.
+  `pnpm --filter @byterygon/theme-studio lint` checks it; the few intended raw values (viewport
+  caps such as `max-h-[50dvh]`) are disabled on their line with the reason.
 - The preview uses the components' own `*.example.tsx` (the Realistic ones), so it shows exactly
   what the component tests render. To add a group, add it to `PREVIEW_GROUPS` in
   `src/panels/preview.tsx`.
