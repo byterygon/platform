@@ -9,12 +9,15 @@ depend on `apps/` (`scripts/check-licenses.mjs` enforces it).
 src/cells.ts         ColumnFormat per field: display text (cut, ↵) and full value from the buffers
 src/batch-index.ts   BatchIndex: batches as received, prefix sums of numRows, binary search; byte counts
 src/text-cache.ts    the LRU of formatted strings of cells in and near view
+src/result-source.ts ResultSource: a stream pulled once under the memory budget, or fixed batches
+src/selection.ts     cell / range / rows / columns / all, keyboard movement (pure functions)
+src/copy.ts          TSV, CSV and JSON of a range, from the full values
 src/virtualizer.ts   RowAxis (fixed height, scaled past 15 M px) and ColumnAxis (prefix sums of widths)
 src/widths.ts        initial widths from the type and the first 200 rows
 src/renderer.ts      CellLayer: the body's rows and cells as plain divs, recycled; frame sampling
-src/DataGrid.tsx     the React shell: role="grid" scroller, sticky header, sizer, the probe
+src/DataGrid.tsx     the React shell: role="grid" scroller, header, sizer, probe, keyboard, pointer, live region
 src/data-grid.css    token roles only (test/conventions.test.ts)
-demo/                a 1,000,000 x 10 synthetic result (`pnpm --filter @byterygon/data-grid demo`)
+demo/                a 1,000,000 x 10 synthetic stream built in a Worker (`pnpm --filter @byterygon/data-grid demo`)
 test/                Vitest in jsdom; fixtures written as Arrow IPC and read back through decodeArrow
 ```
 
@@ -30,6 +33,39 @@ test/                Vitest in jsdom; fixtures written as Arrow IPC and read bac
   `@byterygon/data-grid/styles.css`. The grid reads `grid.row-height` and the cell font's width
   from a hidden probe and re-measures when density or font change (ResizeObserver).
 
+## Streaming and backpressure
+
+`DataGrid stream={decodeArrow(...)}` hands the stream to a `ResultSource` (one per stream, kept in a
+WeakMap so a StrictMode remount does not iterate twice). The source:
+
+- iterates `batches()` exactly once; each `next()` is what lets decodeArrow take the next chunk and
+  grant its credit, so the pull rate is the backpressure;
+- pulls continuously while the held buffer bytes are under `memoryBudget` (256 MiB by default);
+- at the budget, pulls only while the last row in view is within two screens of the last loaded row
+  (the cell layer reports it after every frame), one batch at a time;
+- on `cancel()` (handle) or unmount (after a task with no subscriber) cancels the stream and keeps
+  the loaded rows.
+
+The viewport never moves when rows arrive (with a scaled scroll range the scroll position is
+corrected to keep the same top row); `follow` keeps the newest rows in view when the user is at
+the bottom. `aria-rowcount` is -1 until the stream is no longer live.
+
+## Interaction and accessibility
+
+- Keyboard: arrows, Page Up/Down, Home/End, Ctrl+Home/End; Shift extends; Ctrl+A; Ctrl+C copies TSV;
+  Ctrl+Shift+C calls `onCopyWithHeaders` (the application's TSV/CSV/JSON menu, then
+  `handle.copy(format, true)`), else copies TSV with headers; Enter/F2 and double click call
+  `onOpenCell`; Escape collapses a range; Alt+Shift+Left/Right resizes the active column by two
+  characters. Cmd works as Ctrl.
+- Pointer: click a cell, Shift+click a range, the row number for rows, the header for columns; drag a
+  header's end edge to resize. Resizes report `onColumnWidthsChange` (persist per tab).
+- One tab stop: the active cell has tabindex 0 when rendered, the grid element otherwise; focus
+  follows the active cell through recycling. Cells carry `aria-selected`, rows `aria-rowindex`,
+  cells `aria-colindex`; headers have the type in `aria-description`. A polite live region says when
+  the stream ends, pauses or is cancelled, and what a copy took.
+- `DataGridHandle` (`ref`): `copy`, `selectionText`, `cellValue`, `scrollToCell`, `scroller`,
+  `progress`, `cancel`, `focus`.
+
 ## Commands
 
 ```sh
@@ -38,7 +74,7 @@ pnpm --filter @byterygon/data-grid typecheck
 pnpm --filter @byterygon/data-grid demo        # http://127.0.0.1:5179/?rows=1000000&density=compact&theme=light
 ```
 
-## Choices made here (also in DOC-18 Open questions)
+## Choices made here (DOC-18 Open question 13, decided by Uy Son on 2026-11-17)
 
 Where the spec was silent, TSK-39 chose:
 
@@ -67,8 +103,15 @@ Where the spec was silent, TSK-39 chose:
 11. **`role="grid"` is on the scroller**, so the grid is the one tab stop and owns its rows.
 12. **LRU**: 4 × 64 × columns entries (at least 1,024).
 
+Batch 2 added (DOC-18 Open question 14):
+
+13. **Copy**: NULL is the text `NULL` in TSV and CSV (as shown) and `null` in JSON; TSV and CSV quote a
+    value holding the delimiter, a quote or a line break; JSON keeps Int64 as a string and gives
+    8–32-bit integers, finite floats and booleans as JSON values; without headers JSON is an array of
+    arrays. No size limit on a copy (Ctrl+A on 1M rows builds the whole text).
+14. **A single selected cell is not shaded**, only ringed (the active cell); ranges are shaded.
+15. **Page Up/Down** move by the rows in view minus one.
+
 ## Status
 
-Batch 1 (this package, static `fields` + `batches`). Batch 2 adds the `stream` input with the memory
-budget and credits, selection, keyboard, copy and the live region; batch 3 wires it into DBee and
-measures frame time.
+Batches 1 and 2 (this package). Batch 3 wires it into DBee and measures frame time.

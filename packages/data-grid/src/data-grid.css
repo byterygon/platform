@@ -80,6 +80,24 @@
   justify-content: flex-end;
 }
 
+/* The drag handle on a header's end edge (the keyboard resizes with Alt+Shift+Left/Right). */
+.bdg-resize {
+  position: absolute;
+  inset-block: var(--by-border-width-0);
+  inset-inline-end: var(--by-border-width-0);
+  inline-size: var(--by-space-inline-sm);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.bdg-resize:hover {
+  background: var(--by-grid-selection-border);
+}
+
+.bdg-columnheader {
+  cursor: default;
+}
+
 .bdg-glyph {
   flex: none;
   font-family: var(--by-text-code-sm-family);

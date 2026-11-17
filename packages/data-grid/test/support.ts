@@ -244,3 +244,61 @@ export function driverTable(): A.Table {
     tz: { kind: "timestamptz", values: [micros("1999-12-31T23:59:59", 123_456n), NULL, -1n, micros("2000-01-01T00:00:00")] },
   });
 }
+
+/**
+ * A stream of `t`'s IPC messages that counts the chunks taken (each one a credit granted to the
+ * server, Ambidex spec §6) and records `cancel()`; `garbage` replaces the batches with bytes that
+ * are not Arrow after the schema.
+ */
+export function countingStream(t: A.Table, options: { garbage?: boolean } = {}) {
+  const chunks = ipcChunks(t);
+  if (options.garbage) chunks.splice(1, chunks.length - 1, Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8));
+  let taken = 0;
+  let cancelled = false;
+  let release: (() => void) | undefined;
+  const call = {
+    chunks: async function* () {
+      for (const chunk of chunks) {
+        if (cancelled) return;
+        taken += 1;
+        yield chunk.slice();
+      }
+    },
+    result: new Promise<null>((resolve) => {
+      release = () => resolve(null);
+    }),
+    cancel: () => {
+      cancelled = true;
+      release?.();
+    },
+  };
+  void call.result;
+  const stream = decodeArrow(call, inThreadArrowDecoder());
+  return {
+    stream,
+    /** Chunks taken from the transport so far (schema, batches, end-of-stream). */
+    get taken() {
+      return taken;
+    },
+    get cancelled() {
+      return cancelled;
+    },
+    /** IPC messages in the stream. */
+    total: chunks.length,
+  };
+}
+
+/** Resolves after pending microtasks and a macrotask: lets a stream pump settle. */
+export const settle = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** An `ids` table of `rows` Int64 ids and a text column, in batches of `batchRows`. */
+export function idTable(rows: number, batchRows: number): A.Table {
+  const ids = Array.from({ length: rows }, (_, i) => i);
+  return table(
+    {
+      id: { kind: "int64", values: ids.map(BigInt) },
+      name: { kind: "utf8", values: ids.map((i) => (i % 10 === 3 ? null : `name ${i}`)) },
+    },
+    Array.from({ length: Math.ceil(rows / batchRows) }, (_, k) => Math.min(batchRows, rows - k * batchRows)),
+  );
+}
