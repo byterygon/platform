@@ -4,6 +4,12 @@
 //! user; otherwise [`cluster`] answers `None`, unless `BYTERYGON_REQUIRE_POSTGRES` is set (CI),
 //! which makes it panic instead.
 //!
+//! `BYTERYGON_PG_EXTERNAL=<dir>` uses a server that is already running instead, on 127.0.0.1 at
+//! the port in `<dir>/port`, with its CA in `<dir>/ca.pem` and the `sha256:` fingerprint of its
+//! certificate (name [`SERVER_NAME`]) in `<dir>/fingerprint`: the Docker servers of
+//! `apps/dbee/acceptance` (`./acceptance.sh test`). It must trust `postgres` and offer SCRAM for
+//! every other role, like the cluster started here, and be fresh (the tests create roles).
+//!
 //! Shared by `dbee-core`'s tests (`mod support;`) and `dbee-server`'s end-to-end test (by path).
 
 #![allow(dead_code)]
@@ -67,7 +73,28 @@ fn bin_dir() -> Option<PathBuf> {
     found.pop().map(|(_, dir)| dir)
 }
 
+fn external_cluster(dir: &Path) -> Result<Cluster, String> {
+    let read = |name: &str| {
+        std::fs::read_to_string(dir.join(name))
+            .map(|s| s.trim().to_owned())
+            .map_err(|e| format!("{}: {e}", dir.join(name).display()))
+    };
+    let port = read("port")?
+        .parse()
+        .map_err(|e| format!("{}: {e}", dir.join("port").display()))?;
+    std::net::TcpStream::connect(("127.0.0.1", port))
+        .map_err(|e| format!("external server on 127.0.0.1:{port}: {e}"))?;
+    Ok(Cluster {
+        port,
+        ca_pem: read("ca.pem")?,
+        server_fingerprint: read("fingerprint")?,
+    })
+}
+
 fn start_cluster() -> Result<Cluster, String> {
+    if let Some(dir) = std::env::var_os("BYTERYGON_PG_EXTERNAL") {
+        return external_cluster(Path::new(&dir));
+    }
     let bin = bin_dir().ok_or("no initdb/postgres binaries found")?;
     let uid = Command::new("id")
         .arg("-u")

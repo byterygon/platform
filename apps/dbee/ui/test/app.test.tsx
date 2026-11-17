@@ -194,6 +194,11 @@ describe("errors and states (spec §8)", () => {
     await waitFor(() => byRole("button", /^Run/) !== null, "run");
     await click(byRole("button", /^Run/));
     await waitFor(() => byRole("button", /Cancel/) !== null, "the cancel button");
+    // One Cancel, in the tab's command bar, where Run was (spec Open question 17).
+    const cancels = [...document.querySelectorAll("button")].filter((b) => /^Cancel/.test(b.textContent?.trim() ?? ""));
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0]!.closest("[role=toolbar]")?.getAttribute("aria-label")).toBe("Query");
+    expect([...document.querySelectorAll("[role=toolbar][aria-label=Query] button")].some((b) => b.textContent?.trim().startsWith("Run"))).toBe(false);
     await key("Escape", { shiftKey: true }, document.body);
     await waitFor(() => (byRole("status")?.textContent ?? "").startsWith("Cancelled after"), "cancelled");
   });
@@ -272,6 +277,34 @@ describe("keyboard and palette (spec §9)", () => {
   });
 });
 
+describe("Fluent 2 shell (TSK-64)", () => {
+  test("connection rows: medium tree items, the status as a glyph on the database icon and in text, TLS as a lock", async () => {
+    const fake = createFakeServices({ connections: [connection(), { ...connection(), id: "conn-2", name: "Plain", tls: "plaintext" as const }] });
+    mount(fake);
+    await waitFor(() => document.querySelectorAll("[role=tree] [role=treeitem]").length === 2, "two connections");
+    const rows = [...document.querySelectorAll<HTMLElement>("[role=tree] [role=treeitem]")];
+    for (const row of rows) expect(row.className).toContain("h-control-md");
+    expect(rows[0]!.querySelector("[data-status=disconnected]")).not.toBeNull();
+    expect(rows[0]!.textContent).toContain("disconnected");
+    expect(rows[0]!.textContent).toContain("TLS");
+    expect(rows[1]!.textContent).toContain("Plaintext");
+  });
+
+  test("tabs sit in the title area; the sidebar, the editor and the results are separate layers", async () => {
+    const fake = createFakeServices({ connections: [connection()] });
+    mount(fake, { persisted: { tabs: [{ id: "t1", connectionId: "conn-1", sql: "select 1", maxRows: null }], activeTab: "t1" } });
+    await waitFor(() => document.querySelector("[role=tab]") !== null, "a tab");
+    const titleArea = document.querySelector("header[aria-label='Title area']")!;
+    expect(titleArea.querySelector("[role=tablist][aria-label='Query tabs']")).not.toBeNull();
+    expect(titleArea.querySelector("button[aria-label='Settings']")).not.toBeNull();
+    expect(titleArea.querySelector("button[aria-label='Keyboard shortcuts']")).not.toBeNull();
+    expect(titleArea.textContent).toContain("Search commands");
+    for (const label of ["Editor", "Results"]) expect(document.querySelector(`section[aria-label='${label}']`)?.className).toContain("bg-layer");
+    expect(document.querySelector("section[aria-label='Editor'] [role=toolbar][aria-label=Query]")).not.toBeNull();
+    expect(document.querySelector("[data-slot=sidebar]")?.className).toContain("rounded-lg");
+  });
+});
+
 describe("persistence and settings (spec §3.9, §14)", () => {
   test("tabs, the active tab and settings go to the workspace and come back after a restart", async () => {
     const fake = createFakeServices({ connections: [connection()] });
@@ -280,10 +313,12 @@ describe("persistence and settings (spec §3.9, §14)", () => {
     await click(byRole("button", "New query tab"));
     await waitFor(() => document.querySelector("textarea[aria-label='SQL editor']") !== null, "editor");
     await type(document.querySelector<HTMLTextAreaElement>("textarea[aria-label='SQL editor']")!, "select 42");
-    await click(byRole("button", "compact"));
-    await settle();
+    // Comfortable is the default (spec Open question 17); the status bar button switches to compact.
     expect(document.documentElement.dataset["density"]).toBe("comfortable");
-    await waitFor(() => fromDocuments(fake.state.workspace.settings, fake.state.workspace.tabs)?.settings.density === "comfortable", "settings.json");
+    await click(byRole("button", "Comfortable"));
+    await settle();
+    expect(document.documentElement.dataset["density"]).toBe("compact");
+    await waitFor(() => fromDocuments(fake.state.workspace.settings, fake.state.workspace.tabs)?.settings.density === "compact", "settings.json");
     const saved = fromDocuments(fake.state.workspace.settings, fake.state.workspace.tabs)!;
     expect(saved.tabs[0]?.sql).toBe("select 42");
     expect(saved.activeTab).toBe(saved.tabs[0]?.id);
@@ -297,7 +332,8 @@ describe("persistence and settings (spec §3.9, §14)", () => {
     mount(again, { persisted: loaded.persisted, saver: loaded.saver });
     await waitFor(() => document.querySelector("textarea[aria-label='SQL editor']") !== null, "editor again");
     expect(document.querySelector<HTMLTextAreaElement>("textarea[aria-label='SQL editor']")!.value).toBe("select 42");
-    expect(document.documentElement.dataset["density"]).toBe("comfortable");
+    // The compact chosen before the restart is kept (settings version 2).
+    expect(document.documentElement.dataset["density"]).toBe("compact");
   });
 
   test("tabs kept in the webview by an earlier version move to the workspace on the first start", async () => {

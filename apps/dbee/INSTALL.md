@@ -33,7 +33,7 @@ installs the bundled WebView2 runtime when the machine has none.
 
 ## 3. macOS 12 or later
 
-Open `DBee_0.1.0_aarch64.dmg` (Apple silicon) or `DBee_0.1.0_x64.dmg` (Intel) and drag DBee to
+Open `DBee_0.1.0_aarch64.dmg` (Apple silicon) or `DBee_0.1.0_x64-intel.dmg` (Intel) and drag DBee to
 Applications. macOS (Gatekeeper) refuses an unsigned app downloaded from elsewhere. Either:
 
 - Open **System Settings > Privacy & Security**, scroll to the message about DBee and choose

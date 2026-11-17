@@ -382,6 +382,9 @@ per mode), or replaces the whole `gradient.backdrop` with its own list of layers
   every opaque surface: it is the bottom edge of an invalid field (TSK-53).
 - Contrast: text on `color.bg.layer` over the backdrop, text and the field strokes on
   `color.bg.layer-alt` over the backdrop and a layer, the focus ring and the solids on a layer.
+  Text straight on the backdrop (an app's title area and status bar, TSK-64): `color.fg.default`
+  and `color.fg.muted` on each glow colour and on the canvas, since the backdrop is a blend of the
+  three.
 - `elevation.flyout` and `elevation.dialog` use `color.bg.overlay`, opaque: a component that wants
   acrylic lays `color.bg.layer` and `backdrop-blur-acrylic` itself.
 

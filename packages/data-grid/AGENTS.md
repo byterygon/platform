@@ -83,8 +83,12 @@ Where the spec was silent, TSK-39 chose:
 
 1. **All cells are monospace** (`text-code-sm`). Widths are then a character count, and digits line
    up. The header uses `text-caption-1-strong`.
-2. **Header label**: `pg.type_name` metadata when the driver sends it (Decision 20), "uuid" for the
-   uuid extension, else the Arrow type as apache-arrow prints it (`Timestamp<MICROSECOND, UTC>`).
+2. **Header label** (TSK-64: the names users know): `pg.type_name` metadata when the driver sends it
+   (Decision 20), else the PostgreSQL name of a built-in type OID from `byterygon.pg.type_oid`
+   (`bigint`, `timestamptz`, `jsonb`; `PG_TYPE_NAMES` in `src/cells.ts`), else a name derived from the
+   Arrow type (`integer`, `text`, `timestamptz`); a type the grid does not know keeps its Arrow name
+   (`List<Int32>`). The Arrow type (`ColumnFormat.arrowType`) is in the header's tooltip. Extension
+   types such as PostGIS geometry have per-database OIDs and fall back to the Arrow-derived name.
 3. **Family from the OID** the driver already sends (`byterygon.pg.type_oid`): 114 / 3802 (json,
    jsonb) are `json`, 1700 (numeric) is `decimal` and right-aligned, although all three arrive as
    Utf8.

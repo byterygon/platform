@@ -1,0 +1,30 @@
+/*
+ * The import order of a Byterygon UI app (as DBee): fonts, the default preset's tokens, Tailwind,
+ * the Tailwind names of the roles. The other presets are bundled as text and swapped in by
+ * Settings (src/app/presets.ts). Everything comes from the bundle: no CDN.
+ */
+@import "@byterygon/design-tokens/fonts/fonts.css";
+@import "@byterygon/design-tokens/default/tokens.css";
+@import "tailwindcss";
+@import "@byterygon/design-tokens/default/tailwind-theme.css";
+
+@source "./";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--by-color-bg-canvas);
+  color: var(--by-color-fg-default);
+  font-family: var(--by-font-sans);
+}
+
+/* The base layer (TSK-64, Fluent 2 layering): the window paints the theme's backdrop. */
+.mc-root {
+  background: var(--by-gradient-backdrop);
+}

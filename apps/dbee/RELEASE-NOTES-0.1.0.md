@@ -45,7 +45,7 @@ WKWebView.
 | --- | --- |
 | Windows (x64) | `DBee_0.1.0_x64-setup.exe` (NSIS, per-user, includes WebView2) |
 | macOS (Apple silicon) | `DBee_0.1.0_aarch64.dmg` |
-| macOS (Intel) | `DBee_0.1.0_x64.dmg` |
+| macOS (Intel) | `DBee_0.1.0_x64-intel.dmg` |
 | Linux (x64) | `DBee_0.1.0_amd64.AppImage`, `DBee_0.1.0_amd64.deb` |
 
 `SHA256SUMS` lists the checksum of each file. The licence (AGPL-3.0-only) and

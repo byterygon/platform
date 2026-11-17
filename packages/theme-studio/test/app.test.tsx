@@ -83,7 +83,7 @@ describe("Theme Studio", () => {
     expect(styleText()).toBe(renderTokensCss(generateTokens(startingTheme()).set, "Theme Studio"));
     expect(document.documentElement.dataset["theme"]).toBe("light");
     expect(document.documentElement.dataset["density"]).toBe("comfortable");
-    expect($('[role="status"]')!.textContent).toMatch(/470 contrast checks pass/);
+    expect($('[role="status"]')!.textContent).toMatch(/482 contrast checks pass/);
   });
 
   test("the colour mode and density switches change the root and are saved", async () => {
@@ -279,20 +279,21 @@ describe("Theme Studio", () => {
     const faded = { ...startingTheme(), overrides: { "color.neutral.11": "oklch(0.7 0.012 275)" } };
     const saved = mount(faded);
     const tab = () => $$('[role="tab"]').find((t) => t.textContent?.startsWith("Contrast"))!;
-    expect(tab().textContent).toBe("Contrast (28)");
+    expect(tab().textContent).toBe("Contrast (31)");
     click(tab());
     await waitFor(() => expect($('ul[aria-label="Contrast pairs, light · comfortable"]')).toBeTruthy());
-    // Colour never depends on density: both light combinations fail the same 28, the dark ones none.
+    // Colour never depends on density: both light combinations fail the same 31 (the three
+    // text-on-backdrop pairs of TSK-64 included), the dark ones none.
     const combos = $$('[aria-label="Mode combination"] button').map((b) => b.textContent);
-    expect(combos).toEqual(["light · comfortable28", "light · compact28", "dark · comfortable", "dark · compact"]);
+    expect(combos).toEqual(["light · comfortable31", "light · compact31", "dark · comfortable", "dark · compact"]);
     // One group per role and mode: the engine solves one fix for all of the role's backgrounds.
     const groups = $$('ul[aria-label="Contrast pairs, light · comfortable"] > li').map((li) => li.getAttribute("aria-label"));
     expect([...groups].sort()).toEqual(["color.fg.muted", "color.neutral.fg", "color.neutral.subtle-fg", "syntax.operator"]);
-    expect($('li[aria-label="color.fg.muted"]')!.textContent).toContain("fails on 24 of 24 backgrounds (light)");
+    expect($('li[aria-label="color.fg.muted"]')!.textContent).toContain("fails on 27 of 27 backgrounds (light)");
     expect($('li[aria-label="color.neutral.fg"]')!.textContent).toContain("fails on 1 of 3 backgrounds (light)");
     expect($$('ul[aria-label="color.fg.muted pairs"] > li')).toHaveLength(4);
-    click(byText("button", "Show all 24")!);
-    expect($$('ul[aria-label="color.fg.muted pairs"] > li')).toHaveLength(24);
+    click(byText("button", "Show all 27")!);
+    expect($$('ul[aria-label="color.fg.muted pairs"] > li')).toHaveLength(27);
 
     // The primary fix nudges the primitive's lightness within its step.
     click(byText("button", "Apply fix")!);
@@ -301,15 +302,15 @@ describe("Theme Studio", () => {
     expect(document.body.textContent).toContain("Applied: Change the lightness of color.neutral.11");
 
     click(byText("button", "Undo")!);
-    await waitFor(() => expect(tab().textContent).toBe("Contrast (28)"));
+    await waitFor(() => expect(tab().textContent).toBe("Contrast (31)"));
 
     // An alternative: alias the role to another step of the same ramp.
     click(byText("button", "Apply")!);
-    await waitFor(() => expect((tab().textContent ?? "").startsWith("Contrast (28)")).toBe(false));
+    await waitFor(() => expect((tab().textContent ?? "").startsWith("Contrast (31)")).toBe(false));
     expect(((await lastSavedTheme(saved)).theme["overrides"] as Record<string, unknown>)["color.fg.muted"]).toEqual({ light: "{color.neutral.12}" });
 
     click(byText("button", "Undo")!);
-    await waitFor(() => expect(tab().textContent).toBe("Contrast (28)"));
+    await waitFor(() => expect(tab().textContent).toBe("Contrast (31)"));
     click(byText("button", "Fix all")!);
     await waitFor(() => expect(tab().textContent).toBe("Contrast (0)"));
     expect(document.body.textContent).toContain("Applied 1 fix.");

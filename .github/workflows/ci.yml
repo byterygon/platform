@@ -66,9 +66,11 @@ jobs:
       # Plugin Host runs under the same constraint. DBee spec §14 (TSK-38): the web shell's
       # end-to-end test runs here too: a server-issued session adds a connection, approves it,
       # runs a query and receives Arrow chunks over the WebSocket, against a throwaway PostgreSQL
-      # on loopback, so the only reachable network is the approved database. Every crate was
-      # already downloaded by the steps above, so nothing is fetched here. The script stops at the
-      # first failing command.
+      # on loopback, so the only reachable network is the approved database. Mightyconsole spec
+      # §18 (TSK-79): the Mightyconsole server end to end (page session, upgrade checks, the tool
+      # contract on the echo sample) runs here too, showing it opens no outbound connection.
+      # Every crate was already downloaded by the steps above, so nothing is fetched here. The
+      # script stops at the first failing command.
       - name: Conformance suite (network disconnected)
         run: |
           sudo unshare --net -- sh -c '
@@ -85,6 +87,23 @@ jobs:
             as_runner "$1" "$2" ambidex-conformance
             as_runner "$1" "$2" plugin-host
             as_runner "$1" "$2" dbee-server
+            as_runner "$1" "$2" mightyconsole-server
+          ' sh "$PATH" "$HOME"
+      # Mightyconsole spec §18 (TSK-79): the real server serving the built UI, in Chrome, in a
+      # network namespace with only loopback: the page's session (cookie, CSRF meta, Origin) and
+      # CSP hold, a profile added in the UI connects and streams, a reload restores its tab, and
+      # nothing is requested outside the server.
+      - name: Mightyconsole in Chrome (network disconnected)
+        run: |
+          cargo build -p mightyconsole-server --locked
+          sudo unshare --net -- sh -c '
+            set -e
+            ip link set lo up
+            if timeout 3 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+              echo "network is reachable"; exit 1
+            fi
+            setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
+              env PATH="$1" HOME="$2" BYTERYGON_REQUIRE_BROWSER=1 pnpm --filter @byterygon/mightyconsole check:browser
           ' sh "$PATH" "$HOME"
 
   typescript:

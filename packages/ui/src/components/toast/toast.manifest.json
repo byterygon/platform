@@ -89,7 +89,7 @@
     {
       "name": "actions",
       "element": "div",
-      "description": "The action Button and the close IconButton; data-slot=\"toast-actions\"."
+      "description": "The action Button, under the title and description inside the content (Fluent's Toast; a long title keeps the toast's width); data-slot=\"toast-actions\". The close IconButton sits at the end of the row."
     }
   ],
   "parts": [
@@ -144,6 +144,7 @@
     "space.inline.xs",
     "space.inset.lg",
     "space.inset.sm",
+    "space.inset.xs",
     "space.stack.sm",
     "space.stack.xs",
     "text.body-1-strong.leading",
