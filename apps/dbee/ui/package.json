@@ -6,7 +6,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/check-dist.ts",
     "dev": "vite",
     "typecheck": "tsc --noEmit -p .",
     "test": "node scripts/sync-ui.ts --check && vitest run",
