@@ -209,6 +209,36 @@ jobs:
               env PATH="$1" HOME="$2" BYTERYGON_REQUIRE_BROWSER=1 node scripts/frame-check.ts
           ' sh "$PATH" "$HOME"
 
+  # TSK-62: the desktop app is built and tested on Windows and macOS too, so the cfg(windows)
+  # Mica code (TSK-54) is compiled and linted in CI, not only on the one machine that has it.
+  # The Linux job above also measures the cold start; here the UI is built first so the app
+  # embeds it, then clippy and the crate's tests run on the native toolchain.
+  desktop:
+    name: DBee desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @byterygon/dbee build
+      - run: cargo clippy -p dbee-desktop --all-targets --locked -- -D warnings
+      - run: cargo test -p dbee-desktop --locked
+
   licenses:
     name: License policy
     runs-on: ubuntu-24.04
