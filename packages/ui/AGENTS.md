@@ -267,7 +267,8 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   and compose Button and IconButton; NavigationMenu renders its shared popup itself, and a link
   placed straight in the row takes `className={navigationMenuTriggerStyle}`.
 - Tree is the ARIA treeview pattern built here (Base UI has none): data-driven nodes, rows of
-  `size.control.sm` rendered only while visible, one tab stop with `aria-activedescendant` (the
+  `size.control.sm` (or `size.control.md` with `size="medium"`, Fluent's medium tree item, which
+  DBee uses) rendered only while visible, one tab stop with `aria-activedescendant` (the
   active row is always rendered), `aria-level`/`aria-setsize`/`aria-posinset` on a flat DOM. The app
   owns lazy loading: set `loading`, then `children` or `error`, from `onExpandedChange`/`onRetry`.
 - Sidebar: SidebarProvider holds the state and Ctrl/Cmd+B; collapsed labels stay in the

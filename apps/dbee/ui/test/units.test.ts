@@ -6,7 +6,7 @@ import { inThreadArrowDecoder } from "@byterygon/ambidex/arrow-decoder";
 import { describe, expect, test } from "vitest";
 import { columnFormat } from "@byterygon/data-grid";
 import { describeError, formatElapsed } from "@/app/messages";
-import { DEFAULT_PERSISTED, DOCUMENT_VERSION, LEGACY_STORAGE_KEY, clearLegacy, fromDocuments, readLegacy, toDocuments } from "@/app/persistence";
+import { DEFAULT_PERSISTED, DOCUMENT_VERSION, LEGACY_STORAGE_KEY, SETTINGS_VERSION, clearLegacy, fromDocuments, readLegacy, toDocuments } from "@/app/persistence";
 import { PRESETS, PRESET_LABELS, applyAppearance, isPreset } from "@/app/presets";
 import { ACTIONS, actionFor, bindingsOf, displayBinding, matchesBinding } from "@/app/shortcuts";
 import { sampleIpc } from "./support/fake-client";
@@ -109,7 +109,7 @@ describe("persistence (spec Decision 26): the workspace documents", () => {
 
   test("tabs, sizes and settings round-trip through settings.json and tabs.json", () => {
     const docs = toDocuments(state);
-    expect(docs.settings["version"]).toBe(DOCUMENT_VERSION);
+    expect(docs.settings["version"]).toBe(SETTINGS_VERSION);
     expect(docs.tabs["version"]).toBe(DOCUMENT_VERSION);
     // Tab text is in tabs.json only; settings.json holds no SQL.
     expect(JSON.stringify(docs.settings)).not.toContain("select 1");

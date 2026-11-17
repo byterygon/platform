@@ -67,4 +67,31 @@ describe("Toolbar", () => {
     expect(ref.current?.dataset.variant).toBe("plain");
     expect(container.querySelector('[data-slot="toolbar"]')!.getAttribute("aria-orientation")).toBe("vertical");
   });
+
+  test("a group follows its own toolbar's orientation, not an ancestor's", () => {
+    const group = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-slot="toolbar-group"]')!;
+    const horizontal = render(
+      <div data-orientation="vertical">
+        <Toolbar aria-label="Row">
+          <ToolbarGroup>
+            <ToolbarButton>A</ToolbarButton>
+          </ToolbarGroup>
+        </Toolbar>
+      </div>,
+    );
+    expect(group(horizontal.container).dataset.orientation).toBe("horizontal");
+    const vertical = render(
+      <div data-orientation="horizontal">
+        <Toolbar aria-label="Column" orientation="vertical">
+          <ToolbarGroup>
+            <ToolbarButton>A</ToolbarButton>
+          </ToolbarGroup>
+        </Toolbar>
+      </div>,
+    );
+    expect(group(vertical.container).dataset.orientation).toBe("vertical");
+    // The stacking classes key on the group's own attribute, never on any ancestor's.
+    expect(group(vertical.container).className).toContain("data-[orientation=vertical]:flex-col");
+    expect(group(vertical.container).className).not.toContain("in-data-[orientation");
+  });
 });

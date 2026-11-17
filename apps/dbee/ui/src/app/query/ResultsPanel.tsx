@@ -12,7 +12,10 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState, EmptyStateDescription, EmptyStateTitle } from "@/components/ui/empty-state";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Toolbar, ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
+import { Icon } from "@/components/ui/icon";
+import { Spinner } from "@/components/ui/spinner";
+import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
+import { ArrowDownload, ChevronDown, Copy } from "@/lib/icons";
 import { benchHook } from "../bench";
 import { formatCount, formatElapsed } from "../messages";
 import type { Run } from "../store";
@@ -42,13 +45,12 @@ export interface ResultsPanelProps {
   run: Run | null;
   onExport: () => void;
   onRemedy?: (remedy: string) => void;
-  onCancel: () => void;
   /** The tab's column widths by column name (persisted in the workspace). */
   columnWidths?: Record<string, number> | undefined;
   onColumnWidths?: (widths: Record<string, number>) => void;
 }
 
-export function ResultsPanel({ run, onExport, onRemedy, onCancel, columnWidths, onColumnWidths }: ResultsPanelProps) {
+export function ResultsPanel({ run, onExport, onRemedy, columnWidths, onColumnWidths }: ResultsPanelProps) {
   const grid = useRef<DataGridHandle | null>(null);
   const [viewer, setViewer] = useState<CellPos | null>(null);
   const [copyMenu, setCopyMenu] = useState(false);
@@ -75,36 +77,40 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel, columnWidths, 
   const cellNote = selection && selection.cells === 1 && selection.value === "" ? " · empty string" : "";
   return (
     <div className="flex h-full min-h-0 flex-col" data-pane="results">
-      <Toolbar aria-label="Results" variant="plain" className="shrink-0">
+      {/* One row (TSK-64): the live status first, the result's commands at the end. Cancel is in the tab's command bar only (spec Open question 17). */}
+      <Toolbar aria-label="Results" variant="plain" className="shrink-0 border-b border-border-subtle py-inset-xs ps-inset-sm pe-inset-xs">
+        <span role="status" aria-live="polite" className="flex min-w-0 flex-1 items-center gap-inline-sm truncate text-body-1">
+          {run.status === "running" ? <Spinner size="sm" label={null} /> : null}
+          <span className="truncate">
+            {statusLine(run)}
+            {run.note && run.status === "done" ? ` · ${run.note}` : ""}
+            {cellNote}
+          </span>
+        </span>
         <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={rows === 0} onClick={() => copy("tsv", false)}>
-            Copy
+          <ToolbarButton render={<Button appearance="subtle" />} disabled={rows === 0} onClick={() => copy("tsv", false)}>
+            <Icon icon={Copy} /> Copy
           </ToolbarButton>
           <DropdownMenu open={copyMenu} onOpenChange={setCopyMenu}>
-            <DropdownMenuTrigger render={<ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={rows === 0} />}>Copy with headers</DropdownMenuTrigger>
+            <DropdownMenuTrigger render={<ToolbarButton render={<Button appearance="subtle" />} disabled={rows === 0} />}>
+              <Icon icon={Copy} /> Copy with headers <Icon icon={ChevronDown} size="xs" />
+            </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => copy("tsv", true)}>TSV</DropdownMenuItem>
               <DropdownMenuItem onClick={() => copy("csv", true)}>CSV</DropdownMenuItem>
               <DropdownMenuItem onClick={() => copy("json", true)}>JSON</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <ToolbarButton render={<Button appearance="subtle" size="small" />} disabled={run.status === "running"} onClick={onExport}>
-            Export
-          </ToolbarButton>
-          {run.status === "running" ? (
-            <ToolbarButton render={<Button appearance="secondary" size="small" />} onClick={onCancel}>
-              Cancel
-            </ToolbarButton>
-          ) : null}
         </ToolbarGroup>
-        <span role="status" aria-live="polite" className="ms-auto truncate px-inset-sm text-caption text-fg-muted">
-          {statusLine(run)}
-          {run.note && run.status === "done" ? ` · ${run.note}` : ""}
-          {cellNote}
-        </span>
+        <ToolbarSeparator />
+        <ToolbarGroup>
+          <ToolbarButton render={<Button appearance="subtle" />} disabled={run.status === "running"} onClick={onExport}>
+            <Icon icon={ArrowDownload} /> Export
+          </ToolbarButton>
+        </ToolbarGroup>
       </Toolbar>
       {run.status === "error" && run.error ? (
-        <Alert variant="danger" className="m-inset-sm">
+        <Alert variant="danger" className="m-inset-sm w-auto">
           <AlertTitle>{run.error.title}</AlertTitle>
           <AlertDescription>
             {run.error.description ? <span>{run.error.description} </span> : null}

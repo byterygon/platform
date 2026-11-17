@@ -506,7 +506,7 @@ export function DataGrid(props: DataGridProps) {
                     aria-selected={selected ? true : undefined}
                     className={`bdg-columnheader${format.align === "end" ? " bdg-end" : ""}${selected ? " bdg-selected" : ""}`}
                     style={{ left: left[c], width: widths[c] }}
-                    title={`${field.name}: ${format.label}`}
+                    title={format.arrowType === format.label ? `${field.name}: ${format.label}` : `${field.name}: ${format.label} (Arrow ${format.arrowType})`}
                     onClick={(e) => onHeaderClick(c, e.shiftKey)}
                   >
                     <span className="bdg-glyph" data-family={format.family} aria-hidden="true">

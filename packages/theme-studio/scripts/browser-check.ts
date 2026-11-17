@@ -375,7 +375,8 @@ async function main(argv: string[]): Promise<number> {
     for (const mode of ["light", "dark"] as const) {
       await page.navigate(`${studio}${await encodeState({ theme: faded, mode })}`);
       await until(page, READY, "the faded theme to render");
-      check(await page.evaluate<boolean>(CLICK('[role="tab"]', "Contrast (28)")), `contrast (${mode}): the tab counts 28 failing measurements`);
+      // 31: the 28 of the layered look and the three text-on-backdrop pairs of TSK-64.
+      check(await page.evaluate<boolean>(CLICK('[role="tab"]', "Contrast (31)")), `contrast (${mode}): the tab counts 31 failing measurements`);
       await until(page, `document.querySelector('ul[aria-label^="Contrast pairs"]') !== null || document.body.textContent.includes("No pair fails")`, "the contrast report");
       if (shots) {
         await sleep(300);
@@ -383,7 +384,7 @@ async function main(argv: string[]): Promise<number> {
       }
     }
     // The view is dark now; the failures are in light mode.
-    check(await page.evaluate<boolean>(CLICK('[aria-label="Mode combination"] button', "light · comfortable28")), "contrast: the light combination lists its failures");
+    check(await page.evaluate<boolean>(CLICK('[aria-label="Mode combination"] button', "light · comfortable31")), "contrast: the light combination lists its failures");
     await until(page, `document.querySelector('ul[aria-label="Contrast pairs, light · comfortable"] > li[aria-label="color.fg.muted"]') !== null`, "the light failures of color.fg.muted");
     const unfixed = await page.evaluate<string>(`location.hash`);
     check(await page.evaluate<boolean>(CLICK("button", "Apply fix")), "contrast: the Apply fix button");

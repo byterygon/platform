@@ -713,12 +713,23 @@ async fn cancel_reaches_the_drivers_result_stream() {
         1,
         "ResultStream::cancel was called"
     );
-    let completion = t
-        .audit_records()
-        .into_iter()
-        .map(|r| r.entry)
-        .find(|e| e.action.name == "query.execute" && e.is_completion())
-        .expect("completion of the cancelled call");
+    // The completion entry is written after the Cancelled reply reaches the client, so wait for
+    // it (bounded) instead of reading the audit log once.
+    let audit_deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let completion = loop {
+        let found = t
+            .audit_records()
+            .into_iter()
+            .map(|r| r.entry)
+            .find(|e| e.action.name == "query.execute" && e.is_completion());
+        match found {
+            Some(entry) => break entry,
+            None if std::time::Instant::now() < audit_deadline => {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            None => panic!("completion of the cancelled call"),
+        }
+    };
     assert_eq!(
         completion.delivery,
         Some(security_types::Delivery::Cancelled)

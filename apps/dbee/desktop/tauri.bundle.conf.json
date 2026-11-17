@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "Byterygon",
+    "copyright": "Copyright (c) Byterygon. Licensed under AGPL-3.0-only.",
+    "license": "AGPL-3.0-only",
+    "licenseFile": "../LICENSE",
+    "shortDescription": "Keyboard-first PostgreSQL client for air-gapped and self-hosted environments",
+    "category": "DeveloperTool",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../LICENSE": "LICENSE",
+      "THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"
+    },
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "webviewInstallMode": { "type": "offlineInstaller", "silent": true },
+      "nsis": { "installMode": "currentUser", "compression": "lzma" }
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    },
+    "linux": {
+      "deb": { "section": "devel" }
+    }
+  }
+}
