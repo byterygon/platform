@@ -1,6 +1,6 @@
 {
   "name": "@byterygon/dbee",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "DBee user interface: React 19 + Vite + Tailwind v4 on the Byterygon UI registry items and the @byterygon/ambidex client; one bundle for the Tauri desktop app and the self-hosted web server.",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -12,7 +12,8 @@
     "test": "node scripts/sync-ui.ts --check && vitest run",
     "sync:ui": "node scripts/sync-ui.ts",
     "sync:ui:check": "node scripts/sync-ui.ts --check",
-    "lint": "eslint . && stylelint \"**/*.css\""
+    "lint": "eslint . && stylelint \"**/*.css\"",
+    "screenshots": "node scripts/screenshots.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

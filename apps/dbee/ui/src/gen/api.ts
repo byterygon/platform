@@ -6,7 +6,7 @@
 /** API name the client announces in Hello. */
 export const API = "dbee";
 /** Version of the API this file was generated from. */
-export const API_VERSION = "0.0.0";
+export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */

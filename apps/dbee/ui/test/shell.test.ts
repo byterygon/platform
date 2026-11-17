@@ -47,12 +47,12 @@ describe("watchShell", () => {
 });
 
 describe("the windowMaterial setting", () => {
-  test("is on by default, survives the workspace round trip, and an older document turns it on", () => {
-    expect(DEFAULT_SETTINGS.windowMaterial).toBe(true);
-    const off = { ...DEFAULT_PERSISTED, settings: { ...DEFAULT_SETTINGS, windowMaterial: false } };
-    const docs = toDocuments(off);
-    expect(fromDocuments(docs.settings, docs.tabs)?.settings.windowMaterial).toBe(false);
+  test("is off by default, survives the workspace round trip, and an older document leaves it off", () => {
+    expect(DEFAULT_SETTINGS.windowMaterial).toBe(false);
+    const on = { ...DEFAULT_PERSISTED, settings: { ...DEFAULT_SETTINGS, windowMaterial: true } };
+    const docs = toDocuments(on);
+    expect(fromDocuments(docs.settings, docs.tabs)?.settings.windowMaterial).toBe(true);
     const { windowMaterial: _omit, ...older } = DEFAULT_SETTINGS;
-    expect(fromDocuments({ version: 1, settings: older }, null)?.settings.windowMaterial).toBe(true);
+    expect(fromDocuments({ version: 1, settings: older }, null)?.settings.windowMaterial).toBe(false);
   });
 });

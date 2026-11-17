@@ -4,7 +4,7 @@
 import { RpcError } from "@byterygon/ambidex";
 import { describe, expect, test } from "vitest";
 import type { DbeeClient } from "@/app/client";
-import { DEFAULT_PERSISTED, LEGACY_STORAGE_KEY, type Persisted, toDocuments } from "@/app/persistence";
+import { DEFAULT_PERSISTED, LEGACY_STORAGE_KEY, type Persisted, SETTINGS_VERSION, fromDocuments, readLegacy, toDocuments } from "@/app/persistence";
 import { type WorkspaceProblem, WorkspaceSaver, loadWorkspace } from "@/app/workspace";
 import { createFakeServices } from "./support/fake-client";
 
@@ -104,7 +104,7 @@ describe("WorkspaceSaver", () => {
     expect(input.baseRevision).toBe("rev-0");
 
     // The next write carries the revision of the last one.
-    saver.schedule({ ...persisted, tabs: [{ ...tabs[0]!, sql: "select 1" }], activeTab: "t1", settings: { ...persisted.settings, density: "comfortable" } });
+    saver.schedule({ ...persisted, tabs: [{ ...tabs[0]!, sql: "select 1" }], activeTab: "t1", settings: { ...persisted.settings, density: "compact" } });
     await saver.flush();
     const second = writes(fake)[1]!.input as { settings?: unknown; tabs?: unknown; baseRevision: string };
     expect(second.tabs).toBeUndefined();
@@ -156,5 +156,32 @@ describe("WorkspaceSaver", () => {
     await Promise.all([flushing, second]);
     expect(writes(fake).map((c) => (c.input as { baseRevision: string }).baseRevision)).toEqual(["rev-0", "rev-1"]);
     expect(JSON.stringify(fake.state.workspace.tabs)).toContain("two");
+  });
+});
+
+describe("default density (TSK-64, spec Open question 17)", () => {
+  const settingsDoc = (version: number | undefined, density: string) => ({ ...(version === undefined ? {} : { version }), settings: { ...DEFAULT_PERSISTED.settings, density }, layout: {} });
+
+  test("a new workspace starts comfortable and is written as settings version 2", () => {
+    expect(DEFAULT_PERSISTED.settings.density).toBe("comfortable");
+    expect(SETTINGS_VERSION).toBe(2);
+    expect(toDocuments(DEFAULT_PERSISTED).settings["version"]).toBe(2);
+  });
+
+  test("compact from an older settings document moves to comfortable once", () => {
+    expect(fromDocuments(settingsDoc(1, "compact"), null)?.settings.density).toBe("comfortable");
+    expect(fromDocuments(settingsDoc(undefined, "compact"), null)?.settings.density).toBe("comfortable");
+  });
+
+  test("compact chosen under version 2 stays compact, and survives a write and a read", () => {
+    const loaded = fromDocuments(settingsDoc(2, "compact"), null)!;
+    expect(loaded.settings.density).toBe("compact");
+    const docs = toDocuments(loaded);
+    expect(fromDocuments(docs.settings, docs.tabs)?.settings.density).toBe("compact");
+  });
+
+  test("the webview-storage state of PR #57 predates version 2: compact becomes comfortable", () => {
+    const { storage } = memory({ ...DEFAULT_PERSISTED, settings: { ...DEFAULT_PERSISTED.settings, density: "compact" } });
+    expect(readLegacy(storage)?.settings.density).toBe("comfortable");
   });
 });

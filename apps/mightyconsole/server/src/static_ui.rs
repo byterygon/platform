@@ -1,0 +1,422 @@
+//! The UI next to `/rpc/ws`, behind the Host check (Mightyconsole spec §2.3).
+//!
+//! **The page.** `GET /` (and every path without an extension that names no file, the UI's
+//! client-side routes) answers the UI's `index.html` with the browser's session: a `Set-Cookie`
+//! for a new session, and the anti-CSRF token in `<meta name="mightyconsole-csrf">`, which the UI
+//! echoes in Hello ([`crate::sessions`]). The page is `no-store`. A page requested through an
+//! allowed Host other than the public origin's (`127.0.0.1:7443` when the origin is
+//! `https://localhost:7443`) is redirected there first, because the upgrade only accepts the
+//! public origin. Without a UI directory the page is a short placeholder with the same session,
+//! so the server is usable by tests and before the UI is built.
+//!
+//! **Files.** Paths are resolved only inside the UI directory, as DBee's server does: each
+//! segment percent-decoded and a plain file name, the file still canonicalizing under the
+//! directory. `assets/` (content-hashed by Vite) is cached for a year.
+//!
+//! **Headers.** The Content-Security-Policy of spec §2.3 (with `base-uri` and `form-action`
+//! closed as well), `nosniff`, no referrer, HSTS, same-origin opener.
+
+use std::io;
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+
+use axum::Router;
+use axum::body::Body;
+use axum::extract::State;
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
+use axum::response::{IntoResponse, Response};
+
+use crate::sessions::LocalSessions;
+
+/// The `<meta>` name the UI reads the anti-CSRF token from.
+pub const CSRF_META: &str = "mightyconsole-csrf";
+
+/// Served as the page when no UI directory is configured.
+const PLACEHOLDER: &str = "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
+<title>Mightyconsole</title>\n</head>\n<body>\n<p>mightyconsole-server is running. The UI is not \
+built: run <code>pnpm --filter @byterygon/mightyconsole build</code> and start the server with \
+<code>--ui apps/mightyconsole/ui/dist</code>.</p>\n</body>\n</html>\n";
+
+/// A UI directory that exists.
+#[derive(Debug, Clone)]
+pub struct StaticUi {
+    root: PathBuf,
+}
+
+impl StaticUi {
+    /// Canonicalizes `path` and checks that it is a directory.
+    pub fn open(path: &Path) -> io::Result<StaticUi> {
+        let root = std::fs::canonicalize(path)?;
+        if !root.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotADirectory,
+                "not a directory",
+            ));
+        }
+        Ok(StaticUi { root })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+}
+
+struct Shared {
+    ui: Option<StaticUi>,
+    sessions: Arc<LocalSessions>,
+    cookie_name: String,
+    public_origin: String,
+    /// `host[:port]` of the public origin.
+    origin_host: String,
+    csp: HeaderValue,
+}
+
+/// The HTTP routes next to `/rpc/ws`.
+pub fn routes(
+    ui: Option<StaticUi>,
+    sessions: Arc<LocalSessions>,
+    cookie_name: &str,
+    public_origin: &str,
+) -> Router {
+    let shared = Arc::new(Shared {
+        ui,
+        sessions,
+        cookie_name: cookie_name.to_owned(),
+        public_origin: public_origin.to_owned(),
+        origin_host: public_origin
+            .strip_prefix("https://")
+            .unwrap_or(public_origin)
+            .to_owned(),
+        csp: HeaderValue::from_str(&content_security_policy(public_origin))
+            .expect("a validated origin is a header value"),
+    });
+    Router::new().fallback(serve).with_state(shared)
+}
+
+/// The policy of spec §2.3. `connect-src` names the WebSocket explicitly for browsers that do
+/// not count `wss:` as `'self'`; `blob:` workers and images are for Monaco and downloads.
+pub fn content_security_policy(public_origin: &str) -> String {
+    let host = public_origin
+        .strip_prefix("https://")
+        .unwrap_or(public_origin);
+    format!(
+        "default-src 'self'; script-src 'self'; worker-src 'self' blob:; \
+         style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; \
+         connect-src 'self' wss://{host}; font-src 'self'; object-src 'none'; \
+         frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    )
+}
+
+async fn serve(
+    State(shared): State<Arc<Shared>>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+) -> Response {
+    if method != Method::GET && method != Method::HEAD {
+        return StatusCode::METHOD_NOT_ALLOWED.into_response();
+    }
+    let Some(segments) = segments(uri.path()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let target = match &shared.ui {
+        Some(ui) => resolve(ui.root(), &segments).await,
+        None if segments.is_empty() || !has_extension(&segments) => Some(Target::Page(None)),
+        None => None,
+    };
+    match target {
+        None => StatusCode::NOT_FOUND.into_response(),
+        Some(Target::Page(path)) => page(&shared, &method, &uri, &headers, path).await,
+        Some(Target::File(path, cache)) => {
+            let Ok(bytes) = tokio::fs::read(&path).await else {
+                return StatusCode::NOT_FOUND.into_response();
+            };
+            respond(&shared, &method, content_type(&path), cache, bytes, None)
+        }
+    }
+}
+
+/// The UI's page with the browser's session, or a redirect to the public origin.
+async fn page(
+    shared: &Shared,
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+    path: Option<PathBuf>,
+) -> Response {
+    let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
+    if host.is_some_and(|h| !h.eq_ignore_ascii_case(&shared.origin_host)) {
+        let path = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
+        let location = format!("{}{path}", shared.public_origin);
+        return match HeaderValue::from_str(&location) {
+            Ok(location) => (
+                StatusCode::PERMANENT_REDIRECT,
+                [(header::LOCATION, location)],
+            )
+                .into_response(),
+            Err(_) => StatusCode::BAD_REQUEST.into_response(),
+        };
+    }
+    let html = match path {
+        Some(path) => match tokio::fs::read_to_string(&path).await {
+            Ok(html) => html,
+            Err(_) => return StatusCode::NOT_FOUND.into_response(),
+        },
+        None => PLACEHOLDER.to_owned(),
+    };
+    let cookie = request_cookie(headers, &shared.cookie_name);
+    let credentials = shared.sessions.for_page(cookie);
+    let html = inject_csrf(&html, &credentials.csrf_token);
+    let set_cookie = credentials.new.then(|| {
+        HeaderValue::from_str(&format!(
+            "{}={}; Path=/; Secure; HttpOnly; SameSite=Strict",
+            shared.cookie_name, credentials.cookie
+        ))
+        .expect("hex cookie value")
+    });
+    respond(
+        shared,
+        method,
+        "text/html; charset=utf-8",
+        "no-store",
+        html.into_bytes(),
+        set_cookie,
+    )
+}
+
+fn respond(
+    shared: &Shared,
+    method: &Method,
+    content_type: &'static str,
+    cache: &'static str,
+    bytes: Vec<u8>,
+    set_cookie: Option<HeaderValue>,
+) -> Response {
+    let length = bytes.len();
+    let body = if method == Method::HEAD {
+        Body::empty()
+    } else {
+        Body::from(bytes)
+    };
+    let mut response = Response::new(body);
+    let headers = response.headers_mut();
+    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    headers.insert(
+        header::CONTENT_LENGTH,
+        HeaderValue::from_str(&length.to_string()).expect("a number"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
+    headers.insert(header::CONTENT_SECURITY_POLICY, shared.csp.clone());
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        header::STRICT_TRANSPORT_SECURITY,
+        HeaderValue::from_static("max-age=63072000"),
+    );
+    headers.insert(
+        header::HeaderName::from_static("cross-origin-opener-policy"),
+        HeaderValue::from_static("same-origin"),
+    );
+    if let Some(cookie) = set_cookie {
+        headers.insert(header::SET_COOKIE, cookie);
+    }
+    response
+}
+
+/// The `<meta>` with the token, before `</head>` (or at the start without one). The token is
+/// hex, so it needs no escaping.
+pub fn inject_csrf(html: &str, token: &str) -> String {
+    debug_assert!(token.bytes().all(|b| b.is_ascii_hexdigit()));
+    let meta = format!("<meta name=\"{CSRF_META}\" content=\"{token}\">");
+    match html.find("</head>") {
+        Some(at) => format!("{}{meta}\n{}", &html[..at], &html[at..]),
+        None => format!("{meta}\n{html}"),
+    }
+}
+
+/// The value of cookie `name` in the request, if it appears exactly once.
+fn request_cookie<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
+    let mut found = None;
+    for header in headers.get_all(header::COOKIE) {
+        let header = header.to_str().ok()?;
+        for pair in header.split(';') {
+            if let Some((key, value)) = pair.trim().split_once('=')
+                && key == name
+            {
+                if found.is_some() {
+                    return None;
+                }
+                found = Some(value);
+            }
+        }
+    }
+    found.filter(|v| !v.is_empty())
+}
+
+enum Target {
+    /// The page: the UI's `index.html`, or the placeholder (`None`).
+    Page(Option<PathBuf>),
+    File(PathBuf, &'static str),
+}
+
+/// The decoded path segments, or `None` when any segment could reach outside the directory or
+/// is not a plain file name. Empty segments (`//`, the trailing slash) are skipped.
+fn segments(path: &str) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    for raw in path.split('/') {
+        if raw.is_empty() {
+            continue;
+        }
+        let segment = percent_decode(raw)?;
+        if segment == "." || segment == ".." {
+            return None;
+        }
+        if segment
+            .chars()
+            .any(|c| c == '/' || c == '\\' || c == '\0' || c == ':' || c.is_control())
+        {
+            return None;
+        }
+        let mut components = Path::new(&segment).components();
+        match (components.next(), components.next()) {
+            (Some(Component::Normal(_)), None) => {}
+            _ => return None,
+        }
+        out.push(segment);
+    }
+    Some(out)
+}
+
+fn percent_decode(raw: &str) -> Option<String> {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = bytes.get(i + 1..i + 3)?;
+            let text = std::str::from_utf8(hex).ok()?;
+            out.push(u8::from_str_radix(text, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+fn has_extension(segments: &[String]) -> bool {
+    segments
+        .last()
+        .is_some_and(|s| s.rsplit_once('.').is_some_and(|(stem, _)| !stem.is_empty()))
+}
+
+/// The page for `/`, `index.html` and extension-less paths that name no file; otherwise the
+/// named file. The resolved path must canonicalize under `root`.
+async fn resolve(root: &Path, segments: &[String]) -> Option<Target> {
+    let index = || async {
+        let canonical = tokio::fs::canonicalize(root.join("index.html"))
+            .await
+            .ok()?;
+        canonical
+            .starts_with(root)
+            .then_some(Target::Page(Some(canonical)))
+    };
+    if segments.is_empty() || (segments.len() == 1 && segments[0] == "index.html") {
+        return index().await;
+    }
+    let mut candidate = root.to_path_buf();
+    candidate.extend(segments.iter());
+    let exists = tokio::fs::metadata(&candidate)
+        .await
+        .map(|m| m.is_file())
+        .unwrap_or(false);
+    if !exists {
+        return if has_extension(segments) {
+            None
+        } else {
+            index().await
+        };
+    }
+    let canonical = tokio::fs::canonicalize(&candidate).await.ok()?;
+    if !canonical.starts_with(root) {
+        return None;
+    }
+    let cache = if segments.first().is_some_and(|s| s == "assets") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    Some(Target::File(canonical, cache))
+}
+
+fn content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("html") => "text/html; charset=utf-8",
+        Some("js" | "mjs") => "text/javascript; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("json" | "map") => "application/json",
+        Some("webmanifest") => "application/manifest+json",
+        Some("svg") => "image/svg+xml",
+        Some("png") => "image/png",
+        Some("ico") => "image/x-icon",
+        Some("webp") => "image/webp",
+        Some("woff2") => "font/woff2",
+        Some("woff") => "font/woff",
+        Some("ttf") => "font/ttf",
+        Some("wasm") => "application/wasm",
+        Some("txt") => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn segments_reject_anything_that_is_not_a_plain_file_name() {
+        assert_eq!(segments("/").unwrap(), Vec::<String>::new());
+        assert_eq!(
+            segments("/assets/app-1.js").unwrap(),
+            vec!["assets".to_owned(), "app-1.js".to_owned()]
+        );
+        for bad in [
+            "/../x",
+            "/./x",
+            "/%2e%2e/x",
+            "/assets/..%2f..%2fx",
+            "/a%5cb",
+            "/a%00b",
+            "/%zz",
+        ] {
+            assert!(segments(bad).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_policy_is_the_spec_s() {
+        let csp = content_security_policy("https://localhost:7443");
+        assert!(csp.contains("connect-src 'self' wss://localhost:7443;"));
+        assert!(csp.contains("worker-src 'self' blob:;"));
+        assert!(csp.contains("img-src 'self' data: blob:;"));
+        assert!(csp.contains("script-src 'self';"));
+        assert!(csp.contains("frame-ancestors 'none'"));
+        assert!(csp.contains("object-src 'none'"));
+        assert!(!csp.contains("http:"));
+    }
+
+    #[test]
+    fn the_token_goes_before_the_end_of_head() {
+        let html = "<html><head><title>x</title></head><body></body></html>";
+        let out = inject_csrf(html, "ab12");
+        assert!(out.contains("<meta name=\"mightyconsole-csrf\" content=\"ab12\">\n</head>"));
+        assert!(inject_csrf("<p>x</p>", "ab").starts_with("<meta name"));
+    }
+}

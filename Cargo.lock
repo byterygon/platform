@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "dbee-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "ambidex",
  "ambidex-conformance",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "dbee-desktop"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "ambidex",
  "ambidex-conformance",
@@ -2839,6 +2839,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "mightyconsole-rpc-gen"
+version = "0.1.0"
+dependencies = [
+ "ambidex",
+ "mightyconsole-server",
+]
+
+[[package]]
+name = "mightyconsole-server"
+version = "0.1.0"
+dependencies = [
+ "ambidex",
+ "ambidex-axum",
+ "ambidex-conformance",
+ "axum",
+ "base64 0.22.1",
+ "dirs",
+ "futures-util",
+ "getrandom 0.4.3",
+ "rcgen",
+ "rustls",
+ "rustls-pki-types",
+ "schemars 1.2.3",
+ "security-types",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "time",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite",
+ "tokio-util",
+ "ts-rs",
 ]
 
 [[package]]

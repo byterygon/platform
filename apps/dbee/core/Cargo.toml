@@ -1,6 +1,6 @@
 [package]
 name = "dbee-core"
-version = "0.0.0"
+version = "0.1.0"
 description = "DBee core: the Ambidex router and procedures, connection manager, workspace store, secret store, audit sink, SQL classifier and export encoders shared by the desktop and web shells."
 license = "AGPL-3.0-only"
 edition.workspace = true

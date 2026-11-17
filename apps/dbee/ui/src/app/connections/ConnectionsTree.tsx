@@ -3,20 +3,23 @@
 // expand and cached per session, system schemas under a collapsed "System" node, a filter box, a
 // context menu with every connection action, an EmptyState on first run.
 import { useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateTitle } from "@/components/ui/empty-state";
+import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@/components/ui/empty-state";
+import { Kbd } from "@/components/ui/kbd";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Icon } from "@/components/ui/icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tree, type TreeNode } from "@/components/ui/tree";
 import { TypeBadge } from "@/components/ui/type-badge";
 import type { ColumnInfo, ConnectionStatus, ConnectionSummary, TableInfo } from "@/gen/api";
+import { Add, CheckmarkCircle, Circle, Clock, Database, DatabaseMultiple, ErrorCircle, LockClosed, Warning } from "@/lib/icons";
 import { type Ctx, connect, loadColumns, loadSchemas, loadTables, openTab, quoteIdent } from "../actions";
 import { useServices } from "../client";
 import { ExpiryBadge } from "./ExpiryBadge";
-import { ColumnIcon, DatabaseIcon, SchemaIcon, TableIcon, ViewIcon } from "../icons";
+import { ColumnIcon, SchemaIcon, TableIcon, ViewIcon } from "../icons";
 import { tlsName } from "../messages";
 import { type SchemaCache, emptyCache, useStore } from "../store";
 import { type Shell, bindingsOf, ACTIONS, displayBinding } from "../shortcuts";
@@ -52,20 +55,31 @@ export function parseNodeId(id: string): TreeTarget | null {
   return target;
 }
 
-const statusVariant = (status: ConnectionStatus | undefined): "neutral" | "success" | "warning" | "danger" | "info" => {
-  switch (status) {
-    case "connected":
-      return "success";
-    case "connecting":
-      return "info";
-    case "error":
-      return "danger";
-    case "expired":
-      return "warning";
-    default:
-      return "neutral";
-  }
-};
+/**
+ * A connection's state as a status glyph on its database icon (TSK-64, Fluent's presence badge):
+ * the shape carries the state (check, error, clock, hollow circle), not only the colour, and the
+ * row also says it in text for screen readers. Connecting shows a spinner in the row's meta.
+ */
+const STATUS_GLYPH = {
+  connected: { icon: CheckmarkCircle, filled: true, tone: "success" },
+  error: { icon: ErrorCircle, filled: true, tone: "danger" },
+  expired: { icon: Clock, filled: true, tone: "warning" },
+  disconnected: { icon: Circle, filled: false, tone: "muted" },
+} as const;
+
+export function ConnectionIcon({ status, colour }: { status: ConnectionStatus; colour?: string | null }) {
+  const glyph = status === "connecting" ? null : STATUS_GLYPH[status];
+  return (
+    <span data-status={status} className="relative me-inline-xs inline-flex">
+      <Icon icon={Database} style={colour ? { color: colour } : undefined} />
+      {glyph ? (
+        <span className="absolute inset-e-0 bottom-0 flex translate-x-1/3 translate-y-1/3 rounded-full bg-surface">
+          <Icon icon={glyph.icon} filled={glyph.filled} tone={glyph.tone} className="size-icon-xs!" />
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 function columnFamily(c: ColumnInfo): "integer" | "decimal" | "text" | "boolean" | "datetime" | "json" | "binary" | "uuid" {
   const t = c.typeName.toLowerCase();
@@ -144,14 +158,26 @@ export function connectionNodes(connections: readonly ConnectionSummary[], statu
     return node({
       id: `c:${c.id}`,
       label: c.name,
-      icon: <DatabaseIcon style={c.colour ? { color: c.colour } : undefined} />,
+      icon: <ConnectionIcon status={status} colour={c.colour} />,
       meta: (
-        <span className="flex items-center gap-inline-xs">
-          <Badge variant={c.tls === "plaintext" ? "warning" : "neutral"} appearance="outline" title={tlsName(c.tls)}>
-            {c.tls === "plaintext" ? "plaintext" : "TLS"}
-          </Badge>
-          <ExpiryBadge expiresAt={c.grant.expiresAt} hideExpired={status === "expired"} />
-          {status === "connecting" ? <Spinner size="sm" label="Connecting" /> : <Badge variant={statusVariant(status)} appearance="dot">{status}</Badge>}
+        <span className="flex items-center gap-inline-sm">
+          <span className="sr-only">{status}, </span>
+          <ExpiryBadge expiresAt={c.grant.expiresAt} hideExpired={status === "expired"} compact />
+          {status === "connecting" ? <Spinner size="sm" label="Connecting" /> : null}
+          {c.tls === "plaintext" ? (
+            <span className="flex items-center gap-inline-xs text-warning-fg">
+              <Icon icon={Warning} filled tone="warning" />
+              Plaintext
+            </span>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger render={<span className="flex" />}>
+                <Icon icon={LockClosed} />
+                <span className="sr-only">TLS</span>
+              </TooltipTrigger>
+              <TooltipContent>{tlsName(c.tls)}</TooltipContent>
+            </Tooltip>
+          )}
         </span>
       ),
       hasChildren: status === "connected",
@@ -242,14 +268,20 @@ export function ConnectionsTree({ shell, onAddConnection, onEdit, onRenew, onDel
   }
   if ((state.connections ?? []).length === 0) {
     return (
-      <EmptyState variant="inline" className="m-inset-sm">
-        <EmptyStateTitle render={<p />}>No connections yet</EmptyStateTitle>
-        <EmptyStateDescription>DBee stores passwords in the OS keychain and never sends anything over the network except to the database you approve.</EmptyStateDescription>
+      <EmptyState className="px-inset-md py-inset-xl">
+        <EmptyStateIcon>
+          <Icon icon={DatabaseMultiple} />
+        </EmptyStateIcon>
+        <EmptyStateTitle render={<p />} className="text-body-1-strong">
+          No connections yet
+        </EmptyStateTitle>
+        <EmptyStateDescription className="text-caption-1">DBee stores passwords in the OS keychain and never sends anything over the network except to the database you approve.</EmptyStateDescription>
         <EmptyStateActions>
-          <Button size="small" onClick={onAddConnection}>
-            Add connection
+          <Button onClick={onAddConnection}>
+            <Icon icon={Add} /> Add connection
           </Button>
         </EmptyStateActions>
+        <Kbd>{binding("addConnection")}</Kbd>
       </EmptyState>
     );
   }
@@ -262,6 +294,7 @@ export function ConnectionsTree({ shell, onAddConnection, onEdit, onRenew, onDel
         <ContextMenuTrigger className="min-h-0 flex-1" data-pane="tree">
           <Tree
             aria-label="Connections and schema"
+            size="medium"
             className="h-full"
             nodes={nodes}
             expanded={expanded}

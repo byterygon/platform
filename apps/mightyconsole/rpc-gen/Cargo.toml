@@ -1,0 +1,20 @@
+[package]
+name = "mightyconsole-rpc-gen"
+version = "0.1.0"
+description = "Writes Mightyconsole's generated api.ts and api.manifest.json from the server's router (Ambidex spec §2)."
+license = "AGPL-3.0-only"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mightyconsole-rpc-gen"
+path = "src/main.rs"
+
+[dependencies]
+ambidex = { path = "../../../crates/ambidex" }
+mightyconsole-server = { path = "../server" }

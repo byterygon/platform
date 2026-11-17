@@ -9,11 +9,23 @@ import { tokenPx } from "@/lib/theme-scope";
 // pattern; Base UI has no tree, so it is built here. Data-driven: `nodes` with `children`, or
 // `hasChildren` for children the app loads when the node expands (`onExpandedChange`), shown with
 // a per-node loading row or an error row with Retry. Only the visible rows are rendered: the
-// tree is a scroll container of fixed-height rows (size.control.sm, so density applies), and
+// tree is a scroll container of fixed-height rows (size.control.sm, or size.control.md with
+// size="medium", Fluent's medium tree item; density applies to both), and
 // focus stays on the tree with aria-activedescendant naming the active row.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
-export const treeVariants = {} as const;
+export const treeVariants = {
+  /** Row height: `small` (the default) is size.control.sm, `medium` size.control.md (Fluent 2's medium tree item). */
+  size: {
+    small: "h-control-sm",
+    medium: "h-control-md",
+  },
+} as const;
+
+export type TreeSize = keyof typeof treeVariants.size;
+
+/** The token each size's row height is read from (the virtualizer needs it in px). */
+const ROW_TOKEN: Record<TreeSize, [`--by-${string}`, number]> = { small: ["--by-size-control-sm", 28], medium: ["--by-size-control-md", 32] };
 
 export interface TreeNode {
   /** Unique in the tree. */
@@ -53,7 +65,7 @@ const classes = {
     focusRing,
   ],
   row: [
-    "absolute inset-x-0 flex h-control-sm cursor-default select-none items-center gap-inline-xs pe-inset-sm whitespace-nowrap",
+    "absolute inset-x-0 flex cursor-default select-none items-center gap-inline-xs pe-inset-sm whitespace-nowrap",
     "rounded-md hover:bg-hover active:bg-pressed data-selected:bg-selected data-selected:hover:bg-selected-hover",
     "data-active:outline-none in-focus-visible:data-active:outline-solid in-focus-visible:data-active:outline-[length:var(--by-ring-width)] in-focus-visible:data-active:-outline-offset-[var(--by-ring-width)] in-focus-visible:data-active:outline-ring in-focus-visible:data-active:ring-inset in-focus-visible:data-active:ring-[length:var(--by-ring-inner-width)] in-focus-visible:data-active:ring-ring-inner",
     "data-disabled:text-fg-disabled",
@@ -122,10 +134,12 @@ export interface TreeItemProps {
   active: boolean;
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: () => void;
+  /** Row height, from the tree's `size`. */
+  size?: TreeSize;
 }
 
 /** One node's row (role="treeitem"): chevron, icon, label and meta, indented by level. Tree renders one per visible node. */
-export function TreeItem({ id, node, level, setSize, posInSet, top, expanded, selected, active, onClick, onDoubleClick }: TreeItemProps) {
+export function TreeItem({ id, node, level, setSize, posInSet, top, expanded, selected, active, onClick, onDoubleClick, size = "small" }: TreeItemProps) {
   return (
     <div
       id={id}
@@ -138,13 +152,14 @@ export function TreeItem({ id, node, level, setSize, posInSet, top, expanded, se
       aria-disabled={node.disabled || undefined}
       aria-busy={node.loading || undefined}
       data-slot="tree-item"
+      data-size={size}
       data-active={active ? "" : undefined}
       data-selected={selected ? "" : undefined}
       data-disabled={node.disabled ? "" : undefined}
       style={{ top, paddingInlineStart: `calc(${level - 1} * var(--by-size-icon-md) + var(--by-space-inset-xs))` }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={cn(classes.row)}
+      className={cn(classes.row, treeVariants.size[size])}
     >
       {expanded !== undefined ? (
         <span data-slot="tree-chevron" data-expanded={expanded ? "" : undefined} className={cn(classes.chevron)}>
@@ -191,6 +206,8 @@ export interface TreeProps {
   filter?: string;
   /** The tree's accessible name. */
   "aria-label"?: string;
+  /** Row height: `small` (size.control.sm, the default) or `medium` (size.control.md, Fluent's medium tree item). */
+  size?: TreeSize;
   /** Rows rendered above and below the visible ones. */
   overscan?: number;
   /** Text of the loading row. */
@@ -218,6 +235,7 @@ export function Tree({
   onRetry,
   filter = "",
   "aria-label": label = "Tree",
+  size = "small",
   overscan = 8,
   loadingText = "Loading…",
   retryText = "Retry",
@@ -239,31 +257,32 @@ export function Tree({
   const active = rows[activeIndex];
 
   const container = useRef<HTMLDivElement | null>(null);
-  const [rowHeight, setRowHeight] = useState(28);
+  const [rowToken, rowFallback] = ROW_TOKEN[size];
+  const [rowHeight, setRowHeight] = useState(rowFallback);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState(0);
   const setRef = useCallback(
     (element: HTMLDivElement | null) => {
       container.current = element;
       if (element) {
-        setRowHeight(tokenPx(element, "--by-size-control-sm", 28));
+        setRowHeight(tokenPx(element, rowToken, rowFallback));
         setViewport(element.clientHeight);
       }
       if (typeof ref === "function") ref(element);
       else if (ref) ref.current = element;
     },
-    [ref],
+    [ref, rowToken, rowFallback],
   );
   useEffect(() => {
     const element = container.current;
     if (!element || typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(() => {
       setViewport(element.clientHeight);
-      setRowHeight(tokenPx(element, "--by-size-control-sm", 28));
+      setRowHeight(tokenPx(element, rowToken, rowFallback));
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [rowToken, rowFallback]);
 
   // jsdom and a not-yet-laid-out panel report 0: render a screenful anyway.
   const height = viewport || rowHeight * 30;
@@ -415,7 +434,7 @@ export function Tree({
           } as const;
           if (row.kind === "loading") {
             return (
-              <div key={row.key} {...common} data-slot="tree-loading" aria-disabled="true" aria-busy="true" onClick={() => setActiveKey(row.key)} className={cn(classes.row, classes.status)}>
+              <div key={row.key} {...common} data-slot="tree-loading" aria-disabled="true" aria-busy="true" onClick={() => setActiveKey(row.key)} data-size={size} className={cn(classes.row, treeVariants.size[size], classes.status)}>
                 <span className="size-icon-md shrink-0" />
                 {loadingText}
               </div>
@@ -423,7 +442,7 @@ export function Tree({
           }
           if (row.kind === "error") {
             return (
-              <div key={row.key} {...common} data-slot="tree-error" onClick={() => setActiveKey(row.key)} className={cn(classes.row)}>
+              <div key={row.key} {...common} data-slot="tree-error" data-size={size} onClick={() => setActiveKey(row.key)} className={cn(classes.row, treeVariants.size[size])}>
                 <span className="size-icon-md shrink-0" />
                 <span className={classes.error}>{node.error}</span>
                 {onRetry ? (
@@ -448,6 +467,7 @@ export function Tree({
               active={row.key === active?.key}
               onClick={(event) => onRowClick(row, event)}
               onDoubleClick={() => !node.disabled && onAction?.(node)}
+              size={size}
             />
           );
         })}
