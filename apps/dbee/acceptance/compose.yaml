@@ -1,0 +1,51 @@
+# DBee acceptance databases (TSK-61, DOC-18 section 14). Run through ./acceptance.sh, which sets
+# the variables below; see README.md. Two throwaway PostgreSQL servers, data in tmpfs, ports on
+# 127.0.0.1 only. The image is pinned by digest (postgres:17, PostgreSQL 17.12, Debian 13).
+name: dbee-acceptance
+
+x-postgres: &postgres
+  image: postgres:17@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac
+  pull_policy: missing
+  environment:
+    POSTGRES_PASSWORD: ${DBEE_ACC_SUPERUSER_PASSWORD:?run ./acceptance.sh up}
+    DBEE_ACC_PASSWORD: ${DBEE_ACC_PASSWORD:?run ./acceptance.sh up}
+    POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+  # The data directory lives in memory: `down` leaves nothing behind.
+  tmpfs:
+    - /var/lib/postgresql/data:size=3g,uid=999,gid=999,mode=0700
+  shm_size: 256m
+  healthcheck:
+    # The init phase's temporary server listens on the Unix socket only, so TCP readiness means
+    # the init scripts have finished and the real server is up.
+    test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
+    interval: 1s
+    timeout: 3s
+    retries: 600
+    start_period: 600s
+
+services:
+  # Plaintext only (ssl = off): the plaintext warning, the TLS policies failing closed against a
+  # server without TLS, and the data for the performance budget (bench_rows 1M x 10 as in
+  # TSK-36, schema `wide` with 10,000 tables).
+  pg-plain:
+    <<: *postgres
+    command: ["postgres", "-c", "ssl=off", "-c", "max_connections=100"]
+    ports:
+      - "127.0.0.1:${DBEE_ACC_PLAIN_PORT:-55432}:5432"
+    volumes:
+      - ./initdb/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+      - ./initdb/20-bench-rows.sql:/docker-entrypoint-initdb.d/20-bench-rows.sql:ro
+      - ./initdb/30-wide-schema.sql:/docker-entrypoint-initdb.d/30-wide-schema.sql:ro
+
+  # TLS with a CA generated inside the container at first start (the keys never leave it); the
+  # CA and the server certificate are copied to .state/tls for the pinned-CA and pinned-cert
+  # policies. Certificate name: db.test.
+  pg-tls:
+    <<: *postgres
+    command: ["postgres", "-c", "max_connections=100"]
+    ports:
+      - "127.0.0.1:${DBEE_ACC_TLS_PORT:-55433}:5432"
+    volumes:
+      - ./initdb/10-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+      - ./initdb/15-tls.sh:/docker-entrypoint-initdb.d/15-tls.sh:ro
+      - ./.state/tls:/acceptance-out

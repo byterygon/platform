@@ -44,7 +44,7 @@ const classes = {
   content: "flex min-w-0 flex-1 flex-col gap-stack-xs",
   title: "text-body-1-strong text-fg",
   description: "text-body-1 text-fg-muted",
-  actions: "flex shrink-0 items-center gap-inline-xs",
+  actions: "flex flex-wrap items-center gap-inline-xs pt-inset-xs",
 } as const;
 
 /** Fluent's intent icons, filled, in the status text colours (warning is orange). */
@@ -98,13 +98,16 @@ export function ToastItem({ toast, closeLabel = "Dismiss" }: ToastItemProps) {
       <ToastPrimitive.Content data-slot="toast-content" className={cn(classes.content)}>
         <ToastPrimitive.Title data-slot="toast-title" className={cn(classes.title)} />
         <ToastPrimitive.Description data-slot="toast-description" className={cn(classes.description)} />
+        {/* The action under the text, as Fluent's Toast lays it out, so a long title keeps the toast's width (TSK-64). */}
+        {toast.actionProps ? (
+          <div data-slot="toast-actions" className={cn(classes.actions)}>
+            <ToastPrimitive.Action render={<Button appearance="secondary" size="small" />} />
+          </div>
+        ) : null}
       </ToastPrimitive.Content>
-      <div data-slot="toast-actions" className={cn(classes.actions)}>
-        {toast.actionProps ? <ToastPrimitive.Action render={<Button appearance="secondary" size="small" />} /> : null}
-        <ToastPrimitive.Close render={<IconButton aria-label={closeLabel} size="small" />}>
-          <Icon icon={Dismiss} />
-        </ToastPrimitive.Close>
-      </div>
+      <ToastPrimitive.Close render={<IconButton aria-label={closeLabel} size="small" />}>
+        <Icon icon={Dismiss} />
+      </ToastPrimitive.Close>
     </ToastPrimitive.Root>
   );
 }

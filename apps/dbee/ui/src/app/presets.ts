@@ -43,7 +43,7 @@ export interface Appearance {
   density: Density;
 }
 
-export const DEFAULT_APPEARANCE: Appearance = { preset: "default", colorScheme: "system", density: "compact" };
+export const DEFAULT_APPEARANCE: Appearance = { preset: "default", colorScheme: "system", density: "comfortable" };
 
 export function isPreset(value: unknown): value is Preset {
   return typeof value === "string" && (PRESETS as readonly string[]).includes(value);

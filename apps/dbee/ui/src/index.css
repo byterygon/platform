@@ -28,6 +28,15 @@ body {
 }
 
 /*
+ * The base layer (TSK-64, Fluent 2 layering): the window paints the theme's backdrop (Aurora's
+ * glows over the canvas; a plain canvas in presets without glows), and the panes sit on it as
+ * translucent layers with gaps.
+ */
+.dbee-root {
+  background: var(--by-gradient-backdrop);
+}
+
+/*
  * Window material (TSK-54): when the desktop shell applied Mica (src/app/shell.ts sets
  * data-material on <html>), the canvas is transparent so the material shows under the layers.
  * Everywhere else the canvas stays the opaque backdrop colour.
