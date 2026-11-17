@@ -19,6 +19,7 @@ import { Add, CheckmarkCircle, Circle, Clock, Database, DatabaseMultiple, ErrorC
 import { type Ctx, connect, loadColumns, loadSchemas, loadTables, openTab, quoteIdent } from "../actions";
 import { useServices } from "../client";
 import { ExpiryBadge } from "./ExpiryBadge";
+import { ErrorAlert } from "../ErrorAlert";
 import { ColumnIcon, SchemaIcon, TableIcon, ViewIcon } from "../icons";
 import { tlsName } from "../messages";
 import { type SchemaCache, emptyCache, useStore } from "../store";
@@ -195,9 +196,11 @@ export interface ConnectionsTreeProps {
   onRenew: (id: string) => void;
   onDelete: (id: string) => void;
   onDisconnect: (id: string) => void;
+  /** The remedy of a failed connect (spec §8): Edit connection, Renew access, Retry, Enter the password, ... */
+  onRemedy?: (remedy: string, connectionId: string) => void;
 }
 
-export function ConnectionsTree({ shell, onAddConnection, onEdit, onRenew, onDelete, onDisconnect }: ConnectionsTreeProps) {
+export function ConnectionsTree({ shell, onAddConnection, onEdit, onRenew, onDelete, onDisconnect, onRemedy }: ConnectionsTreeProps) {
   const services = useServices();
   const { state, dispatch } = useStore();
   const ctx: Ctx = { services, state, dispatch };
@@ -336,6 +339,12 @@ export function ConnectionsTree({ shell, onAddConnection, onEdit, onRenew, onDel
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      {/* A failed connect (spec §8, "Connect / sessions.open"): the message, the remedy and the correlation id. */}
+      {(state.connections ?? []).flatMap((c) => {
+        const error = state.connectError[c.id];
+        if (!error) return [];
+        return [<ErrorAlert key={c.id} error={{ ...error, title: `${c.name}: ${error.title}` }} onRemedy={onRemedy ? (r) => onRemedy(r, c.id) : undefined} className="mx-inset-sm mb-inset-sm" />];
+      })}
     </div>
   );
 }

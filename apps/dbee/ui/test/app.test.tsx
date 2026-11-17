@@ -155,6 +155,22 @@ describe("errors and states (spec §8)", () => {
     await waitFor(() => dialogWith("Edit Local") !== null, "the sheet");
   });
 
+  test("connecting from the tree shows the failure with its remedy and correlation id under the tree", async () => {
+    const fake = createFakeServices({ connections: [connection()] });
+    fake.state.failNext["sessions.open"] = new RpcError("FailedPrecondition", "tls", { details: { kind: "TlsFailed", policy: "pinned-ca" }, correlation_id: "corr-tls" });
+    const { container } = mount(fake);
+    await waitFor(() => document.querySelector("[role=treeitem]") !== null, "the node");
+    const node = document.querySelector<HTMLElement>("[role=treeitem]")!;
+    await act(async () => void node.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    await waitFor(() => document.querySelector('[data-pane="tree"]')?.parentElement?.querySelector('[role="alert"]') != null, "the error under the tree");
+    const alert = document.querySelector('[data-pane="tree"]')!.parentElement!.querySelector('[role="alert"]')!;
+    expect(alert.textContent).toContain("Local: TLS failed");
+    expect(alert.textContent).toContain("corr-tls");
+    expect(await axeViolations(container)).toEqual([]);
+    await click(byRole("button", "Edit connection"));
+    await waitFor(() => dialogWith("Edit Local") !== null, "the sheet");
+  });
+
   test("a statement without rows shows its outcome line; a Destructive statement is confirmed first", async () => {
     const fake = createFakeServices({ connections: [connection()] });
     mount(fake, { persisted: { tabs: [{ id: "t1", connectionId: "conn-1", sql: "update orders set x = 1", maxRows: null }], activeTab: "t1" } });

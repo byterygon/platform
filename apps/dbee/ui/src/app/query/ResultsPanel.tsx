@@ -4,9 +4,7 @@
 // viewer (Enter, F2 or double click).
 import { type CellPos, columnFormat, DataGrid, type DataGridHandle, type SelectionInfo } from "@byterygon/data-grid";
 import { useMemo, useRef, useState } from "react";
-import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Code } from "@/components/ui/code";
 import { CodeInput } from "@/components/ui/code-input";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -17,6 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
 import { ArrowDownload, ChevronDown, Copy } from "@/lib/icons";
 import { benchHook } from "../bench";
+import { ErrorAlert } from "../ErrorAlert";
 import { formatCount, formatElapsed } from "../messages";
 import type { Run } from "../store";
 
@@ -109,32 +108,7 @@ export function ResultsPanel({ run, onExport, onRemedy, columnWidths, onColumnWi
           </ToolbarButton>
         </ToolbarGroup>
       </Toolbar>
-      {run.status === "error" && run.error ? (
-        <Alert variant="danger" className="m-inset-sm w-auto">
-          <AlertTitle>{run.error.title}</AlertTitle>
-          <AlertDescription>
-            {run.error.description ? <span>{run.error.description} </span> : null}
-            {run.error.sqlstate ? (
-              <span>
-                SQLSTATE <Code>{run.error.sqlstate}</Code>{" "}
-              </span>
-            ) : null}
-            {run.error.position !== undefined ? <span>at position {run.error.position} </span> : null}
-            {run.error.correlationId ? (
-              <details className="inline">
-                <summary className="inline cursor-pointer text-fg-link">Details</summary> Correlation id <Code>{run.error.correlationId}</Code>
-              </details>
-            ) : null}
-          </AlertDescription>
-          {run.error.remedy && onRemedy ? (
-            <AlertActions>
-              <Button size="small" appearance="secondary" onClick={() => onRemedy(run.error!.remedy!)}>
-                {run.error.remedyLabel}
-              </Button>
-            </AlertActions>
-          ) : null}
-        </Alert>
-      ) : null}
+      {run.status === "error" && run.error ? <ErrorAlert error={run.error} onRemedy={onRemedy} className="m-inset-sm w-auto" /> : null}
       {run.summary && run.summary.notices.length > 0 ? (
         <Collapsible className="px-inset-sm">
           <CollapsibleTrigger>

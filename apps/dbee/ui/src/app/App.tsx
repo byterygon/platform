@@ -514,7 +514,7 @@ function Shell({ shell }: { shell: Shell }) {
                 </Tooltip>
               </SidebarHeader>
               <SidebarContent className="min-h-0 flex-1 p-0">
-                <ConnectionsTree shell={shell} onAddConnection={() => perform("addConnection")} onEdit={(id) => dispatch({ type: "dialog", dialog: { kind: "connection", editId: id } })} onRenew={renew} onDelete={(id) => dispatch({ type: "dialog", dialog: { kind: "deleteConnection", id } })} onDisconnect={(id) => void disconnect(id)} />
+                <ConnectionsTree shell={shell} onAddConnection={() => perform("addConnection")} onEdit={(id) => dispatch({ type: "dialog", dialog: { kind: "connection", editId: id } })} onRenew={renew} onDelete={(id) => dispatch({ type: "dialog", dialog: { kind: "deleteConnection", id } })} onDisconnect={(id) => void disconnect(id)} onRemedy={(r, id) => remedy(r, id)} />
               </SidebarContent>
             </Sidebar>
           </ResizablePanel>
