@@ -21,12 +21,41 @@ icons/                                      the vendored Fluent icons: fluent/*.
 scripts/icons.ts                            icons build / add / refresh / list (offline)
 gallery/                                    every example in Light/Dark x Comfortable/Compact
 scripts/registry.ts                         writes registry/ (committed, drift-tested)
+scripts/lib/llms.ts                         registry/llms.txt and llms-full.txt (from the manifests, examples and tokens)
 scripts/new-component.ts                    pnpm ui:new
 scripts/verify-install.ts                   shadcn CLI install into a blank Vite app, offline
 scripts/browser-check.ts                    the editors in Chromium over the DevTools protocol (test/browser)
 registry/                                   <name>.json, cn.json, theme-scope.json, theme-<preset>.json, registry.json, llms.txt, llms-full.txt
 component.manifest.schema.json              the manifest schema (editors); scripts/lib/manifest.ts validates
 ```
+
+## Quickstart: a project that installs from the registry
+
+What an agent does in a blank Vite + React + Tailwind v4 app (the steps the TSK-50 end-to-end check
+took, with what tripped it up):
+
+1. Install a theme and the components: `by-ui-mcp call install_registry_item '{"project":".","items":["theme-default","card","button"],"dryRun":true}'`,
+   then again without `dryRun` (or the shadcn CLI: "The registry", below). A theme file of your own:
+   `install_theme` with the file's path (`packages/design-tokens/AGENTS.md`, "Presets").
+2. In the main CSS: `@import "tailwindcss";` then `@import "./byterygon-theme-default.css";`. Light
+   mode needs no attribute (`:root` is light); dark is `data-theme="dark"` (or `.dark`), compact
+   `data-density="compact"`, on any element.
+3. Fonts are not in the theme: copy `@byterygon/design-tokens/fonts/` and import its `fonts.css`
+   first, or the system fallbacks are used.
+4. The npm packages `missingDependencies` lists (`@base-ui/react`; `cn` is the npm package the
+   `cn` helper imports) come from your mirror: the items do not install them.
+5. TypeScript with `"types": []` needs `/// <reference types="vite/client" />` (a `src/vite-env.d.ts`)
+   for `import "./index.css"`.
+6. Lint: the two config files of `packages/lint/README.md`. The installed theme CSS opens with the
+   "Byterygon design tokens" header, so Stylelint leaves it alone.
+7. Names: the `brand` ramp (`color.brand.1`-`12`, primitives) feeds the `accent` roles
+   (`color.accent.bg` is `bg-accent-solid` in Tailwind, `--by-color-accent-bg` in CSS); a role's
+   three names are in `llms-full.txt` and `explain_token`. Switching themes: import one
+   `byterygon-theme-*.css` only (`install_theme` names the others it finds).
+8. Vite prints a `MODULE_LEVEL_DIRECTIVE "use client"` warning per Base UI file; it is harmless.
+9. Read each component with `get_component` before using it: props follow Fluent (`appearance`,
+   `size` small/medium/large) on the controls; Badge and Tag keep `variant` for their tone and
+   `sm`/`md` sizes (open question 122).
 
 ## Commands
 
@@ -71,6 +100,7 @@ pnpm --filter @byterygon/ui lint                     # @byterygon/lint: no raw c
    examples whose nearest `data-slot` is the component's or a part's. Parts have no variant props.
 4. Write behaviour tests in `<name>.test.tsx` (keyboard, events, ARIA, ref).
 5. `pnpm --filter @byterygon/ui registry`, then commit the component and `registry/`.
+6. `pnpm --filter @byterygon/ui lint`: the lint rules name the role for any raw value left.
 
 What `test/conventions.test.tsx` enforces for every component:
 
@@ -212,7 +242,7 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
 - Overlays are a root plus parts, as in shadcn: `Dialog` (no element) > `DialogTrigger` +
   `DialogContent` > `DialogHeader` (`DialogTitle`, `DialogDescription`), `DialogBody`,
   `DialogFooter`. Triggers and close buttons are unstyled Base UI parts: render a Button through
-  `render` (`<DialogTrigger render={<Button variant="secondary" />}>`). A root's look (`size`,
+  `render` (`<DialogTrigger render={<Button appearance="secondary" />}>`). A root's look (`size`,
   `side`) is a prop of the root, which its parts read from context; parts take no variant props.
 - AlertDialog and Sheet reuse `dialogClasses` and `useDialogScope` from dialog.tsx; HoverCard reuses
   `popoverClasses`. A new overlay reuses them too rather than restyling a scrim or a popup.
@@ -422,10 +452,9 @@ registry item, which `@byterygon/icon` depends on.
 - Never edit a file in `icons/` or `src/lib/icons.ts`, and never draw an icon by hand in new code:
   `node scripts/check-licenses.mjs` and `test/icons.test.ts` fail on a changed, missing or unlisted
   file, a stale module or a missing licence.
-- The components still draw their own SVGs; TSK-53/55 swap them for these, in this mapping
-  (`REPLACEMENTS` in `test/icons.test.ts`, which checks every icon below is vendored). A component
-  leaves `REPLACEMENTS` when its svgs are swapped, and the test then fails if its component or
-  example draws an `<svg>` again (Icon, Spinner and Chart draw on purpose). Done: Button,
+- The components used to draw their own SVGs; TSK-53/55 swapped them for these, in the mapping
+  below (kept for reference; `REPLACEMENTS` in `test/icons.test.ts` tracked it). The test fails if a
+  component or an example draws an `<svg>` again (Icon, Spinner and Chart draw on purpose). Swapped: Button,
   IconButton, ToggleButton, ToggleGroup, SplitButton (TSK-53 batch 1); Input, Textarea, InputGroup,
   NumberInput, SearchInput, PasswordInput, FileInput, DatePicker, Calendar, TimePicker, Select,
   Combobox, MultiSelect, Field (batch 2); Checkbox, RadioGroup, Switch, Slider, DropdownMenu,
@@ -436,7 +465,7 @@ registry item, which `@byterygon/icon` depends on.
   TypeBadge, RelativeTime, Avatar, Progress, Skeleton, EmptyState, Kbd and the SqlEditor and CodeInput
   frames (batch 3). `REPLACEMENTS` is now empty and a test keeps apps/dbee/ui free of hand-drawn svgs.
 
-| Hand-drawn today | Fluent icon |
+| Was hand-drawn | Fluent icon |
 | --- | --- |
 | Accordion, NavigationMenu chevron (SplitButton, Select, Combobox: done) | ChevronDown |
 | Breadcrumb, Collapsible, JsonViewer, Tree, submenu, Pagination next | ChevronRight |
@@ -480,9 +509,10 @@ QuestionCircle, ChevronUp, MoreVertical, Star.
   768 px: tooltips, popovers, dialogs, sheets, sidebars). Type: Fluent 2's ramp, `text-caption-2`
   to `text-display` (`text-body-1`, `text-body-1-strong`, `text-caption-1`, `text-subtitle-1`,
   `text-title-3`; the table is in `packages/design-tokens/AGENTS.md`), and `text-code`,
-  `text-code-sm`. `text-body`, `text-label`, `text-caption` and `text-heading-*` are aliases
-  kept until TSK-53/55 move the components; new code uses the Fluent names. Radius:
-  `rounded-{xs..xl}`. Elevation: `shadow-raised`, `shadow-overlay`, `shadow-modal`.
+  `text-code-sm`. `text-body`, `text-label`, `text-caption` and `text-heading-*` are older names
+  kept as aliases (some examples, the Studio and DBee still use them); new code uses the Fluent names. Radius:
+  `rounded-{xs..xl}`. Elevation (Fluent depth): `shadow-layer` (cards, free-standing surfaces), `shadow-flyout` (menus,
+  popovers), `shadow-dialog`; `shadow-raised`, `shadow-overlay`, `shadow-modal` are the older names.
 - The accent solid is `bg-accent-solid`, `hover:bg-accent-solid-hover`,
   `active:bg-accent-solid-active`, `text-accent-solid-fg`. Never bare `bg-accent`: in a project
   with stock shadcn components (and in every project that installs a theme item) `accent` is
@@ -493,8 +523,8 @@ QuestionCircle, ChevronUp, MoreVertical, Star.
   (`duration-[var(--by-motion-duration-fast)]`, `ease-easy-ease`, `z-[var(--by-z-modal)]`,
   `outline-[length:var(--by-ring-width)]`). Breakpoints are not CSS variables; read
   `tokens.ts` if you need the number.
-- Focus: `focusRing` from `@/lib/control` (Fluent's double ring; see "Fluent 2 API"). Components
-  not yet moved by TSK-53 still write the single ring (`outline-none focus-visible:outline-solid
+- Focus: `focusRing` from `@/lib/control` (Fluent's double ring; see "Fluent 2 API"). Chart's
+  points and a few examples still write the older single ring (`outline-none focus-visible:outline-solid
   focus-visible:outline-[length:var(--by-ring-width)] focus-visible:outline-offset-[var(--by-ring-offset)]
   focus-visible:outline-ring`).
 - When no role fits, add one to `@byterygon/design-tokens` (its AGENTS.md), never a raw value here.
@@ -543,7 +573,33 @@ shadcn add /path/to/registry/theme-default.json /path/to/registry/button.json   
   not in the item: copy `@byterygon/design-tokens/fonts/` and import `fonts.css` (Inter, where
   the system has no Segoe UI Variable, and JetBrains Mono), or the system fallbacks of `font.sans`
   and `font.mono` are used.
-- Each component item carries its manifest and example in `meta`; `registry/llms.txt` lists them.
+- Each component item carries its manifest and example in `meta`; `registry/llms.txt` lists them
+  and `registry/llms-full.txt` adds every example file and the token catalogue (see "Agent interface").
+- Without the shadcn CLI, the MCP server's `install_registry_item` writes the same files from this
+  folder (theme items as their own CSS file to import after Tailwind); see `packages/mcp/README.md`.
+
+## Agent interface (spec 9a, TSK-50)
+
+Everything here can be found, checked and installed without reading the source or opening a GUI:
+
+- **Lint** (`@byterygon/lint`, `packages/lint/README.md`): `pnpm --filter @byterygon/ui lint` (and
+  `pnpm lint` from the root, which CI runs) checks every class in `className`, `cn`, `cva` and CSS:
+  no raw colour, no arbitrary value other than a token variable, no raw space step. Each message
+  names the role to use, read from the token catalogue (`"p-[13px]"` -> `p-inset-sm`). When a raw
+  value is intended, disable that line only, naming the rule and the reason after `--`
+  (`// eslint-disable-next-line byterygon/no-arbitrary-value -- a cap relative to the viewport`).
+  The conventions suite stays the stricter check for components (it compiles every class).
+- **llms files**: `registry/llms.txt` (each item and its manifest in brief) and
+  `registry/llms-full.txt` (also every example file at installed paths and the default theme's
+  token catalogue). Generated by `pnpm --filter @byterygon/ui registry` (`scripts/lib/llms.ts`) and
+  drift-tested with the rest of `registry/`; never edit them.
+- **MCP server** (`@byterygon/ui-mcp`, `packages/mcp/README.md`): `node packages/mcp/bin/by-ui-mcp.js`
+  over stdio, no listener and no network. `search_tokens`, `explain_token`, `validate_theme` (the
+  `by-tokens --json` documents), `list_components`, `get_component`, `list_registry_items`,
+  `install_registry_item` (into a project folder, never outside it; `dryRun` first) and
+  `check_classes` (the lint analysis). Build `@byterygon/design-tokens` once before starting it.
+- **Tokens**: `by-tokens search <words>`, `explain <token>`, `validate --theme <file>`
+  (`packages/design-tokens/AGENTS.md`).
 
 ## In this repository
 
@@ -565,3 +621,4 @@ components. See `gallery/gallery.css`.
 - Never draw an icon by hand in new code or edit a vendored one: `icons add` it (see "Icons").
 - Never depend on AGPL code (`apps/`); this package is MIT OR Apache-2.0 and the licence check fails.
 - Never skip the manifest: the registry build stops on an invalid one.
+- Never turn a lint rule off for a file or a folder, or disable one without a reason after `--`.

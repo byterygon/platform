@@ -8,6 +8,7 @@
  *   list_components, get_component    the registry items' manifests and example files
  *   list_registry_items               registry.json
  *   install_registry_item             writes the items (and their dependencies) into a project folder
+ *   install_theme                     writes a theme file's (or a preset's) CSS into a project folder
  *   check_classes                     the @byterygon/lint analysis of class names
  *
  * and the registry's llms.txt and llms-full.txt as resources. Transport: stdio only (bin/by-ui-mcp.js).
@@ -26,7 +27,7 @@ export const VERSION = "0.0.0";
 const INSTRUCTIONS = `Byterygon UI: Base UI components styled only with design-token roles, installed from a local shadcn registry, plus the token engine.
 - Find a token: search_tokens (words in its path, description or Tailwind name), then explain_token for its values per mode, alias chain and contrast pairs.
 - Use a component: list_components, then get_component for its props, variants, parts, states, tokens and example code; install_registry_item writes it (and what it needs) into the project folder you give. Try dryRun first.
-- Install a theme item (theme-default or another preset) once per project, and import its CSS after Tailwind.
+- Install a theme item (theme-default or another preset) once per project, and import its CSS after Tailwind. A custom theme file goes in with install_theme.
 - Style with role utilities only (bg-surface, text-fg-muted, p-inset-sm, gap-gap-md, h-control-md); check_classes says what to use instead of a raw colour, an arbitrary value or a raw space step.
 - Change a theme by editing its file (seeds plus overrides), then validate_theme; failures name the token, mode, rule, measured and required value and a fix.
 Everything is local: nothing here uses the network.`;
@@ -148,6 +149,27 @@ export function createServer(options = {}) {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ project, items, dryRun, overwrite }) => guarded(() => install(registry, { project: resolve(cwd, project), items, dryRun: dryRun ?? false, overwrite: overwrite ?? false })),
+  );
+
+  server.registerTool(
+    "install_theme",
+    {
+      title: "Install a theme file",
+      description: "Install a theme into a project folder: a built-in preset name or a theme file (seeds plus overrides, for example one made with by-tokens preset create and checked with validate_theme). The token engine exports it as a registry theme item (by-tokens export registry) and it is written as byterygon-theme-<name>.css next to the project's main CSS, like install_registry_item does for theme-<preset>; import it after Tailwind instead of the previous theme. Same folder rules, dryRun and overwrite.",
+      inputSchema: {
+        project: z.string().describe("The project folder (absolute, or relative to the server's working folder)."),
+        theme: z.string().describe("A preset name or a theme file path."),
+        dryRun: z.boolean().optional(),
+        overwrite: z.boolean().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ project, theme: t, dryRun, overwrite }) => {
+      const exported = await byTokens(["export", "registry", "--theme", t], cwd);
+      if (exported.exitCode !== 0) return result(exported.document, true);
+      const item = JSON.parse(String(exported.document["content"]));
+      return guarded(() => install(registry, { project: resolve(cwd, project), items: [], extra: [item], dryRun: dryRun ?? false, overwrite: overwrite ?? false }));
+    },
   );
 
   server.registerTool(

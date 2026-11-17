@@ -227,6 +227,24 @@ test("preset: list, show, create from a preset with --set", async () => {
   assert.equal((await cli("preset", "--json")).code, EXIT.usage);
 });
 
+test("preset create: pinned steps are named, --unset removes them, --force writes a failing theme for fix", async () => {
+  // The default preset pins brand 9 to 11 for #6b4eff: a new brand hue does not reach them.
+  const pinned = await cli("preset", "create", "teal", "--from", "default", "--set", "seeds.colors.brand.hue=230", "--out", "teal-pinned.theme.json", "--json");
+  assert.equal(pinned.code, EXIT.ok);
+  assert.match(pinned.json.notes[0], /overrides color\.brand\.9, color\.brand\.10, color\.brand\.11 keep their own values.*--unset overrides\.color\.brand\.9/);
+  const rounder = await cli("preset", "create", "round", "--from", "default", "--set", "seeds.radius=2", "--json");
+  assert.match(rounder.json.notes[0], /overrides radius\.lg keep their own values.*--unset overrides\.radius\.lg/);
+  const unpinned = ["--unset", "overrides.color.brand.9", "--unset", "overrides.color.brand.10", "--unset", "overrides.color.brand.11"];
+  const teal = await cli("preset", "create", "teal", "--from", "default", "--set", "seeds.colors.brand.hue=230", ...unpinned, "--json");
+  assert.deepEqual([teal.code, teal.json.written, teal.json.notes], [EXIT.ok, true, []]);
+  assert.equal(JSON.parse(readFileSync(join(scratch, "teal.theme.json"), "utf8")).overrides["color.brand.9"], undefined);
+  // A theme that breaks a rule is written only with --force, for by-tokens fix to repair.
+  const forced = await cli("preset", "create", "dim", "--set", "overrides.color.fg.muted={color.neutral.7}", "--force", "--json");
+  assert.deepEqual([forced.code, forced.json.written], [EXIT.invalid, true]);
+  assert.equal(JSON.parse(readFileSync(join(scratch, "dim.theme.json"), "utf8")).overrides["color.fg.muted"], "{color.neutral.7}");
+  assert.equal((await cli("preset", "create", "y", "--unset", "overrides.nope", "--json")).code, EXIT.usage);
+});
+
 test("export prints one output, or the theme with every seed spelled out", async () => {
   const css = await cli("export", "css");
   assert.equal(css.code, EXIT.ok);

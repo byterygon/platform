@@ -30,7 +30,7 @@ async function call(name, args = {}) {
 
 test("lists the tools and the llms resources", async () => {
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), ["check_classes", "explain_token", "get_component", "install_registry_item", "list_components", "list_registry_items", "search_tokens", "validate_theme"]);
+  assert.deepEqual(tools.map((t) => t.name).sort(), ["check_classes", "explain_token", "get_component", "install_registry_item", "install_theme", "list_components", "list_registry_items", "search_tokens", "validate_theme"]);
   const { resources } = await client.listResources();
   assert.deepEqual(resources.map((r) => r.uri).sort(), ["byterygon-ui://registry/llms-full.txt", "byterygon-ui://registry/llms.txt"]);
   const read = await client.readResource({ uri: "byterygon-ui://registry/llms.txt" });
@@ -130,4 +130,22 @@ test("by-ui-mcp call and tools: the same tools without an MCP client", () => {
   assert.equal(missing.code, 1);
   assert.equal(JSON.parse(missing.out).error.code, "unknown-item");
   assert.equal(run("call").code, 2);
+});
+
+test("install_theme writes a theme file's CSS, exported by the engine", async () => {
+  const project = mkdtempSync(join(tmpdir(), "by-ui-mcp-theme-"));
+  mkdirSync(join(project, "src"));
+  writeFileSync(join(project, "components.json"), JSON.stringify({ tailwind: { css: "src/index.css" } }));
+  writeFileSync(join(project, "ocean.theme.json"), JSON.stringify({ schemaVersion: 1, name: "ocean", seeds: { radius: 2 } }));
+  const dry = (await call("install_theme", { project, theme: join(project, "ocean.theme.json"), dryRun: true })).doc;
+  assert.deepEqual(dry.files.map((f) => [f.path, f.action]), [["src/byterygon-theme-ocean.css", "create"]]);
+  assert.match(dry.next.join("\n"), /fonts\.css/);
+  writeFileSync(join(project, "src/byterygon-theme-default.css"), "/* old */\n");
+  const swap = (await call("install_theme", { project, theme: join(project, "ocean.theme.json") })).doc;
+  assert.match(swap.next.join("\n"), /src\/byterygon-theme-default\.css is another installed theme/);
+  const css = readFileSync(join(project, "src/byterygon-theme-ocean.css"), "utf8");
+  assert.match(css, /^\/\* Byterygon design tokens, /);
+  assert.match(css, /--by-radius-md: 2px;/);
+  const bad = await call("install_theme", { project, theme: "no-such-preset" });
+  assert.equal(bad.isError, true);
 });

@@ -464,6 +464,45 @@ async function diff(args: ParsedArgs, io: Io): Promise<Outcome> {
   };
 }
 
+/** Removes `overrides.<token path>` or `seeds.a.b` from a theme object. */
+function applyUnset(theme: Record<string, unknown>, path: string): void {
+  if (path.startsWith("overrides.") && path.length > "overrides.".length) {
+    const overrides = isPlainObject(theme["overrides"]) ? { ...theme["overrides"] } : {};
+    const key = path.slice("overrides.".length);
+    if (!(key in overrides)) throw new UsageError("usage", `--unset ${path}: the theme has no such override`, `Overrides: ${Object.keys(overrides).join(", ") || "none"}.`);
+    delete overrides[key];
+    theme["overrides"] = overrides;
+    return;
+  }
+  if (!path.startsWith("seeds.") || path.length <= "seeds.".length) throw new UsageError("usage", `--unset path "${path}" must start with seeds. or overrides.`, "For example --unset overrides.color.brand.9.");
+  const segments = path.split(".");
+  let node: Record<string, unknown> = theme;
+  for (const segment of segments.slice(0, -1)) {
+    if (!isPlainObject(node[segment])) return;
+    node[segment] = { ...(node[segment] as Record<string, unknown>) };
+    node = node[segment] as Record<string, unknown>;
+  }
+  delete node[segments[segments.length - 1]!];
+}
+
+/**
+ * Overrides that pin steps of a ramp whose seed a --set changed: the new seed does not reach them
+ * (the default preset pins brand 9 to 11 to #6b4eff). One note per ramp, naming the --unset to add.
+ */
+function pinnedNotes(theme: Record<string, unknown>, sets: readonly string[]): string[] {
+  const overrides = isPlainObject(theme["overrides"]) ? Object.keys(theme["overrides"]) : [];
+  const ramps = new Set(sets.map((s) => /^seeds\.colors\.([a-z0-9-]+)\./.exec(s)?.[1]).filter((r): r is string => r !== undefined));
+  const notes: string[] = [];
+  for (const ramp of ramps) {
+    const pinned = overrides.filter((path) => path.startsWith(`color.${ramp}.`) || path.startsWith(`color.${ramp}-dark.`));
+    if (pinned.length === 0) continue;
+    notes.push(`note: overrides ${pinned.join(", ")} keep their own values, so the new seeds.colors.${ramp} does not reach those steps. To let the seed drive them, add ${pinned.map((p) => `--unset overrides.${p}`).join(" ")}.`);
+  }
+  const radii = sets.some((s) => s.startsWith("seeds.radius=")) ? overrides.filter((path) => path.startsWith("radius.")) : [];
+  if (radii.length > 0) notes.push(`note: overrides ${radii.join(", ")} keep their own values, so the new seeds.radius does not reach them. To let the seed drive them, add ${radii.map((p) => `--unset overrides.${p}`).join(" ")}.`);
+  return notes;
+}
+
 /** Sets `seeds.a.b` or `overrides.<token path>` in a theme object. */
 function applySet(theme: Record<string, unknown>, assignment: string): void {
   const equals = assignment.indexOf("=");
@@ -519,24 +558,29 @@ async function preset(args: ParsedArgs, io: Io): Promise<Outcome> {
     const from = flag(args, "--from");
     const base = from === undefined ? undefined : loadTheme(from, io);
     const theme = duplicateTheme(base?.theme, name, base && isPlainObject(base.theme) ? String(base.theme["name"]) : from);
-    for (const assignment of args.flags.get("--set") ?? []) applySet(theme, assignment);
+    const sets = args.flags.get("--set") ?? [];
+    for (const assignment of sets) applySet(theme, assignment);
+    for (const path of args.flags.get("--unset") ?? []) applyUnset(theme, path);
+    const notes = pinnedNotes(theme, sets);
     const target = resolvePath(io.cwd, flag(args, "--out") ?? `${name}${PRESET_SUFFIX}`);
     const shown = display(io, target);
     const result = await buildTheme(theme, { render: false });
-    if (!result.ok) {
+    const force = args.flags.has("--force");
+    if (!result.ok && !force) {
       return {
         exitCode: EXIT.invalid,
-        data: { name, file: shown, written: false, preset: theme, diagnostics: result.diagnostics },
-        text: [...diagnosticsText(result.diagnostics), `not created: the theme breaks a rule, ${shown} was not written`].join("\n"),
+        data: { name, file: shown, written: false, preset: theme, notes, diagnostics: result.diagnostics },
+        text: [...diagnosticsText(result.diagnostics), ...notes, `not created: the theme breaks a rule, ${shown} was not written. Add --force to write it anyway, then repair it with \`by-tokens fix --theme ${shown}\`.`].join("\n"),
       };
     }
     if (existsSync(target)) throw new UsageError("file-exists", `${shown} already exists`, "Choose another --out, or delete the file first.");
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, stableJson(theme));
+    const next = result.ok ? `Build it with \`by-tokens build --theme ${shown}\`.` : `It breaks a rule: run \`by-tokens fix --theme ${shown}\`.`;
     return {
-      exitCode: EXIT.ok,
-      data: { name, file: shown, written: true, preset: theme, diagnostics: result.diagnostics },
-      text: [...diagnosticsText(result.diagnostics), `created ${shown}. Build it with \`by-tokens build --theme ${shown}\`.`].join("\n"),
+      exitCode: result.ok ? EXIT.ok : EXIT.invalid,
+      data: { name, file: shown, written: true, preset: theme, notes, diagnostics: result.diagnostics },
+      text: [...diagnosticsText(result.diagnostics), ...notes, `created ${shown}. ${next}`].join("\n"),
     };
   }
   throw new UsageError("usage", "preset needs an action: list, show <name> or create <name>", usage);

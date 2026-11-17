@@ -52,6 +52,9 @@ function makePlugin(name, checkDeclaration) {
   const rule = (primary, secondary) => (root, result) => {
     const valid = validateOptions(result, ruleName, { actual: primary, possible: [true] }, { actual: secondary, possible: { theme: [(/** @type {unknown} */ v) => typeof v === "string"] }, optional: true });
     if (!valid) return;
+    // A token output (tokens.css, a theme installed from the registry) defines the tokens: its raw
+    // values are the point. Such files open with the "Byterygon design tokens" header.
+    if (isTokenOutput(root)) return;
     const context = shared(/** @type {{ theme?: string } | undefined} */ (secondary)?.theme);
     root.walkDecls((decl) => {
       checkDeclaration(decl, (message, word) => report({ ruleName, result, node: decl, message: messages.rejected(message), word }), context);
@@ -73,6 +76,12 @@ function makePlugin(name, checkDeclaration) {
 /** @typedef {{ catalog: import("./catalog.js").Catalog; palette: Map<string, import("@byterygon/design-tokens").Oklch> }} Shared */
 
 /** @returns {Shared} */
+/** True for a file whose first comment is the header by-tokens and the registry install write. */
+function isTokenOutput(/** @type {any} */ root) {
+  const first = root.first;
+  return first?.type === "comment" && /^\s*\*?\s*Byterygon design tokens\b/.test(String(first.text));
+}
+
 function shared(/** @type {string | undefined} */ theme) {
   return { catalog: loadCatalog(theme), palette: tailwindPalette() };
 }
