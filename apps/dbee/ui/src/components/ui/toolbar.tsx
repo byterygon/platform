@@ -23,7 +23,7 @@ const base = [
 ];
 
 const classes = {
-  group: "flex shrink-0 items-center gap-inline-xs in-data-[orientation=vertical]:flex-col in-data-[orientation=vertical]:items-stretch",
+  group: "flex shrink-0 items-center gap-inline-xs data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-stretch",
   button: [
     "inline-flex h-control-sm shrink-0 cursor-default select-none items-center justify-center gap-inline-xs whitespace-nowrap rounded-md px-inset-xs text-body-1 text-fg",
     "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
