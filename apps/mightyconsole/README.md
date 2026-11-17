@@ -14,6 +14,7 @@ shared network; anyone who reaches its port can use every connection opened thro
 | `ui/` | `@byterygon/mightyconsole`: the React UI (TSK-79 batch 2) |
 | `lab/` | the docker compose test lab (TSK-79 batch 3) |
 | `release/` | the release (TSK-87): `release.mts`, the shipped `README.md`, the tools' release notes, the image's `Dockerfile` |
+| `acceptance/` | the acceptance harness (TSK-87): one command runs a task's spec §18 checklist against the lab and saves the evidence; see its README |
 
 ## Run
 
@@ -46,7 +47,9 @@ live stream with a `streamId` and progress, a terminal). See the module docs of
 
 ## Release
 
-Each tool ships when it is done (Uy Son, 2026-11-17). A finished tool adds
+Each tool ships when it is done (Uy Son, 2026-11-17). Before it closes, a tool task wires and
+runs its acceptance checklist (`pnpm --filter @byterygon/mightyconsole acceptance <tool> --lab-up
+--strict`, `acceptance/README.md`) and attaches the evidence to its last PR. A finished tool adds
 `release/notes/<N>-<tool>.md` (the next N, from its task's "Release after this tool" notes); the
 version follows: `0.1.0-alpha.N`, and `0.1.0` once all six are in. Then run the workflow
 (Actions > Mightyconsole release > Run workflow): it builds one file per platform with the UI

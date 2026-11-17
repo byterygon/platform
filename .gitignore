@@ -19,3 +19,6 @@ dist/
 
 # Generated for the DBee release build (scripts/third-party-notices.mjs)
 apps/dbee/desktop/THIRD-PARTY-NOTICES.txt
+
+# Mightyconsole acceptance runs (TSK-87): attach summary.md and the files it names to the PR
+apps/mightyconsole/acceptance/evidence/
