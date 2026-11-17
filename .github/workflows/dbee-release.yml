@@ -94,9 +94,9 @@ jobs:
               echo "network is reachable"; exit 1
             fi
             setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
-              env PATH="$PATH" HOME="$HOME" DBEE_WORKSPACE="$1/dbee-workspace" DBEE_COLD_START_EXIT=1 \
+              env PATH="$2" HOME="$3" DBEE_WORKSPACE="$1/dbee-workspace" DBEE_COLD_START_EXIT=1 \
               timeout 180 xvfb-run -a /usr/bin/dbee-desktop
-          ' sh "$RUNNER_TEMP"
+          ' sh "$RUNNER_TEMP" "$PATH" "$HOME"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dbee-${{ matrix.name }}
