@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Builds the self-hostable shadcn registry (spec section 6) into packages/ui/registry/: one JSON
-// item per component, the `cn` helper, one theme item per token preset, the registry.json index
-// and llms.txt. Static files only, no server and no network: serve the folder from any static web
-// server, or point the shadcn CLI at the files on disk.
+// item per component, the `cn` helper, one theme item per token preset, the registry.json index,
+// llms.txt and llms-full.txt (scripts/lib/llms.ts). Static files only, no server and no network:
+// serve the folder from any static web server, or point the shadcn CLI at the files on disk.
 //
 //   node scripts/registry.ts            write registry/
 //   node scripts/registry.ts --check    exit 3 if registry/ is stale (CI)
@@ -14,6 +14,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { formatRegistryThemeItem } from "@byterygon/design-tokens/registry-theme";
+import { type LlmsInput, llmsFullTxt, llmsTxt } from "./lib/llms.ts";
 import { fileName, listComponents, readManifest, validateManifest, type Manifest } from "./lib/manifest.ts";
 
 export const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -211,35 +212,18 @@ export function themeItem(preset: string): Item {
   return JSON.parse(themeItemFile(preset)) as Item;
 }
 
-function llmsTxt(items: Item[]): string {
-  const lines = [
-    "# Byterygon UI registry",
-    "",
-    "> Base UI components styled with Byterygon design-token roles, as a static shadcn registry. No network: install from this folder or from a static server you host.",
-    "",
-    "Install (components.json: \"registries\": { \"@byterygon\": \"<this folder or URL>/{name}.json\" }, \"tailwind\": { \"baseColor\": \"\" }):",
-    "",
-    "    shadcn add <this folder>/theme-default.json @byterygon/button",
-    "",
-    "## Themes",
-    "",
-  ];
-  for (const item of items.filter((i) => i.type === "registry:theme")) lines.push(`- [${item.name}](${item.name}.json): ${String(item.description).split(". Installs")[0]}.`);
-  lines.push("", "## Components", "");
-  for (const item of items.filter((i) => i.type === "registry:ui")) {
-    const manifest = (item.meta as unknown as { manifest: Manifest }).manifest;
-    lines.push(`### ${manifest.title}`, "", `[${item.name}.json](${item.name}.json): ${manifest.description}`, "");
-    lines.push(`Usage: ${manifest.usage}`, "");
-    lines.push(`- Wraps: ${manifest.base ?? "no Base UI part"}`);
-    if (manifest.parts?.length) lines.push(`- Parts: ${manifest.parts.map((p) => `${p.name} (data-slot ${p.slot}): ${p.description}`).join("; ")}`);
-    for (const [prop, values] of Object.entries(manifest.variants)) lines.push(`- ${prop}: ${values.join(", ")}`);
-    lines.push(`- Props: ${manifest.props.map((p) => `${p.name} (${p.type}${p.default !== undefined ? `, default ${JSON.stringify(p.default)}` : ""}${p.deprecated ? `, deprecated: ${p.deprecated}` : ""})`).join("; ")}`);
-    lines.push(`- States: ${manifest.states.map((s) => `${s.name} (${s.variant})`).join(", ")}`);
-    lines.push(`- Tokens: ${manifest.tokens.join(", ")}`);
-    lines.push(`- Accessibility: ${manifest.accessibility.join(" ")}`, "");
-  }
-  lines.push("## Helpers", "", ...Object.entries(LIBS).map(([name, lib]) => `- [${name}.json](${name}.json): ${lib.llms}`), "");
-  return lines.join("\n");
+/** What llms.txt and llms-full.txt are written from. */
+function llmsInput(items: Item[]): LlmsInput {
+  return {
+    themes: items.filter((i) => i.type === "registry:theme").map((i) => ({ name: String(i.name), description: `${String(i.description).split(". Installs")[0]}.` })),
+    components: items
+      .filter((i) => i.type === "registry:ui")
+      .map((i) => {
+        const meta = i.meta as unknown as { manifest: Manifest; example: string };
+        return { name: String(i.name), manifest: meta.manifest, example: shipSource(meta.example, String(i.name)).content };
+      }),
+    libs: Object.entries(LIBS).map(([name, lib]) => ({ name, llms: lib.llms })),
+  };
 }
 
 /** Every file of registry/, by file name. Pure: reads the sources, writes nothing. */
@@ -269,7 +253,9 @@ export function buildRegistry(root = PACKAGE_ROOT): Map<string, string> {
     })),
   };
   files.set("registry.json", `${JSON.stringify(index, null, 2)}\n`);
-  files.set("llms.txt", llmsTxt(items));
+  const llms = llmsInput(items);
+  files.set("llms.txt", llmsTxt(llms));
+  files.set("llms-full.txt", llmsFullTxt(llms));
   return files;
 }
 

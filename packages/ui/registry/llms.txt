@@ -2,9 +2,18 @@
 
 > Base UI components styled with Byterygon design-token roles, as a static shadcn registry. No network: install from this folder or from a static server you host.
 
+[llms-full.txt](llms-full.txt) has the same and, in full, every component's examples and the token catalogue (each role's purpose, CSS variable, Tailwind name and values per mode).
+
 Install (components.json: "registries": { "@byterygon": "<this folder or URL>/{name}.json" }, "tailwind": { "baseColor": "" }):
 
     shadcn add <this folder>/theme-default.json @byterygon/button
+
+Rules for code on these components (the ESLint and Stylelint rules of @byterygon/lint enforce them; their messages name the role to use):
+
+- Style with the token roles only: Tailwind names such as bg-surface, text-fg-muted, border-border-subtle, p-inset-sm, gap-gap-md, h-control-md, rounded-md, text-body-1, shadow-layer. No raw colours (#hex, rgb(), oklch(), bg-blue-500), no arbitrary values (p-[13px]) other than token variables (var(--by-...)), no raw space steps (p-2, gap-3).
+- Props follow Fluent 2: appearance (primary, secondary, outline, subtle, transparent; danger on Button and IconButton; outline, underline, filled-darker, filled-lighter on fields) and size (small, medium, large). The old variant and sm/md/lg still work for one release and are marked deprecated below.
+- Icons: the Icon component with an icon from @/lib/icons (Fluent UI System Icons, vendored), never an icon font or a CDN.
+- Themes are files (seeds plus overrides): edit one, then run `by-tokens validate` (@byterygon/design-tokens); `by-tokens search <words>` and `by-tokens explain <token>` find and describe tokens.
 
 ## Themes
 
