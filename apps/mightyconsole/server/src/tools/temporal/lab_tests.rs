@@ -103,12 +103,19 @@ async fn workflows_are_listed_by_visibility_query_with_status_and_paging() {
     }
 
     // Paging: one at a time until the token ends; every page is as asked and none repeats.
+    // Other tests and the schedule start workflows meanwhile, and a newer one pushes the rest down
+    // a page; only workflows that started before this moment make a list that stands still.
+    // (Ten seconds back, because visibility trails the start a little.)
+    let cutoff = (time::OffsetDateTime::now_utc() - time::Duration::seconds(10))
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
+    let stable = format!("StartTime < \"{cutoff}\"");
     let total = count_workflows(
         &client,
         WorkflowsCountInput {
             conn_id: String::new(),
             namespace: None,
-            query: None,
+            query: Some(stable.clone()),
         },
     )
     .await
@@ -118,8 +125,10 @@ async fn workflows_are_listed_by_visibility_query_with_status_and_paging() {
     let mut seen = Vec::new();
     let mut token = None;
     loop {
-        let page = list_workflows(&client, list("", 2, token)).await.unwrap();
-        assert!(page.executions.len() <= 2);
+        let page = list_workflows(&client, list(&stable, 25, token))
+            .await
+            .unwrap();
+        assert!(page.executions.len() <= 25);
         seen.extend(
             page.executions
                 .into_iter()

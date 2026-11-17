@@ -951,6 +951,28 @@
       ],
       "type": "object"
     },
+    "Poller": {
+      "properties": {
+        "identity": {
+          "type": "string"
+        },
+        "lastAccessTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ratePerSecond": {
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "identity",
+        "ratePerSecond"
+      ],
+      "type": "object"
+    },
     "RemoteError": {
       "description": "The target's own error code, for Details.",
       "properties": {
@@ -975,6 +997,23 @@
         "code"
       ],
       "type": "object"
+    },
+    "ResetReapply": {
+      "description": "Which signals a reset re-applies to the new run.",
+      "oneOf": [
+        {
+          "enum": [
+            "signals",
+            "none"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "all",
+          "description": "Every eligible event after the reset point (signals and updates).",
+          "type": "string"
+        }
+      ]
     },
     "Run": {
       "properties": {
@@ -1239,6 +1278,228 @@
       ],
       "type": "object"
     },
+    "ScheduleAction": {
+      "description": "One action a schedule took.",
+      "properties": {
+        "actualTime": {
+          "description": "When it ran.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        },
+        "scheduledTime": {
+          "description": "When it should have run, RFC 3339.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "description": "`Running`, `Completed`, ... as the workflow's status, when the server says it.",
+          "type": "string"
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowId",
+        "runId",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ScheduleDetail": {
+      "description": "Everything `DescribeSchedule` says; the parts are protobuf JSON, payloads decoded.",
+      "properties": {
+        "action": {
+          "additionalProperties": true,
+          "description": "`schedule.action`: the workflow it starts (type, id, task queue, input).",
+          "type": "object"
+        },
+        "info": {
+          "additionalProperties": true,
+          "description": "`info`: action counts, running workflows, create and update times.",
+          "type": "object"
+        },
+        "policies": {
+          "additionalProperties": true,
+          "description": "`schedule.policies`: overlap, catch-up window, pause on failure.",
+          "type": "object"
+        },
+        "spec": {
+          "additionalProperties": true,
+          "description": "`schedule.spec`: intervals, calendars, cron strings, jitter, time zone.",
+          "type": "object"
+        },
+        "state": {
+          "additionalProperties": true,
+          "description": "`schedule.state`: notes, paused, limited actions.",
+          "type": "object"
+        },
+        "summary": {
+          "$ref": "#/$defs/ScheduleSummary"
+        }
+      },
+      "required": [
+        "summary",
+        "spec",
+        "action",
+        "policies",
+        "state",
+        "info"
+      ],
+      "type": "object"
+    },
+    "ScheduleOverlap": {
+      "description": "What to do when a triggered run meets one that is still running.",
+      "enum": [
+        "skip",
+        "bufferOne",
+        "bufferAll",
+        "cancelOther",
+        "terminateOther",
+        "allowAll"
+      ],
+      "type": "string"
+    },
+    "SchedulePatchInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "note": {
+          "default": null,
+          "description": "The note shown with the pause or unpause.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overlap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScheduleOverlap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For `trigger`: the schedule's own policy when absent."
+        },
+        "scheduleId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId"
+      ],
+      "type": "object"
+    },
+    "ScheduleRef": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scheduleId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId"
+      ],
+      "type": "object"
+    },
+    "ScheduleSummary": {
+      "properties": {
+        "nextRuns": {
+          "description": "The next runs, RFC 3339.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "notes": {
+          "description": "The note of the last pause or unpause.",
+          "type": "string"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "recentActions": {
+          "items": {
+            "$ref": "#/$defs/ScheduleAction"
+          },
+          "type": "array"
+        },
+        "scheduleId": {
+          "type": "string"
+        },
+        "spec": {
+          "description": "The spec in words: \"Every 1 minute\", \"Cron 0 * * * *\".",
+          "type": "string"
+        },
+        "workflowType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scheduleId",
+        "workflowType",
+        "spec",
+        "paused",
+        "notes",
+        "nextRuns",
+        "recentActions"
+      ],
+      "type": "object"
+    },
+    "SchedulesListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "default": null,
+          "description": "A schedule visibility query; every schedule when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
     "StateTask": {
       "description": "A task of the next step: the node to run, its error, its interrupts.",
       "properties": {
@@ -1436,6 +1697,66 @@
       "required": [
         "connId",
         "namespacePrefix"
+      ],
+      "type": "object"
+    },
+    "TaskQueueDescribeInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "taskQueue": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "taskQueue"
+      ],
+      "type": "object"
+    },
+    "TaskQueueDescription": {
+      "properties": {
+        "activityBacklog": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "activityPollers": {
+          "items": {
+            "$ref": "#/$defs/Poller"
+          },
+          "type": "array"
+        },
+        "workflowBacklog": {
+          "description": "Tasks waiting for a poller, when the server reports it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "workflowPollers": {
+          "items": {
+            "$ref": "#/$defs/Poller"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "workflowPollers",
+        "activityPollers"
       ],
       "type": "object"
     },
@@ -2227,6 +2548,43 @@
       ],
       "type": "object"
     },
+    "WorkflowReasonInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "default": null,
+          "description": "Required to terminate; optional to ask for cancellation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId"
+      ],
+      "type": "object"
+    },
     "WorkflowRef": {
       "description": "Names a workflow run: the run id is the latest run when absent.",
       "properties": {
@@ -2254,6 +2612,59 @@
       "required": [
         "connId",
         "workflowId"
+      ],
+      "type": "object"
+    },
+    "WorkflowResetInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "eventId": {
+          "description": "The event to reset to: a WorkflowTaskCompleted, WorkflowTaskStarted or failed task event.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reapply": {
+          "$ref": "#/$defs/ResetReapply"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId",
+        "runId",
+        "eventId",
+        "reapply",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "WorkflowResetOutput": {
+      "properties": {
+        "runId": {
+          "description": "The new run.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId"
       ],
       "type": "object"
     },
@@ -2314,6 +2725,48 @@
         "status",
         "taskQueue",
         "historyLength"
+      ],
+      "type": "object"
+    },
+    "WorkflowSignalInput": {
+      "properties": {
+        "args": {
+          "default": null,
+          "description": "Each argument is sent as one `json/plain` payload.",
+          "items": true,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signalName": {
+          "type": "string"
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId",
+        "signalName"
       ],
       "type": "object"
     },
@@ -3187,6 +3640,177 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ScheduleRef"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.schedules.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ScheduleRef"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.schedules.describe",
+      "output": {
+        "$ref": "#/$defs/ScheduleDetail"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SchedulesListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.schedules.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ScheduleSummary"
+        },
+        "type": "array"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SchedulePatchInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.schedules.pause",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SchedulePatchInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.schedules.trigger",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SchedulePatchInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.schedules.unpause",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TaskQueueDescribeInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.taskQueues.describe",
+      "output": {
+        "$ref": "#/$defs/TaskQueueDescription"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/WorkflowReasonInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.workflows.cancel",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/WorkflowsCountInput"
       },
       "kind": "query",
@@ -3313,6 +3937,69 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/WorkflowResetInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.workflows.reset",
+      "output": {
+        "$ref": "#/$defs/WorkflowResetOutput"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/WorkflowSignalInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.workflows.signal",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/WorkflowReasonInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.workflows.terminate",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/TermResizeInput"
       },
       "kind": "mutation",
@@ -3373,5 +4060,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:2ff1275a89833a714f1384653518da3e4c02646786e349f09e28bc56ca15acb8"
+  "schema_hash": "sha256:81b078665d9f6c91ad462da56fb29b1bfb072f5c40a3c56ce44c9c216082350c"
 }

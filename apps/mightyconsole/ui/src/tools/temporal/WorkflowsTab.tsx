@@ -241,7 +241,11 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
                   <TableCell>{formatTime(w.startTime)}</TableCell>
                   <TableCell>{formatTime(w.closeTime)}</TableCell>
                   <TableCell align="end">{w.durationMs === undefined ? "" : formatDuration(w.durationMs)}</TableCell>
-                  <TableCell>{w.taskQueue}</TableCell>
+                  <TableCell>
+                    <Button size="small" appearance="subtle" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+                      {w.taskQueue}
+                    </Button>
+                  </TableCell>
                   <TableCell align="end">{formatCount(w.historyLength)}</TableCell>
                 </TableRow>
               ))}

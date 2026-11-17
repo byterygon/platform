@@ -33,12 +33,12 @@ export const timelineVariants = {} as const;
 
 /** The fill of a bar by status (an item field, not a prop of the component). */
 export const timelineStatusClasses = {
-  running: "bg-accent-solid",
-  success: "bg-success",
-  danger: "bg-danger",
-  warning: "bg-warning",
-  info: "bg-info",
-  neutral: "bg-neutral-solid",
+  running: "bg-accent-solid text-accent-solid-fg",
+  success: "bg-success text-success-solid-fg",
+  danger: "bg-danger text-danger-solid-fg",
+  warning: "bg-warning text-warning-solid-fg",
+  info: "bg-info text-info-solid-fg",
+  neutral: "bg-neutral-solid text-neutral-solid-fg",
 } as const;
 
 const classes = {
@@ -49,9 +49,9 @@ const classes = {
   lane: "flex h-control-md items-center border-b border-border-subtle",
   laneLabel: "w-panel-xs shrink-0 truncate px-inset-sm text-caption-1 text-fg-muted",
   track: "relative h-full min-w-0 flex-1",
-  tick: "absolute inset-y-0 border-s border-border-subtle ps-inline-xs text-caption-1 text-fg-muted",
+  tick: "absolute inset-y-0 whitespace-nowrap border-s border-border-subtle ps-inline-xs text-caption-1 text-fg-muted",
   bar: [
-    "absolute inset-y-inline-xs min-w-inline-sm cursor-default rounded-sm",
+    "absolute inset-y-inline-xs min-w-inline-sm cursor-default overflow-hidden rounded-sm text-start text-caption-1",
     "hover:opacity-90 data-selected:outline-solid data-selected:outline-[length:var(--by-ring-width)] data-selected:outline-ring",
     focusRing,
   ],
@@ -106,8 +106,12 @@ export function formatOffset(ms: number): string {
   if (abs < 0.5) return "0";
   if (abs < 1000) return `${sign}${Math.round(abs)} ms`;
   if (abs < 60_000) return `${sign}${Number((abs / 1000).toFixed(1))} s`;
-  if (abs < 3_600_000) return `${sign}${Math.floor(abs / 60_000)}m ${Math.round((abs % 60_000) / 1000)}s`;
-  return `${sign}${Math.floor(abs / 3_600_000)}h ${Math.round((abs % 3_600_000) / 60_000)}m`;
+  if (abs < 3_600_000) {
+    const seconds = Math.round((abs % 60_000) / 1000);
+    return `${sign}${Math.floor(abs / 60_000)}m${seconds > 0 ? ` ${seconds}s` : ""}`;
+  }
+  const minutes = Math.round((abs % 3_600_000) / 60_000);
+  return `${sign}${Math.floor(abs / 3_600_000)}h${minutes > 0 ? ` ${minutes}m` : ""}`;
 }
 
 export interface TimelineProps {
@@ -211,7 +215,8 @@ export function Timeline({ "aria-label": ariaLabel, lanes = NO_LANES, items = NO
   const rowHeight = 36;
   const first = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
   const last = viewport > 0 ? Math.min(lanes.length, Math.ceil((scrollTop + viewport) / rowHeight) + OVERSCAN) : Math.min(lanes.length, FALLBACK_LANES);
-  const ticks = niceTicks(view);
+  // Round numbers of the offset the axis shows (0, 5 s, 10 s), not of the clock.
+  const ticks = niceTicks({ start: view.start - zero, end: view.end - zero }).map((t) => t + zero);
   const nowAt = percent(now);
 
   const describe = describeItem ?? ((item: TimelineItem, end: number) => `${item.label}, ${item.status}, ${formatOffset(end - item.start)}`);
@@ -281,7 +286,9 @@ export function Timeline({ "aria-label": ariaLabel, lanes = NO_LANES, items = NO
                         onClick={() => onSelect?.(item.id)}
                         style={{ left: `${left}%`, width: `${width}%` }}
                         className={cn(classes.bar, timelineStatusClasses[item.status])}
-                      />
+                      >
+                        <span className="block truncate px-inline-xs">{item.label}</span>
+                      </button>
                     );
                   })}
                   {nowAt >= 0 && nowAt <= 100 ? <span aria-hidden="true" data-slot="timeline-now" className={cn(classes.now)} style={{ left: `${nowAt}%` }} /> : null}

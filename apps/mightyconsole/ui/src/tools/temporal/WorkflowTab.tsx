@@ -1,6 +1,7 @@
 // `temporal.workflow { namespace, workflowId, runId? }` (Mightyconsole spec §9.3): one run, in
 // tabs: Timeline, History, Input and result, Pending, Stack trace. The history loads page by page
-// and, while the run is open, follows live. (The Queries tab and the actions come in batch 3.)
+// and, while the run is open, follows live. Signal, cancel, terminate and reset are in the toolbar,
+// each behind its confirmation (ActionDialogs); Queries is the sixth view.
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,16 +16,20 @@ import { Toolbar, ToolbarGroup } from "@/components/ui/toolbar";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import type { EventCategory, HistoryEvent, WorkflowDetail } from "@/gen/api";
-import { ArrowClockwise } from "@/lib/icons";
+import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ArrowClockwise, ArrowCounterclockwise, Dismiss, Flash, Stop } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { formatDuration, formatTime } from "./format";
 import { CATEGORIES, buildTimeline, eventMs, eventSummary, failureChain, inputAndResult, isClosed, itemEventId } from "./history";
+import { CancelDialog, ResetDialog, SignalDialog, TerminateDialog, useAction } from "./ActionDialogs";
+import { QueriesPanel } from "./QueriesPanel";
 import { statusLabel } from "./WorkflowsTab";
 import { useWorkflow } from "./useWorkflow";
 
 const STATUS_VARIANT = { Running: "accent", Completed: "success", Failed: "danger", Canceled: "neutral", Terminated: "warning", ContinuedAsNew: "info", TimedOut: "warning", Paused: "neutral", Unspecified: "neutral" } as const;
 
-type Section = "timeline" | "history" | "io" | "pending" | "stack";
+type Section = "timeline" | "history" | "io" | "pending" | "stack" | "queries";
+type Dialog = "signal" | "cancel" | "terminate" | "reset" | null;
 
 const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
 const obj = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
@@ -43,6 +48,18 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
   const [section, setSection] = useState<Section>("timeline");
   const [selected, setSelected] = useState<number | null>(null);
   useTabActions({ refresh: state.refresh });
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [newRun, setNewRun] = useState<string | null>(null);
+  const action = useAction(note);
+  const ref = { connId: connId ?? "", namespace, workflowId };
+  const close = () => {
+    setDialog(null);
+    action.clear();
+  };
+  const done = () => {
+    close();
+    state.refresh();
+  };
 
   // The clock for open items: once a second while the run is followed.
   const [now, setNow] = useState(() => Date.now());
@@ -54,6 +71,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
 
   const { detail, events } = state;
   const closed = isClosed(events);
+  const running = detail?.workflow.status === "Running";
   const lastEventAt = events.length > 0 ? eventMs(events[events.length - 1]!) : now;
   // A closed run ends at its last event; an open one grows to the clock.
   const clock = closed ? lastEventAt : now;
@@ -66,6 +84,20 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <Icon icon={ArrowClockwise} /> Refresh
           </Button>
         </ToolbarGroup>
+        <ToolbarGroup>
+          <Button size="small" disabled={!running} onClick={() => setDialog("signal")}>
+            <Icon icon={Flash} /> Signal
+          </Button>
+          <Button size="small" disabled={!running} onClick={() => setDialog("cancel")}>
+            <Icon icon={Dismiss} /> Cancel
+          </Button>
+          <Button size="small" disabled={!running} onClick={() => setDialog("terminate")}>
+            <Icon icon={Stop} /> Terminate
+          </Button>
+          <Button size="small" disabled={detail === null || events.length === 0} onClick={() => setDialog("reset")}>
+            <Icon icon={ArrowCounterclockwise} /> Reset
+          </Button>
+        </ToolbarGroup>
         {state.following ? (
           <Badge variant="success" role="status">
             Live
@@ -74,6 +106,22 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
         <Badge variant="neutral">{formatCount(events.length)} events</Badge>
       </Toolbar>
       <Header detail={detail} workflowId={workflowId} namespace={namespace} profileName={profile.name} />
+      {newRun ? (
+        <Alert intent="success" className="m-inset-sm">
+          <AlertTitle>A new run started</AlertTitle>
+          <AlertDescription>
+            The reset made run <span className="font-mono text-code">{newRun}</span>.
+          </AlertDescription>
+          <AlertActions>
+            <Button size="small" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId, runId: newRun }, title: workflowId })}>
+              Open new run
+            </Button>
+            <Button size="small" appearance="subtle" onClick={() => setNewRun(null)}>
+              Dismiss
+            </Button>
+          </AlertActions>
+        </Alert>
+      ) : null}
       {state.error ? <ErrorState error={state.error} onRetry={state.refresh} /> : null}
       {state.loading && detail === null ? (
         <LoadingRows label="Loading the workflow" />
@@ -85,6 +133,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <TabsTrigger value="io">Input and result</TabsTrigger>
             <TabsTrigger value="pending">Pending</TabsTrigger>
             <TabsTrigger value="stack">Stack trace</TabsTrigger>
+            <TabsTrigger value="queries">Queries</TabsTrigger>
           </TabsList>
           <TabsContent value="timeline" className="flex min-h-0 flex-1 flex-col p-inset-sm">
             <TimelinePanel events={events} now={clock} workflowId={workflowId} selected={selected} onSelect={(id) => setSelected(id)} onOpenHistory={() => setSection("history")} />
@@ -98,11 +147,55 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           <TabsContent value="pending" className="min-h-0 flex-1 overflow-auto p-inset-md">
             <PendingPanel detail={detail} onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })} />
           </TabsContent>
+          <TabsContent value="queries" className="min-h-0 flex-1 overflow-auto p-inset-md">
+            <QueriesPanel client={client} connId={connId} namespace={namespace} workflowId={workflowId} runId={detail.workflow.runId} active={section === "queries"} note={note} />
+          </TabsContent>
           <TabsContent value="stack" className="min-h-0 flex-1 overflow-auto p-inset-md">
             <StackPanel active={section === "stack"} running={detail.workflow.status === "Running"} client={client} connId={connId} namespace={namespace} workflowId={workflowId} runId={detail.workflow.runId} note={note} />
           </TabsContent>
         </Tabs>
       )}
+      <SignalDialog
+        open={dialog === "signal"}
+        onOpenChange={(o) => !o && close()}
+        workflowId={workflowId}
+        busy={action.busy}
+        error={action.error}
+        onSend={(name, args) => void action.run(() => client.temporal.workflows.signal({ ...ref, runId: detail?.workflow.runId ?? null, signalName: name, args }).then(() => undefined), done)}
+      />
+      <CancelDialog
+        open={dialog === "cancel"}
+        onOpenChange={(o) => !o && close()}
+        workflowId={workflowId}
+        busy={action.busy}
+        error={action.error}
+        onCancelWorkflow={(reason) => void action.run(() => client.temporal.workflows.cancel({ ...ref, runId: detail?.workflow.runId ?? null, reason }).then(() => undefined), done)}
+      />
+      <TerminateDialog
+        open={dialog === "terminate"}
+        onOpenChange={(o) => !o && close()}
+        workflowId={workflowId}
+        busy={action.busy}
+        error={action.error}
+        onTerminate={(reason) => void action.run(() => client.temporal.workflows.terminate({ ...ref, runId: detail?.workflow.runId ?? null, reason }).then(() => undefined), done)}
+      />
+      <ResetDialog
+        open={dialog === "reset"}
+        onOpenChange={(o) => !o && close()}
+        workflowId={workflowId}
+        events={events}
+        busy={action.busy}
+        error={action.error}
+        onReset={(eventId, reapply, reason) =>
+          void action.run(
+            async () => {
+              const out = await client.temporal.workflows.reset({ ...ref, runId: detail?.workflow.runId ?? "", eventId, reapply, reason });
+              setNewRun(out.runId);
+            },
+            done,
+          )
+        }
+      />
     </div>
   );
 }
@@ -166,7 +259,7 @@ function HistoryPanel({ events, selected, onSelect, hasMore, onLoadMore }: { eve
     <div className="flex min-h-0 flex-1 flex-col">
       <Toolbar aria-label="History filter">
         <ToolbarGroup>
-          <Select aria-label="Category" value={category} onValueChange={(v) => setCategory(v as EventCategory | "All")} size="small" className="w-panel-xs">
+          <Select aria-label="Category" items={Object.fromEntries((["All", ...CATEGORIES] as const).map((c) => [c, c === "All" ? "All events" : c.replace(/([a-z])([A-Z])/g, "$1 $2")]))} value={category} onValueChange={(v) => setCategory(v as EventCategory | "All")} size="small" className="w-panel-xs">
             {(["All", ...CATEGORIES] as const).map((c) => (
               <SelectItem key={c} value={c}>
                 {c === "All" ? "All events" : c.replace(/([a-z])([A-Z])/g, "$1 $2")}

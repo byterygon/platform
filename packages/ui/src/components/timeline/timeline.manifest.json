@@ -176,17 +176,23 @@
   ],
   "tokens": [
     "color.accent.bg",
+    "color.accent.fg",
     "color.bg.layer",
     "color.border.subtle",
     "color.fg.default",
     "color.fg.muted",
     "color.neutral.bg",
+    "color.neutral.fg",
     "color.ring",
     "color.ring-inner",
     "color.status.danger.solid",
+    "color.status.danger.solid-fg",
     "color.status.info.solid",
+    "color.status.info.solid-fg",
     "color.status.success.solid",
+    "color.status.success.solid-fg",
     "color.status.warning.solid",
+    "color.status.warning.solid-fg",
     "font.sans",
     "grid.header-bg",
     "radius.lg",
@@ -216,7 +222,7 @@
   "accessibility": [
     "The timeline is a focusable role=group named by aria-label; its keys (+, -, arrows, Home) are announced by a visually hidden hint it is described by.",
     "Each bar is a native button whose label is \"label, status, duration\" (or describeItem), with aria-pressed when a selection is controlled.",
-    "Status is never colour alone: the label names it. The axis is hidden from assistive technology; the bars carry the times.",
+    "Status is never colour alone: the bar shows its label and the aria-label names the status. The axis is hidden from assistive technology; the bars carry the times.",
     "Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface)."
   ],
   "base": null
