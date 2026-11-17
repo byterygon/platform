@@ -267,6 +267,10 @@ const STATUS_TEXT = ["danger", "warning", "success", "info"].map((name) => `colo
 /** The pairs of the layered look; `surfaces` are the opaque surfaces a field may also sit on. */
 export function layerPairs(surfaces: readonly string[]): ContrastPair[] {
   return [
+    // Text straight on the backdrop: an app's title area and status bar (TSK-64, Fluent 2's base
+    // layer). The backdrop is a blend of its two glows and the canvas, so text that holds on each of
+    // the three holds everywhere on it.
+    ...pairs("text", ["color.fg.default", "color.fg.muted"], ["color.backdrop.glow-1", "color.backdrop.glow-2", "color.bg.canvas"]),
     // Text on a layer over the backdrop, and on a field or striped row inside that layer.
     ...pairs("text", [...TEXT, ...STATUS_TEXT], ["color.bg.layer"], BACKDROP),
     ...pairs("text", TEXT, ["color.bg.layer-alt"], ON_LAYER),

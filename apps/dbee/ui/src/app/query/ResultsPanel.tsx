@@ -110,7 +110,7 @@ export function ResultsPanel({ run, onExport, onRemedy, columnWidths, onColumnWi
         </ToolbarGroup>
       </Toolbar>
       {run.status === "error" && run.error ? (
-        <Alert variant="danger" className="m-inset-sm">
+        <Alert variant="danger" className="m-inset-sm w-auto">
           <AlertTitle>{run.error.title}</AlertTitle>
           <AlertDescription>
             {run.error.description ? <span>{run.error.description} </span> : null}

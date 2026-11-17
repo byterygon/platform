@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Icon } from "@/components/ui/icon";
 import { RelativeTime } from "@/components/ui/relative-time";
+import { Clock } from "@/lib/icons";
 
 // A grant's expiry as a badge (DBee spec §3.11 flow 4): nothing until 15 minutes before
 // (Decision 9), then "expires in 14 min" that counts down by itself (to the second within the
@@ -24,9 +26,11 @@ export interface ExpiryBadgeProps {
   expiresAt: number | null;
   /** Show nothing once expired (the node's own "expired" status already says it). */
   hideExpired?: boolean;
+  /** A clock and the time only ("in 13 min."), for a narrow place such as a tree row; the words stay for screen readers. */
+  compact?: boolean;
 }
 
-export function ExpiryBadge({ expiresAt, hideExpired = false }: ExpiryBadgeProps) {
+export function ExpiryBadge({ expiresAt, hideExpired = false, compact = false }: ExpiryBadgeProps) {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -46,7 +50,8 @@ export function ExpiryBadge({ expiresAt, hideExpired = false }: ExpiryBadgeProps
   if (phase === "later" || (phase === "expired" && hideExpired)) return null;
   return (
     <Badge variant={phase === "expired" ? "danger" : "warning"} data-expiry-phase={phase}>
-      {phase === "expired" ? "expired " : "expires "}
+      {compact ? <Icon icon={Clock} size="xs" /> : null}
+      <span className={compact ? "sr-only" : undefined}>{phase === "expired" ? "expired " : "expires "}</span>
       <RelativeTime date={expiresAt} now={now} />
     </Badge>
   );

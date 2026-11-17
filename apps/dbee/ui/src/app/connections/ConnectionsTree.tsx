@@ -162,7 +162,7 @@ export function connectionNodes(connections: readonly ConnectionSummary[], statu
       meta: (
         <span className="flex items-center gap-inline-sm">
           <span className="sr-only">{status}, </span>
-          <ExpiryBadge expiresAt={c.grant.expiresAt} hideExpired={status === "expired"} />
+          <ExpiryBadge expiresAt={c.grant.expiresAt} hideExpired={status === "expired"} compact />
           {status === "connecting" ? <Spinner size="sm" label="Connecting" /> : null}
           {c.tls === "plaintext" ? (
             <span className="flex items-center gap-inline-xs text-warning-fg">
