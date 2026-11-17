@@ -1,6 +1,6 @@
 [package]
 name = "dbee-desktop"
-version = "0.0.0"
+version = "0.1.0"
 description = "DBee desktop app: Tauri 2 shell around dbee-core with the ambidex-tauri IPC transport, a capability for the main window only, a strict CSP, no network listener and the native save dialog."
 license = "AGPL-3.0-only"
 edition.workspace = true
