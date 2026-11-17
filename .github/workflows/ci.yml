@@ -106,6 +106,42 @@ jobs:
               env PATH="$1" HOME="$2" BYTERYGON_REQUIRE_BROWSER=1 pnpm --filter @byterygon/mightyconsole check:browser
           ' sh "$PATH" "$HOME"
 
+  dbee-desktop-budget:
+    # DBee spec §1 performance budget on Linux (TSK-61): the desktop app on WebKitGTK under Xvfb,
+    # release build, driven by apps/dbee/desktop/examples/acceptance through its own UI (bench
+    # hook of TSK-39) against a throwaway PostgreSQL from the distribution's binaries with the
+    # acceptance data (bench_rows 1M x 10, 10,000 tables). It reports; it fails only when a step
+    # does not work (a budget over target is recorded in DOC-16, not enforced here).
+    name: DBee desktop budget (Linux, WebKitGTK)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Install system libraries, PostgreSQL and Xvfb
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libwebkit2gtk-4.1-dev postgresql xvfb
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @byterygon/dbee build
+      - run: cargo build --release --locked -p dbee-desktop --bin dbee-desktop --example acceptance
+      - name: Measure (3 runs)
+        run: |
+          apps/dbee/acceptance/local-postgres.sh start "$RUNNER_TEMP/pg" 55432
+          status=0
+          timeout 900 xvfb-run -a -s "-screen 0 1920x1080x24" \
+            apps/dbee/acceptance/acceptance.sh perf --port 55432 --runs 3 --no-build --out "$RUNNER_TEMP/dbee-budget" || status=$?
+          for f in "$RUNNER_TEMP"/dbee-budget/run-*.json; do echo "== $f"; cat "$f"; done
+          apps/dbee/acceptance/local-postgres.sh stop "$RUNNER_TEMP/pg"
+          exit "$status"
+
   typescript:
     # Must match the required status check in the protect-main ruleset; do not rename without updating it.
     name: TypeScript (typecheck)

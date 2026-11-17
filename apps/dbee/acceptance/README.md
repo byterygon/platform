@@ -54,3 +54,34 @@ DER) are copied out, for the "pinned CA file" and "pinned server certificate" po
 instead of starting one: the port, CA and fingerprint are read from `<dir>/port`, `ca.pem` and
 `fingerprint`. `acceptance.sh test` recreates `pg-tls` before each test binary (the tests create
 roles) and sets it to `.state/tls`.
+
+## Performance budget on the desktop app
+
+```sh
+apps/dbee/acceptance/acceptance.sh perf [--port 55432] [--runs 3] [--out DIR] [--no-build]
+```
+
+builds `dbee-desktop` and the driver `apps/dbee/desktop/examples/acceptance` in release mode,
+creates a workspace with one approved plaintext connection (through the core's
+`connections.prepare` / `connections.create`) and two query tabs, then:
+
+1. starts the real `dbee-desktop` with `DBEE_COLD_START_EXIT=1` `--runs` times (core ready,
+   window ready, first page load after process start);
+2. runs the driver `--runs` times. It is the same app (the `Desktop` core, the Ambidex plugin, the
+   capability and CSP of `tauri.conf.json`, the bundled UI) with the TSK-39 bench hook and
+   `driver.js` installed as an initialization script on the `main` window, and works through the
+   UI: time to a usable window (tree and editor shown), connect and list the schemas, expand
+   `wide` (10,000 tables) and its Tables group, the app's memory after 5 s idle (one connection,
+   one tab), Run on `select * from bench_rows` to the first painted rows, scrolling 200 px per
+   frame for 3 s from the first rows (frame intervals while the stream still ran, and after), the
+   end of the stream, and Cancel on a 10M-row statement against the audit entry of the driver's
+   cancel connection. It also verifies the audit chain.
+
+Memory is the sum over the app's processes: the app, and on macOS the WebKit GPU, Networking and
+WebContent services it started (`ps` RSS, and `footprint`'s physical footprint, which is what
+Activity Monitor shows; RSS also counts the system frameworks every process maps); on Linux the
+app and its WebKitGTK child processes (RSS).
+
+CI runs the same measurement on Linux (job "DBee desktop budget", WebKitGTK under Xvfb) against
+`local-postgres.sh`, a throwaway server from the distribution's `initdb`/`postgres` with the same
+data files; it reports and fails only when a step does not work.
