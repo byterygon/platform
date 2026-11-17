@@ -14,6 +14,7 @@ import { EmptyState, EmptyStateDescription, EmptyStateTitle } from "@/components
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Toolbar, ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
 import { benchHook } from "../bench";
+import { ErrorAlert } from "../ErrorAlert";
 import { formatCount, formatElapsed } from "../messages";
 import type { Run } from "../store";
 
@@ -103,32 +104,7 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel, columnWidths, 
           {cellNote}
         </span>
       </Toolbar>
-      {run.status === "error" && run.error ? (
-        <Alert variant="danger" className="m-inset-sm">
-          <AlertTitle>{run.error.title}</AlertTitle>
-          <AlertDescription>
-            {run.error.description ? <span>{run.error.description} </span> : null}
-            {run.error.sqlstate ? (
-              <span>
-                SQLSTATE <Code>{run.error.sqlstate}</Code>{" "}
-              </span>
-            ) : null}
-            {run.error.position !== undefined ? <span>at position {run.error.position} </span> : null}
-            {run.error.correlationId ? (
-              <details className="inline">
-                <summary className="inline cursor-pointer text-fg-link">Details</summary> Correlation id <Code>{run.error.correlationId}</Code>
-              </details>
-            ) : null}
-          </AlertDescription>
-          {run.error.remedy && onRemedy ? (
-            <AlertActions>
-              <Button size="small" appearance="secondary" onClick={() => onRemedy(run.error!.remedy!)}>
-                {run.error.remedyLabel}
-              </Button>
-            </AlertActions>
-          ) : null}
-        </Alert>
-      ) : null}
+      {run.status === "error" && run.error ? <ErrorAlert error={run.error} onRemedy={onRemedy} className="m-inset-sm" /> : null}
       {run.summary && run.summary.notices.length > 0 ? (
         <Collapsible className="px-inset-sm">
           <CollapsibleTrigger>
