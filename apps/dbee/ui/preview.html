@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+  Development only (TSK-64): the app on the tests' fake core, for looking at the screens and for
+  the screenshot set. `pnpm --filter @byterygon/dbee dev`, then /preview.html?scene=main&scheme=dark.
+  `vite build` builds index.html only, so this page never ships.
+-->
+<html lang="en" data-theme="light" data-density="comfortable">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>DBee preview</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./test/support/preview.tsx"></script>
+  </body>
+</html>

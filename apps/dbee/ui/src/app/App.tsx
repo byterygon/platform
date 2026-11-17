@@ -15,7 +15,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toast, useToast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateTitle } from "@/components/ui/empty-state";
+import { Icon } from "@/components/ui/icon";
+import { Kbd } from "@/components/ui/kbd";
 import type { AppEvent, ConnectionDraft, ConnectionSummary, GrantPreview } from "@/gen/api";
+import { cn } from "@/lib/cn";
+import { layerSurface } from "@/lib/control";
+import { Add, Database, Options, QuestionCircle, Search, Settings, Window } from "@/lib/icons";
 import { type Ctx, type RunHandle, connect, openTab, refreshConnections, runStatement } from "./actions";
 import { useServices } from "./client";
 import { type Approval, ApproveDialog } from "./connections/ApproveDialog";
@@ -26,10 +31,10 @@ import { AboutDialog } from "./dialogs/AboutDialog";
 import { ConfirmDestructiveDialog, DeleteConnectionDialog, PasswordDialog } from "./dialogs/Confirmations";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
 import { ShortcutsDialog } from "./dialogs/ShortcutsDialog";
-import { GearIcon, HelpIcon, PlusIcon } from "./icons";
 import { describeError, formatCount, formatElapsed } from "./messages";
 import { type Appearance, applyAppearance, followSystemScheme } from "./presets";
 import { type ShellMaterial, applyMaterial, materialVisible, watchShell } from "./shell";
+import { gapHandle } from "./gap-handle";
 import { ExportDialog } from "./query/ExportDialog";
 import { QueryTab } from "./query/QueryTab";
 import { statusLine } from "./query/ResultsPanel";
@@ -70,6 +75,7 @@ function Shell({ shell }: { shell: Shell }) {
   const connections = state.connections ?? [];
   const activeTab = tabOf(state, state.activeTab);
   const activeConnection = activeTab?.connectionId ? connections.find((c) => c.id === activeTab.connectionId) : undefined;
+  const binding = (id: ActionId) => displayBinding(bindingsOf(ACTIONS.find((a) => a.id === id)!, shell)[0] ?? "");
 
   const note = useCallback((error: unknown) => {
     const d = describeError(error);
@@ -444,17 +450,67 @@ function Shell({ shell }: { shell: Shell }) {
 
   return (
     <SidebarProvider open={state.sidebarOpen} onOpenChange={(open) => dispatch({ type: "sidebar", open })} className="h-full">
-      <div className="dbee-root flex h-full min-h-0 w-full flex-col bg-canvas text-fg">
-        <Resizable orientation="horizontal" sizes={state.sidebarOpen ? state.shellSizes : [0, 100]} onSizesChange={(sizes) => state.sidebarOpen && dispatch({ type: "sizes", shellSizes: sizes })} className="min-h-0 flex-1" aria-label="Sidebar and workspace">
+      {/*
+        The shell in Fluent 2's layering (TSK-64): the window paints the backdrop (the base layer),
+        the title area sits on it (sidebar toggle, app mark, the query tabs as a Fluent TabList,
+        the command search, Settings and Help), and the sidebar, the editor and the results are
+        translucent layers with radius 8 and gaps, the resize handles in the gaps.
+      */}
+      <Tabs value={state.activeTab ?? ""} onValueChange={(v) => dispatch({ type: "activateTab", id: String(v) })} size="medium" className="dbee-root flex h-full min-h-0 w-full flex-col gap-0 text-fg">
+        <header className="flex shrink-0 items-center gap-inline-md py-inset-xs ps-inset-xs pe-inset-sm" aria-label="Title area">
+          <SidebarTrigger />
+          <span className="flex shrink-0 items-center gap-inline-md pe-inline-lg text-body-1-strong">
+            <Icon icon={Database} filled size="lg" tone="accent" />
+            DBee
+          </span>
+          {state.tabs.length > 0 ? (
+            <TabsList aria-label="Query tabs" onReorder={(value, index) => dispatch({ type: "reorderTab", id: String(value), index })} className="min-w-0 border-b-0">
+              {state.tabs.map((t, i) => {
+                const rt = state.tabsRuntime[t.id];
+                const icon = rt?.run?.status === "running" ? <Spinner size="sm" label="Running" /> : rt?.modified ? <span role="img" aria-label="changed since the last run" className="size-icon-xs rounded-full bg-fg-muted" /> : undefined;
+                return (
+                  <TabsTrigger key={t.id} value={t.id} icon={icon} onClose={() => closeTab(t.id)}>
+                    {tabTitle(t.sql, i)}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          ) : null}
+          <Tooltip>
+            <TooltipTrigger render={<IconButton aria-label="New query tab" onClick={newTab} disabled={connections.length === 0} />}>
+              <Icon icon={Add} />
+            </TooltipTrigger>
+            <TooltipContent>New query tab ({binding("newTab")})</TooltipContent>
+          </Tooltip>
+          <span className="flex-1" />
+          <Button appearance="secondary" className="w-panel-xs justify-start font-normal text-fg-muted" aria-haspopup="dialog" onClick={() => dispatch({ type: "palette", open: true })}>
+            <Icon icon={Search} />
+            <span className="flex-1 text-start">Search commands</span>
+            <Kbd>{binding("palette")}</Kbd>
+          </Button>
+          <Tooltip>
+            <TooltipTrigger render={<IconButton aria-label="Settings" onClick={() => perform("settings")} />}>
+              <Icon icon={Settings} />
+            </TooltipTrigger>
+            <TooltipContent>Settings ({binding("settings")})</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={<IconButton aria-label="Keyboard shortcuts" onClick={() => perform("shortcuts")} />}>
+              <Icon icon={QuestionCircle} />
+            </TooltipTrigger>
+            <TooltipContent>Keyboard shortcuts ({binding("shortcuts")})</TooltipContent>
+          </Tooltip>
+        </header>
+        <Resizable orientation="horizontal" sizes={state.sidebarOpen ? state.shellSizes : [0, 100]} onSizesChange={(sizes) => state.sidebarOpen && dispatch({ type: "sizes", shellSizes: sizes })} className="min-h-0 flex-1 px-gap-sm" aria-label="Sidebar and workspace">
           <ResizablePanel minSize={state.sidebarOpen ? 12 : 0} maxSize={state.sidebarOpen ? 50 : 0}>
-            <Sidebar aria-label="Connections" collapsible="offcanvas" className="h-full w-full border-e">
-              <SidebarHeader className="flex-row items-center justify-between">
-                <span className="text-label text-fg-muted">Connections</span>
+            <Sidebar aria-label="Connections" collapsible="offcanvas" className="h-full w-full rounded-lg border shadow-layer">
+              <SidebarHeader className="flex-row items-center justify-between py-inset-xs pe-inset-xs">
+                <span className="text-body-1-strong">Connections</span>
                 <Tooltip>
-                  <TooltipTrigger render={<IconButton aria-label="Add connection" size="small" onClick={() => perform("addConnection")} />}>
-                    <PlusIcon className="size-icon-sm" />
+                  <TooltipTrigger render={<IconButton aria-label="Add connection" onClick={() => perform("addConnection")} />}>
+                    <Icon icon={Add} />
                   </TooltipTrigger>
-                  <TooltipContent>Add connection ({displayBinding(bindingsOf(ACTIONS[1]!, shell)[0]!)})</TooltipContent>
+                  <TooltipContent>Add connection ({binding("addConnection")})</TooltipContent>
                 </Tooltip>
               </SidebarHeader>
               <SidebarContent className="min-h-0 flex-1 p-0">
@@ -462,71 +518,57 @@ function Shell({ shell }: { shell: Shell }) {
               </SidebarContent>
             </Sidebar>
           </ResizablePanel>
-          <ResizableHandle aria-label="Resize sidebar" disabled={!state.sidebarOpen} />
+          <ResizableHandle aria-label="Resize sidebar" disabled={!state.sidebarOpen} withGrip className={gapHandle} />
           <ResizablePanel minSize={40}>
             <SidebarInset className="flex h-full min-h-0 flex-col">
               {state.tabs.length === 0 ? (
-                <EmptyState className="m-auto">
-                  <EmptyStateTitle>No query tabs</EmptyStateTitle>
-                  <EmptyStateDescription>Open a tab for a connection, or press Enter on a table in the tree.</EmptyStateDescription>
-                  <EmptyStateActions>
-                    <Button onClick={newTab} disabled={connections.length === 0}>
-                      New query tab
-                    </Button>
-                  </EmptyStateActions>
-                </EmptyState>
+                <section aria-label="Start" className={cn(layerSurface, "flex h-full min-h-0 flex-col")}>
+                  <EmptyState className="m-auto">
+                    <EmptyStateTitle>No query tabs</EmptyStateTitle>
+                    <EmptyStateDescription>Open a tab for a connection, or press Enter on a table in the tree.</EmptyStateDescription>
+                    <EmptyStateActions>
+                      <Button onClick={newTab} disabled={connections.length === 0}>
+                        New query tab
+                      </Button>
+                    </EmptyStateActions>
+                  </EmptyState>
+                </section>
               ) : (
-                <Tabs value={state.activeTab ?? ""} onValueChange={(v) => dispatch({ type: "activateTab", id: String(v) })} appearance="enclosed" size="small" className="flex h-full min-h-0 flex-col">
-                  <div className="flex shrink-0 items-center border-b border-border">
-                    <SidebarTrigger />
-                    <TabsList onReorder={(value, index) => dispatch({ type: "reorderTab", id: String(value), index })} className="min-w-0 flex-1">
-                      {state.tabs.map((t, i) => {
-                        const rt = state.tabsRuntime[t.id];
-                        const icon = rt?.run?.status === "running" ? <Spinner size="sm" label="Running" /> : rt?.modified ? <span role="img" aria-label="changed since the last run" className="size-icon-xs rounded-full bg-fg-muted" /> : undefined;
-                        return (
-                          <TabsTrigger key={t.id} value={t.id} icon={icon} onClose={() => closeTab(t.id)}>
-                            {tabTitle(t.sql, i)}
-                          </TabsTrigger>
-                        );
-                      })}
-                    </TabsList>
-                    <IconButton aria-label="New query tab" size="small" onClick={newTab}>
-                      <PlusIcon className="size-icon-sm" />
-                    </IconButton>
-                  </div>
-                  {state.tabs.map((t) => {
-                    const tab = tabOf(state, t.id);
-                    return tab ? (
-                      <TabsContent key={t.id} value={t.id} className="min-h-0 flex-1 p-0">
-                        <QueryTab
-                          tab={tab}
-                          connections={connections}
-                          shell={shell}
-                          splitSizes={state.splitSizes}
-                          onSplitSizes={(sizes) => dispatch({ type: "sizes", splitSizes: sizes })}
-                          onChange={(patch) => dispatch({ type: "editTab", id: t.id, ...patch })}
-                          onRun={(sql) => void run(t.id, sql)}
-                          onCancel={() => cancel(t.id)}
-                          onExport={() => dispatch({ type: "dialog", dialog: { kind: "export", tabId: t.id } })}
-                          onRemedy={(r) => remedy(r, tab.connectionId)}
-                          settings={state.settings}
-                          focusEditorSignal={state.activeTab === t.id ? focusEditor : 0}
-                        />
-                      </TabsContent>
-                    ) : null;
-                  })}
-                </Tabs>
+                state.tabs.map((t) => {
+                  const tab = tabOf(state, t.id);
+                  return tab ? (
+                    <TabsContent key={t.id} value={t.id} className="min-h-0 flex-1 p-0">
+                      <QueryTab
+                        tab={tab}
+                        connections={connections}
+                        shell={shell}
+                        splitSizes={state.splitSizes}
+                        onSplitSizes={(sizes) => dispatch({ type: "sizes", splitSizes: sizes })}
+                        onChange={(patch) => dispatch({ type: "editTab", id: t.id, ...patch })}
+                        onRun={(sql) => void run(t.id, sql)}
+                        onCancel={() => cancel(t.id)}
+                        onExport={() => dispatch({ type: "dialog", dialog: { kind: "export", tabId: t.id } })}
+                        onRemedy={(r) => remedy(r, tab.connectionId)}
+                        settings={state.settings}
+                        focusEditorSignal={state.activeTab === t.id ? focusEditor : 0}
+                      />
+                    </TabsContent>
+                  ) : null;
+                })
               )}
             </SidebarInset>
           </ResizablePanel>
         </Resizable>
-        <StatusBar aria-label="Status" className="shrink-0">
-          <StatusBarItem>
+        <StatusBar aria-label="Status" className="h-auto gap-inline-md border-t-0 bg-transparent py-inset-xs ps-inset-sm pe-inset-xs">
+          <StatusBarItem className="text-fg">
+            {activeConnection ? <Icon icon={Database} /> : null}
             <span title={activeConnection ? `${activeConnection.user}@${activeConnection.host}:${activeConnection.port}/${activeConnection.database}` : undefined}>{activeConnection ? activeConnection.name : "No connection"}</span>
           </StatusBarItem>
           {activeConnection ? (
             <StatusBarItem>
-              <span>{state.statuses[activeConnection.id] ?? activeConnection.status}</span>
+              <span>
+                {activeConnection.database} as {activeConnection.user} · {state.statuses[activeConnection.id] ?? activeConnection.status}
+              </span>
             </StatusBarItem>
           ) : null}
           {activeTab?.sessionId ? (
@@ -537,24 +579,27 @@ function Shell({ shell }: { shell: Shell }) {
           <StatusBarItem live>
             <span>{status}</span>
           </StatusBarItem>
-          {activeTab?.run?.status === "running" ? <StatusBarButton onClick={() => cancel(activeTab.id)}>Cancel</StatusBarButton> : null}
-          <StatusBarSpacer />
           {expiring !== null ? (
             <StatusBarItem>
               <ExpiryBadge expiresAt={expiring} />
             </StatusBarItem>
           ) : null}
-          <StatusBarButton onClick={() => dispatch({ type: "settings", settings: { density: state.settings.density === "compact" ? "comfortable" : "compact" } })}>{state.settings.density}</StatusBarButton>
-          <StatusBarButton onClick={() => dispatch({ type: "settings", settings: { colorScheme: state.settings.colorScheme === "dark" ? "light" : state.settings.colorScheme === "light" ? "system" : "dark" } })}>{state.settings.colorScheme}</StatusBarButton>
-          <StatusBarButton onClick={() => perform("shortcuts")} aria-label="Keyboard shortcuts">
-            <HelpIcon className="size-icon-xs" />
+          <StatusBarSpacer />
+          <StatusBarButton className="h-control-sm" title="Density (Settings → Appearance)" onClick={() => dispatch({ type: "settings", settings: { density: state.settings.density === "compact" ? "comfortable" : "compact" } })}>
+            <Icon icon={Options} />
+            <span>{state.settings.density === "compact" ? "Compact" : "Comfortable"}</span>
           </StatusBarButton>
-          <StatusBarButton onClick={() => perform("settings")} aria-label="Settings">
-            <GearIcon className="size-icon-xs" />
+          <StatusBarButton className="h-control-sm" title="Colour scheme (Settings → Appearance)" onClick={() => dispatch({ type: "settings", settings: { colorScheme: state.settings.colorScheme === "dark" ? "light" : state.settings.colorScheme === "light" ? "system" : "dark" } })}>
+            <Icon icon={Window} />
+            <span>{state.settings.colorScheme === "system" ? "System theme" : state.settings.colorScheme === "dark" ? "Dark" : "Light"}</span>
           </StatusBarButton>
-          {state.info ? <StatusBarButton onClick={() => dispatch({ type: "dialog", dialog: { kind: "about" } })}>DBee {state.info.version}</StatusBarButton> : null}
+          {state.info ? (
+            <StatusBarButton className="h-control-sm" onClick={() => dispatch({ type: "dialog", dialog: { kind: "about" } })}>
+              DBee {state.info.version}
+            </StatusBarButton>
+          ) : null}
         </StatusBar>
-      </div>
+      </Tabs>
 
       <CommandPalette groups={paletteGroups} open={state.paletteOpen} onOpenChange={(open) => dispatch({ type: "palette", open })} hotkeys={["Mod+K", "Mod+Shift+P"]} placeholder="Type a command" />
 
