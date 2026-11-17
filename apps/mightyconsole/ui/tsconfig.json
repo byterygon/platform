@@ -1,0 +1,43 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "jsx": "react-jsx",
+    "types": [
+      "node",
+      "vite/client"
+    ],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@byterygon/ambidex": [
+        "../../../packages/ambidex/src/index.ts"
+      ],
+      "@byterygon/ambidex/arrow": [
+        "../../../packages/ambidex/src/arrow.ts"
+      ],
+      "@byterygon/ambidex/arrow-worker": [
+        "../../../packages/ambidex/src/arrow-worker.ts"
+      ],
+      "@byterygon/ambidex/arrow-decoder": [
+        "../../../packages/ambidex/src/arrow-decoder.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "test",
+    "scripts",
+    "vite.config.ts"
+  ]
+}
