@@ -14,7 +14,7 @@ import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toast, useToast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateTitle } from "@/components/ui/empty-state";
+import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
 import { Kbd } from "@/components/ui/kbd";
 import type { AppEvent, ConnectionDraft, ConnectionSummary, GrantPreview } from "@/gen/api";
@@ -524,13 +524,33 @@ function Shell({ shell }: { shell: Shell }) {
               {state.tabs.length === 0 ? (
                 <section aria-label="Start" className={cn(layerSurface, "flex h-full min-h-0 flex-col")}>
                   <EmptyState className="m-auto">
-                    <EmptyStateTitle>No query tabs</EmptyStateTitle>
-                    <EmptyStateDescription>Open a tab for a connection, or press Enter on a table in the tree.</EmptyStateDescription>
-                    <EmptyStateActions>
-                      <Button onClick={newTab} disabled={connections.length === 0}>
-                        New query tab
-                      </Button>
-                    </EmptyStateActions>
+                    {/* A larger icon than EmptyState's default circle: the whole main layer is empty (mockup screen 1). */}
+                    <EmptyStateIcon className="size-auto bg-accent-subtle p-inset-md text-accent-subtle-fg [&_svg]:size-inset-xl!">
+                      <Icon icon={Database} />
+                    </EmptyStateIcon>
+                    <EmptyStateTitle className="text-subtitle-1">{connections.length === 0 ? "Connect to a PostgreSQL database" : "No query tabs"}</EmptyStateTitle>
+                    <EmptyStateDescription>
+                      {connections.length === 0
+                        ? "Add a connection on the left and approve exactly what it may reach. Then open a query tab and run SQL with Ctrl+Enter."
+                        : "Open a tab for a connection, or press Enter on a table in the tree."}
+                    </EmptyStateDescription>
+                    {connections.length > 0 ? (
+                      <EmptyStateActions>
+                        <Button onClick={newTab}>
+                          <Icon icon={Add} /> New query tab
+                        </Button>
+                      </EmptyStateActions>
+                    ) : null}
+                    <dl className="mt-stack-md flex flex-col gap-stack-sm text-start">
+                      {(["palette", "addConnection", "settings", "shortcuts"] as const).map((id) => (
+                        <div key={id} className="flex items-center gap-inline-lg">
+                          <dt className="flex w-panel-xs justify-end">
+                            <Kbd>{binding(id)}</Kbd>
+                          </dt>
+                          <dd className="m-0 w-panel-xs text-fg-muted">{ACTIONS.find((a) => a.id === id)!.label}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   </EmptyState>
                 </section>
               ) : (

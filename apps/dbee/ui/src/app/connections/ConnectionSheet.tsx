@@ -248,10 +248,10 @@ export function ConnectionSheet({ open, onOpenChange, editing, renewing = false,
               </form.Field>
               <form.Field name="port" validators={{ onBlur: ({ value }) => (value === null || value < 1 || value > 65535 ? "A port between 1 and 65535." : undefined) }}>
                 {(field) => (
-                  // eslint-disable-next-line byterygon/no-arbitrary-value -- a five-digit port: a width in characters, which no token measures
-                  <Field field={field} className="w-[9ch]">
+                  // eslint-disable-next-line byterygon/no-arbitrary-value -- a five-digit port and the two steppers beside it (9ch cut 5432 to "5"): a width in characters, which no token measures
+                  <Field field={field} className="w-[18ch]">
                     <FieldLabel>Port</FieldLabel>
-                    <NumberInput value={field.state.value} onValueChange={(v) => field.handleChange(v)} onBlur={field.handleBlur} min={1} max={65535} />
+                    <NumberInput value={field.state.value} onValueChange={(v) => field.handleChange(v)} onBlur={field.handleBlur} min={1} max={65535} format={{ useGrouping: false }} />
                     <FieldError />
                   </Field>
                 )}

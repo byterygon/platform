@@ -4,7 +4,7 @@
   "name": "tree",
   "title": "Tree",
   "description": "A virtualized, keyboard-navigable tree following the ARIA treeview pattern: nodes with icons and trailing meta, lazy children with per-node loading and error-with-Retry rows, single selection, an action on Enter or double-click, type-ahead and a filter; only the visible rows are rendered.",
-  "usage": "Use Tree for a hierarchy the user browses and opens: DBee's connections and schema browser (connection, schema, Tables and Views, table, columns), a file list. Pass nodes ({ id, label, icon, meta, children, hasChildren, loading, error, disabled }); load children when onExpandedChange reports a node opened (set loading, then children or error) and retry in onRetry; open the node in onAction (Enter, double-click); filter with filter (the text of a SearchInput above it). Give it a height (h-full in a sized panel): it scrolls and renders only what is visible, so thousands of nodes stay fast. Wrap it in a ContextMenuTrigger for node actions, using the selected node. For a few levels of navigation links use Sidebar; for a flat list, a listbox (Select, Combobox).",
+  "usage": "Use Tree for a hierarchy the user browses and opens: DBee's connections and schema browser (connection, schema, Tables and Views, table, columns), a file list. Pass nodes ({ id, label, icon, meta, children, hasChildren, loading, error, disabled }); load children when onExpandedChange reports a node opened (set loading, then children or error) and retry in onRetry; open the node in onAction (Enter, double-click); filter with filter (the text of a SearchInput above it). Give it a height (h-full in a sized panel): it scrolls and renders only what is visible, so thousands of nodes stay fast. Wrap it in a ContextMenuTrigger for node actions, using the selected node. For a few levels of navigation links use Sidebar; for a flat list, a listbox (Select, Combobox). size=\"medium\" gives Fluent's 32 px rows (comfortable); the default small keeps the dense 24 px rows.",
   "status": "experimental",
   "base": null,
   "dependencies": [],
@@ -58,6 +58,12 @@
       "description": "The tree's accessible name."
     },
     {
+      "name": "size",
+      "type": "\"small\" | \"medium\"",
+      "default": "small",
+      "description": "Row height: small is size.control.sm (24 px comfortable, 22 compact); medium is size.control.md (32 px comfortable, 28 compact), Fluent 2's medium tree item, which DBee's connections tree uses."
+    },
+    {
       "name": "overscan",
       "type": "number",
       "default": 8,
@@ -92,7 +98,12 @@
       "description": "Reaches the tree element."
     }
   ],
-  "variants": {},
+  "variants": {
+    "size": [
+      "small",
+      "medium"
+    ]
+  },
   "slots": [
     {
       "name": "root",
@@ -200,6 +211,7 @@
     "radius.md",
     "ring.inner-width",
     "ring.width",
+    "size.control.md",
     "size.control.sm",
     "size.icon.md",
     "size.panel.sm",
