@@ -199,6 +199,7 @@ export function ResultsPanel({ run, onExport, onRemedy, onCancel }: ResultsPanel
           <Table aria-label="Result rows" className="h-full" aria-rowcount={run.status === "running" ? -1 : run.rows + 1}>
             <TableHeader>
               <TableRow>
+                {/* eslint-disable-next-line byterygon/no-arbitrary-value -- row numbers up to five digits: a width in characters, which no token measures */}
                 <TableHead align="end" className="w-[6ch] text-fg-subtle">
                   #
                 </TableHead>

@@ -1,0 +1,27 @@
+/* What an app stylesheet may hold: token variables, keywords, hairlines, system colours. */
+.pane {
+  padding: var(--by-space-inset-md);
+  margin: 0 auto;
+  gap: var(--by-space-gap-sm);
+  border: 1px solid var(--by-color-border-subtle);
+  background: var(--by-color-bg-layer) url("data:image/svg+xml,%3Csvg fill='%23ffffff'/%3E");
+  color: currentColor;
+  top: -1px;
+  row-gap: var(--by-space-gap-sm, 10px);
+}
+
+.mask {
+  mask-image: url(#fade);
+  transition: opacity var(--by-motion-duration-fast) linear;
+}
+
+@media (forced-colors: active) {
+  .pane {
+    outline: 2px solid CanvasText;
+    background: Canvas;
+  }
+}
+
+.row {
+  @apply flex items-center gap-inline-sm px-control-x text-fg-muted;
+}

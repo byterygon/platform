@@ -96,6 +96,7 @@ export function QueryTab({ tab, connections, shell, splitSizes, onSplitSizes, on
         <ToolbarSeparator />
         <ToolbarGroup className="items-center gap-inline-xs">
           <span className="text-caption text-fg-muted">Row limit</span>
+          {/* eslint-disable-next-line byterygon/no-arbitrary-value -- the row limit and its steppers: a width in characters, which no token measures */}
           <NumberInput aria-label="Row limit (blank is unlimited)" size="small" value={tab.maxRows} onValueChange={(v) => onChange({ maxRows: v })} min={1} placeholder="unlimited" className="w-[12ch]" />
         </ToolbarGroup>
         <ToolbarSeparator />

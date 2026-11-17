@@ -22,6 +22,7 @@ pnpm --filter @byterygon/theme-studio dev        # Vite dev server
 pnpm --filter @byterygon/theme-studio build      # dist/: index.html, studio.js, studio.css
 pnpm --filter @byterygon/theme-studio test       # Vitest (jsdom): state, persistence, the app, dist/
 pnpm --filter @byterygon/theme-studio typecheck
+pnpm --filter @byterygon/theme-studio lint       # @byterygon/lint: no raw colours, arbitrary values or raw space steps
 pnpm --filter @byterygon/theme-studio check:browser   # the built Studio in Chromium: file://, server, every export
 ```
 

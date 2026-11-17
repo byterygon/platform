@@ -1,0 +1,15 @@
+/* One violation per line; test/stylelint.test.js lists them by line. */
+.pane {
+  padding: 13px;
+  margin-top: 0.5rem;
+  background: #0e7490;
+  color: rgb(255 0 0);
+  border-color: white;
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.2);
+}
+
+.row {
+  @apply bg-blue-500;
+  @apply p-[13px];
+  @apply gap-3;
+}

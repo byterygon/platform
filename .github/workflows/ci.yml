@@ -107,6 +107,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
+      # Byterygon UI spec §9a.4 (TSK-50): the design-token lint rules (@byterygon/lint) on
+      # packages/ui, packages/theme-studio and apps/dbee/ui. Needs the token engine built above.
+      - run: pnpm lint
       - run: pnpm test
         env:
           AMBIDEX_REQUIRE_RUST_SERVER: "1"
