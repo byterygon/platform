@@ -27,8 +27,8 @@ const temp = () => {
  */
 export const REPLACEMENTS: Record<string, string> = {};
 
-/** Components that draw svgs on purpose: the Icon itself, Spinner's animated arc, Chart's plots. */
-const DRAWS_SVG = new Set(["icon", "spinner", "chart"]);
+/** Components that draw svgs on purpose: the Icon itself, Spinner's animated arc, Chart's plots, GraphView's edges. */
+const DRAWS_SVG = new Set(["icon", "spinner", "chart", "graph-view"]);
 const COMPONENTS_DIR = join(import.meta.dirname, "..", "src", "components");
 
 describe("hand-drawn icons", () => {

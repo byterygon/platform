@@ -2170,6 +2170,83 @@ export function FormRealistic() {
 }
 ```
 
+### GraphView
+
+[graph-view.json](graph-view.json): A read-only directed graph laid out in layers (dagre), with pan, zoom, groups, running and visited nodes, and keyboard navigation along its edges.
+
+Usage: Use GraphView to show how steps connect: a LangGraph assistant's nodes and edges (Mightyconsole), a workflow, a pipeline. Pass nodes and edges; kind start and end draw small pills, conditional edges are dashed, and nodes with a group are drawn inside that group's box (a subgraph seen with xray). While something runs, pass activeIds (accent fill) and visitedIds (accent edge): the edges between them light up too. selectedId and onNodeSelect make nodes selectable (click or Enter). Give it a height (h-panel-md, h-full in a sized panel); it fits the graph on first draw and when the graph or its size changes. The layout is computed, not measured, so labels longer than about 28 characters are cut with an ellipsis (the full label is the node's tooltip and name). For a hierarchy use Tree; for a timeline of steps, Timeline; to edit a graph, nothing here: it is read-only.
+
+- Wraps: no Base UI part
+- Props: nodes ({ id: string; label: string; kind?: "start" | "end" | "node" | "subgraph"; group?: string }[]); edges ({ source: string; target: string; conditional?: boolean; label?: string }[]); groups ({ id: string; label: string }[], default "[]"); direction ("TB" | "LR", default "\"TB\""); activeIds (string[], default "[]"); visitedIds (string[], default "[]"); selectedId (string | null, default "null"); onNodeSelect ((id: string) => void); aria-label (string, default "\"Graph\""); className (string); ref (Ref<HTMLDivElement>)
+- States: active (data-active), visited (data-visited), selected (data-selected), panning (data-panning), hover (hover), focus-visible (focus-visible)
+- Tokens: color.accent.bg, color.accent.bg-hover, color.accent.fg, color.accent.subtle-fg, color.bg.disabled, color.bg.inset, color.bg.layer, color.bg.surface, color.border.control-bottom-subtle, color.border.default, color.border.disabled, color.border.strong, color.border.subtle, color.fg.default, color.fg.disabled, color.fg.muted, color.interactive.active, color.interactive.hover, color.interactive.selected, color.interactive.selected-hover, color.ring, color.ring-inner, elevation.layer.shadow, font.sans, motion.duration.faster, motion.easing.easy-ease, radius.lg, radius.md, ring.inner-width, ring.width, size.control.sm, size.icon.md, size.panel.xs, space.inline.sm, space.inline.xs, space.inset.md, space.inset.xs, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight
+- Accessibility: The root is a named group (aria-roledescription "graph"); the nodes are buttons with one tab stop between them (roving tabindex), in layout order. Arrow keys along the direction follow the edges (Down or Right to the next node, Up or Left back); the other two move across the same layer; Home and End go to the first and last node; Enter or Space selects; + and - zoom, 0 fits. A node's name says its state (", running", ", done"); the edges are a visually hidden list ("plan to tools (conditional)"), so the shape is readable without the drawing. Conditional edges differ by their dash, not only by colour; running nodes by their fill and their name. Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface).
+
+Examples (GraphViewMinimal, GraphViewRealistic):
+
+```tsx
+import { useState } from "react";
+import { GraphView, type GraphViewEdge, type GraphViewGroup, type GraphViewNode } from "@/components/ui/graph-view";
+
+const PIPELINE_NODES: GraphViewNode[] = [
+  { id: "extract", label: "extract" },
+  { id: "transform", label: "transform" },
+  { id: "load", label: "load" },
+];
+const PIPELINE_EDGES: GraphViewEdge[] = [
+  { source: "extract", target: "transform" },
+  { source: "transform", target: "load" },
+];
+
+/** The smallest useful GraphView: three steps in a row. */
+export function GraphViewMinimal() {
+  return <GraphView aria-label="Pipeline" nodes={PIPELINE_NODES} edges={PIPELINE_EDGES} direction="LR" className="h-panel-xs" />;
+}
+
+// A LangGraph agent drawn with xray: a conditional edge, a loop back from the tool node, a
+// subgraph's nodes in their group; a run is on "approve" after plan and tools.
+const AGENT_NODES: GraphViewNode[] = [
+  { id: "__start__", label: "start", kind: "start" },
+  { id: "plan", label: "plan" },
+  { id: "tools", label: "tools" },
+  { id: "approve", label: "approve" },
+  { id: "summarize:remember", label: "remember", group: "summarize" },
+  { id: "summarize:format", label: "format", group: "summarize" },
+  { id: "__end__", label: "end", kind: "end" },
+];
+const AGENT_EDGES: GraphViewEdge[] = [
+  { source: "__start__", target: "plan" },
+  { source: "plan", target: "tools", conditional: true, label: "tools" },
+  { source: "plan", target: "approve", conditional: true },
+  { source: "tools", target: "plan" },
+  { source: "approve", target: "summarize:remember" },
+  { source: "summarize:remember", target: "summarize:format" },
+  { source: "summarize:format", target: "__end__" },
+];
+const AGENT_GROUPS: GraphViewGroup[] = [{ id: "summarize", label: "summarize" }];
+
+/** An assistant's graph during a run: visited nodes, the running one, a selected node. */
+export function GraphViewRealistic() {
+  const [selected, setSelected] = useState<string | null>("tools");
+  return (
+    <div className="flex flex-col gap-stack-sm">
+      <GraphView
+        aria-label="Graph of the agent assistant"
+        nodes={AGENT_NODES}
+        edges={AGENT_EDGES}
+        groups={AGENT_GROUPS}
+        visitedIds={["__start__", "plan", "tools"]}
+        activeIds={["approve"]}
+        selectedId={selected}
+        onNodeSelect={setSelected}
+        className="h-panel-md"
+      />
+      <p className="text-caption-1 text-fg-muted">Selected: {selected ?? "none"}</p>
+    </div>
+  );
+}
+```
+
 ### HoverCard
 
 [hover-card.json](hover-card.json): A preview of what a link points to, on Base UI's PreviewCard: shown while the pointer rests on the link or the link has keyboard focus, styled as a Popover, size.panel.sm wide.
