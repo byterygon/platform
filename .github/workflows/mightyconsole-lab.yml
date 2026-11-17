@@ -1,0 +1,47 @@
+name: Mightyconsole lab
+
+# The Mightyconsole test lab (TSK-79, spec section 14): every service starts healthy and seeded
+# with one command, every port is on 127.0.0.1, LangGraph serves a run with no egress, and it all
+# goes away again. Runs when the lab changes, weekly (pinned images and packages stay pullable),
+# and by hand. Tool tasks add their integration tests against it here.
+on:
+  pull_request:
+    paths: ["apps/mightyconsole/lab/**", ".github/workflows/mightyconsole-lab.yml"]
+  push:
+    branches: [main]
+    paths: ["apps/mightyconsole/lab/**", ".github/workflows/mightyconsole-lab.yml"]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lab:
+    name: Mightyconsole lab
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Images pinned and listed
+        run: node apps/mightyconsole/lab/lab.mts images check
+      - name: Up
+        run: node apps/mightyconsole/lab/lab.mts up
+      - name: Check
+        run: node apps/mightyconsole/lab/lab.mts check
+      - name: Seeds are idempotent
+        run: |
+          node apps/mightyconsole/lab/lab.mts seed
+          node apps/mightyconsole/lab/lab.mts check
+      - name: LangGraph with no egress
+        run: node apps/mightyconsole/lab/lab.mts langgraph-offline
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f apps/mightyconsole/lab/compose.yaml --profile all logs --tail 200
+      - name: Down
+        if: always()
+        run: node apps/mightyconsole/lab/lab.mts down

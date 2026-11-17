@@ -1,0 +1,7 @@
+# The lab's LangGraph server: `langgraph dev` (in-memory API, Elastic License 2.0 for
+# langgraph-api; lab only, never shipped) and the sample graph. Locked with hashes in
+# requirements.lock (`lab lock`).
+langgraph-cli[inmem]==0.4.43
+langgraph-api==0.18.2
+langgraph==1.2.22
+langchain-core==1.8.1

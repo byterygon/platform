@@ -1,0 +1,22 @@
+// The lab's Protobuf order: NATS `orders.proto.>` payloads, the Kafka topic `orders-proto` (with
+// a Schema Registry reference to money.proto) and a Temporal payload. labtools/protos.py builds
+// the same descriptors.
+syntax = "proto3";
+
+package lab.orders;
+
+import "lab/common/money.proto";
+
+message Order {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    PLACED = 1;
+    PAID = 2;
+    SHIPPED = 3;
+  }
+  string id = 1;
+  string customer = 2;
+  lab.common.Money total = 3;
+  repeated string items = 4;
+  Status status = 5;
+}

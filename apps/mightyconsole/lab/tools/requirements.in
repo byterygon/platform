@@ -1,0 +1,10 @@
+# The lab's tools image: credentials, seeds, the NATS echo service, the Temporal worker, the
+# check. Lab only, never shipped. Locked with hashes in requirements.lock (`lab lock`).
+nats-py==2.16.0
+nkeys==0.2.1
+confluent-kafka[avro,protobuf,schemaregistry]==2.16.1
+protobuf==7.36.2
+temporalio==1.36.1
+cryptography==50.0.2
+bcrypt==5.0.0
+requests==2.34.2
