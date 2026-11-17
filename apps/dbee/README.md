@@ -179,7 +179,8 @@ says compact moves to comfortable once (`src/app/persistence.ts`).
 
 ```sh
 pnpm --filter @byterygon/dbee build        # dist/ (the desktop's frontendDist, the server's --ui)
-pnpm --filter @byterygon/dbee dev          # then /preview.html?scene=main|empty&scheme=dark&density=compact: the app on the tests' fake core (development only, never built)
+pnpm --filter @byterygon/dbee dev          # then /preview.html?scene=empty|main|streaming|error|toast&open=settings|sheet|approve&scheme=dark&density=compact: the app on the tests' fake core (development only, never built)
+pnpm --filter @byterygon/dbee screenshots  # every preview screen in light/dark x comfortable/compact at 1280 x 800 into screenshots/ (a Chromium-family browser; $BYTERYGON_BROWSER)
 pnpm --filter @byterygon/dbee test         # sync-ui --check, then vitest: units, screen flows, axe
 pnpm --filter @byterygon/dbee sync:ui      # refresh the registry items after a packages/ui change
 pnpm --filter @byterygon/dbee dev          # Vite dev server on 127.0.0.1 (development only)
