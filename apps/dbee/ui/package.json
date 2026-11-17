@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "node scripts/sync-ui.ts --check && vitest run",
     "sync:ui": "node scripts/sync-ui.ts",
-    "sync:ui:check": "node scripts/sync-ui.ts --check"
+    "sync:ui:check": "node scripts/sync-ui.ts --check",
+    "lint": "eslint . && stylelint \"**/*.css\""
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -35,13 +36,16 @@
     "react-dom": "19.3.1"
   },
   "devDependencies": {
+    "@byterygon/lint": "workspace:*",
     "@byterygon/ui": "workspace:*",
     "@tailwindcss/vite": "4.3.5",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "axe-core": "4.14.0",
+    "eslint": "10.14.0",
     "jsdom": "31.0.0",
+    "stylelint": "17.16.0",
     "tailwindcss": "4.3.5",
     "vite": "8.3.8",
     "vitest": "5.1.0"

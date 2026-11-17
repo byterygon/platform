@@ -258,7 +258,9 @@ export function App({ initial, save = saveState }: AppProps) {
 
 function Pane({ label, children }: { label: string; children: ReactNode }) {
   return (
+    // eslint-disable-next-line byterygon/no-arbitrary-value -- a cap relative to the viewport; no token is a viewport fraction
     <section aria-label={label} className="max-h-[50dvh] shrink-0 border-b border-border bg-surface">
+      {/* eslint-disable-next-line byterygon/no-arbitrary-value -- a cap relative to the viewport; no token is a viewport fraction */}
       <ScrollArea className="h-full max-h-[50dvh]" aria-label={label}>
         <div className="p-inset-lg">{children}</div>
       </ScrollArea>

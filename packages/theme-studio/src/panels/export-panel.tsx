@@ -118,6 +118,7 @@ function ExportView({ theme, format }: { theme: ThemeDoc; format: ExportFormat }
           </div>
           <CodeBlock
             aria-label={`${info.label} contents`}
+            // eslint-disable-next-line byterygon/no-arbitrary-value -- a cap relative to the viewport; no token is a viewport fraction
             className="max-h-[60dvh]"
             language={info.mediaType === "application/json" ? "json" : "text"}
             code={content.length > PREVIEW_CHARS ? `${content.slice(0, PREVIEW_CHARS)}\n… (${content.length - PREVIEW_CHARS} more characters in the file)` : content}

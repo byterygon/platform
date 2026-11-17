@@ -43,6 +43,7 @@ pnpm --filter @byterygon/ui icons add <name...> --from <tgz|dir>   # vendor Flue
 pnpm --filter @byterygon/ui icons list               # the vendored icons and their sizes
 pnpm --filter @byterygon/ui gallery                  # serve the gallery (vite)
 pnpm --filter @byterygon/ui build                    # build the gallery into dist/gallery
+pnpm --filter @byterygon/ui lint                     # @byterygon/lint: no raw colours, arbitrary values or raw space steps
 ```
 
 `registry`, `ui:new`, `icons` and `verify:install` take `--json` (one document on stdout). Exit codes: 0 ok,

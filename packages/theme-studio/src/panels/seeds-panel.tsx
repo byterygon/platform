@@ -78,6 +78,7 @@ function NumberSeed({ label, value, set, min, max, step, description, onChange }
         <Slider aria-labelledby={id} className="flex-1" min={min} max={max} step={step} value={rounded} onValueChange={(next) => onChange(Number(next as number))} />
         <NumberInput
           aria-label={label}
+          // eslint-disable-next-line byterygon/no-off-scale-spacing -- fits the stepper buttons and a four-digit value; no size role is that wide
           className="w-36 shrink-0"
           size="small"
           min={min}

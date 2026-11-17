@@ -1,0 +1,44 @@
+{
+  "name": "@byterygon/lint",
+  "version": "0.0.0",
+  "description": "Byterygon UI guardrails: ESLint and Stylelint rules that forbid raw colours, arbitrary Tailwind values and off-scale spacing, and name the design-token role to use instead.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.js",
+    "./eslint": "./src/eslint.js",
+    "./stylelint": "./src/stylelint.js",
+    "./stylelint-config": "./stylelint-config.js"
+  },
+  "files": [
+    "src",
+    "stylelint-config.js",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@byterygon/design-tokens": "workspace:*",
+    "@typescript-eslint/parser": "8.72.1",
+    "typescript": "6.0.3"
+  },
+  "peerDependencies": {
+    "eslint": "^10.0.0",
+    "stylelint": "^17.0.0",
+    "tailwindcss": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "eslint": { "optional": true },
+    "stylelint": { "optional": true },
+    "tailwindcss": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "eslint": "10.14.0",
+    "stylelint": "17.16.0",
+    "tailwindcss": "4.3.5"
+  }
+}

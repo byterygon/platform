@@ -117,6 +117,7 @@ export function ImportPanel({ onOpen }: { onOpen: (theme: ThemeDoc) => void }) {
                   </AlertDescription>
                 </Alert>
               )}
+              {/* eslint-disable-next-line byterygon/no-arbitrary-value -- a cap relative to the viewport; no token is a viewport fraction */}
               <CodeBlock aria-label="Theme file" className="max-h-[40dvh]" language="json" code={result.text!} />
             </section>
           )}

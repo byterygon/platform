@@ -234,6 +234,7 @@ export function ConnectionSheet({ open, onOpenChange, editing, renewing = false,
                 </Field>
               )}
             </form.Field>
+            {/* eslint-disable-next-line byterygon/no-arbitrary-value -- host takes the rest of the row, port its own width; grid tracks have no token */}
             <div className="grid grid-cols-[1fr_auto] gap-gap-md">
               <form.Field name="host" validators={{ onBlur: ({ value }) => (value.trim() === "" ? "Host is required." : /\s|\//.test(value.trim()) ? "A host name or IP literal, nothing else." : undefined) }}>
                 {(field) => (
@@ -247,6 +248,7 @@ export function ConnectionSheet({ open, onOpenChange, editing, renewing = false,
               </form.Field>
               <form.Field name="port" validators={{ onBlur: ({ value }) => (value === null || value < 1 || value > 65535 ? "A port between 1 and 65535." : undefined) }}>
                 {(field) => (
+                  // eslint-disable-next-line byterygon/no-arbitrary-value -- a five-digit port: a width in characters, which no token measures
                   <Field field={field} className="w-[9ch]">
                     <FieldLabel>Port</FieldLabel>
                     <NumberInput value={field.state.value} onValueChange={(v) => field.handleChange(v)} onBlur={field.handleBlur} min={1} max={65535} />
