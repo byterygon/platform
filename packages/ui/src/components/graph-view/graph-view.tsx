@@ -77,7 +77,7 @@ const classes = {
   arrowOn: "fill-accent-solid",
   edgeLabelBox: "fill-layer",
   edgeLabel: "fill-fg-muted text-caption-1",
-  group: "absolute rounded-lg border border-dashed border-border-subtle bg-layer-alt",
+  group: "absolute rounded-lg border border-dashed border-border bg-layer-alt",
   groupLabel: "absolute top-0 left-0 -translate-y-full truncate pb-stack-xs text-caption-1 text-fg-muted",
   node: [
     "absolute flex items-center justify-center truncate rounded-md border border-border bg-surface px-inset-xs text-body-1 text-fg shadow-layer",
