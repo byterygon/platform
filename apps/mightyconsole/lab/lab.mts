@@ -13,7 +13,7 @@
 // Tools: nats, kafka (with the Schema Registry), k8s, temporal, docker, langgraph; none means all.
 // Through pnpm: `pnpm --filter @byterygon/mightyconsole lab up nats`. Needs Docker with compose.
 import { type SpawnSyncOptions, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { connect } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,8 +27,9 @@ const GENERATED = join(LAB, ".generated");
 
 const env = {
   ...process.env,
-  LAB_UID: String(process.getuid?.() ?? 0),
-  LAB_GID: String(process.getgid?.() ?? 0),
+  // The user the tools container writes .generated/ as: this process's, unless LAB_UID/LAB_GID say.
+  LAB_UID: process.env["LAB_UID"] ?? String(process.getuid?.() ?? 0),
+  LAB_GID: process.env["LAB_GID"] ?? String(process.getgid?.() ?? 0),
 };
 
 function run(command: string, args: string[], options: SpawnSyncOptions = {}): string {
@@ -48,6 +49,9 @@ function parseTools(args: string[]): Tool[] {
 }
 
 function generate(): void {
+  // Created here, owned by whoever runs the lab: a directory Docker creates for a bind mount is
+  // root's, and the tools container (run as this user) could not write into it.
+  mkdirSync(GENERATED, { recursive: true });
   compose(["--profile", "tools", "build", "tools"]);
   compose(["run", "--rm", "--no-deps", "tools", "generate"]);
 }
