@@ -11,6 +11,7 @@ members = [
     "crates/plugin-host",
     "crates/db-driver",
     "crates/db-driver-postgres",
+    "crates/message-codecs",
     "apps/dbee/core",
     "apps/dbee/rpc-gen",
     "apps/dbee/server",

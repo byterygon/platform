@@ -37,6 +37,10 @@ exceptions = [
     { crate = "dtoa-short", allow = ["MPL-2.0"] },
     { crate = "option-ext", allow = ["MPL-2.0"] },
     { crate = "selectors", allow = ["MPL-2.0"] },
+    # MIT-0 (MIT without the attribution clause), required by fluent-uri, which every Rust JSON
+    # Schema validator uses (jsonschema, boon); pulled in by message-codecs (TSK-80). Pending
+    # Uy Son's approval: Mightyconsole spec Open question 29. MIT-0 is not allowed globally.
+    { crate = "borrow-or-share", allow = ["MIT-0"] },
 ]
 
 [bans]
