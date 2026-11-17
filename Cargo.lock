@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "dbee-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "ambidex",
  "ambidex-conformance",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "dbee-desktop"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "ambidex",
  "ambidex-conformance",

@@ -16,3 +16,6 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Generated for the DBee release build (scripts/third-party-notices.mjs)
+apps/dbee/desktop/THIRD-PARTY-NOTICES.txt

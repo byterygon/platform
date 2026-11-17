@@ -1,6 +1,6 @@
 {
   "name": "@byterygon/dbee",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "DBee user interface: React 19 + Vite + Tailwind v4 on the Byterygon UI registry items and the @byterygon/ambidex client; one bundle for the Tauri desktop app and the self-hosted web server.",
   "license": "AGPL-3.0-only",
   "type": "module",
