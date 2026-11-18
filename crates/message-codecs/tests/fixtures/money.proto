@@ -1,0 +1,11 @@
+// A lab schema imported by order.proto: Protobuf imports and Schema Registry references (TSK-80,
+// TSK-86). labtools/protos.py builds the same descriptors.
+syntax = "proto3";
+
+package lab.common;
+
+message Money {
+  string currency = 1;
+  int64 units = 2;
+  int32 nanos = 3;
+}

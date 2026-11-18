@@ -1,0 +1,44 @@
+[package]
+name = "message-codecs"
+version = "0.1.0"
+description = "Message model, codec registry (UTF-8, JSON, hex, base64, MessagePack, Avro, Protobuf, JSON Schema) and schema sources (Confluent Schema Registry, local schemas) shared by message tools such as Mightyconsole's NATS and Kafka."
+license = "MIT OR Apache-2.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+# TypeScript and JSON Schema derives on the wire types, for Ambidex codegen (ts-rs, schemars).
+codegen = ["dep:schemars", "dep:ts-rs"]
+
+[dependencies]
+apache-avro = { version = "=0.23.0", default-features = false }
+base64 = { version = "0.22.1", default-features = false, features = ["std"] }
+hex = { version = "0.4.3", default-features = false, features = ["std"] }
+jsonschema = { version = "=0.61.2", default-features = false }
+miette = { version = "7.6.0", default-features = false }
+prost = { version = "0.14.6", default-features = false, features = ["std"] }
+prost-reflect = { version = "=0.16.5", default-features = false, features = ["serde"] }
+protox = { version = "=0.10.0", default-features = false }
+bytes = "1.12.1"
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", default-features = false, features = ["client", "http1"] }
+http = "1.5.0"
+hyper-util = { version = "0.1.21", default-features = false, features = ["tokio"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+rmpv = { version = "=1.3.1", default-features = false }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = { version = "1.15.1", features = ["std"] }
+schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"], optional = true }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+time = { version = "0.3.55", default-features = false, features = ["std", "formatting", "parsing"] }
+tokio = { version = "1.54.1", default-features = false, features = ["net", "rt", "sync", "time"] }
+ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "serde-json-impl", "no-serde-warnings"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["io-util", "macros", "rt-multi-thread"] }
