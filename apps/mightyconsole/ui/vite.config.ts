@@ -39,6 +39,8 @@ export default defineConfig({
   },
   test: {
     root: ".",
+    // jsdom cannot run Monaco: CodeEditor's tests use Byterygon UI's stand-in.
+    alias: [{ find: /^monaco-editor\/.*$/, replacement: fileURLToPath(new URL("../../../packages/ui/test/fakes/monaco.ts", import.meta.url)) }],
     environment: "jsdom",
     include: ["test/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
     testTimeout: 30_000,

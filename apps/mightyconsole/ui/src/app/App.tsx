@@ -171,6 +171,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
   };
 
   const handleEvent = (event: AppEvent) => {
+    if (event.kind === "StreamProgress") return services.progress.publish(event);
     if (event.kind !== "ConnectionStatus") return;
     const entry = Object.entries(stateRef.current.conns).find(([, c]) => c.connId === event.connId);
     if (!entry) return;
@@ -691,7 +692,17 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
                           connect={() => void connectProfile(t.profileId)}
                           cancelConnect={() => dispatch({ type: "conn", profileId: t.profileId, conn: DISCONNECTED })}
                           editProfile={() => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.tool, editId: t.profileId } })}
-                          tabProps={{ client, useTabActions: hookFor(t.id), onLive: liveFor(t.id), note, openTab: (open) => openResource(t.profileId, { id: "", label: open.title, open }) }}
+                          tabProps={{
+                            client,
+                            useTabActions: hookFor(t.id),
+                            onLive: liveFor(t.id),
+                            note,
+                            openTab: (open) => openResource(t.profileId, { id: "", label: open.title, open }),
+                            updateProfile: async (change) => {
+                              const record = profileById(t.profileId);
+                              if (record) await saveProfile({ ...change(record), updatedAt: new Date().toISOString() });
+                            },
+                          }}
                         />
                       </section>
                     </TabsContent>
@@ -814,7 +825,7 @@ interface TabBodyProps {
   connect: () => void;
   cancelConnect: () => void;
   editProfile: () => void;
-  tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab">;
+  tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab" | "updateProfile">;
 }
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */

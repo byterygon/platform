@@ -98,7 +98,7 @@ describe("profiles through the shell (spec §4)", () => {
     // Connect from the tree: the status glyph says connected and the resources appear.
     await doubleClick(treeItem("lab"));
     await waitFor(() => treeItem("Ping") !== null, "the resource tree");
-    expect(calls(fake, "echo.connect")[0]!.input).toEqual({ profile: { name: "lab", greeting: "hi there", token: "s3cret" } });
+    expect(calls(fake, "echo.connect")[0]!.input).toEqual({ profile: { name: "lab", greeting: "hi there", token: "s3cret", schemas: null, mappings: null } });
     expect(treeItem("lab")?.querySelector("[data-status=connected]")).not.toBeNull();
 
     // Edit keeps the stored secret unless a new one is typed; the name must stay unique.

@@ -1,8 +1,8 @@
 // TSK-80, Messaging core (Mightyconsole spec section 18, against the lab). Batch 1 (crates/message-codecs)
 // wired the crate, codecs, wire-format and local-schemas items; batch 2 (the server) the filter, Arrow,
-// live tail and procedures; batch 3 adds the UI tests and a browser walk before the task closes with
+// live tail and procedures; batch 3 the UI tests and a browser walk (the real server and UI in Chrome) before the task closes with
 // `pnpm --filter @byterygon/mightyconsole acceptance messaging --lab-up --strict`.
-import { cargo, type Checklist, command } from "../checklist.mts";
+import { cargo, type Checklist, command, vitest } from "../checklist.mts";
 
 // The crate's own tests (the harness's `cargo` checks run mightyconsole-server's).
 const codecs = (label: string, ...args: string[]) =>
@@ -71,6 +71,11 @@ export default {
         cargo("a_batch_has_the_schema_of_5_1"),
         cargo("messages_travel_as_arrow_batches_and_a_large_payload_is_cut"),
         cargo("a_large_payload_is_cut_and_not_decoded"),
+        vitest("test/messaging.test.tsx", "rows from the Arrow batches"),
+        vitest("test/messaging.test.tsx", "a cut payload offers Load full payload"),
+        command("the real server and UI in Chrome: the Arrow Worker decodes the tail into the data grid", ["pnpm", "--filter", "@byterygon/mightyconsole", "check:browser"], {
+          env: { BYTERYGON_REQUIRE_BROWSER: "1" },
+        }),
       ],
     },
     {
@@ -79,12 +84,24 @@ export default {
       checks: [
         cargo("pausing_stops_reading_and_a_push_source_drops_the_oldest"),
         cargo("a_filter_limit_and_max_scan_end_a_scan_with_counts", { label: "Restart from lastPositions" }),
+        vitest("test/messaging.test.tsx", "the window keeps the newest messages"),
+        vitest("test/messaging.test.tsx", "Pause stops pulling chunks"),
+        vitest("test/messaging.test.tsx", "Restart after Stop continues"),
+        command("the data grid's window, hold and clear", ["pnpm", "--filter", "@byterygon/data-grid", "exec", "vitest", "run", "test/window.test.tsx"]),
       ],
     },
     {
       id: "components",
       text: "MessageViewer, Composer and FilterBar work on the test backend; CodeEditor, HexView and KeyValueEditor are in packages/ui with manifests, examples, tests and registry items, synced into the app.",
-      checks: [],
+      checks: [
+        vitest("test/messaging.test.tsx", "quick fields build the filter"),
+        vitest("test/messaging.test.tsx", "Validate shows the size and the first bytes"),
+        vitest("test/messaging.test.tsx", "Enter in the payload sends"),
+        vitest("test/messaging-shell.test.tsx"),
+        command("CodeEditor, HexView and KeyValueEditor in packages/ui (behaviour and conventions)", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/code-editor", "src/components/hex-view", "src/components/key-value-editor", "test/conventions.test.tsx"]),
+        command("the registry is current", ["pnpm", "--filter", "@byterygon/ui", "registry:check"]),
+        command("synced into the app", ["pnpm", "--filter", "@byterygon/mightyconsole", "sync:ui:check"]),
+      ],
     },
     {
       id: "procedures",

@@ -89,6 +89,25 @@ async function main(): Promise<number> {
     await run(page, `__mc.click(__mc.button("Start"))`);
     await until(page, `__mc.has("tick 3")`, "ticks streamed with credits");
 
+    // 2b. The messaging core on the test backend (TSK-80): the Composer sends to the topic `echo`
+    // (echo.messages.produce through the codecs, the payload in Monaco), then the Messages tab tails
+    // it: Arrow batches over /rpc/ws, decoded in the Worker, shown in the data grid, read by the
+    // detail pane.
+    await run(page, `__mc.dblclick(__mc.item("Composer"))`);
+    await until(page, `document.querySelector("[data-slot=composer] [data-slot=code-editor]:not([data-loading])")`, "the Composer and its Monaco editor");
+    await run(page, `__mc.click([...document.querySelectorAll("[data-slot=composer] button")].find((b) => b.textContent.trim() === "Send"))`);
+    await until(page, `__mc.has("Written to partition")`, "echo.messages.produce");
+    await run(page, `__mc.dblclick(__mc.item("Messages"))`);
+    const tail = `document.querySelector('[role=toolbar][aria-label="records actions"]')`;
+    await until(page, tail, "the Messages tab");
+    await run(page, `__mc.click([...${tail}.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start"))`);
+    await until(page, `__mc.has("1 records shown")`, "the message decoded in the Arrow Worker");
+    await run(
+      page,
+      `(() => { const c = document.querySelector("[data-slot=message-viewer] .bdg-body [role=gridcell]"); for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) c.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`,
+    );
+    await until(page, `document.querySelector("[data-slot=message-detail]")`, "the detail pane");
+
     // 3. A reload: the tab is restored and connects again.
     await page.navigate(`${origin}/`);
     await until(page, `[...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ticks · smoke"))`, "the restored tab");

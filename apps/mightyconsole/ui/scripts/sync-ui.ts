@@ -24,6 +24,8 @@ export const ITEMS = [
   "description-list", "code", "code-block", "json-viewer", "table", "relative-time", "timeline",
   // TSK-84 (LangGraph): the run input editor and the assistant graph.
   "code-input", "graph-view",
+  // TSK-80 (messaging core): the Composer's payload editor and headers, the raw bytes view.
+  "code-editor", "hex-view", "key-value-editor",
 ];
 
 interface Item {
