@@ -215,8 +215,10 @@ pub async fn history(
 }
 
 /// One long-poll step of following a run: the events after `after`, and the token for the next
-/// step (empty once the run is closed). `wait` makes the server hold the call until something
-/// happens (about 20 s at most).
+/// step. The server holds the call until something happens (about 20 s at most) and hands back a
+/// token as long as the run is open; an empty token means the run is closed and everything was
+/// sent. (Without the long poll an open run also comes back with an empty token, which is why every
+/// step waits, the first included: the first returns the history so far at once.)
 pub struct FollowStep {
     pub events: Vec<HistoryEvent>,
     pub token: Vec<u8>,
@@ -227,7 +229,6 @@ pub async fn follow_step(
     namespace: &str,
     execution: WorkflowExecution,
     token: Vec<u8>,
-    wait: bool,
     after: i64,
 ) -> Result<FollowStep, ToolError> {
     let mut request = client.request(
@@ -237,7 +238,7 @@ pub async fn follow_step(
             execution: Some(execution),
             maximum_page_size: HISTORY_PAGE as i32,
             next_page_token: token,
-            wait_new_event: wait,
+            wait_new_event: true,
             ..Default::default()
         },
     );

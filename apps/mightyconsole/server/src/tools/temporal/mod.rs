@@ -6,6 +6,8 @@
 //! This batch: connect and disconnect, namespaces, and the workflow list with its count. The
 //! workflow detail, the actions, the schedules and the task queues follow in the next batches.
 
+mod actions;
+mod actions_types;
 mod client;
 mod detail;
 mod detail_types;
@@ -25,6 +27,7 @@ use self::client::{TemporalClient, status_error};
 use self::proto::temporal::api::workflowservice::v1 as ws;
 use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 
+pub use self::actions_types::*;
 pub use self::detail_types::*;
 pub use self::types::*;
 
@@ -40,6 +43,10 @@ pub struct TemporalApi(pub Arc<Hub>);
 pub struct TemporalNamespacesApi(pub Arc<Hub>);
 /// `temporal.workflows.*`.
 pub struct TemporalWorkflowsApi(pub Arc<Hub>);
+/// `temporal.schedules.*`.
+pub struct TemporalSchedulesApi(pub Arc<Hub>);
+/// `temporal.taskQueues.*`.
+pub struct TemporalTaskQueuesApi(pub Arc<Hub>);
 
 /// RFC 3339 in UTC, `None` for an unset or out-of-range timestamp.
 fn rfc3339(timestamp: &prost_types::Timestamp) -> Option<String> {
@@ -337,6 +344,37 @@ impl TemporalWorkflowsApi {
         Ok(detail::query(&handle.value, input).await?)
     }
 
+    /// Sends a signal with JSON arguments to the run.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn signal(&self, ctx: Ctx, input: WorkflowSignalInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        actions::signal(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+
+    /// Asks the workflow to cancel itself; it may still finish or refuse.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn cancel(&self, ctx: Ctx, input: WorkflowReasonInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        actions::cancel(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+
+    /// Ends the run at once, without cleanup; the reason is required.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
+    async fn terminate(&self, ctx: Ctx, input: WorkflowReasonInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        actions::terminate(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+
+    /// Starts a new run from an earlier event of this one; returns the new run id.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
+    async fn reset(&self, ctx: Ctx, input: WorkflowResetInput) -> ToolResult<WorkflowResetOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(actions::reset(&handle.value, input).await?)
+    }
+
     /// The events of a run after `fromEventId`, as `jsonl` lines (`HistoryEvent`), until the run
     /// closes. Long-polls the server; the client's credits pace the lines.
     #[rpc::stream(
@@ -362,13 +400,12 @@ impl TemporalWorkflowsApi {
         let gone = || RpcError::new(Code::Cancelled, "the connection was closed");
         let mut after = i64::try_from(input.from_event_id).unwrap_or(i64::MAX);
         let mut token = Vec::new();
-        let mut wait = false;
         loop {
             let execution = detail::execution(&input.workflow_id, Some(&input.run_id))?;
             let step = tokio::select! {
                 biased;
                 () = handle.token.cancelled() => return Err(gone()),
-                step = detail::follow_step(client, &namespace, execution, token, wait, after) => step?,
+                step = detail::follow_step(client, &namespace, execution, token, after) => step?,
             };
             for event in step.events {
                 tokio::select! {
@@ -387,8 +424,70 @@ impl TemporalWorkflowsApi {
                 return Ok(FollowHistorySummary { closed: true });
             }
             token = step.token;
-            wait = true;
         }
+    }
+}
+
+#[rpc::router(namespace = "temporal.schedules")]
+impl TemporalSchedulesApi {
+    /// The schedules of the namespace with their next runs and recent actions.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn list(&self, ctx: Ctx, input: SchedulesListInput) -> ToolResult<Vec<ScheduleSummary>> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(actions::schedules_list(&handle.value, input).await?)
+    }
+
+    /// One schedule: spec, action, policies, state and info.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn describe(&self, ctx: Ctx, input: ScheduleRef) -> ToolResult<ScheduleDetail> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(actions::schedule_describe(&handle.value, input).await?)
+    }
+
+    /// Pauses the schedule, with a note.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn pause(&self, ctx: Ctx, input: SchedulePatchInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        actions::schedule_patch(&handle.value, input, actions::Patch::Pause).await?;
+        Ok(Empty {})
+    }
+
+    /// Resumes the schedule, with a note.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn unpause(&self, ctx: Ctx, input: SchedulePatchInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        actions::schedule_patch(&handle.value, input, actions::Patch::Unpause).await?;
+        Ok(Empty {})
+    }
+
+    /// Runs the schedule's action now, with an overlap policy.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn trigger(&self, ctx: Ctx, input: SchedulePatchInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        actions::schedule_patch(&handle.value, input, actions::Patch::Trigger).await?;
+        Ok(Empty {})
+    }
+
+    /// Deletes the schedule; runs it already started go on.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
+    async fn delete(&self, ctx: Ctx, input: ScheduleRef) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        actions::schedule_delete(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+}
+
+#[rpc::router(namespace = "temporal.taskQueues")]
+impl TemporalTaskQueuesApi {
+    /// The workflow and activity pollers of a task queue, and its backlog when reported.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn describe(
+        &self,
+        ctx: Ctx,
+        input: TaskQueueDescribeInput,
+    ) -> ToolResult<TaskQueueDescription> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(actions::task_queue_describe(&handle.value, input).await?)
     }
 }
 
@@ -430,3 +529,6 @@ mod lab_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_detail_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_action_tests;

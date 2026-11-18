@@ -300,6 +300,10 @@ pub fn status_error(address: &str, status: &Status) -> ToolError {
             TOOL,
             format!("the Temporal frontend at {address} did not answer in time"),
         ),
+        // Rate limited: the same call works a moment later.
+        Code::ResourceExhausted => {
+            ToolError::new(ToolErrorKind::Remote, TOOL, message).retryable(true)
+        }
         _ => ToolError::new(ToolErrorKind::Remote, TOOL, message).retryable(false),
     };
     error.with_remote(remote)

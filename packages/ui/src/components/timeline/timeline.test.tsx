@@ -56,7 +56,9 @@ describe("range maths", () => {
     expect(formatOffset(850)).toBe("850 ms");
     expect(formatOffset(2500)).toBe("2.5 s");
     expect(formatOffset(200_000)).toBe("3m 20s");
+    expect(formatOffset(600_000)).toBe("10m");
     expect(formatOffset(3_900_000)).toBe("1h 5m");
+    expect(formatOffset(7_200_000)).toBe("2h");
     expect(formatOffset(-1500)).toBe("-1.5 s");
   });
 });
@@ -68,6 +70,16 @@ describe("Timeline", () => {
     expect(Array.from(container.querySelectorAll('[data-slot="timeline-lane"]')).map((l) => l.textContent?.slice(0, 8))).toEqual(["Workflow", "Activiti"]);
     expect(bars(container)).toHaveLength(3);
     expect(bars(container)[1]!.getAttribute("aria-label")).toBe("reserve, success, 1 s");
+  });
+
+  test("bars carry their label, and the axis counts round offsets from the first start", () => {
+    const { container } = render(<Timeline aria-label="a" lanes={lanes} items={items} now={3000} />);
+    expect(bars(container).map((b) => b.textContent)).toEqual(["Order", "reserve", "signal"]);
+    const axis = Array.from(container.querySelectorAll('[data-slot="timeline-axis"] span')).map((s) => s.textContent);
+    // Offsets from the earliest start (1000): the first label is 0, the rest are whole steps.
+    expect(axis[0]).toBe("0");
+    expect(axis.length).toBeGreaterThan(2);
+    expect(axis.every((label) => /^(0|\d+ ms|\d+(\.\d)? s)$/.test(label ?? ""))).toBe(true);
   });
 
   test("a running item grows to now and is marked running", () => {

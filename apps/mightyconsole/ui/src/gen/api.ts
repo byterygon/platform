@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:2ff1275a89833a714f1384653518da3e4c02646786e349f09e28bc56ca15acb8";
+export const SCHEMA_HASH = "sha256:81b078665d9f6c91ad462da56fb29b1bfb072f5c40a3c56ce44c9c216082350c";
 
 // ---- Types
 
@@ -292,6 +292,8 @@ retentionSecs?: number, description: string, ownerEmail: string, isGlobal: boole
  */
 isDefault: boolean, };
 
+export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond: number, };
+
 /**
  * The target's own error code, for Details.
  */
@@ -300,6 +302,11 @@ export type RemoteError = {
  * Kafka error name, gRPC status, HTTP status, Kubernetes `Status.reason`, NATS error code.
  */
 code: string, name?: string, detail?: string, };
+
+/**
+ * Which signals a reset re-applies to the new run.
+ */
+export type ResetReapply = "all" | "signals" | "none";
 
 export type Run = { runId: string, threadId: string, assistantId: string, 
 /**
@@ -379,6 +386,85 @@ interruptBefore?: Array<string> | null, interruptAfter?: Array<string> | null,
 multitaskStrategy?: string | null, streamId: string, };
 
 /**
+ * One action a schedule took.
+ */
+export type ScheduleAction = { 
+/**
+ * When it should have run, RFC 3339.
+ */
+scheduledTime?: string, 
+/**
+ * When it ran.
+ */
+actualTime?: string, workflowId: string, runId: string, 
+/**
+ * `Running`, `Completed`, ... as the workflow's status, when the server says it.
+ */
+status: string, };
+
+/**
+ * Everything `DescribeSchedule` says; the parts are protobuf JSON, payloads decoded.
+ */
+export type ScheduleDetail = { summary: ScheduleSummary, 
+/**
+ * `schedule.spec`: intervals, calendars, cron strings, jitter, time zone.
+ */
+spec: Record<string, unknown>, 
+/**
+ * `schedule.action`: the workflow it starts (type, id, task queue, input).
+ */
+action: Record<string, unknown>, 
+/**
+ * `schedule.policies`: overlap, catch-up window, pause on failure.
+ */
+policies: Record<string, unknown>, 
+/**
+ * `schedule.state`: notes, paused, limited actions.
+ */
+state: Record<string, unknown>, 
+/**
+ * `info`: action counts, running workflows, create and update times.
+ */
+info: Record<string, unknown>, };
+
+/**
+ * What to do when a triggered run meets one that is still running.
+ */
+export type ScheduleOverlap = "skip" | "bufferOne" | "bufferAll" | "cancelOther" | "terminateOther" | "allowAll";
+
+export type SchedulePatchInput = { connId: string, namespace?: string | null, scheduleId: string, 
+/**
+ * The note shown with the pause or unpause.
+ */
+note?: string | null, 
+/**
+ * For `trigger`: the schedule's own policy when absent.
+ */
+overlap?: ScheduleOverlap | null, };
+
+export type ScheduleRef = { connId: string, namespace?: string | null, scheduleId: string, };
+
+export type ScheduleSummary = { scheduleId: string, workflowType: string, 
+/**
+ * The spec in words: "Every 1 minute", "Cron 0 * * * *".
+ */
+spec: string, paused: boolean, 
+/**
+ * The note of the last pause or unpause.
+ */
+notes: string, 
+/**
+ * The next runs, RFC 3339.
+ */
+nextRuns: Array<string>, recentActions: Array<ScheduleAction>, };
+
+export type SchedulesListInput = { connId: string, namespace?: string | null, 
+/**
+ * A schedule visibility query; every schedule when empty.
+ */
+query?: string | null, };
+
+/**
  * A task of the next step: the node to run, its error, its interrupts.
  */
 export type StateTask = { id: string, name: string, error?: string, interrupts: Array<Interrupt>, 
@@ -416,6 +502,14 @@ filter?: JsonValue | null,
  * 1 to 1000; 50 when absent.
  */
 limit?: number | null, offset?: number | null, };
+
+export type TaskQueueDescribeInput = { connId: string, namespace?: string | null, taskQueue: string, };
+
+export type TaskQueueDescription = { workflowPollers: Array<Poller>, activityPollers: Array<Poller>, 
+/**
+ * Tasks waiting for a poller, when the server reports it.
+ */
+workflowBacklog?: number, activityBacklog?: number, };
 
 /**
  * What the server reports about itself.
@@ -687,10 +781,28 @@ export type WorkflowQueryOutput = {
  */
 result: unknown, };
 
+export type WorkflowReasonInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, 
+/**
+ * Required to terminate; optional to ask for cancellation.
+ */
+reason?: string | null, };
+
 /**
  * Names a workflow run: the run id is the latest run when absent.
  */
 export type WorkflowRef = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, };
+
+export type WorkflowResetInput = { connId: string, namespace?: string | null, workflowId: string, runId: string, 
+/**
+ * The event to reset to: a WorkflowTaskCompleted, WorkflowTaskStarted or failed task event.
+ */
+eventId: number, reapply: ResetReapply, reason: string, };
+
+export type WorkflowResetOutput = { 
+/**
+ * The new run.
+ */
+runId: string, };
 
 /**
  * One row of the workflow list.
@@ -704,6 +816,12 @@ startTime?: string, closeTime?: string,
  * Close (or now, while running) minus start, in milliseconds, as the server reports it.
  */
 durationMs?: number, taskQueue: string, historyLength: number, parentWorkflowId?: string, };
+
+export type WorkflowSignalInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, signalName: string, 
+/**
+ * Each argument is sent as one `json/plain` payload.
+ */
+args?: unknown[], };
 
 /**
  * The execution status of a workflow (`WorkflowExecutionStatus`).
@@ -835,12 +953,23 @@ export interface Procedures {
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
+  readonly "temporal.schedules.delete": ProcedureDef<"mutation", ScheduleRef, Empty, ToolError>;
+  readonly "temporal.schedules.describe": ProcedureDef<"query", ScheduleRef, ScheduleDetail, ToolError>;
+  readonly "temporal.schedules.list": ProcedureDef<"query", SchedulesListInput, Array<ScheduleSummary>, ToolError>;
+  readonly "temporal.schedules.pause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
+  readonly "temporal.schedules.trigger": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
+  readonly "temporal.schedules.unpause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
+  readonly "temporal.taskQueues.describe": ProcedureDef<"query", TaskQueueDescribeInput, TaskQueueDescription, ToolError>;
+  readonly "temporal.workflows.cancel": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
   readonly "temporal.workflows.count": ProcedureDef<"query", WorkflowsCountInput, WorkflowsCountOutput, ToolError>;
   readonly "temporal.workflows.describe": ProcedureDef<"query", WorkflowRef, WorkflowDetail, ToolError>;
   readonly "temporal.workflows.followHistory": ProcedureDef<"stream", FollowHistoryInput, FollowHistorySummary, ToolError>;
   readonly "temporal.workflows.history": ProcedureDef<"query", WorkflowHistoryInput, WorkflowHistoryOutput, ToolError>;
   readonly "temporal.workflows.list": ProcedureDef<"query", WorkflowsListInput, WorkflowsListOutput, ToolError>;
   readonly "temporal.workflows.query": ProcedureDef<"query", WorkflowQueryInput, WorkflowQueryOutput, ToolError>;
+  readonly "temporal.workflows.reset": ProcedureDef<"mutation", WorkflowResetInput, WorkflowResetOutput, ToolError>;
+  readonly "temporal.workflows.signal": ProcedureDef<"mutation", WorkflowSignalInput, Empty, ToolError>;
+  readonly "temporal.workflows.terminate": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
   readonly "term.resize": ProcedureDef<"mutation", TermResizeInput, Empty, ToolError>;
   readonly "term.signal": ProcedureDef<"mutation", TermSignalInput, Empty, ToolError>;
   readonly "term.write": ProcedureDef<"mutation", TermWriteInput, Empty, ToolError>;
@@ -898,13 +1027,28 @@ export interface Api {
     readonly namespaces: {
       readonly list: Procedures["temporal.namespaces.list"];
     };
+    readonly schedules: {
+      readonly delete: Procedures["temporal.schedules.delete"];
+      readonly describe: Procedures["temporal.schedules.describe"];
+      readonly list: Procedures["temporal.schedules.list"];
+      readonly pause: Procedures["temporal.schedules.pause"];
+      readonly trigger: Procedures["temporal.schedules.trigger"];
+      readonly unpause: Procedures["temporal.schedules.unpause"];
+    };
+    readonly taskQueues: {
+      readonly describe: Procedures["temporal.taskQueues.describe"];
+    };
     readonly workflows: {
+      readonly cancel: Procedures["temporal.workflows.cancel"];
       readonly count: Procedures["temporal.workflows.count"];
       readonly describe: Procedures["temporal.workflows.describe"];
       readonly followHistory: Procedures["temporal.workflows.followHistory"];
       readonly history: Procedures["temporal.workflows.history"];
       readonly list: Procedures["temporal.workflows.list"];
       readonly query: Procedures["temporal.workflows.query"];
+      readonly reset: Procedures["temporal.workflows.reset"];
+      readonly signal: Procedures["temporal.workflows.signal"];
+      readonly terminate: Procedures["temporal.workflows.terminate"];
     };
   };
   readonly term: {
@@ -1263,7 +1407,91 @@ export const procedures: Api = {
         timeoutMaxMs: 300000,
       },
     },
+    schedules: {
+      delete: {
+        name: "temporal.schedules.delete",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      describe: {
+        name: "temporal.schedules.describe",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "temporal.schedules.list",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      pause: {
+        name: "temporal.schedules.pause",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      trigger: {
+        name: "temporal.schedules.trigger",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      unpause: {
+        name: "temporal.schedules.unpause",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    taskQueues: {
+      describe: {
+        name: "temporal.taskQueues.describe",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
     workflows: {
+      cancel: {
+        name: "temporal.workflows.cancel",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       count: {
         name: "temporal.workflows.count",
         kind: "query",
@@ -1319,6 +1547,36 @@ export const procedures: Api = {
         kind: "query",
         perm: "temporal.read",
         risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      reset: {
+        name: "temporal.workflows.reset",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      signal: {
+        name: "temporal.workflows.signal",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      terminate: {
+        name: "temporal.workflows.terminate",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Destructive",
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,

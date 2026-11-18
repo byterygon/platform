@@ -243,7 +243,7 @@ async fn following_a_closed_run_sends_everything_after_the_cursor_and_ends() {
         workflow_id: "completed-1".into(),
         run_id: run_id.clone(),
     };
-    let step = follow_step(&client, "lab", execution(), Vec::new(), false, 4)
+    let step = follow_step(&client, "lab", execution(), Vec::new(), 4)
         .await
         .unwrap();
     assert_eq!(step.events.first().map(|e| e.event_id), Some(5));

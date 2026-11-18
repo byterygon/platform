@@ -1,11 +1,13 @@
 // `temporal`: the Temporal Web UI's replacement (Mightyconsole spec §9, TSK-83). This batch: the
-// profile and its form, namespaces, and the workflow list. The workflow detail, the actions, the
-// schedules and the task queues are added by the next batches.
+// profile and its form, namespaces, the workflow list and detail, the actions with their
+// confirmations, schedules and task queues.
 import { Icon } from "@/components/ui/icon";
 import type { ConnectTemporalProfile } from "@/gen/api";
-import { Clock, Flash, Search } from "@/lib/icons";
+import { CalendarClock, Clock, Flash, Search, Server } from "@/lib/icons";
 import type { ResourceNode, ToolModule } from "../types";
 import { ConnectionForm } from "./ConnectionForm";
+import { ScheduleTab, SchedulesTab } from "./SchedulesTab";
+import { TaskQueueTab } from "./TaskQueueTab";
 import { WorkflowTab } from "./WorkflowTab";
 import { WorkflowsTab } from "./WorkflowsTab";
 import { namespaceOf, profile, savedQueriesOf } from "./profile";
@@ -17,26 +19,35 @@ export const temporalTool: ToolModule = {
   description: "Workflows, schedules and task queues of a Temporal cluster.",
   profile,
   ConnectionForm,
+  // The profile opens one namespace, so its Workflows, Schedules and Task queues sit directly under
+  // it (no extra level to expand); the namespace is in every tab's title. Saved queries are the
+  // children of Workflows.
   sidebarTree({ profile: p }): readonly ResourceNode[] {
     const namespace = namespaceOf(p);
     return [
       {
-        id: `${p.id}/ns/${namespace}`,
-        label: namespace,
-        children: [
-          {
-            id: `${p.id}/ns/${namespace}/workflows`,
-            label: "Workflows",
-            icon: <Icon icon={Flash} />,
-            open: { kind: "temporal.workflows", params: { namespace, query: "" }, title: `Workflows · ${namespace}` },
-            children: savedQueriesOf(p.extras).map((saved) => ({
-              id: `${p.id}/ns/${namespace}/workflows/${saved.name}`,
-              label: saved.name,
-              icon: <Icon icon={Search} />,
-              open: { kind: "temporal.workflows", params: { namespace, query: saved.query }, title: `${saved.name} · ${namespace}` },
-            })),
-          },
-        ],
+        id: `${p.id}/workflows`,
+        label: "Workflows",
+        icon: <Icon icon={Flash} />,
+        open: { kind: "temporal.workflows", params: { namespace, query: "" }, title: `Workflows · ${namespace}` },
+        children: savedQueriesOf(p.extras).map((saved) => ({
+          id: `${p.id}/workflows/${saved.name}`,
+          label: saved.name,
+          icon: <Icon icon={Search} />,
+          open: { kind: "temporal.workflows", params: { namespace, query: saved.query }, title: `${saved.name} · ${namespace}` },
+        })),
+      },
+      {
+        id: `${p.id}/schedules`,
+        label: "Schedules",
+        icon: <Icon icon={CalendarClock} />,
+        open: { kind: "temporal.schedules", params: { namespace }, title: `Schedules · ${namespace}` },
+      },
+      {
+        id: `${p.id}/task-queues`,
+        label: "Task queues",
+        icon: <Icon icon={Server} />,
+        open: { kind: "temporal.taskQueue", params: { namespace, name: "" }, title: `Task queues · ${namespace}` },
       },
     ];
   },
@@ -44,6 +55,18 @@ export const temporalTool: ToolModule = {
     "temporal.workflows": {
       title: (params) => `Workflows · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
       Component: WorkflowsTab,
+    },
+    "temporal.schedules": {
+      title: (params) => `Schedules · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
+      Component: SchedulesTab,
+    },
+    "temporal.schedule": {
+      title: (params) => (typeof params["scheduleId"] === "string" ? params["scheduleId"] : "Schedule"),
+      Component: ScheduleTab,
+    },
+    "temporal.taskQueue": {
+      title: (params) => (typeof params["name"] === "string" && params["name"] !== "" ? `Task queue ${params["name"]}` : "Task queues"),
+      Component: TaskQueueTab,
     },
     "temporal.workflow": {
       title: (params) => (typeof params["workflowId"] === "string" ? params["workflowId"] : "Workflow"),
