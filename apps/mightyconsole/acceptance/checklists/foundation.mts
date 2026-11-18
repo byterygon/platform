@@ -68,6 +68,9 @@ export default {
         browser("the shell in a browser, light and dark, with a live tab", async ({ page, origin, until, run, shot }) => {
           await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
           await page.navigate(`${origin}/`);
+          // The navigation opens on its first tool (TSK-91); the foundation's checks use Echo.
+          await until(`__mc.button("Echo")`, "the tool navigation");
+          await run(`__mc.click(__mc.button("Echo"))`);
           await until(`__mc.has("No Echo connections yet") || __mc.item("acceptance")`, "the connection list");
           await until(`__mc.has(${JSON.stringify(origin)})`, "app.info in the status bar");
           await shot("empty shell, light");

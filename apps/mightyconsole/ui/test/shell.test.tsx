@@ -355,8 +355,11 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
   test("Alt+Shift+1 switches tools; F6 moves between panes", async () => {
     const fake = createFakeServices();
     await mount(fake);
+    // The navigation's order: Workflows and agents (Temporal, LangGraph), then Other (Echo).
     await key("!", { altKey: true, shiftKey: true, code: "Digit1" } as KeyboardEventInit, document.body);
-    expect(byRole("button", "Echo")?.getAttribute("aria-pressed")).toBe("true");
+    expect(byRole("button", "Temporal")?.getAttribute("aria-current")).toBe("page");
+    await key("#", { altKey: true, shiftKey: true, code: "Digit3" } as KeyboardEventInit, document.body);
+    expect(byRole("button", "Echo")?.getAttribute("aria-current")).toBe("page");
     await key("F6", {}, document.body);
     expect(document.activeElement?.closest("[data-pane]")).not.toBeNull();
   });
@@ -367,6 +370,72 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
     expect(byRole("button", "Temporal")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("mark-temporal");
     expect(byRole("button", "LangGraph")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("mark-langgraph");
     expect(byRole("button", "Echo")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("braces");
+  });
+
+  describe("the tool navigation (DOC-21 §3.1)", () => {
+    const setWidth = async (px: number) => {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: px });
+      await act(async () => void window.dispatchEvent(new Event("resize")));
+    };
+    afterEach(() => setWidth(1024));
+    const nav = () => document.querySelector<HTMLElement>("nav[aria-label='Tools']")!;
+    const groups = () => [...nav().querySelectorAll("[role=group]")].map((g) => g.getAttribute("aria-label"));
+
+    test("a drawer by category from 1280 px, the rail below; the toggle switches and is remembered", async () => {
+      await setWidth(1440);
+      const fake = createFakeServices();
+      await mount(fake);
+      expect(nav().hasAttribute("data-collapsed")).toBe(false);
+      expect(groups()).toEqual(["Workflows and agents", "Other"]);
+      expect(nav().textContent).toContain("Temporal");
+      await click(byRole("button", "Collapse the tool list")!);
+      expect(nav().hasAttribute("data-collapsed")).toBe(true);
+      await setWidth(1100);
+      expect(nav().hasAttribute("data-collapsed")).toBe(true);
+      await click(byRole("button", "Expand the tool list")!);
+      expect(nav().hasAttribute("data-collapsed")).toBe(false);
+      expect(nav().hasAttribute("data-overlay")).toBe(false);
+    });
+
+    test("below 1024 px an opened drawer floats over the panes and closes on a choice", async () => {
+      await setWidth(900);
+      const fake = createFakeServices();
+      await mount(fake);
+      expect(nav().hasAttribute("data-collapsed")).toBe(true);
+      await click(byRole("button", "Expand the tool list")!);
+      expect(nav().hasAttribute("data-overlay")).toBe(true);
+      await click(byRole("button", "LangGraph")!);
+      expect(nav().hasAttribute("data-collapsed")).toBe(true);
+      expect(byRole("button", "LangGraph")?.getAttribute("aria-current")).toBe("page");
+    });
+
+    test("a pinned tool comes first and takes Alt+Shift+1; a folded category hides its tools", async () => {
+      await setWidth(1440);
+      const fake = createFakeServices();
+      await mount(fake);
+      const echo = byRole("button", "Echo")!;
+      await act(async () => void echo.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
+      await waitFor(() => byRole("menuitem", "Pin to the top") !== null, "the pin item");
+      await click(byRole("menuitem", "Pin to the top"));
+      expect(groups()[0]).toBe("Pinned");
+      await key("!", { altKey: true, shiftKey: true, code: "Digit1" } as KeyboardEventInit, document.body);
+      expect(byRole("button", "Echo")?.getAttribute("aria-current")).toBe("page");
+      await click(byRole("button", "Workflows and agents")!);
+      expect(byRole("button", "Temporal")).toBeNull();
+    });
+
+    test("one tab stop; arrows and type-ahead move between tools", async () => {
+      await setWidth(1440);
+      const fake = createFakeServices();
+      await mount(fake);
+      const items = [...nav().querySelectorAll<HTMLElement>("[data-nav-item]")];
+      expect(items.filter((b) => b.tabIndex === 0)).toHaveLength(1);
+      items[0]!.focus();
+      await key("ArrowDown", {}, items[0]!);
+      expect(document.activeElement).toBe(items[1]);
+      await key("e", {}, items[1]!);
+      expect(document.activeElement?.getAttribute("aria-label")).toBe("Echo");
+    });
   });
 });
 

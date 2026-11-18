@@ -24,7 +24,7 @@ import { Add, ArrowImport, Info, Options, QuestionCircle, Search, Server, Settin
 import { loadProfiles } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
 import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } from "@/profiles/transfer";
-import { TOOLS, toolById, toolIcon } from "@/tools/registry";
+import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabProps, TabRecord, ToolModule } from "@/tools/types";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
@@ -33,6 +33,7 @@ import { SettingsDialog } from "./dialogs/SettingsDialog";
 import { describeError } from "./messages";
 import { applyAppearance, followSystemScheme } from "./presets";
 import { ACTIONS, type ActionId, actionFor, bindingOf, inTextControl } from "./shortcuts";
+import { ToolNav, type ToolState, navOrder } from "./nav/ToolNav";
 import { ConnectionList, parseNode, profileNodeId } from "./sidebar/ConnectionList";
 import { DisconnectedState, ErrorState, liveText } from "./states";
 import { type ConnState, tabIdOf, useStore } from "./store";
@@ -46,6 +47,22 @@ const PANES = ["rail", "sidebar", "tab"] as const;
 
 /** After this long, "Connecting…" says what it is still waiting for and offers Cancel (spec §3.5). */
 export const SLOW_CONNECT_MS = 10_000;
+
+/** The tool drawer is open by default from this window width (DOC-21 §3.1)… */
+export const NAV_DRAWER_FROM = 1280;
+/** …and floats over the panes, when opened, below this one. */
+export const NAV_OVERLAY_BELOW = 1024;
+const FIND_TOOL_ID = "mc-find-tool";
+
+function useWindowWidth(): number {
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return width;
+}
 
 export interface AppProps {
   tools?: readonly ToolModule[];
@@ -69,6 +86,12 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
   const stateRef = useRef(state);
   stateRef.current = state;
   const tool = toolById(tools, state.layout.tool) ?? tools[0]!;
+  // The tool navigation (DOC-21 §3.1): its order sets Alt+Shift+1…9; the drawer is the default from
+  // 1280 px of window width, the rail below; an expanded drawer floats over the panes below 1024 px.
+  const nav = useMemo(() => navOrder(tools, state.layout.pinnedTools), [tools, state.layout.pinnedTools]);
+  const width = useWindowWidth();
+  const navCollapsed = state.layout.navCollapsed ?? width < NAV_DRAWER_FROM;
+  const navOverlay = !navCollapsed && width < NAV_OVERLAY_BELOW;
   const profiles = state.profiles ?? [];
   const profileById = (id: string) => stateRef.current.profiles?.find((p) => p.id === id);
   const connOf = (id: string): ConnState => stateRef.current.conns[id] ?? DISCONNECTED;
@@ -302,7 +325,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
   // --- Actions ----------------------------------------------------------------------------------
 
   const switchTool = (index: number) => {
-    const t = tools[index];
+    const t = nav[index];
     if (t) dispatch({ type: "layout", layout: { tool: t.id } });
   };
 
@@ -330,7 +353,18 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
       case "tool4":
       case "tool5":
       case "tool6":
+      case "tool7":
+      case "tool8":
+      case "tool9":
         switchTool(Number(id.slice(4)) - 1);
+        break;
+      case "toggleToolNav":
+        // From the rail the drawer opens (over the panes when the window is narrow); from the drawer, the rail.
+        dispatch({ type: "layout", layout: { navCollapsed: navCollapsed ? false : width < NAV_DRAWER_FROM ? null : true } });
+        break;
+      case "findTool":
+        if (navCollapsed) dispatch({ type: "layout", layout: { navCollapsed: false } });
+        requestAnimationFrame(() => (document.getElementById(FIND_TOOL_ID) ?? document.querySelector<HTMLElement>("[data-pane='rail'] [data-nav-item][tabindex='0']"))?.focus());
         break;
       case "addConnection":
         dispatch({ type: "dialog", dialog: { kind: "profile", tool: tool.id } });
@@ -412,6 +446,16 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
     return () => window.removeEventListener("keydown", listener, true);
   });
 
+  // A drawer floating over the panes closes on Escape, as the scrim does on a click.
+  useEffect(() => {
+    if (!navOverlay) return;
+    const listener = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && state.dialog.kind === "none" && !state.paletteOpen) dispatch({ type: "layout", layout: { navCollapsed: null } });
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  }, [navOverlay, state.dialog.kind, state.paletteOpen, dispatch]);
+
   // --- Palette ----------------------------------------------------------------------------------
 
   const paletteGroups: CommandGroup[] = useMemo(() => {
@@ -420,8 +464,8 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
     const actions: Item[] = [];
     const connections: Item[] = [];
     const app: Item[] = [];
-    for (const [i, t] of tools.entries()) {
-      goTo.push({ id: `tool:${t.id}`, label: `Tool: ${t.label}`, shortcut: i < 6 ? bindingOf(`tool${i + 1}` as ActionId) : "", keywords: [t.id], onSelect: () => switchTool(i) });
+    for (const [i, t] of nav.entries()) {
+      goTo.push({ id: `tool:${t.id}`, label: `Tool: ${t.label}`, shortcut: i < 9 ? bindingOf(`tool${i + 1}` as ActionId) : "", keywords: [t.id, toolCategory(t)], onSelect: () => switchTool(i) });
     }
     for (const p of profiles) {
       const t = toolById(tools, p.tool);
@@ -439,13 +483,13 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
     for (const a of ACTIONS) {
       if (a.id === "palette") continue;
       const toolIndex = a.id.startsWith("tool") ? Number(a.id.slice(4)) - 1 : -1;
-      const label = toolIndex >= 0 ? (tools[toolIndex] ? `Switch to ${tools[toolIndex]!.label}` : `${a.label} (no tool)`) : a.label;
+      const label = toolIndex >= 0 ? (nav[toolIndex] ? `Switch to ${nav[toolIndex]!.label}` : `${a.label} (no tool)`) : a.label;
       const item: Item = {
         id: a.id,
         label,
         shortcut: bindingOf(a.id),
         ...(a.keywords ? { keywords: a.keywords } : {}),
-        disabled: (toolIndex >= 0 && !tools[toolIndex]) || ((a.group === "Live views" || a.id === "primary" || a.id === "closeTab") && !state.activeTab),
+        disabled: (toolIndex >= 0 && !nav[toolIndex]) || ((a.group === "Live views" || a.id === "primary" || a.id === "closeTab") && !state.activeTab),
         onSelect: () => perform(a.id),
       };
       if (a.group === "App") app.push(item);
@@ -470,7 +514,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
       { label: "App", items: app },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tools, profiles, state.conns, state.tabs, state.activeTab, client]);
+  }, [tools, nav, profiles, state.conns, state.tabs, state.activeTab, client, navCollapsed, width]);
 
   // --- Dialog helpers ---------------------------------------------------------------------------
 
@@ -527,7 +571,10 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
 
   const activeConn = activeProfile ? (state.conns[activeProfile.id] ?? DISCONNECTED) : null;
   const activeLive = state.activeTab ? state.live[state.activeTab] : null;
-  const anyConnected = (t: ToolModule) => profiles.some((p) => p.tool === t.id && state.conns[p.id]?.status === "connected");
+  const toolState = (t: ToolModule): ToolState => {
+    const mine = profiles.filter((p) => p.tool === t.id);
+    return { connected: mine.filter((p) => state.conns[p.id]?.status === "connected").length, failed: mine.some((p) => state.conns[p.id]?.status === "failed") };
+  };
 
   return (
     <SidebarProvider open={state.layout.sidebarOpen} onOpenChange={(open) => dispatch({ type: "layout", layout: { sidebarOpen: open } })} className="h-full">
@@ -578,43 +625,39 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
             <TooltipContent>Keyboard shortcuts ({bindingOf("shortcuts")})</TooltipContent>
           </Tooltip>
         </header>
-        <div className="flex min-h-0 flex-1">
-          <nav aria-label="Tools" data-pane="rail" className="flex w-control-xl shrink-0 flex-col items-center gap-stack-xs pb-inset-xs">
-            {tools.map((t, i) => (
-              <Tooltip key={t.id}>
-                <TooltipTrigger
-                  render={
-                    <IconButton
-                      aria-label={t.label}
-                      aria-pressed={t.id === tool.id}
-                      appearance={t.id === tool.id ? "secondary" : "subtle"}
-                      className="relative"
-                      onClick={() => dispatch({ type: "layout", layout: { tool: t.id } })}
-                    />
-                  }
-                >
-                  <Icon icon={toolIcon(t)} filled={t.id === tool.id} />
-                  {anyConnected(t) ? <span role="img" aria-label="connected" className="absolute inset-e-0 top-0 size-icon-xs rounded-full border-2 border-bg-canvas bg-success" /> : null}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {t.label}
-                  {i < 6 ? ` (${bindingOf(`tool${i + 1}` as ActionId)})` : ""}
-                </TooltipContent>
-              </Tooltip>
-            ))}
-            <span className="flex-1" />
-            <Tooltip>
-              <TooltipTrigger render={<IconButton aria-label="About Mightyconsole" appearance="subtle" onClick={() => perform("about")} />}>
-                <Icon icon={Info} />
-              </TooltipTrigger>
-              <TooltipContent>About</TooltipContent>
-            </Tooltip>
-          </nav>
+        <div className="relative flex min-h-0 flex-1">
+          <ToolNav
+            tools={tools}
+            selected={tool.id}
+            onSelect={(id) => {
+              dispatch({ type: "layout", layout: { tool: id, ...(navOverlay ? { navCollapsed: null } : {}) } });
+            }}
+            stateOf={toolState}
+            collapsed={navCollapsed}
+            overlay={navOverlay}
+            onToggleCollapsed={() => perform("toggleToolNav")}
+            pinned={state.layout.pinnedTools}
+            onTogglePin={(id) => dispatch({ type: "layout", layout: { pinnedTools: state.layout.pinnedTools.includes(id) ? state.layout.pinnedTools.filter((p) => p !== id) : [...state.layout.pinnedTools, id] } })}
+            closedCategories={state.layout.closedCategories}
+            onToggleCategory={(c) => dispatch({ type: "layout", layout: { closedCategories: state.layout.closedCategories.includes(c) ? state.layout.closedCategories.filter((x) => x !== c) : [...state.layout.closedCategories, c] } })}
+            bindingAt={(i) => (i >= 0 && i < 9 ? bindingOf(`tool${i + 1}` as ActionId) : "")}
+            onAbout={() => perform("about")}
+            findId={FIND_TOOL_ID}
+          />
+          {navOverlay ? <div aria-hidden="true" className="absolute inset-0 z-[var(--by-z-sticky)] bg-scrim" onClick={() => dispatch({ type: "layout", layout: { navCollapsed: null } })} /> : null}
           <Resizable orientation="horizontal" sizes={state.layout.sidebarOpen ? state.layout.shellSizes : [0, 100]} onSizesChange={(sizes) => state.layout.sidebarOpen && dispatch({ type: "layout", layout: { shellSizes: sizes } })} className="min-h-0 flex-1 pe-gap-sm" aria-label="Sidebar and workspace">
             <ResizablePanel minSize={state.layout.sidebarOpen ? 12 : 0} maxSize={state.layout.sidebarOpen ? 50 : 0}>
               <Sidebar aria-label={`${tool.label} connections`} collapsible="offcanvas" className="h-full w-full rounded-lg border shadow-layer" data-pane="sidebar">
-                <SidebarHeader className="flex-row items-center justify-between py-inset-xs pe-inset-xs">
-                  <span className="text-body-1-strong">{tool.label}</span>
+                <SidebarHeader className="flex-row items-start justify-between pt-inset-sm pb-stack-xs ps-inset-md pe-inset-xs">
+                  <span className="flex min-w-0 flex-col gap-stack-xs">
+                    <span className="text-subtitle-2">{tool.label}</span>
+                    <span className="text-caption-1 text-fg-muted" data-testid="connections-summary">
+                      {(() => {
+                        const n = profiles.filter((p) => p.tool === tool.id).length;
+                        return n === 0 ? "No connections" : `${n} connection${n === 1 ? "" : "s"} · ${toolState(tool).connected} connected`;
+                      })()}
+                    </span>
+                  </span>
                   <span className="flex items-center">
                     <Tooltip>
                       <TooltipTrigger render={<IconButton aria-label="Import profiles" onClick={() => perform("importProfiles")} />}>
