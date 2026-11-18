@@ -172,10 +172,14 @@ pub struct ScheduleDetail {
     #[ts(type = "Record<string, unknown>")]
     #[schemars(with = "Map<String, Value>")]
     pub info: Map<String, Value>,
+    /// The schedule as the edit sheet fills it (TSK-92).
+    pub form: super::schedule_form::ScheduleForm,
+    /// Sent back by `update` so a concurrent change is a conflict, not lost.
+    pub conflict_token: String,
 }
 
 /// What to do when a triggered run meets one that is still running.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
 pub enum ScheduleOverlap {

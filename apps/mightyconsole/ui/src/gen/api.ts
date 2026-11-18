@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:4b4cc639b4ec8c02062cb5a28b70111d800657e440b9aec3096430a5ce06b49d";
+export const SCHEMA_HASH = "sha256:fc1359806acae539f8a4b13276131c00da4106475ff58604ed90c28f4782b435";
 
 // ---- Types
 
@@ -105,6 +105,16 @@ limit?: number | null, offset?: number | null, };
  * `"auto"` in a [`CodecChoice`].
  */
 export type Auto = "auto";
+
+/**
+ * One calendar: Temporal's calendar strings per field; an absent field takes its default
+ * (second, minute and hour 0; the others every value).
+ */
+export type CalendarForm = { second?: string | null, minute?: string | null, hour?: string | null, dayOfMonth?: string | null, month?: string | null, year?: string | null, 
+/**
+ * 0 is Sunday.
+ */
+dayOfWeek?: string | null, comment?: string | null, };
 
 /**
  * Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on
@@ -435,6 +445,16 @@ eventType: string, category: EventCategory,
  */
 attributes: Record<string, unknown>, };
 
+/**
+ * What happens when a running workflow with the same ID exists (`WorkflowIdConflictPolicy`).
+ */
+export type IdConflictPolicy = "fail" | "useExisting" | "terminateExisting";
+
+/**
+ * What happens when a closed workflow with the same ID exists (`WorkflowIdReusePolicy`).
+ */
+export type IdReusePolicy = "allowDuplicate" | "allowDuplicateFailedOnly" | "rejectDuplicate";
+
 export type InspectInput = { connId?: string | null, schema: InspectSchema, messageType?: string | null, };
 
 /**
@@ -467,6 +487,11 @@ text: string, errors: Array<SchemaIssue>, };
  * A pending `interrupt()`: its value is what the graph asks the human.
  */
 export type Interrupt = { id?: string, value: JsonValue, };
+
+/**
+ * Every `every`, at `offset` after the Unix epoch's multiples of it.
+ */
+export type IntervalForm = { every: string, offset?: string | null, };
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]: JsonValue } | null;
 
@@ -618,6 +643,15 @@ code: string, name?: string, detail?: string, };
  */
 export type ResetReapply = "all" | "signals" | "none";
 
+/**
+ * A retry policy; empty fields take the server's defaults.
+ */
+export type RetryPolicyForm = { initialInterval?: string | null, backoffCoefficient?: number | null, maximumInterval?: string | null, 
+/**
+ * 0 or absent: unlimited.
+ */
+maximumAttempts?: number | null, nonRetryableErrorTypes?: Array<string> | null, };
+
 export type Run = { runId: string, threadId: string, assistantId: string, 
 /**
  * `pending`, `running`, `success`, `error`, `timeout`, `interrupted`.
@@ -713,6 +747,20 @@ actualTime?: string, workflowId: string, runId: string,
 status: string, };
 
 /**
+ * The workflow each run starts.
+ */
+export type ScheduleActionForm = { workflowType: string, taskQueue: string, 
+/**
+ * Temporal appends the scheduled time to it.
+ */
+workflowId: string, 
+/**
+ * One `json/plain` payload per argument. A described schedule whose input is not JSON has
+ * `{ "$opaque": … }` values here, which an update refuses until they are replaced.
+ */
+args: unknown[], executionTimeout?: string | null, runTimeout?: string | null, taskTimeout?: string | null, retryPolicy?: RetryPolicyForm | null, memo?: Record<string, unknown>, searchAttributes?: Record<string, unknown>, };
+
+/**
  * Everything `DescribeSchedule` says; the parts are protobuf JSON, payloads decoded.
  */
 export type ScheduleDetail = { summary: ScheduleSummary, 
@@ -735,7 +783,20 @@ state: Record<string, unknown>,
 /**
  * `info`: action counts, running workflows, create and update times.
  */
-info: Record<string, unknown>, };
+info: Record<string, unknown>, 
+/**
+ * The schedule as the edit sheet fills it (TSK-92).
+ */
+form: ScheduleForm, 
+/**
+ * Sent back by `update` so a concurrent change is a conflict, not lost.
+ */
+conflictToken: string, };
+
+/**
+ * A schedule as the sheet edits it.
+ */
+export type ScheduleForm = { spec: ScheduleSpecForm, action: ScheduleActionForm, policies: SchedulePoliciesForm, state: ScheduleStateForm, };
 
 /**
  * What to do when a triggered run meets one that is still running.
@@ -752,7 +813,33 @@ note?: string | null,
  */
 overlap?: ScheduleOverlap | null, };
 
+export type SchedulePoliciesForm = { 
+/**
+ * Skip when absent.
+ */
+overlap?: ScheduleOverlap | null, 
+/**
+ * How late a missed run may still start; one year when absent.
+ */
+catchupWindow?: string | null, pauseOnFailure: boolean, };
+
 export type ScheduleRef = { connId: string, namespace?: string | null, scheduleId: string, };
+
+export type ScheduleSpecForm = { calendars: Array<CalendarForm>, intervals: Array<IntervalForm>, cronStrings: Array<string>, 
+/**
+ * An IANA time zone; UTC when absent.
+ */
+timezone?: string | null, 
+/**
+ * RFC 3339; no run before it.
+ */
+startTime?: string | null, endTime?: string | null, jitter?: string | null, };
+
+export type ScheduleStateForm = { paused: boolean, notes: string, 
+/**
+ * Runs left before the schedule stops by itself; unlimited when absent.
+ */
+remainingActions?: number | null, };
 
 export type ScheduleSummary = { scheduleId: string, workflowType: string, 
 /**
@@ -767,6 +854,12 @@ notes: string,
  * The next runs, RFC 3339.
  */
 nextRuns: Array<string>, recentActions: Array<ScheduleAction>, };
+
+export type ScheduleWriteInput = { connId: string, namespace?: string | null, scheduleId: string, schedule: ScheduleForm, 
+/**
+ * For `update`: the token of the `describe` the sheet was filled from.
+ */
+conflictToken?: string | null, };
 
 export type SchedulesListInput = { connId: string, namespace?: string | null, 
 /**
@@ -1286,6 +1379,18 @@ export type WorkflowSignalInput = { connId: string, namespace?: string | null, w
  */
 args?: unknown[], };
 
+export type WorkflowStartInput = { connId: string, namespace?: string | null, workflowType: string, taskQueue: string, workflowId: string, 
+/**
+ * One `json/plain` payload per argument.
+ */
+args?: unknown[], executionTimeout?: string | null, runTimeout?: string | null, taskTimeout?: string | null, retryPolicy?: RetryPolicyForm | null, idReusePolicy?: IdReusePolicy | null, idConflictPolicy?: IdConflictPolicy | null, memo?: Record<string, unknown>, searchAttributes?: Record<string, unknown>, startDelay?: string | null, };
+
+export type WorkflowStartOutput = { runId: string, 
+/**
+ * False when the conflict policy UseExisting returned the running workflow instead.
+ */
+started: boolean, };
+
 /**
  * The execution status of a workflow (`WorkflowExecutionStatus`).
  */
@@ -1427,12 +1532,14 @@ export interface Procedures {
   readonly "temporal.namespaces.describe": ProcedureDef<"query", NamespaceDescribeInput, NamespaceDetail, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
   readonly "temporal.namespaces.searchAttributes": ProcedureDef<"query", SearchAttributesInput, SearchAttributesOutput, ToolError>;
+  readonly "temporal.schedules.create": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
   readonly "temporal.schedules.delete": ProcedureDef<"mutation", ScheduleRef, Empty, ToolError>;
   readonly "temporal.schedules.describe": ProcedureDef<"query", ScheduleRef, ScheduleDetail, ToolError>;
   readonly "temporal.schedules.list": ProcedureDef<"query", SchedulesListInput, Array<ScheduleSummary>, ToolError>;
   readonly "temporal.schedules.pause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.trigger": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.unpause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
+  readonly "temporal.schedules.update": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
   readonly "temporal.taskQueues.describe": ProcedureDef<"query", TaskQueueDescribeInput, TaskQueueDescription, ToolError>;
   readonly "temporal.workers.list": ProcedureDef<"query", WorkersListInput, WorkersListOutput, ToolError>;
   readonly "temporal.workflows.cancel": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
@@ -1444,6 +1551,7 @@ export interface Procedures {
   readonly "temporal.workflows.query": ProcedureDef<"query", WorkflowQueryInput, WorkflowQueryOutput, ToolError>;
   readonly "temporal.workflows.reset": ProcedureDef<"mutation", WorkflowResetInput, WorkflowResetOutput, ToolError>;
   readonly "temporal.workflows.signal": ProcedureDef<"mutation", WorkflowSignalInput, Empty, ToolError>;
+  readonly "temporal.workflows.start": ProcedureDef<"mutation", WorkflowStartInput, WorkflowStartOutput, ToolError>;
   readonly "temporal.workflows.terminate": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
   readonly "term.resize": ProcedureDef<"mutation", TermResizeInput, Empty, ToolError>;
   readonly "term.signal": ProcedureDef<"mutation", TermSignalInput, Empty, ToolError>;
@@ -1524,12 +1632,14 @@ export interface Api {
       readonly searchAttributes: Procedures["temporal.namespaces.searchAttributes"];
     };
     readonly schedules: {
+      readonly create: Procedures["temporal.schedules.create"];
       readonly delete: Procedures["temporal.schedules.delete"];
       readonly describe: Procedures["temporal.schedules.describe"];
       readonly list: Procedures["temporal.schedules.list"];
       readonly pause: Procedures["temporal.schedules.pause"];
       readonly trigger: Procedures["temporal.schedules.trigger"];
       readonly unpause: Procedures["temporal.schedules.unpause"];
+      readonly update: Procedures["temporal.schedules.update"];
     };
     readonly taskQueues: {
       readonly describe: Procedures["temporal.taskQueues.describe"];
@@ -1547,6 +1657,7 @@ export interface Api {
       readonly query: Procedures["temporal.workflows.query"];
       readonly reset: Procedures["temporal.workflows.reset"];
       readonly signal: Procedures["temporal.workflows.signal"];
+      readonly start: Procedures["temporal.workflows.start"];
       readonly terminate: Procedures["temporal.workflows.terminate"];
     };
   };
@@ -2027,6 +2138,16 @@ export const procedures: Api = {
       },
     },
     schedules: {
+      create: {
+        name: "temporal.schedules.create",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       delete: {
         name: "temporal.schedules.delete",
         kind: "mutation",
@@ -2079,6 +2200,16 @@ export const procedures: Api = {
       },
       unpause: {
         name: "temporal.schedules.unpause",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      update: {
+        name: "temporal.schedules.update",
         kind: "mutation",
         perm: "temporal.write",
         risk: "Write",
@@ -2195,6 +2326,16 @@ export const procedures: Api = {
       },
       signal: {
         name: "temporal.workflows.signal",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      start: {
+        name: "temporal.workflows.start",
         kind: "mutation",
         perm: "temporal.write",
         risk: "Write",

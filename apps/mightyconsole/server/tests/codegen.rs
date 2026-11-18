@@ -283,6 +283,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.schedules.create",
+            Mutation,
+            "temporal.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
             "temporal.schedules.delete",
             Mutation,
             "temporal.write",
@@ -319,6 +326,13 @@ fn the_procedures_of_the_spec() {
         ),
         (
             "temporal.schedules.unpause",
+            Mutation,
+            "temporal.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "temporal.schedules.update",
             Mutation,
             "temporal.write",
             Risk::Write,
@@ -396,6 +410,13 @@ fn the_procedures_of_the_spec() {
         ),
         (
             "temporal.workflows.signal",
+            Mutation,
+            "temporal.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "temporal.workflows.start",
             Mutation,
             "temporal.write",
             Risk::Write,

@@ -384,6 +384,61 @@
       ],
       "type": "string"
     },
+    "CalendarForm": {
+      "description": "One calendar: Temporal's calendar strings per field; an absent field takes its default\n(second, minute and hour 0; the others every value).",
+      "properties": {
+        "comment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dayOfMonth": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dayOfWeek": {
+          "description": "0 is Sunday.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hour": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "minute": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "month": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "second": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "year": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "Code": {
       "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
       "enum": [
@@ -1695,6 +1750,24 @@
       ],
       "type": "object"
     },
+    "IdConflictPolicy": {
+      "description": "What happens when a running workflow with the same ID exists (`WorkflowIdConflictPolicy`).",
+      "enum": [
+        "fail",
+        "useExisting",
+        "terminateExisting"
+      ],
+      "type": "string"
+    },
+    "IdReusePolicy": {
+      "description": "What happens when a closed workflow with the same ID exists (`WorkflowIdReusePolicy`).",
+      "enum": [
+        "allowDuplicate",
+        "allowDuplicateFailedOnly",
+        "rejectDuplicate"
+      ],
+      "type": "string"
+    },
     "InspectInput": {
       "properties": {
         "connId": {
@@ -1785,6 +1858,24 @@
       },
       "required": [
         "value"
+      ],
+      "type": "object"
+    },
+    "IntervalForm": {
+      "description": "Every `every`, at `offset` after the Unix epoch's multiples of it.",
+      "properties": {
+        "every": {
+          "type": "string"
+        },
+        "offset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "every"
       ],
       "type": "object"
     },
@@ -2320,6 +2411,48 @@
         }
       ]
     },
+    "RetryPolicyForm": {
+      "description": "A retry policy; empty fields take the server's defaults.",
+      "properties": {
+        "backoffCoefficient": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "initialInterval": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maximumAttempts": {
+          "description": "0 or absent: unlimited.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maximumInterval": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nonRetryableErrorTypes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "Run": {
       "properties": {
         "assistantId": {
@@ -2618,6 +2751,75 @@
       ],
       "type": "object"
     },
+    "ScheduleActionForm": {
+      "description": "The workflow each run starts.",
+      "properties": {
+        "args": {
+          "description": "One `json/plain` payload per argument. A described schedule whose input is not JSON has\n`{ \"$opaque\": … }` values here, which an update refuses until they are replaced.",
+          "items": true,
+          "type": "array"
+        },
+        "executionTimeout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memo": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "retryPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RetryPolicyForm"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runTimeout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "searchAttributes": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "taskQueue": {
+          "type": "string"
+        },
+        "taskTimeout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "description": "Temporal appends the scheduled time to it.",
+          "type": "string"
+        },
+        "workflowType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowType",
+        "taskQueue",
+        "workflowId",
+        "args"
+      ],
+      "type": "object"
+    },
     "ScheduleDetail": {
       "description": "Everything `DescribeSchedule` says; the parts are protobuf JSON, payloads decoded.",
       "properties": {
@@ -2625,6 +2827,14 @@
           "additionalProperties": true,
           "description": "`schedule.action`: the workflow it starts (type, id, task queue, input).",
           "type": "object"
+        },
+        "conflictToken": {
+          "description": "Sent back by `update` so a concurrent change is a conflict, not lost.",
+          "type": "string"
+        },
+        "form": {
+          "$ref": "#/$defs/ScheduleForm",
+          "description": "The schedule as the edit sheet fills it (TSK-92)."
         },
         "info": {
           "additionalProperties": true,
@@ -2656,7 +2866,33 @@
         "action",
         "policies",
         "state",
-        "info"
+        "info",
+        "form",
+        "conflictToken"
+      ],
+      "type": "object"
+    },
+    "ScheduleForm": {
+      "description": "A schedule as the sheet edits it.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ScheduleActionForm"
+        },
+        "policies": {
+          "$ref": "#/$defs/SchedulePoliciesForm"
+        },
+        "spec": {
+          "$ref": "#/$defs/ScheduleSpecForm"
+        },
+        "state": {
+          "$ref": "#/$defs/ScheduleStateForm"
+        }
+      },
+      "required": [
+        "spec",
+        "action",
+        "policies",
+        "state"
       ],
       "type": "object"
     },
@@ -2701,6 +2937,7 @@
               "type": "null"
             }
           ],
+          "default": null,
           "description": "For `trigger`: the schedule's own policy when absent."
         },
         "scheduleId": {
@@ -2710,6 +2947,35 @@
       "required": [
         "connId",
         "scheduleId"
+      ],
+      "type": "object"
+    },
+    "SchedulePoliciesForm": {
+      "properties": {
+        "catchupWindow": {
+          "description": "How late a missed run may still start; one year when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overlap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScheduleOverlap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Skip when absent."
+        },
+        "pauseOnFailure": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pauseOnFailure"
       ],
       "type": "object"
     },
@@ -2732,6 +2998,83 @@
       "required": [
         "connId",
         "scheduleId"
+      ],
+      "type": "object"
+    },
+    "ScheduleSpecForm": {
+      "properties": {
+        "calendars": {
+          "items": {
+            "$ref": "#/$defs/CalendarForm"
+          },
+          "type": "array"
+        },
+        "cronStrings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "endTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "intervals": {
+          "items": {
+            "$ref": "#/$defs/IntervalForm"
+          },
+          "type": "array"
+        },
+        "jitter": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startTime": {
+          "description": "RFC 3339; no run before it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timezone": {
+          "description": "An IANA time zone; UTC when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "calendars",
+        "intervals",
+        "cronStrings"
+      ],
+      "type": "object"
+    },
+    "ScheduleStateForm": {
+      "properties": {
+        "notes": {
+          "type": "string"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "remainingActions": {
+          "description": "Runs left before the schedule stops by itself; unlimited when absent.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "paused",
+        "notes"
       ],
       "type": "object"
     },
@@ -2776,6 +3119,40 @@
         "notes",
         "nextRuns",
         "recentActions"
+      ],
+      "type": "object"
+    },
+    "ScheduleWriteInput": {
+      "properties": {
+        "conflictToken": {
+          "default": null,
+          "description": "For `update`: the token of the `describe` the sheet was filled from.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schedule": {
+          "$ref": "#/$defs/ScheduleForm"
+        },
+        "scheduleId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId",
+        "schedule"
       ],
       "type": "object"
     },
@@ -4632,6 +5009,138 @@
       ],
       "type": "object"
     },
+    "WorkflowStartInput": {
+      "properties": {
+        "args": {
+          "default": null,
+          "description": "One `json/plain` payload per argument.",
+          "items": true,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "executionTimeout": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "idConflictPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdConflictPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "idReusePolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdReusePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "memo": {
+          "additionalProperties": true,
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retryPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RetryPolicyForm"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "runTimeout": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "searchAttributes": {
+          "additionalProperties": true,
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "startDelay": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "taskQueue": {
+          "type": "string"
+        },
+        "taskTimeout": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        },
+        "workflowType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowType",
+        "taskQueue",
+        "workflowId"
+      ],
+      "type": "object"
+    },
+    "WorkflowStartOutput": {
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "started": {
+          "description": "False when the conflict policy UseExisting returned the running workflow instead.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "runId",
+        "started"
+      ],
+      "type": "object"
+    },
     "WorkflowStatus": {
       "description": "The execution status of a workflow (`WorkflowExecutionStatus`).",
       "enum": [
@@ -5732,6 +6241,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ScheduleWriteInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.schedules.create",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ScheduleRef"
       },
       "kind": "mutation",
@@ -5845,6 +6375,27 @@
       "kind": "mutation",
       "log_input": false,
       "name": "temporal.schedules.unpause",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ScheduleWriteInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.schedules.update",
       "output": {
         "$ref": "#/$defs/Empty"
       },
@@ -6092,6 +6643,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/WorkflowStartInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.workflows.start",
+      "output": {
+        "$ref": "#/$defs/WorkflowStartOutput"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/WorkflowReasonInput"
       },
       "kind": "mutation",
@@ -6173,5 +6745,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:4b4cc639b4ec8c02062cb5a28b70111d800657e440b9aec3096430a5ce06b49d"
+  "schema_hash": "sha256:fc1359806acae539f8a4b13276131c00da4106475ff58604ed90c28f4782b435"
 }

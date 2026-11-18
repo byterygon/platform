@@ -14,7 +14,9 @@ mod detail_types;
 mod namespaces;
 mod payloads;
 mod proto;
+mod schedule_form;
 mod search_attributes;
+mod start;
 mod types;
 mod workers;
 
@@ -33,8 +35,15 @@ use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 pub use self::actions_types::*;
 pub use self::detail_types::*;
 pub use self::namespaces::{Archival, NamespaceDescribeInput, NamespaceDetail, NamespaceLimits};
+pub use self::schedule_form::{
+    CalendarForm, IntervalForm, ScheduleActionForm, ScheduleForm, SchedulePoliciesForm,
+    ScheduleSpecForm, ScheduleStateForm, ScheduleWriteInput,
+};
 pub use self::search_attributes::{
     SearchAttribute, SearchAttributeType, SearchAttributesInput, SearchAttributesOutput,
+};
+pub use self::start::{
+    IdConflictPolicy, IdReusePolicy, RetryPolicyForm, WorkflowStartInput, WorkflowStartOutput,
 };
 pub use self::types::*;
 pub use self::workers::{
@@ -379,6 +388,13 @@ impl TemporalWorkflowsApi {
         Ok(detail::query(&handle.value, input).await?)
     }
 
+    /// Starts a workflow; JSON arguments, one payload each (TSK-92).
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn start(&self, ctx: Ctx, input: WorkflowStartInput) -> ToolResult<WorkflowStartOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(start::start(&handle.value, input).await?)
+    }
+
     /// Sends a signal with JSON arguments to the run.
     #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
     async fn signal(&self, ctx: Ctx, input: WorkflowSignalInput) -> ToolResult<Empty> {
@@ -477,6 +493,23 @@ impl TemporalSchedulesApi {
     async fn describe(&self, ctx: Ctx, input: ScheduleRef) -> ToolResult<ScheduleDetail> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         Ok(actions::schedule_describe(&handle.value, input).await?)
+    }
+
+    /// Creates a schedule from the edit sheet's form (TSK-92).
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn create(&self, ctx: Ctx, input: ScheduleWriteInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        schedule_form::create(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+
+    /// Replaces the schedule's spec, action, policies and state with the form's, keeping the rest;
+    /// a change since the sheet was filled is a conflict.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn update(&self, ctx: Ctx, input: ScheduleWriteInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        schedule_form::update(&handle.value, input).await?;
+        Ok(Empty {})
     }
 
     /// Pauses the schedule, with a note.
@@ -581,3 +614,6 @@ mod lab_action_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_more_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_form_tests;
