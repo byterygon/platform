@@ -1,21 +1,25 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/cn";
-import { controlAppearance, controlSize, focusRing, type ControlSizeProp } from "@/lib/control";
-import { Dismiss } from "@/lib/icons";
+import { controlAppearance, controlSize, focusRing, focusRingInset, type ControlSizeProp } from "@/lib/control";
+import { Dismiss, MoreHorizontal } from "@/lib/icons";
 
 // Tabs on Base UI's Tabs: `Tabs` is the root, TabsList the tab strip, TabsTrigger a tab, TabsContent
 // its panel. For DBee's query tabs a tab can also be closed (onClose: a close button outside the
 // tab order, and Delete on the focused tab) and reordered (TabsList onReorder: drag a tab, or
 // Alt+Shift+Arrow on the focused one), and it takes a leading status icon (a spinner, a dot).
+// A horizontal strip never scrolls: tabs that do not fit are hidden behind a "More tabs" menu at
+// its end, as Fluent's TabList overflow, and the selected tab always stays in view.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const tabsVariants = {
   /** Fluent's tab appearance: `transparent` (an accent underline under the selected tab), `subtle` (a wash behind it), or Byterygon's `enclosed` editor tabs. */
   appearance: {
     transparent: [
-      "-mb-px border-b-2 border-transparent text-fg-muted hover:text-fg data-active:border-accent-compound data-active:text-fg",
+      "border-b-2 border-transparent text-fg-muted hover:text-fg data-active:border-accent-compound data-active:text-fg",
       "data-[orientation=vertical]:mb-0 data-[orientation=vertical]:-me-px data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e-2",
     ],
     subtle: "rounded-md text-fg-muted hover:bg-hover hover:text-fg active:bg-pressed data-active:bg-selected data-active:text-fg",
@@ -44,9 +48,13 @@ const listVariants = {
 
 const classes = {
   root: "flex flex-col gap-stack-sm data-[orientation=vertical]:flex-row",
-  list: "flex min-w-0 items-stretch overflow-x-auto data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible",
+  // The strip holds the tablist and the "More tabs" button; the appearance's border is on it.
+  strip: "flex min-w-0 items-stretch data-[orientation=vertical]:flex-col",
+  // Horizontal: clipped on both axes, never scrolled (overflow-x alone makes overflow-y scroll too).
+  list: "flex min-w-0 flex-1 items-stretch overflow-hidden data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-visible",
+  more: "shrink-0 self-center",
   item: [
-    "relative flex shrink-0",
+    "relative flex shrink-0 data-overflow:hidden",
     "before:absolute before:inset-y-0 before:left-0 before:z-[var(--by-z-sticky)] before:hidden before:w-px before:bg-accent-compound data-[drop=before]:before:block",
     "after:absolute after:inset-y-0 after:right-0 after:z-[var(--by-z-sticky)] after:hidden after:w-px after:bg-accent-compound data-[drop=after]:after:block",
     "data-dragging:opacity-[var(--by-opacity-disabled)]",
@@ -54,7 +62,7 @@ const classes = {
   trigger: [
     "flex min-w-0 max-w-panel-xs cursor-default select-none items-center gap-inline-sm whitespace-nowrap font-sans text-body-1",
     "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
-    focusRing,
+    focusRingInset,
     "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
     "data-closable:pe-control-sm [&_svg]:size-icon-sm [&_svg]:shrink-0",
   ],
@@ -148,18 +156,82 @@ export interface TabsListProps extends Omit<TabsPrimitive.List.Props, "className
    * elsewhere or presses Alt+Shift+Arrow on it. Apply the move to your list of tabs.
    */
   onReorder?: (value: TabValue, index: number) => void;
-  /** Extra classes, merged after the component's own so they win. */
+  /** The tooltip and accessible name of the button that lists the tabs that do not fit. */
+  moreLabel?: string;
+  /** Extra classes on the strip (the tablist and its "More tabs" button), merged after the component's own. */
   className?: string;
-  /** Reaches the strip element. */
+  /** Reaches the tablist element. */
   ref?: Ref<HTMLDivElement>;
 }
 
-/** The tab strip (role="tablist"); it scrolls when the tabs do not fit. */
-export function TabsList({ onReorder, className, ref, ...props }: TabsListProps) {
+interface HiddenTab {
+  value: string;
+  label: string;
+}
+
+const itemsOf = (list: HTMLElement) => [...list.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.dataset["slot"] === "tabs-item");
+const triggerOf = (item: HTMLElement) => item.querySelector<HTMLElement>('[data-slot="tabs-trigger"]');
+const px = (value: string) => Number.parseFloat(value) || 0;
+
+/**
+ * Fits the tabs into the strip: every tab is shown to measure it, then the ones that do not fit
+ * get `data-overflow` (hidden), keeping the selected one. Writes the attributes directly, so no
+ * render is needed to measure. Returns the hidden tabs, in strip order.
+ */
+function fitTabs(strip: HTMLElement, list: HTMLElement, more: HTMLElement | null): HiddenTab[] {
+  const items = itemsOf(list);
+  for (const item of items) item.removeAttribute("data-overflow");
+  const stripStyle = getComputedStyle(strip);
+  const room = strip.clientWidth - px(stripStyle.paddingLeft) - px(stripStyle.paddingRight);
+  const gap = px(getComputedStyle(list).columnGap);
+  const widths = items.map((item) => item.getBoundingClientRect().width);
+  const total = widths.reduce((sum, width) => sum + width, 0) + gap * Math.max(0, items.length - 1);
+  if (total <= room + 0.5 || items.length === 0) {
+    if (more) more.hidden = true;
+    return [];
+  }
+  if (more) more.hidden = false;
+  const left = room - (more ? more.getBoundingClientRect().width + px(stripStyle.columnGap) : 0);
+  const selected = items.findIndex((item) => triggerOf(item)?.getAttribute("aria-selected") === "true");
+  const shown = new Set<number>();
+  let used = 0;
+  if (selected >= 0) {
+    shown.add(selected);
+    used = widths[selected]!;
+  }
+  for (let index = 0; index < items.length; index += 1) {
+    if (index === selected) continue;
+    const next = used + (shown.size > 0 ? gap : 0) + widths[index]!;
+    if (next > left + 0.5) break;
+    shown.add(index);
+    used = next;
+  }
+  const hidden: HiddenTab[] = [];
+  items.forEach((item, index) => {
+    if (shown.has(index)) return;
+    item.setAttribute("data-overflow", "");
+    hidden.push({ value: item.dataset["value"]!, label: triggerOf(item)?.textContent?.trim() ?? item.dataset["value"]! });
+  });
+  return hidden;
+}
+
+const sameTabs = (a: readonly HiddenTab[], b: readonly HiddenTab[]) => a.length === b.length && a.every((tab, index) => tab.value === b[index]!.value && tab.label === b[index]!.label);
+
+/**
+ * The tab strip (role="tablist"). Horizontal tabs that do not fit are listed in a "More tabs" menu
+ * at the end of the strip; the selected tab always stays visible. The ref reaches the tablist.
+ */
+export function TabsList({ onReorder, moreLabel = "More tabs", className, ref, ...props }: TabsListProps) {
   const registry = useContext(RegistryContext);
-  const { appearance } = useContext(TabsContext);
+  const { appearance, orientation } = useContext(TabsContext);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const moreRef = useRef<HTMLButtonElement | null>(null);
+  const focusAfterFit = useRef<string | null>(null);
+  const [hidden, setHidden] = useState<readonly HiddenTab[]>([]);
   const setRef = useCallback(
     (element: HTMLDivElement | null) => {
+      listRef.current = element;
       if (registry) registry.listRef.current = element;
       if (typeof ref === "function") ref(element);
       else if (ref) ref.current = element;
@@ -174,7 +246,81 @@ export function TabsList({ onReorder, className, ref, ...props }: TabsListProps)
   useEffect(() => {
     setReorder?.(reorderable ? () => stable : undefined);
   }, [setReorder, reorderable, stable]);
-  return <TabsPrimitive.List data-slot="tabs-list" ref={setRef} className={cn(classes.list, listVariants[appearance], className)} {...props} />;
+
+  const horizontal = orientation === "horizontal";
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    const list = listRef.current;
+    if (!horizontal || !strip || !list) return;
+    let frame = 0;
+    const fit = () => {
+      frame = 0;
+      const next = fitTabs(strip, list, moreRef.current);
+      setHidden((previous) => (sameTabs(previous, next) ? previous : next));
+      const wanted = focusAfterFit.current;
+      if (wanted !== null) {
+        focusAfterFit.current = null;
+        const item = itemsOf(list).find((candidate) => candidate.dataset["value"] === wanted);
+        if (item && !item.hasAttribute("data-overflow")) triggerOf(item)?.focus();
+      }
+    };
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(fit);
+    };
+    fit();
+    // The strip's width, the tabs (added, closed, renamed, reordered) and the selection decide it.
+    const resize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(schedule);
+    resize?.observe(strip);
+    const mutation = new MutationObserver(schedule);
+    mutation.observe(list, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["aria-selected", "data-value"] });
+    void document.fonts?.ready.then(schedule);
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      resize?.disconnect();
+      mutation.disconnect();
+      for (const item of itemsOf(list)) item.removeAttribute("data-overflow");
+    };
+  }, [horizontal]);
+
+  const choose = (value: string) => {
+    const list = listRef.current;
+    const item = list ? itemsOf(list).find((candidate) => candidate.dataset["value"] === value) : undefined;
+    const trigger = item ? triggerOf(item) : null;
+    if (!trigger) return;
+    focusAfterFit.current = value;
+    // Selects it as a click would (controlled or not); the next fit shows it and focuses it.
+    trigger.click();
+    requestAnimationFrame(() => {
+      if (focusAfterFit.current === value && !item!.hasAttribute("data-overflow")) {
+        focusAfterFit.current = null;
+        trigger.focus();
+      }
+    });
+  };
+
+  return (
+    <div ref={stripRef} data-slot="tabs-strip" data-orientation={orientation} className={cn(classes.strip, listVariants[appearance], className)}>
+      <TabsPrimitive.List data-slot="tabs-list" ref={setRef} className={cn(classes.list)} {...props} />
+      {horizontal ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            ref={moreRef}
+            hidden={hidden.length === 0}
+            render={<IconButton appearance="subtle" size="small" aria-label={`${moreLabel} (${hidden.length})`} title={moreLabel} className={cn(classes.more)} />}
+          >
+            <Icon icon={MoreHorizontal} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" finalFocus={false}>
+            {hidden.map((tab) => (
+              <DropdownMenuItem key={tab.value} onClick={() => choose(tab.value)}>
+                {tab.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </div>
+  );
 }
 
 export interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, "className" | "value" | "children"> {
@@ -220,8 +366,27 @@ export function TabsTrigger({ value, icon, children, onClose, closeLabel = "Clos
       close();
       return;
     }
-    const back = orientation === "horizontal" ? "ArrowLeft" : "ArrowUp";
-    const forward = orientation === "horizontal" ? "ArrowRight" : "ArrowDown";
+    const horizontal = orientation === "horizontal";
+    const rtl = horizontal && itemRef.current !== null && getComputedStyle(itemRef.current).direction === "rtl";
+    const back = horizontal ? (rtl ? "ArrowRight" : "ArrowLeft") : "ArrowUp";
+    const forward = horizontal ? (rtl ? "ArrowLeft" : "ArrowRight") : "ArrowDown";
+    const list = itemRef.current?.parentElement;
+    const plain = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+    // With tabs hidden behind "More tabs", arrows, Home and End move among the visible tabs only
+    // (Base UI's own navigation would try to focus a hidden one).
+    if (plain && list?.querySelector(':scope > [data-overflow]') && [back, forward, "Home", "End"].includes(event.key)) {
+      const visible = itemsOf(list)
+        .filter((item) => !item.hasAttribute("data-overflow"))
+        .map(triggerOf)
+        .filter((trigger): trigger is HTMLElement => trigger !== null && !trigger.hasAttribute("data-disabled"));
+      const at = visible.indexOf(event.currentTarget);
+      const count = visible.length;
+      const target = event.key === "Home" ? visible[0] : event.key === "End" ? visible[count - 1] : visible[(at + (event.key === forward ? 1 : -1) + count) % count];
+      event.preventDefault();
+      event.stopPropagation();
+      target?.focus();
+      return;
+    }
     if (reorder && event.altKey && event.shiftKey && (event.key === back || event.key === forward)) {
       event.preventDefault();
       event.stopPropagation();

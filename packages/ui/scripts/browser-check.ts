@@ -11,6 +11,8 @@
 //   - keyboard: Tab reaches the editor, typing works, Ctrl+Enter (Cmd+Enter on macOS) runs the
 //     statement, Tab indents, and Ctrl+M (Ctrl+Shift+M on macOS) lets Tab and Shift+Tab leave;
 //   - a 1 MB document: load, a keystroke at the end and a run stay within bounds;
+//   - TSK-90: a narrow tab strip never scrolls, hides the tabs that do not fit behind "More tabs" and
+//     moves ArrowRight among the visible ones; a native scroll container takes the thin themed scrollbar;
 //   - CodeInput: its colours, font and height follow the tokens in every preset, mode and density
 //     (beside one in the other mode); Tab in and out, Enter submits, a FieldLabel click focuses
 //     it; the pretty viewer shows a 1 MB JSON value and jumps to its end, rendering only what shows;
@@ -297,6 +299,7 @@ const KEYS: Record<string, { code: string; keyCode: number }> = {
   Tab: { code: "Tab", keyCode: 9 },
   Enter: { code: "Enter", keyCode: 13 },
   Backspace: { code: "Backspace", keyCode: 8 },
+  ArrowRight: { code: "ArrowRight", keyCode: 39 },
 };
 
 async function openPage(cdp: Cdp): Promise<Page> {
@@ -551,6 +554,63 @@ async function themes(page: Page) {
   return { checked, densities, codeHeights };
 }
 
+/**
+ * TSK-90: a horizontal tab strip never scrolls (no vertical scrollbar from overflow-x), tabs that do
+ * not fit go behind the "More tabs" button, ArrowRight moves among the visible tabs only, and a
+ * native scroll container takes the thin themed scrollbar of the theme's base layer.
+ */
+async function tabStrip(page: Page) {
+  const s = await page.evaluate<{
+    overflowX: string;
+    overflowY: string;
+    scrollY: number;
+    tabs: number;
+    hidden: number;
+    moreShown: boolean;
+    scrollbarWidth: string;
+    scrollbarColor: string;
+    expectedThumb: string;
+  }>(`(() => {
+    const strip = document.querySelector("#tab-strip [data-slot=tabs-strip]");
+    const list = strip.querySelector("[data-slot=tabs-list]");
+    const more = strip.querySelector("[data-slot=dropdown-menu-trigger]");
+    const style = getComputedStyle(list);
+    const scroller = getComputedStyle(document.getElementById("scroller"));
+    const probe = document.createElement("div");
+    probe.style.color = "var(--by-color-scrollbar-thumb)";
+    document.getElementById("region-4").append(probe);
+    const expectedThumb = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      overflowX: style.overflowX,
+      overflowY: style.overflowY,
+      scrollY: list.scrollHeight - list.clientHeight,
+      tabs: strip.querySelectorAll("[data-slot=tabs-item]").length,
+      hidden: strip.querySelectorAll("[data-slot=tabs-item][data-overflow]").length,
+      moreShown: more !== null && getComputedStyle(more).display !== "none",
+      scrollbarWidth: scroller.scrollbarWidth,
+      scrollbarColor: scroller.scrollbarColor,
+      expectedThumb,
+    };
+  })()`);
+  check(s.overflowX === "hidden" && s.overflowY === "hidden", `tab strip: overflow ${s.overflowX} / ${s.overflowY}, expected hidden on both axes`);
+  check(s.scrollY <= 0, `tab strip: the tablist can scroll ${s.scrollY} px vertically`);
+  check(s.hidden > 0 && s.hidden < s.tabs, `tab strip: ${s.hidden} of ${s.tabs} tabs hidden, expected some in a strip too narrow for them`);
+  check(s.moreShown, "tab strip: the More tabs button is not shown while tabs are hidden");
+  const visible = s.tabs - s.hidden;
+  await page.evaluate(`document.querySelector("#tab-strip [role=tab]").focus(), true`);
+  const focusedVisible = async () =>
+    page.evaluate<boolean>(`(() => { const a = document.activeElement; return a?.getAttribute("role") === "tab" && !a.closest("[data-slot=tabs-item]").hasAttribute("data-overflow") && a.getBoundingClientRect().width > 0; })()`);
+  for (let step = 1; step <= visible; step += 1) {
+    await page.key("ArrowRight");
+    if (!check(await focusedVisible(), `tab strip: ArrowRight ${step} moved focus to a hidden tab or out of the strip`)) break;
+  }
+  check(await page.evaluate<boolean>(`document.activeElement === document.querySelector("#tab-strip [role=tab]")`), `tab strip: ${visible} ArrowRight presses did not wrap to the first tab`);
+  check(s.scrollbarWidth === "thin", `scrollbars: scrollbar-width ${s.scrollbarWidth}, expected thin from the theme's base layer`);
+  check(s.scrollbarColor.startsWith(s.expectedThumb), `scrollbars: scrollbar-color ${s.scrollbarColor}, expected color.scrollbar.thumb (${s.expectedThumb}) then transparent`);
+  return { tabs: s.tabs, hidden: s.hidden, scrollbarWidth: s.scrollbarWidth, scrollbarColor: s.scrollbarColor };
+}
+
 async function keyboard(page: Page) {
   const active = () => page.evaluate<string>("(() => { const a = document.activeElement; return a?.closest('[data-slot=sql-editor]') ? 'editor' : (a?.id || a?.tagName.toLowerCase() || 'none'); })()");
   await page.evaluate(`window.__check.setValue(""), ${frames()}, document.getElementById("before").focus(), true`);
@@ -785,6 +845,8 @@ async function main(argv: string[]): Promise<number> {
     report.codeLargeDocument = await within(90_000, "CodeInput 1 MB", codeLargeDocument(page));
     step("CodeEditor JSON Schema");
     report.jsonSchema = await within(60_000, "CodeEditor JSON Schema", jsonSchema(page, base));
+    step("tab strip and scrollbars");
+    report.tabStrip = await within(30_000, "tab strip", tabStrip(page));
     step("internal network: sub-path and DBee CSPs");
     report.internalNetwork = await within(120_000, "internal network", internalNetwork(cdp, out));
     if (screenshotPath) {

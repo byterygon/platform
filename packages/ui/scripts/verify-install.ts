@@ -160,6 +160,7 @@ function checkInstalledFiles(app: string, label: string): void {
   check(css.includes("--by-color-bg-surface:"), `${label}: src/index.css has no token variables after installing the theme`);
   check(css.includes("--primary: var(--by-color-accent-bg)"), `${label}: src/index.css has no shadcn aliases`);
   check(/@theme inline\s*\{[\s\S]*--color-accent-solid: var\(--by-color-accent-bg\)/.test(css), `${label}: src/index.css has no Tailwind role names`);
+  check(/@layer base\s*\{[\s\S]*scrollbar-color: var\(--by-color-scrollbar-thumb\) transparent[\s\S]*::-webkit-scrollbar-thumb/.test(css), `${label}: src/index.css has no themed scrollbars (the theme item's base layer)`);
 }
 
 const MAIN = `import { useForm } from "@tanstack/react-form";

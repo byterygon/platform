@@ -29,6 +29,8 @@ const scene = params.get("scene") ?? "main";
 const open = params.get("open");
 const scheme = params.get("scheme") === "dark" ? "dark" : "light";
 const density = params.get("density") === "compact" ? "compact" : "comfortable";
+/** Extra query tabs (TSK-90's overflow menu): `tabs=12` opens twelve more. */
+const extraTabs = Math.min(50, Math.max(0, Number(params.get("tabs")) || 0));
 const MINUTE = 60_000;
 
 const connection: ConnectionSummary = {
@@ -65,6 +67,7 @@ const persisted: Persisted = {
         tabs: [
           { id: "t1", connectionId: "conn-1", sql: SQL[scene] ?? SQL["main"]!, maxRows: 1000 },
           { id: "t2", connectionId: "conn-1", sql: "", maxRows: null },
+          ...Array.from({ length: extraTabs }, (_, index) => ({ id: `t${index + 3}`, connectionId: "conn-1", sql: `-- Monthly report ${index + 1}\nselect ${index + 1};`, maxRows: null })),
         ],
         activeTab: "t1",
       }),

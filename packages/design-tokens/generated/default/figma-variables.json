@@ -14857,6 +14857,54 @@
           }
         },
         {
+          "name": "color/scrollbar/thumb",
+          "type": "COLOR",
+          "description": "The thumb of a scrollbar, native or ScrollArea's: the strong border colour, 3:1 on every surface. Not for borders or dividers: use color.border.*. The track stays transparent.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-scrollbar-thumb)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/border/strong"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/border/strong"
+            }
+          }
+        },
+        {
+          "name": "color/scrollbar/thumb-hover",
+          "type": "COLOR",
+          "description": "The thumb of a scrollbar under the pointer or while dragged. Not a resting colour.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-scrollbar-thumb-hover)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/fg/subtle"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "color/fg/subtle"
+            }
+          }
+        },
+        {
           "name": "color/status/danger/solid",
           "type": "COLOR",
           "description": "The filled background of a destructive action, and the border of an invalid field. Not for danger text on a neutral background: use color.status.danger.fg.",
@@ -17674,6 +17722,22 @@
       ],
       "defaultMode": "Comfortable",
       "variables": [
+        {
+          "name": "size/scrollbar",
+          "type": "FLOAT",
+          "description": "The thickness of a native scrollbar in WebKit (Safari, the Tauri webview on Linux and macOS); the thumb is drawn border.width.2 inside it. Chrome and Firefox take scrollbar-width: thin instead. Not for ScrollArea's overlay bars, which use size.track. Not for slider tracks.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-size-scrollbar)"
+          },
+          "valuesByMode": {
+            "Comfortable": 10,
+            "Compact": 8
+          }
+        },
         {
           "name": "size/control/xs",
           "type": "FLOAT",
