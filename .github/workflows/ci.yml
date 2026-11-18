@@ -71,9 +71,33 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # TSK-89: the DBee UI (apps/dbee/ui/dist) is built once per run, here, and shared as an artifact
+  # with every job that embeds it (Rust, the budget, Windows and macOS); the TypeScript job builds
+  # every other package. It needs nothing, so it runs alongside the Affected job and the Rust job
+  # waits for it as little as possible. Its build includes check-dist.
+  dbee-ui:
+    name: DBee UI build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter "@byterygon/dbee..."
+      - run: pnpm --filter @byterygon/dbee build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dbee-ui-dist
+          path: apps/dbee/ui/dist
+          if-no-files-found: error
+          retention-days: 3
+
   rust:
     name: Rust (fmt, clippy, test)
-    needs: affected
+    needs: [affected, dbee-ui]
     if: ${{ !cancelled() && needs.affected.outputs.rust != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -100,19 +124,24 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # DBee spec §2 (TSK-38): the desktop app embeds the built UI (apps/dbee/ui/dist), so the
-      # bundle is built before the Rust steps and the cold start below measures the real app.
-      # (TSK-89: Node and the UI only when dbee-desktop or Mightyconsole is affected.)
+      # bundle is in place before the Rust steps and the cold start below measures the real app.
+      # TSK-89: the UI comes from the DBee UI build job (a missing artifact fails the job; the
+      # placeholder page is never embedded silently); Node only for the Mightyconsole check.
+      - if: ${{ needs.affected.outputs.dbee_desktop != 'false' }}
+        name: The DBee UI built once in this run (apps/dbee/ui/dist)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dbee-ui-dist
+          path: apps/dbee/ui/dist
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        if: ${{ needs.affected.outputs.dbee_desktop != 'false' || needs.affected.outputs.mightyconsole != 'false' }}
+        if: ${{ needs.affected.outputs.mightyconsole != 'false' }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: ${{ needs.affected.outputs.dbee_desktop != 'false' || needs.affected.outputs.mightyconsole != 'false' }}
+        if: ${{ needs.affected.outputs.mightyconsole != 'false' }}
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-        if: ${{ needs.affected.outputs.dbee_desktop != 'false' || needs.affected.outputs.mightyconsole != 'false' }}
-      - run: pnpm --filter @byterygon/dbee build
-        if: ${{ needs.affected.outputs.dbee_desktop != 'false' }}
+        if: ${{ needs.affected.outputs.mightyconsole != 'false' }}
       - run: cargo fmt --all --check
       - run: cargo clippy $AFFECTED_CARGO_ARGS --all-targets --locked -- -D warnings
       - name: Build documentation
@@ -190,7 +219,7 @@ jobs:
     # acceptance data (bench_rows 1M x 10, 10,000 tables). It reports; it fails only when a step
     # does not work (a budget over target is recorded in DOC-16, not enforced here).
     name: DBee desktop budget (Linux, WebKitGTK)
-    needs: affected
+    needs: [affected, dbee-ui]
     if: ${{ !cancelled() && needs.affected.outputs.dbee_budget != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -207,13 +236,15 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - name: The DBee UI built once in this run (apps/dbee/ui/dist)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dbee-ui-dist
+          path: apps/dbee/ui/dist
+      # acceptance.sh summarises each run's report with node (no packages needed).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @byterygon/dbee build
       - run: cargo build --release --locked -p dbee-desktop --bin dbee-desktop --example acceptance
       - name: Measure (3 runs)
         run: |
@@ -255,7 +286,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm $PNPM_SELECT run --if-present typecheck
-      - run: pnpm $PNPM_BUILD_SELECT run --if-present build
+      # TSK-89: the DBee UI is built once, by the DBee UI build job.
+      - run: pnpm $PNPM_BUILD_SELECT --filter '!@byterygon/dbee' run --if-present build
       # Byterygon UI spec §9a.4 (TSK-50): the design-token lint rules (@byterygon/lint) on
       # packages/ui, packages/theme-studio, packages/data-grid and apps/dbee/ui. Needs the token engine built above.
       - run: pnpm $PNPM_SELECT run --if-present lint
@@ -370,7 +402,7 @@ jobs:
   # embeds it, then clippy and the crate's tests run on the native toolchain.
   desktop:
     name: DBee desktop (${{ matrix.os }})
-    needs: affected
+    needs: [affected, dbee-ui]
     if: ${{ !cancelled() && needs.affected.outputs.dbee_desktop != 'false' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -388,13 +420,11 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: The DBee UI built once in this run (apps/dbee/ui/dist)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @byterygon/dbee build
+          name: dbee-ui-dist
+          path: apps/dbee/ui/dist
       - run: cargo clippy -p dbee-desktop --all-targets --locked -- -D warnings
       - run: cargo test -p dbee-desktop --locked
 
@@ -443,7 +473,7 @@ jobs:
   result:
     name: CI result
     if: ${{ always() }}
-    needs: [affected, rust, dbee-desktop-budget, typescript, desktop, licenses, secrets]
+    needs: [affected, dbee-ui, rust, dbee-desktop-budget, typescript, desktop, licenses, secrets]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
