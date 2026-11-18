@@ -73,6 +73,10 @@ async function firstKeystroke(page: Page, url: string) {
   const runs: { fallback: number; ready: number; latency: number }[] = [];
   for (let i = 0; i < 3; i += 1) {
     await page.navigate(url);
+    // The restored tabs come back in their order; the Messages tab may not be the one shown.
+    const tab = `[...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.includes("Messages · smoke"))`;
+    if (!(await until(page, tab, "the restored Messages tab", 30_000))) return null;
+    await run(page, `(() => { const t = ${tab}; if (t.getAttribute("aria-selected") !== "true") for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`);
     if (!(await until(page, editor, "the jq editor of the restored Messages tab", 30_000))) return null;
     const fallback = await page.evaluate<number>("performance.now()");
     if (!(await until(page, `${editor} && !${editor}.hasAttribute("data-loading") && ${editor}.querySelector(".monaco-editor .view-lines")`, "Monaco in the jq editor", 30_000))) return null;
