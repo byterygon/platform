@@ -15,6 +15,10 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
 
+# TSK-89: rust-cache saves on main only (`save-if`). Each Rust cache is 0.5 to 2.2 GB and the
+# repository's cache is 10 GB, so caches saved by pull requests (usable by that pull request only)
+# evicted main's, which every pull request restores from.
+
 jobs:
   # TSK-89: what a pull request affects, from the real dependency graphs (scripts/affected.mjs:
   # pnpm packages, Cargo crates, Cargo.lock and pnpm-lock.yaml diffed per crate and package, the
@@ -83,8 +87,9 @@ jobs:
       options: --user 1001 --cap-add SYS_ADMIN --cap-add NET_ADMIN --shm-size 2g
     env:
       # TSK-89: the affected crates as `-p a -p b ...`, or `--workspace`; read from the
-      # environment (not interpolated into the scripts).
-      CARGO_ARGS: ${{ needs.affected.outputs.cargo_args || '--workspace' }}
+      # environment (not interpolated into the scripts). Not named CARGO_*: rust-cache hashes those
+      # variables into its key, and a key that changes with every pull request never restores.
+      AFFECTED_CARGO_ARGS: ${{ needs.affected.outputs.cargo_args || '--workspace' }}
       AFFECTED_ALL: ${{ needs.affected.outputs.all }}
       AFFECTED_CRATES: ${{ needs.affected.outputs.crate_list }}
     steps:
@@ -92,6 +97,8 @@ jobs:
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # DBee spec §2 (TSK-38): the desktop app embeds the built UI (apps/dbee/ui/dist), so the
       # bundle is built before the Rust steps and the cold start below measures the real app.
       # (TSK-89: Node and the UI only when dbee-desktop or Mightyconsole is affected.)
@@ -107,12 +114,12 @@ jobs:
       - run: pnpm --filter @byterygon/dbee build
         if: ${{ needs.affected.outputs.dbee_desktop != 'false' }}
       - run: cargo fmt --all --check
-      - run: cargo clippy $CARGO_ARGS --all-targets --locked -- -D warnings
+      - run: cargo clippy $AFFECTED_CARGO_ARGS --all-targets --locked -- -D warnings
       - name: Build documentation
-        run: cargo doc $CARGO_ARGS --no-deps --locked
+        run: cargo doc $AFFECTED_CARGO_ARGS --no-deps --locked
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: cargo test $CARGO_ARGS --locked
+      - run: cargo test $AFFECTED_CARGO_ARGS --locked
         env:
           BYTERYGON_REQUIRE_POSTGRES: "1"
           BYTERYGON_REQUIRE_WRITER_GATE: "1"
@@ -198,6 +205,8 @@ jobs:
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -236,6 +245,8 @@ jobs:
         if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/ambidex ') }}
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
         if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/ambidex ') }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -375,6 +386,8 @@ jobs:
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

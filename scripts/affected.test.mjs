@@ -13,9 +13,11 @@ import {
   cargoWorkspaceEdges,
   computeAffected,
   globToRegExp,
+  labTools,
   parseCargoLock,
   pnpmLockAffected,
   readCargoWorkspace,
+  readLabTools,
   readPnpmWorkspace,
 } from "./affected.mjs";
 
@@ -214,4 +216,19 @@ test("the Rust graph matches cargo metadata's workspace dependencies", { skip: !
     const fromCargo = [...new Set(p.dependencies.filter((d) => names.has(d.name) && d.path).map((d) => d.name))].sort();
     assert.deepEqual([...(crateDeps.get(p.name) ?? [])].sort(), fromCargo, p.name);
   }
+});
+
+test("the Mightyconsole lab brings up only the tools whose own files changed", () => {
+  const tools = readLabTools(ROOT);
+  assert.ok(tools.includes("langgraph") && tools.includes("temporal") && tools.includes("docker"));
+  const lab = (files, extra = {}) => labTools({ files, packages, crates, crateDeps, ...extra }, tools);
+  assert.deepEqual(lab(["apps/mightyconsole/ui/src/tools/langgraph/thread.tsx"]), ["langgraph"]);
+  assert.deepEqual(lab(["apps/mightyconsole/server/src/tools/temporal/mod.rs", "apps/mightyconsole/ui/test/temporal-actions.test.tsx", "apps/mightyconsole/acceptance/checklists/temporal.mts"]), ["temporal"]);
+  assert.deepEqual(lab(["apps/mightyconsole/lab/docker-host/seed.sh", "apps/mightyconsole/lab/langgraph/agent.py"]), ["docker", "langgraph"]);
+  // The shell, the server core, the sample tool, shared packages: every tool.
+  for (const file of ["apps/mightyconsole/server/src/lib.rs", "apps/mightyconsole/ui/src/tools/echo/index.tsx", "apps/mightyconsole/lab/compose.yaml", "packages/ui/src/index.ts"]) assert.equal(lab([file]), "all", file);
+  assert.equal(lab(["apps/mightyconsole/ui/src/tools/langgraph/thread.tsx", "apps/mightyconsole/server/src/api.rs"]), "all");
+  assert.equal(lab(["crates/db-driver/src/lib.rs"]), "none");
+  assert.equal(lab(["README.md"]), "none");
+  assert.equal(lab([], { event: "schedule" }), "all");
 });

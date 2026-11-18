@@ -8,10 +8,10 @@ name: Mightyconsole lab
 # uploads its evidence (summary.md, logs, screenshots); TSK-84 adds LangGraph's.
 on:
   pull_request:
-    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", ".github/workflows/mightyconsole-lab.yml"]
+    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", ".github/workflows/mightyconsole-lab.yml", "scripts/affected*.mjs"]
   push:
     branches: [main]
-    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", ".github/workflows/mightyconsole-lab.yml"]
+    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", ".github/workflows/mightyconsole-lab.yml", "scripts/affected*.mjs"]
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -24,37 +24,83 @@ jobs:
     name: Mightyconsole lab
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # TSK-89: a pull request brings up only the profiles of the tools whose own files changed
+    # (scripts/affected.mjs, LAB_TOOL_FILES in scripts/affected-rules.mjs); any other Mightyconsole
+    # change, a push, the weekly run and a manual run bring up every tool. The foundation checklist
+    # needs every service, so it runs with every tool; a tool's checklist runs with its tool.
+    env:
+      BASE: ${{ github.event.pull_request.base.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - name: Affected tools
+        id: tools
+        run: |
+          node scripts/affected.mjs --event "$GITHUB_EVENT_NAME" ${BASE:+--base "$BASE"} --head HEAD --github-output --pretty > "$RUNNER_TEMP/affected.json"
+          tools=$(node -p 'const t = require(process.argv[1]).lab_tools; Array.isArray(t) ? t.join(" ") : t' "$RUNNER_TEMP/affected.json")
+          echo "lab_tools: $tools"
+          echo "### Lab tools: $tools" >> "$GITHUB_STEP_SUMMARY"
       - name: Images pinned and listed
         run: node apps/mightyconsole/lab/lab.mts images check
+      # The tools as arguments ("all": none, which lab.mts reads as every tool).
       - name: Up
-        run: node apps/mightyconsole/lab/lab.mts up
+        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
+        env:
+          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
+        run: node apps/mightyconsole/lab/lab.mts up $LAB_TOOLS
       - name: Check
-        run: node apps/mightyconsole/lab/lab.mts check
+        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
+        env:
+          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
+        run: node apps/mightyconsole/lab/lab.mts check $LAB_TOOLS
       - name: Seeds are idempotent
+        if: ${{ steps.tools.outputs.lab_tools != 'none' }}
+        env:
+          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools != 'all' && steps.tools.outputs.lab_tools || '' }}
         run: |
-          node apps/mightyconsole/lab/lab.mts seed
-          node apps/mightyconsole/lab/lab.mts check
+          node apps/mightyconsole/lab/lab.mts seed $LAB_TOOLS
+          node apps/mightyconsole/lab/lab.mts check $LAB_TOOLS
       - name: LangGraph with no egress
+        if: ${{ steps.tools.outputs.lab_tools == 'all' || contains(format(' {0} ', steps.tools.outputs.lab_tools), ' langgraph ') }}
         run: node apps/mightyconsole/lab/lab.mts langgraph-offline
+      - name: Checklists to run
+        id: checklists
+        env:
+          LAB_TOOLS: ${{ steps.tools.outputs.lab_tools }}
+        run: |
+          # The checklists CI runs against the lab: foundation (every service) and LangGraph.
+          case " $LAB_TOOLS " in
+            " all ") lists="foundation langgraph" ;;
+            *" langgraph "*) lists="langgraph" ;;
+            *) lists="" ;;
+          esac
+          echo "checklists: ${lists:-none}"
+          echo "lists=$lists" >> "$GITHUB_OUTPUT"
       - name: Install toolchain from rust-toolchain.toml
+        if: ${{ steps.checklists.outputs.lists != '' }}
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ steps.checklists.outputs.lists != '' }}
         with:
           key: mightyconsole-acceptance
+          save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: ${{ steps.checklists.outputs.lists != '' }}
       - run: pnpm install --frozen-lockfile
+        if: ${{ steps.checklists.outputs.lists != '' }}
       # cargo-deny is not installed here (the CI job runs it), so that one check is skipped.
       - name: Acceptance (foundation and LangGraph, against the lab)
+        if: ${{ steps.checklists.outputs.lists != '' }}
         env:
           BYTERYGON_REQUIRE_BROWSER: "1"
+          LISTS: ${{ steps.checklists.outputs.lists }}
         run: |
           status=0
-          node apps/mightyconsole/acceptance/acceptance.mts foundation langgraph || status=$?
+          node apps/mightyconsole/acceptance/acceptance.mts $LISTS || status=$?
           cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
