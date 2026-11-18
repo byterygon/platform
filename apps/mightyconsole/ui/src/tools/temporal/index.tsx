@@ -1,13 +1,15 @@
 // `temporal`: the Temporal Web UI's replacement (Mightyconsole spec §9, TSK-83). This batch: the
 // profile and its form, namespaces, the workflow list and detail, the actions with their
-// confirmations, schedules and task queues.
+// confirmations, schedules, task queues and workers (TSK-92).
 import { Icon } from "@/components/ui/icon";
 import type { ConnectTemporalProfile } from "@/gen/api";
-import { CalendarClock, Clock, Flash, Search, Server } from "@/lib/icons";
+import { CalendarClock, Clock, Flash, Folder, List, Search, Server } from "@/lib/icons";
 import type { ResourceNode, ToolModule } from "../types";
 import { ConnectionForm } from "./ConnectionForm";
+import { NamespacesTab } from "./NamespacesTab";
 import { ScheduleTab, SchedulesTab } from "./SchedulesTab";
 import { TaskQueueTab } from "./TaskQueueTab";
+import { WorkersTab } from "./WorkersTab";
 import { WorkflowTab } from "./WorkflowTab";
 import { WorkflowsTab } from "./WorkflowsTab";
 import { namespaceOf, profile, savedQueriesOf } from "./profile";
@@ -23,12 +25,18 @@ export const temporalTool: ToolModule = {
   description: "Workflows, schedules and task queues of a Temporal cluster.",
   profile,
   ConnectionForm,
-  // The profile opens one namespace, so its Workflows, Schedules and Task queues sit directly under
-  // it (no extra level to expand); the namespace is in every tab's title. Saved queries are the
-  // children of Workflows.
+  // The profile opens one namespace, so its Workflows, Schedules, Task queues and Workers sit
+  // directly under it (no extra level to expand); the namespace is in every tab's title. Saved
+  // queries are the children of Workflows. Namespaces lists the others and opens their tabs.
   sidebarTree({ profile: p }): readonly ResourceNode[] {
     const namespace = namespaceOf(p);
     return [
+      {
+        id: `${p.id}/namespaces`,
+        label: "Namespaces",
+        icon: <Icon icon={Folder} />,
+        open: { kind: "temporal.namespaces", params: {}, title: "Namespaces" },
+      },
       {
         id: `${p.id}/workflows`,
         label: "Workflows",
@@ -50,12 +58,26 @@ export const temporalTool: ToolModule = {
       {
         id: `${p.id}/task-queues`,
         label: "Task queues",
-        icon: <Icon icon={Server} />,
+        icon: <Icon icon={List} />,
         open: { kind: "temporal.taskQueue", params: { namespace, name: "" }, title: `Task queues · ${namespace}` },
+      },
+      {
+        id: `${p.id}/workers`,
+        label: "Workers",
+        icon: <Icon icon={Server} />,
+        open: { kind: "temporal.workers", params: { namespace }, title: `Workers · ${namespace}` },
       },
     ];
   },
   tabKinds: {
+    "temporal.namespaces": {
+      title: () => "Namespaces",
+      Component: NamespacesTab,
+    },
+    "temporal.workers": {
+      title: (params) => `Workers · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
+      Component: WorkersTab,
+    },
     "temporal.workflows": {
       title: (params) => `Workflows · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
       Component: WorkflowsTab,

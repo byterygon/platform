@@ -262,6 +262,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.namespaces.describe",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.namespaces.list",
             Query,
             "temporal.read",
@@ -319,6 +326,13 @@ fn the_procedures_of_the_spec() {
         ),
         (
             "temporal.taskQueues.describe",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.workers.list",
             Query,
             "temporal.read",
             Risk::Read,

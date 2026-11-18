@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:8d6acc3ad333e754d4d1a6e77732770474e418b2ba52ef85f038296353e2d75a";
+export const SCHEMA_HASH = "sha256:4b4cc639b4ec8c02062cb5a28b70111d800657e440b9aec3096430a5ce06b49d";
 
 // ---- Types
 
@@ -65,6 +65,15 @@ codecs: Array<string>, };
  * approval request.
  */
 export type ApprovalRequiredDetails = { approval_id: string, };
+
+/**
+ * Whether closed workflows' histories or visibility records are archived, and where.
+ */
+export type Archival = { enabled: boolean, 
+/**
+ * The archive's URI when one is set.
+ */
+uri: string, };
 
 export type Assistant = { assistantId: string, graphId: string, name: string, description?: string, version?: number, config: JsonValue, context: JsonValue, metadata: JsonValue, createdAt: string, updatedAt: string, };
 
@@ -519,6 +528,39 @@ export type MappingTarget = { "kind": "subject", pattern: string, } | { "kind": 
  */
 export type MatchOp = "equals" | "contains" | "prefix" | "regex";
 
+export type NamespaceDescribeInput = { connId: string, namespace: string, };
+
+/**
+ * One namespace in full (`DescribeNamespace`).
+ */
+export type NamespaceDetail = { name: string, id: string, 
+/**
+ * `Registered`, `Deprecated`, `Deleted` or `Unspecified`.
+ */
+state: string, description: string, ownerEmail: string, retentionSecs?: number, historyArchival: Archival, visibilityArchival: Archival, isGlobal: boolean, 
+/**
+ * The cluster that accepts writes; empty when the server did not say.
+ */
+activeCluster: string, clusters: Array<string>, 
+/**
+ * The features the namespace reports as on, by their camelCase proto names
+ * (`eagerWorkflowStart`, `standaloneActivities`, ...).
+ */
+capabilities: Array<string>, limits: NamespaceLimits, 
+/**
+ * The namespace's own key-value data.
+ */
+data: Array<[string, string]>, };
+
+/**
+ * The size limits the namespace enforces, in bytes, when the server reports them.
+ */
+export type NamespaceLimits = { 
+/**
+ * A payload larger than this fails the workflow task (Temporal's default: 2 MiB).
+ */
+blobSizeLimitError?: number, memoSizeLimitError?: number, };
+
 /**
  * One namespace of the cluster.
  */
@@ -815,6 +857,12 @@ export type SearchAttributesOutput = { attributes: Array<SearchAttribute>,
  */
 fallback?: string, };
 
+export type SeenTaskQueue = { name: string, source: TaskQueueSource, 
+/**
+ * Why the queue could not be described.
+ */
+error?: string, };
+
 /**
  * A task of the next step: the node to run, its error, its interrupts.
  */
@@ -872,6 +920,11 @@ export type TaskQueueDescription = { workflowPollers: Array<Poller>, activityPol
  * Tasks waiting for a poller, when the server reports it.
  */
 workflowBacklog?: number, activityBacklog?: number, };
+
+/**
+ * Where a task queue was found.
+ */
+export type TaskQueueSource = "typed" | "workflows";
 
 /**
  * What the server reports about itself.
@@ -1100,6 +1153,35 @@ checkpointId?: string, checkpoint: JsonValue, };
  * Whether encoding writes the Confluent wire format (spec §5.3).
  */
 export type WireFormat = "confluent" | "none";
+
+/**
+ * One worker on one task queue.
+ */
+export type WorkerRow = { identity: string, taskQueue: string, pollsWorkflows: boolean, pollsActivities: boolean, 
+/**
+ * The build id it reports (worker versioning or deployment options).
+ */
+buildId?: string, deploymentName?: string, 
+/**
+ * Its latest poll on either kind, RFC 3339.
+ */
+lastAccessTime?: string, 
+/**
+ * Tasks per second over both kinds, as the server measures it.
+ */
+ratePerSecond: number, };
+
+export type WorkersListInput = { connId: string, namespace?: string | null, 
+/**
+ * Task queues to describe besides the ones seen.
+ */
+taskQueues?: Array<string> | null, };
+
+export type WorkersListOutput = { workers: Array<WorkerRow>, taskQueues: Array<SeenTaskQueue>, 
+/**
+ * More task queues were seen than one call describes (50); typed ones come first.
+ */
+truncated: boolean, };
 
 /**
  * Everything `DescribeWorkflowExecution` says, payloads decoded.
@@ -1342,6 +1424,7 @@ export interface Procedures {
   readonly "messaging.schemas.update": ProcedureDef<"mutation", SchemasUpdateInput, SchemasUpdateOutput, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
+  readonly "temporal.namespaces.describe": ProcedureDef<"query", NamespaceDescribeInput, NamespaceDetail, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
   readonly "temporal.namespaces.searchAttributes": ProcedureDef<"query", SearchAttributesInput, SearchAttributesOutput, ToolError>;
   readonly "temporal.schedules.delete": ProcedureDef<"mutation", ScheduleRef, Empty, ToolError>;
@@ -1351,6 +1434,7 @@ export interface Procedures {
   readonly "temporal.schedules.trigger": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.unpause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.taskQueues.describe": ProcedureDef<"query", TaskQueueDescribeInput, TaskQueueDescription, ToolError>;
+  readonly "temporal.workers.list": ProcedureDef<"query", WorkersListInput, WorkersListOutput, ToolError>;
   readonly "temporal.workflows.cancel": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
   readonly "temporal.workflows.count": ProcedureDef<"query", WorkflowsCountInput, WorkflowsCountOutput, ToolError>;
   readonly "temporal.workflows.describe": ProcedureDef<"query", WorkflowRef, WorkflowDetail, ToolError>;
@@ -1435,6 +1519,7 @@ export interface Api {
     readonly connect: Procedures["temporal.connect"];
     readonly disconnect: Procedures["temporal.disconnect"];
     readonly namespaces: {
+      readonly describe: Procedures["temporal.namespaces.describe"];
       readonly list: Procedures["temporal.namespaces.list"];
       readonly searchAttributes: Procedures["temporal.namespaces.searchAttributes"];
     };
@@ -1448,6 +1533,9 @@ export interface Api {
     };
     readonly taskQueues: {
       readonly describe: Procedures["temporal.taskQueues.describe"];
+    };
+    readonly workers: {
+      readonly list: Procedures["temporal.workers.list"];
     };
     readonly workflows: {
       readonly cancel: Procedures["temporal.workflows.cancel"];
@@ -1907,6 +1995,16 @@ export const procedures: Api = {
       timeoutMaxMs: 300000,
     },
     namespaces: {
+      describe: {
+        name: "temporal.namespaces.describe",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       list: {
         name: "temporal.namespaces.list",
         kind: "query",
@@ -1993,6 +2091,18 @@ export const procedures: Api = {
     taskQueues: {
       describe: {
         name: "temporal.taskQueues.describe",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    workers: {
+      list: {
+        name: "temporal.workers.list",
         kind: "query",
         perm: "temporal.read",
         risk: "Read",
