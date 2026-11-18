@@ -9,6 +9,12 @@ set -eu
 archive=$1
 version=$2
 image="byterygon/mightyconsole:$version"
+# A first argument that is not a file is an image reference (the manifest the workflow pushed to
+# its throwaway registry): it is pulled for this runner's architecture instead of loaded.
+if [ ! -f "$archive" ]; then
+  image=$archive
+  archive=
+fi
 offline="mightyconsole-check-offline-$$"
 served="mightyconsole-check-served-$$"
 volume="mightyconsole-check-data-$$"
@@ -20,10 +26,14 @@ trap cleanup EXIT
 fail() { echo "image-check: $*" >&2; exit 1; }
 
 docker image rm "$image" >/dev/null 2>&1 || true
-docker load -i "$archive"
+if [ -n "$archive" ]; then docker load -i "$archive"; else docker pull "$image"; fi
 docker run --rm "$image" --version | tee /dev/stderr | grep -q "^mightyconsole-server $version " ||
   fail "--version does not say $version"
 [ "$(docker image inspect -f '{{.Config.User}}' "$image")" = "65532:65532" ] || fail "the image does not run as 65532"
+[ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.source"}}' "$image")" = "https://github.com/byterygon/platform" ] || fail "no source label"
+[ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.licenses"}}' "$image")" = "AGPL-3.0-only" ] || fail "no licenses label"
+[ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' "$image")" = "$version" ] || fail "no version label"
+[ -n "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" ] || fail "no revision label"
 
 # No network at all: it still starts (nothing to fetch) and makes its certificate.
 docker volume create "$volume" >/dev/null

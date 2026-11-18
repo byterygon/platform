@@ -7,7 +7,7 @@
 //   node apps/mightyconsole/release/release.mts check
 //   node apps/mightyconsole/release/release.mts notes [--out FILE]
 //   node apps/mightyconsole/release/release.mts package --name linux-x64 --binary PATH --notices FILE [--out DIR]
-//   node apps/mightyconsole/release/release.mts image --arch amd64|arm64 --binary PATH --notices FILE [--out DIR]
+//   node apps/mightyconsole/release/release.mts image --arch amd64|arm64 --binary PATH --notices FILE [--out DIR] [--revision SHA]
 //   node apps/mightyconsole/release/release.mts docs --notices FILE [--out DIR]
 //   node apps/mightyconsole/release/release.mts smoke --binary PATH [--version V]
 //   node apps/mightyconsole/release/release.mts checksums DIR
@@ -20,7 +20,8 @@
 // without the tool's server module.
 //
 // Nothing here tags or publishes: `package` and `image` write files, the workflow uploads them as
-// artifacts, and only a tag a person pushes leads to a draft release.
+// artifacts, and only a tag a person pushes leads to a draft release. The same trigger (or a
+// manual run with publish on) pushes the image to ghcr.io through `publish-image.sh` (TSK-88).
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, createReadStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -175,7 +176,7 @@ export function packageArchive(options: { name: string; binary: string; notices:
 }
 
 /** Builds `byterygon/mightyconsole:<version>` for one architecture and saves it, gzipped. */
-export function buildImage(options: { arch: string; binary: string; notices: string; out: string; notes?: Note[] }): string {
+export function buildImage(options: { arch: string; binary: string; notices: string; out: string; revision?: string; notes?: Note[] }): string {
   if (options.arch !== "amd64" && options.arch !== "arm64") throw new Error("--arch: amd64 or arm64");
   const notes = options.notes ?? readNotes();
   const version = versionFor(notes);
@@ -187,9 +188,11 @@ export function buildImage(options: { arch: string; binary: string; notices: str
   mkdirSync(join(context, "data"));
   writeFileSync(join(context, "data", ".keep"), "");
   const tag = `byterygon/mightyconsole:${version}`;
+  // The commit the image was built from (label org.opencontainers.image.revision, TSK-88).
+  const revision = options.revision ?? process.env["GITHUB_SHA"] ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   execFileSync(
     "docker",
-    ["buildx", "build", "--platform", `linux/${options.arch}`, "--build-arg", `VERSION=${version}`, "--provenance=false", "-f", join(RELEASE_DIR, "Dockerfile"), "-t", tag, "--load", context],
+    ["buildx", "build", "--platform", `linux/${options.arch}`, "--build-arg", `VERSION=${version}`, "--build-arg", `REVISION=${revision}`, "--provenance=false", "-f", join(RELEASE_DIR, "Dockerfile"), "-t", tag, "--load", context],
     { stdio: "inherit" },
   );
   const archive = resolve(options.out, `mightyconsole-${version}-image-linux-${options.arch}.tar.gz`);
@@ -324,7 +327,7 @@ async function main(args: string[]): Promise<void> {
     }
     case "image": {
       mkdirSync(out(), { recursive: true });
-      console.log(buildImage({ arch: option(rest, "--arch"), binary: option(rest, "--binary"), notices: option(rest, "--notices"), out: out() }));
+      console.log(buildImage({ arch: option(rest, "--arch"), binary: option(rest, "--binary"), notices: option(rest, "--notices"), out: out(), ...(rest.includes("--revision") ? { revision: option(rest, "--revision") } : {}) }));
       return;
     }
     case "docs": {
@@ -344,7 +347,7 @@ async function main(args: string[]): Promise<void> {
       return;
     }
     default:
-      console.error(`usage: release.mts version | check | notes [--out FILE] | package --name NAME --binary PATH --notices FILE [--out DIR] | image --arch amd64|arm64 --binary PATH --notices FILE [--out DIR] | docs --notices FILE [--out DIR] | smoke --binary PATH [--version V] | checksums DIR`);
+      console.error(`usage: release.mts version | check | notes [--out FILE] | package --name NAME --binary PATH --notices FILE [--out DIR] | image --arch amd64|arm64 --binary PATH --notices FILE [--out DIR] [--revision SHA] | docs --notices FILE [--out DIR] | smoke --binary PATH [--version V] | checksums DIR`);
       process.exitCode = 2;
   }
 }

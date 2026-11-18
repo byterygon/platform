@@ -37,11 +37,26 @@ Privacy & Security). Windows SmartScreen may warn: choose **More info**, then **
 
 ### Or as a container
 
+From GitHub Packages (linux/amd64 and linux/arm64 in one image):
+
+```sh
+docker pull ghcr.io/byterygon/mightyconsole:<version>      # e.g. 0.1.0-alpha.1; `alpha` floats, `latest` is 0.1.0 and later
+docker run -d --name mightyconsole -p 127.0.0.1:7443:7443 \
+  -v mightyconsole-data:/data ghcr.io/byterygon/mightyconsole:<version>
+```
+
+On a machine with no network, load the file from this release instead (or move the image with
+`docker save ghcr.io/byterygon/mightyconsole:<version> | gzip > mightyconsole-image.tar.gz` on a
+connected machine and `docker load -i mightyconsole-image.tar.gz` on the other one):
+
 ```sh
 docker load -i mightyconsole-<version>-image-linux-amd64.tar.gz      # or -arm64
 docker run -d --name mightyconsole -p 127.0.0.1:7443:7443 \
   -v mightyconsole-data:/data byterygon/mightyconsole:<version>
 ```
+
+The published image carries a build provenance attestation:
+`gh attestation verify oci://ghcr.io/byterygon/mightyconsole:<version> --repo byterygon/platform`.
 
 Always publish the port on `127.0.0.1` as above. Inside the container the server listens on all
 of the container's addresses, so it prints its exposure warning; the `-p 127.0.0.1:…` mapping is
@@ -49,7 +64,8 @@ what keeps it on your machine. Keep host port 7443: the page must be opened at t
 server expects (`https://localhost:7443`). Other options go after the image name, starting with
 `serve --listen 0.0.0.0:7443`, for example
 `… byterygon/mightyconsole:<version> serve --listen 0.0.0.0:7443 --tls-cert /data/cert.pem --tls-key /data/key.pem`.
-The image is not on any registry: it is the file in this release.
+The image in the file and the one on ghcr.io are the same bytes. Never publish the port on a
+shared network: there is no login.
 
 ## Open it
 

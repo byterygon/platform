@@ -11,8 +11,20 @@ name: Mightyconsole release
 # that touch the release files run it too, as their test. (The build fetches crates and npm
 # packages once; what it makes downloads nothing when installed or run.)
 
+# TSK-88: the two images are also pushed, as one multi-arch manifest, to
+# ghcr.io/byterygon/mightyconsole (tags: the version; `alpha` while in alpha; `latest` from 0.1.0).
+# That happens only when a person triggers it: by pushing a `mightyconsole-v<version>` tag, or a
+# manual run on main with "publish" ticked. Pull requests, main and any other run push the same
+# manifest to a throwaway registry inside the job, pull it back and run the image check on it.
+# `packages: write` belongs to the publish job alone.
+
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Push the image to ghcr.io/byterygon/mightyconsole (main only; never overwrites a version tag)"
+        type: boolean
+        default: false
   push:
     tags: ["mightyconsole-v*"]
   pull_request:
@@ -255,3 +267,100 @@ jobs:
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" release/* --draft $prerelease --verify-tag \
             --title "Mightyconsole $VERSION" --notes-file release/RELEASE-NOTES.md
+
+  # Every run that does not publish: the same script, into a registry that lives and dies with
+  # the job. Proves the manifest (both platforms, tags, labels) and that a version is not reusable.
+  manifest-check:
+    name: Multi-arch manifest (local registry, nothing pushed)
+    if: github.ref_type != 'tag' && !(github.event_name == 'workflow_dispatch' && inputs.publish)
+    needs: [prepare, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      REPOSITORY: localhost:5000/byterygon/mightyconsole
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-image-*
+          path: images
+          merge-multiple: true
+      - name: skopeo
+        run: command -v skopeo || { sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends skopeo; }
+      - name: One manifest from the two images
+        env:
+          DEST_TLS_VERIFY: "false"
+        run: |
+          sh apps/mightyconsole/release/publish-image.sh "$REPOSITORY" "$VERSION" "$GITHUB_SHA" \
+            "images/mightyconsole-$VERSION-image-linux-amd64.tar.gz" "images/mightyconsole-$VERSION-image-linux-arm64.tar.gz"
+          docker buildx imagetools inspect "$REPOSITORY:$VERSION"
+          case "$VERSION" in
+            *-alpha.*) docker buildx imagetools inspect "$REPOSITORY:alpha" >/dev/null ;;
+            *-*) ;;
+            *) docker buildx imagetools inspect "$REPOSITORY:latest" >/dev/null ;;
+          esac
+      - name: A version tag is never overwritten
+        env:
+          DEST_TLS_VERIFY: "false"
+        run: |
+          if sh apps/mightyconsole/release/publish-image.sh "$REPOSITORY" "$VERSION" "$GITHUB_SHA" \
+            "images/mightyconsole-$VERSION-image-linux-amd64.tar.gz" "images/mightyconsole-$VERSION-image-linux-arm64.tar.gz"; then
+            echo "a second push of $VERSION was accepted"; exit 1
+          fi
+      - name: Pulled back from the registry, starts with no network and serves on 127.0.0.1
+        run: sh apps/mightyconsole/release/image-check.sh "$REPOSITORY:$VERSION" "$VERSION"
+
+  # Only a person's tag push, or a manual run on main with "publish" on, gets here.
+  publish:
+    name: Publish to ghcr.io
+    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    needs: [prepare, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: mightyconsole-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io/byterygon/mightyconsole
+      id-token: write # the provenance attestation is signed with the run's identity
+      attestations: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      REPOSITORY: ghcr.io/byterygon/mightyconsole
+    steps:
+      - name: A manual publish comes from main only
+        if: github.ref_type != 'tag' && github.ref != 'refs/heads/main'
+        run: |
+          echo "publish from main or a tag, not $GITHUB_REF"
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-image-*
+          path: images
+          merge-multiple: true
+      - name: skopeo
+        run: command -v skopeo || { sudo apt-get -o Acquire::Retries=3 update && sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends skopeo; }
+      - name: Log in to ghcr.io
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: One multi-arch manifest from the two checked images
+        id: push
+        run: |
+          sh apps/mightyconsole/release/publish-image.sh "$REPOSITORY" "$VERSION" "$GITHUB_SHA" \
+            "images/mightyconsole-$VERSION-image-linux-amd64.tar.gz" "images/mightyconsole-$VERSION-image-linux-arm64.tar.gz"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.REPOSITORY }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Pulled back from ghcr.io, starts with no network and serves on 127.0.0.1
+        run: sh apps/mightyconsole/release/image-check.sh "$REPOSITORY:$VERSION" "$VERSION"

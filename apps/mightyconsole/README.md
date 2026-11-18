@@ -56,8 +56,14 @@ version follows: `0.1.0-alpha.N`, and `0.1.0` once all six are in. Then run the 
 built in (Linux x64 and arm64 static, macOS Apple silicon and Intel, Windows x64), a container
 image per Linux architecture, the licence, the third-party notices, the README, the release notes
 and `SHA256SUMS`, and checks the binaries and images with no network. Its artifacts are the
-release. It never tags or publishes; a tag `mightyconsole-v<version>` pushed by a person makes a
-draft release for that person to publish.
+release. It never tags itself; a tag `mightyconsole-v<version>` pushed by a person makes a
+draft release for that person to publish, and (TSK-88) pushes the two images as one multi-arch
+manifest to `ghcr.io/byterygon/mightyconsole` (tags: the version; `alpha` while in alpha; `latest`
+from 0.1.0; a version tag is never overwritten) with a provenance attestation. The same push
+comes from a manual run on main with **publish** ticked. Every other run (pull requests, main)
+pushes the manifest only to a throwaway registry inside the job, pulls it back and checks it.
+The first publish makes the package private: make it public in Package settings (Danger Zone >
+Change visibility) if wanted; the workflow never changes visibility.
 
 The same steps by hand:
 
