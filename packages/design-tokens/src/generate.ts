@@ -150,7 +150,7 @@ export function generateTokens(theme: unknown, catalog: Catalog = DEFAULT_CATALO
   const rampNames = Object.keys(seeds.colors).sort((a, b) => rampOrder(a) - rampOrder(b));
   const neutralSeed = seeds.colors["neutral"];
   for (const scheme of ["light", "dark"] as const) {
-    const reference = neutralSeed ? generateRamp(neutralSeed, scheme, { thresholds }) : undefined;
+    const reference = neutralSeed ? generateRamp(neutralSeed, scheme, { thresholds, solidText: "higher-contrast" }) : undefined;
     for (const rampName of rampNames) {
       const seed = seeds.colors[rampName]!;
       const generated =
@@ -261,7 +261,7 @@ function addRamp(name: string, scheme: Scheme, generated: Ramp, add: (token: Tok
     type: "color",
     tier: "primitive",
     value: colorValue(generated.contrast),
-    description: `${label}: the text and icon colour for its solids (steps 9 and 10), ${generated.contrastIs === "white" ? "white" : "a near-black ink"} because that contrasts more. ${PRIMITIVE_RULE}`,
+    description: `${label}: the text and icon colour for its solids (steps 9 and 10), ${generated.contrastIs === "white" ? "white" : "a near-black ink, because the solid is too light for white"}. ${PRIMITIVE_RULE}`,
     ramp: { name, scheme, step: "contrast" },
   });
 }

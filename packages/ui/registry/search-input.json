@@ -179,7 +179,7 @@
         "color.ring",
         "color.ring-inner",
         "color.status.danger.border",
-        "color.status.danger.solid",
+        "color.status.danger.stroke",
         "font.sans",
         "motion.duration.faster",
         "motion.easing.easy-ease",

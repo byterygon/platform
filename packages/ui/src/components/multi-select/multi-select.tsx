@@ -28,7 +28,7 @@ const frameClasses = [
   fieldFrame,
   "has-[[data-slot=multi-select-chip]]:ps-inline-xs",
   "has-[input:focus-visible]:shadow-focus-underline data-popup-open:shadow-focus-underline",
-  "data-invalid:border-danger-border data-invalid:border-b-danger has-[[aria-invalid=true]]:border-danger-border has-[[aria-invalid=true]]:border-b-danger",
+  "data-invalid:border-danger-border data-invalid:border-b-danger-stroke has-[[aria-invalid=true]]:border-danger-border has-[[aria-invalid=true]]:border-b-danger-stroke",
   "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",
 ];
 

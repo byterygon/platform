@@ -15,7 +15,7 @@ export const tabsVariants = {
   /** Fluent's tab appearance: `transparent` (an accent underline under the selected tab), `subtle` (a wash behind it), or Byterygon's `enclosed` editor tabs. */
   appearance: {
     transparent: [
-      "-mb-px border-b-2 border-transparent text-fg-muted hover:text-fg data-active:border-accent-solid data-active:text-fg",
+      "-mb-px border-b-2 border-transparent text-fg-muted hover:text-fg data-active:border-accent-compound data-active:text-fg",
       "data-[orientation=vertical]:mb-0 data-[orientation=vertical]:-me-px data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e-2",
     ],
     subtle: "rounded-md text-fg-muted hover:bg-hover hover:text-fg active:bg-pressed data-active:bg-selected data-active:text-fg",
@@ -47,8 +47,8 @@ const classes = {
   list: "flex min-w-0 items-stretch overflow-x-auto data-[orientation=vertical]:flex-col data-[orientation=vertical]:overflow-x-visible",
   item: [
     "relative flex shrink-0",
-    "before:absolute before:inset-y-0 before:left-0 before:z-[var(--by-z-sticky)] before:hidden before:w-px before:bg-accent-solid data-[drop=before]:before:block",
-    "after:absolute after:inset-y-0 after:right-0 after:z-[var(--by-z-sticky)] after:hidden after:w-px after:bg-accent-solid data-[drop=after]:after:block",
+    "before:absolute before:inset-y-0 before:left-0 before:z-[var(--by-z-sticky)] before:hidden before:w-px before:bg-accent-compound data-[drop=before]:before:block",
+    "after:absolute after:inset-y-0 after:right-0 after:z-[var(--by-z-sticky)] after:hidden after:w-px after:bg-accent-compound data-[drop=after]:after:block",
     "data-dragging:opacity-[var(--by-opacity-disabled)]",
   ],
   trigger: [

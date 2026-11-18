@@ -3,7 +3,7 @@
   "name": "switch",
   "type": "registry:ui",
   "title": "Switch",
-  "description": "An on/off switch on Base UI's Switch: a track that fills with the accent solid and a sliding thumb, in three sizes.",
+  "description": "An on/off switch on Base UI's Switch: a track that fills with the compound accent and a sliding thumb, in three sizes.",
   "dependencies": [
     "@base-ui/react"
   ],
@@ -15,7 +15,7 @@
     {
       "path": "ui/switch.tsx",
       "type": "registry:ui",
-      "content": "import { Switch as SwitchPrimitive } from \"@base-ui/react/switch\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, focusRing, type ControlSizeProp } from \"@/lib/control\";\n\n// An on/off switch on Base UI's Switch: a focusable <span role=\"switch\"> with a hidden <input>\n// for forms, and a thumb inside. The track's end padding is one thumb wide, so the thumb slides\n// by its own width (translate-x-full) with no computed lengths. The group's classes style the\n// thumb (`*:`), the only child. Fluent 2's Switch: off, an outlined track (the accessible stroke)\n// with a thumb of the same colour; on, the accent track with a thumb in its foreground.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const switchVariants = {\n  size: {\n    small: \"pe-[var(--by-size-icon-xs)] *:size-icon-xs\",\n    medium: \"pe-[var(--by-size-icon-sm)] *:size-icon-sm\",\n    large: \"pe-[var(--by-size-icon-md)] *:size-icon-md\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex shrink-0 items-center rounded-full border border-border-strong bg-transparent p-px\",\n  \"transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease\",\n  \"hover:bg-hover\",\n  \"data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover data-checked:active:bg-accent-solid-active\",\n  focusRing,\n  \"data-invalid:data-unchecked:border-danger-border aria-invalid:data-unchecked:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:data-checked:bg-disabled\",\n  \"*:rounded-full *:bg-fg-muted data-checked:*:bg-accent-solid-fg data-disabled:*:bg-fg-disabled\",\n  \"*:transition-transform *:duration-[var(--by-motion-duration-fast)] *:ease-easy-ease motion-reduce:*:transition-none\",\n  \"data-checked:*:translate-x-full rtl:data-checked:*:-translate-x-full\",\n];\n\nexport interface SwitchProps extends Omit<SwitchPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Thumb size: small 12, medium 14 (Fluent's), large 16 px; the track is two thumbs wide (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A setting that is on or off and takes effect at once (\"Read-only connection\"), on Base UI's\n * Switch. Use `checked` and `onCheckedChange`, or `defaultChecked`. Wrap it in a FieldLabel with\n * its text. The ref reaches the `<span role=\"switch\">`.\n */\nexport function Switch({ size, className, ...props }: SwitchProps) {\n  const thumb = controlSize(size);\n  return (\n    <SwitchPrimitive.Root data-slot=\"switch\" data-size={thumb} className={cn(base, switchVariants.size[thumb], className)} {...props}>\n      <SwitchPrimitive.Thumb data-slot=\"switch-thumb\" />\n    </SwitchPrimitive.Root>\n  );\n}\n"
+      "content": "import { Switch as SwitchPrimitive } from \"@base-ui/react/switch\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, focusRing, type ControlSizeProp } from \"@/lib/control\";\n\n// An on/off switch on Base UI's Switch: a focusable <span role=\"switch\"> with a hidden <input>\n// for forms, and a thumb inside. The track's end padding is one thumb wide, so the thumb slides\n// by its own width (translate-x-full) with no computed lengths. The group's classes style the\n// thumb (`*:`), the only child. Fluent 2's Switch: off, an outlined track (the accessible stroke)\n// with a thumb of the same colour; on, the accent track with a thumb in its foreground.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const switchVariants = {\n  size: {\n    small: \"pe-[var(--by-size-icon-xs)] *:size-icon-xs\",\n    medium: \"pe-[var(--by-size-icon-sm)] *:size-icon-sm\",\n    large: \"pe-[var(--by-size-icon-md)] *:size-icon-md\",\n  },\n} as const;\n\nconst base = [\n  \"inline-flex shrink-0 items-center rounded-full border border-border-strong bg-transparent p-px\",\n  \"transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease\",\n  \"hover:bg-hover\",\n  \"data-checked:border-transparent data-checked:bg-accent-compound data-checked:hover:bg-accent-compound-hover data-checked:active:bg-accent-compound-active\",\n  focusRing,\n  \"data-invalid:data-unchecked:border-danger-border aria-invalid:data-unchecked:border-danger-border\",\n  \"data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:data-checked:bg-disabled\",\n  \"*:rounded-full *:bg-fg-muted data-checked:*:bg-accent-compound-fg data-disabled:*:bg-fg-disabled\",\n  \"*:transition-transform *:duration-[var(--by-motion-duration-fast)] *:ease-easy-ease motion-reduce:*:transition-none\",\n  \"data-checked:*:translate-x-full rtl:data-checked:*:-translate-x-full\",\n];\n\nexport interface SwitchProps extends Omit<SwitchPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Thumb size: small 12, medium 14 (Fluent's), large 16 px; the track is two thumbs wide (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A setting that is on or off and takes effect at once (\"Read-only connection\"), on Base UI's\n * Switch. Use `checked` and `onCheckedChange`, or `defaultChecked`. Wrap it in a FieldLabel with\n * its text. The ref reaches the `<span role=\"switch\">`.\n */\nexport function Switch({ size, className, ...props }: SwitchProps) {\n  const thumb = controlSize(size);\n  return (\n    <SwitchPrimitive.Root data-slot=\"switch\" data-size={thumb} className={cn(base, switchVariants.size[thumb], className)} {...props}>\n      <SwitchPrimitive.Thumb data-slot=\"switch-thumb\" />\n    </SwitchPrimitive.Root>\n  );\n}\n"
     }
   ],
   "meta": {
@@ -23,7 +23,7 @@
       "schemaVersion": 1,
       "name": "switch",
       "title": "Switch",
-      "description": "An on/off switch on Base UI's Switch: a track that fills with the accent solid and a sliding thumb, in three sizes.",
+      "description": "An on/off switch on Base UI's Switch: a track that fills with the compound accent and a sliding thumb, in three sizes.",
       "usage": "Use Switch for a setting that takes effect as soon as it is flipped (\"Auto-commit\", \"Read-only connection\"), in settings panels and side panels. Wrap it in a FieldLabel with its text (the text may come first) inside a Field, and add a FieldDescription for what it does; group related switches in a FieldSet with a FieldLegend. With TanStack Form wire checked, onCheckedChange and onBlur to the field. For a choice that only applies when a form is submitted, use Checkbox; for a toolbar toggle, ToggleButton. The old sizes sm/md/lg still work for one release.",
       "status": "experimental",
       "base": "@base-ui/react/switch",
@@ -126,7 +126,7 @@
         {
           "name": "hover",
           "variant": "hover",
-          "description": "Pointer over the switch: color.interactive.hover off, the accent solid's hover colour on."
+          "description": "Pointer over the switch: color.interactive.hover off, color.accent.compound-hover on."
         },
         {
           "name": "checked",
@@ -134,7 +134,7 @@
           "props": {
             "defaultChecked": true
           },
-          "description": "On: the accent solid track with a thumb in color.accent.fg, at the end."
+          "description": "On: a color.accent.compound track with a thumb in color.accent.compound-fg, at the end."
         },
         {
           "name": "focus-visible",
@@ -156,10 +156,10 @@
         }
       ],
       "tokens": [
-        "color.accent.bg",
-        "color.accent.bg-active",
-        "color.accent.bg-hover",
-        "color.accent.fg",
+        "color.accent.compound",
+        "color.accent.compound-active",
+        "color.accent.compound-fg",
+        "color.accent.compound-hover",
         "color.bg.disabled",
         "color.border.disabled",
         "color.border.strong",

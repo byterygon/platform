@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "name": "switch",
   "title": "Switch",
-  "description": "An on/off switch on Base UI's Switch: a track that fills with the accent solid and a sliding thumb, in three sizes.",
+  "description": "An on/off switch on Base UI's Switch: a track that fills with the compound accent and a sliding thumb, in three sizes.",
   "usage": "Use Switch for a setting that takes effect as soon as it is flipped (\"Auto-commit\", \"Read-only connection\"), in settings panels and side panels. Wrap it in a FieldLabel with its text (the text may come first) inside a Field, and add a FieldDescription for what it does; group related switches in a FieldSet with a FieldLegend. With TanStack Form wire checked, onCheckedChange and onBlur to the field. For a choice that only applies when a form is submitted, use Checkbox; for a toolbar toggle, ToggleButton. The old sizes sm/md/lg still work for one release.",
   "status": "experimental",
   "base": "@base-ui/react/switch",
@@ -106,7 +106,7 @@
     {
       "name": "hover",
       "variant": "hover",
-      "description": "Pointer over the switch: color.interactive.hover off, the accent solid's hover colour on."
+      "description": "Pointer over the switch: color.interactive.hover off, color.accent.compound-hover on."
     },
     {
       "name": "checked",
@@ -114,7 +114,7 @@
       "props": {
         "defaultChecked": true
       },
-      "description": "On: the accent solid track with a thumb in color.accent.fg, at the end."
+      "description": "On: a color.accent.compound track with a thumb in color.accent.compound-fg, at the end."
     },
     {
       "name": "focus-visible",
@@ -136,10 +136,10 @@
     }
   ],
   "tokens": [
-    "color.accent.bg",
-    "color.accent.bg-active",
-    "color.accent.bg-hover",
-    "color.accent.fg",
+    "color.accent.compound",
+    "color.accent.compound-active",
+    "color.accent.compound-fg",
+    "color.accent.compound-hover",
     "color.bg.disabled",
     "color.border.disabled",
     "color.border.strong",

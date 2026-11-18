@@ -173,6 +173,7 @@
     "color.accent.bg",
     "color.accent.bg-active",
     "color.accent.bg-hover",
+    "color.accent.compound",
     "color.accent.fg",
     "color.accent.subtle-bg",
     "color.accent.subtle-fg",

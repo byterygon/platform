@@ -33,14 +33,14 @@ const trackClasses = [
   "data-[orientation=vertical]:h-full data-[orientation=vertical]:w-track",
 ];
 
-const indicatorClasses = ["rounded-full bg-accent-solid data-disabled:bg-fg-disabled data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"];
+const indicatorClasses = ["rounded-full bg-accent-compound data-disabled:bg-fg-disabled data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full"];
 
 const thumbClasses = [
-  "rounded-full border-4 border-surface bg-accent-solid shadow-raised",
+  "rounded-full border-4 border-surface bg-accent-compound shadow-raised",
   "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
-  "hover:bg-accent-solid-hover data-dragging:bg-accent-solid-active",
+  "hover:bg-accent-compound-hover data-dragging:bg-accent-compound-active",
   focusRingWithin,
-  "data-invalid:bg-danger",
+  "data-invalid:bg-danger-stroke",
   "data-disabled:bg-fg-disabled",
 ];
 

@@ -13,7 +13,9 @@
  *
  * See AGENTS.md for how to add a role.
  */
+import { type Scheme, WCAG_AA, WCAG_AAA, generateRamp } from "../color/ramp.js";
 import type { ShadowLayer } from "../model.js";
+import type { ResolvedSeeds } from "../seeds.js";
 import { type Catalog, type RoleDef, byDensity, byTheme, layer, pairs, px, ramp, ref } from "./authoring.js";
 import { DOMAIN_PAIRS, DOMAIN_ROLES } from "./domain.js";
 import { ELEVATION_ROLES } from "./elevation.js";
@@ -185,7 +187,7 @@ const border: RoleDef[] = [
   {
     path: "color.ring",
     type: "color",
-    value: ramp("brand", 9),
+    value: ref("color.accent.compound"),
     tailwind: "--color-ring",
     use: "The focus ring of any focusable element.",
     avoid: "Not a decorative border and not a selection colour: use color.interactive.selected.",
@@ -210,8 +212,8 @@ const accent: RoleDef[] = [
     // shadcn/ui's `bg-accent` is a hover background (its --accent), so Byterygon components use
     // `bg-accent-solid`, and a project with stock shadcn components can keep shadcn's meaning.
     tailwindAliases: ["--color-accent-solid"],
-    use: "The filled background of the primary action and of checked controls.",
-    avoid: "Not for large areas, and not more than one primary action per view.",
+    use: "The filled background of the primary action and other filled buttons with a label: white text in both schemes, as Fluent's brand background.",
+    avoid: "Not for large areas, and not more than one primary action per view. Not for checked controls, indicators or strokes, which must stand out from the surface: use color.accent.compound.",
   },
   {
     path: "color.accent.bg-hover",
@@ -225,11 +227,51 @@ const accent: RoleDef[] = [
   {
     path: "color.accent.bg-active",
     type: "color",
-    value: ramp("brand", 11),
+    // Dark: under white text (the usual case) step 11 is a light text step that white fails on,
+    // so the press goes to step 7, a darker fill (Fluent's dark pressed brand is darker than its
+    // rest colour too). A brand whose dark solid takes dark ink keeps step 11, lighter still.
+    value: (seeds) => ramp("brand", 11, solidTextOf(seeds, "brand", "dark") === "ink" ? 11 : 7),
     tailwind: "--color-accent-active",
     tailwindAliases: ["--color-accent-solid-active"],
     use: "color.accent.bg while pressed.",
     avoid: "Not a resting colour.",
+  },
+  // Fluent's compound brand: the accent where it must stand out from the surface rather than
+  // carry white text. Light: the solid itself. Dark: the solid is dark enough for white text, so
+  // these take the ramp's light steps.
+  {
+    path: "color.accent.compound",
+    type: "color",
+    value: ramp("brand", 9, 11),
+    tailwind: "--color-accent-compound",
+    use: "The accent as a fill, stroke or indicator on a neutral surface: a checked checkbox, switch or radio, a slider, a progress bar, a spinner, the selected tab's line, a focused field's underline, a selection outline (Fluent's compound brand). At least 3:1 on every surface.",
+    avoid: "Not the fill of a button with a label: use color.accent.bg. Text on it uses color.accent.compound-fg, never color.accent.fg.",
+  },
+  {
+    path: "color.accent.compound-hover",
+    type: "color",
+    value: ramp("brand", 10, 12),
+    tailwind: "--color-accent-compound-hover",
+    use: "color.accent.compound while hovered (lighter in the dark scheme, as Fluent's).",
+    avoid: "Not a resting colour.",
+  },
+  {
+    path: "color.accent.compound-active",
+    type: "color",
+    // Dark: no lighter step sits between 11 and the hover, so a press keeps the rest colour.
+    value: ramp("brand", 11, 11),
+    tailwind: "--color-accent-compound-active",
+    use: "color.accent.compound while pressed or dragged.",
+    avoid: "Not a resting colour.",
+  },
+  {
+    path: "color.accent.compound-fg",
+    type: "color",
+    // Dark: step 1 is the darkest step, and step 11 is solved to 4.5:1 against it.
+    value: byTheme(ref("color.brand.contrast"), ref("color.brand-dark.1")),
+    tailwind: "--color-accent-compound-fg",
+    use: "The check mark, switch thumb or number on color.accent.compound and its hover and pressed colours: white in light, a dark ink in dark (Fluent's inverted neutral foreground).",
+    avoid: "Not on color.accent.bg: use color.accent.fg.",
   },
   {
     path: "color.accent.subtle-bg",
@@ -398,8 +440,21 @@ const status: RoleDef[] = STATUS.flatMap((s): RoleDef[] => [
     value: ramp(s.ramp, 7),
     tailwind: `--color-${s.name}-border`,
     use: `The outline of a ${s.name} alert or banner, on color.status.${s.name}.bg.`,
-    avoid: "Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+    avoid: "Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
   },
+  ...(s.name === "danger"
+    ? [
+        {
+          path: "color.status.danger.stroke",
+          type: "color",
+          // Dark: the solid is dark enough for white text, too dark to show on a dark surface.
+          value: ramp(s.ramp, 9, 11),
+          tailwind: "--color-danger-stroke",
+          use: "The danger colour as a stroke or a fill without text that must reach 3:1 on the surface: the edges of an invalid field, an invalid slider.",
+          avoid: "Not the fill of a destructive button: use color.status.danger.solid, which carries white text.",
+        } satisfies RoleDef,
+      ]
+    : []),
 ]);
 
 const shape: RoleDef[] = [
@@ -548,7 +603,15 @@ const WASHES = [
   "color.interactive.drag",
 ];
 const SURFACES = ["color.bg.canvas", "color.bg.surface", "color.bg.raised", "color.bg.overlay", "color.bg.inset"];
+/** The text colour the engine gives a ramp's solids in a scheme ("white" or "ink"). */
+function solidTextOf(seeds: ResolvedSeeds, rampName: string, scheme: Scheme): "white" | "ink" {
+  const seed = seeds.colors[rampName];
+  if (!seed) return "white";
+  return generateRamp(seed, scheme, { thresholds: seeds.contrast.level === "AAA" ? WCAG_AAA : WCAG_AA }).contrastIs;
+}
+
 const SOLIDS = ["color.accent.bg", "color.accent.bg-hover", "color.accent.bg-active"];
+const COMPOUNDS = ["color.accent.compound", "color.accent.compound-hover", "color.accent.compound-active"];
 const NEUTRAL_SOLIDS = ["color.neutral.bg", "color.neutral.bg-hover", "color.neutral.bg-active"];
 
 export const DEFAULT_CATALOG: Catalog = {
@@ -579,6 +642,7 @@ export const DEFAULT_CATALOG: Catalog = {
     ...pairs("text", ["color.fg.default", "color.fg.muted"], WASHES, "color.bg.overlay"),
     // Filled controls.
     ...pairs("text", ["color.fg.on-accent", "color.accent.fg"], SOLIDS),
+    ...pairs("text", ["color.accent.compound-fg"], COMPOUNDS),
     ...pairs("text", ["color.neutral.fg"], NEUTRAL_SOLIDS),
     ...STATUS.flatMap((s) => pairs("text", [`color.status.${s.name}.solid-fg`], [`color.status.${s.name}.solid`, `color.status.${s.name}.solid-hover`])),
     ...pairs("text", ["color.accent.subtle-fg"], ["color.accent.subtle-bg"]),
@@ -589,7 +653,9 @@ export const DEFAULT_CATALOG: Catalog = {
     ),
     // Non-text contrast (WCAG 1.4.11): what identifies a control, and the focus ring.
     ...pairs("ui", ["color.border.strong", "color.ring", "color.border.focus"], SURFACES),
-    ...pairs("ui", ["color.accent.bg", "color.status.danger.solid"], ["color.bg.canvas", "color.bg.surface"]),
+    // A checked control, an indicator, an invalid edge. The solids of labelled buttons are
+    // identified by their text, so they carry text pairs only (Fluent's brand background).
+    ...pairs("ui", ["color.accent.compound", "color.status.danger.stroke"], ["color.bg.canvas", "color.bg.surface"]),
     // The layered look: text and controls on translucent layers, over the backdrop.
     ...layerPairs(SURFACES),
     ...DOMAIN_PAIRS,

@@ -24,7 +24,7 @@ const dayButton = [
   "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
   "hover:bg-hover active:bg-pressed",
   focusRing,
-  "data-today:border-accent-solid data-today:text-body-1-strong",
+  "data-today:border-accent-compound data-today:text-body-1-strong",
   "data-outside:text-fg-subtle",
   "data-selected:bg-accent-solid data-selected:text-accent-solid-fg data-selected:hover:bg-accent-solid-hover data-selected:active:bg-accent-solid-active",
   "data-range-start:rounded-e-none data-range-end:rounded-s-none",

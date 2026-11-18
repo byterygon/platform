@@ -34,7 +34,7 @@ interface QueryTab {
 }
 
 const ModifiedDot = () => <span aria-label="modified" role="img" className="size-icon-xs shrink-0 rounded-full bg-fg-muted" />;
-const RunningDot = () => <span aria-label="running" role="img" className="size-icon-xs shrink-0 rounded-full bg-accent-solid" />;
+const RunningDot = () => <span aria-label="running" role="img" className="size-icon-xs shrink-0 rounded-full bg-accent-compound" />;
 
 const PlusIcon = () => <Icon icon={Add} />;
 

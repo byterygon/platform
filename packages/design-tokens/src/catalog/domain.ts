@@ -156,11 +156,16 @@ const chartCat: RoleDef[] = CATEGORICAL.map((name, index) =>
   ),
 );
 
-/** Sequential: the brand ramp from its lightest tint to its darkest text step. */
+/**
+ * Sequential: the brand ramp from its lightest tint to its darkest text step. The dark scheme
+ * skips the solids (9, 10), which are darker than step 8 there (white text), so its scale runs
+ * 2-8, 11, 12 and keeps brightening.
+ */
+const SEQ_DARK = [2, 3, 4, 5, 6, 7, 8, 11, 12];
 const chartSeq: RoleDef[] = Array.from({ length: 9 }, (_, index) =>
   color(
     `chart.seq.${index + 1}`,
-    ramp("brand", index + 3),
+    ramp("brand", index + 3, SEQ_DARK[index]!),
     `Step ${index + 1} of 9 of a sequential scale: heat maps and choropleths where the value goes from low to high. Light to strong in the light scheme; it brightens in the dark one.`,
     "Not for unordered groups (use chart.cat.*) or values that pass through a neutral midpoint (use chart.div.*).",
     `--color-chart-seq-${index + 1}`,
@@ -181,7 +186,8 @@ const DIVERGING: readonly (readonly [string, number])[] = [
 const chartDiv: RoleDef[] = DIVERGING.map(([name, step], index) =>
   color(
     `chart.div.${index + 1}`,
-    ramp(name, step),
+    // Dark: step 10 is a solid under white text, darker than step 8 there; 11 is the strong end.
+    ramp(name, step, step === 10 ? 11 : step),
     `Step ${index + 1} of 9 of a diverging scale, strong red through a neutral midpoint (5) to strong blue: profit and loss, change against a baseline. Red and blue stay apart for colour-blind readers.`,
     "Not for data without a meaningful midpoint (use chart.seq.*), and not to mean good or bad: red here is only one end of the scale.",
     `--color-chart-div-${index + 1}`,

@@ -29,8 +29,8 @@ const base = [
   "flex w-full min-w-0 items-center gap-inline-md",
   fieldFrame,
   "has-[[data-slot=input-group-input]:focus-visible]:shadow-focus-underline",
-  "has-[[data-slot=input-group-input][aria-invalid=true]]:border-danger-border has-[[data-slot=input-group-input][aria-invalid=true]]:border-b-danger",
-  "has-[[data-slot=input-group-input][data-invalid]]:border-danger-border has-[[data-slot=input-group-input][data-invalid]]:border-b-danger",
+  "has-[[data-slot=input-group-input][aria-invalid=true]]:border-danger-border has-[[data-slot=input-group-input][aria-invalid=true]]:border-b-danger-stroke",
+  "has-[[data-slot=input-group-input][data-invalid]]:border-danger-border has-[[data-slot=input-group-input][data-invalid]]:border-b-danger-stroke",
   "has-[[data-slot=input-group-input][data-disabled]]:cursor-not-allowed has-[[data-slot=input-group-input][data-disabled]]:border-border-disabled",
   "has-[[data-slot=input-group-input][data-disabled]]:bg-transparent has-[[data-slot=input-group-input][data-disabled]]:text-fg-disabled",
 ];

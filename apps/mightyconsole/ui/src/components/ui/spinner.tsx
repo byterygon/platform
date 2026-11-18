@@ -14,7 +14,7 @@ import { tokenMs, useLoopAnimation } from "@/lib/motion";
 export const spinnerVariants = {
   variant: {
     current: "text-current",
-    accent: "text-accent-solid",
+    accent: "text-accent-compound",
     muted: "text-fg-muted",
   },
   size: {

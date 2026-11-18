@@ -23,11 +23,11 @@ export const checkboxVariants = {
 } as const;
 
 const base = [
-  "inline-flex shrink-0 items-center justify-center rounded-xs border border-border-strong bg-layer-alt text-accent-solid-fg",
+  "inline-flex shrink-0 items-center justify-center rounded-xs border border-border-strong bg-layer-alt text-accent-compound-fg",
   "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
   "hover:bg-hover",
-  "data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover data-checked:active:bg-accent-solid-active",
-  "data-indeterminate:border-transparent data-indeterminate:bg-accent-solid data-indeterminate:hover:bg-accent-solid-hover",
+  "data-checked:border-transparent data-checked:bg-accent-compound data-checked:hover:bg-accent-compound-hover data-checked:active:bg-accent-compound-active",
+  "data-indeterminate:border-transparent data-indeterminate:bg-accent-compound data-indeterminate:hover:bg-accent-compound-hover",
   focusRing,
   "aria-invalid:border-danger-border data-invalid:border-danger-border",
   "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",

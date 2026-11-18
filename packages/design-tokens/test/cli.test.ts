@@ -228,13 +228,13 @@ test("preset: list, show, create from a preset with --set", async () => {
 });
 
 test("preset create: pinned steps are named, --unset removes them, --force writes a failing theme for fix", async () => {
-  // The default preset pins brand 9 to 11 for #6b4eff: a new brand hue does not reach them.
+  // The default preset pins brand 9 to 11 and dark 9 to 10 for #6b4eff: a new brand hue does not reach them.
   const pinned = await cli("preset", "create", "teal", "--from", "default", "--set", "seeds.colors.brand.hue=230", "--out", "teal-pinned.theme.json", "--json");
   assert.equal(pinned.code, EXIT.ok);
-  assert.match(pinned.json.notes[0], /overrides color\.brand\.9, color\.brand\.10, color\.brand\.11 keep their own values.*--unset overrides\.color\.brand\.9/);
+  assert.match(pinned.json.notes[0], /overrides color\.brand\.9, color\.brand\.10, color\.brand\.11, color\.brand-dark\.9, color\.brand-dark\.10 keep their own values.*--unset overrides\.color\.brand\.9/);
   const rounder = await cli("preset", "create", "round", "--from", "default", "--set", "seeds.radius=2", "--json");
   assert.match(rounder.json.notes[0], /overrides radius\.lg keep their own values.*--unset overrides\.radius\.lg/);
-  const unpinned = ["--unset", "overrides.color.brand.9", "--unset", "overrides.color.brand.10", "--unset", "overrides.color.brand.11"];
+  const unpinned = ["9", "10", "11", "dark.9", "dark.10"].flatMap((step) => ["--unset", `overrides.color.brand${step.startsWith("dark") ? "-" : "."}${step}`]);
   const teal = await cli("preset", "create", "teal", "--from", "default", "--set", "seeds.colors.brand.hue=230", ...unpinned, "--json");
   assert.deepEqual([teal.code, teal.json.written, teal.json.notes], [EXIT.ok, true, []]);
   assert.equal(JSON.parse(readFileSync(join(scratch, "teal.theme.json"), "utf8")).overrides["color.brand.9"], undefined);

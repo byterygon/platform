@@ -487,7 +487,7 @@ function applyUnset(theme: Record<string, unknown>, path: string): void {
 
 /**
  * Overrides that pin steps of a ramp whose seed a --set changed: the new seed does not reach them
- * (the default preset pins brand 9 to 11 to #6b4eff). One note per ramp, naming the --unset to add.
+ * (the default preset pins brand 9 to 11 and dark 9 to 10 to #6b4eff). One note per ramp, naming the --unset to add.
  */
 function pinnedNotes(theme: Record<string, unknown>, sets: readonly string[]): string[] {
   const overrides = isPlainObject(theme["overrides"]) ? Object.keys(theme["overrides"]) : [];

@@ -11,9 +11,10 @@ import { closest, isPlainObject } from "./util.js";
  * keeps the two equal.
  *
  * The default theme is Aurora (DOC-17 open question 104, TSK-57): the violet #6b4eff brand (hue
- * 282.5; the seed chroma is what the dark solid can show, the light steps 9-11 are overridden to
- * the full chroma in the theme file) with the solid lightness of #6b4eff and the canvas's #a998ff,
- * on a cool grey neutral (hue 275, a faint tint). The previous blue-teal default is the `classic`
+ * 282.5; the seed chroma is what the lighter dark steps can show; the theme file overrides the
+ * solids to #6b4eff's full chroma, light steps 9-11 and dark steps 9-10, so the primary button is
+ * the same violet with white text in both schemes) with the solid lightness of #6b4eff, on a cool
+ * grey neutral (hue 275, a faint tint). The previous blue-teal default is the `classic`
  * preset. Amber is the one other ramp with a light solid, because a dark amber reads as brown.
  *
  * `brand` and `neutral` are a theme's identity: a theme that gives its own takes their optional
@@ -24,7 +25,7 @@ import { closest, isPlainObject } from "./util.js";
 export const DEFAULT_SEEDS: Seeds = {
   colors: {
     neutral: { hue: 275, chroma: 0.012, tint: 0.006 },
-    brand: { hue: 282.5, chroma: 0.165, solid: { light: 0.5656, dark: 0.7365 } },
+    brand: { hue: 282.5, chroma: 0.165, solid: { light: 0.5656 } },
     red: { hue: 27, chroma: 0.2 },
     amber: { hue: 75, chroma: 0.15, solid: { light: 0.8, dark: 0.8 } },
     green: { hue: 150, chroma: 0.14 },

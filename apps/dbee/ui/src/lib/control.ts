@@ -117,7 +117,7 @@ export const fieldFrame =
  */
 export const fieldStates = [
   "focus-visible:shadow-focus-underline",
-  "aria-invalid:border-danger-border aria-invalid:border-b-danger data-invalid:border-danger-border data-invalid:border-b-danger",
+  "aria-invalid:border-danger-border aria-invalid:border-b-danger-stroke data-invalid:border-danger-border data-invalid:border-b-danger-stroke",
   "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",
 ].join(" ");
 

@@ -140,7 +140,7 @@
     }
   ],
   "tokens": [
-    "color.accent.bg",
+    "color.accent.compound",
     "color.bg.inset",
     "color.fg.default",
     "color.fg.muted",

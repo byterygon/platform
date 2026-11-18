@@ -223,7 +223,7 @@
     "color.fg.subtle",
     "color.interactive.hover",
     "color.status.danger.border",
-    "color.status.danger.solid",
+    "color.status.danger.stroke",
     "elevation.flyout.shadow",
     "font.sans",
     "motion.duration.fast",

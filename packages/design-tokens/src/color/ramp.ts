@@ -172,7 +172,7 @@ export interface Ramp {
   readonly seed: RampSeed;
   /** Twelve steps, index 0 is step 1. */
   readonly steps: readonly RampStep[];
-  /** The text colour for the solids (steps 9 and 10): white or a near-black ink, whichever contrasts more. */
+  /** The text colour for the solids (steps 9 and 10): white or a near-black ink (see `RampOptions.solidText`). */
   readonly contrast: Oklch;
   readonly contrastHex: string;
   readonly contrastIs: "white" | "ink";
@@ -187,6 +187,14 @@ export interface RampOptions {
    * text colour sits on neutral backgrounds), and it supplies the alpha backdrop.
    */
   readonly reference?: Ramp;
+  /**
+   * How the text colour of the solids is chosen. "white-first" (the default): white, the solid
+   * darkened until it holds, unless the seed pins a solid too light for white. "higher-contrast":
+   * white or ink, whichever contrasts more at the recipe's lightness; the neutral ramp uses it, so
+   * its dark solids stay light (Fluent's inverted neutral) and its steps 9-10 stay the dark
+   * scheme's subtle text.
+   */
+  readonly solidText?: "white-first" | "higher-contrast";
 }
 
 /** Chroma lost to gamut mapping on the solid before the generator warns about it. */
@@ -216,8 +224,20 @@ export function generateRamp(seed: RampSeed, scheme: Scheme, options: RampOption
   // The solid (9), its text colour, and its hover state (10).
   const ink = settle({ l: recipe.ink.l, c: Math.min(recipe.ink.c, seed.chroma * 0.25), h: seed.hue });
   const solidStart = colors[8]!;
+  const whiteOnSolid = wcagContrast(WHITE_RGB, rgbOf(solidStart));
+  const inkOnSolid = wcagContrast(rgbOf(ink), rgbOf(solidStart));
+  // "white-first" (Fluent's foreground on brand): the solid is darkened until white text holds,
+  // and takes dark ink only when the seed pins its lightness (an amber) where white fails and ink
+  // contrasts more. "higher-contrast": whichever contrasts more at the recipe's lightness.
+  const pinned = seed.solid?.[scheme] !== undefined;
   const contrastIs: "white" | "ink" =
-    wcagContrast(WHITE_RGB, rgbOf(solidStart)) >= wcagContrast(rgbOf(ink), rgbOf(solidStart)) ? "white" : "ink";
+    (options.solidText ?? "white-first") === "white-first"
+      ? pinned && whiteOnSolid < thresholds.text && inkOnSolid > whiteOnSolid
+        ? "ink"
+        : "white"
+      : whiteOnSolid >= inkOnSolid
+        ? "white"
+        : "ink";
   const contrast = contrastIs === "white" ? WHITE : ink;
   const solidDirection = contrastIs === "white" ? -1 : 1;
   const solid = solveLightness({

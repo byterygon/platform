@@ -21,11 +21,11 @@ const base = [
   "inline-flex shrink-0 items-center rounded-full border border-border-strong bg-transparent p-px",
   "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
   "hover:bg-hover",
-  "data-checked:border-transparent data-checked:bg-accent-solid data-checked:hover:bg-accent-solid-hover data-checked:active:bg-accent-solid-active",
+  "data-checked:border-transparent data-checked:bg-accent-compound data-checked:hover:bg-accent-compound-hover data-checked:active:bg-accent-compound-active",
   focusRing,
   "data-invalid:data-unchecked:border-danger-border aria-invalid:data-unchecked:border-danger-border",
   "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:data-checked:bg-disabled",
-  "*:rounded-full *:bg-fg-muted data-checked:*:bg-accent-solid-fg data-disabled:*:bg-fg-disabled",
+  "*:rounded-full *:bg-fg-muted data-checked:*:bg-accent-compound-fg data-disabled:*:bg-fg-disabled",
   "*:transition-transform *:duration-[var(--by-motion-duration-fast)] *:ease-easy-ease motion-reduce:*:transition-none",
   "data-checked:*:translate-x-full rtl:data-checked:*:-translate-x-full",
 ];

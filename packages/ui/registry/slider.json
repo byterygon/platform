@@ -15,7 +15,7 @@
     {
       "path": "ui/slider.tsx",
       "type": "registry:ui",
-      "content": "import { Slider as SliderPrimitive } from \"@base-ui/react/slider\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, focusRingWithin, type ControlSizeProp } from \"@/lib/control\";\n\n// A slider on Base UI's Slider: a track of size.track, an accent indicator for the selected part\n// and one thumb per value (two for a range). Each thumb holds a native <input type=\"range\">, so\n// the keyboard and screen readers work as on any range input; the ring follows that input.\n// Fluent 2's Slider: a rail in the accessible stroke, the accent for the chosen part, and a thumb\n// that is an accent disc inside a ring of the surface colour.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const sliderVariants = {\n  size: {\n    small: \"[&_[data-slot=slider-thumb]]:size-icon-md\",\n    medium: \"[&_[data-slot=slider-thumb]]:size-icon-lg\",\n    large: \"[&_[data-slot=slider-thumb]]:size-icon-xl\",\n  },\n} as const;\n\nconst base = [\n  \"flex w-full min-w-0 touch-none select-none font-sans\",\n  \"data-[orientation=vertical]:h-full data-[orientation=vertical]:w-auto\",\n  \"data-disabled:cursor-not-allowed\",\n];\n\nconst controlClasses = [\n  \"flex h-control-sm w-full items-center\",\n  \"data-[orientation=vertical]:h-full data-[orientation=vertical]:w-control-xs data-[orientation=vertical]:justify-center\",\n];\n\nconst trackClasses = [\n  \"relative h-track w-full rounded-full bg-border-strong data-disabled:bg-border-disabled\",\n  \"data-[orientation=vertical]:h-full data-[orientation=vertical]:w-track\",\n];\n\nconst indicatorClasses = [\"rounded-full bg-accent-solid data-disabled:bg-fg-disabled data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full\"];\n\nconst thumbClasses = [\n  \"rounded-full border-4 border-surface bg-accent-solid shadow-raised\",\n  \"transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease\",\n  \"hover:bg-accent-solid-hover data-dragging:bg-accent-solid-active\",\n  focusRingWithin,\n  \"data-invalid:bg-danger\",\n  \"data-disabled:bg-fg-disabled\",\n];\n\nexport interface SliderProps extends Omit<SliderPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Thumb size: small 16, medium 20 (Fluent's), large 24 px (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Accessible name of the thumb when there is no FieldLabel. */\n  \"aria-label\"?: string;\n  /** Names each thumb of a range (\"Minimum\", \"Maximum\"); the index is the thumb's. */\n  getAriaLabel?: (index: number) => string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A slider on Base UI's Slider: a number (`value`, `onValueChange`) or a range (an array of two\n * numbers, two thumbs) between `min` and `max` in `step`s. Inside a Field it takes the label and\n * validity. Vertical sliders need a height from the layout. The ref reaches the root `<div>`.\n */\nexport function Slider({ size, \"aria-label\": ariaLabel, getAriaLabel, className, ...props }: SliderProps) {\n  const thumb = controlSize(size);\n  const initial = props.value ?? props.defaultValue;\n  const count = Array.isArray(initial) ? initial.length : 1;\n  return (\n    <SliderPrimitive.Root data-slot=\"slider\" data-size={thumb} className={cn(base, sliderVariants.size[thumb], className)} {...props}>\n      <SliderPrimitive.Control data-slot=\"slider-control\" className={cn(controlClasses)}>\n        <SliderPrimitive.Track data-slot=\"slider-track\" className={cn(trackClasses)}>\n          <SliderPrimitive.Indicator data-slot=\"slider-indicator\" className={cn(indicatorClasses)} />\n          {Array.from({ length: count }, (_, index) => (\n            <SliderPrimitive.Thumb\n              key={index}\n              index={index}\n              data-slot=\"slider-thumb\"\n              aria-label={getAriaLabel ? undefined : ariaLabel}\n              getAriaLabel={getAriaLabel}\n              className={cn(thumbClasses)}\n            />\n          ))}\n        </SliderPrimitive.Track>\n      </SliderPrimitive.Control>\n    </SliderPrimitive.Root>\n  );\n}\n"
+      "content": "import { Slider as SliderPrimitive } from \"@base-ui/react/slider\";\nimport { cn } from \"@/lib/cn\";\nimport { controlSize, focusRingWithin, type ControlSizeProp } from \"@/lib/control\";\n\n// A slider on Base UI's Slider: a track of size.track, an accent indicator for the selected part\n// and one thumb per value (two for a range). Each thumb holds a native <input type=\"range\">, so\n// the keyboard and screen readers work as on any range input; the ring follows that input.\n// Fluent 2's Slider: a rail in the accessible stroke, the accent for the chosen part, and a thumb\n// that is an accent disc inside a ring of the surface colour.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const sliderVariants = {\n  size: {\n    small: \"[&_[data-slot=slider-thumb]]:size-icon-md\",\n    medium: \"[&_[data-slot=slider-thumb]]:size-icon-lg\",\n    large: \"[&_[data-slot=slider-thumb]]:size-icon-xl\",\n  },\n} as const;\n\nconst base = [\n  \"flex w-full min-w-0 touch-none select-none font-sans\",\n  \"data-[orientation=vertical]:h-full data-[orientation=vertical]:w-auto\",\n  \"data-disabled:cursor-not-allowed\",\n];\n\nconst controlClasses = [\n  \"flex h-control-sm w-full items-center\",\n  \"data-[orientation=vertical]:h-full data-[orientation=vertical]:w-control-xs data-[orientation=vertical]:justify-center\",\n];\n\nconst trackClasses = [\n  \"relative h-track w-full rounded-full bg-border-strong data-disabled:bg-border-disabled\",\n  \"data-[orientation=vertical]:h-full data-[orientation=vertical]:w-track\",\n];\n\nconst indicatorClasses = [\"rounded-full bg-accent-compound data-disabled:bg-fg-disabled data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full\"];\n\nconst thumbClasses = [\n  \"rounded-full border-4 border-surface bg-accent-compound shadow-raised\",\n  \"transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease\",\n  \"hover:bg-accent-compound-hover data-dragging:bg-accent-compound-active\",\n  focusRingWithin,\n  \"data-invalid:bg-danger-stroke\",\n  \"data-disabled:bg-fg-disabled\",\n];\n\nexport interface SliderProps extends Omit<SliderPrimitive.Root.Props, \"className\" | \"children\"> {\n  /** Thumb size: small 16, medium 20 (Fluent's), large 24 px (`sm`, `md`, `lg` are deprecated aliases). */\n  size?: ControlSizeProp | undefined;\n  /** Accessible name of the thumb when there is no FieldLabel. */\n  \"aria-label\"?: string;\n  /** Names each thumb of a range (\"Minimum\", \"Maximum\"); the index is the thumb's. */\n  getAriaLabel?: (index: number) => string;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string;\n}\n\n/**\n * A slider on Base UI's Slider: a number (`value`, `onValueChange`) or a range (an array of two\n * numbers, two thumbs) between `min` and `max` in `step`s. Inside a Field it takes the label and\n * validity. Vertical sliders need a height from the layout. The ref reaches the root `<div>`.\n */\nexport function Slider({ size, \"aria-label\": ariaLabel, getAriaLabel, className, ...props }: SliderProps) {\n  const thumb = controlSize(size);\n  const initial = props.value ?? props.defaultValue;\n  const count = Array.isArray(initial) ? initial.length : 1;\n  return (\n    <SliderPrimitive.Root data-slot=\"slider\" data-size={thumb} className={cn(base, sliderVariants.size[thumb], className)} {...props}>\n      <SliderPrimitive.Control data-slot=\"slider-control\" className={cn(controlClasses)}>\n        <SliderPrimitive.Track data-slot=\"slider-track\" className={cn(trackClasses)}>\n          <SliderPrimitive.Indicator data-slot=\"slider-indicator\" className={cn(indicatorClasses)} />\n          {Array.from({ length: count }, (_, index) => (\n            <SliderPrimitive.Thumb\n              key={index}\n              index={index}\n              data-slot=\"slider-thumb\"\n              aria-label={getAriaLabel ? undefined : ariaLabel}\n              getAriaLabel={getAriaLabel}\n              className={cn(thumbClasses)}\n            />\n          ))}\n        </SliderPrimitive.Track>\n      </SliderPrimitive.Control>\n    </SliderPrimitive.Root>\n  );\n}\n"
     }
   ],
   "meta": {
@@ -162,7 +162,7 @@
         {
           "name": "indicator",
           "element": "div",
-          "description": "The selected part of the track in the accent solid; data-slot=\"slider-indicator\"."
+          "description": "The selected part of the track in color.accent.compound; data-slot=\"slider-indicator\"."
         },
         {
           "name": "thumb",
@@ -189,7 +189,7 @@
         {
           "name": "invalid",
           "variant": "data-invalid",
-          "description": "In an invalid Field: the thumbs' disc is the danger solid."
+          "description": "In an invalid Field: the thumbs' disc is color.status.danger.stroke."
         },
         {
           "name": "disabled",
@@ -201,16 +201,16 @@
         }
       ],
       "tokens": [
-        "color.accent.bg",
-        "color.accent.bg-active",
-        "color.accent.bg-hover",
+        "color.accent.compound",
+        "color.accent.compound-active",
+        "color.accent.compound-hover",
         "color.bg.surface",
         "color.border.disabled",
         "color.border.strong",
         "color.fg.disabled",
         "color.ring",
         "color.ring-inner",
-        "color.status.danger.solid",
+        "color.status.danger.stroke",
         "font.sans",
         "motion.duration.faster",
         "motion.easing.easy-ease",
@@ -232,7 +232,7 @@
         "Each thumb holds a native <input type=\"range\">, so screen readers announce it as a slider with its value, and Tab reaches each thumb.",
         "Arrow keys move by step, PageUp/PageDown and Shift+arrow by largeStep, Home and End to min and max.",
         "A FieldLabel names a single thumb; name both thumbs of a range with getAriaLabel (\"Minimum length\", \"Maximum length\"). Use format so units are announced.",
-        "The thumb is an accent disc in a ring of the surface colour (the accent solid is 3:1 on every surface); the rail is color.border.strong (3:1) and the selected part the accent solid.",
+        "The thumb is an accent disc in a ring of the surface colour (color.accent.compound is 3:1 on every surface); the rail is color.border.strong (3:1) and the selected part color.accent.compound.",
         "Focus shows Fluent's accent underline (shadow.focus-underline) around the thumb (3:1 on every surface)."
       ]
     },

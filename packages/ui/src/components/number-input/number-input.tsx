@@ -27,7 +27,7 @@ const groupClasses = [
   "flex w-full min-w-0 items-stretch overflow-hidden",
   fieldFrame,
   "has-[[data-slot=number-input-input]:focus-visible]:shadow-focus-underline",
-  "data-invalid:border-danger-border data-invalid:border-b-danger has-[[aria-invalid=true]]:border-danger-border has-[[aria-invalid=true]]:border-b-danger",
+  "data-invalid:border-danger-border data-invalid:border-b-danger-stroke has-[[aria-invalid=true]]:border-danger-border has-[[aria-invalid=true]]:border-b-danger-stroke",
   "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",
 ];
 

@@ -176,6 +176,7 @@
   ],
   "tokens": [
     "color.accent.bg",
+    "color.accent.compound",
     "color.accent.fg",
     "color.bg.layer",
     "color.border.subtle",
