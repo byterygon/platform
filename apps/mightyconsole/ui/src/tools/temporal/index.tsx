@@ -6,6 +6,7 @@ import type { ConnectTemporalProfile } from "@/gen/api";
 import { Clock, Flash, Search } from "@/lib/icons";
 import type { ResourceNode, ToolModule } from "../types";
 import { ConnectionForm } from "./ConnectionForm";
+import { WorkflowTab } from "./WorkflowTab";
 import { WorkflowsTab } from "./WorkflowsTab";
 import { namespaceOf, profile, savedQueriesOf } from "./profile";
 
@@ -43,6 +44,10 @@ export const temporalTool: ToolModule = {
     "temporal.workflows": {
       title: (params) => `Workflows · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
       Component: WorkflowsTab,
+    },
+    "temporal.workflow": {
+      title: (params) => (typeof params["workflowId"] === "string" ? params["workflowId"] : "Workflow"),
+      Component: WorkflowTab,
     },
   },
   actions: [],

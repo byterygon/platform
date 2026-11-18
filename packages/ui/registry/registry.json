@@ -1326,6 +1326,23 @@
       ]
     },
     {
+      "name": "timeline",
+      "type": "registry:ui",
+      "title": "Timeline",
+      "description": "Spans over time in lanes: a workflow's history as bars (a workflow, its activities, timers, child workflows, signals) on a zoomable time axis, with running items that grow to now.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/control"
+      ],
+      "files": [
+        {
+          "path": "ui/timeline.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "toast",
       "type": "registry:ui",
       "title": "Toast",

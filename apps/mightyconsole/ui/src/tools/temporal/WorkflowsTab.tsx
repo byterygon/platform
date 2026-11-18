@@ -35,7 +35,7 @@ const STATUS_VARIANT: Record<WorkflowStatus, "neutral" | "accent" | "danger" | "
 /** "ContinuedAsNew" as the chips and rows read it. */
 export const statusLabel = (s: WorkflowStatus): string => s.replace(/([a-z])([A-Z])/g, "$1 $2");
 
-export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note }: TabProps) {
+export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
   const [namespace, setNamespace] = useState(typeof tab.params["namespace"] === "string" ? tab.params["namespace"] : namespaceOf(profile));
   const initial = typeof tab.params["query"] === "string" ? tab.params["query"] : "";
   const [draft, setDraft] = useState(initial);
@@ -226,7 +226,11 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
             <TableBody>
               {rows.map((w) => (
                 <TableRow key={`${w.workflowId}/${w.runId}`}>
-                  <TableCell>{w.workflowId}</TableCell>
+                  <TableCell>
+                    <Button size="small" appearance="subtle" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId })}>
+                      {w.workflowId}
+                    </Button>
+                  </TableCell>
                   <TableCell className="font-mono text-code" title={w.runId}>
                     {w.runId.slice(0, 8)}
                   </TableCell>

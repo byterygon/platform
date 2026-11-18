@@ -664,6 +664,71 @@
       "description": "The empty object, `{}`.",
       "type": "object"
     },
+    "EventCategory": {
+      "description": "What an event is about, for the History filter and the Timeline's lanes.",
+      "enum": [
+        "Workflow",
+        "WorkflowTask",
+        "Activity",
+        "Timer",
+        "ChildWorkflow",
+        "Signal",
+        "Update",
+        "Marker",
+        "Other"
+      ],
+      "type": "string"
+    },
+    "FollowHistoryInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "fromEventId": {
+          "description": "The last event the screen has; only later events are sent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        },
+        "streamId": {
+          "type": "string"
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId",
+        "runId",
+        "fromEventId",
+        "streamId"
+      ],
+      "type": "object"
+    },
+    "FollowHistorySummary": {
+      "description": "The end of `followHistory`.",
+      "properties": {
+        "closed": {
+          "description": "The run closed: there is nothing more to follow.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "closed"
+      ],
+      "type": "object"
+    },
     "GraphEdge": {
       "properties": {
         "conditional": {
@@ -734,6 +799,41 @@
       "required": [
         "name",
         "value"
+      ],
+      "type": "object"
+    },
+    "HistoryEvent": {
+      "description": "One event of a workflow's history.",
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "description": "The event's own attributes, as protobuf JSON, payloads decoded.",
+          "type": "object"
+        },
+        "category": {
+          "$ref": "#/$defs/EventCategory"
+        },
+        "eventId": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "eventTime": {
+          "description": "RFC 3339, UTC.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "eventType": {
+          "description": "`WorkflowExecutionStarted`, `ActivityTaskScheduled`, ... (the enum name in CamelCase).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eventId",
+        "eventType",
+        "category",
+        "attributes"
       ],
       "type": "object"
     },
@@ -1941,6 +2041,222 @@
       ],
       "type": "object"
     },
+    "WorkflowDetail": {
+      "description": "Everything `DescribeWorkflowExecution` says, payloads decoded.",
+      "properties": {
+        "autoResetPoints": {
+          "description": "`ResetPointInfo[]`: the points the server can reset to by itself.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "executionConfig": {
+          "additionalProperties": true,
+          "description": "`WorkflowExecutionConfig`: task queue, timeouts.",
+          "type": "object"
+        },
+        "memo": {
+          "additionalProperties": true,
+          "description": "The memo's fields by name, decoded.",
+          "type": "object"
+        },
+        "pendingActivities": {
+          "description": "`PendingActivityInfo[]`: type, state, attempt, last failure, heartbeat details, times.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "pendingChildren": {
+          "description": "`PendingChildExecutionInfo[]`.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "pendingWorkflowTask": {
+          "additionalProperties": true,
+          "description": "`PendingWorkflowTaskInfo`, absent when none is pending.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "searchAttributes": {
+          "additionalProperties": true,
+          "description": "The search attributes by name, decoded.",
+          "type": "object"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowRow"
+        }
+      },
+      "required": [
+        "workflow",
+        "executionConfig",
+        "pendingActivities",
+        "pendingChildren",
+        "memo",
+        "searchAttributes",
+        "autoResetPoints"
+      ],
+      "type": "object"
+    },
+    "WorkflowHistoryInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextPageToken": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pageSize": {
+          "default": null,
+          "description": "1 to 1,000; 1,000 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId"
+      ],
+      "type": "object"
+    },
+    "WorkflowHistoryOutput": {
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/$defs/HistoryEvent"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Absent on the last page.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "events"
+      ],
+      "type": "object"
+    },
+    "WorkflowQueryInput": {
+      "properties": {
+        "args": {
+          "default": null,
+          "description": "Each argument is sent as one `json/plain` payload.",
+          "items": true,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "queryType": {
+          "description": "`__stack_trace`, or a query the workflow defines.",
+          "type": "string"
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId",
+        "queryType"
+      ],
+      "type": "object"
+    },
+    "WorkflowQueryOutput": {
+      "properties": {
+        "result": {
+          "description": "The result payloads decoded: the value when there is one, an array of them otherwise."
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "type": "object"
+    },
+    "WorkflowRef": {
+      "description": "Names a workflow run: the run id is the latest run when absent.",
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId"
+      ],
+      "type": "object"
+    },
     "WorkflowRow": {
       "description": "One row of the workflow list.",
       "properties": {
@@ -2892,6 +3208,69 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/WorkflowRef"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workflows.describe",
+      "output": {
+        "$ref": "#/$defs/WorkflowDetail"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/FollowHistoryInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "temporal.workflows.followHistory",
+      "output": {
+        "$ref": "#/$defs/FollowHistorySummary"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/WorkflowHistoryInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workflows.history",
+      "output": {
+        "$ref": "#/$defs/WorkflowHistoryOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/WorkflowsListInput"
       },
       "kind": "query",
@@ -2899,6 +3278,27 @@
       "name": "temporal.workflows.list",
       "output": {
         "$ref": "#/$defs/WorkflowsListOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/WorkflowQueryInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workflows.query",
+      "output": {
+        "$ref": "#/$defs/WorkflowQueryOutput"
       },
       "perm": "temporal.read",
       "redact": [],
@@ -2973,5 +3373,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:9c7c2949fec26eab70f28b16012a40137177031861e9b2b639576e3445c7e4dc"
+  "schema_hash": "sha256:2ff1275a89833a714f1384653518da3e4c02646786e349f09e28bc56ca15acb8"
 }

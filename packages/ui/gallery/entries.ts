@@ -74,6 +74,7 @@ export const gallery: GalleryEntry[] = [
   { name: "tag", load: () => import("@/components/tag/tag.example") },
   { name: "textarea", load: () => import("@/components/textarea/textarea.example") },
   { name: "time-picker", load: () => import("@/components/time-picker/time-picker.example") },
+  { name: "timeline", load: () => import("@/components/timeline/timeline.example") },
   { name: "toast", load: () => import("@/components/toast/toast.example") },
   { name: "toggle-button", load: () => import("@/components/toggle-button/toggle-button.example") },
   { name: "toggle-group", load: () => import("@/components/toggle-group/toggle-group.example") },

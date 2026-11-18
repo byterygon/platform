@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:9c7c2949fec26eab70f28b16012a40137177031861e9b2b639576e3445c7e4dc";
+export const SCHEMA_HASH = "sha256:2ff1275a89833a714f1384653518da3e4c02646786e349f09e28bc56ca15acb8";
 
 // ---- Types
 
@@ -189,6 +189,26 @@ export type EchoTicksSummary = { sent: number, };
  */
 export type Empty = Record<symbol, never>;
 
+/**
+ * What an event is about, for the History filter and the Timeline's lanes.
+ */
+export type EventCategory = "Workflow" | "WorkflowTask" | "Activity" | "Timer" | "ChildWorkflow" | "Signal" | "Update" | "Marker" | "Other";
+
+export type FollowHistoryInput = { connId: string, namespace?: string | null, workflowId: string, runId: string, 
+/**
+ * The last event the screen has; only later events are sent.
+ */
+fromEventId: number, streamId: string, };
+
+/**
+ * The end of `followHistory`.
+ */
+export type FollowHistorySummary = { 
+/**
+ * The run closed: there is nothing more to follow.
+ */
+closed: boolean, };
+
 export type GraphEdge = { source: string, target: string, 
 /**
  * A branch of a conditional edge (drawn dashed).
@@ -211,6 +231,23 @@ export type GraphNodeKind = "start" | "end" | "node";
  * An extra header of the profile (custom auth); its value is a secret.
  */
 export type HeaderPair = { name: string, value: string, };
+
+/**
+ * One event of a workflow's history.
+ */
+export type HistoryEvent = { eventId: number, 
+/**
+ * RFC 3339, UTC.
+ */
+eventTime?: string, 
+/**
+ * `WorkflowExecutionStarted`, `ActivityTaskScheduled`, ... (the enum name in CamelCase).
+ */
+eventType: string, category: EventCategory, 
+/**
+ * The event's own attributes, as protobuf JSON, payloads decoded.
+ */
+attributes: Record<string, unknown>, };
 
 /**
  * A pending `interrupt()`: its value is what the graph asks the human.
@@ -590,6 +627,72 @@ export type UpdateStateOutput = {
 checkpointId?: string, checkpoint: JsonValue, };
 
 /**
+ * Everything `DescribeWorkflowExecution` says, payloads decoded.
+ */
+export type WorkflowDetail = { workflow: WorkflowRow, 
+/**
+ * `WorkflowExecutionConfig`: task queue, timeouts.
+ */
+executionConfig: Record<string, unknown>, 
+/**
+ * `PendingActivityInfo[]`: type, state, attempt, last failure, heartbeat details, times.
+ */
+pendingActivities: Record<string, unknown>[], 
+/**
+ * `PendingChildExecutionInfo[]`.
+ */
+pendingChildren: Record<string, unknown>[], 
+/**
+ * `PendingWorkflowTaskInfo`, absent when none is pending.
+ */
+pendingWorkflowTask?: Record<string, unknown>, 
+/**
+ * The memo's fields by name, decoded.
+ */
+memo: Record<string, unknown>, 
+/**
+ * The search attributes by name, decoded.
+ */
+searchAttributes: Record<string, unknown>, 
+/**
+ * `ResetPointInfo[]`: the points the server can reset to by itself.
+ */
+autoResetPoints: Record<string, unknown>[], };
+
+export type WorkflowHistoryInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, 
+/**
+ * 1 to 1,000; 1,000 when absent.
+ */
+pageSize?: number | null, nextPageToken?: string | null, };
+
+export type WorkflowHistoryOutput = { events: Array<HistoryEvent>, 
+/**
+ * Absent on the last page.
+ */
+nextPageToken?: string, };
+
+export type WorkflowQueryInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, 
+/**
+ * `__stack_trace`, or a query the workflow defines.
+ */
+queryType: string, 
+/**
+ * Each argument is sent as one `json/plain` payload.
+ */
+args?: unknown[], };
+
+export type WorkflowQueryOutput = { 
+/**
+ * The result payloads decoded: the value when there is one, an array of them otherwise.
+ */
+result: unknown, };
+
+/**
+ * Names a workflow run: the run id is the latest run when absent.
+ */
+export type WorkflowRef = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, };
+
+/**
  * One row of the workflow list.
  */
 export type WorkflowRow = { workflowId: string, runId: string, workflowType: string, status: WorkflowStatus, 
@@ -733,7 +836,11 @@ export interface Procedures {
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
   readonly "temporal.workflows.count": ProcedureDef<"query", WorkflowsCountInput, WorkflowsCountOutput, ToolError>;
+  readonly "temporal.workflows.describe": ProcedureDef<"query", WorkflowRef, WorkflowDetail, ToolError>;
+  readonly "temporal.workflows.followHistory": ProcedureDef<"stream", FollowHistoryInput, FollowHistorySummary, ToolError>;
+  readonly "temporal.workflows.history": ProcedureDef<"query", WorkflowHistoryInput, WorkflowHistoryOutput, ToolError>;
   readonly "temporal.workflows.list": ProcedureDef<"query", WorkflowsListInput, WorkflowsListOutput, ToolError>;
+  readonly "temporal.workflows.query": ProcedureDef<"query", WorkflowQueryInput, WorkflowQueryOutput, ToolError>;
   readonly "term.resize": ProcedureDef<"mutation", TermResizeInput, Empty, ToolError>;
   readonly "term.signal": ProcedureDef<"mutation", TermSignalInput, Empty, ToolError>;
   readonly "term.write": ProcedureDef<"mutation", TermWriteInput, Empty, ToolError>;
@@ -793,7 +900,11 @@ export interface Api {
     };
     readonly workflows: {
       readonly count: Procedures["temporal.workflows.count"];
+      readonly describe: Procedures["temporal.workflows.describe"];
+      readonly followHistory: Procedures["temporal.workflows.followHistory"];
+      readonly history: Procedures["temporal.workflows.history"];
       readonly list: Procedures["temporal.workflows.list"];
+      readonly query: Procedures["temporal.workflows.query"];
     };
   };
   readonly term: {
@@ -1163,8 +1274,48 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+      describe: {
+        name: "temporal.workflows.describe",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      followHistory: {
+        name: "temporal.workflows.followHistory",
+        kind: "stream",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
+      },
+      history: {
+        name: "temporal.workflows.history",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       list: {
         name: "temporal.workflows.list",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      query: {
+        name: "temporal.workflows.query",
         kind: "query",
         perm: "temporal.read",
         risk: "Read",
