@@ -11,6 +11,17 @@ const unit = (...names: string[]) => names.map((name) => cargo(name));
 
 type Ctx = Parameters<Parameters<typeof browser>[1]>[0];
 
+// Tabs stay mounted when another is shown, so the walks look only at what is visible: a button
+// on the shown tab, a field in the open sheet's form, the list of the shown schedule.
+/** A visible button by its text or accessible name (an expression for `run` and `until`). */
+const shownButton = (label: string) => `[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && (b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)}))`;
+/** The control of a label inside the form `formId` (the open sheet). */
+const sheetField = (formId: string, label: string) => `(() => { const f = document.getElementById(${JSON.stringify(formId)}); const l = f && [...f.querySelectorAll("label")].find((x) => x.textContent.replace("*", "").trim() === ${JSON.stringify(label)}); return l ? (l.control || document.getElementById(l.htmlFor)) : null; })()`;
+/** The `data-at` instants of the visible list labelled `label`. */
+const shownRuns = (label: string) => `[...document.querySelectorAll('[aria-label="${label}"]')].filter((l) => l.checkVisibility()).flatMap((l) => [...l.querySelectorAll("li")].map((li) => li.dataset.at))`;
+const sw = (label: string) => sheetField("start-workflow", label);
+const sc = (label: string) => sheetField("schedule-form", label);
+
 /** Opens the page and connects the lab's Temporal profile (made by the TSK-83 checklist or here). */
 async function connectLab({ page, origin, until, run }: Ctx): Promise<void> {
   await page.navigate(`${origin}/`);
@@ -85,22 +96,26 @@ export default {
           const { run, until, shot } = ctx;
           await connectLab(ctx);
           await run(`__mc.dblclick(__mc.item("Workflows"))`);
-          await until(`__mc.button("Start workflow")`, "the Workflows header");
-          await run(`__mc.click(__mc.button("Start workflow"))`);
-          await until(`__mc.field("Workflow type")`, "the Start workflow sheet");
+          await until(shownButton("Start workflow"), "the Workflows header");
+          await run(`__mc.click(${shownButton("Start workflow")})`);
+          await until(sw("Workflow type"), "the Start workflow sheet");
           const id = `acceptance-start-${Date.now()}`;
-          await run(`__mc.type(__mc.field("Workflow type"), "Completed")`);
-          await run(`__mc.type(__mc.field("Task queue"), "lab")`);
-          await run(`__mc.type(__mc.field("Workflow ID"), ${JSON.stringify(id)})`);
-          await until(`__mc.has("polling")`, "the queue's workers");
+          await run(`__mc.type(${sw("Workflow type")}, "Completed")`);
+          await run(`__mc.type(${sw("Task queue")}, "lab")`);
+          await run(`__mc.type(${sw("Workflow ID")}, ${JSON.stringify(id)})`);
+          await until(`document.getElementById("start-workflow").textContent.includes("polling")`, "the queue's workers");
           await shot("start-workflow-sheet");
           await run(`__mc.click(document.querySelector('button[form="start-workflow"]'))`);
-          await until(`__mc.has(${JSON.stringify(`Started ${id}`)}) && __mc.button("Open workflow")`, "the toast with Open workflow");
+          await until(`__mc.has(${JSON.stringify(`Started ${id}`)}) && ${shownButton("Open workflow")}`, "the toast with Open workflow");
           await shot("start-workflow-toast");
-          await run(`__mc.click(__mc.button("Open workflow"))`);
-          await until(`__mc.button("Start another like this") && !__mc.button("Start another like this").disabled`, "the started run's tab");
-          await run(`__mc.click(__mc.button("Start another like this"))`);
-          await until(`__mc.field("Workflow type") && __mc.field("Workflow type").value === "Completed" && __mc.field("Task queue").value === "lab"`, "the sheet filled from the run");
+          await run(`__mc.click(${shownButton("Open workflow")})`);
+          // "Start another like this" is in the run's overflow menu (the mockup's place for it).
+          await until(`__mc.has(${JSON.stringify(id)}) && ${shownButton("More actions")} && !${shownButton("More actions")}.disabled`, "the started run's tab");
+          await run(`__mc.click(${shownButton("More actions")})`);
+          const item = `[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.includes("Start another like this"))`;
+          await until(item, "the overflow menu");
+          await run(`__mc.click(${item})`);
+          await until(`${sw("Workflow type")}?.value === "Completed" && ${sw("Task queue")}?.value === "lab"`, "the sheet filled from the run");
           await shot("start-another-like-this");
         }),
       ],
@@ -118,29 +133,30 @@ export default {
           const { run, until, shot } = ctx;
           await connectLab(ctx);
           await run(`__mc.dblclick(__mc.item("Schedules"))`);
-          await until(`__mc.button("Create schedule")`, "the Schedules header");
-          await run(`__mc.click(__mc.button("Create schedule"))`);
-          await until(`__mc.field("Schedule ID")`, "the schedule sheet");
+          await until(shownButton("Create schedule"), "the Schedules header");
+          await run(`__mc.click(${shownButton("Create schedule")})`);
+          await until(sc("Schedule ID"), "the schedule sheet");
           const id = `acceptance-schedule-${Date.now()}`;
           for (const [label, value] of [["Schedule ID", id], ["Time zone", "Europe/Berlin"], ["Hour", "3"], ["Minute", "15"], ["Workflow type", "Completed"], ["Task queue", "lab"], ["Workflow ID", "acceptance-scheduled"]]) {
-            await run(`__mc.type(__mc.field(${JSON.stringify(label)}), ${JSON.stringify(value)})`);
+            await run(`__mc.type(${sc(label!)}, ${JSON.stringify(value)})`);
           }
-          await until(`document.querySelectorAll('[aria-label="Next runs"] li').length === 5`, "the next runs in the browser");
-          const browserRuns = await run<string[]>(`[...document.querySelectorAll('[aria-label="Next runs"] li')].map((li) => li.dataset.at)`);
+          await until(`${shownRuns("Next runs")}.length === 5`, "the next runs in the browser");
+          const browserRuns = await run<string[]>(shownRuns("Next runs"));
           await shot("schedule-create");
           await run(`__mc.click(document.querySelector('button[form="schedule-form"]'))`);
-          await until(`document.querySelectorAll('[aria-label="Upcoming runs"] li').length > 0`, "the created schedule's tab");
-          const serverRuns = await run<string[]>(`[...document.querySelectorAll('[aria-label="Upcoming runs"] li')].map((li) => li.dataset.at)`);
-          const same = serverRuns.every((t, i) => browserRuns[i] !== undefined && Date.parse(t) === Date.parse(browserRuns[i]!));
+          await until(`__mc.has(${JSON.stringify(id)}) && ${shownRuns("Upcoming runs")}.length > 0`, "the created schedule's tab");
+          const serverRuns = await run<string[]>(shownRuns("Upcoming runs"));
+          // The server lists up to 10; the first 5 are the ones the browser computed.
+          const same = browserRuns.every((t, i) => serverRuns[i] !== undefined && Date.parse(t) === Date.parse(serverRuns[i]!));
           if (!same) throw new Error(`the browser computed ${browserRuns.join(", ")}; the server reports ${serverRuns.join(", ")}`);
           await shot("schedule-server-runs");
-          await run(`__mc.click(__mc.button("Edit"))`);
-          await until(`__mc.field("Hour") && __mc.field("Hour").value === "3"`, "the edit sheet filled from the schedule");
-          await run(`__mc.type(__mc.field("Hour"), "4")`);
-          await run(`__mc.click(__mc.button("Review changes"))`);
+          await run(`__mc.click(${shownButton("Edit")})`);
+          await until(`${sc("Hour")}?.value === "3"`, "the edit sheet filled from the schedule");
+          await run(`__mc.type(${sc("Hour")}, "4")`);
+          await run(`__mc.click(${shownButton("Review changes")})`);
           await until(`__mc.has("1 change to send")`, "the changes listed first");
           await shot("schedule-edit-changes");
-          await run(`__mc.click(__mc.button("Update schedule"))`);
+          await run(`__mc.click(${shownButton("Update schedule")})`);
           await until(`__mc.has(${JSON.stringify(`Updated ${id}`)})`, "the update");
           await shot("schedule-updated");
         }),

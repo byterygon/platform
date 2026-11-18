@@ -383,3 +383,57 @@ export function formatRun(at: Date, timeZone: string | null | undefined): string
   const weekday = DAYS[new Date(Date.UTC(w.year, w.month - 1, w.day)).getUTCDay()]!;
   return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${w.year}-${pad(w.month)}-${pad(w.day)} ${pad(w.hour)}:${pad(w.minute)}:${pad(w.second)} ${tz}`;
 }
+
+// --- In words ---------------------------------------------------------------------------------
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const everyValue = (values: readonly number[], field: CalendarField) => values.length === BOUNDS[field][1] - BOUNDS[field][0] + 1;
+
+/** A run of consecutive values as "Mon to Fri", else a list. */
+function listOf(values: readonly number[], name: (v: number) => string): string {
+  const consecutive = values.length > 2 && values.every((v, i) => i === 0 || v === values[i - 1]! + 1);
+  return consecutive ? `${name(values[0]!)} to ${name(values[values.length - 1]!)}` : values.map(name).join(", ");
+}
+
+/** A calendar in words: "Every day at 02:00", "Mon to Fri at 09:30", "Every hour at :15". Null when it cannot be read. */
+export function describeCalendar(c: CalendarForm): string | null {
+  const parts = (["second", "minute", "hour", "dayOfMonth", "month", "dayOfWeek", "year"] as const).map((f) => parseCalendarField(f, c[f]));
+  if (parts.some((r) => r !== null && !Array.isArray(r))) return null;
+  const [S, M, H, D, N, W] = parts.slice(0, 6) as number[][];
+  const year = parts[6] as number[] | null;
+  let time: string;
+  const sec = S!.length === 1 && S![0] ? `:${pad2(S![0])}` : "";
+  if (S!.length !== 1) time = `at seconds ${c.second}, minute ${c.minute || "0"}, hour ${c.hour || "0"}`;
+  else if (everyValue(H!, "hour")) time = M!.length === 1 ? `every hour at :${pad2(M![0]!)}${sec}` : `every hour at minutes ${M!.join(", ")}`;
+  else if (H!.length * M!.length <= 6) time = `at ${H!.flatMap((h) => M!.map((m) => `${pad2(h)}:${pad2(m)}${sec}`)).join(", ")}`;
+  else time = `at minutes ${M!.join(", ")} of hours ${H!.join(", ")}`;
+  const days: string[] = [];
+  if (!everyValue(W!, "dayOfWeek")) days.push(listOf(W!, (v) => DAY_NAMES[v]!));
+  if (!everyValue(D!, "dayOfMonth")) days.push(`day ${listOf(D!, String)} of the month`);
+  if (!everyValue(N!, "month")) days.push(`in ${listOf(N!, (v) => MONTH_NAMES[v - 1]!)}`);
+  if (year) days.push(`in ${year.join(", ")}`);
+  const when = days.length === 0 ? (time.startsWith("every") ? "" : "every day") : days.join(", ");
+  const text = when ? `${when} ${time}` : time;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * The runs as the preview reads them: the first with its year and zone ("Wed 19 Nov 2026, 02:00
+ * CET"), the next ones short ("Thu 20 Nov, 02:00"), the year again when it changes.
+ */
+export function formatRuns(runs: readonly Date[], timeZone: string | null | undefined): string[] {
+  const zone = (timeZone ?? "").trim() || "UTC";
+  const tz = isTimeZone(zone) ? zone : "UTC";
+  const zoneName = (at: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, timeZoneName: "short" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value ?? tz;
+  let lastYear: number | null = null;
+  return runs.map((at, i) => {
+    const w = wallTime(at.getTime(), tz);
+    const weekday = DAY_NAMES[new Date(Date.UTC(w.year, w.month - 1, w.day)).getUTCDay()]!;
+    const year = w.year !== lastYear ? ` ${w.year}` : "";
+    lastYear = w.year;
+    const time = `${pad2(w.hour)}:${pad2(w.minute)}${w.second ? `:${pad2(w.second)}` : ""}`;
+    return `${weekday} ${w.day} ${MONTH_NAMES[w.month - 1]}${year}, ${time}${i === 0 ? ` ${zoneName(at)}` : ""}`;
+  });
+}

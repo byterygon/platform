@@ -2,15 +2,70 @@
 // §9.3, §9.4, TSK-92): folded sections that show their value, duration fields read as the server
 // reads them, JSON object fields, the retry policy, a run ID toast, and the requests that open a
 // sheet from the palette.
-import { useId, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import type { MightyClient } from "@/app/client";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import type { RetryPolicyForm } from "@/gen/api";
-import { Checkmark, ChevronRight, Copy } from "@/lib/icons";
+import { Checkmark, ChevronRight, Circle, Copy } from "@/lib/icons";
 import { parseDuration } from "./schedule-preview";
+
+/** The mark of a required field, after its label (the control itself carries `required`). */
+export function Required() {
+  return (
+    <span aria-hidden="true" className="ps-inline-xs text-danger-fg">
+      *
+    </span>
+  );
+}
+
+/** How many workers poll a task queue for workflow tasks, while it is typed (null: not known yet). */
+export function useQueueWorkers(client: MightyClient, connId: string | null, namespace: string, queue: string, open: boolean): number | null {
+  const [count, setCount] = useState<number | null>(null);
+  useEffect(() => {
+    setCount(null);
+    const name = queue.trim();
+    if (!open || connId === null || name === "") return undefined;
+    let live = true;
+    const timer = setTimeout(() => {
+      client.temporal.taskQueues.describe({ connId, namespace, taskQueue: name }).then(
+        (d) => live && setCount(new Set(d.workflowPollers.map((p) => p.identity)).size),
+        () => live && setCount(null),
+      );
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [client, connId, namespace, queue, open]);
+  return count;
+}
+
+/** "2 workers polling" with a green dot, or the warning that nothing polls the queue. */
+export function QueueWorkers({ count }: { count: number | null }) {
+  if (count === null) return null;
+  return (
+    <span className="flex items-center gap-inline-xs">
+      <Icon icon={Circle} filled size="xs" tone={count === 0 ? "warning" : "success"} />
+      {count === 0 ? "No worker is polling this task queue." : `${count} ${count === 1 ? "worker" : "workers"} polling`}
+    </span>
+  );
+}
+
+/** The Write notice of a sheet (spec §9.4): where it writes and what follows. */
+export function WritesTo({ profile, children }: { profile: string; children: ReactNode }) {
+  return (
+    <Alert intent="info">
+      <AlertDescription>
+        This writes to <strong>{profile}</strong>. {children}
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 /** A section folded by default; its summary line shows what it holds ("Not set" when nothing). */
 export function Fold({ title, value, children, open }: { title: string; value: string; children: ReactNode; open?: boolean }) {

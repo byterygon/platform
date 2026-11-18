@@ -44,7 +44,7 @@ function withNotices(ui: ReactNode) {
 /** The input labelled `label` inside the open sheet. */
 function input(sheet: HTMLElement, label: string): HTMLInputElement {
   for (const l of sheet.querySelectorAll<HTMLLabelElement>("label")) {
-    if (l.textContent?.trim() === label) {
+    if (l.textContent?.replace("*", "").trim() === label) {
       const found = (l.htmlFor ? sheet.querySelector<HTMLInputElement>(`#${CSS.escape(l.htmlFor)}`) : null) ?? l.parentElement?.querySelector("input");
       if (found) return found as HTMLInputElement;
     }
@@ -52,6 +52,8 @@ function input(sheet: HTMLElement, label: string): HTMLInputElement {
   throw new Error(`no field ${label}`);
 }
 
+/** The open sheet of a form, by the form's id. */
+const sheetOf = (formId: string) => document.getElementById(formId)?.closest<HTMLElement>("[role=dialog]") ?? null;
 const isDisabled = (el: HTMLElement | null) => el !== null && (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true" || el.hasAttribute("data-disabled"));
 
 function workflowsClient() {
@@ -74,13 +76,13 @@ describe("Start workflow", () => {
     const { notices } = withNotices(<WorkflowsTab {...p} />);
     await waitFor(() => byText("pay-1") !== null, "the rows");
     await click(byRole("button", "Start workflow"));
-    await waitFor(() => dialogWith("Starts a run in namespace lab of lab") !== null, "the sheet");
-    const sheet = dialogWith("Starts a run in namespace lab of lab")!;
+    await waitFor(() => sheetOf("start-workflow") !== null, "the sheet");
+    const sheet = sheetOf("start-workflow")!;
     expect([...sheet.querySelectorAll("datalist option")].map((o) => o.getAttribute("value"))).toEqual(["Order", "Payment", "lab-queue", "payments"]);
 
     await type(input(sheet, "Workflow type"), "Order");
     await type(input(sheet, "Task queue"), "lab-queue");
-    await waitFor(() => byText("2 workers polling.") !== null, "the queue hint", 2000);
+    await waitFor(() => byText("2 workers polling") !== null, "the queue hint", 2000);
     expect(describeQueue).toHaveBeenLastCalledWith({ connId: "conn-1", namespace: "lab", taskQueue: "lab-queue" });
     await type(input(sheet, "Workflow ID"), "ord-from-sheet");
     await waitFor(() => editorArea("Input") !== null, "the input editor");
@@ -91,7 +93,7 @@ describe("Start workflow", () => {
     await key("Enter", { ctrlKey: true }, input(sheet, "Workflow ID"));
     await waitFor(() => start.mock.calls.length === 1, "the start");
     expect(start.mock.calls[0]![0]).toEqual({ connId: "conn-1", namespace: "lab", workflowType: "Order", taskQueue: "lab-queue", workflowId: "ord-from-sheet", args: ["ord-9", { rush: true }] });
-    await waitFor(() => dialogWith("Starts a run in namespace") === null, "the sheet to close");
+    await waitFor(() => sheetOf("start-workflow") === null, "the sheet to close");
     expect(notices[0]?.title).toBe("Started ord-from-sheet");
     notices[0]!.action!.onClick();
     expect(p.openTab).toHaveBeenCalledWith({ kind: "temporal.workflow", params: { namespace: "lab", workflowId: "ord-from-sheet", runId: "run-new" }, title: "ord-from-sheet" });
@@ -103,8 +105,8 @@ describe("Start workflow", () => {
     withNotices(<WorkflowsTab {...p} />);
     await waitFor(() => byText("pay-1") !== null, "the rows");
     await click(byRole("button", "Start workflow"));
-    await waitFor(() => dialogWith("Starts a run in namespace") !== null, "the sheet");
-    const sheet = dialogWith("Starts a run in namespace")!;
+    await waitFor(() => sheetOf("start-workflow") !== null, "the sheet");
+    const sheet = sheetOf("start-workflow")!;
     expect(isDisabled(byRole("button", "Copy as CLI command", sheet))).toBe(true);
     await type(input(sheet, "Workflow type"), "Payment");
     await type(input(sheet, "Task queue"), "payments");
@@ -112,9 +114,9 @@ describe("Start workflow", () => {
     await type(input(sheet, "Execution"), "1h");
     await type(input(sheet, "Maximum attempts"), "3");
     await type(input(sheet, "Start delay"), "soon");
-    expect(byText("execution 1h")).not.toBeNull();
-    expect(byText("3 attempts")).not.toBeNull();
-    await click(byRole("button", "Start", sheet));
+    expect(byText("execution 1h · run none · task 10s · retry 3 attempts")).not.toBeNull();
+    expect(sheet.textContent).toContain("This writes to lab.");
+    await click(byRole("button", /^Start workflow/, sheet));
     expect(start).not.toHaveBeenCalled();
     expect(byText("Start delay: a duration such as 30s, 5m, 1h30m or 2d.")).not.toBeNull();
     await type(input(sheet, "Start delay"), "30s");
@@ -123,7 +125,7 @@ describe("Start workflow", () => {
     expect(clipboard.mock.calls[0]![0]).toBe(
       `temporal workflow start --address 127.0.0.1:7233 --namespace lab --type Payment --task-queue payments --workflow-id 'pay-it'\\''s' --execution-timeout 1h --start-delay 30s # retry policy {"maximumAttempts":3} has no CLI flag`,
     );
-    await click(byRole("button", "Start", sheet));
+    await click(byRole("button", /^Start workflow/, sheet));
     await waitFor(() => start.mock.calls.length === 1, "the start");
     expect(start.mock.calls[0]![0]).toEqual({ connId: "conn-1", namespace: "lab", workflowType: "Payment", taskQueue: "payments", workflowId: "pay-it's", args: [], executionTimeout: "1h", retryPolicy: { maximumAttempts: 3 }, startDelay: "30s" });
   });
@@ -134,30 +136,31 @@ describe("Start workflow", () => {
     const p = props(client, { kind: "temporal.workflows", params: { namespace: "lab", query: "" } });
     requestSheet("01T", "startWorkflow");
     withNotices(<WorkflowsTab {...p} />);
-    await waitFor(() => dialogWith("Starts a run in namespace") !== null, "the sheet the palette asked for");
-    const sheet = dialogWith("Starts a run in namespace")!;
+    await waitFor(() => sheetOf("start-workflow") !== null, "the sheet the palette asked for");
+    const sheet = sheetOf("start-workflow")!;
     await type(input(sheet, "Workflow type"), "Order");
     await type(input(sheet, "Task queue"), "lab-queue");
-    await click(byRole("button", "Start", sheet));
+    await click(byRole("button", /^Start workflow/, sheet));
     await waitFor(() => byText("Workflow execution is already running.") !== null || byText(/already/) !== null, "the error");
-    expect(dialogWith("Starts a run in namespace")).not.toBeNull();
+    expect(sheetOf("start-workflow")).not.toBeNull();
   });
 
   test("Start another like this fills the type, queue and input", async () => {
     const client = { temporal: { taskQueues: { describe: async () => ({ workflowPollers: [], activityPollers: [] }) } } };
     const p = props(client, { kind: "temporal.workflow", params: {} });
     withNotices(<StartWorkflowSheet open onOpenChange={() => {}} client={client as never} connId="conn-1" profile={p.profile} namespace="lab" prefill={{ workflowType: "Order", taskQueue: "lab-queue", args: ["ord-1"], memo: { owner: "ops" } }} note={describeError} onOpenWorkflow={() => {}} />);
-    await waitFor(() => dialogWith("Starts a run in namespace") !== null, "the sheet");
-    const sheet = dialogWith("Starts a run in namespace")!;
+    await waitFor(() => sheetOf("start-workflow") !== null, "the sheet");
+    const sheet = sheetOf("start-workflow")!;
     expect(input(sheet, "Workflow type").value).toBe("Order");
     expect(input(sheet, "Task queue").value).toBe("lab-queue");
     expect(input(sheet, "Workflow ID").value).toMatch(/^Order-[0-9a-z]+$/);
     await waitFor(() => editorArea("Input") !== null, "the input editor");
     expect(JSON.parse(editorArea("Input")!.value)).toEqual(["ord-1"]);
     await waitFor(() => byText("No worker is polling this task queue.") !== null, "the queue hint", 2000);
-    expect(byText("1 memo")).not.toBeNull();
+    expect(byText("owner")).not.toBeNull();
+    expect(byText("If a run with this ID is open: Fail (ID conflict policy). Reuse after close: allowed.")).not.toBeNull();
     const before = input(sheet, "Workflow ID").value;
-    await click(byRole("button", "New workflow ID", sheet));
+    await click(byRole("button", "New random ID", sheet));
     expect(input(sheet, "Workflow ID").value).not.toBe(before);
   });
 });
@@ -185,19 +188,20 @@ describe("Create schedule", () => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-18T10:00:00Z") });
     try {
       const create = vi.fn(async (_input: unknown) => ({}));
-      const client = { temporal: { schedules: { list: async () => [], create } } };
+      const client = { temporal: { taskQueues: { describe: async () => ({ workflowPollers: [], activityPollers: [] }) }, schedules: { list: async () => [], create } } };
       const p = props(client, { kind: "temporal.schedules", params: { namespace: "lab" } });
       const { notices } = withNotices(<SchedulesTab {...p} />);
       await waitFor(() => byText("No schedules in lab.") !== null, "the empty list");
       await click(byRole("button", "Create schedule"));
-      await waitFor(() => dialogWith("Creates a schedule in namespace lab") !== null, "the sheet");
-      const sheet = dialogWith("Creates a schedule in namespace lab")!;
+      await waitFor(() => sheetOf("schedule-form") !== null, "the sheet");
+      const sheet = sheetOf("schedule-form")!;
       await type(input(sheet, "Time zone"), "UTC");
       await type(input(sheet, "Hour"), "7");
       await type(input(sheet, "Minute"), "*/30");
       await type(input(sheet, "Day of week"), "mon-fri");
-      const runs = () => [...sheet.querySelectorAll('[aria-label="Next runs"] li')].map((li) => li.textContent);
-      expect(runs()).toEqual(["Thu 2026-11-19 07:00:00 UTC", "Thu 2026-11-19 07:30:00 UTC", "Fri 2026-11-20 07:00:00 UTC", "Fri 2026-11-20 07:30:00 UTC", "Mon 2026-11-23 07:00:00 UTC"]);
+      const runs = () => [...sheet.querySelectorAll('[aria-label="Next runs"] li')].map((li) => li.textContent?.replace(/ ·$/, ""));
+      expect(runs()).toEqual(["Thu 19 Nov 2026, 07:00 UTC", "Thu 19 Nov, 07:30", "Fri 20 Nov, 07:00", "Fri 20 Nov, 07:30", "Mon 23 Nov, 07:00"]);
+      expect(byText("Mon to Fri at 07:00, 07:30")).not.toBeNull();
       expect(byText(/Computed in the browser/)).not.toBeNull();
       await type(input(sheet, "Hour"), "26");
       expect(byText("The hour is 0 to 23.")).not.toBeNull();
@@ -232,13 +236,13 @@ describe("Create schedule", () => {
   });
 
   test("Interval and Cron segments preview too, and the cron's CLI command is copied", async () => {
-    const client = { temporal: { schedules: { list: async () => [], create: vi.fn() } } };
+    const client = { temporal: { taskQueues: { describe: async () => ({ workflowPollers: [], activityPollers: [] }) }, schedules: { list: async () => [], create: vi.fn() } } };
     const p = props(client, { kind: "temporal.schedules", params: { namespace: "lab" } });
     withNotices(<SchedulesTab {...p} />);
     await waitFor(() => byText("No schedules in lab.") !== null, "the empty list");
     await click(byRole("button", "Create schedule"));
-    await waitFor(() => dialogWith("Creates a schedule in namespace lab") !== null, "the sheet");
-    const sheet = dialogWith("Creates a schedule in namespace lab")!;
+    await waitFor(() => sheetOf("schedule-form") !== null, "the sheet");
+    const sheet = sheetOf("schedule-form")!;
     const runs = () => sheet.querySelectorAll('[aria-label="Next runs"] li').length;
     await click(byRole("button", "Interval", sheet));
     await type(input(sheet, "Every"), "15m");
@@ -253,6 +257,7 @@ describe("Create schedule", () => {
     await type(input(sheet, "Workflow type"), "Report");
     await type(input(sheet, "Task queue"), "lab");
     await type(input(sheet, "Workflow ID"), "report");
+    await click(byRole("button", "Show as JSON", sheet));
     await click(byRole("button", "Copy as CLI command", sheet));
     await waitFor(() => clipboard.mock.calls.length === 1, "the copy");
     expect(clipboard.mock.calls[0]![0]).toBe("temporal schedule create --address 127.0.0.1:7233 --namespace lab --schedule-id hourly --cron @hourly --time-zone UTC --workflow-type Report --task-queue lab --workflow-id report");
@@ -263,7 +268,7 @@ describe("Edit schedule", () => {
   function editSetup() {
     const update = vi.fn(async (_input: unknown) => ({}));
     const describeSchedule = vi.fn(async (_input: unknown) => detail());
-    const client = { temporal: { schedules: { describe: describeSchedule, update } } };
+    const client = { temporal: { taskQueues: { describe: async () => ({ workflowPollers: [], activityPollers: [] }) }, schedules: { describe: describeSchedule, update } } };
     const p = props(client, { kind: "temporal.schedule", params: { namespace: "lab", scheduleId: "nightly" } });
     const out = withNotices(<ScheduleTab {...p} />);
     return { ...out, update, describeSchedule, p };
@@ -273,8 +278,8 @@ describe("Edit schedule", () => {
     const { update, describeSchedule, notices } = editSetup();
     await waitFor(() => byRole("button", "Edit") !== null && !isDisabled(byRole("button", "Edit")), "the loaded schedule");
     await click(byRole("button", "Edit"));
-    await waitFor(() => dialogWith("Updates a schedule in namespace lab") !== null, "the sheet");
-    const sheet = dialogWith("Updates a schedule in namespace lab")!;
+    await waitFor(() => sheetOf("schedule-form") !== null, "the sheet");
+    const sheet = sheetOf("schedule-form")!;
     expect(() => input(sheet, "Schedule ID")).toThrow();
     expect(input(sheet, "Hour").value).toBe("4");
     expect(input(sheet, "Time zone").value).toBe("Europe/Berlin");
@@ -307,8 +312,8 @@ describe("Edit schedule", () => {
     update.mockRejectedValueOnce(new RpcError("FailedPrecondition", "conflict", { details: { kind: "Conflict", system: "temporal", message: "The schedule changed since it was read.", retryable: false } }));
     await waitFor(() => byRole("button", "Edit") !== null && !isDisabled(byRole("button", "Edit")), "the loaded schedule");
     await click(byRole("button", "Edit"));
-    await waitFor(() => dialogWith("Updates a schedule in namespace lab") !== null, "the sheet");
-    const sheet = dialogWith("Updates a schedule in namespace lab")!;
+    await waitFor(() => sheetOf("schedule-form") !== null, "the sheet");
+    const sheet = sheetOf("schedule-form")!;
     await type(input(sheet, "Hour"), "6");
     await click(byRole("button", "Review changes", sheet));
     await click(byRole("button", "Update schedule", sheet));

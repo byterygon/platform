@@ -18,7 +18,9 @@ import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { EventCategory, HistoryEvent, WorkflowDetail } from "@/gen/api";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Add, ArrowClockwise, ArrowCounterclockwise, Dismiss, Flash, Stop } from "@/lib/icons";
+import { Add, ArrowClockwise, ArrowCounterclockwise, Dismiss, Flash, MoreHorizontal, Stop } from "@/lib/icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { IconButton } from "@/components/ui/icon-button";
 import type { DescribedError, TabProps } from "../types";
 import { formatDuration, formatTime } from "./format";
 import { formatDurationText } from "./schedule-preview";
@@ -160,9 +162,16 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <Button appearance="secondary" disabled={!running} onClick={() => setDialog("terminate")}>
               <Icon icon={Stop} /> Terminate
             </Button>
-            <Button appearance="secondary" disabled={w === undefined} onClick={() => setDialog("startAnother")}>
-              <Icon icon={Add} /> Start another like this
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<IconButton appearance="subtle" aria-label="More actions" disabled={w === undefined} />}>
+                <Icon icon={MoreHorizontal} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setDialog("startAnother")}>
+                  <Icon icon={Add} /> Start another like this
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       >

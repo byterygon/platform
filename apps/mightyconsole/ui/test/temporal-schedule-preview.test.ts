@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import type { ScheduleForm } from "@/gen/api";
 import { scheduleCommand, shellQuote, workflowStartCommand } from "@/tools/temporal/cli";
 import { changesOf, draftErrors, draftOfForm, formOf, newDraft } from "@/tools/temporal/schedule-draft";
-import { formatDurationText, formatRun, instantOf, nextRuns, parseCalendarField, parseCron, parseDuration } from "@/tools/temporal/schedule-preview";
+import { describeCalendar, formatDurationText, formatRun, formatRuns, instantOf, nextRuns, parseCalendarField, parseCron, parseDuration } from "@/tools/temporal/schedule-preview";
 import { prefillOf } from "@/tools/temporal/WorkflowTab";
 
 const iso = (runs: Date[]) => runs.map((r) => r.toISOString());
@@ -110,6 +110,22 @@ describe("next runs", () => {
 
   test("a date that never comes gives no run", () => {
     expect(nextRuns(spec({ calendars: [{ dayOfMonth: "31", month: "2" }] }), FROM).runs).toEqual([]);
+  });
+});
+
+describe("in words", () => {
+  test("a calendar reads as the mockup writes it", () => {
+    expect(describeCalendar({ hour: "2" })).toBe("Every day at 02:00");
+    expect(describeCalendar({ hour: "9", minute: "30", dayOfWeek: "mon-fri" })).toBe("Mon to Fri at 09:30");
+    expect(describeCalendar({ hour: "*", minute: "15" })).toBe("Every hour at :15");
+    expect(describeCalendar({ hour: "7", minute: "0,30", dayOfWeek: "1,3" })).toBe("Mon, Wed at 07:00, 07:30");
+    expect(describeCalendar({ hour: "3", dayOfMonth: "1", month: "jan" })).toBe("Day 1 of the month, in Jan at 03:00");
+    expect(describeCalendar({ hour: "25" })).toBeNull();
+  });
+
+  test("the runs: the first with its year and zone, the next ones short", () => {
+    const runs = nextRuns(spec({ calendars: [{ hour: "2" }], timezone: "Europe/Berlin" }), new Date("2026-12-30T12:00:00Z"), 3).runs;
+    expect(formatRuns(runs, "Europe/Berlin")).toEqual(["Thu 31 Dec 2026, 02:00 CET", "Fri 1 Jan 2027, 02:00", "Sat 2 Jan, 02:00"]);
   });
 });
 

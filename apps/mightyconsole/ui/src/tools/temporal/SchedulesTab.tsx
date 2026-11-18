@@ -72,7 +72,7 @@ export function SchedulesTab({ tab, profile, connId, client, active, useTabActio
             <Button appearance="subtle" onClick={() => void load()}>
               <Icon icon={ArrowClockwise} /> Refresh
             </Button>
-            <Button appearance="secondary" onClick={() => setCreating(true)}>
+            <Button appearance="primary" onClick={() => setCreating(true)}>
               <Icon icon={Add} /> Create schedule
             </Button>
           </>
@@ -86,6 +86,7 @@ export function SchedulesTab({ tab, profile, connId, client, active, useTabActio
         profile={profile}
         namespace={namespace}
         mode={{ kind: "create" }}
+        suggestions={{ types: [...new Set(rows.map((s) => s.workflowType).filter(Boolean))] }}
         note={note}
         onSaved={(scheduleId) => {
           void load();

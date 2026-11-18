@@ -8,8 +8,9 @@ import { useContext, useEffect, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
-import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { NoticeContext } from "@/app/page";
@@ -22,7 +23,7 @@ import type { DescribedError } from "../types";
 import { ArgsField, parseArgs } from "./ActionDialogs";
 import { workflowStartCommand } from "./cli";
 import { addressOf, tlsOf } from "./profile";
-import { DurationField, EMPTY_RETRY, Fold, ObjectField, RetryFields, RunIdLine, durationError, parseObject, randomSuffix, retryErrors, retryPolicyOf, retrySummary, retryText, type RetryText } from "./sheet-parts";
+import { DurationField, Fold, ObjectField, QueueWorkers, Required, RetryFields, RunIdLine, WritesTo, durationError, parseObject, randomSuffix, retryErrors, retryPolicyOf, retrySummary, retryText, useQueueWorkers, type RetryText } from "./sheet-parts";
 
 /** What "Start another like this" fills in. */
 export interface StartPrefill {
@@ -137,30 +138,21 @@ export function startInputOf(d: Draft): { input: Omit<WorkflowStartInput, "connI
   return { input };
 }
 
-/** How many workers poll the queue for workflow tasks, while it is typed. */
-function useQueueHint(client: MightyClient, connId: string | null, namespace: string, queue: string, open: boolean): string | null {
-  const [hint, setHint] = useState<string | null>(null);
-  useEffect(() => {
-    setHint(null);
-    const name = queue.trim();
-    if (!open || connId === null || name === "") return undefined;
-    let live = true;
-    const timer = setTimeout(() => {
-      client.temporal.taskQueues.describe({ connId, namespace, taskQueue: name }).then(
-        (d) => {
-          if (!live) return;
-          const n = new Set(d.workflowPollers.map((p) => p.identity)).size;
-          setHint(n === 0 ? "No worker is polling this task queue." : `${n} ${n === 1 ? "worker" : "workers"} polling.`);
-        },
-        () => live && setHint(null),
-      );
-    }, 300);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [client, connId, namespace, queue, open]);
-  return hint;
+/** Short words for the folded sections' summaries, as the mockup writes them. */
+const REUSE_SHORT: Record<IdReusePolicy, string> = { allowDuplicate: "allow duplicate", allowDuplicateFailedOnly: "allow if failed", rejectDuplicate: "reject duplicate" };
+const CONFLICT_SHORT: Record<IdConflictPolicy, string> = { fail: "fail", useExisting: "use existing", terminateExisting: "terminate existing" };
+
+/** "If a run with this ID is open: Fail. Reuse after close: allowed." under the workflow ID. */
+function idPolicyLine(d: Draft): string {
+  const conflict = d.idConflictPolicy === "default" ? "fail" : CONFLICT_SHORT[d.idConflictPolicy];
+  const reuse = d.idReusePolicy === "rejectDuplicate" ? "rejected" : d.idReusePolicy === "allowDuplicateFailedOnly" ? "only if the last run failed" : "allowed";
+  return `If a run with this ID is open: ${conflict.charAt(0).toUpperCase()}${conflict.slice(1)} (ID conflict policy). Reuse after close: ${reuse}.`;
+}
+
+/** The keys of a JSON object's text, for a summary: "CustomerTier, Region". */
+function keysOf(text: string): string[] {
+  const p = parseObject(text);
+  return "value" in p ? Object.keys(p.value) : [];
 }
 
 export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile, namespace, prefill, suggestions, note, onOpenWorkflow, onStarted }: StartWorkflowSheetProps) {
@@ -177,7 +169,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const set = (patch: Partial<Draft>) => setD((old) => ({ ...old, ...patch }));
-  const hint = useQueueHint(client, connId, namespace, d.taskQueue, open);
+  const workers = useQueueWorkers(client, connId, namespace, d.taskQueue, open);
   const built = startInputOf(d);
   const target = { address: addressOf(profile), namespace, tls: tlsOf(profile.fields).enabled };
 
@@ -222,15 +214,19 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
     }
   };
 
-  const timeouts = [d.executionTimeout && `execution ${d.executionTimeout}`, d.runTimeout && `run ${d.runTimeout}`, d.taskTimeout && `task ${d.taskTimeout}`].filter(Boolean).join(", ") || "Server default";
-  const policies = d.idReusePolicy === "default" && d.idConflictPolicy === "default" ? "Server default" : [d.idReusePolicy !== "default" ? REUSE[d.idReusePolicy] : "", d.idConflictPolicy !== "default" ? `running: ${CONFLICT[d.idConflictPolicy]}` : ""].filter(Boolean).join("; ");
-  const memoCount = (text: string) => {
-    const p = parseObject(text);
-    return "value" in p ? Object.keys(p.value).length : 0;
-  };
-  const extras = [memoCount(d.memo) && `${memoCount(d.memo)} memo`, memoCount(d.searchAttributes) && `${memoCount(d.searchAttributes)} search attributes`].filter(Boolean).join(", ") || "None";
+  const retry = retrySummary(d.retry);
+  const timeouts = [
+    `execution ${d.executionTimeout.trim() || "none"}`,
+    `run ${d.runTimeout.trim() || "none"}`,
+    `task ${d.taskTimeout.trim() || "10s"}`,
+    retry === "Server default" ? "no retry" : `retry ${retry}`,
+  ].join(" · ");
+  const policies = `reuse: ${d.idReusePolicy === "default" ? "allow duplicate" : REUSE_SHORT[d.idReusePolicy]} · conflict: ${d.idConflictPolicy === "default" ? "fail" : CONFLICT_SHORT[d.idConflictPolicy]}`;
+  const extras = [...keysOf(d.memo), ...keysOf(d.searchAttributes)];
+  const extrasText = extras.length === 0 ? "none" : extras.length > 3 ? `${extras.slice(0, 3).join(", ")}…` : extras.join(", ");
   const typeList = `start-types-${profile.id}`;
   const queueList = `start-queues-${profile.id}`;
+  const missing = (v: string) => tried && v.trim() === "";
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange} size="lg">
@@ -238,7 +234,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
         <SheetHeader>
           <SheetTitle>Start workflow</SheetTitle>
           <SheetDescription>
-            Starts a run in namespace {namespace} of {profile.name}. Ctrl+Enter starts it.
+            Namespace {namespace} · {profile.name}
           </SheetDescription>
         </SheetHeader>
         <SheetBody>
@@ -251,17 +247,42 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
               void start();
             }}
           >
-            <div className="grid grid-cols-2 gap-inline-md">
-              <Field invalid={tried && d.workflowType.trim() === ""}>
-                <FieldLabel>Workflow type</FieldLabel>
+            <div className="grid grid-cols-2 gap-x-inline-md gap-y-stack-md">
+              <Field invalid={missing(d.workflowType)}>
+                <FieldLabel>
+                  Workflow type
+                  <Required />
+                </FieldLabel>
                 <Input value={d.workflowType} onValueChange={(workflowType) => set({ workflowType })} list={typeList} autoComplete="off" spellCheck={false} required />
-                {tried && d.workflowType.trim() === "" ? <FieldError match>Name the workflow type.</FieldError> : null}
+                <FieldDescription>Suggested from types seen in this namespace; any name is accepted.</FieldDescription>
+                {missing(d.workflowType) ? <FieldError match>Name the workflow type.</FieldError> : null}
               </Field>
-              <Field invalid={tried && d.taskQueue.trim() === ""}>
-                <FieldLabel>Task queue</FieldLabel>
+              <Field invalid={missing(d.taskQueue)}>
+                <FieldLabel>
+                  Task queue
+                  <Required />
+                </FieldLabel>
                 <Input value={d.taskQueue} onValueChange={(taskQueue) => set({ taskQueue })} list={queueList} autoComplete="off" spellCheck={false} required />
-                {hint ? <FieldDescription>{hint}</FieldDescription> : null}
-                {tried && d.taskQueue.trim() === "" ? <FieldError match>Name the task queue.</FieldError> : null}
+                {workers !== null ? (
+                  <FieldDescription>
+                    <QueueWorkers count={workers} />
+                  </FieldDescription>
+                ) : null}
+                {missing(d.taskQueue) ? <FieldError match>Name the task queue.</FieldError> : null}
+              </Field>
+              <Field invalid={missing(d.workflowId)} className="col-span-2">
+                <FieldLabel>
+                  Workflow ID
+                  <Required />
+                </FieldLabel>
+                <InputGroup>
+                  <InputGroupInput value={d.workflowId} onValueChange={(workflowId) => set({ workflowId })} autoComplete="off" spellCheck={false} required className="font-mono text-code" />
+                  <InputGroupButton aria-label="New random ID" title="New random ID" onClick={() => set({ workflowId: generatedId(d.workflowType) })}>
+                    <Icon icon={ArrowCounterclockwise} />
+                  </InputGroupButton>
+                </InputGroup>
+                <FieldDescription>{idPolicyLine(d)}</FieldDescription>
+                {missing(d.workflowId) ? <FieldError match>Give a workflow ID.</FieldError> : null}
               </Field>
             </div>
             <datalist id={typeList}>
@@ -274,32 +295,17 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
                 <option key={q} value={q} />
               ))}
             </datalist>
-            <Field invalid={tried && d.workflowId.trim() === ""}>
-              <FieldLabel>Workflow ID</FieldLabel>
-              <div className="flex items-center gap-inline-xs">
-                <Input value={d.workflowId} onValueChange={(workflowId) => set({ workflowId })} autoComplete="off" spellCheck={false} className="min-w-0 flex-1" />
-                <IconButton appearance="subtle" aria-label="New workflow ID" onClick={() => set({ workflowId: generatedId(d.workflowType) })}>
-                  <Icon icon={ArrowCounterclockwise} />
-                </IconButton>
-              </div>
-              {tried && d.workflowId.trim() === "" ? <FieldError match>Give a workflow ID.</FieldError> : null}
-            </Field>
-            <ArgsField label="Input" value={d.input} onChange={(input) => set({ input })} onSubmit={() => void start()} />
-            <Fold title="Timeouts" value={timeouts}>
+            <Fold title="Input" value="JSON, one payload per argument" open>
+              <ArgsField label="Input" hideLabel description={null} value={d.input} onChange={(input) => set({ input })} onSubmit={() => void start()} />
+            </Fold>
+            <Fold title="Timeouts and retries" value={timeouts}>
               <div className="grid grid-cols-3 gap-inline-md">
-                <DurationField label="Execution" value={d.executionTimeout} onChange={(executionTimeout) => set({ executionTimeout })} placeholder="Unlimited" />
-                <DurationField label="Run" value={d.runTimeout} onChange={(runTimeout) => set({ runTimeout })} placeholder="Unlimited" />
+                <DurationField label="Execution" value={d.executionTimeout} onChange={(executionTimeout) => set({ executionTimeout })} placeholder="None" />
+                <DurationField label="Run" value={d.runTimeout} onChange={(runTimeout) => set({ runTimeout })} placeholder="None" />
                 <DurationField label="Task" value={d.taskTimeout} onChange={(taskTimeout) => set({ taskTimeout })} placeholder="10s" />
               </div>
-            </Fold>
-            <Fold title="Retry policy" value={retrySummary(d.retry)}>
               <p className="text-body-1 text-fg-muted">A workflow is not retried unless it has a retry policy.</p>
               <RetryFields value={d.retry} onChange={(retry) => set({ retry })} />
-              {d.retry !== EMPTY_RETRY ? (
-                <Button size="small" appearance="subtle" className="self-start" onClick={() => set({ retry: EMPTY_RETRY })}>
-                  Clear the retry policy
-                </Button>
-              ) : null}
             </Fold>
             <Fold title="ID policies" value={policies}>
               <Field>
@@ -323,14 +329,19 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
                 </Select>
               </Field>
             </Fold>
-            <Fold title="Memo and search attributes" value={extras}>
+            <Fold title="Memo and search attributes" value={extrasText}>
               <ObjectField label="Memo" value={d.memo} onChange={(memo) => set({ memo })} description="A JSON object; each field is stored as json/plain." onSubmit={() => void start()} />
               <ObjectField label="Search attributes" value={d.searchAttributes} onChange={(searchAttributes) => set({ searchAttributes })} description="A JSON object of custom search attributes registered on the namespace." onSubmit={() => void start()} />
             </Fold>
-            <Fold title="Start delay" value={d.startDelay.trim() || "None"}>
+            <Fold title="Start delay" value={d.startDelay.trim() ? `start after ${d.startDelay.trim()}` : "start now"}>
               <DurationField label="Start delay" value={d.startDelay} onChange={(startDelay) => set({ startDelay })} placeholder="None" description="The first workflow task is scheduled after this delay." />
             </Fold>
-            {tried && "error" in built ? <p role="alert" className="text-body-1 text-danger-fg">{built.error}</p> : null}
+            <WritesTo profile={profile.name}>After the start: a toast with the new run ID (copy) and “Open workflow”.</WritesTo>
+            {tried && "error" in built ? (
+              <p role="alert" className="text-body-1 text-danger-fg">
+                {built.error}
+              </p>
+            ) : null}
             {error ? <ErrorState error={error} /> : null}
           </form>
         </SheetBody>
@@ -341,7 +352,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
           <span className="flex-1" />
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button type="submit" form="start-workflow" appearance="primary" loading={busy} disabled={connId === null}>
-            <Icon icon={Play} /> Start
+            <Icon icon={Play} /> Start workflow <Kbd className="ms-inline-xs">Ctrl+Enter</Kbd>
           </Button>
         </SheetFooter>
       </SheetContent>

@@ -230,7 +230,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
             <Button appearance="subtle" onClick={refresh} aria-label="Refresh" loading={loading && rows.length > 0}>
               <Icon icon={ArrowClockwise} /> Refresh
             </Button>
-            <Button appearance="secondary" onClick={() => setStarting(true)}>
+            <Button appearance="primary" onClick={() => setStarting(true)}>
               <Icon icon={Add} /> Start workflow
             </Button>
           </>
