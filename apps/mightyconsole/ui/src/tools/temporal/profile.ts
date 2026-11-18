@@ -111,3 +111,8 @@ export function pageSizeOf(record: ProfileRecord): number {
 export function namespaceOf(record: ProfileRecord): string {
   return text(record.fields["namespace"]).trim() || DEFAULT_NAMESPACE;
 }
+
+/** The frontend's `host:port` (the CLI commands name it). */
+export function addressOf(record: ProfileRecord): string {
+  return text(record.fields["address"]).trim() || DEFAULT_ADDRESS;
+}

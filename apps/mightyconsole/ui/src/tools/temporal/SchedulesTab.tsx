@@ -13,16 +13,27 @@ import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { ScheduleDetail, ScheduleSummary } from "@/gen/api";
-import { ArrowClockwise, Delete, Pause, Play } from "@/lib/icons";
+import { Add, ArrowClockwise, Delete, Edit, Pause, Play } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { DeleteScheduleDialog, PauseDialog, TriggerDialog, useAction } from "./ActionDialogs";
 import { formatTime } from "./format";
+import { ScheduleSheet } from "./ScheduleSheet";
+import { useSheetRequest } from "./sheet-parts";
 import { statusLabel } from "./WorkflowsTab";
 
 const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
 
-export function SchedulesTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function SchedulesTab({ tab, profile, connId, client, active, useTabActions, note, openTab }: TabProps) {
   const namespace = text(tab.params["namespace"]) || "default";
+  const [creating, setCreating] = useState(false);
+  // "Create schedule" from the palette opens this tab and asks it for the sheet.
+  const request = useSheetRequest(profile.id, "createSchedule");
+  useEffect(() => {
+    if (request.waiting && active && connId !== null) {
+      request.take();
+      setCreating(true);
+    }
+  }, [request, active, connId]);
   const [rows, setRows] = useState<ScheduleSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -57,10 +68,30 @@ export function SchedulesTab({ tab, profile, connId, client, useTabActions, note
         title="Schedules"
         subtitle={`${profile.name} · namespace ${namespace} · ${formatCount(rows.length)} ${rows.length === 1 ? "schedule" : "schedules"}`}
         actions={
-          <Button appearance="subtle" onClick={() => void load()}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </Button>
+          <>
+            <Button appearance="subtle" onClick={() => void load()}>
+              <Icon icon={ArrowClockwise} /> Refresh
+            </Button>
+            <Button appearance="primary" onClick={() => setCreating(true)}>
+              <Icon icon={Add} /> Create schedule
+            </Button>
+          </>
         }
+      />
+      <ScheduleSheet
+        open={creating}
+        onOpenChange={setCreating}
+        client={client}
+        connId={connId}
+        profile={profile}
+        namespace={namespace}
+        mode={{ kind: "create" }}
+        suggestions={{ types: [...new Set(rows.map((s) => s.workflowType).filter(Boolean))] }}
+        note={note}
+        onSaved={(scheduleId) => {
+          void load();
+          openTab({ kind: "temporal.schedule", params: { namespace, scheduleId }, title: scheduleId });
+        }}
       />
       <PageRegion>
       {error ? <ErrorState error={error} onRetry={() => void load()} /> : null}
@@ -110,7 +141,7 @@ export function SchedulesTab({ tab, profile, connId, client, useTabActions, note
   );
 }
 
-type Dialog = "pause" | "resume" | "trigger" | "delete" | null;
+type Dialog = "pause" | "resume" | "trigger" | "delete" | "edit" | null;
 
 export function ScheduleTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
   const namespace = text(tab.params["namespace"]) || "default";
@@ -183,6 +214,9 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
           <Button appearance="secondary" disabled={s === undefined} onClick={() => setDialog("trigger")}>
             <Icon icon={Play} /> Run now
           </Button>
+          <Button appearance="secondary" disabled={detail === null} onClick={() => setDialog("edit")}>
+            <Icon icon={Edit} /> Edit
+          </Button>
           <Button appearance="secondary" disabled={s === undefined} onClick={() => setDialog("delete")}>
             <Icon icon={Delete} /> Delete
           </Button>
@@ -201,7 +235,9 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
               ) : (
                 <ul aria-label="Upcoming runs" className="text-body-1 text-fg">
                   {s.nextRuns.map((t) => (
-                    <li key={t}>{formatTime(t)}</li>
+                    <li key={t} data-at={t}>
+                      {formatTime(t)}
+                    </li>
                   ))}
                 </ul>
               )}
@@ -257,6 +293,25 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
             </section>
           </div>
         </div>
+      ) : null}
+      {detail ? (
+        <ScheduleSheet
+          open={dialog === "edit"}
+          onOpenChange={(o) => !o && close()}
+          client={client}
+          connId={connId}
+          profile={profile}
+          namespace={namespace}
+          mode={{ kind: "edit", scheduleId, form: detail.form, conflictToken: detail.conflictToken }}
+          note={note}
+          onSaved={() => void load()}
+          onReload={async () => {
+            if (connId === null) return null;
+            const fresh = await client.temporal.schedules.describe({ connId, namespace, scheduleId });
+            setDetail(fresh);
+            return { form: fresh.form, conflictToken: fresh.conflictToken };
+          }}
+        />
       ) : null}
       <PauseDialog
         open={dialog === "pause" || dialog === "resume"}

@@ -106,18 +106,24 @@ export interface ArgsFieldProps {
   label?: string;
   /** Mod+Enter in the editor: Send, Run query. */
   onSubmit?: () => void;
+  /** The label for screen readers only, when a section heading already names the field. */
+  hideLabel?: boolean;
+  /** Replaces the default description; null shows none. */
+  description?: string | null;
 }
 
 /** The arguments of a signal or query: a JSON array (one argument each) or a single JSON value. */
-export function ArgsField({ value, onChange, label = "Arguments", onSubmit }: ArgsFieldProps) {
+export function ArgsField({ value, onChange, label = "Arguments", onSubmit, hideLabel = false, description }: ArgsFieldProps) {
   const parsed = parseArgs(value);
   const bad = "error" in parsed ? parsed.error : null;
   const labelId = useId();
   return (
     <Field invalid={bad !== null}>
-      <FieldLabel id={labelId}>{label}</FieldLabel>
+      <FieldLabel id={labelId} {...(hideLabel ? { className: "sr-only" } : {})}>
+        {label}
+      </FieldLabel>
       <CodeEditor value={value} onValueChange={onChange} language="json" aria-labelledby={labelId} placeholder='["approver", 42]' invalid={bad !== null} lineNumbers={false} onSubmit={onSubmit ? () => onSubmit() : undefined} className="h-panel-xs" />
-      <FieldDescription>A JSON array sends one argument per item; any other JSON value is one argument. Each goes as json/plain.</FieldDescription>
+      {description === null ? null : <FieldDescription>{description ?? "A JSON array sends one argument per item; any other JSON value is one argument. Each goes as json/plain."}</FieldDescription>}
       {bad ? <FieldError match>{bad}</FieldError> : null}
     </Field>
   );

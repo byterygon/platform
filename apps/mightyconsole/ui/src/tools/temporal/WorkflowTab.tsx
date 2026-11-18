@@ -18,22 +18,62 @@ import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { EventCategory, HistoryEvent, WorkflowDetail } from "@/gen/api";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ArrowClockwise, ArrowCounterclockwise, Dismiss, Flash, Stop } from "@/lib/icons";
+import { Add, ArrowClockwise, ArrowCounterclockwise, Dismiss, Flash, MoreHorizontal, Stop } from "@/lib/icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { IconButton } from "@/components/ui/icon-button";
 import type { DescribedError, TabProps } from "../types";
 import { formatDuration, formatTime } from "./format";
+import { formatDurationText } from "./schedule-preview";
 import { CATEGORIES, buildTimeline, eventMs, eventSummary, failureChain, inputAndResult, isClosed, itemEventId } from "./history";
 import { CancelDialog, ResetDialog, SignalDialog, TerminateDialog, useAction } from "./ActionDialogs";
 import { QueriesPanel } from "./QueriesPanel";
+import { StartWorkflowSheet, type StartPrefill } from "./StartWorkflowSheet";
 import { statusLabel } from "./WorkflowsTab";
 import { useWorkflow } from "./useWorkflow";
 
 const STATUS_VARIANT = { Running: "accent", Completed: "success", Failed: "danger", Canceled: "neutral", Terminated: "warning", ContinuedAsNew: "info", TimedOut: "warning", Paused: "neutral", Unspecified: "neutral" } as const;
 
 type Section = "timeline" | "history" | "io" | "pending" | "stack" | "queries";
-type Dialog = "signal" | "cancel" | "terminate" | "reset" | null;
+type Dialog = "signal" | "cancel" | "terminate" | "reset" | "startAnother" | null;
 
 const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
 const obj = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
+
+/**
+ * "Start another like this": the run's type, task queue, input, memo, timeouts and retry policy,
+ * from its start event. Input that is not JSON (`$opaque`) is left for the user to replace.
+ */
+export function prefillOf(w: WorkflowDetail["workflow"], events: readonly HistoryEvent[]): StartPrefill {
+  const out: StartPrefill = { workflowType: w.workflowType, taskQueue: w.taskQueue };
+  const io = inputAndResult(events);
+  if (Array.isArray(io.input)) out.args = io.input;
+  const memo = obj(io.memo);
+  if (Object.keys(memo).length > 0) out.memo = memo;
+  const started = events.find((e) => e.eventType === "WorkflowExecutionStarted")?.attributes ?? {};
+  const duration = (key: string) => {
+    const s = /^(\d+(?:\.\d+)?)s$/.exec(text(started[key]));
+    return s && Number(s[1]) > 0 ? formatDurationText(Math.round(Number(s[1]) * 1000)) : undefined;
+  };
+  const execution = duration("workflowExecutionTimeout");
+  const run = duration("workflowRunTimeout");
+  const task = duration("workflowTaskTimeout");
+  if (execution) out.executionTimeout = execution;
+  if (run) out.runTimeout = run;
+  if (task && task !== "10s") out.taskTimeout = task;
+  const retry = obj(started["retryPolicy"]);
+  if (Object.keys(retry).length > 0) {
+    const policy: NonNullable<StartPrefill["retryPolicy"]> = {};
+    const iv = /^(\d+(?:\.\d+)?)s$/.exec(text(retry["initialInterval"]));
+    if (iv) policy.initialInterval = formatDurationText(Math.round(Number(iv[1]) * 1000));
+    const mx = /^(\d+(?:\.\d+)?)s$/.exec(text(retry["maximumInterval"]));
+    if (mx) policy.maximumInterval = formatDurationText(Math.round(Number(mx[1]) * 1000));
+    if (typeof retry["backoffCoefficient"] === "number") policy.backoffCoefficient = retry["backoffCoefficient"];
+    if (typeof retry["maximumAttempts"] === "number" && retry["maximumAttempts"] > 0) policy.maximumAttempts = retry["maximumAttempts"];
+    if (Array.isArray(retry["nonRetryableErrorTypes"]) && retry["nonRetryableErrorTypes"].length > 0) policy.nonRetryableErrorTypes = retry["nonRetryableErrorTypes"].map(String);
+    out.retryPolicy = policy;
+  }
+  return out;
+}
 
 /** `PENDING_ACTIVITY_STATE_STARTED` as "Started". */
 function stateLabel(value: unknown): string {
@@ -122,6 +162,16 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <Button appearance="secondary" disabled={!running} onClick={() => setDialog("terminate")}>
               <Icon icon={Stop} /> Terminate
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<IconButton appearance="subtle" aria-label="More actions" disabled={w === undefined} />}>
+                <Icon icon={MoreHorizontal} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setDialog("startAnother")}>
+                  <Icon icon={Add} /> Start another like this
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       >
@@ -187,6 +237,19 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           </TabsContent>
         </Tabs>
       )}
+      {w ? (
+        <StartWorkflowSheet
+          open={dialog === "startAnother"}
+          onOpenChange={(o) => !o && close()}
+          client={client}
+          connId={connId}
+          profile={profile}
+          namespace={namespace}
+          prefill={prefillOf(w, events)}
+          note={note}
+          onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })}
+        />
+      ) : null}
       <SignalDialog
         open={dialog === "signal"}
         onOpenChange={(o) => !o && close()}

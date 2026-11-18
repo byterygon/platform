@@ -33,6 +33,13 @@ const detail = (patch: Partial<ScheduleSummary> = {}): ScheduleDetail => ({
   policies: { overlapPolicy: "SCHEDULE_OVERLAP_POLICY_SKIP" },
   state: {},
   info: { actionCount: 12, createTime: "2026-11-17T18:00:00Z" },
+  form: {
+    spec: { calendars: [], intervals: [{ every: "1m" }], cronStrings: [] },
+    action: { workflowType: "Completed", taskQueue: "lab", workflowId: "scheduled", args: ["ord-scheduled"] },
+    policies: { overlap: "skip", pauseOnFailure: false },
+    state: { paused: summary(patch).paused, notes: "" },
+  },
+  conflictToken: "dG9rZW4=",
 });
 
 const isDisabled = (el: HTMLElement | null) => el !== null && (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true" || el.hasAttribute("data-disabled"));

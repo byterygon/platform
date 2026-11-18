@@ -120,7 +120,7 @@ export interface ToolAction {
   label: string;
   keywords?: readonly string[];
   /** Runs it on the selected profile's live handle. */
-  run(context: { client: MightyClient; profile: ProfileRecord; connId: string }): void | Promise<void>;
+  run(context: { client: MightyClient; profile: ProfileRecord; connId: string; openTab(open: { kind: string; params: Record<string, unknown>; title: string }): void }): void | Promise<void>;
 }
 
 /**

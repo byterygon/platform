@@ -366,6 +366,11 @@ pub async fn schedule_describe(
         policies: part(&mut schedule_json, "policies"),
         state: part(&mut schedule_json, "state"),
         info: part(&mut json, "info"),
+        form: super::schedule_form::form_of(&schedule),
+        conflict_token: base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &response.conflict_token,
+        ),
     })
 }
 
