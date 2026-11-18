@@ -14,6 +14,7 @@ import { Tree, type TreeNode } from "@/components/ui/tree";
 import { Add, ArrowImport, CheckmarkCircle, Circle, Clock, ErrorCircle, Warning } from "@/lib/icons";
 import type { RecordState } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
+import { toolIcon } from "@/tools/registry";
 import type { ResourceNode, ToolModule } from "@/tools/types";
 import { COLOR_CLASS } from "../dialogs/ProfileDialogs";
 import { bindingOf } from "../shortcuts";
@@ -30,9 +31,13 @@ const GLYPH = {
 /** A profile's tool icon with its status glyph; the row also says the status in text. */
 export function ProfileIcon({ tool, status, color }: { tool: ToolModule; status: ConnState["status"]; color?: string | undefined }) {
   const glyph = status === "connecting" ? null : GLYPH[status];
+  const colorClass = color ? COLOR_CLASS[color] : undefined;
+  // A tool's own mark is never recoloured (its owners' guidelines, marks/NOTICE.md): the profile
+  // colour becomes a dot on its corner. A Fluent icon still takes the colour itself.
   return (
     <span data-status={status} className="relative me-inline-xs inline-flex">
-      <Icon icon={tool.icon} {...(color && COLOR_CLASS[color] ? { className: COLOR_CLASS[color] } : {})} />
+      <Icon icon={toolIcon(tool)} {...(colorClass && !tool.mark ? { className: colorClass } : {})} />
+      {colorClass && tool.mark ? <span aria-hidden="true" data-profile-color={color} className={`absolute inset-s-0 top-0 size-icon-xs -translate-x-1/3 -translate-y-1/3 rounded-full border-2 border-surface bg-current ${colorClass}`} /> : null}
       {glyph ? (
         <span className="absolute inset-e-0 bottom-0 flex translate-x-1/3 translate-y-1/3 rounded-full bg-surface">
           <Icon icon={glyph.icon} filled={glyph.filled} tone={glyph.tone} className="size-icon-xs!" />
@@ -153,7 +158,7 @@ export function ConnectionList(props: ConnectionListProps) {
     return (
       <EmptyState className="px-inset-md py-inset-xl">
         <EmptyStateIcon>
-          <Icon icon={tool.icon} />
+          <Icon icon={toolIcon(tool)} />
         </EmptyStateIcon>
         <EmptyStateTitle render={<p />} className="text-body-1-strong">
           No {tool.label} connections yet

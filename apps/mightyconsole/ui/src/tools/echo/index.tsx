@@ -239,6 +239,9 @@ export const echoTool: ToolModule = {
   id: "echo",
   label: "Echo",
   icon: Braces,
+  // The sample tool: no mark, and last in the navigation.
+  category: "Other",
+  order: 1000,
   description: "The sample tool: it talks to nothing but the server, to show how every tool works.",
   profile,
   ConnectionForm,

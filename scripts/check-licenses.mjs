@@ -6,6 +6,8 @@
 //    match the checksums recorded for them; no font file is unlisted.
 // 4. Vendored icons (packages/*/icons/manifest.json, Fluent UI System Icons) are MIT, ship the
 //    licence text, and match their checksums; no icon file is unlisted.
+// 5. Vendored tool marks (apps/*/ui/marks/manifest.json, Simple Icons) are CC0 data with the text,
+//    a trademark line per mark in NOTICE.md, and match their checksums; no mark file is unlisted.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -223,10 +225,41 @@ for (const parent of ["packages", "apps"]) {
   }
 }
 
+// Marks: the tools' own logos an app vendors (apps/*/ui/marks/manifest.json, Simple Icons). The
+// artwork data is CC0 and ships its text; each mark is a trademark of its owner, so NOTICE.md must
+// name every one; every file matches its sha256 and none is unlisted.
+let markFiles = 0;
+for (const entry of readdirSync("apps", { withFileTypes: true })) {
+  const marksDir = join("apps", entry.name, "ui", "marks");
+  const manifestPath = join(marksDir, "manifest.json");
+  if (!entry.isDirectory() || !existsSync(manifestPath)) continue;
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (manifest.source?.license !== "CC0-1.0") errors.push(`${manifestPath}: mark data licence must be CC0-1.0 (got ${manifest.source?.license ?? "none"})`);
+  const licensePath = join(marksDir, manifest.source?.licenseFile ?? "LICENSE.md");
+  if (!existsSync(licensePath) || !/CC0 1\.0 Universal/.test(readFileSync(licensePath, "utf8"))) errors.push(`${licensePath}: the CC0 text is missing`);
+  const noticePath = join(marksDir, manifest.source?.notice ?? "NOTICE.md");
+  const notice = existsSync(noticePath) ? readFileSync(noticePath, "utf8") : "";
+  if (!notice) errors.push(`${noticePath}: the trademark notice is missing`);
+  const listed = new Set();
+  for (const mark of manifest.marks ?? []) {
+    const path = join(marksDir, mark.path);
+    listed.add(path);
+    markFiles += 1;
+    if (!notice.includes(`**${mark.title}**`)) errors.push(`${noticePath}: no trademark line for ${mark.title}`);
+    if (!existsSync(path)) errors.push(`${path}: listed in the manifest but missing`);
+    else if (createHash("sha256").update(readFileSync(path)).digest("hex") !== mark.sha256) {
+      errors.push(`${path}: sha256 differs from the manifest; re-vendor it, never edit it`);
+    }
+  }
+  for (const file of listFiles(marksDir)) {
+    if (file.endsWith(".svg") && !listed.has(file)) errors.push(`${relative(".", file)}: mark file is not listed in ${manifestPath}`);
+  }
+}
+
 if (errors.length > 0) {
   for (const e of errors) console.error(`error: ${e}`);
   process.exit(1);
 }
 console.log(
-  `License policy OK (${meta.workspace_members.length} crates, ${manifests.length} package.json files, ${fontFamilies} font famil${fontFamilies === 1 ? "y" : "ies"}, ${iconFiles} icon files in ${iconSets} set${iconSets === 1 ? "" : "s"}).`,
+  `License policy OK (${meta.workspace_members.length} crates, ${manifests.length} package.json files, ${fontFamilies} font famil${fontFamilies === 1 ? "y" : "ies"}, ${iconFiles} icon files in ${iconSets} set${iconSets === 1 ? "" : "s"}, ${markFiles} tool marks).`,
 );

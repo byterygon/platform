@@ -11,11 +11,15 @@ import { TaskQueueTab } from "./TaskQueueTab";
 import { WorkflowTab } from "./WorkflowTab";
 import { WorkflowsTab } from "./WorkflowsTab";
 import { namespaceOf, profile, savedQueriesOf } from "./profile";
+import { TemporalMark } from "../marks";
 
 export const temporalTool: ToolModule = {
   id: "temporal",
   label: "Temporal",
   icon: Clock,
+  mark: TemporalMark,
+  category: "Workflows and agents",
+  order: 50,
   description: "Workflows, schedules and task queues of a Temporal cluster.",
   profile,
   ConnectionForm,

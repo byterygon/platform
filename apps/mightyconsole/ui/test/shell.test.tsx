@@ -360,6 +360,14 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
     await key("F6", {}, document.body);
     expect(document.activeElement?.closest("[data-pane]")).not.toBeNull();
   });
+
+  test("the rail draws each tool's own mark, or its Fluent icon when it has none (DOC-21 OQ 45 (e))", async () => {
+    const fake = createFakeServices();
+    await mount(fake);
+    expect(byRole("button", "Temporal")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("mark-temporal");
+    expect(byRole("button", "LangGraph")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("mark-langgraph");
+    expect(byRole("button", "Echo")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("braces");
+  });
 });
 
 describe("accessibility (spec §18: axe on the shell)", () => {

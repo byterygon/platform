@@ -1,0 +1,62 @@
+{
+  "$comment": "The tools' own marks (Mightyconsole spec DOC-21, Open question 45 (e)), vendored from Simple Icons and never edited: each SVG is the package's file byte for byte. scripts/marks.ts writes src/tools/marks.ts from it and checks every sha256; scripts/check-licenses.mjs checks them too. The artwork data is CC0-1.0; each mark stays its owner's trademark (NOTICE.md). Docker and Apache Kafka are deliberately absent: their owners require written approval for logo use in software (NOTICE.md).",
+  "source": {
+    "name": "Simple Icons",
+    "repository": "https://github.com/simple-icons/simple-icons",
+    "package": "simple-icons",
+    "version": "16.38.0",
+    "tarball": "https://registry.npmjs.org/simple-icons/-/simple-icons-16.38.0.tgz",
+    "sha256": "40f6282307c399d6feb87678e92ad4cbe469585539eb13d4bab6a430aabc01f4",
+    "integrity": "sha512-B0Wws90eL0Fm65aH35CA8kM+7/Zzgsaytt0DndBx7VFm3+o9HurVIVRQZ1hvqqYYIyNJq7ycn3kQm2v2FhiWSQ==",
+    "license": "CC0-1.0",
+    "licenseFile": "LICENSE.md",
+    "disclaimerFile": "DISCLAIMER.md",
+    "notice": "NOTICE.md"
+  },
+  "marks": [
+    {
+      "export": "KubernetesMark",
+      "tool": "k8s",
+      "title": "Kubernetes",
+      "slug": "kubernetes",
+      "path": "simple-icons/kubernetes.svg",
+      "sha256": "ceee2f4e87fa1533600672190c156194039f744fa9b5da10e83f002178e84b47",
+      "owner": "The Linux Foundation",
+      "upstream": "https://github.com/kubernetes/kubernetes/tree/cac53883f4714452f3084a22e4be20d042a9df33/logo",
+      "guidelines": "https://www.linuxfoundation.org/legal/trademark-usage"
+    },
+    {
+      "export": "NatsMark",
+      "tool": "nats",
+      "title": "NATS",
+      "slug": "natsdotio",
+      "path": "simple-icons/natsdotio.svg",
+      "sha256": "01d7c0dbc74b250b3ea7e30186fed0d353d5632a254669f5219b525bfb61ff12",
+      "owner": "The Linux Foundation",
+      "upstream": "https://github.com/cncf/artwork/blob/88bc5e7a0cc7f3770ba6edddc92e1ab8a6006171/projects/nats/icon/black/nats-icon-black.svg",
+      "guidelines": "https://www.linuxfoundation.org/legal/trademark-usage"
+    },
+    {
+      "export": "TemporalMark",
+      "tool": "temporal",
+      "title": "Temporal",
+      "slug": "temporal",
+      "path": "simple-icons/temporal.svg",
+      "sha256": "3f3b564e7b1e7f5390fdd9bdf1c3714634bbb02640c91b8051146811cf4cf177",
+      "owner": "Temporal Technologies, Inc.",
+      "upstream": "https://github.com/temporalio/temporaldotio/blob/b6b5f3ed1fda818d5d6c07e27ec15d51a61f2267/public/images/icons/temporal-no-text.svg",
+      "guidelines": "https://temporal.io/brand"
+    },
+    {
+      "export": "LangGraphMark",
+      "tool": "langgraph",
+      "title": "LangGraph",
+      "slug": "langgraph",
+      "path": "simple-icons/langgraph.svg",
+      "sha256": "c0085e105dba047ea61881ebcf6d7f80665c691af5411a7cb48cf719038b8b0e",
+      "owner": "LangChain, Inc.",
+      "upstream": "https://www.langchain.com/langgraph",
+      "guidelines": "https://www.langchain.com/brand-assets"
+    }
+  ]
+}

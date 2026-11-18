@@ -15,6 +15,7 @@ import { AssistantsTab, AssistantTab } from "./assistants";
 import { StoreTab } from "./store";
 import { ThreadTab } from "./thread";
 import { ThreadsTab } from "./threads";
+import { LangGraphMark } from "../marks";
 
 export const DEFAULT_URL = "http://127.0.0.1:2024";
 
@@ -133,6 +134,9 @@ export const langgraphTool: ToolModule = {
   id: "langgraph",
   label: "LangGraph",
   icon: Flash,
+  mark: LangGraphMark,
+  category: "Workflows and agents",
+  order: 60,
   description: "Assistants and their graphs, threads, runs with live streaming and interrupts, checkpoints and the store of any LangGraph server.",
   profile,
   ConnectionForm,
