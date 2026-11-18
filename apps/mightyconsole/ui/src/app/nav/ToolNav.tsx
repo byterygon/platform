@@ -57,7 +57,7 @@ const itemClass = [
   "relative flex w-full min-w-0 shrink-0 cursor-default select-none items-center gap-inline-lg rounded-md px-inline-md text-start text-body-1 text-fg",
   "h-control-lg hover:bg-hover active:bg-pressed",
   "aria-[current=page]:bg-pressed aria-[current=page]:text-body-1-strong",
-  "aria-[current=page]:before:absolute aria-[current=page]:before:inset-s-0 aria-[current=page]:before:top-1/2 aria-[current=page]:before:h-icon-md aria-[current=page]:before:w-track aria-[current=page]:before:-translate-y-1/2 aria-[current=page]:before:rounded-full aria-[current=page]:before:bg-accent-solid",
+  "aria-[current=page]:before:absolute aria-[current=page]:before:inset-s-0 aria-[current=page]:before:top-1/2 aria-[current=page]:before:h-icon-md aria-[current=page]:before:w-track aria-[current=page]:before:-translate-y-1/2 aria-[current=page]:before:rounded-full aria-[current=page]:before:bg-accent-compound",
   focusRing,
 ];
 
