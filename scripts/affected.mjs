@@ -26,7 +26,7 @@ import { appendFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { ALL_RUST, EDGES, NO_TARGETS, RUN_ALL } from "./affected-rules.mjs";
+import { ALL_RUST, EDGES, LAB_TOOL_EXTRA, LAB_TOOL_FILES, NO_TARGETS, RUN_ALL } from "./affected-rules.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -483,6 +483,41 @@ export function computeAffected({ files, event = "pull_request", packages, crate
 }
 
 // ---------------------------------------------------------------------------------------------
+// Mightyconsole lab: which tools' profiles a change needs (TSK-89, batch 3)
+
+/** The lab's tools, from apps/mightyconsole/lab/lab.mts (`export const TOOLS = [...]`). */
+export function readLabTools(root = ROOT) {
+  const src = readFileSync(join(root, "apps/mightyconsole/lab/lab.mts"), "utf8");
+  const m = src.match(/export const TOOLS = \[([^\]]*)\]/);
+  if (!m) throw new Error("apps/mightyconsole/lab/lab.mts: no TOOLS list");
+  return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+}
+
+/**
+ * The lab profiles a change needs: "all", "none", or the tools whose own files alone changed
+ * (LAB_TOOL_FILES, LAB_TOOL_EXTRA). Any other file that affects Mightyconsole needs every tool.
+ * Takes computeAffected's input.
+ */
+export function labTools(input, tools, rules = { LAB_TOOL_FILES, LAB_TOOL_EXTRA }) {
+  const whole = computeAffected(input);
+  if (whole.all) return "all";
+  if (!whole.jobs.mightyconsole) return "none";
+  const out = new Set();
+  for (const file of input.files) {
+    const tool =
+      tools.find((t) => matches(file, rules.LAB_TOOL_FILES.map((g) => g.replaceAll("<tool>", t)))) ??
+      rules.LAB_TOOL_EXTRA.find((e) => matches(file, e.files))?.tool;
+    if (tool) {
+      out.add(tool);
+      continue;
+    }
+    const one = computeAffected({ ...input, files: [file] });
+    if (one.all || one.jobs.mightyconsole) return "all";
+  }
+  return out.size ? [...out].sort() : "none";
+}
+
+// ---------------------------------------------------------------------------------------------
 // Command line
 
 const git = (args, root = ROOT) => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 256 << 20 });
@@ -529,7 +564,7 @@ export function run(argv = process.argv.slice(2), root = ROOT) {
   else ({ mergeBase, files } = changedFiles(opt.base, opt.head, root));
   const base = mergeBase ?? (opt.files !== undefined ? git(["merge-base", opt.base, opt.head ?? "HEAD"], root).trim() : null);
   const lock = (path) => (base ? { old: gitShow(base, path, root), new: now(path) } : undefined);
-  const result = computeAffected({
+  const input = {
     files,
     event: opt.event,
     packages,
@@ -537,7 +572,10 @@ export function run(argv = process.argv.slice(2), root = ROOT) {
     crateDeps: cargoWorkspaceEdges(now("Cargo.lock"), [...crates.keys()]),
     cargoLock: files.includes("Cargo.lock") ? lock("Cargo.lock") : undefined,
     pnpmLock: files.includes("pnpm-lock.yaml") ? lock("pnpm-lock.yaml") : undefined,
-  });
+  };
+  const result = computeAffected(input);
+  const lab = labTools(input, readLabTools(root));
+  result.lab_tools = lab;
   result.base = base;
   console.log(JSON.stringify(result, null, opt.pretty ? 2 : 0));
   if (opt["github-output"]) {
@@ -554,6 +592,8 @@ export function run(argv = process.argv.slice(2), root = ROOT) {
       // Space-separated, for `contains(format(' {0} ', list), ' name ')` and shell `case`.
       `crate_list=${result.crates.join(" ")}`,
       `package_list=${result.packages.join(" ")}`,
+      // The Mightyconsole lab's profiles: "all", "none" or the tools, space-separated.
+      `lab_tools=${Array.isArray(lab) ? lab.join(" ") : lab}`,
     ];
     appendFileSync(out, `${lines.join("\n")}\n`);
   }

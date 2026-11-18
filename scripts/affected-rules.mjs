@@ -50,6 +50,28 @@ export const EDGES = [
 ];
 
 /**
+ * Mightyconsole lab (TSK-89, batch 3): the files that belong to one tool's lab profile. `<tool>`
+ * stands for each tool of apps/mightyconsole/lab/lab.mts's TOOLS. Any other change that affects
+ * Mightyconsole (the shell, the server core, packages/ui, the lockfiles, ...) brings up every
+ * tool, as do pushes and the weekly run.
+ */
+export const LAB_TOOL_FILES = [
+  "apps/mightyconsole/ui/src/tools/<tool>/**",
+  "apps/mightyconsole/server/src/tools/<tool>/**",
+  "apps/mightyconsole/lab/<tool>/**",
+  "apps/mightyconsole/acceptance/checklists/<tool>.mts",
+  "apps/mightyconsole/ui/test/<tool>.test.ts",
+  "apps/mightyconsole/ui/test/<tool>.test.tsx",
+  "apps/mightyconsole/ui/test/<tool>-*.test.ts",
+  "apps/mightyconsole/ui/test/<tool>-*.test.tsx",
+];
+/** Lab folders named after something other than their tool. */
+export const LAB_TOOL_EXTRA = [
+  { files: ["apps/mightyconsole/lab/docker-host/**"], tool: "docker" },
+  { files: ["apps/mightyconsole/lab/schemas/**"], tool: "kafka" },
+];
+
+/**
  * Files that need none of the conditional jobs (the License policy and Secret scan jobs always
  * run). Markdown is documentation unless an edge above lists it.
  */
