@@ -117,8 +117,8 @@
     }
   ],
   "tokens": [
-    "color.accent.bg",
-    "color.accent.fg",
+    "color.accent.compound",
+    "color.accent.compound-fg",
     "color.bg.layer",
     "color.border.strong",
     "color.fg.default",

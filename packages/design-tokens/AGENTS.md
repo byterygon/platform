@@ -42,7 +42,8 @@ pnpm --filter @byterygon/design-tokens tokens diff default ./my.theme.json
 pnpm --filter @byterygon/design-tokens tokens preset create my-theme --set seeds.colors.brand.hue=150   # starts empty (engine defaults)
 pnpm --filter @byterygon/design-tokens tokens preset create my-aurora --from default --set seeds.radius=6   # copies a preset
 pnpm --filter @byterygon/design-tokens tokens preset create ocean --from default --set seeds.colors.brand.hue=200 \
-  --unset overrides.color.brand.9 --unset overrides.color.brand.10 --unset overrides.color.brand.11 --force   # see "Presets"
+  --unset overrides.color.brand.9 --unset overrides.color.brand.10 --unset overrides.color.brand.11 \
+  --unset overrides.color.brand-dark.9 --unset overrides.color.brand-dark.10 --force   # see "Presets"
 pnpm --filter @byterygon/design-tokens tokens export css --theme ./my.theme.json
 pnpm --filter @byterygon/design-tokens tokens export monaco --theme paper      # also registry, ts, dtcg, figma, tailwind, shadcn, theme
 pnpm --filter @byterygon/design-tokens tokens hash encode --theme ./my.theme.json --mode dark   # a Theme Studio URL hash
@@ -225,7 +226,7 @@ with no consumer). The previous default is `classic`. DBee's appearance list
 
 | Theme | Label | Look |
 | --- | --- | --- |
-| `default` | Aurora | Aurora, the Fluent 2 layered look chosen on 2026-11-16 (TSK-52), the default since TSK-57: violet brand `#6b4eff` (hue 282.5; light steps 9-11 overridden to the full chroma 0.2474, which the dark solid cannot show, so the seed chroma is 0.165), cool near-grey neutral (hue 275, chroma 0.012, tint 0.006), backdrop glows `brand.4`/`teal.3` (dark `brand-dark.6`/`teal-dark.6`) over a canvas one step up (`neutral.2`, dark `neutral-dark.3`, with surface, raised and overlay following), radius 4 with `radius.lg` 8, a black and white focus ring (`color.ring`), `color.border.focus` and `grid.selection-border` on the accent, `color.neutral-dark.10` lifted by the printed fix so subtle text holds on a field over the brightest glow. DBee takes it through `default` and sets `data-density="compact"` itself |
+| `default` | Aurora | Aurora, the Fluent 2 layered look chosen on 2026-11-16 (TSK-52), the default since TSK-57: violet brand `#6b4eff` (hue 282.5; light steps 9-11 and dark steps 9-10 overridden to the full chroma 0.2474, so the primary button is `#6b4eff` with white text in both schemes and presses to `color.brand.11` in dark too; the seed chroma 0.165 is what the lighter dark steps can show), cool near-grey neutral (hue 275, chroma 0.012, tint 0.006), backdrop glows `brand.4`/`teal.3` (dark `brand-dark.6`/`teal-dark.6`) over a canvas one step up (`neutral.2`, dark `neutral-dark.3`, with surface, raised and overlay following), radius 4 with `radius.lg` 8, a black and white focus ring (`color.ring`), `color.border.focus` and `grid.selection-border` on `color.accent.compound`, `color.neutral-dark.10` lifted by the printed fix so subtle text holds on a field over the brightest glow. DBee takes it through `default` and sets `data-density="compact"` itself |
 | `classic` | Classic | the default before TSK-57, values unchanged: cool neutral, blue-teal brand (hue 230), radius 6, light, comfortable, no glows; `font.sans` (Inter first, no Segoe) and `font.mono` (JetBrains Mono first, no Cascadia) as before TSK-57 |
 | `slate` | Slate | near-greyscale, muted slate-blue accent, radius 4 |
 | `paper` | Paper | warm cream (neutral tint), rust accent, 15 px text with relaxed body leading, radius 8; its orange (the warning colour) at hue 65, so warning stays apart from the rust brand |
@@ -241,10 +242,10 @@ every preset and compares the committed ones byte for byte. `registry-theme.json
 is also `packages/ui/registry/theme-<preset>.json`, made by the same function from the committed
 CSS; a test compares the two.
 
-**A new brand hue from `default`.** Aurora pins its light brand steps 9 to 11 by override (the
-full chroma of #6b4eff), so `--set seeds.colors.brand.hue=...` alone leaves the light accent solid
-violet; `preset create` says so in a note and names the `--unset overrides.color.brand.9` (10, 11)
-to add. It also pins `radius.lg` (8 px), which a new `seeds.radius` does not reach (`--unset
+**A new brand hue from `default`.** Aurora pins its light brand steps 9 to 11 and its dark steps 9
+and 10 by override (the full chroma of #6b4eff), so `--set seeds.colors.brand.hue=...` alone leaves
+the accent solid violet; `preset create` says so in a note and names the `--unset
+overrides.color.brand.9` (10, 11, `brand-dark.9`, `brand-dark.10`) to add. It also pins `radius.lg` (8 px), which a new `seeds.radius` does not reach (`--unset
 overrides.radius.lg`; the note names it too). Start from `classic` or no `--from` to avoid the pins. `preset create` writes nothing when
 the theme breaks a rule unless `--force` is given (exit 1 still); then run `by-tokens fix` and
 `validate`. At some hues (150, 200 from Aurora's lightness steps) no single `color.brand.contrast`
@@ -256,11 +257,13 @@ To use a theme of your own in a project: the MCP server's `install_theme` (`pack
 `by-tokens export registry --theme <file>` for the shadcn CLI, or `export css` / `tailwind` /
 `shadcn` for the three CSS files.
 
-A theme whose brand solid is light enough to take dark text (a yellow, a lime) needs overrides the
-catalogue cannot make for it: `color.accent.bg-active` points at step 11, a dark text step, so dark
-text on it fails (override it to `{ "light": "{color.brand.10}" }`), and `color.ring`,
-`color.accent.bg` and `grid.selection-border` are steps that are too light against a white page (alias
-them to step 8). `validate` reports each with its pair and mode.
+A theme whose brand solid is light enough to take dark text (a yellow, a lime: the seed pins
+`solid` light) needs overrides the catalogue cannot make for it in the light scheme:
+`color.accent.bg-active` points at step 11, a dark text step, so dark text on it fails (override it
+to `{ "light": "{color.brand.10}" }`), and `color.accent.compound` (with it `color.ring`,
+`color.border.focus-underline` and `grid.selection-border`) is a step too light against a white
+page (alias it to step 8). In the dark scheme the catalogue follows the ramp: `color.accent.bg-active`
+is step 7 under white text and step 11 under ink. `validate` reports each with its pair and mode.
 
 ## Three tiers, one direction
 
@@ -282,6 +285,22 @@ Ramp steps follow the Radix model: 1-2 app backgrounds, 3-5 component background
 pressed), 6-7 borders, 8 strong border (solved to 3:1 on the background steps), 9-10 solid and its hover
 (solved to 4.5:1 against the ramp's `contrast` colour), 11 low-contrast text (solved to 4.5:1 on
 steps 1-5, and on the same steps of the neutral ramp), 12 high-contrast text. `by-tokens explain color.brand.9` shows each step's job.
+
+**Text on the solids (TSK-90).** The `contrast` colour is white first, as Fluent's foreground on
+brand: the solid is darkened until white holds, in both schemes, so the dark solids sit near
+lightness 0.55-0.59 instead of 0.72. Dark ink only when the seed pins `solid` for that scheme where
+white fails and ink contrasts more (amber). The hover moves away from the text colour (darker under
+white). The neutral ramp is the exception (`solidText: "higher-contrast"`, `src/generate.ts`): its
+dark solid stays light with ink, Fluent's inverted neutral, because its dark steps 9-10 are also
+`color.fg.subtle` and syntax comments. A dark solid under white text is too dark to stand out from
+a dark surface, so what must reach 3:1 there uses Fluent's compound brand instead:
+`color.accent.compound` (`-hover`, `-active`, `-fg`; light: steps 9-11 and the contrast colour, the
+same as `color.accent.*`; dark: steps 11 and 12 with step 1 as the glyph colour) for checked
+checkboxes, switches and radios, sliders, progress, spinners, the selected tab's line, the focus
+underline, the ring and selection outlines, and `color.status.danger.stroke` (light step 9, dark
+step 11) for invalid edges. Those carry the `ui` pairs; `color.accent.bg` and
+`color.status.danger.solid` are the fills of labelled buttons and carry text pairs. `chart.seq.*` and
+`chart.div.*` skip the dark solids so the scales keep brightening.
 
 ## Rules the build enforces
 
@@ -368,7 +387,7 @@ per mode), or replaces the whole `gradient.backdrop` with its own list of layers
 | `color.border.subtle` | `border-border-subtle` | black 8 % / white 8 % | hairline of controls and flyouts on layers |
 | `color.border.control-bottom` | `border-b-border-control-bottom` | black 45 % / white 55 % | bottom edge of a field: what makes it 3:1 |
 | `color.border.control-bottom-subtle` | `border-b-border-control-bottom-subtle` | black 18 % / white 4 % | bottom edge of a button (depth, not identity) |
-| `color.border.focus-underline`, `shadow.focus-underline` | `shadow-focus-underline` | the accent solid, inset 0 -2px 0 | a focused field |
+| `color.border.focus-underline`, `shadow.focus-underline` | `shadow-focus-underline` | `color.accent.compound`, inset 0 -2px 0 | a focused field |
 | `color.ring-inner`, `ring.inner-width`, `ring.inner-color` | `ring-ring-inner` | white / black, 1 px | the inner stroke of the double focus ring |
 | `depth.{2,4,8,16,28,64}` | (none) | key 14 % + ambient 12 % / 26 % + 40 % black | Fluent's depth scale, through an elevation |
 | `elevation.{layer,flyout,dialog}.{shadow,border,bg}` | `shadow-layer`, `shadow-flyout`, `shadow-dialog` | 0 2px 4px black 4 % (light only); depth 16; depth 64 | cards on the backdrop, flyouts, dialogs |
@@ -378,10 +397,12 @@ per mode), or replaces the whole `gradient.backdrop` with its own list of layers
   `ring.inner-width`) with a `box-shadow: 0 0 0 var(--by-ring-inner-width)
   var(--by-ring-inner-color)` inside it. The outline survives forced-colours mode; the shadow
   does not need to.
-- The danger solid is also a `ui` pair on `color.bg.layer-alt` (over the backdrop and a layer) and on
-  every opaque surface: it is the bottom edge of an invalid field (TSK-53).
+- `color.status.danger.stroke` is a `ui` pair on `color.bg.layer-alt` (over the backdrop and a layer)
+  and on every opaque surface: it is the bottom edge of an invalid field (TSK-53; the danger solid
+  until TSK-90).
 - Contrast: text on `color.bg.layer` over the backdrop, text and the field strokes on
-  `color.bg.layer-alt` over the backdrop and a layer, the focus ring and the solids on a layer.
+  `color.bg.layer-alt` over the backdrop and a layer, the focus ring, the compound accent and the
+  danger stroke on a layer.
   Text straight on the backdrop (an app's title area and status bar, TSK-64): `color.fg.default`
   and `color.fg.muted` on each glow colour and on the canvas, since the backdrop is a blend of the
   three.
@@ -462,6 +483,9 @@ package is a reference, never a dependency. `test/catalog.test.ts` pins every va
   `accent-solid-active` and `accent-solid-fg` in Tailwind (`tailwindAliases`). shadcn/ui's
   `bg-accent` is a hover background (its `--accent`), so Byterygon components use the
   `accent-solid` names and a project with stock shadcn components keeps shadcn's meaning.
+- `color.accent.compound*` (Tailwind `accent-compound`, `-hover`, `-active`, `-fg`) is the accent
+  that must stand out from the surface (checked controls, indicators, strokes); `accent-solid` is the
+  fill under white text (buttons, solid badges, the selected calendar day). See "Text on the solids".
 - `font.sans` and `font.mono` are the font family tokens (the spec calls them `font.family.*`).
   Override them to change the fonts; `fonts/fonts.css` declares the vendored files (see "Fonts").
 

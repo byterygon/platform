@@ -100,7 +100,7 @@
     {
       "name": "RadioGroupItem",
       "slot": "radio-group-item",
-      "description": "One radio, a circle with color.border.strong that fills with the accent solid and a dot in color.accent.fg when chosen."
+      "description": "One radio, a circle with color.border.strong with a color.accent.compound stroke and a dot in color.accent.compound when chosen."
     }
   ],
   "states": [
@@ -134,8 +134,8 @@
     }
   ],
   "tokens": [
-    "color.accent.bg",
-    "color.accent.bg-hover",
+    "color.accent.compound",
+    "color.accent.compound-hover",
     "color.bg.layer-alt",
     "color.border.disabled",
     "color.border.strong",
@@ -162,7 +162,7 @@
     "Renders a <div role=\"radiogroup\"> named by its FieldLegend (aria-labelledby), with a <span role=\"radio\"> and aria-checked per option, and hidden native inputs for forms.",
     "Tab enters the group at the chosen radio (or the first) and leaves it; arrow keys move the choice, skipping disabled radios.",
     "Wrap each radio and its text in a FieldLabel: the text chooses it too, which enlarges the target beyond the 14 to 20 px circle (WCAG 2.2 target size). A FieldDescription inside the FieldItem describes that option only.",
-    "The chosen radio shows a dot as well as the accent stroke (the accent solid is 3:1 on every surface); the border is color.border.strong (3:1).",
+    "The chosen radio shows a dot as well as the accent stroke (color.accent.compound is 3:1 on every surface); the border is color.border.strong (3:1).",
     "Focus shows Fluent's accent underline (shadow.focus-underline) (3:1 on every surface)."
   ]
 }

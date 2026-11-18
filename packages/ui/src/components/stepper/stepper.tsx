@@ -26,8 +26,8 @@ const classes = {
   marker: "flex shrink-0 flex-col items-center",
   indicator: [
     "flex size-control-sm shrink-0 items-center justify-center rounded-full border text-body-1-strong [&_svg]:size-icon-md",
-    "data-[status=complete]:border-accent-solid data-[status=complete]:bg-accent-solid data-[status=complete]:text-accent-solid-fg",
-    "data-[status=current]:border-accent-solid data-[status=current]:bg-layer data-[status=current]:text-fg",
+    "data-[status=complete]:border-accent-compound data-[status=complete]:bg-accent-compound data-[status=complete]:text-accent-compound-fg",
+    "data-[status=current]:border-accent-compound data-[status=current]:bg-layer data-[status=current]:text-fg",
     "data-[status=upcoming]:border-border-strong data-[status=upcoming]:bg-layer data-[status=upcoming]:text-fg-muted",
     "data-[status=error]:border-danger-border data-[status=error]:bg-danger-subtle data-[status=error]:text-danger-fg",
   ],
@@ -35,7 +35,7 @@ const classes = {
   title: "truncate text-body-1-strong text-fg data-[status=upcoming]:text-fg-muted data-[status=error]:text-danger-fg",
   description: "text-caption-1 text-fg-muted",
   connector: [
-    "shrink-0 bg-border-strong data-[status=complete]:bg-accent-solid",
+    "shrink-0 bg-border-strong data-[status=complete]:bg-accent-compound",
     "data-[orientation=horizontal]:h-px data-[orientation=horizontal]:min-w-control-sm data-[orientation=horizontal]:flex-1",
     "data-[orientation=vertical]:min-h-stack-md data-[orientation=vertical]:w-px data-[orientation=vertical]:flex-1",
   ],

@@ -1271,7 +1271,7 @@
       "name": "switch",
       "type": "registry:ui",
       "title": "Switch",
-      "description": "An on/off switch on Base UI's Switch: a track that fills with the accent solid and a sliding thumb, in three sizes.",
+      "description": "An on/off switch on Base UI's Switch: a track that fills with the compound accent and a sliding thumb, in three sizes.",
       "dependencies": [
         "@base-ui/react"
       ],

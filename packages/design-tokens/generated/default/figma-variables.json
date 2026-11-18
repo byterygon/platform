@@ -1311,7 +1311,7 @@
         {
           "name": "color/neutral/contrast",
           "type": "COLOR",
-          "description": "Neutral ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Neutral ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -1761,7 +1761,7 @@
         {
           "name": "color/brand/contrast",
           "type": "COLOR",
-          "description": "Brand ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Brand ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -2211,7 +2211,7 @@
         {
           "name": "color/red/contrast",
           "type": "COLOR",
-          "description": "Red ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Red ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -2661,7 +2661,7 @@
         {
           "name": "color/amber/contrast",
           "type": "COLOR",
-          "description": "Amber ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Amber ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink, because the solid is too light for white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -3111,7 +3111,7 @@
         {
           "name": "color/green/contrast",
           "type": "COLOR",
-          "description": "Green ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Green ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -3561,7 +3561,7 @@
         {
           "name": "color/blue/contrast",
           "type": "COLOR",
-          "description": "Blue ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Blue ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -4011,7 +4011,7 @@
         {
           "name": "color/violet/contrast",
           "type": "COLOR",
-          "description": "Violet ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Violet ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -4461,7 +4461,7 @@
         {
           "name": "color/orange/contrast",
           "type": "COLOR",
-          "description": "Orange ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Orange ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -4911,7 +4911,7 @@
         {
           "name": "color/teal/contrast",
           "type": "COLOR",
-          "description": "Teal ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Teal ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -5361,7 +5361,7 @@
         {
           "name": "color/pink/contrast",
           "type": "COLOR",
-          "description": "Pink ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Pink ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -5811,7 +5811,7 @@
         {
           "name": "color/neutral-dark/contrast",
           "type": "COLOR",
-          "description": "Neutral ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Neutral ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink, because the solid is too light for white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -5981,8 +5981,8 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.6157,
-              "g": 0.6157,
+              "r": 0.4196,
+              "g": 0.3059,
               "b": 1,
               "a": 1
             }
@@ -5999,9 +5999,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.6863,
-              "g": 0.6902,
-              "b": 1,
+              "r": 0.3765,
+              "g": 0.2392,
+              "b": 0.9373,
               "a": 1
             }
           }
@@ -6197,10 +6197,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.6157,
-              "g": 0.6157,
+              "r": 0.5098,
+              "g": 0.4784,
               "b": 1,
-              "a": 1
+              "a": 0.832
             }
           }
         },
@@ -6215,10 +6215,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.6863,
-              "g": 0.6902,
+              "r": 0.502,
+              "g": 0.4745,
               "b": 1,
-              "a": 1
+              "a": 0.726
             }
           }
         },
@@ -6261,7 +6261,7 @@
         {
           "name": "color/brand-dark/contrast",
           "type": "COLOR",
-          "description": "Brand ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Brand ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -6269,9 +6269,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.0431,
-              "g": 0.0431,
-              "b": 0.102,
+              "r": 1,
+              "g": 1,
+              "b": 1,
               "a": 1
             }
           }
@@ -6431,9 +6431,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 1,
-              "g": 0.4471,
-              "b": 0.4,
+              "r": 0.8588,
+              "g": 0.2196,
+              "b": 0.2039,
               "a": 1
             }
           }
@@ -6449,9 +6449,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 1,
-              "g": 0.5647,
-              "b": 0.5216,
+              "r": 0.7569,
+              "g": 0.2,
+              "b": 0.1843,
               "a": 1
             }
           }
@@ -6648,9 +6648,9 @@
           "valuesByMode": {
             "Value": {
               "r": 1,
-              "g": 0.4471,
-              "b": 0.4,
-              "a": 1
+              "g": 0.2471,
+              "b": 0.2275,
+              "a": 0.85
             }
           }
         },
@@ -6666,9 +6666,9 @@
           "valuesByMode": {
             "Value": {
               "r": 1,
-              "g": 0.5647,
-              "b": 0.5216,
-              "a": 1
+              "g": 0.2471,
+              "b": 0.2235,
+              "a": 0.742
             }
           }
         },
@@ -6711,7 +6711,7 @@
         {
           "name": "color/red-dark/contrast",
           "type": "COLOR",
-          "description": "Red ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Red ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -6719,9 +6719,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.0941,
-              "g": 0.0314,
-              "b": 0.0275,
+              "r": 1,
+              "g": 1,
+              "b": 1,
               "a": 1
             }
           }
@@ -7161,7 +7161,7 @@
         {
           "name": "color/amber-dark/contrast",
           "type": "COLOR",
-          "description": "Amber ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Amber ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink, because the solid is too light for white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -7331,9 +7331,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.3569,
-              "g": 0.7412,
-              "b": 0.4549,
+              "r": 0.1176,
+              "g": 0.5333,
+              "b": 0.2627,
               "a": 1
             }
           }
@@ -7349,9 +7349,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.4588,
-              "g": 0.7961,
-              "b": 0.5373,
+              "r": 0.1059,
+              "g": 0.4667,
+              "b": 0.2275,
               "a": 1
             }
           }
@@ -7547,10 +7547,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.4706,
+              "r": 0.1765,
               "g": 1,
-              "b": 0.6,
-              "a": 0.725
+              "b": 0.451,
+              "a": 0.505
             }
           }
         },
@@ -7565,10 +7565,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.5686,
+              "r": 0.1686,
               "g": 1,
-              "b": 0.6667,
-              "a": 0.784
+              "b": 0.4314,
+              "a": 0.434
             }
           }
         },
@@ -7611,7 +7611,7 @@
         {
           "name": "color/green-dark/contrast",
           "type": "COLOR",
-          "description": "Green ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Green ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -7619,9 +7619,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.0157,
-              "g": 0.0667,
-              "b": 0.0275,
+              "r": 1,
+              "g": 1,
+              "b": 1,
               "a": 1
             }
           }
@@ -7781,9 +7781,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.3765,
-              "g": 0.6549,
-              "b": 1,
+              "r": 0.1176,
+              "g": 0.4627,
+              "b": 0.8471,
               "a": 1
             }
           }
@@ -7799,9 +7799,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.498,
-              "g": 0.7176,
-              "b": 1,
+              "r": 0.1098,
+              "g": 0.4078,
+              "b": 0.7451,
               "a": 1
             }
           }
@@ -7997,10 +7997,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.3765,
-              "g": 0.6549,
+              "r": 0.1294,
+              "g": 0.5412,
               "b": 1,
-              "a": 1
+              "a": 0.836
             }
           }
         },
@@ -8015,10 +8015,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.498,
-              "g": 0.7176,
+              "r": 0.1294,
+              "g": 0.5412,
               "b": 1,
-              "a": 1
+              "a": 0.726
             }
           }
         },
@@ -8061,7 +8061,7 @@
         {
           "name": "color/blue-dark/contrast",
           "type": "COLOR",
-          "description": "Blue ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Blue ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -8069,9 +8069,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.0196,
-              "g": 0.0549,
-              "b": 0.102,
+              "r": 1,
+              "g": 1,
+              "b": 1,
               "a": 1
             }
           }
@@ -8231,9 +8231,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.7333,
-              "g": 0.5412,
-              "b": 0.9373,
+              "r": 0.5647,
+              "g": 0.3765,
+              "b": 0.7569,
               "a": 1
             }
           }
@@ -8249,9 +8249,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.7843,
-              "g": 0.6157,
-              "b": 0.9765,
+              "r": 0.498,
+              "g": 0.3333,
+              "b": 0.6667,
               "a": 1
             }
           }
@@ -8447,10 +8447,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.7804,
-              "g": 0.5765,
+              "r": 0.7451,
+              "g": 0.4902,
               "b": 1,
-              "a": 0.933
+              "a": 0.739
             }
           }
         },
@@ -8465,10 +8465,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.8039,
-              "g": 0.6314,
+              "r": 0.7412,
+              "g": 0.4863,
               "b": 1,
-              "a": 0.975
+              "a": 0.642
             }
           }
         },
@@ -8511,7 +8511,7 @@
         {
           "name": "color/violet-dark/contrast",
           "type": "COLOR",
-          "description": "Violet ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Violet ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -8519,9 +8519,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.0627,
-              "g": 0.0392,
-              "b": 0.0941,
+              "r": 1,
+              "g": 1,
+              "b": 1,
               "a": 1
             }
           }
@@ -8681,9 +8681,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.9373,
-              "g": 0.5216,
-              "b": 0.1804,
+              "r": 0.7255,
+              "g": 0.3686,
+              "b": 0,
               "a": 1
             }
           }
@@ -8699,9 +8699,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.9804,
-              "g": 0.6,
-              "b": 0.3216,
+              "r": 0.6392,
+              "g": 0.3255,
+              "b": 0,
               "a": 1
             }
           }
@@ -8898,9 +8898,9 @@
           "valuesByMode": {
             "Value": {
               "r": 1,
-              "g": 0.5529,
-              "b": 0.1882,
-              "a": 0.934
+              "g": 0.4941,
+              "b": 0,
+              "a": 0.709
             }
           }
         },
@@ -8916,9 +8916,9 @@
           "valuesByMode": {
             "Value": {
               "r": 1,
-              "g": 0.6118,
-              "b": 0.3255,
-              "a": 0.98
+              "g": 0.4902,
+              "b": 0,
+              "a": 0.617
             }
           }
         },
@@ -8961,7 +8961,7 @@
         {
           "name": "color/orange-dark/contrast",
           "type": "COLOR",
-          "description": "Orange ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Orange ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -8969,9 +8969,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.0902,
-              "g": 0.0353,
-              "b": 0.0078,
+              "r": 1,
+              "g": 1,
+              "b": 1,
               "a": 1
             }
           }
@@ -9131,9 +9131,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.2235,
-              "g": 0.7294,
-              "b": 0.7059,
+              "r": 0,
+              "g": 0.5216,
+              "b": 0.498,
               "a": 1
             }
           }
@@ -9149,9 +9149,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.3686,
-              "g": 0.7882,
-              "b": 0.7608,
+              "r": 0,
+              "g": 0.4549,
+              "b": 0.4392,
               "a": 1
             }
           }
@@ -9347,10 +9347,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.2902,
+              "r": 0,
               "g": 1,
-              "b": 0.9608,
-              "a": 0.713
+              "b": 0.9412,
+              "a": 0.492
             }
           }
         },
@@ -9365,10 +9365,10 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.4588,
+              "r": 0,
               "g": 1,
-              "b": 0.9608,
-              "a": 0.775
+              "b": 0.9451,
+              "a": 0.421
             }
           }
         },
@@ -9411,7 +9411,7 @@
         {
           "name": "color/teal-dark/contrast",
           "type": "COLOR",
-          "description": "Teal ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Teal ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -9419,9 +9419,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0,
-              "g": 0.0667,
-              "b": 0.0627,
+              "r": 1,
+              "g": 1,
+              "b": 1,
               "a": 1
             }
           }
@@ -9581,9 +9581,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.9294,
-              "g": 0.4627,
-              "b": 0.702,
+              "r": 0.749,
+              "g": 0.302,
+              "b": 0.5412,
               "a": 1
             }
           }
@@ -9599,9 +9599,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.9725,
-              "g": 0.549,
-              "b": 0.7569,
+              "r": 0.6588,
+              "g": 0.2667,
+              "b": 0.4784,
               "a": 1
             }
           }
@@ -9798,9 +9798,9 @@
           "valuesByMode": {
             "Value": {
               "r": 1,
-              "g": 0.4941,
-              "b": 0.7529,
-              "a": 0.925
+              "g": 0.3882,
+              "b": 0.7098,
+              "a": 0.734
             }
           }
         },
@@ -9816,9 +9816,9 @@
           "valuesByMode": {
             "Value": {
               "r": 1,
-              "g": 0.5647,
-              "b": 0.7765,
-              "a": 0.971
+              "g": 0.3843,
+              "b": 0.7098,
+              "a": 0.638
             }
           }
         },
@@ -9861,7 +9861,7 @@
         {
           "name": "color/pink-dark/contrast",
           "type": "COLOR",
-          "description": "Pink ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+          "description": "Pink ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
           "scopes": [],
           "hiddenFromPublishing": true,
           "codeSyntax": {
@@ -9869,9 +9869,9 @@
           },
           "valuesByMode": {
             "Value": {
-              "r": 0.0902,
-              "g": 0.0314,
-              "b": 0.0588,
+              "r": 1,
+              "g": 1,
+              "b": 1,
               "a": 1
             }
           }
@@ -14295,12 +14295,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Theme",
-              "name": "color/accent/bg"
+              "name": "color/accent/compound"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Theme",
-              "name": "color/accent/bg"
+              "name": "color/accent/compound"
             }
           }
         },
@@ -14379,7 +14379,7 @@
         {
           "name": "color/accent/bg",
           "type": "COLOR",
-          "description": "The filled background of the primary action and of checked controls. Not for large areas, and not more than one primary action per view.",
+          "description": "The filled background of the primary action and other filled buttons with a label: white text in both schemes, as Fluent's brand background. Not for large areas, and not more than one primary action per view. Not for checked controls, indicators or strokes, which must stand out from the surface: use color.accent.compound.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -14444,7 +14444,103 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
+              "name": "color/brand/11"
+            }
+          }
+        },
+        {
+          "name": "color/accent/compound",
+          "type": "COLOR",
+          "description": "The accent as a fill, stroke or indicator on a neutral surface: a checked checkbox, switch or radio, a slider, a progress bar, a spinner, the selected tab's line, a focused field's underline, a selection outline (Fluent's compound brand). At least 3:1 on every surface. Not the fill of a button with a label: use color.accent.bg. Text on it uses color.accent.compound-fg, never color.accent.fg.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-accent-compound)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/brand/9"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
               "name": "color/brand-dark/11"
+            }
+          }
+        },
+        {
+          "name": "color/accent/compound-hover",
+          "type": "COLOR",
+          "description": "color.accent.compound while hovered (lighter in the dark scheme, as Fluent's). Not a resting colour.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-accent-compound-hover)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/brand/10"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/brand-dark/12"
+            }
+          }
+        },
+        {
+          "name": "color/accent/compound-active",
+          "type": "COLOR",
+          "description": "color.accent.compound while pressed or dragged. Not a resting colour.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-accent-compound-active)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/brand/11"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/brand-dark/11"
+            }
+          }
+        },
+        {
+          "name": "color/accent/compound-fg",
+          "type": "COLOR",
+          "description": "The check mark, switch thumb or number on color.accent.compound and its hover and pressed colours: white in light, a dark ink in dark (Fluent's inverted neutral foreground). Not on color.accent.bg: use color.accent.fg.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-accent-compound-fg)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/brand/contrast"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/brand-dark/1"
             }
           }
         },
@@ -14883,7 +14979,7 @@
         {
           "name": "color/status/danger/border",
           "type": "COLOR",
-          "description": "The outline of a danger alert or banner, on color.status.danger.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+          "description": "The outline of a danger alert or banner, on color.status.danger.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -14901,6 +14997,30 @@
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
               "name": "color/red-dark/7"
+            }
+          }
+        },
+        {
+          "name": "color/status/danger/stroke",
+          "type": "COLOR",
+          "description": "The danger colour as a stroke or a fill without text that must reach 3:1 on the surface: the edges of an invalid field, an invalid slider. Not the fill of a destructive button: use color.status.danger.solid, which carries white text.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-color-status-danger-stroke)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/red/9"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/red-dark/11"
             }
           }
         },
@@ -15027,7 +15147,7 @@
         {
           "name": "color/status/warning/border",
           "type": "COLOR",
-          "description": "The outline of a warning alert or banner, on color.status.warning.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+          "description": "The outline of a warning alert or banner, on color.status.warning.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -15171,7 +15291,7 @@
         {
           "name": "color/status/success/border",
           "type": "COLOR",
-          "description": "The outline of a success alert or banner, on color.status.success.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+          "description": "The outline of a success alert or banner, on color.status.success.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -15315,7 +15435,7 @@
         {
           "name": "color/status/info/border",
           "type": "COLOR",
-          "description": "The outline of a info alert or banner, on color.status.info.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+          "description": "The outline of a info alert or banner, on color.status.info.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -15759,12 +15879,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Theme",
-              "name": "color/accent/bg"
+              "name": "color/accent/compound"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Theme",
-              "name": "color/accent/bg"
+              "name": "color/accent/compound"
             }
           }
         },
@@ -16743,12 +16863,12 @@
             "Light": {
               "type": "VARIABLE_ALIAS",
               "collection": "Theme",
-              "name": "color/accent/bg"
+              "name": "color/accent/compound"
             },
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Theme",
-              "name": "color/accent/bg"
+              "name": "color/accent/compound"
             }
           }
         },
@@ -16988,7 +17108,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/3"
+              "name": "color/brand-dark/2"
             }
           }
         },
@@ -17012,7 +17132,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/4"
+              "name": "color/brand-dark/3"
             }
           }
         },
@@ -17036,7 +17156,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/5"
+              "name": "color/brand-dark/4"
             }
           }
         },
@@ -17060,7 +17180,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/6"
+              "name": "color/brand-dark/5"
             }
           }
         },
@@ -17084,7 +17204,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/7"
+              "name": "color/brand-dark/6"
             }
           }
         },
@@ -17108,7 +17228,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/8"
+              "name": "color/brand-dark/7"
             }
           }
         },
@@ -17132,7 +17252,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/9"
+              "name": "color/brand-dark/8"
             }
           }
         },
@@ -17156,7 +17276,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/10"
+              "name": "color/brand-dark/11"
             }
           }
         },
@@ -17180,7 +17300,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/brand-dark/11"
+              "name": "color/brand-dark/12"
             }
           }
         },
@@ -17204,7 +17324,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/red-dark/10"
+              "name": "color/red-dark/11"
             }
           }
         },
@@ -17396,7 +17516,7 @@
             "Dark": {
               "type": "VARIABLE_ALIAS",
               "collection": "Primitives",
-              "name": "color/blue-dark/10"
+              "name": "color/blue-dark/11"
             }
           }
         },

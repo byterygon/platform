@@ -34,10 +34,10 @@ const base = [
   "relative flex w-full min-w-0 cursor-pointer items-center gap-inline-sm",
   fieldFrame,
   // Only the dropzone sets data-dragging.
-  "data-dragging:border-accent-solid data-dragging:bg-accent-subtle",
+  "data-dragging:border-accent-compound data-dragging:bg-accent-subtle",
   "has-[[data-slot=file-input-input]:focus-visible]:shadow-focus-underline",
-  "has-[[data-slot=file-input-input][aria-invalid=true]]:border-danger-border has-[[data-slot=file-input-input][aria-invalid=true]]:border-b-danger",
-  "has-[[data-slot=file-input-input][data-invalid]]:border-danger-border has-[[data-slot=file-input-input][data-invalid]]:border-b-danger",
+  "has-[[data-slot=file-input-input][aria-invalid=true]]:border-danger-border has-[[data-slot=file-input-input][aria-invalid=true]]:border-b-danger-stroke",
+  "has-[[data-slot=file-input-input][data-invalid]]:border-danger-border has-[[data-slot=file-input-input][data-invalid]]:border-b-danger-stroke",
   "has-[[data-slot=file-input-input][data-disabled]]:cursor-not-allowed has-[[data-slot=file-input-input][data-disabled]]:border-border-disabled",
   "has-[[data-slot=file-input-input][data-disabled]]:bg-transparent has-[[data-slot=file-input-input][data-disabled]]:text-fg-disabled",
 ];

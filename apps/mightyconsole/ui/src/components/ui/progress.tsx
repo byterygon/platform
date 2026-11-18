@@ -12,7 +12,7 @@ import { tokenMs, useLoopAnimation } from "@/lib/motion";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const progressVariants = {
   variant: {
-    accent: "[&_[data-slot=progress-indicator]]:bg-accent-solid",
+    accent: "[&_[data-slot=progress-indicator]]:bg-accent-compound",
     success: "[&_[data-slot=progress-indicator]]:bg-success",
     warning: "[&_[data-slot=progress-indicator]]:bg-warning",
     danger: "[&_[data-slot=progress-indicator]]:bg-danger",

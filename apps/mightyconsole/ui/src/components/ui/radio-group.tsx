@@ -24,10 +24,10 @@ export const radioGroupVariants = {
 const base = ["flex min-w-0 flex-col gap-stack-sm"];
 
 const itemClasses = [
-  "inline-flex shrink-0 items-center justify-center rounded-full border border-border-strong bg-layer-alt text-accent-solid",
+  "inline-flex shrink-0 items-center justify-center rounded-full border border-border-strong bg-layer-alt text-accent-compound",
   "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
   "hover:bg-hover",
-  "data-checked:border-accent-solid data-checked:hover:border-accent-solid-hover data-checked:hover:text-accent-solid-hover",
+  "data-checked:border-accent-compound data-checked:hover:border-accent-compound-hover data-checked:hover:text-accent-compound-hover",
   focusRing,
   "aria-invalid:border-danger-border data-invalid:border-danger-border",
   "data-disabled:cursor-not-allowed data-disabled:border-border-disabled data-disabled:bg-transparent data-disabled:text-fg-disabled",

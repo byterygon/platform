@@ -142,7 +142,7 @@
     {
       "name": "indicator",
       "element": "div",
-      "description": "The selected part of the track in the accent solid; data-slot=\"slider-indicator\"."
+      "description": "The selected part of the track in color.accent.compound; data-slot=\"slider-indicator\"."
     },
     {
       "name": "thumb",
@@ -169,7 +169,7 @@
     {
       "name": "invalid",
       "variant": "data-invalid",
-      "description": "In an invalid Field: the thumbs' disc is the danger solid."
+      "description": "In an invalid Field: the thumbs' disc is color.status.danger.stroke."
     },
     {
       "name": "disabled",
@@ -181,16 +181,16 @@
     }
   ],
   "tokens": [
-    "color.accent.bg",
-    "color.accent.bg-active",
-    "color.accent.bg-hover",
+    "color.accent.compound",
+    "color.accent.compound-active",
+    "color.accent.compound-hover",
     "color.bg.surface",
     "color.border.disabled",
     "color.border.strong",
     "color.fg.disabled",
     "color.ring",
     "color.ring-inner",
-    "color.status.danger.solid",
+    "color.status.danger.stroke",
     "font.sans",
     "motion.duration.faster",
     "motion.easing.easy-ease",
@@ -212,7 +212,7 @@
     "Each thumb holds a native <input type=\"range\">, so screen readers announce it as a slider with its value, and Tab reaches each thumb.",
     "Arrow keys move by step, PageUp/PageDown and Shift+arrow by largeStep, Home and End to min and max.",
     "A FieldLabel names a single thumb; name both thumbs of a range with getAriaLabel (\"Minimum length\", \"Maximum length\"). Use format so units are announced.",
-    "The thumb is an accent disc in a ring of the surface colour (the accent solid is 3:1 on every surface); the rail is color.border.strong (3:1) and the selected part the accent solid.",
+    "The thumb is an accent disc in a ring of the surface colour (color.accent.compound is 3:1 on every surface); the rail is color.border.strong (3:1) and the selected part color.accent.compound.",
     "Focus shows Fluent's accent underline (shadow.focus-underline) around the thumb (3:1 on every surface)."
   ]
 }

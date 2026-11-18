@@ -85,6 +85,7 @@
   "states": [],
   "tokens": [
     "color.accent.bg",
+    "color.accent.compound",
     "color.accent.fg",
     "color.accent.subtle-bg",
     "color.accent.subtle-fg",

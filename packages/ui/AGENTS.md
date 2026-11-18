@@ -166,17 +166,18 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
 - **Field focus** is Fluent's accent underline (`shadow-focus-underline`), not the double ring;
   Select, Combobox and MultiSelect keep it while their list is open (`data-popup-open:`). Buttons
   inside a field (clear, show password, the calendar, the steppers) keep the double ring.
-- **Invalid**: the hairline turns `border-danger-border` and the bottom edge `border-b-danger` (the
-  danger solid, a 3:1 pair on every fill a field takes); FieldError starts with Fluent's filled
+- **Invalid**: the hairline turns `border-danger-border` and the bottom edge `border-b-danger-stroke`
+  (`color.status.danger.stroke`, a 3:1 pair on every fill a field takes; the danger solid is for
+  buttons and is too dark in dark mode); FieldError starts with Fluent's filled
   ErrorCircle. **Disabled**: no fill, `border-border-disabled`, `text-fg-disabled` (placeholder too).
 - Fluent's hover on a field changes its stroke by a shade the roles do not have, so fields keep
   their look on hover.
 - **Checkbox, RadioGroup, Switch, Slider** (batch 3): sizes `small | medium | large` (Fluent's medium is
   the default: a 16 px box or radio, a 14 px switch thumb, a 20 px slider thumb). Unchecked controls
   sit on `bg-layer-alt` with `border-border-strong`; Checkbox ticks with a filled Checkmark (Subtract when
-  mixed) on the accent solid; a chosen radio has an accent stroke and a filled Circle dot; Switch is
-  Fluent's outlined track with a `bg-fg-muted` thumb, the accent track and an `accent-solid-fg` thumb
-  when on; Slider is a `border-strong` rail, the accent for the chosen part and an accent disc in a
+  mixed) on the compound accent (`bg-accent-compound`, `text-accent-compound-fg`); a chosen radio has
+  a compound accent stroke and a filled Circle dot; Switch is Fluent's outlined track with a
+  `bg-fg-muted` thumb, the compound accent track and an `accent-compound-fg` thumb when on; Slider is a `border-strong` rail, the accent for the chosen part and an accent disc in a
   ring of the surface colour. All take the double ring (Slider's thumb through `focusRingWithin`).
 - **Flyouts** (menus, Popover, HoverCard, the lists of Select/Combobox/MultiSelect, DatePicker's
   calendar): `flyoutSurface` (`bg-overlay`, `border-border-subtle`, `shadow-flyout`, `rounded-lg`,
@@ -529,7 +530,11 @@ QuestionCircle, ChevronUp, MoreVertical, Star.
   `rounded-{xs..xl}`. Elevation (Fluent depth): `shadow-layer` (cards, free-standing surfaces), `shadow-flyout` (menus,
   popovers), `shadow-dialog`; `shadow-raised`, `shadow-overlay`, `shadow-modal` are the older names.
 - The accent solid is `bg-accent-solid`, `hover:bg-accent-solid-hover`,
-  `active:bg-accent-solid-active`, `text-accent-solid-fg`. Never bare `bg-accent`: in a project
+  `active:bg-accent-solid-active`, `text-accent-solid-fg`: the fill of a button or solid badge, white
+  text in both schemes. What must stand out from the surface (a checked checkbox, switch or radio, a
+  slider, progress, a spinner, the selected tab's line, a drop or selection outline, a graph edge)
+  uses Fluent's compound brand: `bg-accent-compound` (`-hover`, `-active`), `text-accent-compound-fg`
+  on it, `border-accent-compound`; dark mode makes it a light step (TSK-90). Never bare `bg-accent`: in a project
   with stock shadcn components (and in every project that installs a theme item) `accent` is
   shadcn's hover background. The test rejects it.
 - Secondary actions use the neutral solid (`bg-neutral-solid`, `text-neutral-solid-fg`);

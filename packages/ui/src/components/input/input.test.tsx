@@ -42,7 +42,7 @@ describe("Input", () => {
   test("focus is Fluent's accent underline; invalid turns the bottom edge danger", () => {
     const { container } = render(<Input aria-label="Name" aria-invalid="true" />);
     const classes = container.querySelector("input")!.className.split(" ");
-    expect(classes).toEqual(expect.arrayContaining(["focus-visible:shadow-focus-underline", "aria-invalid:border-b-danger", "border-b-border-control-bottom"]));
+    expect(classes).toEqual(expect.arrayContaining(["focus-visible:shadow-focus-underline", "aria-invalid:border-b-danger-stroke", "border-b-border-control-bottom"]));
   });
 
   test("forwards the ref to the input element", () => {

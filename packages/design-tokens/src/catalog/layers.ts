@@ -99,7 +99,7 @@ const strokes: RoleDef[] = [
   {
     path: "color.border.focus-underline",
     type: "color",
-    value: ref("color.accent.bg"),
+    value: ref("color.accent.compound"),
     tailwind: "--color-border-focus-underline",
     use: "The 2 px underline of a focused text field, in the accent colour (shadow.focus-underline draws it).",
     avoid: "Not the focus indicator of buttons and other controls: use the double ring (color.ring outside color.ring-inner).",
@@ -276,10 +276,10 @@ export function layerPairs(surfaces: readonly string[]): ContrastPair[] {
     ...pairs("text", TEXT, ["color.bg.layer-alt"], ON_LAYER),
     // What identifies a field, the focus indicators, and the filled controls.
     ...pairs("ui", ["color.border.control-bottom", "color.border.focus-underline", "color.ring"], ["color.bg.layer-alt"], ON_LAYER),
-    ...pairs("ui", ["color.border.control-bottom", "color.ring", "color.accent.bg", "color.status.danger.solid"], ["color.bg.layer"], BACKDROP),
+    ...pairs("ui", ["color.border.control-bottom", "color.ring", "color.accent.compound", "color.status.danger.stroke"], ["color.bg.layer"], BACKDROP),
     ...pairs("ui", ["color.border.control-bottom", "color.border.focus-underline"], surfaces),
     // The bottom edge of an invalid field (TSK-53), on every fill a field takes.
-    ...pairs("ui", ["color.status.danger.solid"], ["color.bg.layer-alt"], ON_LAYER),
-    ...pairs("ui", ["color.status.danger.solid"], surfaces),
+    ...pairs("ui", ["color.status.danger.stroke"], ["color.bg.layer-alt"], ON_LAYER),
+    ...pairs("ui", ["color.status.danger.stroke"], surfaces),
   ];
 }

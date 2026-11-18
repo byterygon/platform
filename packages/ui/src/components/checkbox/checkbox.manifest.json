@@ -125,7 +125,7 @@
     {
       "name": "hover",
       "variant": "hover",
-      "description": "Pointer over the box: color.interactive.hover, or the accent solid's hover colour when ticked."
+      "description": "Pointer over the box: color.interactive.hover, or color.accent.compound-hover when ticked."
     },
     {
       "name": "checked",
@@ -133,7 +133,7 @@
       "props": {
         "defaultChecked": true
       },
-      "description": "Ticked: the accent solid with Fluent's filled Checkmark in color.accent.fg."
+      "description": "Ticked: color.accent.compound with Fluent's filled Checkmark in color.accent.compound-fg."
     },
     {
       "name": "indeterminate",
@@ -141,7 +141,7 @@
       "props": {
         "indeterminate": true
       },
-      "description": "Mixed: the accent solid with Fluent's Subtract, aria-checked=\"mixed\"."
+      "description": "Mixed: color.accent.compound with Fluent's Subtract, aria-checked=\"mixed\"."
     },
     {
       "name": "focus-visible",
@@ -163,10 +163,10 @@
     }
   ],
   "tokens": [
-    "color.accent.bg",
-    "color.accent.bg-active",
-    "color.accent.bg-hover",
-    "color.accent.fg",
+    "color.accent.compound",
+    "color.accent.compound-active",
+    "color.accent.compound-fg",
+    "color.accent.compound-hover",
     "color.bg.disabled",
     "color.bg.layer-alt",
     "color.border.disabled",

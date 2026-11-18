@@ -1536,7 +1536,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Neutral ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Neutral ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -2236,7 +2236,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Brand ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Brand ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -2836,7 +2836,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Red ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Red ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -3435,7 +3435,7 @@
           ],
           "hex": "#150b01"
         },
-        "$description": "Amber ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Amber ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink, because the solid is too light for white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -4034,7 +4034,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Green ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Green ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -4633,7 +4633,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Blue ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Blue ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -5234,7 +5234,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Violet ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Violet ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -5831,7 +5831,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Orange ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Orange ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -6428,7 +6428,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Teal ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Teal ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -7029,7 +7029,7 @@
           ],
           "hex": "#ffffff"
         },
-        "$description": "Pink ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Pink ramp, light scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -7631,7 +7631,7 @@
           ],
           "hex": "#0d0d0f"
         },
-        "$description": "Neutral ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Neutral ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink, because the solid is too light for white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -7834,11 +7834,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7365,
-            0.1402,
+            0.5656,
+            0.2473,
             282.5
           ],
-          "hex": "#9d9dff"
+          "hex": "#6b4eff"
         },
         "$description": "Brand ramp, dark scheme, step 9: solid background (filled buttons, badges); text on it uses the ramp's contrast colour. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -7848,7 +7848,8 @@
               "name": "brand",
               "scheme": "dark",
               "step": 9
-            }
+            },
+            "overridden": true
           }
         }
       },
@@ -7857,11 +7858,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7865,
-            0.1113,
+            0.5206,
+            0.2474,
             282.5
           ],
-          "hex": "#afb0ff"
+          "hex": "#603def"
         },
         "$description": "Brand ramp, dark scheme, step 10: solid background, hovered. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -7871,7 +7872,8 @@
               "name": "brand",
               "scheme": "dark",
               "step": 10
-            }
+            },
+            "overridden": true
           }
         }
       },
@@ -8126,11 +8128,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7363,
-            0.1402,
-            282.4
+            0.6523,
+            0.191,
+            282.58
           ],
-          "hex": "#9d9dff"
+          "alpha": 0.832,
+          "hex": "#827aff"
         },
         "$description": "Brand ramp, dark scheme, translucent variant of step 9: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -8150,11 +8153,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7861,
-            0.1117,
-            282.96
+            0.6489,
+            0.1927,
+            281.91
           ],
-          "hex": "#afb0ff"
+          "alpha": 0.726,
+          "hex": "#8079ff"
         },
         "$description": "Brand ramp, dark scheme, translucent variant of step 10: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -8222,13 +8226,13 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.16,
-            0.03,
-            282.5
+            1,
+            0,
+            0
           ],
-          "hex": "#0b0b1a"
+          "hex": "#ffffff"
         },
-        "$description": "Brand ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Brand ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -8431,11 +8435,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.72,
-            0.1743,
+            0.59,
+            0.2,
             27
           ],
-          "hex": "#ff7266"
+          "hex": "#db3834"
         },
         "$description": "Red ramp, dark scheme, step 9: solid background (filled buttons, badges); text on it uses the ramp's contrast colour. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -8454,11 +8458,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.77,
-            0.1357,
+            0.54,
+            0.18,
             27
           ],
-          "hex": "#ff9085"
+          "hex": "#c1332f"
         },
         "$description": "Red ramp, dark scheme, step 10: solid background, hovered. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -8723,11 +8727,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7199,
-            0.1744,
-            27.18
+            0.6585,
+            0.2279,
+            27.29
           ],
-          "hex": "#ff7266"
+          "alpha": 0.85,
+          "hex": "#ff3f3a"
         },
         "$description": "Red ramp, dark scheme, translucent variant of step 9: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -8747,11 +8752,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7697,
-            0.1359,
-            26.63
+            0.6584,
+            0.2278,
+            27.54
           ],
-          "hex": "#ff9085"
+          "alpha": 0.742,
+          "hex": "#ff3f39"
         },
         "$description": "Red ramp, dark scheme, translucent variant of step 10: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -8819,13 +8825,13 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.16,
-            0.03,
-            27
+            1,
+            0,
+            0
           ],
-          "hex": "#180807"
+          "hex": "#ffffff"
         },
-        "$description": "Red ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Red ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -9424,7 +9430,7 @@
           ],
           "hex": "#150b01"
         },
-        "$description": "Amber ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Amber ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink, because the solid is too light for white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -9627,11 +9633,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.72,
+            0.5525,
             0.14,
             150
           ],
-          "hex": "#5bbd74"
+          "hex": "#1e8843"
         },
         "$description": "Green ramp, dark scheme, step 9: solid background (filled buttons, badges); text on it uses the ramp's contrast colour. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -9650,11 +9656,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.77,
+            0.5025,
             0.126,
             150
           ],
-          "hex": "#75cb89"
+          "hex": "#1b773a"
         },
         "$description": "Green ramp, dark scheme, step 10: solid background, hovered. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -9919,12 +9925,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.8997,
-            0.1835,
-            149.44
+            0.8753,
+            0.2401,
+            148.45
           ],
-          "alpha": 0.725,
-          "hex": "#78ff99"
+          "alpha": 0.505,
+          "hex": "#2dff73"
         },
         "$description": "Green ramp, dark scheme, translucent variant of step 9: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -9944,12 +9950,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.9124,
-            0.1547,
-            149.73
+            0.8745,
+            0.2443,
+            147.87
           ],
-          "alpha": 0.784,
-          "hex": "#91ffaa"
+          "alpha": 0.434,
+          "hex": "#2bff6e"
         },
         "$description": "Green ramp, dark scheme, translucent variant of step 10: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -10019,13 +10025,13 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.16,
-            0.03,
-            150
+            1,
+            0,
+            0
           ],
-          "hex": "#041107"
+          "hex": "#ffffff"
         },
-        "$description": "Green ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Green ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -10228,11 +10234,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.72,
-            0.148,
+            0.57,
+            0.17,
             255
           ],
-          "hex": "#60a7ff"
+          "hex": "#1e76d8"
         },
         "$description": "Blue ramp, dark scheme, step 9: solid background (filled buttons, badges); text on it uses the ramp's contrast colour. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -10251,11 +10257,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.77,
-            0.1192,
+            0.52,
+            0.153,
             255
           ],
-          "hex": "#7fb7ff"
+          "hex": "#1c68be"
         },
         "$description": "Blue ramp, dark scheme, step 10: solid background, hovered. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -10520,11 +10526,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7207,
-            0.1477,
-            254.78
+            0.64,
+            0.1958,
+            255.18
           ],
-          "hex": "#60a7ff"
+          "alpha": 0.836,
+          "hex": "#218aff"
         },
         "$description": "Blue ramp, dark scheme, translucent variant of step 9: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -10544,11 +10551,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7695,
-            0.1195,
-            255.15
+            0.6387,
+            0.1965,
+            255.36
           ],
-          "hex": "#7fb7ff"
+          "alpha": 0.726,
+          "hex": "#218aff"
         },
         "$description": "Blue ramp, dark scheme, translucent variant of step 10: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -10616,13 +10624,13 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.16,
-            0.03,
-            255
+            1,
+            0,
+            0
           ],
-          "hex": "#050e1a"
+          "hex": "#ffffff"
         },
-        "$description": "Blue ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Blue ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -10825,11 +10833,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.72,
+            0.5825,
             0.15,
             305
           ],
-          "hex": "#bb8aef"
+          "hex": "#9060c1"
         },
         "$description": "Violet ramp, dark scheme, step 9: solid background (filled buttons, badges); text on it uses the ramp's contrast colour. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -10848,11 +10856,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.77,
+            0.5325,
             0.135,
             305
           ],
-          "hex": "#c89df9"
+          "hex": "#7f55aa"
         },
         "$description": "Violet ramp, dark scheme, step 10: solid background, hovered. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -11117,12 +11125,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7544,
-            0.1586,
-            305.32
+            0.7093,
+            0.1907,
+            305.08
           ],
-          "alpha": 0.933,
-          "hex": "#c793ff"
+          "alpha": 0.739,
+          "hex": "#be7dff"
         },
         "$description": "Violet ramp, dark scheme, translucent variant of step 9: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -11142,12 +11150,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7829,
-            0.1379,
-            304.93
+            0.7083,
+            0.1915,
+            305.14
           ],
-          "alpha": 0.975,
-          "hex": "#cda1ff"
+          "alpha": 0.642,
+          "hex": "#bd7cff"
         },
         "$description": "Violet ramp, dark scheme, translucent variant of step 10: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -11216,13 +11224,13 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.16,
-            0.03,
-            305
+            1,
+            0,
+            0
           ],
-          "hex": "#100a18"
+          "hex": "#ffffff"
         },
-        "$description": "Violet ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Violet ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -11425,11 +11433,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.72,
-            0.16,
+            0.58,
+            0.1436,
             55
           ],
-          "hex": "#ef852e"
+          "hex": "#b95e00"
         },
         "$description": "Orange ramp, dark scheme, step 9: solid background (filled buttons, badges); text on it uses the ramp's contrast colour. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -11448,11 +11456,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.77,
-            0.144,
+            0.53,
+            0.1312,
             55
           ],
-          "hex": "#fa9952"
+          "hex": "#a35300"
         },
         "$description": "Orange ramp, dark scheme, step 10: solid background, hovered. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -11717,12 +11725,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7541,
-            0.1692,
-            54.74
+            0.7292,
+            0.1866,
+            52.38
           ],
-          "alpha": 0.934,
-          "hex": "#ff8d30"
+          "alpha": 0.709,
+          "hex": "#ff7e00"
         },
         "$description": "Orange ramp, dark scheme, translucent variant of step 9: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -11742,12 +11750,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.781,
-            0.147,
-            54.75
+            0.7275,
+            0.1874,
+            51.86
           ],
-          "alpha": 0.98,
-          "hex": "#ff9c53"
+          "alpha": 0.617,
+          "hex": "#ff7d00"
         },
         "$description": "Orange ramp, dark scheme, translucent variant of step 10: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -11816,13 +11824,13 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.16,
-            0.03,
-            55
+            1,
+            0,
+            0
           ],
-          "hex": "#170902"
+          "hex": "#ffffff"
         },
-        "$description": "Orange ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Orange ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -12025,11 +12033,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.72,
-            0.11,
+            0.555,
+            0.0958,
             190
           ],
-          "hex": "#39bab4"
+          "hex": "#00857f"
         },
         "$description": "Teal ramp, dark scheme, step 9: solid background (filled buttons, badges); text on it uses the ramp's contrast colour. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -12048,11 +12056,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.77,
-            0.099,
+            0.505,
+            0.0872,
             190
           ],
-          "hex": "#5ec9c2"
+          "hex": "#007470"
         },
         "$description": "Teal ramp, dark scheme, step 10: solid background, hovered. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -12317,12 +12325,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.9091,
-            0.142,
-            189.64
+            0.9,
+            0.1571,
+            187.08
           ],
-          "alpha": 0.713,
-          "hex": "#4afff5"
+          "alpha": 0.492,
+          "hex": "#00fff0"
         },
         "$description": "Teal ramp, dark scheme, translucent variant of step 9: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -12342,12 +12350,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.9208,
-            0.1215,
-            188.9
+            0.9007,
+            0.1567,
+            187.9
           ],
-          "alpha": 0.775,
-          "hex": "#75fff5"
+          "alpha": 0.421,
+          "hex": "#00fff1"
         },
         "$description": "Teal ramp, dark scheme, translucent variant of step 10: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -12417,13 +12425,13 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.16,
-            0.0275,
-            190
+            1,
+            0,
+            0
           ],
-          "hex": "#001110"
+          "hex": "#ffffff"
         },
-        "$description": "Teal ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Teal ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -12626,11 +12634,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.72,
+            0.5875,
             0.16,
             350
           ],
-          "hex": "#ed76b3"
+          "hex": "#bf4d8a"
         },
         "$description": "Pink ramp, dark scheme, step 9: solid background (filled buttons, badges); text on it uses the ramp's contrast colour. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -12649,11 +12657,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.77,
+            0.5375,
             0.144,
             350
           ],
-          "hex": "#f88cc1"
+          "hex": "#a8447a"
         },
         "$description": "Pink ramp, dark scheme, step 10: solid background, hovered. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -12918,12 +12926,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7597,
-            0.1715,
-            350.06
+            0.7221,
+            0.2053,
+            350.71
           ],
-          "alpha": 0.925,
-          "hex": "#ff7ec0"
+          "alpha": 0.734,
+          "hex": "#ff63b5"
         },
         "$description": "Pink ramp, dark scheme, translucent variant of step 9: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -12943,12 +12951,12 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.7866,
-            0.1473,
-            350.27
+            0.7204,
+            0.2069,
+            350.74
           ],
-          "alpha": 0.971,
-          "hex": "#ff90c6"
+          "alpha": 0.638,
+          "hex": "#ff62b5"
         },
         "$description": "Pink ramp, dark scheme, translucent variant of step 10: shows as that step over the dark app background, for washes laid over other content. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
@@ -13017,13 +13025,13 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [
-            0.16,
-            0.03,
-            350
+            1,
+            0,
+            0
           ],
-          "hex": "#17080f"
+          "hex": "#ffffff"
         },
-        "$description": "Pink ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), a near-black ink because that contrasts more. Primitive: reference it through a semantic role, never from a component.",
+        "$description": "Pink ramp, dark scheme: the text and icon colour for its solids (steps 9 and 10), white. Primitive: reference it through a semantic role, never from a component.",
         "$extensions": {
           "com.byterygon": {
             "tier": "primitive",
@@ -13335,7 +13343,7 @@
       },
       "focus": {
         "$type": "color",
-        "$value": "{color.accent.bg}",
+        "$value": "{color.accent.compound}",
         "$description": "The border of a focused input, where the ring is drawn as the border itself. Not the outline drawn around a focused element: use ring.color with ring.width.",
         "$extensions": {
           "com.byterygon": {
@@ -13411,7 +13419,7 @@
       },
       "focus-underline": {
         "$type": "color",
-        "$value": "{color.accent.bg}",
+        "$value": "{color.accent.compound}",
         "$description": "The 2 px underline of a focused text field, in the accent colour (shadow.focus-underline draws it). Not the focus indicator of buttons and other controls: use the double ring (color.ring outside color.ring-inner).",
         "$extensions": {
           "com.byterygon": {
@@ -13458,7 +13466,7 @@
       "bg": {
         "$type": "color",
         "$value": "{color.brand.9}",
-        "$description": "The filled background of the primary action and of checked controls. Not for large areas, and not more than one primary action per view.",
+        "$description": "The filled background of the primary action and other filled buttons with a label: white text in both schemes, as Fluent's brand background. Not for large areas, and not more than one primary action per view. Not for checked controls, indicators or strokes, which must stand out from the surface: use color.accent.compound.",
         "$extensions": {
           "com.byterygon": {
             "tier": "semantic",
@@ -13497,9 +13505,74 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.11}",
+              "dark": "{color.brand.11}"
+            },
+            "tailwind": "--color-accent-active",
+            "overridden": true
+          }
+        }
+      },
+      "compound": {
+        "$type": "color",
+        "$value": "{color.brand.9}",
+        "$description": "The accent as a fill, stroke or indicator on a neutral surface: a checked checkbox, switch or radio, a slider, a progress bar, a spinner, the selected tab's line, a focused field's underline, a selection outline (Fluent's compound brand). At least 3:1 on every surface. Not the fill of a button with a label: use color.accent.bg. Text on it uses color.accent.compound-fg, never color.accent.fg.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.brand.9}",
               "dark": "{color.brand-dark.11}"
             },
-            "tailwind": "--color-accent-active"
+            "tailwind": "--color-accent-compound"
+          }
+        }
+      },
+      "compound-hover": {
+        "$type": "color",
+        "$value": "{color.brand.10}",
+        "$description": "color.accent.compound while hovered (lighter in the dark scheme, as Fluent's). Not a resting colour.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.brand.10}",
+              "dark": "{color.brand-dark.12}"
+            },
+            "tailwind": "--color-accent-compound-hover"
+          }
+        }
+      },
+      "compound-active": {
+        "$type": "color",
+        "$value": "{color.brand.11}",
+        "$description": "color.accent.compound while pressed or dragged. Not a resting colour.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.brand.11}",
+              "dark": "{color.brand-dark.11}"
+            },
+            "tailwind": "--color-accent-compound-active"
+          }
+        }
+      },
+      "compound-fg": {
+        "$type": "color",
+        "$value": "{color.brand.contrast}",
+        "$description": "The check mark, switch thumb or number on color.accent.compound and its hover and pressed colours: white in light, a dark ink in dark (Fluent's inverted neutral foreground). Not on color.accent.bg: use color.accent.fg.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.brand.contrast}",
+              "dark": "{color.brand-dark.1}"
+            },
+            "tailwind": "--color-accent-compound-fg"
           }
         }
       },
@@ -13703,7 +13776,7 @@
         "border": {
           "$type": "color",
           "$value": "{color.red.7}",
-          "$description": "The outline of a danger alert or banner, on color.status.danger.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+          "$description": "The outline of a danger alert or banner, on color.status.danger.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
@@ -13713,6 +13786,22 @@
                 "dark": "{color.red-dark.7}"
               },
               "tailwind": "--color-danger-border"
+            }
+          }
+        },
+        "stroke": {
+          "$type": "color",
+          "$value": "{color.red.9}",
+          "$description": "The danger colour as a stroke or a fill without text that must reach 3:1 on the surface: the edges of an invalid field, an invalid slider. Not the fill of a destructive button: use color.status.danger.solid, which carries white text.",
+          "$extensions": {
+            "com.byterygon": {
+              "tier": "semantic",
+              "axis": "theme",
+              "modes": {
+                "light": "{color.red.9}",
+                "dark": "{color.red-dark.11}"
+              },
+              "tailwind": "--color-danger-stroke"
             }
           }
         }
@@ -13801,7 +13890,7 @@
         "border": {
           "$type": "color",
           "$value": "{color.orange.7}",
-          "$description": "The outline of a warning alert or banner, on color.status.warning.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+          "$description": "The outline of a warning alert or banner, on color.status.warning.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
@@ -13899,7 +13988,7 @@
         "border": {
           "$type": "color",
           "$value": "{color.green.7}",
-          "$description": "The outline of a success alert or banner, on color.status.success.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+          "$description": "The outline of a success alert or banner, on color.status.success.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
@@ -13997,7 +14086,7 @@
         "border": {
           "$type": "color",
           "$value": "{color.blue.7}",
-          "$description": "The outline of a info alert or banner, on color.status.info.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.solid.",
+          "$description": "The outline of a info alert or banner, on color.status.info.bg. Not the outline of an invalid field, which must reach 3:1: use color.status.danger.stroke.",
           "$extensions": {
             "com.byterygon": {
               "tier": "semantic",
@@ -20100,7 +20189,7 @@
     },
     "selection-border": {
       "$type": "color",
-      "$value": "{color.accent.bg}",
+      "$value": "{color.accent.compound}",
       "$description": "The outline of the active cell and of a selected range. Not a cell separator: use grid.cell-border.",
       "$extensions": {
         "com.byterygon": {
@@ -20291,7 +20380,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.3}",
-              "dark": "{color.brand-dark.3}"
+              "dark": "{color.brand-dark.2}"
             },
             "tailwind": "--color-chart-seq-1"
           }
@@ -20307,7 +20396,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.4}",
-              "dark": "{color.brand-dark.4}"
+              "dark": "{color.brand-dark.3}"
             },
             "tailwind": "--color-chart-seq-2"
           }
@@ -20323,7 +20412,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.5}",
-              "dark": "{color.brand-dark.5}"
+              "dark": "{color.brand-dark.4}"
             },
             "tailwind": "--color-chart-seq-3"
           }
@@ -20339,7 +20428,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.6}",
-              "dark": "{color.brand-dark.6}"
+              "dark": "{color.brand-dark.5}"
             },
             "tailwind": "--color-chart-seq-4"
           }
@@ -20355,7 +20444,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.7}",
-              "dark": "{color.brand-dark.7}"
+              "dark": "{color.brand-dark.6}"
             },
             "tailwind": "--color-chart-seq-5"
           }
@@ -20371,7 +20460,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.8}",
-              "dark": "{color.brand-dark.8}"
+              "dark": "{color.brand-dark.7}"
             },
             "tailwind": "--color-chart-seq-6"
           }
@@ -20387,7 +20476,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.9}",
-              "dark": "{color.brand-dark.9}"
+              "dark": "{color.brand-dark.8}"
             },
             "tailwind": "--color-chart-seq-7"
           }
@@ -20403,7 +20492,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.10}",
-              "dark": "{color.brand-dark.10}"
+              "dark": "{color.brand-dark.11}"
             },
             "tailwind": "--color-chart-seq-8"
           }
@@ -20419,7 +20508,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.brand.11}",
-              "dark": "{color.brand-dark.11}"
+              "dark": "{color.brand-dark.12}"
             },
             "tailwind": "--color-chart-seq-9"
           }
@@ -20437,7 +20526,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.red.10}",
-              "dark": "{color.red-dark.10}"
+              "dark": "{color.red-dark.11}"
             },
             "tailwind": "--color-chart-div-1"
           }
@@ -20565,7 +20654,7 @@
             "axis": "theme",
             "modes": {
               "light": "{color.blue.10}",
-              "dark": "{color.blue-dark.10}"
+              "dark": "{color.blue-dark.11}"
             },
             "tailwind": "--color-chart-div-9"
           }

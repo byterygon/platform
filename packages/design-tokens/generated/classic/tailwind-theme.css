@@ -64,6 +64,10 @@
   --color-accent-solid-hover: var(--by-color-accent-bg-hover);
   --color-accent-active: var(--by-color-accent-bg-active);
   --color-accent-solid-active: var(--by-color-accent-bg-active);
+  --color-accent-compound: var(--by-color-accent-compound);
+  --color-accent-compound-hover: var(--by-color-accent-compound-hover);
+  --color-accent-compound-active: var(--by-color-accent-compound-active);
+  --color-accent-compound-fg: var(--by-color-accent-compound-fg);
   --color-accent-subtle: var(--by-color-accent-subtle-bg);
   --color-accent-subtle-fg: var(--by-color-accent-subtle-fg);
   --color-neutral-solid: var(--by-color-neutral-bg);
@@ -83,6 +87,7 @@
   --color-danger-fg: var(--by-color-status-danger-fg);
   --color-danger-subtle: var(--by-color-status-danger-bg);
   --color-danger-border: var(--by-color-status-danger-border);
+  --color-danger-stroke: var(--by-color-status-danger-stroke);
   --color-warning: var(--by-color-status-warning-solid);
   --color-warning-hover: var(--by-color-status-warning-solid-hover);
   --color-warning-solid-fg: var(--by-color-status-warning-solid-fg);

@@ -21,7 +21,7 @@
       "name": "variant",
       "type": "\"current\" | \"accent\" | \"muted\"",
       "default": "current",
-      "description": "currentColor, the accent solid, or color.fg.muted."
+      "description": "currentColor, color.accent.compound, or color.fg.muted."
     },
     {
       "name": "size",
@@ -66,7 +66,7 @@
   ],
   "states": [],
   "tokens": [
-    "color.accent.bg",
+    "color.accent.compound",
     "color.border.default",
     "color.fg.muted",
     "opacity.overlay",

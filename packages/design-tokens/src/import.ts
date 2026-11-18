@@ -19,7 +19,7 @@
  * block's mapping, read backwards). What cannot be placed is reported, never guessed.
  */
 import { DEFAULT_CATALOG } from "./catalog/default.js";
-import { type Oklch, formatOklch, parseColor, srgbToOklch } from "./color/index.js";
+import { DEFAULT_RECIPE, type Oklch, formatOklch, parseColor, srgbToOklch } from "./color/index.js";
 import { generateTokens } from "./generate.js";
 import { DEFAULT_SEEDS } from "./seeds.js";
 import { type Diagnostic, type ModeContext, type TokenSet, type TokenType, type TokenValue, EXTENSION, SCHEMA_VERSION, isAlias } from "./model.js";
@@ -292,8 +292,22 @@ function inferSeeds(source: Source, name: string): Json {
     if (!light && !dark) return [];
     const fallback = (DEFAULT_SEEDS.colors as Readonly<Record<string, { hue?: number; chroma: number }>>)[ramp];
     const hue = (light?.c ?? 0) >= 0.005 ? round(light!.h, 1) : (dark?.c ?? 0) >= 0.005 ? round(dark!.h, 1) : (fallback?.hue ?? 0);
-    // Step 9's chroma, unless sRGB could not show the seed's (then the default's may be the seed).
-    const chromas = [...new Set([...[light?.c, dark?.c].filter((c): c is number => c !== undefined).map(round4), ...(fallback ? [fallback.chroma] : [])])];
+    // Step 9's chroma, unless sRGB could not show the seed's (a solid darkened for white text, an
+    // AAA solid): then the seed read back from steps 8, 10 and 11 through the recipe's chroma
+    // fractions, or the default's.
+    const fromSteps = (["light", "dark"] as const).flatMap((scheme) =>
+      [8, 10, 11].map((step) => {
+        const c = colourOf(source, `color.${scheme === "light" ? ramp : `${ramp}-dark`}.${step}`)?.c;
+        const fraction = DEFAULT_RECIPE[scheme].steps[step - 1]!.c;
+        return c === undefined ? undefined : c / fraction;
+      }),
+    );
+    const chromas = [
+      ...new Set([
+        ...[light?.c, dark?.c, ...fromSteps].filter((c): c is number => c !== undefined).map(round4),
+        ...(fallback ? [fallback.chroma] : []),
+      ]),
+    ];
     const solid = light && dark ? { light: round4(light.l), dark: round4(dark.l) } : undefined;
     // The tint is the chroma of steps 1-5; step 2 shows it unless gamut or the scheme reduced it.
     const tints = ramp === "neutral" ? [...new Set([undefined, colourOf(source, "color.neutral.2")?.c, colourOf(source, "color.neutral-dark.2")?.c, ...chromas].map((c) => (c === undefined ? undefined : round4(c))))] : [undefined];
@@ -463,8 +477,19 @@ function readShadcn(text: string, name: string | undefined): ImportResult {
   };
   const colors: Json = {};
   for (const [ramp, variable] of [["brand", "--primary"], ["neutral", "--muted-foreground"], ["red", "--destructive"]] as const) {
-    const seed = seedOf(variable);
-    if (seed) colors[ramp] = seed;
+    const seed: Json | undefined = seedOf(variable);
+    if (!seed) continue;
+    // A solid's lightness is pinned to shadcn's, so the engine gives it the text colour shadcn
+    // does (dark text on stock shadcn's light dark-mode --primary) and a hover that keeps it.
+    if (ramp !== "neutral") {
+      const solid: Json = {};
+      for (const [scheme, map] of [["light", light], ["dark", dark]] as const) {
+        const c = colour(map, variable);
+        if (c && (c.alpha === undefined || c.alpha >= 1)) solid[scheme] = round(c.l, 4);
+      }
+      if (Object.keys(solid).length > 0) seed["solid"] = solid;
+    }
+    colors[ramp] = seed;
   }
   const seeds: Json = { colors, colorScheme: "light", density: "comfortable" };
   const radiusText = light.get("--radius") ?? dark.get("--radius");

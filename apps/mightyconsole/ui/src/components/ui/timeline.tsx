@@ -55,7 +55,7 @@ const classes = {
     "hover:opacity-90 data-selected:outline-solid data-selected:outline-[length:var(--by-ring-width)] data-selected:outline-ring",
     focusRing,
   ],
-  now: "absolute inset-y-0 w-px bg-accent-solid",
+  now: "absolute inset-y-0 w-px bg-accent-compound",
   empty: "p-inset-md text-body-1 text-fg-muted",
 };
 

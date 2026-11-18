@@ -91,8 +91,8 @@ test("a stock shadcn globals.css (v4, oklch): seeds from its colours, each colou
   const theme = result.theme!;
   const seeds = theme["seeds"] as { colors: Record<string, { hue: number; chroma: number }>; radius: number };
   assert.equal(seeds.radius, 10, "--radius 0.625rem is radius.md, 10px");
-  assert.deepEqual(seeds.colors["brand"], { hue: 0, chroma: 0 }, "a greyscale --primary");
-  assert.deepEqual(seeds.colors["red"], { hue: 27.3, chroma: 0.245 });
+  assert.deepEqual(seeds.colors["brand"], { hue: 0, chroma: 0, solid: { light: 0.205, dark: 0.922 } }, "a greyscale --primary, its lightness pinned");
+  assert.deepEqual(seeds.colors["red"], { hue: 27.3, chroma: 0.245, solid: { light: 0.577, dark: 0.704 } });
   const overrides = theme["overrides"] as Record<string, string>;
   assert.equal(overrides["color.brand.9"], "oklch(0.205 0 0)", "--primary (light) on the accent solid's step");
   assert.equal(overrides["color.brand-dark.9"], "oklch(0.922 0 0)", "--primary (dark)");

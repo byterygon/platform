@@ -6,7 +6,7 @@
   "seeds": {
     "colors": {
       "neutral": { "hue": 275, "chroma": 0.012, "tint": 0.006 },
-      "brand": { "hue": 282.5, "chroma": 0.165, "solid": { "light": 0.5656, "dark": 0.7365 } },
+      "brand": { "hue": 282.5, "chroma": 0.165, "solid": { "light": 0.5656 } },
       "red": { "hue": 27, "chroma": 0.2 },
       "amber": { "hue": 75, "chroma": 0.15, "solid": { "light": 0.8, "dark": 0.8 } },
       "green": { "hue": 150, "chroma": 0.14 },
@@ -26,6 +26,9 @@
     "color.brand.9": "oklch(0.5656 0.2474 282.5)",
     "color.brand.10": "oklch(0.5206 0.2474 282.5)",
     "color.brand.11": "oklch(0.46 0.2103 282.5)",
+    "color.brand-dark.9": "oklch(0.5656 0.2474 282.5)",
+    "color.brand-dark.10": "oklch(0.5206 0.2474 282.5)",
+    "color.accent.bg-active": { "dark": "{color.brand.11}" },
     "color.neutral-dark.10": "oklch(0.7825 0.0108 275)",
     "radius.lg": "8px",
     "color.bg.canvas": { "light": "{color.neutral.2}", "dark": "{color.neutral-dark.3}" },
@@ -33,8 +36,8 @@
     "color.bg.raised": { "dark": "{color.neutral-dark.5}" },
     "color.bg.overlay": { "dark": "{color.neutral-dark.5}" },
     "color.ring": { "light": "{color.base.black}", "dark": "{color.base.white}" },
-    "color.border.focus": "{color.accent.bg}",
-    "grid.selection-border": "{color.accent.bg}",
+    "color.border.focus": "{color.accent.compound}",
+    "grid.selection-border": "{color.accent.compound}",
     "color.backdrop.glow-1": { "light": "{color.brand.4}", "dark": "{color.brand-dark.6}" },
     "color.backdrop.glow-2": { "light": "{color.teal.3}", "dark": "{color.teal-dark.6}" }
   }
