@@ -1,12 +1,13 @@
 // The store browser (spec §11.2): namespaces, item search (query, filter), item detail, put and
 // delete. "Store not available on this server" when the server has none.
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { Input } from "@/components/ui/input";
 import { JsonViewer } from "@/components/ui/json-viewer";
 import { RelativeTime } from "@/components/ui/relative-time";
@@ -18,7 +19,7 @@ import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import type * as api from "@/gen/api";
 import { Add, ArrowClockwise, Delete, Folder } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
-import { JsonField, parseJson, preview, useLoad } from "./shared";
+import { JsonField, parseJson, preview, seenKeysSchema, useLoad } from "./shared";
 
 /** "a.b" ↔ ["a", "b"]: the LangGraph store's own way of writing a namespace. */
 export const splitNamespace = (s: string) => s.split(".").map((p) => p.trim()).filter(Boolean);
@@ -37,6 +38,8 @@ export function StoreTab({ tab, profile, connId, client, useTabActions, note }: 
   const [deleting, setDeleting] = useState<api.StoreItem | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
   const filter = parseJson(filterText);
+  // The value keys of the items listed, as suggestions for the filter (TSK-93).
+  const filterSchema = useMemo(() => seenKeysSchema((items.data ?? []).map((i) => i.value)), [items.data]);
 
   const reload = () => {
     void namespaces.reload();
@@ -123,7 +126,18 @@ export function StoreTab({ tab, profile, connId, client, useTabActions, note }: 
               }}
             >
               <Input aria-label="Search query" placeholder="Query (semantic search, when the store is indexed)" value={query} onValueChange={setQuery} className="min-w-panel-xs flex-1" />
-              <Input aria-label="Filter (JSON)" aria-invalid={!filter.ok || undefined} placeholder='Filter, e.g. {"approved": true}' value={filterText} onValueChange={setFilterText} className="min-w-panel-xs flex-1 font-mono" />
+              <CodeEditor
+                singleLine
+                language="json"
+                aria-label="Filter (JSON)"
+                invalid={!filter.ok}
+                placeholder='Filter, e.g. {"approved": true}'
+                value={filterText}
+                onValueChange={setFilterText}
+                onSubmit={search}
+                jsonSchema={filterSchema}
+                className="min-w-panel-xs flex-1"
+              />
               <Button type="submit" disabled={!filter.ok}>
                 Search
               </Button>

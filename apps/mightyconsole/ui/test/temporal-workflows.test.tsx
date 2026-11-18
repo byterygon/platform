@@ -10,9 +10,11 @@ import type { ProfileRecord } from "@/profiles/record";
 import { WorkflowsTab } from "@/tools/temporal/WorkflowsTab";
 import { profile as schema } from "@/tools/temporal/profile";
 import type { TabProps, TabRecord } from "@/tools/types";
-import { axeViolations, byRole, byText, cleanup, click, render, settle, type, waitFor } from "./support/render";
+import { fake, suggest } from "../../../../packages/ui/test/fakes/monaco.ts";
+import { axeViolations, byRole, byText, cleanup, click, editorArea, key, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
+afterEach(() => fake.reset());
 
 const row = (n: number, patch: Partial<WorkflowRow> = {}): WorkflowRow => ({
   workflowId: `order-${n}`,
@@ -34,7 +36,15 @@ function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ execut
     { name: "default", state: "Registered", description: "", ownerEmail: "", isGlobal: false, isDefault: true },
     { name: "lab", state: "Registered", description: "", ownerEmail: "", isGlobal: false, isDefault: false },
   ]);
-  const client = { temporal: { workflows: { list, count }, namespaces: { list: namespaces } } } as unknown as MightyClient;
+  const searchAttributes = vi.fn(async () => ({
+    attributes: [
+      { name: "CustomerId", valueType: "Keyword", custom: true },
+      { name: "ExecutionStatus", valueType: "Keyword", custom: false },
+      { name: "StartTime", valueType: "Datetime", custom: false },
+      { name: "WorkflowType", valueType: "Keyword", custom: false },
+    ],
+  }));
+  const client = { temporal: { workflows: { list, count }, namespaces: { list: namespaces, searchAttributes } } } as unknown as MightyClient;
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
   const tab: TabRecord = { id: "t1", tool: "temporal", profileId: "01T", kind: "temporal.workflows", params: { namespace: "default", query: options.query ?? "" }, title: "Workflows · default", pinned: false };
   const props: TabProps = {
@@ -49,10 +59,10 @@ function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ execut
     openTab: opened,
   };
   const view = render(<WorkflowsTab {...props} />);
-  return { list, count, namespaces, ...view };
+  return { list, count, namespaces, searchAttributes, ...view };
 }
 
-const queryInput = () => document.querySelector<HTMLInputElement>('input[aria-label="Visibility query"]')!;
+const queryInput = () => editorArea("Visibility query")!;
 
 describe("Workflows (spec §9.3)", () => {
   test("lists the workflows with status, times, duration and the count", async () => {
@@ -120,6 +130,50 @@ describe("Workflows (spec §9.3)", () => {
     expect(byText("Invalid")).not.toBeNull();
     expect(queryInput().value).toBe("oops ((");
     expect(byRole("button", "Run")).not.toBeNull();
+  });
+
+  describe("the query editor (TSK-93)", () => {
+    test("Monaco in the temporal-visibility language, one line; Enter runs the query", async () => {
+      const { list } = setup();
+      await waitFor(() => byText("order-1") !== null, "the rows");
+      await waitFor(() => fake.editors.some((e) => e.textarea.getAttribute("aria-label") === "Visibility query"), "Monaco");
+      const editor = fake.editors.find((e) => e.textarea.getAttribute("aria-label") === "Visibility query")!;
+      expect(editor.model.language).toBe("temporal-visibility");
+      expect(document.querySelector('[data-slot="code-editor"]')!.hasAttribute("data-single-line")).toBe(true);
+      list.mockClear();
+      await type(queryInput(), 'CustomerId = "c-1"');
+      await key("Enter", {}, queryInput());
+      await waitFor(() => list.mock.calls.length > 0, "the query");
+      expect(list.mock.calls[0]![0]).toMatchObject({ query: 'CustomerId = "c-1"' });
+    });
+
+    test("suggests the namespace's attributes, their operators, and values seen in the rows", async () => {
+      const { searchAttributes } = setup();
+      await waitFor(() => byText("order-1") !== null, "the rows");
+      await waitFor(() => searchAttributes.mock.calls.length > 0, "the attributes");
+      expect(searchAttributes).toHaveBeenCalledWith({ connId: "conn-1", namespace: "default" });
+      const editor = fake.editors.find((e) => e.textarea.getAttribute("aria-label") === "Visibility query")!;
+      await settle(2);
+      const labels = async (text: string) => {
+        await type(queryInput(), text);
+        editor.cursorAt(text.length);
+        return (await suggest(editor)).map((i) => (typeof i.label === "string" ? i.label : (i.label as { label: string }).label));
+      };
+      expect(await labels("")).toEqual(expect.arrayContaining(["CustomerId", "WorkflowType", "StartTime", "NOT"]));
+      expect(await labels("WorkflowType ")).toEqual(["=", "!=", "IN", "STARTS_WITH", "IS NULL", "IS NOT NULL"]);
+      expect(await labels("WorkflowType = ")).toEqual(['"OrderWorkflow"']);
+      expect(await labels('WorkflowType = "OrderWorkflow" ')).toEqual(["AND", "OR", "ORDER BY"]);
+    });
+
+    test("the server's error is marked on the part it quotes", async () => {
+      const invalid = new RpcError("InvalidArgument", "invalid search attribute: Bogus", { details: { kind: "Invalid", system: "temporal", message: "invalid search attribute: Bogus", retryable: false } });
+      setup({ list: async () => Promise.reject(invalid), query: 'Bogus = "x"' });
+      await waitFor(() => byText(/invalid search attribute/) !== null, "the message");
+      await waitFor(() => (fake.markers as unknown[]).length > 0, "the marker");
+      expect(fake.markers).toEqual([{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 6, message: "invalid search attribute: Bogus", severity: 8 }]);
+      await type(queryInput(), 'Bogus = "y"');
+      await waitFor(() => (fake.markers as unknown[]).length === 0, "no marker once the text changed");
+    });
   });
 
   test("another failure replaces the list with the error and Retry", async () => {

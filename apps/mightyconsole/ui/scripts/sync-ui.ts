@@ -22,8 +22,9 @@ export const ITEMS = [
   "toast", "command-palette", "sidebar", "tree", "resizable", "toolbar", "status-bar", "separator",
   "scroll-area", "badge", "alert", "empty-state", "spinner", "skeleton", "progress",
   "description-list", "code", "code-block", "json-viewer", "table", "relative-time", "timeline",
-  // TSK-84 (LangGraph): the run input editor and the assistant graph.
-  "code-input", "graph-view",
+  // TSK-84 (LangGraph): the assistant graph. (Its run input editor was CodeInput until TSK-93
+  // moved every query, JSON and jq input to CodeEditor.)
+  "graph-view",
   // TSK-80 (messaging core): the Composer's payload editor and headers, the raw bytes view.
   "code-editor", "hex-view", "key-value-editor",
 ];

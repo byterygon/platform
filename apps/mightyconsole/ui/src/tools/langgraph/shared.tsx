@@ -1,8 +1,9 @@
-// What the LangGraph screens share: loading a query with its states, JSON text fields, the
-// status badge, the graph in GraphView's shape.
-import { useCallback, useEffect, useRef, useState } from "react";
+// What the LangGraph screens share: loading a query with its states, JSON text fields (Monaco,
+// with the assistant's JSON Schema where there is one: completion, hovers, validation; TSK-93),
+// the status badge, the graph in GraphView's shape.
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { CodeInput } from "@/components/ui/code-input";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import type { GraphViewEdge, GraphViewGroup, GraphViewNode } from "@/components/ui/graph-view";
 import type * as api from "@/gen/api";
@@ -48,13 +49,97 @@ export function parseJson(text: string): { ok: true; value: unknown } | { ok: fa
   }
 }
 
-/** A multi-line JSON editor in a Field, with the parse error under it. */
-export function JsonField({ label, value, onChange, description, rows = 6, disabled = false }: { label: string; value: string; onChange: (text: string) => void; description?: string | undefined; rows?: number; disabled?: boolean }) {
+/** A JSON Schema object from the server's schemas, or undefined (none, `null`, `true`, not an object). */
+export function schemaObject(schema: unknown): object | undefined {
+  return typeof schema === "object" && schema !== null && !Array.isArray(schema) && Object.keys(schema).length > 0 ? schema : undefined;
+}
+
+/** The schema of a partial update (State update, Command.update): the same properties, none required. */
+export function partialSchema(schema: unknown): object | undefined {
+  const s = schemaObject(schema) as Record<string, unknown> | undefined;
+  if (!s) return undefined;
+  const { required: _required, ...rest } = s;
+  return rest;
+}
+
+/**
+ * The schema of a run's `config`: the server's config schema is either the whole config (with a
+ * `configurable` property) or only `configurable`'s; the second is wrapped, its `$defs` kept at
+ * the root so its references still resolve.
+ */
+export function configSchema(schema: unknown): object | undefined {
+  const s = schemaObject(schema) as Record<string, unknown> | undefined;
+  if (!s) return undefined;
+  const props = s["properties"] as Record<string, unknown> | undefined;
+  if (props && "configurable" in props) return s;
+  const { $defs, definitions, ...configurable } = s;
+  return {
+    type: "object",
+    properties: { configurable },
+    ...($defs !== undefined ? { $defs } : {}),
+    ...(definitions !== undefined ? { definitions } : {}),
+  };
+}
+
+/**
+ * A schema of the keys seen in some objects (thread metadata, store values), each with up to ten
+ * of its scalar values as `examples`, so a JSON filter editor suggests keys and values (TSK-93).
+ */
+export function seenKeysSchema(objects: readonly unknown[]): object {
+  const seen = new Map<string, unknown[]>();
+  for (const o of objects) {
+    if (typeof o !== "object" || o === null || Array.isArray(o)) continue;
+    for (const [key, value] of Object.entries(o)) {
+      const list = seen.get(key) ?? [];
+      const scalar = value === null || ["string", "number", "boolean"].includes(typeof value);
+      if (scalar && list.length < 10 && !list.includes(value)) list.push(value);
+      seen.set(key, list);
+    }
+  }
+  return {
+    type: "object",
+    properties: Object.fromEntries([...seen].sort(([a], [b]) => a.localeCompare(b)).map(([key, examples]) => [key, examples.length > 0 ? { examples } : {}])),
+  };
+}
+
+/** A multi-line JSON editor (Monaco) in a Field, with the parse error under it; Mod+Enter submits. */
+export function JsonField({
+  label,
+  value,
+  onChange,
+  description,
+  rows = 6,
+  disabled = false,
+  schema,
+  onSubmit,
+}: {
+  label: string;
+  value: string;
+  onChange: (text: string) => void;
+  description?: string | undefined;
+  rows?: number;
+  disabled?: boolean;
+  /** The JSON Schema the text follows: completion, hovers and validation. */
+  schema?: object | undefined;
+  onSubmit?: (() => void) | undefined;
+}) {
   const parsed = parseJson(value);
+  const labelId = useId();
   return (
     <Field invalid={!parsed.ok}>
-      <FieldLabel>{label}</FieldLabel>
-      <CodeInput language="json" multiline rows={rows} value={value} onValueChange={onChange} disabled={disabled} />
+      <FieldLabel id={labelId}>{label}</FieldLabel>
+      <CodeEditor
+        language="json"
+        aria-labelledby={labelId}
+        value={value}
+        onValueChange={onChange}
+        readOnly={disabled}
+        jsonSchema={schema}
+        onSubmit={onSubmit ? () => onSubmit() : undefined}
+        invalid={!parsed.ok}
+        lineNumbers={rows > 3}
+        className={rows > 8 ? "h-panel-sm" : "h-panel-xs"}
+      />
       {description ? <FieldDescription>{description}</FieldDescription> : null}
       {!parsed.ok ? <FieldError match>Not valid JSON: {parsed.message}</FieldError> : null}
     </Field>

@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:90bcce119b15e983e5ef6decf9307f036303b7d7b125efb9b617baac0edc0e0a";
+export const SCHEMA_HASH = "sha256:8d6acc3ad333e754d4d1a6e77732770474e418b2ba52ef85f038296353e2d75a";
 
 // ---- Types
 
@@ -787,6 +787,35 @@ export type SchemasUpdateOutput = {
 issues: Array<SchemaIssue>, };
 
 /**
+ * One attribute a query can name.
+ */
+export type SearchAttribute = { name: string, valueType: SearchAttributeType, 
+/**
+ * Registered for the namespace by its users, not built in.
+ */
+custom: boolean, };
+
+/**
+ * The value type of a search attribute (`IndexedValueType`).
+ */
+export type SearchAttributeType = "Text" | "Keyword" | "Int" | "Double" | "Bool" | "Datetime" | "KeywordList" | "Unspecified";
+
+export type SearchAttributesInput = { connId: string, 
+/**
+ * The profile's namespace when absent.
+ */
+namespace?: string | null, };
+
+/**
+ * The namespace's attributes: custom ones first, then the built-in ones, each by name.
+ */
+export type SearchAttributesOutput = { attributes: Array<SearchAttribute>, 
+/**
+ * Set when the server did not list them and these are the built-in ones only: its message.
+ */
+fallback?: string, };
+
+/**
  * A task of the next step: the node to run, its error, its interrupts.
  */
 export type StateTask = { id: string, name: string, error?: string, interrupts: Array<Interrupt>, 
@@ -1314,6 +1343,7 @@ export interface Procedures {
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
+  readonly "temporal.namespaces.searchAttributes": ProcedureDef<"query", SearchAttributesInput, SearchAttributesOutput, ToolError>;
   readonly "temporal.schedules.delete": ProcedureDef<"mutation", ScheduleRef, Empty, ToolError>;
   readonly "temporal.schedules.describe": ProcedureDef<"query", ScheduleRef, ScheduleDetail, ToolError>;
   readonly "temporal.schedules.list": ProcedureDef<"query", SchedulesListInput, Array<ScheduleSummary>, ToolError>;
@@ -1406,6 +1436,7 @@ export interface Api {
     readonly disconnect: Procedures["temporal.disconnect"];
     readonly namespaces: {
       readonly list: Procedures["temporal.namespaces.list"];
+      readonly searchAttributes: Procedures["temporal.namespaces.searchAttributes"];
     };
     readonly schedules: {
       readonly delete: Procedures["temporal.schedules.delete"];
@@ -1878,6 +1909,16 @@ export const procedures: Api = {
     namespaces: {
       list: {
         name: "temporal.namespaces.list",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      searchAttributes: {
+        name: "temporal.namespaces.searchAttributes",
         kind: "query",
         perm: "temporal.read",
         risk: "Read",

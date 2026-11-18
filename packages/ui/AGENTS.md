@@ -14,7 +14,7 @@ src/components/<name>/<name>.tsx            the component (Base UI part + token 
 src/lib/cn.ts                               class merging that knows the role names
 src/lib/control.ts                          the double focus ring, Fluent's size names and the aliases kept for one release
 src/lib/theme-scope.ts                      a popup in a portal takes its trigger's theme and density
-src/lib/monaco.ts                           Monaco loaded lazily and offline, its languages (JSON with schemas, YAML, Protobuf) and its theme from the tokens
+src/lib/monaco.ts                           Monaco loaded lazily and offline, its languages (JSON with schemas, YAML, Protobuf, jq, app-registered) and its theme from the tokens
                                             (its colour mapping is @byterygon/design-tokens/monaco)
 src/lib/icons.ts                            Fluent UI System Icons as path data (generated from icons/, committed)
 icons/                                      the vendored Fluent icons: fluent/*.svg, manifest.json, LICENSE (MIT)
@@ -423,6 +423,21 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   `markers`, which carry the owner `byterygon`); `diff` mounts a diff editor whose original side is
   never editable. Mod+Enter calls `onSubmit`. The browser check proves the JSON worker validates a
   schema in Chromium.
+- CodeEditor for one-line and app inputs (TSK-93): `singleLine` puts Monaco in Fluent's input frame
+  (`fieldFrame`, the outline appearance, Input's `size`; the scoped CSS makes Monaco's background
+  transparent under `[data-single-line]` so the field's fill shows), with no gutter, rulers or
+  scrollbars, the line centred by padding from the frame's height, Enter bound to `onSubmit` with the
+  `!suggestWidgetVisible` context (Enter still accepts a suggestion), and line breaks replaced by
+  spaces in a follow-up edit. `completion` registers one provider per editor and language that
+  answers for its own model only; items name a kind, a detail and optionally a snippet or an offset
+  range to replace. `jq` is a built-in Monarch grammar (`JQ_GRAMMAR`, `JQ_BUILTINS`); an app adds a
+  language with `registerCodeLanguage(id, setup)` and passes the id as `language`.
+- `loadMonaco` registers the suggest widget (`editor/contrib/suggest/browser/suggestController`,
+  which no `features/*/register` module does) and the snippet controller, and the three services
+  the JSON language's contributions need (code lens cache, outline model, tree-views drag and
+  drop). Monaco collects services once, when the first editor is created: without them, a JSON
+  editor that mounts after a jq, SQL or YAML one makes every later editor throw
+  "depends on UNKNOWN service".
 - HexView and KeyValueEditor (TSK-80) are plain components: HexView virtualizes rows as JsonViewer
   does (rows of `size.control.xs`, the active byte always rendered for `aria-activedescendant`) and
   lines columns up with spaces in the monospace font (no `ch` widths: arbitrary values must be

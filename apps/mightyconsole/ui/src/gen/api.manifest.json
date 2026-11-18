@@ -2850,6 +2850,82 @@
       ],
       "type": "object"
     },
+    "SearchAttribute": {
+      "description": "One attribute a query can name.",
+      "properties": {
+        "custom": {
+          "description": "Registered for the namespace by its users, not built in.",
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "valueType": {
+          "$ref": "#/$defs/SearchAttributeType"
+        }
+      },
+      "required": [
+        "name",
+        "valueType",
+        "custom"
+      ],
+      "type": "object"
+    },
+    "SearchAttributeType": {
+      "description": "The value type of a search attribute (`IndexedValueType`).",
+      "enum": [
+        "Text",
+        "Keyword",
+        "Int",
+        "Double",
+        "Bool",
+        "Datetime",
+        "KeywordList",
+        "Unspecified"
+      ],
+      "type": "string"
+    },
+    "SearchAttributesInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "description": "The profile's namespace when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "SearchAttributesOutput": {
+      "description": "The namespace's attributes: custom ones first, then the built-in ones, each by name.",
+      "properties": {
+        "attributes": {
+          "items": {
+            "$ref": "#/$defs/SearchAttribute"
+          },
+          "type": "array"
+        },
+        "fallback": {
+          "description": "Set when the server did not list them and these are the built-in ones only: its message.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "attributes"
+      ],
+      "type": "object"
+    },
     "StateTask": {
       "description": "A task of the next step: the node to run, its error, its interrupts.",
       "properties": {
@@ -5336,6 +5412,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/SearchAttributesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.namespaces.searchAttributes",
+      "output": {
+        "$ref": "#/$defs/SearchAttributesOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ScheduleRef"
       },
       "kind": "mutation",
@@ -5756,5 +5853,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:90bcce119b15e983e5ef6decf9307f036303b7d7b125efb9b617baac0edc0e0a"
+  "schema_hash": "sha256:8d6acc3ad333e754d4d1a6e77732770474e418b2ba52ef85f038296353e2d75a"
 }

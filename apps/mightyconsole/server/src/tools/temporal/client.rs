@@ -11,6 +11,7 @@ use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Identity
 use tonic::{Code, Request, Status};
 
 use super::TOOL;
+use super::proto::temporal::api::operatorservice::v1::operator_service_client::OperatorServiceClient;
 use super::proto::temporal::api::workflowservice::v1::workflow_service_client::WorkflowServiceClient;
 use super::types::{ConnectTemporalProfile, TemporalTlsOptions};
 use crate::core::{RemoteError, ToolError, ToolErrorKind};
@@ -50,6 +51,8 @@ pub type Service = InterceptedService<Channel, CallHeaders>;
 pub struct TemporalClient {
     /// A clone per call: the channel multiplexes.
     pub service: WorkflowServiceClient<Service>,
+    /// The same channel; only `ListSearchAttributes` is called on it.
+    pub operator: OperatorServiceClient<Service>,
     pub address: String,
     /// The profile's namespace.
     pub namespace: String,
@@ -58,6 +61,10 @@ pub struct TemporalClient {
 impl TemporalClient {
     pub fn service(&self) -> WorkflowServiceClient<Service> {
         self.service.clone()
+    }
+
+    pub fn operator(&self) -> OperatorServiceClient<Service> {
+        self.operator.clone()
     }
 
     /// The namespace a call names, the profile's when empty.
@@ -145,8 +152,10 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
         .connect()
         .await
         .map_err(|e| connect_error(&address, tls.enabled, &e))?;
+    let headers = CallHeaders { bearer };
     Ok(TemporalClient {
-        service: WorkflowServiceClient::with_interceptor(channel, CallHeaders { bearer })
+        operator: OperatorServiceClient::with_interceptor(channel.clone(), headers.clone()),
+        service: WorkflowServiceClient::with_interceptor(channel, headers)
             // A history page of 1,000 events can be large; the default 4 MiB is too small.
             .max_decoding_message_size(64 * 1024 * 1024),
         address,

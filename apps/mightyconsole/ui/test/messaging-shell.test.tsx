@@ -10,7 +10,7 @@ import type { ProfileRecord } from "@/profiles/record";
 import { ipcChunks } from "../../../../packages/data-grid/test/support.ts";
 import { createFakeServices } from "./support/fake-services";
 import { messageTable } from "./support/messages";
-import { axeViolations, byRole, byText, cleanup, click, render, settle, type, waitFor } from "./support/render";
+import { axeViolations, byRole, byText, cleanup, click, editorArea, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
 
@@ -55,8 +55,8 @@ describe("echo's messaging tabs", () => {
     const { fake, container } = await setup();
     await doubleClick(treeItem("Messages"));
     await waitFor(() => byRole("tab", /Messages · lab/) !== null, "the Messages tab");
-    const jq = [...container.querySelectorAll<HTMLInputElement>("input")].find((i) => i.labels?.[0]?.textContent === "jq")!;
-    await type(jq, ".value.id == \"o-2\"");
+    await waitFor(() => editorArea("jq") !== null, "the jq editor");
+    await type(editorArea("jq")!, ".value.id == \"o-2\"");
     await click(byRole("button", "Apply"));
     await click(byRole("button", "Start"));
     await waitFor(() => byText("2 records shown") !== null, "the rows");

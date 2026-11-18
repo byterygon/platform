@@ -268,12 +268,13 @@
       "name": "code-editor",
       "type": "registry:ui",
       "title": "CodeEditor",
-      "description": "A code editor on Monaco for JSON, YAML, Protobuf and plain text, loaded lazily from the app's own bundle (no CDN, no network), themed from the editor.* and syntax.* tokens of its region, with JSON Schema validation, markers by line and column, Mod+Enter to submit and a diff view.",
+      "description": "A code editor on Monaco for JSON, YAML, Protobuf, jq, plain text and languages an app registers, loaded lazily from the app's own bundle (no CDN, no network), themed from the editor.* and syntax.* tokens of its region, with JSON Schema validation, the app's completion, markers by line and column, Mod+Enter to submit, a diff view, and a one-line mode in Fluent's input frame.",
       "dependencies": [
         "monaco-editor"
       ],
       "registryDependencies": [
         "@byterygon/cn",
+        "@byterygon/control",
         "@byterygon/monaco"
       ],
       "files": [

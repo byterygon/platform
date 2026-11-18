@@ -91,7 +91,7 @@ fn collect(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) {
     }
 }
 
-/// Compiles the vendored Temporal API (client only) with `protox`, so that building needs neither
+/// Compiles the vendored Temporal API (the `WorkflowService` and `OperatorService` clients) with `protox`, so that building needs neither
 /// `protoc` nor the network. The descriptor set is also written to `$OUT_DIR`, so that the server
 /// can turn any message of the API into JSON at run time (history events, payloads).
 fn compile_temporal_protos() {
@@ -100,7 +100,11 @@ fn compile_temporal_protos() {
     let mut compiler = protox::Compiler::new([&root]).expect("open the vendored Temporal protos");
     compiler
         .include_imports(true)
-        .open_file("temporal/api/workflowservice/v1/service.proto")
+        .open_files([
+            "temporal/api/workflowservice/v1/service.proto",
+            // `ListSearchAttributes` per namespace, for the query editor's completion (TSK-93).
+            "temporal/api/operatorservice/v1/service.proto",
+        ])
         .expect("compile the vendored Temporal protos");
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
     fs::write(

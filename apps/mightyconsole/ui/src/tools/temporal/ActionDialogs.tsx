@@ -1,9 +1,9 @@
 // The confirmations of Temporal's actions (Mightyconsole spec §9.4). Each one names the workflow
 // it acts on; the destructive ones (terminate, reset, delete a schedule) need their reason or the
 // typed id before the button works; every one shows the server's error in place and stays open.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { CodeInput } from "@/components/ui/code-input";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -104,16 +104,19 @@ export interface ArgsFieldProps {
   value: string;
   onChange(value: string): void;
   label?: string;
+  /** Mod+Enter in the editor: Send, Run query. */
+  onSubmit?: () => void;
 }
 
 /** The arguments of a signal or query: a JSON array (one argument each) or a single JSON value. */
-export function ArgsField({ value, onChange, label = "Arguments" }: ArgsFieldProps) {
+export function ArgsField({ value, onChange, label = "Arguments", onSubmit }: ArgsFieldProps) {
   const parsed = parseArgs(value);
   const bad = "error" in parsed ? parsed.error : null;
+  const labelId = useId();
   return (
     <Field invalid={bad !== null}>
-      <FieldLabel>{label}</FieldLabel>
-      <CodeInput value={value} onValueChange={onChange} language="json" multiline rows={5} placeholder='["approver", 42]' aria-invalid={bad !== null} />
+      <FieldLabel id={labelId}>{label}</FieldLabel>
+      <CodeEditor value={value} onValueChange={onChange} language="json" aria-labelledby={labelId} placeholder='["approver", 42]' invalid={bad !== null} lineNumbers={false} onSubmit={onSubmit ? () => onSubmit() : undefined} className="h-panel-xs" />
       <FieldDescription>A JSON array sends one argument per item; any other JSON value is one argument. Each goes as json/plain.</FieldDescription>
       {bad ? <FieldError match>{bad}</FieldError> : null}
     </Field>
@@ -144,7 +147,7 @@ export function SignalDialog({ open, onOpenChange, workflowId, busy, error, onSe
         <FieldLabel>Signal name</FieldLabel>
         <Input value={name} onValueChange={setName} placeholder="approve" autoComplete="off" spellCheck={false} />
       </Field>
-      <ArgsField value={args} onChange={setArgs} />
+      <ArgsField value={args} onChange={setArgs} onSubmit={() => !busy && name.trim() !== "" && "args" in parsed && onSend(name.trim(), parsed.args)} />
     </Shell>
   );
 }
