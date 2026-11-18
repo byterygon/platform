@@ -2,7 +2,8 @@
 // shows every part of a ToolModule a real tool fills: a versioned profile schema with a secret, a
 // connection form, a resource tree under a connected profile, and two tab kinds: a request
 // (`echo.ping`, Mod+Enter sends) and a live view (`echo.ticks`: a stream with credits, Live badge,
-// Pause, Stop, Clear, Restart).
+// Pause, Stop, Clear, Restart). Since TSK-80 it also serves the messaging core's test backend: the
+// Messages and Composer tabs (messages.tsx) on the topic `echo` of `echo.messages.*`.
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
@@ -13,7 +14,8 @@ import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/compon
 import { liveTimeout } from "@/app/client";
 import { EmptyLine, ErrorState, LiveBadge } from "@/app/states";
 import * as api from "@/gen/api";
-import { ArrowUp as Send, Braces, Flash, Pause, Play, Stop, Subtract } from "@/lib/icons";
+import { ArrowUp as Send, Braces, Edit, Flash, List, Pause, Play, Stop, Subtract } from "@/lib/icons";
+import { ComposeTab, MessagesTab } from "./messages";
 import type { ConnectionFormProps, DescribedError, LiveState, ProfileSchema, TabProps, ToolModule } from "../types";
 
 const profile: ProfileSchema = {
@@ -30,10 +32,15 @@ const profile: ProfileSchema = {
   toConnect(record): api.ConnectEchoProfile {
     const greeting = record.fields["greeting"];
     const token = record.secrets["token"];
+    const schemas = record.extras["schemas"];
+    const mappings = record.extras["mappings"];
     return {
       name: record.name,
       greeting: typeof greeting === "string" && greeting !== "" ? greeting : null,
       token: typeof token === "string" && token !== "" ? token : null,
+      // The messaging core's test backend (TSK-80): the profile's local schemas and mappings.
+      schemas: Array.isArray(schemas) ? (schemas as api.LocalSchema[]) : null,
+      mappings: Array.isArray(mappings) ? (mappings as api.SchemaMapping[]) : null,
     };
   },
 };
@@ -238,10 +245,14 @@ export const echoTool: ToolModule = {
   sidebarTree: ({ profile: p }) => [
     { id: `${p.id}/ping`, label: "Ping", icon: <Icon icon={Send} />, open: { kind: "echo.ping", params: {}, title: `Ping · ${p.name}` } },
     { id: `${p.id}/ticks`, label: "Ticks", icon: <Icon icon={Flash} />, open: { kind: "echo.ticks", params: {}, title: `Ticks · ${p.name}` } },
+    { id: `${p.id}/messages`, label: "Messages", icon: <Icon icon={List} />, open: { kind: "echo.messages", params: {}, title: `Messages · ${p.name}` } },
+    { id: `${p.id}/compose`, label: "Composer", icon: <Icon icon={Edit} />, open: { kind: "echo.compose", params: {}, title: `Composer · ${p.name}` } },
   ],
   tabKinds: {
     "echo.ping": { title: () => "Ping", Component: PingTab },
     "echo.ticks": { title: () => "Ticks", Component: TicksTab },
+    "echo.messages": { title: () => "Messages", Component: MessagesTab },
+    "echo.compose": { title: () => "Composer", Component: ComposeTab },
   },
   actions: [],
   async connect(client, record) {

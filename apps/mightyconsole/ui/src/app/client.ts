@@ -3,9 +3,11 @@
 // `<meta name="mightyconsole-csrf">` goes into every Hello (`auth: { csrf }`), read on each new
 // connection (spec §2.3).
 import { type Client, autoTransport, createClient } from "@byterygon/ambidex";
+import type { ArrowDecoderPort } from "@byterygon/ambidex/arrow";
 import { createContext, useContext } from "react";
 import * as api from "@/gen/api";
 import type { AppStorage } from "@/profiles/storage";
+import { ProgressBus } from "./progress";
 
 export type MightyApi = typeof api.procedures;
 /** The typed client: `client.echo.connect(...)`, from the generated procedure table. */
@@ -21,6 +23,10 @@ export function readCsrf(doc: Document = document): string | null {
 export interface Services {
   readonly client: MightyClient;
   readonly storage: AppStorage;
+  /** Where Arrow IPC (message batches) is decoded: a Worker in the app, in-thread in tests. */
+  readonly decoder: ArrowDecoderPort;
+  /** The StreamProgress events of the page's streams, by streamId. */
+  readonly progress: ProgressBus;
   /** Closes the connection (on unload). */
   readonly close?: () => void;
 }
@@ -36,9 +42,12 @@ export function useServices(): Services {
 /** The real services: one client over the WebSocket to this page's origin. */
 export function createServices(storage: AppStorage): Services {
   const client = createClient(api, autoTransport({ force: "websocket", webSocket: { auth: () => ({ csrf: readCsrf() ?? "" }) } }));
+  const decoder = new Worker(new URL("./arrow-worker.ts", import.meta.url), { type: "module" });
   return {
     client,
     storage,
+    decoder,
+    progress: new ProgressBus(),
     close: () => client.$close(),
   };
 }

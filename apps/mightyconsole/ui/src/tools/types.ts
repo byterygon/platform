@@ -63,6 +63,8 @@ export interface TabProps {
   note(error: unknown): DescribedError;
   /** Opens (or focuses) another tab of this tool and profile, e.g. a thread from a list of threads. */
   openTab(open: { kind: string; params: Record<string, unknown>; title: string }): void;
+  /** Saves a change to this tab's profile (its extras: templates, saved filters). */
+  updateProfile?: (change: (record: ProfileRecord) => ProfileRecord) => Promise<void>;
 }
 
 /** The shell's per-tab actions (spec §3.4). */

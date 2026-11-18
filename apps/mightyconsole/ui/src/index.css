@@ -7,6 +7,8 @@
 @import "@byterygon/design-tokens/default/tokens.css";
 @import "tailwindcss";
 @import "@byterygon/design-tokens/default/tailwind-theme.css";
+/* Message lists (@byterygon/data-grid): token roles only, plain CSS. */
+@import "@byterygon/data-grid/styles.css";
 
 @source "./";
 
