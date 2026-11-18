@@ -348,6 +348,7 @@ function formatTailwindTheme(input: FormatInput): string {
       "Tailwind v4 theme: utility names for the token roles (bg-surface, text-fg-muted,",
       "border-border, h-control-md, rounded-md). `inline` keeps the utilities pointing at the CSS",
       "variables, so a mode or density switch needs no rebuild. Import after tokens.css.",
+      "The base layer at the end gives every scroll container thin themed scrollbars.",
     ]),
     "",
     ...variants,
@@ -356,7 +357,47 @@ function formatTailwindTheme(input: FormatInput): string {
     ...lines,
     "}",
     "",
+    ...scrollbarBase(set),
   ].join("\n");
+}
+
+/**
+ * Thin themed scrollbars for every scroll container (TSK-90), in the base layer so a utility
+ * (a hidden scrollbar) still wins. Chrome and Firefox take the standard properties, and once
+ * scrollbar-color is set Chrome ignores the ::-webkit-scrollbar rules; Safari and WebKitGTK (the
+ * Tauri webview on Linux) do not support scrollbar-color and take the pseudo-elements.
+ */
+function scrollbarBase(set: TokenSet): string[] {
+  const needed = ["color.scrollbar.thumb", "color.scrollbar.thumb-hover", "size.scrollbar", "border.width.2", "radius.full"];
+  if (!needed.every((path) => set.tokens.has(path))) return [];
+  const v = (path: string) => `var(${cssVarName(path)})`;
+  return [
+    "@layer base {",
+    "  @supports (scrollbar-color: auto) {",
+    "    * {",
+    "      scrollbar-width: thin;",
+    `      scrollbar-color: ${v("color.scrollbar.thumb")} transparent;`,
+    "    }",
+    "  }",
+    "  ::-webkit-scrollbar {",
+    `    width: ${v("size.scrollbar")};`,
+    `    height: ${v("size.scrollbar")};`,
+    "  }",
+    "  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner {",
+    "    background: transparent;",
+    "  }",
+    "  ::-webkit-scrollbar-thumb {",
+    `    border: ${v("border.width.2")} solid transparent;`,
+    `    border-radius: ${v("radius.full")};`,
+    `    background-color: ${v("color.scrollbar.thumb")};`,
+    "    background-clip: padding-box;",
+    "  }",
+    "  ::-webkit-scrollbar-thumb:hover {",
+    `    background-color: ${v("color.scrollbar.thumb-hover")};`,
+    "  }",
+    "}",
+    "",
+  ];
 }
 
 function formatShadcnAlias(input: FormatInput): string {

@@ -111,6 +111,13 @@ export function registryThemeItem(input: RegistryThemeInput): { [key: string]: J
   const css: Record<string, Json> = {};
   const tailwind = parseCss(input.tailwindCss);
   for (const rule of tailwind) if (rule.prelude.startsWith("@custom-variant")) css[rule.prelude] = {};
+  // The base layer (themed scrollbars) as nested rules, which the shadcn CLI writes as they are.
+  const nested = (rule: CssRule): { [key: string]: Json } => {
+    const out: { [key: string]: Json } = {};
+    for (const [property, value] of rule.declarations) out[property] = value;
+    for (const child of rule.children) out[child.prelude] = nested(child);
+    return out;
+  };
   for (const file of [input.tokensCss, input.shadcnCss]) {
     for (const rule of parseCss(file)) {
       const key = cssSelectors(rule.prelude).join(", ");
@@ -123,6 +130,7 @@ export function registryThemeItem(input: RegistryThemeInput): { [key: string]: J
     if (rule.prelude !== "@theme inline") continue;
     for (const [property, value] of rule.declarations) theme[property.slice(2)] = value;
   }
+  for (const rule of tailwind) if (rule.prelude.startsWith("@layer")) css[rule.prelude] = nested(rule);
   for (const rule of parseCss(input.shadcnCss)) {
     for (const [property] of rule.declarations) {
       if (property === "--radius") continue;
@@ -134,7 +142,7 @@ export function registryThemeItem(input: RegistryThemeInput): { [key: string]: J
     name: `theme-${input.name}`,
     type: "registry:theme",
     title: `Byterygon theme: ${input.name}`,
-    description: `${input.description ?? `The ${input.name} preset.`} Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.`,
+    description: `${input.description ?? `The ${input.name} preset.`} Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.`,
     cssVars: { theme },
     css,
   };

@@ -28,7 +28,7 @@ const classes = {
     // Kept mounted; a bar whose axis does not overflow stays invisible.
     "data-[orientation=vertical]:not-data-has-overflow-y:invisible data-[orientation=horizontal]:not-data-has-overflow-x:invisible",
   ],
-  thumb: "w-full rounded-full bg-border-strong hover:bg-fg-subtle",
+  thumb: "w-full rounded-full bg-scrollbar-thumb hover:bg-scrollbar-thumb-hover",
 } as const;
 
 // Base UI measures the thumb and publishes its length as a run-time variable; it is not a token.

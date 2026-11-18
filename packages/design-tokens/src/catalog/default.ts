@@ -595,6 +595,38 @@ const density: RoleDef[] = [
   },
 ];
 
+/**
+ * Scrollbars (TSK-90): every scroll container's bar, thin and themed. The engine writes the
+ * global rules into tailwind-theme.css (a base layer) and the registry theme item; ScrollArea
+ * draws its overlay bars with the same roles.
+ */
+const scrollbar: RoleDef[] = [
+  {
+    path: "color.scrollbar.thumb",
+    type: "color",
+    value: ref("color.border.strong"),
+    tailwind: "--color-scrollbar-thumb",
+    use: "The thumb of a scrollbar, native or ScrollArea's: the strong border colour, 3:1 on every surface.",
+    avoid: "Not for borders or dividers: use color.border.*. The track stays transparent.",
+  },
+  {
+    path: "color.scrollbar.thumb-hover",
+    type: "color",
+    value: ref("color.fg.subtle"),
+    tailwind: "--color-scrollbar-thumb-hover",
+    use: "The thumb of a scrollbar under the pointer or while dragged.",
+    avoid: "Not a resting colour.",
+  },
+  {
+    path: "size.scrollbar",
+    type: "dimension",
+    value: byDensity(px(10), px(8)),
+    tailwind: "--spacing-scrollbar",
+    use: "The thickness of a native scrollbar in WebKit (Safari, the Tauri webview on Linux and macOS); the thumb is drawn border.width.2 inside it. Chrome and Firefox take scrollbar-width: thin instead.",
+    avoid: "Not for ScrollArea's overlay bars, which use size.track. Not for slider tracks.",
+  },
+];
+
 const WASHES = [
   "color.interactive.hover",
   "color.interactive.active",
@@ -623,6 +655,7 @@ export const DEFAULT_CATALOG: Catalog = {
     ...accent,
     ...neutral,
     ...interactive,
+    ...scrollbar,
     ...status,
     ...shape,
     ...font,
@@ -652,7 +685,7 @@ export const DEFAULT_CATALOG: Catalog = {
       pairs("text", [`color.status.${s.name}.fg`], [`color.status.${s.name}.bg`, "color.bg.canvas", "color.bg.surface"]),
     ),
     // Non-text contrast (WCAG 1.4.11): what identifies a control, and the focus ring.
-    ...pairs("ui", ["color.border.strong", "color.ring", "color.border.focus"], SURFACES),
+    ...pairs("ui", ["color.border.strong", "color.ring", "color.border.focus", "color.scrollbar.thumb"], SURFACES),
     // A checked control, an indicator, an invalid edge. The solids of labelled buttons are
     // identified by their text, so they carry text pairs only (Fluent's brand background).
     ...pairs("ui", ["color.accent.compound", "color.status.danger.stroke"], ["color.bg.canvas", "color.bg.surface"]),

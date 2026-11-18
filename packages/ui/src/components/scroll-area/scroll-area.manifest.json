@@ -105,10 +105,10 @@
   ],
   "tokens": [
     "border.width.1",
-    "color.border.strong",
-    "color.fg.subtle",
     "color.ring",
     "color.ring-inner",
+    "color.scrollbar.thumb",
+    "color.scrollbar.thumb-hover",
     "motion.duration.normal",
     "motion.easing.easy-ease",
     "ring.inner-width",

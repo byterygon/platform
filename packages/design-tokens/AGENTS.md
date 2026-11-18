@@ -525,5 +525,11 @@ build or run time, and a browser only downloads Inter where no Segoe UI is insta
 | `@byterygon/design-tokens/default/tokens` | `tokens.ts`: typed paths, CSS variables, descriptions and resolved values |
 
 In an app: import `fonts/fonts.css`, then `tokens.css`, then `tailwind-theme.css` (after `@import "tailwindcss"`), then
-`shadcn-alias.css` if stock shadcn components are used. Components use the Tailwind utilities
+`shadcn-alias.css` if stock shadcn components are used. `tailwind-theme.css` ends with a base layer of
+thin themed scrollbars for every scroll container (TSK-90, `scrollbarBase` in `src/outputs.ts`):
+`scrollbar-width: thin` and `scrollbar-color: color.scrollbar.thumb transparent` behind
+`@supports (scrollbar-color: auto)` (Chrome ignores the WebKit rules once it is set), and
+`::-webkit-scrollbar` rules (`size.scrollbar`, a `radius.full` thumb inset by `border.width.2`,
+`color.scrollbar.thumb-hover` on hover) for Safari and WebKitGTK. It is a base layer so a utility
+still wins. The registry theme item carries it as nested `css`. Components use the Tailwind utilities
 (`bg-surface`, `text-fg-muted`, `border-border-strong`, `h-control-md`, `rounded-md`).

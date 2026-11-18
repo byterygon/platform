@@ -12,7 +12,9 @@ export const tailwindThemeCss = readFileSync(require.resolve("@byterygon/design-
 
 // Utilities are compiled against the token theme only, without Tailwind's default theme: a raw
 // palette class (`bg-blue-500`) or a default scale (`font-medium`) produces nothing and fails.
-const INPUT = `${tailwindThemeCss}\n@tailwind utilities;\n`;
+// The theme's base layer (themed scrollbars, TSK-90) is left out: it prints after the utilities, so
+// it would show up in every class's CSS below.
+const INPUT = `${tailwindThemeCss.replace(/\n@layer base \{[\s\S]*$/, "\n")}\n@tailwind utilities;\n`;
 let baseline: string | undefined;
 
 /** The CSS Tailwind generates for one class, or "" when the class is not a utility here. */

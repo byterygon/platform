@@ -13691,6 +13691,30 @@
         }
       }
     },
+    "scrollbar": {
+      "thumb": {
+        "$type": "color",
+        "$value": "{color.border.strong}",
+        "$description": "The thumb of a scrollbar, native or ScrollArea's: the strong border colour, 3:1 on every surface. Not for borders or dividers: use color.border.*. The track stays transparent.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--color-scrollbar-thumb"
+          }
+        }
+      },
+      "thumb-hover": {
+        "$type": "color",
+        "$value": "{color.fg.subtle}",
+        "$description": "The thumb of a scrollbar under the pointer or while dragged. Not a resting colour.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "tailwind": "--color-scrollbar-thumb-hover"
+          }
+        }
+      }
+    },
     "status": {
       "danger": {
         "solid": {
@@ -15373,6 +15397,31 @@
             "tier": "primitive",
             "tailwind": "--spacing-panel-xl"
           }
+        }
+      }
+    },
+    "scrollbar": {
+      "$type": "dimension",
+      "$value": {
+        "value": 10,
+        "unit": "px"
+      },
+      "$description": "The thickness of a native scrollbar in WebKit (Safari, the Tauri webview on Linux and macOS); the thumb is drawn border.width.2 inside it. Chrome and Firefox take scrollbar-width: thin instead. Not for ScrollArea's overlay bars, which use size.track. Not for slider tracks.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "axis": "density",
+          "modes": {
+            "comfortable": {
+              "value": 10,
+              "unit": "px"
+            },
+            "compact": {
+              "value": 8,
+              "unit": "px"
+            }
+          },
+          "tailwind": "--spacing-scrollbar"
         }
       }
     },

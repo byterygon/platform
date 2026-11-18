@@ -4889,6 +4889,27 @@ export const tokens = {
     description: "A translucent wash, in the blue ramp so it stays apart from selection, for an item being dragged and for the drop target it is over. Not for selection or hover.",
     values: { "light": "oklch(0.5764 0.233 259.85 / 0.212)", "dark": "oklch(0.6334 0.1988 256.25 / 0.3)" },
   },
+  "color.scrollbar.thumb": {
+    cssVar: "--by-color-scrollbar-thumb",
+    type: "color",
+    tier: "semantic",
+    description: "The thumb of a scrollbar, native or ScrollArea's: the strong border colour, 3:1 on every surface. Not for borders or dividers: use color.border.*. The track stays transparent.",
+    values: { "light": "oklch(0.635 0.0084 275)", "dark": "oklch(0.55 0.0084 275)" },
+  },
+  "color.scrollbar.thumb-hover": {
+    cssVar: "--by-color-scrollbar-thumb-hover",
+    type: "color",
+    tier: "semantic",
+    description: "The thumb of a scrollbar under the pointer or while dragged. Not a resting colour.",
+    values: { "light": "oklch(0.505 0.012 275)", "dark": "oklch(0.7825 0.0108 275)" },
+  },
+  "size.scrollbar": {
+    cssVar: "--by-size-scrollbar",
+    type: "dimension",
+    tier: "semantic",
+    description: "The thickness of a native scrollbar in WebKit (Safari, the Tauri webview on Linux and macOS); the thumb is drawn border.width.2 inside it. Chrome and Firefox take scrollbar-width: thin instead. Not for ScrollArea's overlay bars, which use size.track. Not for slider tracks.",
+    values: { "comfortable": "10px", "compact": "8px" },
+  },
   "color.status.danger.solid": {
     cssVar: "--by-color-status-danger-solid",
     type: "color",

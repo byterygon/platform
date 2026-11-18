@@ -3,7 +3,7 @@
   "name": "theme-classic",
   "type": "registry:theme",
   "title": "Byterygon theme: classic",
-  "description": "Classic: the Byterygon default before Fluent 2 (TSK-57): a blue-teal brand on a neutral tinted with the same hue, light by default, comfortable density, WCAG 2.2 AA, and the fonts it had (Inter, then JetBrains Mono). Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
+  "description": "Classic: the Byterygon default before Fluent 2 (TSK-57): a blue-teal brand on a neutral tinted with the same hue, light by default, comfortable density, WCAG 2.2 AA, and the fonts it had (Inter, then JetBrains Mono). Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
   "cssVars": {
     "theme": {
       "spacing": "var(--by-space-1)",
@@ -74,6 +74,9 @@
       "color-selected": "var(--by-color-interactive-selected)",
       "color-selected-hover": "var(--by-color-interactive-selected-hover)",
       "color-drag": "var(--by-color-interactive-drag)",
+      "color-scrollbar-thumb": "var(--by-color-scrollbar-thumb)",
+      "color-scrollbar-thumb-hover": "var(--by-color-scrollbar-thumb-hover)",
+      "spacing-scrollbar": "var(--by-size-scrollbar)",
       "color-danger": "var(--by-color-status-danger-solid)",
       "color-danger-hover": "var(--by-color-status-danger-solid-hover)",
       "color-danger-solid-fg": "var(--by-color-status-danger-solid-fg)",
@@ -1198,6 +1201,8 @@
       "--by-color-interactive-selected": "var(--by-color-brand-a4)",
       "--by-color-interactive-selected-hover": "var(--by-color-brand-a5)",
       "--by-color-interactive-drag": "var(--by-color-blue-a5)",
+      "--by-color-scrollbar-thumb": "var(--by-color-border-strong)",
+      "--by-color-scrollbar-thumb-hover": "var(--by-color-fg-subtle)",
       "--by-color-status-danger-solid": "var(--by-color-red-9)",
       "--by-color-status-danger-solid-hover": "var(--by-color-red-10)",
       "--by-color-status-danger-solid-fg": "var(--by-color-red-contrast)",
@@ -1379,6 +1384,8 @@
       "--by-color-interactive-selected": "var(--by-color-brand-dark-a5)",
       "--by-color-interactive-selected-hover": "var(--by-color-brand-dark-a6)",
       "--by-color-interactive-drag": "var(--by-color-blue-dark-a6)",
+      "--by-color-scrollbar-thumb": "var(--by-color-border-strong)",
+      "--by-color-scrollbar-thumb-hover": "var(--by-color-fg-subtle)",
       "--by-color-status-danger-solid": "var(--by-color-red-dark-9)",
       "--by-color-status-danger-solid-hover": "var(--by-color-red-dark-10)",
       "--by-color-status-danger-solid-fg": "var(--by-color-red-dark-contrast)",
@@ -1519,6 +1526,7 @@
       "--by-diff-change-fg": "var(--by-color-amber-dark-11)"
     },
     ":root, [data-density=\"comfortable\"]": {
+      "--by-size-scrollbar": "10px",
       "--by-size-control-xs": "20px",
       "--by-size-control-sm": "24px",
       "--by-size-control-md": "32px",
@@ -1548,6 +1556,7 @@
       "--by-grid-cell-padding-x": "var(--by-space-control-x)"
     },
     "[data-density=\"compact\"]": {
+      "--by-size-scrollbar": "8px",
       "--by-size-control-xs": "18px",
       "--by-size-control-sm": "22px",
       "--by-size-control-md": "28px",
@@ -1610,6 +1619,30 @@
       "--sidebar-accent-foreground": "var(--by-color-fg-default)",
       "--sidebar-border": "var(--by-color-border-default)",
       "--sidebar-ring": "var(--by-color-ring)"
+    },
+    "@layer base": {
+      "@supports (scrollbar-color: auto)": {
+        "*": {
+          "scrollbar-width": "thin",
+          "scrollbar-color": "var(--by-color-scrollbar-thumb) transparent"
+        }
+      },
+      "::-webkit-scrollbar": {
+        "width": "var(--by-size-scrollbar)",
+        "height": "var(--by-size-scrollbar)"
+      },
+      "::-webkit-scrollbar-track, ::-webkit-scrollbar-corner": {
+        "background": "transparent"
+      },
+      "::-webkit-scrollbar-thumb": {
+        "border": "var(--by-border-width-2) solid transparent",
+        "border-radius": "var(--by-radius-full)",
+        "background-color": "var(--by-color-scrollbar-thumb)",
+        "background-clip": "padding-box"
+      },
+      "::-webkit-scrollbar-thumb:hover": {
+        "background-color": "var(--by-color-scrollbar-thumb-hover)"
+      }
     }
   }
 }

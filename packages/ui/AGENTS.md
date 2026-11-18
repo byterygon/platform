@@ -145,7 +145,9 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
 - **Focus**: every control uses `focusRing` (or `focusRingWithin` when focus sits on an element
   inside it) from `@/lib/control`: an outline in `ring.color` (`ring.width`, offset by
   `ring.inner-width`) around a box-shadow in `ring.inner-color`. Forced-colours mode keeps the
-  outline. Never write the focus classes again in a component. Joined controls (SplitButton, the
+  outline. An item inside a container that clips uses `focusRingInset` (Tabs' triggers, TSK-90):
+  the same two rings drawn inside the box, the outer one as an inset shadow in `ring.color` and the
+  inner one as an outline offset by `-ring.width`. Never write the focus classes again in a component. Joined controls (SplitButton, the
   outline ToggleGroup) lift the focused part (`focus-visible:relative`) so its ring is never covered.
 - **Disabled**: filled appearances take `bg-disabled` and `border-border-disabled`, every appearance
   `text-fg-disabled` (Fluent's disabled colours, not an opacity); loading shows as disabled, as
@@ -258,6 +260,15 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
 - Tabs: closable tabs keep their close button out of the tab order and `aria-hidden` (the tablist
   holds only tabs); Delete closes the focused tab (`aria-keyshortcuts`). Reordering is drag or
   Alt+Shift+Arrow through TabsList `onReorder(value, index)`; the app owns the array.
+- Tabs overflow (TSK-90, Fluent's TabList overflow): TabsList renders a strip
+  (`data-slot="tabs-strip"`, which takes `className` and the appearance's border) holding the
+  tablist and a "More tabs" IconButton outside it (the tablist holds only tabs). A horizontal
+  tablist is `overflow-hidden` and never scrolls (`overflow-x-auto` alone turned overflow-y to auto
+  and drew a vertical scrollbar). `fitTabs` measures in a layout effect, on resize, on tab changes
+  and on selection, and marks the tabs that do not fit `data-overflow` (hidden), always keeping the
+  selected one; the menu lists them and choosing one selects it (a click on its trigger) and
+  focuses it. Arrows, Home and End move among the visible tabs only; Delete, middle-click (the
+  app's), drag and Alt+Shift+Arrow reorder work as before. The ref still reaches the tablist.
 - Toast and CommandPalette render their items from data, so each exports its item as a part
   (`ToastItem`, `CommandPaletteItem`) for the suite to find in the examples. CommandPalette is a Dialog
   around an inline Base UI Autocomplete (no cmdk: it pulls in Radix); the example's opener has
@@ -305,6 +316,12 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   `--scroll-area-thumb-height`) are not tokens, so they never appear in a class. Collapsible and
   Accordion panels fade (opacity) instead of animating their height; ScrollArea sets the thumb
   length in `style`.
+- Scrollbars (TSK-90): the theme's `tailwind-theme.css` ends with a base layer that gives every
+  scroll container a thin themed bar (`scrollbar-width: thin` and `scrollbar-color` where supported,
+  `::-webkit-scrollbar` for Safari and WebKitGTK), from `color.scrollbar.thumb`, `-hover` and
+  `size.scrollbar`; the registry theme item carries the same rules. ScrollArea's overlay thumb uses
+  `bg-scrollbar-thumb`. Do not style scrollbars in a component; hide one with a utility only where a
+  design asks for it (the base layer loses to utilities).
 - ScrollArea keeps its scrollbars mounted (`keepMounted`) and hides a bar whose axis does not
   overflow (`not-data-has-overflow-y:invisible`), so tests and browsers see the same DOM. The
   viewport is the scroll container: a virtualized list inside reads it through `viewportRef`.

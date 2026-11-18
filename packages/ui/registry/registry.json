@@ -1317,7 +1317,9 @@
       "registryDependencies": [
         "@byterygon/cn",
         "@byterygon/control",
+        "@byterygon/dropdown-menu",
         "@byterygon/icon",
+        "@byterygon/icon-button",
         "@byterygon/icons"
       ],
       "files": [
@@ -1647,49 +1649,49 @@
       "name": "theme-default",
       "type": "registry:theme",
       "title": "Byterygon theme: default",
-      "description": "The Byterygon default, Aurora (Fluent 2 layered look): violet #6b4eff brand, cool grey neutral, violet and aqua glows behind translucent layers, radius 4 and 8, a black and white focus ring. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
+      "description": "The Byterygon default, Aurora (Fluent 2 layered look): violet #6b4eff brand, cool grey neutral, violet and aqua glows behind translucent layers, radius 4 and 8, a black and white focus ring. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
       "files": []
     },
     {
       "name": "theme-classic",
       "type": "registry:theme",
       "title": "Byterygon theme: classic",
-      "description": "Classic: the Byterygon default before Fluent 2 (TSK-57): a blue-teal brand on a neutral tinted with the same hue, light by default, comfortable density, WCAG 2.2 AA, and the fonts it had (Inter, then JetBrains Mono). Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
+      "description": "Classic: the Byterygon default before Fluent 2 (TSK-57): a blue-teal brand on a neutral tinted with the same hue, light by default, comfortable density, WCAG 2.2 AA, and the fonts it had (Inter, then JetBrains Mono). Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
       "files": []
     },
     {
       "name": "theme-high-contrast",
       "type": "registry:theme",
       "title": "Byterygon theme: high-contrast",
-      "description": "High contrast: WCAG 2.2 AAA (7:1 text, 4.5:1 for controls and focus), pure grey neutral, a deep blue accent and a thick focus ring. Comfortable density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
+      "description": "High contrast: WCAG 2.2 AAA (7:1 text, 4.5:1 for controls and focus), pure grey neutral, a deep blue accent and a thick focus ring. Comfortable density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
       "files": []
     },
     {
       "name": "theme-midnight",
       "type": "registry:theme",
       "title": "Byterygon theme: midnight",
-      "description": "Midnight: dark first, on a deep blue neutral with a periwinkle accent. The light scheme is a cool blue-tinted counterpart. Comfortable density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
+      "description": "Midnight: dark first, on a deep blue neutral with a periwinkle accent. The light scheme is a cool blue-tinted counterpart. Comfortable density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
       "files": []
     },
     {
       "name": "theme-paper",
       "type": "registry:theme",
       "title": "Byterygon theme: paper",
-      "description": "Paper: a warm light theme for reading. Cream backgrounds, a rust accent (so its orange, the warning colour, leans to amber), larger text with relaxed line height, rounder corners, comfortable density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
+      "description": "Paper: a warm light theme for reading. Cream backgrounds, a rust accent (so its orange, the warning colour, leans to amber), larger text with relaxed line height, rounder corners, comfortable density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
       "files": []
     },
     {
       "name": "theme-slate",
       "type": "registry:theme",
       "title": "Byterygon theme: slate",
-      "description": "Slate: near-greyscale and minimal. A muted slate-blue accent on a barely tinted neutral, square-ish corners, light by default, comfortable density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
+      "description": "Slate: near-greyscale and minimal. A muted slate-blue accent on a barely tinted neutral, square-ish corners, light by default, comfortable density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
       "files": []
     },
     {
       "name": "theme-terminal",
       "type": "registry:theme",
       "title": "Byterygon theme: terminal",
-      "description": "Terminal: dark first, a green accent on a green-black neutral, monospace for all interface text, 13 px text, square corners, compact density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases and the Tailwind names of the roles. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
+      "description": "Terminal: dark first, a green accent on a green-black neutral, monospace for all interface text, 13 px text, square corners, compact density. Installs the --by-* token variables (Light/Dark via data-theme or .dark, Comfortable/Compact via data-density), the shadcn/ui variable aliases, the Tailwind names of the roles and thin themed scrollbars. Fonts are not included: copy @byterygon/design-tokens/fonts and import fonts.css for Inter and JetBrains Mono, or the system fallbacks are used.",
       "files": []
     }
   ]

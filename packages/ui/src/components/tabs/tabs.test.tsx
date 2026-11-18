@@ -185,3 +185,148 @@ describe("Tabs", () => {
     expect(strip({ appearance: "enclosed", variant: "line" })).toEqual(["enclosed", "medium"]);
   });
 });
+
+describe("Tabs: a strip that overflows (Fluent's overflow menu)", () => {
+  // jsdom has no layout: the strip's width, each tab's width (100 px) and the More button's (32 px)
+  // are stubbed, and ResizeObserver is a fake whose callbacks the test calls.
+  let stripWidth = 400;
+  let observers: (() => void)[] = [];
+  let undo: (() => void)[] = [];
+  const stub = () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.dataset["slot"] === "tabs-strip" ? stripWidth : 0;
+    });
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const slot = this.dataset["slot"];
+      const w = slot === "tabs-item" ? 100 : slot === "dropdown-menu-trigger" ? 32 : 0;
+      return { x: 0, y: 0, top: 0, left: 0, right: w, bottom: 24, width: w, height: 24, toJSON: () => ({}) } as DOMRect;
+    });
+    const previous = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(callback: () => void) {
+        observers.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    undo = [() => width.mockRestore(), () => rect.mockRestore(), () => (globalThis.ResizeObserver = previous)];
+  };
+  afterEach(() => {
+    for (const step of undo) step();
+    undo = [];
+    observers = [];
+    stripWidth = 400;
+  });
+
+  function ManyTabs({ initial = "a", names = ["a", "b", "c", "d", "e", "f"] }: { initial?: string; names?: string[] }) {
+    const [tabs, setTabs] = useState(names);
+    const [active, setActive] = useState(initial);
+    const close = (id: string) => setTabs((current) => current.filter((t) => t !== id));
+    return (
+      <Tabs value={active} onValueChange={(value) => setActive(value as string)}>
+        <TabsList aria-label="Query tabs">
+          {tabs.map((t) => (
+            <TabsTrigger key={t} value={t} onClose={() => close(t)}>
+              Query {t}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {tabs.map((t) => (
+          <TabsContent key={t} value={t}>
+            Panel {t}
+          </TabsContent>
+        ))}
+      </Tabs>
+    );
+  }
+  const more = () => $<HTMLButtonElement>('[data-slot="tabs-strip"] [data-slot="dropdown-menu-trigger"]')!;
+  const overflowing = () => $$('[data-slot="tabs-item"][data-overflow]').map((item) => item.textContent);
+  const resize = async (width: number) => {
+    stripWidth = width;
+    await act(async () => {
+      for (const callback of observers) callback();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+  };
+
+  test("the strip is clipped on both axes and never scrolls; when the tabs fit there is no More button", () => {
+    stub();
+    render(<ManyTabs names={["a", "b", "c"]} />);
+    const list = $('[data-slot="tabs-list"]')!;
+    expect(list.className).toContain("overflow-hidden");
+    expect(list.className).not.toMatch(/overflow-(x|y)-auto|overflow-auto|overflow-scroll/);
+    expect(overflowing()).toEqual([]);
+    expect(more().hidden).toBe(true);
+  });
+
+  test("tabs that do not fit are hidden and listed in the More tabs menu", async () => {
+    stub();
+    stripWidth = 350;
+    const { container } = render(<ManyTabs />);
+    // 350 px less the 32 px button holds three 100 px tabs.
+    expect(overflowing()).toEqual(["Query d", "Query e", "Query f"]);
+    expect(more().hidden).toBe(false);
+    expect(more().getAttribute("aria-label")).toBe("More tabs (3)");
+    await click(more());
+    await waitFor(() => expect($$('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Query d", "Query e", "Query f"]));
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  test("a wider strip shows the hidden tabs again", async () => {
+    stub();
+    stripWidth = 350;
+    render(<ManyTabs />);
+    expect(overflowing()).toHaveLength(3);
+    await resize(700);
+    expect(overflowing()).toEqual([]);
+    expect(more().hidden).toBe(true);
+  });
+
+  test("the selected tab always stays visible, even when it comes last", () => {
+    stub();
+    stripWidth = 350;
+    render(<ManyTabs initial="f" />);
+    expect(overflowing()).toEqual(["Query c", "Query d", "Query e"]);
+  });
+
+  test("choosing a hidden tab in the menu selects it, shows it and focuses it", async () => {
+    stub();
+    stripWidth = 350;
+    render(<ManyTabs />);
+    await click(more());
+    await waitFor(() => expect($$('[role="menuitem"]')).toHaveLength(3));
+    await click($$('[role="menuitem"]').find((item) => item.textContent === "Query e")!);
+    await waitFor(() => expect(tab("e").getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(overflowing()).toEqual(["Query c", "Query d", "Query f"]));
+    await waitFor(() => expect(document.activeElement).toBe(tab("e")));
+  });
+
+  test("arrows, Home and End move among the visible tabs only", async () => {
+    stub();
+    stripWidth = 350;
+    render(<ManyTabs />);
+    await focus(tab("a"));
+    await key("ArrowRight");
+    expect(document.activeElement).toBe(tab("b"));
+    await key("ArrowRight");
+    expect(document.activeElement).toBe(tab("c"));
+    await key("ArrowRight");
+    expect(document.activeElement).toBe(tab("a"));
+    await key("ArrowLeft");
+    expect(document.activeElement).toBe(tab("c"));
+    await key("Home");
+    expect(document.activeElement).toBe(tab("a"));
+    await key("End");
+    expect(document.activeElement).toBe(tab("c"));
+  });
+
+  test("closing a tab makes room for a hidden one", async () => {
+    stub();
+    stripWidth = 350;
+    render(<ManyTabs />);
+    await focus(tab("b"));
+    await key("Delete");
+    await waitFor(() => expect(overflowing()).toEqual(["Query e", "Query f"]));
+  });
+});

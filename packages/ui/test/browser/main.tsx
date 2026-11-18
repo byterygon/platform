@@ -10,6 +10,7 @@ import { CodeEditor, type CodeDiagnostic } from "@/components/code-editor/code-e
 import { CodeInput } from "@/components/code-input/code-input";
 import { Field, FieldLabel } from "@/components/field/field";
 import { SqlEditor, type SqlRun } from "@/components/sql-editor/sql-editor";
+import { Tabs, TabsList, TabsTrigger } from "@/components/tabs/tabs";
 import { cssColorToHex, tokenReader, type Monaco, type MonacoEditor } from "@/lib/monaco";
 import presetDefault from "@byterygon/design-tokens/presets/default/tokens.css?raw";
 import presetHighContrast from "@byterygon/design-tokens/presets/high-contrast/tokens.css?raw";
@@ -182,6 +183,30 @@ function Codes() {
   );
 }
 
+/** A tab strip too narrow for its tabs (TSK-90) and a native scroll container, for tabStrip(). */
+function Strip() {
+  const [active, setActive] = useState("1");
+  const names = Array.from({ length: 10 }, (_, index) => String(index + 1));
+  return (
+    <div id="region-4" data-theme="light" data-density="comfortable" className="flex flex-col gap-stack-md bg-surface p-inset-md">
+      <div id="tab-strip" className="w-panel-sm">
+        <Tabs value={active} onValueChange={(value) => setActive(value as string)}>
+          <TabsList aria-label="Query tabs">
+            {names.map((name) => (
+              <TabsTrigger key={name} value={name} onClose={() => {}}>
+                Query {name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+      <div id="scroller" tabIndex={0} className="h-panel-xs overflow-auto">
+        <div className="h-panel-lg">A native scroll container: its scrollbar takes the theme.</div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [value, setValue] = useState(INITIAL);
   check.setValue = setValue;
@@ -212,6 +237,7 @@ function App() {
         <CodeInput aria-label="Second filter" language="sql" defaultValue="id > 10 and status = 'active'" className="mt-stack-md" />
       </div>
       <Codes />
+      <Strip />
     </main>
   );
 }

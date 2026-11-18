@@ -51,6 +51,12 @@
       "description": "TabsList: makes the tabs reorderable by drag and Alt+Shift+Arrow; move the tab to index."
     },
     {
+      "name": "moreLabel",
+      "type": "string",
+      "default": "More tabs",
+      "description": "TabsList: the tooltip and accessible name of the button that lists the tabs that do not fit (the count is added to the name)."
+    },
+    {
       "name": "activateOnFocus",
       "type": "boolean",
       "default": false,
@@ -123,7 +129,7 @@
     {
       "name": "TabsList",
       "slot": "tabs-list",
-      "description": "role=\"tablist\"; scrolls when the tabs do not fit; onReorder makes the tabs movable."
+      "description": "role=\"tablist\" in a strip (data-slot=\"tabs-strip\") that never scrolls: tabs that do not fit go to a \"More tabs\" menu at its end (Fluent's TabList overflow), the selected one always stays visible; onReorder makes the tabs movable; moreLabel names the menu button."
     },
     {
       "name": "TabsTrigger",
@@ -175,6 +181,7 @@
   ],
   "tokens": [
     "color.accent.compound",
+    "color.bg.inset",
     "color.bg.layer",
     "color.bg.layer-alt",
     "color.border.subtle",

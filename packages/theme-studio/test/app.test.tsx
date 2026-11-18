@@ -96,8 +96,9 @@ describe("Theme Studio", () => {
     expect(styleText()).toBe(renderTokensCss(generateTokens(startingTheme()).set, "Theme Studio"));
     expect(document.documentElement.dataset["theme"]).toBe("light");
     expect(document.documentElement.dataset["density"]).toBe("comfortable");
-    // 488 since TSK-90: color.accent.compound-fg on the three compound colours, in both schemes.
-    expect($('[role="status"]')!.textContent).toMatch(/488 contrast checks pass/);
+    // TSK-90: +6 for color.accent.compound-fg on the three compound colours, +10 for
+    // color.scrollbar.thumb on the five surfaces, in both schemes.
+    expect($('[role="status"]')!.textContent).toMatch(/498 contrast checks pass/);
   });
 
   test("the colour mode and density switches change the root and are saved", async () => {

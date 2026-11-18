@@ -111,6 +111,19 @@ export const fieldFrame =
   "rounded-md border font-sans text-fg outline-none transition duration-[var(--by-motion-duration-faster)] ease-easy-ease motion-reduce:transition-none";
 
 /**
+ * The double focus ring drawn inside the element's box, as Fluent's Tab draws it: for items in a
+ * container that clips (a tab strip with overflow hidden), where `focusRing`'s outline outside
+ * the box would be cut off. The outer ring is an inset shadow of ring.width in ring.color on the
+ * edge; the inner one an outline of ring.inner-width in ring.inner-color just inside it (offset
+ * by -ring.width), which also survives forced-colours mode.
+ */
+export const focusRingInset = [
+  "outline-none",
+  "focus-visible:outline-solid focus-visible:outline-[length:var(--by-ring-inner-width)] focus-visible:-outline-offset-[var(--by-ring-width)] focus-visible:outline-ring-inner",
+  "focus-visible:ring-inset focus-visible:ring-[length:var(--by-ring-width)] focus-visible:ring-ring",
+].join(" ");
+
+/**
  * Focus, invalid and disabled on a field that is itself the focusable element (Input, Textarea,
  * a Select trigger). A frame around a control (InputGroup, NumberInput) writes the same looks
  * with `has-[…]` on its control's slot.

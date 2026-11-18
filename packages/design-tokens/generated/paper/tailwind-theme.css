@@ -6,6 +6,7 @@
  * Tailwind v4 theme: utility names for the token roles (bg-surface, text-fg-muted,
  * border-border, h-control-md, rounded-md). `inline` keeps the utilities pointing at the CSS
  * variables, so a mode or density switch needs no rebuild. Import after tokens.css.
+ * The base layer at the end gives every scroll container thin themed scrollbars.
  */
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
@@ -81,6 +82,11 @@
   --color-selected: var(--by-color-interactive-selected);
   --color-selected-hover: var(--by-color-interactive-selected-hover);
   --color-drag: var(--by-color-interactive-drag);
+  --color-scrollbar-thumb: var(--by-color-scrollbar-thumb);
+  --color-scrollbar-thumb-hover: var(--by-color-scrollbar-thumb-hover);
+
+  --spacing-scrollbar: var(--by-size-scrollbar);
+
   --color-danger: var(--by-color-status-danger-solid);
   --color-danger-hover: var(--by-color-status-danger-solid-hover);
   --color-danger-solid-fg: var(--by-color-status-danger-solid-fg);
@@ -340,4 +346,29 @@
   --color-diff-remove-fg: var(--by-diff-remove-fg);
   --color-diff-change: var(--by-diff-change-bg);
   --color-diff-change-fg: var(--by-diff-change-fg);
+}
+
+@layer base {
+  @supports (scrollbar-color: auto) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--by-color-scrollbar-thumb) transparent;
+    }
+  }
+  ::-webkit-scrollbar {
+    width: var(--by-size-scrollbar);
+    height: var(--by-size-scrollbar);
+  }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: var(--by-border-width-2) solid transparent;
+    border-radius: var(--by-radius-full);
+    background-color: var(--by-color-scrollbar-thumb);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--by-color-scrollbar-thumb-hover);
+  }
 }

@@ -867,6 +867,8 @@
   --by-color-interactive-selected: var(--by-color-brand-dark-a5);
   --by-color-interactive-selected-hover: var(--by-color-brand-dark-a6);
   --by-color-interactive-drag: var(--by-color-blue-dark-a6);
+  --by-color-scrollbar-thumb: var(--by-color-border-strong);
+  --by-color-scrollbar-thumb-hover: var(--by-color-fg-subtle);
   --by-color-status-danger-solid: var(--by-color-red-dark-9);
   --by-color-status-danger-solid-hover: var(--by-color-red-dark-10);
   --by-color-status-danger-solid-fg: var(--by-color-red-dark-contrast);
@@ -1051,6 +1053,8 @@
   --by-color-interactive-selected: var(--by-color-brand-a4);
   --by-color-interactive-selected-hover: var(--by-color-brand-a5);
   --by-color-interactive-drag: var(--by-color-blue-a5);
+  --by-color-scrollbar-thumb: var(--by-color-border-strong);
+  --by-color-scrollbar-thumb-hover: var(--by-color-fg-subtle);
   --by-color-status-danger-solid: var(--by-color-red-9);
   --by-color-status-danger-solid-hover: var(--by-color-red-10);
   --by-color-status-danger-solid-fg: var(--by-color-red-contrast);
@@ -1194,6 +1198,7 @@
 /* Roles, density: comfortable (default). */
 :root,
 [data-density="comfortable"] {
+  --by-size-scrollbar: 10px;
   --by-size-control-xs: 20px;
   --by-size-control-sm: 24px;
   --by-size-control-md: 32px;
@@ -1225,6 +1230,7 @@
 
 /* Roles, density: compact. */
 [data-density="compact"] {
+  --by-size-scrollbar: 8px;
   --by-size-control-xs: 18px;
   --by-size-control-sm: 22px;
   --by-size-control-md: 28px;

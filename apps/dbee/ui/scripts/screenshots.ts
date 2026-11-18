@@ -25,6 +25,7 @@ export const SCREENS = [
   { id: "approve", title: "Approve access", query: "scene=empty&open=approve" },
   { id: "settings", title: "Settings", query: "scene=main&run=0&open=settings" },
   { id: "toast", title: "Access about to expire", query: "scene=toast" },
+  { id: "tabs", title: "More tabs than fit (overflow menu)", query: "scene=main&tabs=12" },
 ] as const;
 const SCHEMES = ["light", "dark"] as const;
 const DENSITIES = ["comfortable", "compact"] as const;
