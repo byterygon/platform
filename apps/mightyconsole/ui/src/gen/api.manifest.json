@@ -453,6 +453,60 @@
       ],
       "type": "object"
     },
+    "ConnectTemporalProfile": {
+      "description": "The Temporal profile as `toConnect` builds it (spec §9.1).",
+      "properties": {
+        "address": {
+          "default": null,
+          "description": "`host:port` of the frontend; 127.0.0.1:7233 when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "apiKey": {
+          "default": null,
+          "description": "Sent as `Authorization: Bearer`; never logged.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientKeyPem": {
+          "default": null,
+          "description": "The client certificate's private key (PEM); never logged.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "description": "The namespace opened first; `default` when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tls": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TemporalTlsOptions"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
     "ConnectionState": {
       "description": "The state of a live handle (spec §2.2, \"Status\").",
       "enum": [
@@ -752,6 +806,48 @@
       },
       "required": [
         "flags"
+      ],
+      "type": "object"
+    },
+    "NamespaceSummary": {
+      "description": "One namespace of the cluster.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "isDefault": {
+          "description": "The namespace the profile opened first.",
+          "type": "boolean"
+        },
+        "isGlobal": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ownerEmail": {
+          "type": "string"
+        },
+        "retentionSecs": {
+          "description": "How long closed workflows are kept, in seconds.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "state": {
+          "description": "`Registered`, `Deprecated`, `Deleted` or `Unspecified`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "state",
+        "description",
+        "ownerEmail",
+        "isGlobal",
+        "isDefault"
       ],
       "type": "object"
     },
@@ -1240,6 +1336,108 @@
       "required": [
         "connId",
         "namespacePrefix"
+      ],
+      "type": "object"
+    },
+    "TemporalCapabilities": {
+      "description": "What the server reports about itself.",
+      "properties": {
+        "signalAndQueryHeader": {
+          "description": "Signals and queries carry headers.",
+          "type": "boolean"
+        },
+        "visibilityStore": {
+          "description": "Which store holds visibility (`cassandra`, `mysql8`, `postgres12`, `sqlite`,\n`elasticsearch`, ...); empty when the cluster did not say. Cassandra has basic visibility\nonly, so the list's query bar is limited (spec §9.3).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "signalAndQueryHeader",
+        "visibilityStore"
+      ],
+      "type": "object"
+    },
+    "TemporalConnIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "TemporalConnectInput": {
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ConnectTemporalProfile"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "TemporalConnectOutput": {
+      "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/TemporalCapabilities"
+        },
+        "clusterName": {
+          "description": "The cluster's name, when it reported one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "serverVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "serverVersion",
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "TemporalTlsOptions": {
+      "description": "TLS settings of a profile (spec §4.2 `TemporalTlsOptions`); `secrets.clientKeyPem` comes beside it as\n`clientKeyPem`. There is no \"skip verification\" (spec Open question 6).",
+      "properties": {
+        "caPem": {
+          "default": null,
+          "description": "Extra trusted CA certificates (PEM); the operating system's roots are used as well.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientCertPem": {
+          "default": null,
+          "description": "Client certificate chain (PEM) for mTLS.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "serverName": {
+          "default": null,
+          "description": "The name to verify the server certificate against, when it is not the address's host.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "enabled"
       ],
       "type": "object"
     },
@@ -1740,6 +1938,184 @@
       },
       "required": [
         "checkpoint"
+      ],
+      "type": "object"
+    },
+    "WorkflowRow": {
+      "description": "One row of the workflow list.",
+      "properties": {
+        "closeTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "durationMs": {
+          "description": "Close (or now, while running) minus start, in milliseconds, as the server reports it.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "historyLength": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "parentWorkflowId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        },
+        "startTime": {
+          "description": "RFC 3339, UTC.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/WorkflowStatus"
+        },
+        "taskQueue": {
+          "type": "string"
+        },
+        "workflowId": {
+          "type": "string"
+        },
+        "workflowType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowId",
+        "runId",
+        "workflowType",
+        "status",
+        "taskQueue",
+        "historyLength"
+      ],
+      "type": "object"
+    },
+    "WorkflowStatus": {
+      "description": "The execution status of a workflow (`WorkflowExecutionStatus`).",
+      "enum": [
+        "Running",
+        "Completed",
+        "Failed",
+        "Canceled",
+        "Terminated",
+        "ContinuedAsNew",
+        "TimedOut",
+        "Paused",
+        "Unspecified"
+      ],
+      "type": "string"
+    },
+    "WorkflowsCountInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "WorkflowsCountOutput": {
+      "description": "The number of workflows a query matches.",
+      "properties": {
+        "count": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    },
+    "WorkflowsListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextPageToken": {
+          "default": null,
+          "description": "The `nextPageToken` of the previous page.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pageSize": {
+          "default": null,
+          "description": "1 to 1,000; 50 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "default": null,
+          "description": "A visibility query (`WorkflowType = \"Order\" AND ExecutionStatus = \"Running\"`); every\nworkflow when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "WorkflowsListOutput": {
+      "properties": {
+        "executions": {
+          "items": {
+            "$ref": "#/$defs/WorkflowRow"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Absent on the last page.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "executions"
       ],
       "type": "object"
     },
@@ -2426,6 +2802,117 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/TemporalConnectInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.connect",
+      "output": {
+        "$ref": "#/$defs/TemporalConnectOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [
+        "profile.clientKeyPem",
+        "profile.apiKey"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TemporalConnIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.disconnect",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TemporalConnIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.namespaces.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NamespaceSummary"
+        },
+        "type": "array"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/WorkflowsCountInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workflows.count",
+      "output": {
+        "$ref": "#/$defs/WorkflowsCountOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/WorkflowsListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workflows.list",
+      "output": {
+        "$ref": "#/$defs/WorkflowsListOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/TermResizeInput"
       },
       "kind": "mutation",
@@ -2486,5 +2973,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:883baacd369343c1f5d1d22957b0bad5ec3ecd7f3f5d4de3e6505c17b307e47c"
+  "schema_hash": "sha256:9c7c2949fec26eab70f28b16012a40137177031861e9b2b639576e3445c7e4dc"
 }

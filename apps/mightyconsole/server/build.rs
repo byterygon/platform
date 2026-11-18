@@ -3,13 +3,18 @@
 //! `$OUT_DIR/embedded_ui.rs` and sorted by path. The UI is `apps/mightyconsole/ui/dist`, or the
 //! directory named by `MIGHTYCONSOLE_UI_DIST`; build it first with
 //! `pnpm --filter @byterygon/mightyconsole build`. Without the feature the list is empty and the
-//! server serves `--ui DIR` or its placeholder page, as before. No dependency is needed.
+//! server serves `--ui DIR` or its placeholder page, as before.
+
+//! The Temporal client (TSK-83): the vendored `temporalio/api` protos in `proto/temporal/` are
+//! compiled by `protox` (pure Rust, no `protoc`, works offline) and `tonic-prost-build` writes the
+//! `WorkflowService` client and the messages into `$OUT_DIR`. See `proto/temporal/README.md`.
 
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() {
+    compile_temporal_protos();
     println!("cargo::rerun-if-env-changed=MIGHTYCONSOLE_UI_DIST");
     println!("cargo::rerun-if-env-changed=MIGHTYCONSOLE_VERSION");
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
@@ -84,4 +89,18 @@ fn collect(root: &Path, dir: &Path, files: &mut Vec<(String, PathBuf)>) {
             files.push((relative, path));
         }
     }
+}
+
+/// Compiles the vendored Temporal API (client only) with `protox`, so that building needs neither
+/// `protoc` nor the network.
+fn compile_temporal_protos() {
+    let root = PathBuf::from("proto/temporal");
+    println!("cargo::rerun-if-changed={}", root.display());
+    let fds = protox::compile(["temporal/api/workflowservice/v1/service.proto"], [&root])
+        .expect("compile the vendored Temporal protos");
+    tonic_prost_build::configure()
+        .build_server(false)
+        .build_client(true)
+        .compile_fds(fds)
+        .expect("generate the Temporal client");
 }
