@@ -20,17 +20,19 @@ jobs:
     name: Rust (fmt, clippy, test)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # TSK-89: in the CI image (.github/ci-image), which has what this job used to install with apt
+    # on every run: WebKitGTK and GTK 3 (ambidex-tauri links Tauri), PostgreSQL's binaries (the
+    # driver, dbee-server and mightyconsole-server tests), Xvfb, Chrome and the Rust toolchain.
+    # The options are explained in .github/ci-image/README.md (the user and the two capabilities
+    # keep the network namespace steps below as they were on the host).
+    container:
+      image: ghcr.io/byterygon/ci-linux@sha256:f9905fe25d880d1f92bc1e25886db63b42f9bace8d5ff3bbb099a294e94f2bfd
+      options: --user 1001 --cap-add SYS_ADMIN --cap-add NET_ADMIN --shm-size 2g
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # ambidex-tauri links Tauri, which needs WebKitGTK (and GTK 3) on Linux. The PostgreSQL
-      # driver tests start a throwaway server from the postgresql binaries.
-      - name: Install system libraries and PostgreSQL
-        run: |
-          sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libwebkit2gtk-4.1-dev postgresql
       # DBee spec §2 (TSK-38): the desktop app embeds the built UI (apps/dbee/ui/dist), so the
       # bundle is built before the Rust steps and the cold start below measures the real app.
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -55,7 +57,6 @@ jobs:
       # core being ready, the window being ready and the first page load, and exits.
       - name: DBee desktop cold start (Xvfb)
         run: |
-          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends xvfb
           cargo build -p dbee-desktop --locked
           DBEE_WORKSPACE="$RUNNER_TEMP/dbee-workspace" DBEE_COLD_START_EXIT=1 \
             timeout 180 xvfb-run -a target/debug/dbee-desktop
@@ -115,15 +116,17 @@ jobs:
     name: DBee desktop budget (Linux, WebKitGTK)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # TSK-89: in the CI image (WebKitGTK, PostgreSQL, Xvfb, the toolchain), like the Rust job.
+    # WebKitGTK runs without its bubblewrap sandbox in a container (.github/ci-image/README.md).
+    # No network namespace here, so no added capabilities.
+    container:
+      image: ghcr.io/byterygon/ci-linux@sha256:f9905fe25d880d1f92bc1e25886db63b42f9bace8d5ff3bbb099a294e94f2bfd
+      options: --user 1001 --shm-size 2g
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: Install system libraries, PostgreSQL and Xvfb
-        run: |
-          sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends libwebkit2gtk-4.1-dev postgresql xvfb
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

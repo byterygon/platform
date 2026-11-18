@@ -24,6 +24,9 @@ container:
   options: --user 1001 --cap-add SYS_ADMIN --cap-add NET_ADMIN --shm-size 2g
 ```
 
+The Rust job uses these options. The DBee desktop budget job has no network namespace step, so
+it runs with `--user 1001 --shm-size 2g` only.
+
 - `--user 1001`: the steps run as the runner's uid, so the workspace and tool cache mounted from
   the host stay writable and PostgreSQL (which refuses root) starts. `sudo` gives root where the
   steps already used it.
