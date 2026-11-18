@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:81b078665d9f6c91ad462da56fb29b1bfb072f5c40a3c56ce44c9c216082350c";
+export const SCHEMA_HASH = "sha256:90bcce119b15e983e5ef6decf9307f036303b7d7b125efb9b617baac0edc0e0a";
 
 // ---- Types
 
@@ -93,10 +93,56 @@ metadata?: JsonValue | null,
 limit?: number | null, offset?: number | null, };
 
 /**
+ * `"auto"` in a [`CodecChoice`].
+ */
+export type Auto = "auto";
+
+/**
  * Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on
  * `e.code === "ApprovalRequired"`.
  */
 export type Code = "Cancelled" | "DeadlineExceeded" | "Unauthenticated" | "PermissionDenied" | "ApprovalRequired" | "InvalidArgument" | "NotFound" | "FailedPrecondition" | "ResourceExhausted" | "Unavailable" | "Unimplemented" | "VersionMismatch" | "Internal";
+
+/**
+ * The decoder for one part (spec §5.2).
+ */
+export type CodecChoice = { codec?: CodecSelector, schema?: SchemaRef | null, 
+/**
+ * Protobuf: the fully qualified message type.
+ */
+messageType?: string | null, };
+
+/**
+ * A codec id (spec §5.2).
+ */
+export type CodecId = "utf8" | "json" | "hex" | "base64" | "msgpack" | "avro" | "protobuf" | "jsonschema";
+
+/**
+ * One entry of `messaging.codecs.list`.
+ */
+export type CodecInfo = { id: CodecId, label: string, needsSchema: boolean, canEncode: boolean, };
+
+/**
+ * `"auto"` or a codec id.
+ */
+export type CodecSelector = Auto | CodecId;
+
+/**
+ * What the Composer sends for a key or a value (spec §5.7).
+ */
+export type ComposePayload = { codec: CodecId, 
+/**
+ * What the user typed: text, JSON, hex or base64.
+ */
+text: string, schema?: SchemaRef | null, 
+/**
+ * Protobuf: the fully qualified message type.
+ */
+messageType?: string | null, 
+/**
+ * `confluent` by default when the schema comes from the registry.
+ */
+wireFormat?: WireFormat | null, };
 
 /**
  * The echo tool's profile as `toConnect` builds it (spec §4.4).
@@ -109,7 +155,15 @@ greeting?: string | null,
 /**
  * A stand-in secret: `"wrong"` is refused with `Auth`. Never logged.
  */
-token?: string | null, };
+token?: string | null, 
+/**
+ * Local schemas for the test topic's messages (the profile's `extras.schemas`).
+ */
+schemas?: Array<LocalSchema> | null, 
+/**
+ * Mappings of local schemas to the topic `echo` (the profile's `extras.mappings`).
+ */
+mappings?: Array<SchemaMapping> | null, };
 
 /**
  * The LangGraph profile as `toConnect` builds it (spec §11.1).
@@ -158,19 +212,77 @@ apiKey?: string | null, };
  */
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "failed" | "closed";
 
+export type DecodeInput = { connId?: string | null, 
+/**
+ * The bytes, base64.
+ */
+bytes: string, part: Part, target?: Target | null, choice?: CodecChoice | null, };
+
+/**
+ * Sent by every message stream (spec §5.2).
+ */
+export type DecodeOptions = { key?: CodecChoice, value?: CodecChoice, 
+/**
+ * Inline payload bytes per message; 1 MiB when absent.
+ */
+maxPayloadBytes?: number | null, };
+
+export type DecodeOutput = { codec: CodecId, text?: string, json?: JsonValue, schemaRef?: string, error?: string, };
+
 export type EchoConnIdInput = { connId: string, };
 
 export type EchoConnectInput = { profile: ConnectEchoProfile, };
 
-export type EchoConnectOutput = { connId: string, greeting: string, };
+export type EchoConnectOutput = { connId: string, greeting: string, 
+/**
+ * Local schemas that did not compile, with file and line.
+ */
+schemaIssues: Array<SchemaIssue>, };
+
+export type EchoGetInput = { connId: string, partition: number, offset: string, };
 
 export type EchoPingInput = { connId: string, text: string, };
 
 export type EchoPingOutput = { greeting: string, text: string, };
 
+export type EchoProduceInput = { connId: string, 
+/**
+ * The partition; by the key's hash, or round robin, when absent.
+ */
+partition?: number | null, key?: ComposePayload | null, headers?: Array<HeaderInput> | null, value: ComposePayload, };
+
+export type EchoProduceOutput = { partition: number, 
+/**
+ * Decimal, as every offset on the wire.
+ */
+offset: string, size: number, schemaRef?: string, };
+
 export type EchoShellInput = { connId: string, terminalId: string, };
 
 export type EchoShellSummary = { exitCode?: number, };
+
+/**
+ * Where a tail starts (Kafka's words: the test topic behaves as a Kafka topic).
+ */
+export type EchoStart = { "kind": "earliest" } | { "kind": "latest" } | { "kind": "latestN", n: number, } | { "kind": "offsets", offsets: Array<PartitionOffset>, };
+
+export type EchoTailInput = { connId: string, streamId: string, start: EchoStart, 
+/**
+ * Keep reading new messages; else stop at the end as of the start.
+ */
+follow: boolean, 
+/**
+ * Push-only, as core NATS: new messages only, dropped when the client does not read.
+ */
+push?: boolean | null, decode?: DecodeOptions | null, filter?: Filter | null, 
+/**
+ * Messages read before a filtered scan stops; 0 for no limit, 100,000 with a filter.
+ */
+maxScan?: number | null, 
+/**
+ * Stop after this many matches.
+ */
+limit?: number | null, };
 
 export type EchoTicksInput = { connId: string, streamId: string, 
 /**
@@ -189,10 +301,50 @@ export type EchoTicksSummary = { sent: number, };
  */
 export type Empty = Record<symbol, never>;
 
+export type EncodeInput = { connId?: string | null, target?: Target | null, part: Part, payload: ComposePayload, };
+
+export type EncodeOutput = { 
+/**
+ * The bytes, base64.
+ */
+bytes: string, size: number, schemaId?: number, schemaRef?: string, };
+
+/**
+ * Why a stream ended.
+ */
+export type EndReason = "end" | "limit" | "maxScan" | "cancelled";
+
+/**
+ * Where in an input text an error is, 1-based (a codec's JSON, a schema, a jq program).
+ */
+export type ErrorPosition = { line: number, column: number, };
+
 /**
  * What an event is about, for the History filter and the Timeline's lanes.
  */
 export type EventCategory = "Workflow" | "WorkflowTask" | "Activity" | "Timer" | "ChildWorkflow" | "Signal" | "Update" | "Marker" | "Other";
+
+/**
+ * The filter (spec §5.4).
+ */
+export type Filter = { key?: TextMatch | null, subject?: string | null, headers?: Array<HeaderFilter> | null, text?: string | null, time?: TimeRange | null, position?: PositionRange | null, jq?: string | null, };
+
+export type FilterCheckInput = { filter: Filter, };
+
+export type FilterCheckOutput = { ok: boolean, errors: Array<FilterIssue>, };
+
+/**
+ * A problem with one part of a filter (`messaging.filter.check`).
+ */
+export type FilterIssue = { 
+/**
+ * `key`, `subject`, `headers.0`, `text`, `time.from`, `position.to`, `jq`.
+ */
+part: string, message: string, 
+/**
+ * In the jq program, 1-based.
+ */
+line?: number, column?: number, };
 
 export type FollowHistoryInput = { connId: string, namespace?: string | null, workflowId: string, runId: string, 
 /**
@@ -208,6 +360,19 @@ export type FollowHistorySummary = {
  * The run closed: there is nothing more to follow.
  */
 closed: boolean, };
+
+/**
+ * A whole message, for "Load full payload" (spec §5.1).
+ */
+export type FullMessage = { partition: number, offset: string, 
+/**
+ * Base64.
+ */
+key?: string, 
+/**
+ * Base64, the whole payload.
+ */
+payload: string, size: number, };
 
 export type GraphEdge = { source: string, target: string, 
 /**
@@ -226,6 +391,18 @@ id: string, name: string, kind: GraphNodeKind,
 metadata?: JsonValue, };
 
 export type GraphNodeKind = "start" | "end" | "node";
+
+export type HeaderEncoding = "text" | "base64";
+
+/**
+ * A header that must be present, and match when `match` is given.
+ */
+export type HeaderFilter = { name: string, match?: TextMatch | null, };
+
+/**
+ * A header as the UI sends it (Composer, KeyValueEditor): text or base64.
+ */
+export type HeaderInput = { key: string, value: string, encoding?: HeaderEncoding | null, };
 
 /**
  * An extra header of the profile (custom auth); its value is a secret.
@@ -248,6 +425,34 @@ eventType: string, category: EventCategory,
  * The event's own attributes, as protobuf JSON, payloads decoded.
  */
 attributes: Record<string, unknown>, };
+
+export type InspectInput = { connId?: string | null, schema: InspectSchema, messageType?: string | null, };
+
+/**
+ * A schema to inspect: a reference, or a local schema not saved yet (the schema editor).
+ */
+export type InspectSchema = LocalSchema | SchemaRef;
+
+/**
+ * What `messaging.schemas.inspect` answers.
+ */
+export type Inspection = { type: SchemaType, 
+/**
+ * Protobuf: the message types offered; empty for the other types.
+ */
+messageTypes: Array<string>, 
+/**
+ * The JSON Schema (draft 2020-12) of the codec's JSON.
+ */
+jsonSchema: unknown, 
+/**
+ * An example payload as JSON text.
+ */
+example: string, 
+/**
+ * The schema text (Avro, `.proto` main file or JSON Schema).
+ */
+text: string, errors: Array<SchemaIssue>, };
 
 /**
  * A pending `interrupt()`: its value is what the graph asks the human.
@@ -276,6 +481,45 @@ version?: string,
 flags: JsonValue, };
 
 /**
+ * Where a stream stopped, per source and partition: the last message read, so a restart
+ * continues at the next one (offset + 1, sequence + 1). Decimal strings keep 64 bits exact.
+ */
+export type LastPosition = { source: string, partition?: number, offset?: string, sequence?: string, 
+/**
+ * Microseconds since the epoch, of the last message read.
+ */
+timestampUs: number, };
+
+/**
+ * `"latest"`.
+ */
+export type Latest = "latest";
+
+/**
+ * A schema the user added to a profile (spec §4.2, `extras.schemas`).
+ */
+export type LocalSchema = { id: string, name: string, type: SchemaType, files: LocalSchemaFiles, 
+/**
+ * Protobuf: the message types offered (all top-level messages of the first file when absent).
+ */
+messageTypes?: Array<string> | null, };
+
+/**
+ * The sources of a local schema: files, or a compiled Protobuf `FileDescriptorSet`.
+ */
+export type LocalSchemaFiles = Array<SchemaFile> | { descriptorSetBase64: string, };
+
+/**
+ * What a mapping applies to (spec §4.2).
+ */
+export type MappingTarget = { "kind": "subject", pattern: string, } | { "kind": "topic", name: string, } | { "kind": "kvBucket", bucket: string, };
+
+/**
+ * How a text is matched.
+ */
+export type MatchOp = "equals" | "contains" | "prefix" | "regex";
+
+/**
  * One namespace of the cluster.
  */
 export type NamespaceSummary = { name: string, 
@@ -292,7 +536,31 @@ retentionSecs?: number, description: string, ownerEmail: string, isGlobal: boole
  */
 isDefault: boolean, };
 
+/**
+ * Which part of a message a codec reads or writes.
+ */
+export type Part = "key" | "value";
+
+/**
+ * One partition's start offset.
+ */
+export type PartitionOffset = { partition: number, 
+/**
+ * Decimal.
+ */
+offset: string, };
+
 export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond: number, };
+
+/**
+ * An inclusive range of offsets or sequences, as decimal strings.
+ */
+export type PositionRange = { from?: string | null, to?: string | null, };
+
+/**
+ * A schema in the registry, by id or by subject and version.
+ */
+export type RegistryRef = { id: number, } | { subject: string, version: SchemaVersion, };
 
 /**
  * The target's own error code, for Details.
@@ -465,6 +733,60 @@ export type SchedulesListInput = { connId: string, namespace?: string | null,
 query?: string | null, };
 
 /**
+ * One source file of a local schema.
+ */
+export type SchemaFile = { 
+/**
+ * For Protobuf, the import path (`lab/common/money.proto`).
+ */
+path: string, text: string, };
+
+/**
+ * A problem found compiling a schema, with the file and line when known (spec §5.3).
+ */
+export type SchemaIssue = { 
+/**
+ * The local schema's id, when the issue is about one.
+ */
+schemaId?: string, file?: string, 
+/**
+ * 1-based.
+ */
+line?: number, 
+/**
+ * 1-based.
+ */
+column?: number, message: string, };
+
+/**
+ * A local schema mapped to messages (spec §4.2, `extras.mappings`).
+ */
+export type SchemaMapping = { id: string, target: MappingTarget, part: Part, schemaId: string, messageType?: string | null, };
+
+/**
+ * Where a schema comes from (spec §5.7): `{ registry: … }` or `{ local: schemaId }`.
+ */
+export type SchemaRef = { "registry": RegistryRef } | { "local": string };
+
+/**
+ * The type of a schema.
+ */
+export type SchemaType = "avro" | "protobuf" | "jsonschema";
+
+/**
+ * A registry schema version: a number or `"latest"`.
+ */
+export type SchemaVersion = number | Latest;
+
+export type SchemasUpdateInput = { connId: string, schemas?: Array<LocalSchema> | null, mappings?: Array<SchemaMapping> | null, };
+
+export type SchemasUpdateOutput = { 
+/**
+ * Schemas that do not compile, with file and line; the others are in use.
+ */
+issues: Array<SchemaIssue>, };
+
+/**
  * A task of the next step: the node to run, its error, its interrupts.
  */
 export type StateTask = { id: string, name: string, error?: string, interrupts: Array<Interrupt>, 
@@ -502,6 +824,17 @@ filter?: JsonValue | null,
  * 1 to 1000; 50 when absent.
  */
 limit?: number | null, offset?: number | null, };
+
+/**
+ * The summary of a message stream (spec §5.5, `TailSummary`).
+ */
+export type TailSummary = { scanned: number, matched: number, dropped: number, decodeErrors: number, endReason: EndReason, lastPositions: Array<LastPosition>, };
+
+/**
+ * Where a message lives, for mappings and subject naming: a Kafka topic, a NATS subject (core
+ * or JetStream) or a KV bucket.
+ */
+export type Target = { "kind": "topic", name: string, } | { "kind": "subject", subject: string, } | { "kind": "kvBucket", bucket: string, };
 
 export type TaskQueueDescribeInput = { connId: string, namespace?: string | null, taskQueue: string, };
 
@@ -578,6 +911,11 @@ export type TermWriteInput = { terminalId: string,
  */
 data: string, };
 
+/**
+ * A text match (spec §5.4, `TextMatch`).
+ */
+export type TextMatch = { op: MatchOp, value: string, caseSensitive?: boolean | null, };
+
 export type Thread = { threadId: string, 
 /**
  * `idle`, `busy`, `interrupted` or `error`.
@@ -640,6 +978,11 @@ status?: string | null,
 limit?: number | null, offset?: number | null, };
 
 /**
+ * An inclusive range of RFC 3339 times.
+ */
+export type TimeRange = { from?: string | null, to?: string | null, };
+
+/**
  * TLS settings of a profile, as `toConnect` sends them (spec §4.2). `clientKeyPem` comes from
  * the profile's `secrets`; procedures that take it list it in `redact`.
  */
@@ -680,7 +1023,11 @@ resource?: string,
 /**
  * For `Invalid`: the input field at fault, as the UI names it.
  */
-field?: string, };
+field?: string, 
+/**
+ * For `Invalid`: where in the field's text, when known.
+ */
+position?: ErrorPosition, };
 
 /**
  * What went wrong, as the UI needs to know it (spec §2.6).
@@ -719,6 +1066,11 @@ export type UpdateStateOutput = {
  * The new checkpoint.
  */
 checkpointId?: string, checkpoint: JsonValue, };
+
+/**
+ * Whether encoding writes the Confluent wire format (spec §5.3).
+ */
+export type WireFormat = "confluent" | "none";
 
 /**
  * Everything `DescribeWorkflowExecution` says, payloads decoded.
@@ -924,6 +1276,9 @@ export interface Procedures {
   readonly "app.info": ProcedureDef<"query", Empty, AppInfo, never>;
   readonly "echo.connect": ProcedureDef<"mutation", EchoConnectInput, EchoConnectOutput, ToolError>;
   readonly "echo.disconnect": ProcedureDef<"mutation", EchoConnIdInput, Empty, ToolError>;
+  readonly "echo.messages.get": ProcedureDef<"query", EchoGetInput, FullMessage, ToolError>;
+  readonly "echo.messages.produce": ProcedureDef<"mutation", EchoProduceInput, EchoProduceOutput, ToolError>;
+  readonly "echo.messages.tail": ProcedureDef<"stream", EchoTailInput, TailSummary, ToolError>;
   readonly "echo.ping": ProcedureDef<"query", EchoPingInput, EchoPingOutput, ToolError>;
   readonly "echo.shell": ProcedureDef<"stream", EchoShellInput, EchoShellSummary, ToolError>;
   readonly "echo.ticks": ProcedureDef<"stream", EchoTicksInput, EchoTicksSummary, ToolError>;
@@ -950,6 +1305,12 @@ export interface Procedures {
   readonly "langgraph.threads.search": ProcedureDef<"query", ThreadsSearchInput, Array<Thread>, ToolError>;
   readonly "langgraph.threads.state": ProcedureDef<"query", ThreadStateInput, ThreadState, ToolError>;
   readonly "langgraph.threads.updateState": ProcedureDef<"mutation", UpdateStateInput, UpdateStateOutput, ToolError>;
+  readonly "messaging.codecs.list": ProcedureDef<"query", Empty, Array<CodecInfo>, never>;
+  readonly "messaging.decode": ProcedureDef<"query", DecodeInput, DecodeOutput, ToolError>;
+  readonly "messaging.encode": ProcedureDef<"query", EncodeInput, EncodeOutput, ToolError>;
+  readonly "messaging.filter.check": ProcedureDef<"query", FilterCheckInput, FilterCheckOutput, never>;
+  readonly "messaging.schemas.inspect": ProcedureDef<"query", InspectInput, Inspection, ToolError>;
+  readonly "messaging.schemas.update": ProcedureDef<"mutation", SchemasUpdateInput, SchemasUpdateOutput, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
@@ -984,6 +1345,11 @@ export interface Api {
   readonly echo: {
     readonly connect: Procedures["echo.connect"];
     readonly disconnect: Procedures["echo.disconnect"];
+    readonly messages: {
+      readonly get: Procedures["echo.messages.get"];
+      readonly produce: Procedures["echo.messages.produce"];
+      readonly tail: Procedures["echo.messages.tail"];
+    };
     readonly ping: Procedures["echo.ping"];
     readonly shell: Procedures["echo.shell"];
     readonly ticks: Procedures["echo.ticks"];
@@ -1019,6 +1385,20 @@ export interface Api {
       readonly search: Procedures["langgraph.threads.search"];
       readonly state: Procedures["langgraph.threads.state"];
       readonly updateState: Procedures["langgraph.threads.updateState"];
+    };
+  };
+  readonly messaging: {
+    readonly codecs: {
+      readonly list: Procedures["messaging.codecs.list"];
+    };
+    readonly decode: Procedures["messaging.decode"];
+    readonly encode: Procedures["messaging.encode"];
+    readonly filter: {
+      readonly check: Procedures["messaging.filter.check"];
+    };
+    readonly schemas: {
+      readonly inspect: Procedures["messaging.schemas.inspect"];
+      readonly update: Procedures["messaging.schemas.update"];
     };
   };
   readonly temporal: {
@@ -1102,6 +1482,38 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
+    },
+    messages: {
+      get: {
+        name: "echo.messages.get",
+        kind: "query",
+        perm: "echo.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      produce: {
+        name: "echo.messages.produce",
+        kind: "mutation",
+        perm: "echo.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      tail: {
+        name: "echo.messages.tail",
+        kind: "stream",
+        perm: "echo.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
+      },
     },
     ping: {
       name: "echo.ping",
@@ -1367,6 +1779,74 @@ export const procedures: Api = {
         kind: "mutation",
         perm: "langgraph.write",
         risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+  },
+  messaging: {
+    codecs: {
+      list: {
+        name: "messaging.codecs.list",
+        kind: "query",
+        perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    decode: {
+      name: "messaging.decode",
+      kind: "query",
+      perm: "messaging.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    encode: {
+      name: "messaging.encode",
+      kind: "query",
+      perm: "messaging.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    filter: {
+      check: {
+        name: "messaging.filter.check",
+        kind: "query",
+        perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    schemas: {
+      inspect: {
+        name: "messaging.schemas.inspect",
+        kind: "query",
+        perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      update: {
+        name: "messaging.schemas.update",
+        kind: "mutation",
+        perm: "messaging.read",
+        risk: "Read",
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,

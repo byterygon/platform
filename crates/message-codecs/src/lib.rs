@@ -16,6 +16,8 @@
 
 pub mod codec;
 pub mod error;
+pub mod filter;
+pub mod inspect;
 pub mod message;
 pub mod naming;
 mod ojson;

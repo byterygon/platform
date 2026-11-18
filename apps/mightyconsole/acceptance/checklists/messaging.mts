@@ -1,8 +1,8 @@
 // TSK-80, Messaging core (Mightyconsole spec section 18, against the lab). Batch 1 (crates/message-codecs)
-// wires the crate, codecs, wire-format and local-schemas items; batches 2 and 3 wire the rest (the
-// server's messaging procedures, the UI tests and a browser walk) before the task closes with
+// wired the crate, codecs, wire-format and local-schemas items; batch 2 (the server) the filter, Arrow,
+// live tail and procedures; batch 3 adds the UI tests and a browser walk before the task closes with
 // `pnpm --filter @byterygon/mightyconsole acceptance messaging --lab-up --strict`.
-import { type Checklist, command } from "../checklist.mts";
+import { cargo, type Checklist, command } from "../checklist.mts";
 
 // The crate's own tests (the harness's `cargo` checks run mightyconsole-server's).
 const codecs = (label: string, ...args: string[]) =>
@@ -56,17 +56,30 @@ export default {
     {
       id: "filter",
       text: "The filter's parts each work; jq runs through jaq and its licence passes check-licenses and cargo deny; errors carry positions; maxScan ends a scan with the counts.",
-      checks: [],
+      checks: [
+        codecs("the filter's parts and jq", "--lib", "filter::"),
+        cargo("a_filter_limit_and_max_scan_end_a_scan_with_counts"),
+        cargo("the_messaging_procedures"),
+        command("jaq's licence: check-licenses", ["node", "scripts/check-licenses.mjs"]),
+        command("jaq's licence: cargo deny", ["cargo", "deny", "check", "licenses"], { requires: ["cargo-deny"] }),
+      ],
     },
     {
       id: "arrow",
       text: "Messages travel as Arrow batches with the 5.1 schema, decode in the Worker and show in the data grid; a payload over 1 MiB is truncated with its full size.",
-      checks: [],
+      checks: [
+        cargo("a_batch_has_the_schema_of_5_1"),
+        cargo("messages_travel_as_arrow_batches_and_a_large_payload_is_cut"),
+        cargo("a_large_payload_is_cut_and_not_decoded"),
+      ],
     },
     {
       id: "live-tail",
       text: "Live tail on the test backend: pause stops a pull-able source from reading (credits counted), a push-only source drops oldest and reports it, rate and counters update, the view keeps its limit, Stop, Clear and Restart from lastPositions work.",
-      checks: [],
+      checks: [
+        cargo("pausing_stops_reading_and_a_push_source_drops_the_oldest"),
+        cargo("a_filter_limit_and_max_scan_end_a_scan_with_counts", { label: "Restart from lastPositions" }),
+      ],
     },
     {
       id: "components",
@@ -76,7 +89,10 @@ export default {
     {
       id: "procedures",
       text: "The messaging.* procedures of 5.8 exist; CI green.",
-      checks: [],
+      checks: [
+        cargo("the_procedures_of_the_spec"),
+        cargo("the_messaging_procedures"),
+      ],
     },
   ],
 } satisfies Checklist;

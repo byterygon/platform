@@ -54,6 +54,7 @@ pub fn infos() -> Vec<ToolInfo> {
 /// Mounts every tool's API on `router`.
 pub fn mount(router: &Router, hub: &Arc<Hub>) -> Result<(), RegistryError> {
     router.mount(echo::EchoApi(Arc::clone(hub)))?;
+    router.mount(echo::EchoMessagesApi(Arc::clone(hub)))?;
     langgraph::mount(router, hub)?;
     router.mount(temporal::TemporalApi(Arc::clone(hub)))?;
     router.mount(temporal::TemporalNamespacesApi(Arc::clone(hub)))?;

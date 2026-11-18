@@ -476,10 +476,14 @@ impl Codecs {
                 (body, indexes)
             }
         };
-        let schema_ref = Some(match (&resolved.compiled.as_ref(), &message_type) {
-            (CompiledSchema::Protobuf(_), Some(t)) if resolved.registry_id.is_none() => {
+        let schema_ref = Some(match (resolved.compiled.as_ref(), resolved.registry_id) {
+            (CompiledSchema::Protobuf(s), None) => {
+                let used = s
+                    .message(message_type.as_deref())
+                    .map(|m| m.full_name().to_owned())
+                    .unwrap_or_default();
                 format!(
-                    "{}#{t}",
+                    "{}#{used}",
                     resolved.reference.split('#').next().unwrap_or_default()
                 )
             }

@@ -15,6 +15,8 @@ configures. Licence: MIT OR Apache-2.0.
 | `registry` | Confluent Schema Registry client: schemas by id (cached forever), subject versions, references resolved recursively, register, compatibility checks, levels, mode. |
 | `wire` | The Confluent wire format: magic byte 0, the schema id, then for Protobuf the message indexes. |
 | `naming` | `TopicNameStrategy`, `RecordNameStrategy`, `TopicRecordNameStrategy`, plus the topics that use a subject. |
+| `filter` | The filter of §5.4: key, subject (NATS wildcards), headers, text, time and position ranges, and jq through jaq; `check` lists issues per part with jq line and column. |
+| `inspect` | A schema as the JSON Schema of its codec's JSON (Avro natural form, Protobuf canonical JSON), with an example payload. |
 | `types` | The wire types of the procedures (camelCase). With the `codegen` feature they derive `ts_rs::TS` and `schemars::JsonSchema`. |
 
 ## Codecs
