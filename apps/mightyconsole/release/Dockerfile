@@ -4,8 +4,10 @@
 # FROM scratch needs no base image, so building it fetches nothing.
 FROM scratch
 ARG VERSION
+ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Mightyconsole" \
       org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.source="https://github.com/byterygon/platform" \
       org.opencontainers.image.description="Offline web console for NATS, Kafka, Kubernetes, Temporal, Docker over SSH and LangGraph. No login: publish it on 127.0.0.1 only."
