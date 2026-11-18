@@ -114,6 +114,20 @@ describe("Toast", () => {
     expect(region.getAttribute("data-density")).toBe("compact");
   });
 
+  test("the region lets clicks through to what is below it; only its toasts take the pointer", async () => {
+    // The region sits above modals (z.toast > z.modal): if it took the pointer, an empty region
+    // would cover a sheet's Save and Cancel in its corner.
+    const manager = createToastManager();
+    render(<Toast toastManager={manager} />);
+    await act(async () => {
+      manager.add({ title: "Saved" });
+    });
+    const region = $('[data-slot="toast"]')!;
+    expect(region.className.split(/\s+/)).toContain("pointer-events-none");
+    const toast = region.querySelector<HTMLElement>('[data-slot="toast-root"]') ?? (region.firstElementChild as HTMLElement);
+    expect(toast.className.split(/\s+/)).toContain("pointer-events-auto");
+  });
+
   test("honours reduced motion", async () => {
     const manager = createToastManager();
     render(<Toast placement="static" toastManager={manager} />);

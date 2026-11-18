@@ -31,9 +31,11 @@ export const toastVariants = {
 export type ToastPlacement = keyof typeof toastVariants.placement;
 
 const classes = {
-  viewport: "flex w-panel-sm max-w-full flex-col gap-stack-sm outline-none",
+  // The region is a fixed box above modals; only its toasts take the pointer, so an empty region
+  // (or the space around a toast) never covers a sheet's or dialog's buttons.
+  viewport: "pointer-events-none flex w-panel-sm max-w-full flex-col gap-stack-sm outline-none",
   root: [
-    "relative flex w-full items-start gap-inline-md rounded-md border border-border-subtle bg-overlay p-inset-sm font-sans text-body-1 text-fg shadow-flyout",
+    "pointer-events-auto relative flex w-full items-start gap-inline-md rounded-md border border-border-subtle bg-overlay p-inset-sm font-sans text-body-1 text-fg shadow-flyout",
     "transition duration-[var(--by-motion-duration-normal)] ease-decelerate-mid motion-reduce:transition-none",
     "data-starting-style:translate-y-inline-sm data-starting-style:opacity-0",
     "data-ending-style:opacity-0 data-ending-style:duration-[var(--by-motion-duration-fast)] data-ending-style:ease-accelerate-mid",

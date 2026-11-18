@@ -23,6 +23,11 @@ async function labTree({ until, run, shot }: Pick<BrowserContext, "until" | "run
     await until(`__mc.field("Name")`, "the profile sheet");
     await shot("profile sheet");
     await run(`__mc.type(__mc.field("Name"), "lab")`);
+    // A pointer reaches Save and Cancel (clicks from script skip hit-testing; an empty toast
+    // region once covered the sheet's footer).
+    for (const label of ["Save", "Cancel"]) {
+      await until(`(() => { const b = __mc.button(${JSON.stringify(label)}); const r = b.getBoundingClientRect(); return b.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })()`, `the pointer reaching ${label}`, 2_000);
+    }
     await run(`__mc.click(__mc.button("Save"))`);
     await until(`__mc.item("lab")`, "the saved profile");
   }
