@@ -72,14 +72,16 @@ jobs:
         env:
           LAB_TOOLS: ${{ steps.tools.outputs.lab_tools }}
         run: |
-          # The checklists CI runs against the lab: foundation (every service), LangGraph, and the
-          # messaging core (TSK-80; the kafka profile's Confluent Schema Registry).
+          # The checklists CI runs against the lab: foundation (every service), LangGraph, the
+          # messaging core (TSK-80; the kafka profile's Confluent Schema Registry) and Temporal
+          # (TSK-83, TSK-92: the dev server and the lab worker).
           case " $LAB_TOOLS " in
-            " all ") lists="foundation langgraph messaging" ;;
+            " all ") lists="foundation langgraph messaging temporal temporal-more" ;;
             *)
               lists=""
               case " $LAB_TOOLS " in *" langgraph "*) lists="langgraph" ;; esac
               case " $LAB_TOOLS " in *" kafka "*) lists="${lists:+$lists }messaging" ;; esac
+              case " $LAB_TOOLS " in *" temporal "*) lists="${lists:+$lists }temporal temporal-more" ;; esac
               ;;
           esac
           echo "checklists: ${lists:-none}"
@@ -97,7 +99,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
         if: ${{ steps.checklists.outputs.lists != '' }}
       # cargo-deny is not installed here (the CI job runs it), so that one check is skipped.
-      - name: Acceptance (foundation, LangGraph and the messaging core, against the lab)
+      - name: Acceptance (foundation, LangGraph, the messaging core and Temporal, against the lab)
         if: ${{ steps.checklists.outputs.lists != '' }}
         env:
           BYTERYGON_REQUIRE_BROWSER: "1"

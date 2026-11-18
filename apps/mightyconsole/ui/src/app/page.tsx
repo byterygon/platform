@@ -72,8 +72,10 @@ export const gutterTable = "[&_th:first-child]:ps-inset-lg [&_td:first-child]:ps
 /** A short notice (the shell provides the toast; outside it, nothing is shown). */
 export interface Notice {
   title: string;
-  description?: string;
+  description?: ReactNode;
   type: "success" | "warning";
+  /** One button under the text (Open workflow); the toast then stays longer. */
+  action?: { label: string; onClick(): void };
 }
 export const NoticeContext = createContext<(notice: Notice) => void>(() => {});
 

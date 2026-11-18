@@ -13,6 +13,7 @@ import { WorkersTab } from "./WorkersTab";
 import { WorkflowTab } from "./WorkflowTab";
 import { WorkflowsTab } from "./WorkflowsTab";
 import { namespaceOf, profile, savedQueriesOf } from "./profile";
+import { requestSheet } from "./sheet-parts";
 import { TemporalMark } from "../marks";
 
 export const temporalTool: ToolModule = {
@@ -99,7 +100,29 @@ export const temporalTool: ToolModule = {
       Component: WorkflowTab,
     },
   },
-  actions: [],
+  // The Write sheets from the palette: each opens the profile namespace's tab and its sheet.
+  actions: [
+    {
+      id: "startWorkflow",
+      label: "Start workflow",
+      keywords: ["temporal", "run", "execute"],
+      run({ profile: p, openTab }) {
+        const namespace = namespaceOf(p);
+        requestSheet(p.id, "startWorkflow");
+        openTab({ kind: "temporal.workflows", params: { namespace, query: "" }, title: `Workflows · ${namespace}` });
+      },
+    },
+    {
+      id: "createSchedule",
+      label: "Create schedule",
+      keywords: ["temporal", "cron", "calendar", "interval"],
+      run({ profile: p, openTab }) {
+        const namespace = namespaceOf(p);
+        requestSheet(p.id, "createSchedule");
+        openTab({ kind: "temporal.schedules", params: { namespace }, title: `Schedules · ${namespace}` });
+      },
+    },
+  ],
   async connect(client, record) {
     const out = await client.temporal.connect({ profile: profile.toConnect(record) as ConnectTemporalProfile });
     return { connId: out.connId };

@@ -72,8 +72,80 @@ export default {
         }),
       ],
     },
-    { id: "start-workflow", text: "Start workflow: a run started from the sheet appears in the list, the toast opens it; Copy as CLI command gives a command that starts the same workflow; Start another like this prefills the input.", lab: true, checks: [] },
-    { id: "schedule-edit", text: "Schedules: create one with a calendar spec and see the same next runs the server reports; edit it (the changes listed first) and see the update; a cron and an interval schedule too.", lab: true, checks: [] },
+    {
+      id: "start-workflow",
+      text: "Start workflow: a run started from the sheet appears in the list, the toast opens it; Copy as CLI command gives a command that starts the same workflow; Start another like this prefills the input.",
+      lab: true,
+      checks: [
+        ...lab("a_started_workflow_runs_on_the_lab_worker_with_its_input_and_memo"),
+        ...unit("durations_read_as_people_write_them_and_round_trip", "retry_policies_check_their_numbers_and_round_trip", "arguments_memo_and_attributes_become_json_payloads"),
+        vitest("test/temporal-write-sheets.test.tsx"),
+        vitest("test/temporal-schedule-preview.test.ts"),
+        browser("a workflow started from the sheet, opened from the toast, and started again like this", async (ctx) => {
+          const { run, until, shot } = ctx;
+          await connectLab(ctx);
+          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await until(`__mc.button("Start workflow")`, "the Workflows header");
+          await run(`__mc.click(__mc.button("Start workflow"))`);
+          await until(`__mc.field("Workflow type")`, "the Start workflow sheet");
+          const id = `acceptance-start-${Date.now()}`;
+          await run(`__mc.type(__mc.field("Workflow type"), "Completed")`);
+          await run(`__mc.type(__mc.field("Task queue"), "lab")`);
+          await run(`__mc.type(__mc.field("Workflow ID"), ${JSON.stringify(id)})`);
+          await until(`__mc.has("polling")`, "the queue's workers");
+          await shot("start-workflow-sheet");
+          await run(`__mc.click(document.querySelector('button[form="start-workflow"]'))`);
+          await until(`__mc.has(${JSON.stringify(`Started ${id}`)}) && __mc.button("Open workflow")`, "the toast with Open workflow");
+          await shot("start-workflow-toast");
+          await run(`__mc.click(__mc.button("Open workflow"))`);
+          await until(`__mc.button("Start another like this") && !__mc.button("Start another like this").disabled`, "the started run's tab");
+          await run(`__mc.click(__mc.button("Start another like this"))`);
+          await until(`__mc.field("Workflow type") && __mc.field("Workflow type").value === "Completed" && __mc.field("Task queue").value === "lab"`, "the sheet filled from the run");
+          await shot("start-another-like-this");
+        }),
+      ],
+    },
+    {
+      id: "schedule-edit",
+      text: "Schedules: create one with a calendar spec and see the same next runs the server reports; edit it (the changes listed first) and see the update; a cron and an interval schedule too.",
+      lab: true,
+      checks: [
+        ...lab("a_schedule_is_created_described_as_its_form_and_updated_with_its_token", "a_cron_schedule_is_created_and_reads_back"),
+        ...unit("ranges_read_as_calendar_strings", "a_form_round_trips_through_the_proto", "update_keeps_what_the_form_does_not_show", "a_form_without_a_spec_or_with_encoded_input_is_invalid"),
+        vitest("test/temporal-schedule-preview.test.ts"),
+        vitest("test/temporal-write-sheets.test.tsx"),
+        browser("a calendar schedule whose browser runs match the server's, then edited with its changes listed", async (ctx) => {
+          const { run, until, shot } = ctx;
+          await connectLab(ctx);
+          await run(`__mc.dblclick(__mc.item("Schedules"))`);
+          await until(`__mc.button("Create schedule")`, "the Schedules header");
+          await run(`__mc.click(__mc.button("Create schedule"))`);
+          await until(`__mc.field("Schedule ID")`, "the schedule sheet");
+          const id = `acceptance-schedule-${Date.now()}`;
+          for (const [label, value] of [["Schedule ID", id], ["Time zone", "Europe/Berlin"], ["Hour", "3"], ["Minute", "15"], ["Workflow type", "Completed"], ["Task queue", "lab"], ["Workflow ID", "acceptance-scheduled"]]) {
+            await run(`__mc.type(__mc.field(${JSON.stringify(label)}), ${JSON.stringify(value)})`);
+          }
+          await until(`document.querySelectorAll('[aria-label="Next runs"] li').length === 5`, "the next runs in the browser");
+          const browserRuns = await run<string[]>(`[...document.querySelectorAll('[aria-label="Next runs"] li')].map((li) => li.dataset.at)`);
+          await shot("schedule-create");
+          await run(`__mc.click(document.querySelector('button[form="schedule-form"]'))`);
+          await until(`document.querySelectorAll('[aria-label="Upcoming runs"] li').length > 0`, "the created schedule's tab");
+          const serverRuns = await run<string[]>(`[...document.querySelectorAll('[aria-label="Upcoming runs"] li')].map((li) => li.dataset.at)`);
+          const same = serverRuns.every((t, i) => browserRuns[i] !== undefined && Date.parse(t) === Date.parse(browserRuns[i]!));
+          if (!same) throw new Error(`the browser computed ${browserRuns.join(", ")}; the server reports ${serverRuns.join(", ")}`);
+          await shot("schedule-server-runs");
+          await run(`__mc.click(__mc.button("Edit"))`);
+          await until(`__mc.field("Hour") && __mc.field("Hour").value === "3"`, "the edit sheet filled from the schedule");
+          await run(`__mc.type(__mc.field("Hour"), "4")`);
+          await run(`__mc.click(__mc.button("Review changes"))`);
+          await until(`__mc.has("1 change to send")`, "the changes listed first");
+          await shot("schedule-edit-changes");
+          await run(`__mc.click(__mc.button("Update schedule"))`);
+          await until(`__mc.has(${JSON.stringify(`Updated ${id}`)})`, "the update");
+          await shot("schedule-updated");
+        }),
+      ],
+    },
     { id: "activities", text: "Standalone activities: listed, run from the sheet (the lab worker completes it), described with input and result, cancelled and terminated; a server without them shows the reason.", lab: true, checks: [] },
     { id: "codec", text: "Codec server: the encrypted payloads of the lab's codec workflow show decoded and labelled; with the codec stopped they show as stored with the reason; inputs sent with Encode inputs arrive encoded; Test codec reports the sample.", lab: true, checks: [] },
     {

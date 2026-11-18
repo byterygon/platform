@@ -21,11 +21,13 @@ import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/sta
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { NamespaceSummary, SearchAttribute, WorkflowRow, WorkflowStatus } from "@/gen/api";
-import { ArrowClockwise, Play } from "@/lib/icons";
+import { Add, ArrowClockwise, Play } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { formatDuration, formatTime } from "./format";
 import { namespaceOf, pageSizeOf, savedQueriesOf } from "./profile";
 import { STATUS_CHIPS, statusOf, withStatus } from "./query";
+import { useSheetRequest } from "./sheet-parts";
+import { StartWorkflowSheet } from "./StartWorkflowSheet";
 import { VISIBILITY_LANGUAGE, collectValues, queryErrorMarker, recentQueries, registerVisibilityLanguage, rememberQuery, visibilityCompletion } from "./visibility";
 
 registerVisibilityLanguage();
@@ -48,7 +50,7 @@ const ANY = "any";
 
 export const statusLabel = (s: WorkflowStatus): string => s.replace(/([a-z])([A-Z])/g, "$1 $2");
 
-export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function WorkflowsTab({ tab, profile, connId, client, active, useTabActions, note, openTab }: TabProps) {
   const [namespace, setNamespace] = useState(typeof tab.params["namespace"] === "string" ? tab.params["namespace"] : namespaceOf(profile));
   const initial = typeof tab.params["query"] === "string" ? tab.params["query"] : "";
   const [draft, setDraft] = useState(initial);
@@ -69,6 +71,15 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
   // A response that arrives after a newer request started is dropped.
   const generation = useRef(0);
   const pageSize = pageSizeOf(profile);
+  const [starting, setStarting] = useState(false);
+  // "Start workflow" from the palette opens this tab and asks it for the sheet.
+  const request = useSheetRequest(profile.id, "startWorkflow");
+  useEffect(() => {
+    if (request.waiting && active && connId !== null) {
+      request.take();
+      setStarting(true);
+    }
+  }, [request, active, connId]);
 
   const load = useCallback(
     async (ns: string, q: string) => {
@@ -215,10 +226,27 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
           </>
         }
         actions={
-          <Button appearance="subtle" onClick={refresh} aria-label="Refresh" loading={loading && rows.length > 0}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </Button>
+          <>
+            <Button appearance="subtle" onClick={refresh} aria-label="Refresh" loading={loading && rows.length > 0}>
+              <Icon icon={ArrowClockwise} /> Refresh
+            </Button>
+            <Button appearance="secondary" onClick={() => setStarting(true)}>
+              <Icon icon={Add} /> Start workflow
+            </Button>
+          </>
         }
+      />
+      <StartWorkflowSheet
+        open={starting}
+        onOpenChange={setStarting}
+        client={client}
+        connId={connId}
+        profile={profile}
+        namespace={namespace}
+        suggestions={{ types: [...new Set(rows.map((w) => w.workflowType))], queues: [...new Set(rows.map((w) => w.taskQueue))] }}
+        note={note}
+        onStarted={refresh}
+        onOpenWorkflow={(workflowId, runId) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId, runId }, title: workflowId })}
       />
       <form
         className="flex shrink-0 flex-col gap-stack-xs px-inset-lg pt-stack-md"

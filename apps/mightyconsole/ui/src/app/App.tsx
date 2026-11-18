@@ -504,7 +504,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
       if (conn.status === "connected" || conn.status === "connecting") connections.push({ id: `disconnect:${p.id}`, label: `Disconnect ${t.label}: ${p.name}`, onSelect: () => disconnectProfile(p.id) });
       else connections.push({ id: `connect:${p.id}`, label: `Connect ${t.label}: ${p.name}`, keywords: [t.id], onSelect: () => void connectProfile(p.id) });
       if (conn.status === "connected" && conn.connId) {
-        for (const ta of t.actions) actions.push({ id: `action:${p.id}:${ta.id}`, label: `${ta.label} (${p.name})`, ...(ta.keywords ? { keywords: ta.keywords } : {}), onSelect: () => void ta.run({ client, profile: p, connId: conn.connId! }) });
+        for (const ta of t.actions) actions.push({ id: `action:${p.id}:${ta.id}`, label: `${ta.label} (${p.name})`, ...(ta.keywords ? { keywords: ta.keywords } : {}), onSelect: () => void ta.run({ client, profile: p, connId: conn.connId!, openTab: (open) => openResource(p.id, { id: "", label: open.title, open }) }) });
       }
     }
     for (const t of tools) connections.push({ id: `add:${t.id}`, label: `Add ${t.label} connection`, onSelect: () => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.id } }) });
@@ -572,7 +572,17 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
 
   const activeConn = activeProfile ? (state.conns[activeProfile.id] ?? DISCONNECTED) : null;
   const activeLive = state.activeTab ? state.live[state.activeTab] : null;
-  const notify = useCallback((n: Notice) => toast.add({ title: n.title, ...(n.description ? { description: n.description } : {}), type: n.type, timeout: 3000 }), [toast]);
+  const notify = useCallback(
+    (n: Notice) =>
+      toast.add({
+        title: n.title,
+        ...(n.description ? { description: n.description } : {}),
+        type: n.type,
+        timeout: n.action ? 10_000 : 3000,
+        ...(n.action ? { actionProps: { children: n.action.label, onClick: n.action.onClick } } : {}),
+      }),
+    [toast],
+  );
   const toolState = (t: ToolModule): ToolState => {
     const mine = profiles.filter((p) => p.tool === t.id);
     return { connected: mine.filter((p) => state.conns[p.id]?.status === "connected").length, failed: mine.some((p) => state.conns[p.id]?.status === "failed") };
