@@ -71,10 +71,23 @@ function mount(theme: ThemeDoc = startingTheme(), view: Loaded["view"] = { mode:
   return saved;
 }
 
-async function lastSavedTheme(saved: string[]) {
-  await waitFor(() => expect(saved.length).toBeGreaterThan(0));
-  await act(() => sleep(250));
-  return (await decodeState(saved.at(-1)!)).state!;
+/**
+ * The newest saved state once `check` holds for it. The app saves after a 150 ms debounce and an
+ * async hash, so a fixed sleep races on a loaded runner; this polls the newest hash instead.
+ */
+async function lastSavedTheme(saved: string[], check: (state: NonNullable<Awaited<ReturnType<typeof decodeState>>["state"]>) => void = () => {}) {
+  const start = Date.now();
+  for (;;) {
+    try {
+      if (saved.length === 0) throw new Error("nothing saved yet");
+      const state = (await decodeState(saved.at(-1)!)).state!;
+      check(state);
+      return state;
+    } catch (error) {
+      if (Date.now() - start > 5000) throw error;
+      await act(() => sleep(20));
+    }
+  }
 }
 
 describe("Theme Studio", () => {
@@ -92,8 +105,7 @@ describe("Theme Studio", () => {
     click(byText("button", "Compact")!);
     expect(document.documentElement.dataset["theme"]).toBe("dark");
     expect(document.documentElement.dataset["density"]).toBe("compact");
-    const state = await lastSavedTheme(saved);
-    expect([state.mode, state.density]).toEqual(["dark", "compact"]);
+    await lastSavedTheme(saved, (state) => expect([state.mode, state.density]).toEqual(["dark", "compact"]));
   });
 
   test("a seed edit regenerates the CSS at once and lands in the saved theme file; Reset removes it", async () => {
@@ -104,11 +116,11 @@ describe("Theme Studio", () => {
     key(radius, "ArrowUp");
     // The engine default (the default preset's seed, Aurora) is 4 px.
     await waitFor(() => expect(styleText()).toContain("--by-radius-md: 6px;"));
-    expect((await lastSavedTheme(saved)).theme).toEqual({ ...startingTheme(), seeds: { radius: 6 } });
+    await lastSavedTheme(saved, (state) => expect(state.theme).toEqual({ ...startingTheme(), seeds: { radius: 6 } }));
 
     click($('button[aria-label="Reset shape and type"]')!);
     await waitFor(() => expect(styleText()).toContain("--by-radius-md: 4px;"));
-    expect((await lastSavedTheme(saved)).theme).toEqual(startingTheme());
+    await lastSavedTheme(saved, (state) => expect(state.theme).toEqual(startingTheme()));
   });
 
   test("the colour picker: a palette swatch sets the ramp's hue and chroma; the plane moves by keyboard; a pasted colour works", async () => {
@@ -122,7 +134,7 @@ describe("Theme Studio", () => {
     click($('button[aria-label="hue 135, chroma 0.12"]')!);
     await waitFor(() => expect(brand9()).not.toBe(before));
     expect(brand9()).toMatch(/ 135\)$/);
-    expect((await lastSavedTheme(saved)).theme["seeds"]).toEqual({ colors: { brand: { hue: 135, chroma: 0.12 } } });
+    await lastSavedTheme(saved, (state) => expect(state.theme["seeds"]).toEqual({ colors: { brand: { hue: 135, chroma: 0.12 } } }));
 
     const plane = $('[role="slider"][aria-label="Hue and chroma"]')!;
     act(() => plane.focus());
@@ -149,11 +161,11 @@ describe("Theme Studio", () => {
     expect(inputs.length).toBe(2);
     type(inputs[1]!, "{color.brand-dark.12}");
     await waitFor(() => expect(styleText()).toContain("--by-color-fg-link: var(--by-color-brand-dark-12);"));
-    expect((await lastSavedTheme(saved)).theme["overrides"]).toEqual({ "color.fg.link": { dark: "{color.brand-dark.12}" } });
+    await lastSavedTheme(saved, (state) => expect(state.theme["overrides"]).toEqual({ "color.fg.link": { dark: "{color.brand-dark.12}" } }));
 
     click(byText("button", "Reset token")!);
     await waitFor(() => expect(styleText()).not.toContain("--by-color-fg-link: var(--by-color-brand-dark-12);"));
-    expect((await lastSavedTheme(saved)).theme["overrides"]).toBeUndefined();
+    await lastSavedTheme(saved, (state) => expect(state.theme["overrides"]).toBeUndefined());
   });
 
   test("an invalid override is the engine's diagnostic, shown on the token and in Problems", async () => {
@@ -298,7 +310,7 @@ describe("Theme Studio", () => {
     // The primary fix nudges the primitive's lightness within its step.
     click(byText("button", "Apply fix")!);
     await waitFor(() => expect(tab().textContent).toBe("Contrast (0)"));
-    expect((await lastSavedTheme(saved)).theme["overrides"]).toEqual({ "color.neutral.11": "oklch(0.49 0.012 275)" });
+    await lastSavedTheme(saved, (state) => expect(state.theme["overrides"]).toEqual({ "color.neutral.11": "oklch(0.49 0.012 275)" }));
     expect(document.body.textContent).toContain("Applied: Change the lightness of color.neutral.11");
 
     click(byText("button", "Undo")!);
@@ -307,7 +319,7 @@ describe("Theme Studio", () => {
     // An alternative: alias the role to another step of the same ramp.
     click(byText("button", "Apply")!);
     await waitFor(() => expect((tab().textContent ?? "").startsWith("Contrast (31)")).toBe(false));
-    expect(((await lastSavedTheme(saved)).theme["overrides"] as Record<string, unknown>)["color.fg.muted"]).toEqual({ light: "{color.neutral.12}" });
+    await lastSavedTheme(saved, (state) => expect((state.theme["overrides"] as Record<string, unknown>)["color.fg.muted"]).toEqual({ light: "{color.neutral.12}" }));
 
     click(byText("button", "Undo")!);
     await waitFor(() => expect(tab().textContent).toBe("Contrast (31)"));
@@ -342,6 +354,6 @@ describe("Theme Studio", () => {
     expect(styleText()).toContain("--by-radius-md: 10px;");
     // Stock shadcn colours miss some contrast pairs: the report opens with the engine's fixes.
     await waitFor(() => expect($('main [role="tab"][aria-selected="true"]')!.textContent).toMatch(/^Contrast \(\d+\)$/));
-    expect((await lastSavedTheme(saved)).theme["name"]).toBe("neutral");
+    await lastSavedTheme(saved, (state) => expect(state.theme["name"]).toBe("neutral"));
   });
 });
