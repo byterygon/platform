@@ -34,6 +34,7 @@ import { describeError } from "./messages";
 import { applyAppearance, followSystemScheme } from "./presets";
 import { ACTIONS, type ActionId, actionFor, bindingOf, inTextControl } from "./shortcuts";
 import { ToolNav, type ToolState, navOrder } from "./nav/ToolNav";
+import { type Notice, NoticeContext } from "./page";
 import { ConnectionList, parseNode, profileNodeId } from "./sidebar/ConnectionList";
 import { DisconnectedState, ErrorState, liveText } from "./states";
 import { type ConnState, tabIdOf, useStore } from "./store";
@@ -571,12 +572,14 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
 
   const activeConn = activeProfile ? (state.conns[activeProfile.id] ?? DISCONNECTED) : null;
   const activeLive = state.activeTab ? state.live[state.activeTab] : null;
+  const notify = useCallback((n: Notice) => toast.add({ title: n.title, ...(n.description ? { description: n.description } : {}), type: n.type, timeout: 3000 }), [toast]);
   const toolState = (t: ToolModule): ToolState => {
     const mine = profiles.filter((p) => p.tool === t.id);
     return { connected: mine.filter((p) => state.conns[p.id]?.status === "connected").length, failed: mine.some((p) => state.conns[p.id]?.status === "failed") };
   };
 
   return (
+    <NoticeContext value={notify}>
     <SidebarProvider open={state.layout.sidebarOpen} onOpenChange={(open) => dispatch({ type: "layout", layout: { sidebarOpen: open } })} className="h-full">
       <Tabs value={state.activeTab ?? ""} onValueChange={(v) => dispatch({ type: "activateTab", id: String(v) })} size="medium" className="mc-root flex h-full min-h-0 w-full flex-col gap-0 text-fg">
         <header className="flex shrink-0 items-center gap-inline-md py-inset-xs ps-inset-xs pe-inset-sm" aria-label="Title area">
@@ -832,6 +835,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
       {state.server === "lost" || state.server === "versionMismatch" ? <ServerOverlay status={state.server} onRetry={() => supervisor.current?.retryNow()} /> : null}
       <span className="sr-only" aria-live="polite" data-focus-pane={focusPane} />
     </SidebarProvider>
+    </NoticeContext>
   );
 }
 

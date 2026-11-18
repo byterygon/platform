@@ -13,7 +13,7 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { Toolbar, ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
+import { PageHeader } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import type * as api from "@/gen/api";
 import { Add, ArrowClockwise, Delete, Folder } from "@/lib/icons";
@@ -78,21 +78,25 @@ export function StoreTab({ tab, profile, connId, client, useTabActions, note }: 
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label={`${tab.title} actions`}>
-        <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="primary" />} onClick={() => setPutting({ namespace: joinNamespace(prefix), key: "", value: "{}" })}>
-            <Icon icon={Add} /> Put item
-          </ToolbarButton>
-          <ToolbarButton render={<Button appearance="subtle" loading={items.loading} />} onClick={reload}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </ToolbarButton>
-        </ToolbarGroup>
-      </Toolbar>
+      <PageHeader
+        title="Store"
+        subtitle={`${profile.name} · ${prefix.length === 0 ? "all namespaces" : `namespace ${joinNamespace(prefix)}`}`}
+        actions={
+          <>
+            <Button appearance="subtle" loading={items.loading} onClick={reload}>
+              <Icon icon={ArrowClockwise} /> Refresh
+            </Button>
+            <Button appearance="primary" onClick={() => setPutting({ namespace: joinNamespace(prefix), key: "", value: "{}" })}>
+              <Icon icon={Add} /> Put item
+            </Button>
+          </>
+        }
+      />
       {error ? <ErrorState error={error} onRetry={() => setError(null)} /> : null}
       {unavailable ? <EmptyLine>The store is not available on this server.</EmptyLine> : namespaces.error ? <ErrorState error={namespaces.error} onRetry={reload} onRefresh={reload} /> : null}
-      <Resizable orientation="horizontal" className="min-h-0 flex-1">
+      <Resizable orientation="horizontal" className="mt-stack-md min-h-0 flex-1 border-t border-border-subtle">
         <ResizablePanel defaultSize={22} minSize={14}>
-          <nav aria-label="Namespaces" className="flex h-full flex-col gap-stack-xs overflow-auto p-inset-xs">
+          <nav aria-label="Namespaces" className="flex h-full flex-col gap-stack-xs overflow-auto py-inset-sm ps-inset-sm pe-inset-xs">
             <Button appearance={prefix.length === 0 ? "secondary" : "subtle"} size="small" className="justify-start" onClick={() => setPrefix([])}>
               <Icon icon={Folder} /> All namespaces
             </Button>
@@ -112,7 +116,7 @@ export function StoreTab({ tab, profile, connId, client, useTabActions, note }: 
         <ResizablePanel minSize={30}>
           <div className="flex h-full min-h-0 flex-col">
             <form
-              className="flex flex-wrap items-end gap-inline-sm p-inset-sm"
+              className="flex flex-wrap items-end gap-inline-md px-inset-lg py-stack-md"
               onSubmit={(e) => {
                 e.preventDefault();
                 search();

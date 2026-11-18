@@ -26,7 +26,8 @@ async function labTree({ until, run, shot }: Pick<BrowserContext, "until" | "run
     // A pointer reaches Save and Cancel (clicks from script skip hit-testing; an empty toast
     // region once covered the sheet's footer).
     for (const label of ["Save", "Cancel"]) {
-      await until(`(() => { const b = __mc.button(${JSON.stringify(label)}); const r = b.getBoundingClientRect(); return b.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })()`, `the pointer reaching ${label}`, 2_000);
+      // The sheet's own button: a hidden tab of another tool may have a button of the same name.
+      await until(`(() => { const b = [...document.querySelectorAll("[role=dialog] button")].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (!b) return false; const r = b.getBoundingClientRect(); return b.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })()`, `the pointer reaching ${label}`, 2_000);
     }
     await run(`__mc.click(__mc.button("Save"))`);
     await until(`__mc.item("lab")`, "the saved profile");

@@ -8,8 +8,9 @@ import { DescriptionList, DescriptionListDetails, DescriptionListItem, Descripti
 import { Icon } from "@/components/ui/icon";
 import { JsonViewer } from "@/components/ui/json-viewer";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Toolbar, ToolbarGroup } from "@/components/ui/toolbar";
+import { CopyButton, Page, PageHeader, PageRegion, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { ScheduleDetail, ScheduleSummary } from "@/gen/api";
 import { ArrowClockwise, Delete, Pause, Play } from "@/lib/icons";
@@ -51,25 +52,25 @@ export function SchedulesTab({ tab, profile, connId, client, useTabActions, note
   useTabActions({ refresh: () => void load() });
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="Schedule list actions">
-        <ToolbarGroup>
-          <Button size="small" onClick={() => void load()}>
+    <Page>
+      <PageHeader
+        title="Schedules"
+        subtitle={`${profile.name} · namespace ${namespace} · ${formatCount(rows.length)} ${rows.length === 1 ? "schedule" : "schedules"}`}
+        actions={
+          <Button appearance="subtle" onClick={() => void load()}>
             <Icon icon={ArrowClockwise} /> Refresh
           </Button>
-        </ToolbarGroup>
-        <Badge variant="neutral">
-          {formatCount(rows.length)} {rows.length === 1 ? "schedule" : "schedules"} · {namespace} · {profile.name}
-        </Badge>
-      </Toolbar>
+        }
+      />
+      <PageRegion>
       {error ? <ErrorState error={error} onRetry={() => void load()} /> : null}
       {loading && rows.length === 0 ? (
         <LoadingRows label="Loading schedules" />
       ) : rows.length === 0 && !error ? (
         <EmptyLine>No schedules in {namespace}.</EmptyLine>
       ) : rows.length > 0 ? (
-        <div className="flex min-h-0 flex-1 flex-col p-inset-sm">
-          <Table aria-label="Schedules" className="min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Table aria-label="Schedules" className={cn("min-h-0 flex-1", gutterTable)}>
             <TableHeader>
               <TableRow>
                 <TableHead>Schedule ID</TableHead>
@@ -104,13 +105,14 @@ export function SchedulesTab({ tab, profile, connId, client, useTabActions, note
           </Table>
         </div>
       ) : null}
-    </div>
+      </PageRegion>
+    </Page>
   );
 }
 
 type Dialog = "pause" | "resume" | "trigger" | "delete" | null;
 
-export function ScheduleTab({ tab, connId, client, useTabActions, note, openTab }: TabProps) {
+export function ScheduleTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
   const namespace = text(tab.params["namespace"]) || "default";
   const scheduleId = text(tab.params["scheduleId"]);
   const [detail, setDetail] = useState<ScheduleDetail | null>(null);
@@ -155,40 +157,43 @@ export function ScheduleTab({ tab, connId, client, useTabActions, note, openTab 
   const s = detail?.summary;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="Schedule actions">
-        <ToolbarGroup>
-          <Button size="small" onClick={() => void load()}>
+      <PageHeader
+        title={scheduleId}
+        adornment={
+          <>
+            <CopyButton value={scheduleId} what="schedule ID" />
+            {s ? <Badge variant={s.paused ? "warning" : "success"}>{s.paused ? "Paused" : "Active"}</Badge> : null}
+          </>
+        }
+        subtitle={s ? [s.workflowType, s.spec, s.notes ? `“${s.notes}”` : ""].filter(Boolean).join(" · ") : `${namespace} · ${profile.name}`}
+        actions={
+          <>
+          <Button appearance="subtle" onClick={() => void load()}>
             <Icon icon={ArrowClockwise} /> Refresh
           </Button>
           {s?.paused ? (
-            <Button size="small" onClick={() => setDialog("resume")}>
+            <Button appearance="secondary" onClick={() => setDialog("resume")}>
               <Icon icon={Play} /> Resume
             </Button>
           ) : (
-            <Button size="small" disabled={s === undefined} onClick={() => setDialog("pause")}>
+            <Button appearance="secondary" disabled={s === undefined} onClick={() => setDialog("pause")}>
               <Icon icon={Pause} /> Pause
             </Button>
           )}
-          <Button size="small" disabled={s === undefined} onClick={() => setDialog("trigger")}>
+          <Button appearance="secondary" disabled={s === undefined} onClick={() => setDialog("trigger")}>
             <Icon icon={Play} /> Run now
           </Button>
-          <Button size="small" disabled={s === undefined} onClick={() => setDialog("delete")}>
+          <Button appearance="secondary" disabled={s === undefined} onClick={() => setDialog("delete")}>
             <Icon icon={Delete} /> Delete
           </Button>
-        </ToolbarGroup>
-      </Toolbar>
+          </>
+        }
+      />
       {error ? <ErrorState error={error} onRetry={() => void load()} onRefresh={() => void load()} /> : null}
       {loading && detail === null ? <LoadingRows label="Loading the schedule" /> : null}
       {detail && s ? (
-        <div className="min-h-0 flex-1 overflow-auto p-inset-md">
-          <header className="flex flex-wrap items-center gap-x-inline-md gap-y-stack-xs pb-inset-md">
-            <h2 className="text-subtitle-2 text-fg">{s.scheduleId}</h2>
-            <Badge variant={s.paused ? "warning" : "success"}>{s.paused ? "Paused" : "Active"}</Badge>
-            <span className="text-body-1 text-fg-muted">{s.workflowType}</span>
-            <span className="text-body-1 text-fg-muted">{s.spec}</span>
-            {s.notes ? <span className="text-body-1 text-fg-muted">“{s.notes}”</span> : null}
-          </header>
-          <div className="flex flex-col gap-stack-md">
+        <div className="mt-stack-md min-h-0 flex-1 overflow-auto border-t border-border-subtle px-inset-lg py-inset-md">
+          <div className="flex flex-col gap-stack-lg">
             <section className="flex flex-col gap-stack-xs">
               <h3 className="text-body-1-strong text-fg">Upcoming runs</h3>
               {s.nextRuns.length === 0 ? (

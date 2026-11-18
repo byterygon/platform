@@ -1,6 +1,8 @@
-// `temporal.workflows { namespace, query }` (Mightyconsole spec §9.3): the workflow list. A query
-// bar for visibility queries, quick status chips, the count, and a table paged by token ("Load
-// more"). An invalid query shows the server's message under the bar, not in place of the list.
+// `temporal.workflows { namespace, query }` (Mightyconsole spec §9.3, laid out by TSK-91): the workflow
+// list. A header with the context and the count, one row with the namespace, the Status menu (it
+// rewrites the query's ExecutionStatus clause, Open question 45 (f)), the visibility query and Run;
+// the table on the layer with copy buttons on the IDs, paged by token (Previous, Next). An invalid
+// query shows the server's message under the row, not in place of the list.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,9 +11,9 @@ import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Toolbar, ToolbarGroup } from "@/components/ui/toolbar";
+import { CopyButton, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { NamespaceSummary, WorkflowRow, WorkflowStatus } from "@/gen/api";
 import { ArrowClockwise, Play } from "@/lib/icons";
@@ -33,6 +35,9 @@ const STATUS_VARIANT: Record<WorkflowStatus, "neutral" | "accent" | "danger" | "
 };
 
 /** "ContinuedAsNew" as the chips and rows read it. */
+/** The Status menu's "any" entry. */
+const ANY = "any";
+
 export const statusLabel = (s: WorkflowStatus): string => s.replace(/([a-z])([A-Z])/g, "$1 $2");
 
 export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
@@ -46,7 +51,8 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
   const [count, setCount] = useState<number | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [more, setMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const tokens = useRef<(string | null)[]>([null]);
   const [error, setError] = useState<DescribedError | null>(null);
   const [invalid, setInvalid] = useState<string | null>(null);
   // A response that arrives after a newer request started is dropped.
@@ -68,6 +74,8 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
         if (mine !== generation.current) return;
         setRows(page.executions);
         setNext(page.nextPageToken ?? null);
+        tokens.current = page.nextPageToken ? [null, page.nextPageToken] : [null];
+        setPage(1);
         setCount(total);
       } catch (e) {
         if (mine !== generation.current) return;
@@ -84,19 +92,24 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
     [client, connId, note, pageSize],
   );
 
-  const loadMore = async () => {
-    if (connId === null || next === null) return;
+  // Paging by token (Open question 45 (i)): tokens[i] fetches page i + 1; Previous reuses the
+  // tokens already seen, and there is no jump to page n, which the visibility API cannot do.
+  const goPage = async (target: number) => {
+    const token = tokens.current[target - 1];
+    if (connId === null || target < 1 || token === undefined) return;
     const mine = generation.current;
-    setMore(true);
+    setLoading(true);
     try {
-      const page = await client.temporal.workflows.list({ connId, namespace, query, pageSize, nextPageToken: next });
+      const result = await client.temporal.workflows.list({ connId, namespace, query, pageSize, nextPageToken: token });
       if (mine !== generation.current) return;
-      setRows((r) => [...r, ...page.executions]);
-      setNext(page.nextPageToken ?? null);
+      setRows(result.executions);
+      setNext(result.nextPageToken ?? null);
+      if (result.nextPageToken) tokens.current[target] = result.nextPageToken;
+      setPage(target);
     } catch (e) {
       if (mine === generation.current) setError(note(e));
     } finally {
-      setMore(false);
+      if (mine === generation.current) setLoading(false);
     }
   };
 
@@ -131,39 +144,68 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
   const chip = statusOf(draft);
   const names = namespaces.length > 0 ? namespaces.map((n) => n.name) : [namespace];
   if (!names.includes(namespace)) names.push(namespace);
+  const first = (page - 1) * pageSize + 1;
+  const running = rows.filter((w) => w.status === "Running").length;
+  const pickStatus = (picked: WorkflowStatus | null) => {
+    const q = withStatus(draft, picked);
+    setDraft(q);
+    if (q === query) void load(namespace, q);
+    else setQuery(q);
+  };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="Workflow list actions">
-        <ToolbarGroup>
-          <Select aria-label="Namespace" value={namespace} onValueChange={(v) => setNamespace(String(v))} size="small" className="w-panel-xs">
-            {names.map((n) => (
-              <SelectItem key={n} value={n}>
-                {n}
-              </SelectItem>
-            ))}
-          </Select>
-        </ToolbarGroup>
-        <ToolbarGroup>
-          <Button size="small" onClick={refresh} aria-label="Refresh">
+    <Page>
+      <PageHeader
+        title="Workflows"
+        subtitle={
+          <>
+            {profile.name} · namespace <span className="text-fg">{namespace}</span>
+            {count !== null ? (
+              <span role="status">
+                {" "}
+                · {formatCount(count)} {count === 1 ? "workflow" : "workflows"}
+              </span>
+            ) : null}
+            {running > 0 ? ` · ${formatCount(running)} running on this page` : ""}
+          </>
+        }
+        actions={
+          <Button appearance="subtle" onClick={refresh} aria-label="Refresh" loading={loading && rows.length > 0}>
             <Icon icon={ArrowClockwise} /> Refresh
           </Button>
-        </ToolbarGroup>
-        {count !== null ? (
-          <Badge variant="neutral" role="status">
-            {formatCount(count)} {count === 1 ? "workflow" : "workflows"}
-          </Badge>
-        ) : null}
-      </Toolbar>
+        }
+      />
       <form
-        className="flex flex-col gap-stack-sm border-b border-border-subtle p-inset-sm"
+        className="flex shrink-0 flex-col gap-stack-xs px-inset-lg pt-stack-md"
+        aria-label="Workflow query"
         onSubmit={(e) => {
           e.preventDefault();
           run();
         }}
       >
         <Field invalid={invalid !== null}>
-          <div className="flex items-center gap-inline-sm">
+          <div className="flex items-center gap-inline-md">
+            <Select aria-label="Namespace" value={namespace} onValueChange={(v) => setNamespace(String(v))} className="w-panel-xs shrink-0">
+              {names.map((n) => (
+                <SelectItem key={n} value={n}>
+                  {n}
+                </SelectItem>
+              ))}
+            </Select>
+            <Select
+              aria-label="Status"
+              value={chip ?? ANY}
+              onValueChange={(v) => pickStatus(v === ANY ? null : (v as WorkflowStatus))}
+              items={{ [ANY]: "Any status", ...Object.fromEntries(STATUS_CHIPS.map((s) => [s, statusLabel(s)])) }}
+              className="w-panel-xs shrink-0"
+            >
+              <SelectItem value={ANY}>Any status</SelectItem>
+              {STATUS_CHIPS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {statusLabel(s)}
+                </SelectItem>
+              ))}
+            </Select>
             <Input
               aria-label="Visibility query"
               value={draft}
@@ -171,7 +213,7 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
               placeholder='WorkflowType = "Order" AND StartTime > "2026-01-01T00:00:00Z"'
               spellCheck={false}
               autoComplete="off"
-              className="font-mono"
+              className="min-w-0 flex-1 font-mono"
             />
             <Button type="submit" appearance="primary" loading={loading}>
               <Icon icon={Play} /> Run
@@ -183,83 +225,79 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
             </FieldError>
           ) : null}
         </Field>
-        <ToggleGroup
-          aria-label="Status"
-          value={chip ? [chip] : []}
-          onValueChange={(value) => {
-            const picked = (value[0] as WorkflowStatus | undefined) ?? null;
-            const q = withStatus(draft, picked);
-            setDraft(q);
-            if (q === query) void load(namespace, q);
-            else setQuery(q);
-          }}
-          size="small"
-        >
-          {STATUS_CHIPS.map((s) => (
-            <ToggleGroupItem key={s} value={s}>
-              {statusLabel(s)}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
       </form>
-      {error ? <ErrorState error={error} onRetry={refresh} /> : null}
-      {loading && rows.length === 0 ? (
-        <LoadingRows label="Loading workflows" />
-      ) : rows.length === 0 && !error && !invalid ? (
-        <EmptyLine>{query === "" ? `No workflows in ${namespace}.` : "No workflow matches this query."}</EmptyLine>
-      ) : rows.length > 0 ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-stack-sm p-inset-sm">
-          <Table aria-label="Workflows" className="min-h-0 flex-1">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Workflow ID</TableHead>
-                <TableHead>Run ID</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Start</TableHead>
-                <TableHead>Close</TableHead>
-                <TableHead align="end">Duration</TableHead>
-                <TableHead>Task queue</TableHead>
-                <TableHead align="end">History</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((w) => (
-                <TableRow key={`${w.workflowId}/${w.runId}`}>
-                  <TableCell>
-                    <Button size="small" appearance="subtle" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId })}>
-                      {w.workflowId}
-                    </Button>
-                  </TableCell>
-                  <TableCell className="font-mono text-code" title={w.runId}>
-                    {w.runId.slice(0, 8)}
-                  </TableCell>
-                  <TableCell>{w.workflowType}</TableCell>
-                  <TableCell>
-                    <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge>
-                  </TableCell>
-                  <TableCell>{formatTime(w.startTime)}</TableCell>
-                  <TableCell>{formatTime(w.closeTime)}</TableCell>
-                  <TableCell align="end">{w.durationMs === undefined ? "" : formatDuration(w.durationMs)}</TableCell>
-                  <TableCell>
-                    <Button size="small" appearance="subtle" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
-                      {w.taskQueue}
-                    </Button>
-                  </TableCell>
-                  <TableCell align="end">{formatCount(w.historyLength)}</TableCell>
+      <PageRegion>
+        {error ? <ErrorState error={error} onRetry={refresh} /> : null}
+        {loading && rows.length === 0 ? (
+          <LoadingRows label="Loading workflows" />
+        ) : rows.length === 0 && !error && !invalid ? (
+          <EmptyLine>{query === "" ? `No workflows in ${namespace}.` : "No workflow matches this query."}</EmptyLine>
+        ) : rows.length > 0 ? (
+          <>
+            <Table aria-label="Workflows" className={cn("min-h-0 flex-1", gutterTable)}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Workflow ID</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Start</TableHead>
+                  <TableHead>Close</TableHead>
+                  <TableHead align="end">Duration</TableHead>
+                  <TableHead>Task queue</TableHead>
+                  <TableHead align="end">History</TableHead>
+                  <TableHead>Run ID</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {next !== null ? (
-            <div>
-              <Button onClick={() => void loadMore()} loading={more}>
-                Load more
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+              </TableHeader>
+              <TableBody>
+                {rows.map((w) => (
+                  <TableRow key={`${w.workflowId}/${w.runId}`} className="group">
+                    <TableCell>
+                      <span className="flex items-center gap-inline-xs">
+                        <Button size="small" appearance="transparent" className="text-fg-link" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId })}>
+                          {w.workflowId}
+                        </Button>
+                        <CopyButton value={w.workflowId} what="workflow ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge>
+                    </TableCell>
+                    <TableCell>{w.workflowType}</TableCell>
+                    <TableCell>{formatTime(w.startTime)}</TableCell>
+                    <TableCell>{w.closeTime ? formatTime(w.closeTime) : <span className="text-fg-muted">—</span>}</TableCell>
+                    <TableCell align="end">{w.durationMs === undefined ? "" : formatDuration(w.durationMs)}</TableCell>
+                    <TableCell>
+                      <Button size="small" appearance="transparent" className="text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+                        {w.taskQueue}
+                      </Button>
+                    </TableCell>
+                    <TableCell align="end">{formatCount(w.historyLength)}</TableCell>
+                    <TableCell>
+                      <span className="flex items-center gap-inline-xs">
+                        <span className="font-mono text-code text-fg-muted" title={w.runId}>
+                          {w.runId.slice(0, 8)}
+                        </span>
+                        <CopyButton value={w.runId} what="run ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <PageFooter>
+              <Pager
+                range={`${formatCount(first)}–${formatCount(first + rows.length - 1)}${count !== null ? ` of ${formatCount(count)}` : ""}`}
+                page={page}
+                hasPrev={page > 1}
+                hasNext={next !== null}
+                busy={loading}
+                onPrev={() => void goPage(page - 1)}
+                onNext={() => void goPage(page + 1)}
+              />
+            </PageFooter>
+          </>
+        ) : null}
+      </PageRegion>
+    </Page>
   );
 }

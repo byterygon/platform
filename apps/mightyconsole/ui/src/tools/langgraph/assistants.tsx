@@ -9,8 +9,9 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Toolbar, ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
+import { CopyButton, PageHeader, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { cn } from "@/lib/cn";
 import type * as api from "@/gen/api";
 import { ArrowClockwise, History } from "@/lib/icons";
 import type { TabProps } from "../types";
@@ -29,19 +30,22 @@ export function AssistantsTab({ tab, profile, connId, client, useTabActions, not
   }, [data]);
   const open = (a: api.Assistant) => openTab({ kind: "langgraph.assistant", params: { assistantId: a.assistantId, name: a.name }, title: `Assistant ${a.name} · ${profile.name}` });
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label={`${tab.title} actions`}>
-        <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="subtle" loading={loading} />} onClick={() => void reload()}>
+    <div className="flex min-h-0 flex-1 flex-col" aria-label={tab.title}>
+      <PageHeader
+        title="Assistants"
+        subtitle={`${profile.name}${data ? ` · ${data.length} assistant${data.length === 1 ? "" : "s"} in ${groups.length} graph${groups.length === 1 ? "" : "s"}` : ""}`}
+        actions={
+          <Button appearance="subtle" loading={loading} onClick={() => void reload()}>
             <Icon icon={ArrowClockwise} /> Refresh
-          </ToolbarButton>
-        </ToolbarGroup>
-      </Toolbar>
+          </Button>
+        }
+      />
+      <div className="mt-stack-md flex min-h-0 flex-1 flex-col border-t border-border-subtle">
       {error ? <ErrorState error={error} onRetry={() => void reload()} onRefresh={() => void reload()} /> : null}
       {loading && data === null ? <LoadingRows label="Loading assistants" /> : null}
       {data !== null && data.length === 0 ? <EmptyLine>No assistants on this server.</EmptyLine> : null}
       {groups.length > 0 ? (
-        <Table aria-label="Assistants" className="min-h-0 flex-1">
+        <Table aria-label="Assistants" className={cn("min-h-0 flex-1", gutterTable)}>
           <TableHeader>
             <TableRow>
               <TableHead>Graph</TableHead>
@@ -70,12 +74,13 @@ export function AssistantsTab({ tab, profile, connId, client, useTabActions, not
           </TableBody>
         </Table>
       ) : null}
+      </div>
     </div>
   );
 }
 
 /** One assistant: its graph (xray for subgraphs), schemas and config. */
-export function AssistantTab({ tab, connId, client, useTabActions, note, openTab }: TabProps) {
+export function AssistantTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
   const assistantId = text(tab.params["assistantId"]);
   const [xray, setXray] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
@@ -93,24 +98,29 @@ export function AssistantTab({ tab, connId, client, useTabActions, note, openTab
   const threadsOf = () => openTab({ kind: "langgraph.threads", params: {}, title: tab.title.replace(/^Assistant/, "Threads") });
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label={`${tab.title} actions`}>
-        <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="subtle" />} onClick={reload}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </ToolbarButton>
-          <ToolbarButton render={<Button appearance="subtle" />} onClick={threadsOf}>
-            <Icon icon={History} /> Threads
-          </ToolbarButton>
-        </ToolbarGroup>
-      </Toolbar>
+      <PageHeader
+        title={a?.name ?? (typeof tab.params["name"] === "string" ? tab.params["name"] : "Assistant")}
+        adornment={a ? <CopyButton value={a.assistantId} what="assistant ID" /> : null}
+        subtitle={a ? `Assistant · graph ${a.graphId}${a.version !== undefined ? ` · version ${a.version}` : ""} · ${profile.name}` : profile.name}
+        actions={
+          <>
+            <Button appearance="subtle" onClick={reload}>
+              <Icon icon={ArrowClockwise} /> Refresh
+            </Button>
+            <Button appearance="secondary" onClick={threadsOf}>
+              <Icon icon={History} /> Threads
+            </Button>
+          </>
+        }
+      />
       {assistant.error ? <ErrorState error={assistant.error} onRetry={reload} onRefresh={reload} /> : null}
-      <Tabs defaultValue="graph" className="flex min-h-0 flex-1 flex-col">
-        <TabsList aria-label="Assistant views">
+      <Tabs defaultValue="graph" className="mt-stack-md flex min-h-0 flex-1 flex-col">
+        <TabsList aria-label="Assistant views" className="px-inset-lg">
           <TabsTrigger value="graph">Graph</TabsTrigger>
           <TabsTrigger value="schemas">Schemas</TabsTrigger>
           <TabsTrigger value="config">Config</TabsTrigger>
         </TabsList>
-        <TabsContent value="graph" className="flex min-h-0 flex-1 flex-col gap-stack-sm p-inset-sm">
+        <TabsContent value="graph" className="flex min-h-0 flex-1 flex-col gap-stack-md px-inset-lg py-inset-md">
           <div className="flex items-center gap-inline-md">
             <label className="flex items-center gap-inline-sm text-body-1 text-fg">
               <Switch checked={xray} onCheckedChange={setXray} />
