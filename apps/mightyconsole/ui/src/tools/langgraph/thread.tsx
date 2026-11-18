@@ -25,6 +25,7 @@ import { useToast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
 import { liveTimeout } from "@/app/client";
+import { CopyButton, Page, PageHeader } from "@/app/page";
 import { EmptyLine, ErrorState, LiveBadge, LoadingRows } from "@/app/states";
 import * as api from "@/gen/api";
 import { ArrowClockwise, ArrowUndo, Edit, History, Play, Stop } from "@/lib/icons";
@@ -76,14 +77,30 @@ export function ThreadTab(props: TabProps) {
     refresh: changed,
   });
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-inline-sm px-inset-sm pt-inset-xs text-caption-1 text-fg-muted">
-        <span className="font-mono">{threadId}</span>
-        {thread.data ? <StatusBadge status={thread.data.status} /> : null}
-      </div>
+    <Page>
+      <PageHeader
+        title={<span className="font-mono">Thread {shortId(threadId)}</span>}
+        adornment={
+          <>
+            <CopyButton value={threadId} what="thread ID" />
+            {thread.data ? <StatusBadge status={thread.data.status} /> : null}
+          </>
+        }
+        subtitle={
+          <>
+            {props.profile.name} · <span className="font-mono">{threadId}</span>
+            {thread.data?.updatedAt ? (
+              <>
+                {" "}
+                · updated <RelativeTime date={thread.data.updatedAt} />
+              </>
+            ) : null}
+          </>
+        }
+      />
       {thread.error ? <ErrorState error={thread.error} onRetry={changed} onRefresh={changed} /> : null}
-      <Tabs value={view} onValueChange={(v) => setView(v as typeof view)} className="flex min-h-0 flex-1 flex-col">
-        <TabsList aria-label="Thread views">
+      <Tabs value={view} onValueChange={(v) => setView(v as typeof view)} className="mt-stack-md flex min-h-0 flex-1 flex-col">
+        <TabsList aria-label="Thread views" className="px-inset-lg">
           <TabsTrigger value="run">Run</TabsTrigger>
           <TabsTrigger value="state">State</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
@@ -107,7 +124,7 @@ export function ThreadTab(props: TabProps) {
           />
         </TabsContent>
       </Tabs>
-    </div>
+    </Page>
   );
 }
 
@@ -373,7 +390,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
             </ToolbarGroup>
             {live ? <LiveBadge live={live} unit="events/s" /> : null}
           </Toolbar>
-          <div className="flex flex-col gap-stack-md p-inset-sm">
+          <div className="flex flex-col gap-stack-md px-inset-lg py-inset-md">
             {assistants.error ? <ErrorState error={assistants.error} onRetry={() => void assistants.reload()} /> : null}
             <Field>
               <FieldLabel>Assistant</FieldLabel>
@@ -426,7 +443,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel minSize={30}>
-        <div className="flex h-full min-h-0 flex-col gap-stack-sm p-inset-sm">
+        <div className="flex h-full min-h-0 flex-col gap-stack-md px-inset-lg py-inset-md">
           {error ? <ErrorState error={error} onRetry={() => (lost.current ? join(lost.current.runId, lost.current.lastEventId) : start(null))} /> : null}
           {run.error ? (
             <Alert intent="danger">

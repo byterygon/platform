@@ -1,4 +1,6 @@
-// Threads: search by status and metadata, create, delete; a row opens the thread (spec §11.2).
+// Threads: search by status and metadata, create, delete; a row opens the thread (spec §11.2). Laid
+// out by TSK-91: a header with the context and New thread, the filters in one row, the table on the
+// layer with copy buttons, paged by offset (Previous, Next; the API has no count).
 import { useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -9,12 +11,16 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { Toolbar, ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
+import { CopyButton, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { cn } from "@/lib/cn";
 import type * as api from "@/gen/api";
 import { Add, ArrowClockwise, Delete } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { StatusBadge, parseJson, preview, shortId, useLoad } from "./shared";
+
+/** Threads per page (spec §11.2 lists the latest 50). */
+const PAGE = 50;
 
 const STATUSES = { any: "Any status", idle: "Idle", busy: "Busy", interrupted: "Interrupted", error: "Error" } as const;
 
@@ -24,13 +30,15 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
   const [applied, setApplied] = useState<{ status: string | null; metadata: api.JsonValue | null }>({ status: null, metadata: null });
   const [deleting, setDeleting] = useState<api.Thread | null>(null);
   const [actionError, setActionError] = useState<DescribedError | null>(null);
+  const [page, setPage] = useState(1);
   const toast = useToast();
   const metadata = parseJson(metadataText);
-  const { data, error, loading, reload } = useLoad(connId ? () => client.langgraph.threads.search({ connId, metadata: applied.metadata, status: applied.status, limit: 50, offset: null }) : null, [connId, applied], note);
+  const { data, error, loading, reload } = useLoad(connId ? () => client.langgraph.threads.search({ connId, metadata: applied.metadata, status: applied.status, limit: PAGE, offset: page === 1 ? null : (page - 1) * PAGE }) : null, [connId, applied, page], note);
 
   const search = () => {
     if (!metadata.ok) return;
     setApplied({ status: status === "any" ? null : status, metadata: (metadata.value ?? null) as api.JsonValue | null });
+    setPage(1);
   };
   const open = (t: api.Thread) => openTab({ kind: "langgraph.thread", params: { threadId: t.threadId }, title: `Thread ${shortId(t.threadId)} · ${profile.name}` });
   const create = async () => {
@@ -58,92 +66,111 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
   };
   useTabActions({ refresh: () => void reload(), primary: search });
 
+  const first = (page - 1) * PAGE + 1;
+  const subtitle = [profile.name, data ? (page > 1 || data.length === PAGE ? `page ${page}` : `${data.length} thread${data.length === 1 ? "" : "s"}`) : null, applied.status ? STATUSES[applied.status as keyof typeof STATUSES] : null].filter(Boolean).join(" · ");
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label={`${tab.title} actions`}>
-        <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="primary" />} onClick={() => void create()}>
-            <Icon icon={Add} /> New thread
-          </ToolbarButton>
-          <ToolbarButton render={<Button appearance="subtle" loading={loading} />} onClick={() => void reload()}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </ToolbarButton>
-        </ToolbarGroup>
-      </Toolbar>
+    <Page>
+      <PageHeader
+        title="Threads"
+        subtitle={subtitle}
+        actions={
+          <>
+            <Button appearance="subtle" loading={loading} onClick={() => void reload()}>
+              <Icon icon={ArrowClockwise} /> Refresh
+            </Button>
+            <Button appearance="primary" onClick={() => void create()}>
+              <Icon icon={Add} /> New thread
+            </Button>
+          </>
+        }
+      />
       <form
-        className="flex flex-wrap items-end gap-inline-sm p-inset-sm"
+        aria-label={`${tab.title} search`}
+        className="flex shrink-0 flex-col gap-stack-xs px-inset-lg pt-stack-md"
         onSubmit={(e) => {
           e.preventDefault();
           search();
         }}
       >
-        <Select aria-label="Status" value={status} onValueChange={(v) => setStatus(v as keyof typeof STATUSES)} items={STATUSES} className="w-panel-xs">
-          {Object.entries(STATUSES).map(([value, label]) => (
-            <SelectItem key={value} value={value}>
-              {label}
-            </SelectItem>
-          ))}
-        </Select>
-        <Input aria-label="Metadata (JSON)" aria-invalid={!metadata.ok || undefined} placeholder='Metadata, e.g. {"user": "ana"}' value={metadataText} onValueChange={setMetadataText} className="min-w-panel-xs flex-1 font-mono" />
-        <Button type="submit" disabled={!metadata.ok}>
-          Search
-        </Button>
-      </form>
-      {!metadata.ok ? <p className="px-inset-sm text-caption-1 text-danger-fg">Metadata is not valid JSON: {metadata.message}</p> : null}
-      {actionError ? <ErrorState error={actionError} onRetry={() => setActionError(null)} /> : null}
-      {error ? <ErrorState error={error} onRetry={() => void reload()} onRefresh={() => void reload()} /> : null}
-      {loading && data === null ? <LoadingRows label="Loading threads" /> : null}
-      {data !== null && data.length === 0 ? (
-        <EmptyLine
-          action={
-            <Button size="small" onClick={() => void create()}>
-              New thread
-            </Button>
-          }
-        >
-          No threads.
-        </EmptyLine>
-      ) : null}
-      {data && data.length > 0 ? (
-        <Table aria-label="Threads" className="min-h-0 flex-1">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Thread</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead>Metadata</TableHead>
-              <TableHead>
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.map((t) => (
-              <TableRow key={t.threadId} onDoubleClick={() => open(t)}>
-                <TableCell>
-                  <Button appearance="transparent" size="small" className="font-mono" onClick={() => open(t)} title={t.threadId}>
-                    {shortId(t.threadId)}
-                  </Button>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={t.status} />
-                </TableCell>
-                <TableCell>{t.createdAt ? <RelativeTime date={t.createdAt} /> : null}</TableCell>
-                <TableCell>{t.updatedAt ? <RelativeTime date={t.updatedAt} /> : null}</TableCell>
-                <TableCell className="max-w-panel-sm truncate font-mono text-code" title={preview(t.metadata, 2000)}>
-                  {preview(t.metadata)}
-                </TableCell>
-                <TableCell>
-                  <IconButton aria-label={`Delete thread ${shortId(t.threadId)}`} size="small" onClick={() => setDeleting(t)}>
-                    <Icon icon={Delete} />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
+        <div className="flex items-center gap-inline-md">
+          <Select aria-label="Status" value={status} onValueChange={(v) => setStatus(v as keyof typeof STATUSES)} items={STATUSES} className="w-panel-xs shrink-0">
+            {Object.entries(STATUSES).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
             ))}
-          </TableBody>
-        </Table>
-      ) : null}
+          </Select>
+          <Input aria-label="Metadata (JSON)" aria-invalid={!metadata.ok || undefined} placeholder='Metadata, e.g. {"user": "ana"}' value={metadataText} onValueChange={setMetadataText} className="min-w-0 flex-1 font-mono" />
+          <Button type="submit" appearance="secondary" disabled={!metadata.ok}>
+            Search
+          </Button>
+        </div>
+        {!metadata.ok ? <p className="text-caption-1 text-danger-fg">Metadata is not valid JSON: {metadata.message}</p> : null}
+      </form>
+      <PageRegion>
+        {actionError ? <ErrorState error={actionError} onRetry={() => setActionError(null)} /> : null}
+        {error ? <ErrorState error={error} onRetry={() => void reload()} onRefresh={() => void reload()} /> : null}
+        {loading && data === null ? <LoadingRows label="Loading threads" /> : null}
+        {data !== null && data.length === 0 ? (
+          <EmptyLine
+            action={
+              <Button size="small" onClick={() => void create()}>
+                New thread
+              </Button>
+            }
+          >
+            {page > 1 ? "No more threads." : "No threads."}
+          </EmptyLine>
+        ) : null}
+        {data && data.length > 0 ? (
+          <Table aria-label="Threads" className={cn("min-h-0 flex-1", gutterTable)}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Thread</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Updated</TableHead>
+                <TableHead>Metadata</TableHead>
+                <TableHead>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.map((t) => (
+                <TableRow key={t.threadId} onDoubleClick={() => open(t)} className="group">
+                  <TableCell>
+                    <span className="flex items-center gap-inline-xs">
+                      <Button appearance="transparent" size="small" className="font-mono text-fg-link" onClick={() => open(t)} title={t.threadId}>
+                        {shortId(t.threadId)}
+                      </Button>
+                      <CopyButton value={t.threadId} what="thread ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={t.status} />
+                  </TableCell>
+                  <TableCell>{t.createdAt ? <RelativeTime date={t.createdAt} /> : null}</TableCell>
+                  <TableCell>{t.updatedAt ? <RelativeTime date={t.updatedAt} /> : null}</TableCell>
+                  <TableCell className="max-w-panel-sm truncate font-mono text-code text-fg-muted" title={preview(t.metadata, 2000)}>
+                    {preview(t.metadata)}
+                  </TableCell>
+                  <TableCell align="end">
+                    <IconButton aria-label={`Delete thread ${shortId(t.threadId)}`} size="small" onClick={() => setDeleting(t)}>
+                      <Icon icon={Delete} />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : null}
+        {data && (page > 1 || data.length === PAGE) ? (
+          <PageFooter>
+            <Pager range={`${first}–${first + Math.max(data.length, 1) - 1}`} page={page} hasPrev={page > 1} hasNext={data.length === PAGE} busy={loading} onPrev={() => setPage((p) => p - 1)} onNext={() => setPage((p) => p + 1)} />
+          </PageFooter>
+        ) : null}
+      </PageRegion>
       <AlertDialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -160,6 +187,6 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </Page>
   );
 }

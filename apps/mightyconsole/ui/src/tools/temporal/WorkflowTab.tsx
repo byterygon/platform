@@ -12,8 +12,9 @@ import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
-import { Toolbar, ToolbarGroup } from "@/components/ui/toolbar";
+import { CopyButton, Page, PageHeader, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { EventCategory, HistoryEvent, WorkflowDetail } from "@/gen/api";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -76,38 +77,69 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
   // A closed run ends at its last event; an open one grows to the clock.
   const clock = closed ? lastEventAt : now;
 
+  const w = detail?.workflow;
+  const pending = detail ? detail.pendingActivities.length + detail.pendingChildren.length : 0;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="Workflow actions">
-        <ToolbarGroup>
-          <Button size="small" onClick={state.refresh} aria-label="Refresh">
-            <Icon icon={ArrowClockwise} /> Refresh
-          </Button>
-        </ToolbarGroup>
-        <ToolbarGroup>
-          <Button size="small" disabled={!running} onClick={() => setDialog("signal")}>
-            <Icon icon={Flash} /> Signal
-          </Button>
-          <Button size="small" disabled={!running} onClick={() => setDialog("cancel")}>
-            <Icon icon={Dismiss} /> Cancel
-          </Button>
-          <Button size="small" disabled={!running} onClick={() => setDialog("terminate")}>
-            <Icon icon={Stop} /> Terminate
-          </Button>
-          <Button size="small" disabled={detail === null || events.length === 0} onClick={() => setDialog("reset")}>
-            <Icon icon={ArrowCounterclockwise} /> Reset
-          </Button>
-        </ToolbarGroup>
-        {state.following ? (
-          <Badge variant="success" role="status">
-            Live
-          </Badge>
+    <Page>
+      <PageHeader
+        title={workflowId}
+        adornment={
+          <>
+            <CopyButton value={workflowId} what="workflow ID" />
+            {w ? <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge> : null}
+            {state.following ? (
+              <Badge variant="success" role="status">
+                Live
+              </Badge>
+            ) : null}
+          </>
+        }
+        subtitle={
+          w ? (
+            <>
+              {w.workflowType} · task queue <span className="text-fg">{w.taskQueue}</span>
+              {w.startTime ? ` · started ${formatTime(w.startTime)}` : ""}
+              {w.durationMs !== undefined ? ` · ${formatDuration(w.durationMs)}` : ""}
+            </>
+          ) : (
+            `${namespace} · ${profile.name}`
+          )
+        }
+        actions={
+          <>
+            <Button appearance="subtle" onClick={state.refresh} aria-label="Refresh">
+              <Icon icon={ArrowClockwise} /> Refresh
+            </Button>
+            <Button appearance="secondary" disabled={!running} onClick={() => setDialog("signal")}>
+              <Icon icon={Flash} /> Signal
+            </Button>
+            <Button appearance="secondary" disabled={!running} onClick={() => setDialog("cancel")}>
+              <Icon icon={Dismiss} /> Cancel
+            </Button>
+            <Button appearance="secondary" disabled={detail === null || events.length === 0} onClick={() => setDialog("reset")}>
+              <Icon icon={ArrowCounterclockwise} /> Reset
+            </Button>
+            <Button appearance="secondary" disabled={!running} onClick={() => setDialog("terminate")}>
+              <Icon icon={Stop} /> Terminate
+            </Button>
+          </>
+        }
+      >
+        {w ? (
+          <dl className="m-0 flex flex-wrap gap-x-inline-xl gap-y-stack-sm">
+            <Fact label="Run ID">
+              <span className="font-mono text-code">{w.runId}</span>
+              <CopyButton value={w.runId} what="run ID" />
+            </Fact>
+            <Fact label="Namespace">{namespace}</Fact>
+            <Fact label="History">{formatCount(events.length)} events</Fact>
+            <Fact label="Pending">{pending === 0 ? "Nothing" : `${pending} pending`}</Fact>
+            {w.closeTime ? <Fact label="Closed">{formatTime(w.closeTime)}</Fact> : null}
+          </dl>
         ) : null}
-        <Badge variant="neutral">{formatCount(events.length)} events</Badge>
-      </Toolbar>
-      <Header detail={detail} workflowId={workflowId} namespace={namespace} profileName={profile.name} />
+      </PageHeader>
       {newRun ? (
-        <Alert intent="success" className="m-inset-sm">
+        <Alert intent="success" className="mx-inset-lg mt-stack-md">
           <AlertTitle>A new run started</AlertTitle>
           <AlertDescription>
             The reset made run <span className="font-mono text-code">{newRun}</span>.
@@ -126,8 +158,8 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
       {state.loading && detail === null ? (
         <LoadingRows label="Loading the workflow" />
       ) : detail === null ? null : (
-        <Tabs value={section} onValueChange={(v) => setSection(v as Section)} className="flex min-h-0 flex-1 flex-col">
-          <TabsList aria-label="Workflow views">
+        <Tabs value={section} onValueChange={(v) => setSection(v as Section)} className="mt-stack-md flex min-h-0 flex-1 flex-col">
+          <TabsList aria-label="Workflow views" className="px-inset-lg">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
             <TabsTrigger value="io">Input and result</TabsTrigger>
@@ -135,22 +167,22 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <TabsTrigger value="stack">Stack trace</TabsTrigger>
             <TabsTrigger value="queries">Queries</TabsTrigger>
           </TabsList>
-          <TabsContent value="timeline" className="flex min-h-0 flex-1 flex-col p-inset-sm">
+          <TabsContent value="timeline" className="flex min-h-0 flex-1 flex-col px-inset-lg py-inset-md">
             <TimelinePanel events={events} now={clock} workflowId={workflowId} selected={selected} onSelect={(id) => setSelected(id)} onOpenHistory={() => setSection("history")} />
           </TabsContent>
           <TabsContent value="history" className="flex min-h-0 flex-1 flex-col">
             <HistoryPanel events={events} selected={selected} onSelect={setSelected} hasMore={state.hasMore} onLoadMore={state.loadMore} />
           </TabsContent>
-          <TabsContent value="io" className="min-h-0 flex-1 overflow-auto p-inset-md">
+          <TabsContent value="io" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <InputResultPanel events={events} detail={detail} />
           </TabsContent>
-          <TabsContent value="pending" className="min-h-0 flex-1 overflow-auto p-inset-md">
+          <TabsContent value="pending" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <PendingPanel detail={detail} onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })} />
           </TabsContent>
-          <TabsContent value="queries" className="min-h-0 flex-1 overflow-auto p-inset-md">
+          <TabsContent value="queries" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <QueriesPanel client={client} connId={connId} namespace={namespace} workflowId={workflowId} runId={detail.workflow.runId} active={section === "queries"} note={note} />
           </TabsContent>
-          <TabsContent value="stack" className="min-h-0 flex-1 overflow-auto p-inset-md">
+          <TabsContent value="stack" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <StackPanel active={section === "stack"} running={detail.workflow.status === "Running"} client={client} connId={connId} namespace={namespace} workflowId={workflowId} runId={detail.workflow.runId} note={note} />
           </TabsContent>
         </Tabs>
@@ -196,26 +228,17 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           )
         }
       />
-    </div>
+    </Page>
   );
 }
 
-function Header({ detail, workflowId, namespace, profileName }: { detail: WorkflowDetail | null; workflowId: string; namespace: string; profileName: string }) {
-  const w = detail?.workflow;
+/** One fact of the header row: a muted label over its value. */
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <header className="flex flex-wrap items-center gap-x-inline-md gap-y-stack-xs border-b border-border-subtle px-inset-md py-inset-sm">
-      <h2 className="text-subtitle-2 text-fg">{workflowId}</h2>
-      {w ? <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge> : null}
-      {w ? <span className="text-body-1 text-fg-muted">{w.workflowType}</span> : null}
-      {w ? <span className="font-mono text-code text-fg-muted" title="Run id">{w.runId}</span> : null}
-      {w ? <span className="text-body-1 text-fg-muted">Task queue {w.taskQueue}</span> : null}
-      {w?.startTime ? <span className="text-body-1 text-fg-muted">Started {formatTime(w.startTime)}</span> : null}
-      {w?.closeTime ? <span className="text-body-1 text-fg-muted">Closed {formatTime(w.closeTime)}</span> : null}
-      {w?.durationMs !== undefined ? <span className="text-body-1 text-fg-muted">{formatDuration(w.durationMs)}</span> : null}
-      <span className="text-caption-1 text-fg-subtle">
-        {namespace} · {profileName}
-      </span>
-    </header>
+    <div className="flex min-w-0 flex-col gap-stack-xs">
+      <dt className="text-caption-1 text-fg-muted">{label}</dt>
+      <dd className="m-0 flex items-center gap-inline-xs text-body-1 text-fg">{children}</dd>
+    </div>
   );
 }
 
@@ -257,8 +280,7 @@ function HistoryPanel({ events, selected, onSelect, hasMore, onLoadMore }: { eve
   const picked = selected === null ? undefined : events.find((e) => e.eventId === selected);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="History filter">
-        <ToolbarGroup>
+      <div role="group" aria-label="History filter" className="flex shrink-0 items-center gap-inline-md border-b border-border-subtle px-inset-lg py-stack-sm">
           <Select aria-label="Category" items={Object.fromEntries((["All", ...CATEGORIES] as const).map((c) => [c, c === "All" ? "All events" : c.replace(/([a-z])([A-Z])/g, "$1 $2")]))} value={category} onValueChange={(v) => setCategory(v as EventCategory | "All")} size="small" className="w-panel-xs">
             {(["All", ...CATEGORIES] as const).map((c) => (
               <SelectItem key={c} value={c}>
@@ -266,7 +288,6 @@ function HistoryPanel({ events, selected, onSelect, hasMore, onLoadMore }: { eve
               </SelectItem>
             ))}
           </Select>
-        </ToolbarGroup>
         <Badge variant="neutral">
           {formatCount(shown.length)} of {formatCount(events.length)}
         </Badge>
@@ -275,9 +296,9 @@ function HistoryPanel({ events, selected, onSelect, hasMore, onLoadMore }: { eve
             Load more events
           </Button>
         ) : null}
-      </Toolbar>
-      <div className="flex min-h-0 flex-1 gap-inline-sm p-inset-sm">
-        <Table aria-label="History events" className="min-h-0 min-w-0 flex-1">
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <Table aria-label="History events" className={cn("min-h-0 min-w-0 flex-1", gutterTable)}>
           <TableHeader>
             <TableRow>
               <TableHead align="end">ID</TableHead>
@@ -301,10 +322,10 @@ function HistoryPanel({ events, selected, onSelect, hasMore, onLoadMore }: { eve
             }}
           />
         </Table>
-        <aside aria-label="Event attributes" className="flex min-h-0 w-1/3 min-w-0 flex-col rounded-lg border border-border-subtle">
+        <aside aria-label="Event attributes" className="flex min-h-0 w-1/3 min-w-0 flex-col border-s border-border-subtle">
           {picked ? (
             <>
-              <h3 className="border-b border-border-subtle px-inset-sm py-inset-xs text-body-1-strong text-fg">
+              <h3 className="px-inset-lg pt-inset-md pb-stack-sm text-body-1-strong text-fg">
                 #{picked.eventId} {picked.eventType}
               </h3>
               <JsonViewer value={picked.attributes} defaultExpandDepth={2} aria-label={`Attributes of event ${picked.eventId}`} className="min-h-0 flex-1" />

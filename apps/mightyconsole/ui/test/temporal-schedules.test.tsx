@@ -56,7 +56,7 @@ describe("Schedules list", () => {
     expect(rows[0]).toContain("Completed");
     expect(rows[1]).toContain("Paused");
     expect(rows[1]).toContain("Cron 0 3 * * *");
-    expect(byText("2 schedules · lab · lab")).not.toBeNull();
+    expect(byText("lab · namespace lab · 2 schedules")).not.toBeNull();
     await click(byRole("button", "every-minute"));
     expect(p.openTab).toHaveBeenCalledWith({ kind: "temporal.schedule", params: { namespace: "lab", scheduleId: "every-minute" }, title: "every-minute" });
     expect(await axeViolations(container)).toEqual([]);

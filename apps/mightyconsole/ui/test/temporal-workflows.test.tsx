@@ -60,7 +60,8 @@ describe("Workflows (spec §9.3)", () => {
     await waitFor(() => byText("order-1") !== null, "the rows");
     expect(list).toHaveBeenCalledWith({ connId: "conn-1", namespace: "default", query: "", pageSize: 50, nextPageToken: null });
     expect(count).toHaveBeenCalledWith({ connId: "conn-1", namespace: "default", query: "" });
-    expect(byText("1,234 workflows")).not.toBeNull();
+    expect(byText(/1,234 workflows/)).not.toBeNull();
+    expect(byRole("button", "Copy workflow ID")).not.toBeNull();
     const cells = Array.from(container.querySelectorAll("tbody tr")).map((r) => r.textContent ?? "");
     expect(cells).toHaveLength(2);
     expect(cells[0]).toContain("Running");
@@ -70,11 +71,13 @@ describe("Workflows (spec §9.3)", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  test("a status chip rewrites the query and loads it", async () => {
+  test("the Status menu rewrites the query and loads it (Open question 45 (f))", async () => {
     const { list } = setup();
     await waitFor(() => byText("order-1") !== null, "the rows");
     list.mockClear();
-    await click(byRole("button", "Failed"));
+    await click(byRole("combobox", "Status"));
+    await waitFor(() => byRole("option", "Failed") !== null, "the Status menu");
+    await click(byRole("option", "Failed"));
     await waitFor(() => list.mock.calls.length > 0, "the filtered load");
     expect(queryInput().value).toBe('ExecutionStatus = "Failed"');
     expect(list.mock.calls[0]![0]).toMatchObject({ query: 'ExecutionStatus = "Failed"', nextPageToken: null });
@@ -90,7 +93,7 @@ describe("Workflows (spec §9.3)", () => {
     expect(list.mock.calls[0]![0]).toMatchObject({ query: 'WorkflowType = "Order"' });
   });
 
-  test("Load more asks for the next page by its token and appends", async () => {
+  test("Next asks for the next page by its token; Previous reuses the first token (Open question 45 (i))", async () => {
     const pages = new Map<string | null, { executions: WorkflowRow[]; nextPageToken?: string }>([
       [null, { executions: [row(1), row(2)], nextPageToken: "tok-2" }],
       ["tok-2", { executions: [row(3)] }],
@@ -98,11 +101,16 @@ describe("Workflows (spec §9.3)", () => {
     const { list } = setup({ list: async (input) => pages.get(input.nextPageToken ?? null)! });
     await waitFor(() => byText("order-2") !== null, "the first page");
     expect(byText("order-3")).toBeNull();
-    await click(byRole("button", "Load more"));
+    expect(byText("1–2 of 1,234")).not.toBeNull();
+    await click(byRole("button", "Next page"));
     await waitFor(() => byText("order-3") !== null, "the second page");
     expect(list.mock.calls.at(-1)![0]).toMatchObject({ nextPageToken: "tok-2" });
-    expect(document.querySelectorAll("tbody tr")).toHaveLength(3);
-    expect(byRole("button", "Load more")).toBeNull();
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(byText("51–51 of 1,234")).not.toBeNull();
+    expect(byRole("button", "Next page")?.hasAttribute("disabled")).toBe(true);
+    await click(byRole("button", "Previous page"));
+    await waitFor(() => byText("order-1") !== null, "the first page again");
+    expect(list.mock.calls.at(-1)![0]).toMatchObject({ nextPageToken: null });
   });
 
   test("an invalid query shows the server's message under the bar, not instead of the screen", async () => {

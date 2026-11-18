@@ -21,6 +21,29 @@ const panelButton = (label: string) =>
   `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
 const click = (label: string) => `__mc.click(${panelButton(label)})`;
 
+/** Fires a pointer's events on an element, as a person's click does (Base UI opens on pointerdown). */
+const press = (selector: string) =>
+  `(() => {
+    const el = ${selector};
+    if (!el) throw new Error("nothing to press");
+    el.focus();
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) el.dispatchEvent(type.startsWith("pointer") ? new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, button: 0, isPrimary: true }) : new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }));
+    return true;
+  })()`;
+
+/**
+ * Picks a status in the visible Workflows tab's Status menu (TSK-91, Open question 45 (f): the
+ * chips became a menu that rewrites the query's ExecutionStatus clause). "Any status" clears it.
+ * Three plain evaluations, not one async one: Chrome may collect a pending promise of an awaited
+ * evaluation ("Promise was collected").
+ */
+async function pickStatus({ run, until }: Pick<Ctx, "run" | "until">, label: string): Promise<void> {
+  const option = `[...document.querySelectorAll("[role=option]")].find((o) => o.textContent.trim() === ${JSON.stringify(label)})`;
+  await run(press(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=combobox]")].find((b) => b.getAttribute("aria-label") === "Status")`));
+  await until(option, `the "${label}" status in the menu`);
+  await run(press(option));
+}
+
 /** Opens the page, adds the lab's Temporal profile when it is not there yet, and connects it. */
 async function connectLab({ page, origin, until, run, shot }: Ctx, withShot = false): Promise<void> {
   await page.navigate(`${origin}/`);
@@ -50,8 +73,8 @@ async function runningWorkflows(ctx: Ctx): Promise<void> {
   const { run, until } = ctx;
   await connectLab(ctx);
   await run(`__mc.dblclick(__mc.item("Workflows"))`);
-  await until(`${panelButton("Running")}`, "the status chips");
-  await run(click("Running"));
+  await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=combobox]")].some((b) => b.getAttribute("aria-label") === "Status")`, "the Status menu");
+  await pickStatus(ctx, "Running");
   await until(`__mc.has("fulfilment-long-running") && __mc.has("retrying-1")`, "the running seeded workflows");
 }
 
@@ -68,7 +91,7 @@ export default {
   items: [
     {
       id: "workflows",
-      text: "Namespaces; the workflow list with visibility queries, status chips, count and paging.",
+      text: "Namespaces; the workflow list with visibility queries, the Status menu, count and paging.",
       lab: true,
       checks: [
         ...lab(
@@ -94,13 +117,13 @@ export default {
           await run(`__mc.dblclick(__mc.item("Workflows"))`);
           await until(`__mc.has(" workflows") && __mc.has("scheduled-")`, "the workflow list with its count");
           await shot("the workflow list");
-          await run(click("Failed"));
-          await until(`__mc.has("failed-1") && !__mc.has("scheduled-")`, "the Failed chip filters the list");
+          await pickStatus(ctx, "Failed");
+          await until(`__mc.has("failed-1") && !__mc.has("scheduled-")`, "the Failed status filters the list");
           await shot("filtered by Failed");
-          await run(click("Failed"));
-          await until(`__mc.has("scheduled-")`, "the chip off shows every workflow again");
-          await run(click("Running"));
-          await until(`__mc.has("fulfilment-long-running") && __mc.has("retrying-1") && !__mc.has("failed-1")`, "the Running chip");
+          await pickStatus(ctx, "Any status");
+          await until(`__mc.has("scheduled-")`, "Any status shows every workflow again");
+          await pickStatus(ctx, "Running");
+          await until(`__mc.has("fulfilment-long-running") && __mc.has("retrying-1") && !__mc.has("failed-1")`, "the Running status");
           await shot("filtered by Running");
         }),
       ],

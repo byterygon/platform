@@ -8,7 +8,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Toolbar, ToolbarGroup } from "@/components/ui/toolbar";
+import { CopyButton, Page, PageHeader } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import type { Poller, TaskQueueDescription } from "@/gen/api";
@@ -18,7 +18,7 @@ import { formatTime } from "./format";
 
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export function TaskQueueTab({ tab, connId, client, useTabActions, note, openTab }: TabProps) {
+export function TaskQueueTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
   const namespace = text(tab.params["namespace"]) || "default";
   const name = text(tab.params["name"]);
   const [typed, setTyped] = useState(name);
@@ -75,26 +75,26 @@ export function TaskQueueTab({ tab, connId, client, useTabActions, note, openTab
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="Task queue actions">
-        <ToolbarGroup>
-          <Button size="small" onClick={() => void load()}>
+    <Page>
+      <PageHeader
+        title={name}
+        adornment={<CopyButton value={name} what="task queue name" />}
+        subtitle={`Task queue · ${profile.name} · namespace ${namespace}`}
+        actions={
+          <Button appearance="subtle" onClick={() => void load()}>
             <Icon icon={ArrowClockwise} /> Refresh
           </Button>
-        </ToolbarGroup>
-        <Badge variant="neutral">
-          {name} · {namespace}
-        </Badge>
-      </Toolbar>
+        }
+      />
       {error ? <ErrorState error={error} onRetry={() => void load()} /> : null}
       {loading && description === null ? <LoadingRows label="Loading the task queue" /> : null}
       {description ? (
-        <div className="min-h-0 flex-1 overflow-auto p-inset-md">
+        <div className="mt-stack-md flex min-h-0 flex-1 flex-col gap-stack-lg overflow-auto border-t border-border-subtle px-inset-lg py-inset-md">
           <PollerTable title="Workflow pollers" pollers={description.workflowPollers} backlog={description.workflowBacklog} />
           <PollerTable title="Activity pollers" pollers={description.activityPollers} backlog={description.activityBacklog} />
         </div>
       ) : null}
-    </div>
+    </Page>
   );
 }
 
