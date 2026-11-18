@@ -190,6 +190,23 @@
       ],
       "type": "object"
     },
+    "Archival": {
+      "description": "Whether closed workflows' histories or visibility records are archived, and where.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "uri": {
+          "description": "The archive's URI when one is set.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled",
+        "uri"
+      ],
+      "type": "object"
+    },
     "Assistant": {
       "properties": {
         "assistantId": {
@@ -1992,6 +2009,132 @@
       ],
       "type": "string"
     },
+    "NamespaceDescribeInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "namespace"
+      ],
+      "type": "object"
+    },
+    "NamespaceDetail": {
+      "description": "One namespace in full (`DescribeNamespace`).",
+      "properties": {
+        "activeCluster": {
+          "description": "The cluster that accepts writes; empty when the server did not say.",
+          "type": "string"
+        },
+        "capabilities": {
+          "description": "The features the namespace reports as on, by their camelCase proto names\n(`eagerWorkflowStart`, `standaloneActivities`, ...).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "clusters": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "data": {
+          "description": "The namespace's own key-value data.",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "historyArchival": {
+          "$ref": "#/$defs/Archival"
+        },
+        "id": {
+          "type": "string"
+        },
+        "isGlobal": {
+          "type": "boolean"
+        },
+        "limits": {
+          "$ref": "#/$defs/NamespaceLimits"
+        },
+        "name": {
+          "type": "string"
+        },
+        "ownerEmail": {
+          "type": "string"
+        },
+        "retentionSecs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "state": {
+          "description": "`Registered`, `Deprecated`, `Deleted` or `Unspecified`.",
+          "type": "string"
+        },
+        "visibilityArchival": {
+          "$ref": "#/$defs/Archival"
+        }
+      },
+      "required": [
+        "name",
+        "id",
+        "state",
+        "description",
+        "ownerEmail",
+        "historyArchival",
+        "visibilityArchival",
+        "isGlobal",
+        "activeCluster",
+        "clusters",
+        "capabilities",
+        "limits",
+        "data"
+      ],
+      "type": "object"
+    },
+    "NamespaceLimits": {
+      "description": "The size limits the namespace enforces, in bytes, when the server reports them.",
+      "properties": {
+        "blobSizeLimitError": {
+          "description": "A payload larger than this fails the workflow task (Temporal's default: 2 MiB).",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "memoSizeLimitError": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "NamespaceSummary": {
       "description": "One namespace of the cluster.",
       "properties": {
@@ -2926,6 +3069,28 @@
       ],
       "type": "object"
     },
+    "SeenTaskQueue": {
+      "properties": {
+        "error": {
+          "description": "Why the queue could not be described.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/TaskQueueSource"
+        }
+      },
+      "required": [
+        "name",
+        "source"
+      ],
+      "type": "object"
+    },
     "StateTask": {
       "description": "A task of the next step: the node to run, its error, its interrupts.",
       "properties": {
@@ -3281,6 +3446,14 @@
         "activityPollers"
       ],
       "type": "object"
+    },
+    "TaskQueueSource": {
+      "description": "Where a task queue was found.",
+      "enum": [
+        "typed",
+        "workflows"
+      ],
+      "type": "string"
     },
     "TemporalCapabilities": {
       "description": "What the server reports about itself.",
@@ -3945,6 +4118,111 @@
         "none"
       ],
       "type": "string"
+    },
+    "WorkerRow": {
+      "description": "One worker on one task queue.",
+      "properties": {
+        "buildId": {
+          "description": "The build id it reports (worker versioning or deployment options).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deploymentName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "identity": {
+          "type": "string"
+        },
+        "lastAccessTime": {
+          "description": "Its latest poll on either kind, RFC 3339.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pollsActivities": {
+          "type": "boolean"
+        },
+        "pollsWorkflows": {
+          "type": "boolean"
+        },
+        "ratePerSecond": {
+          "description": "Tasks per second over both kinds, as the server measures it.",
+          "format": "double",
+          "type": "number"
+        },
+        "taskQueue": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity",
+        "taskQueue",
+        "pollsWorkflows",
+        "pollsActivities",
+        "ratePerSecond"
+      ],
+      "type": "object"
+    },
+    "WorkersListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "taskQueues": {
+          "default": null,
+          "description": "Task queues to describe besides the ones seen.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "WorkersListOutput": {
+      "properties": {
+        "taskQueues": {
+          "items": {
+            "$ref": "#/$defs/SeenTaskQueue"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "description": "More task queues were seen than one call describes (50); typed ones come first.",
+          "type": "boolean"
+        },
+        "workers": {
+          "items": {
+            "$ref": "#/$defs/WorkerRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "workers",
+        "taskQueues",
+        "truncated"
+      ],
+      "type": "object"
     },
     "WorkflowDetail": {
       "description": "Everything `DescribeWorkflowExecution` says, payloads decoded.",
@@ -5388,6 +5666,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/NamespaceDescribeInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.namespaces.describe",
+      "output": {
+        "$ref": "#/$defs/NamespaceDetail"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/TemporalConnIdInput"
       },
       "kind": "query",
@@ -5569,6 +5868,27 @@
       "name": "temporal.taskQueues.describe",
       "output": {
         "$ref": "#/$defs/TaskQueueDescription"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/WorkersListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workers.list",
+      "output": {
+        "$ref": "#/$defs/WorkersListOutput"
       },
       "perm": "temporal.read",
       "redact": [],
@@ -5853,5 +6173,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:8d6acc3ad333e754d4d1a6e77732770474e418b2ba52ef85f038296353e2d75a"
+  "schema_hash": "sha256:4b4cc639b4ec8c02062cb5a28b70111d800657e440b9aec3096430a5ce06b49d"
 }

@@ -61,5 +61,6 @@ pub fn mount(router: &Router, hub: &Arc<Hub>) -> Result<(), RegistryError> {
     router.mount(temporal::TemporalWorkflowsApi(Arc::clone(hub)))?;
     router.mount(temporal::TemporalSchedulesApi(Arc::clone(hub)))?;
     router.mount(temporal::TemporalTaskQueuesApi(Arc::clone(hub)))?;
+    router.mount(temporal::TemporalWorkersApi(Arc::clone(hub)))?;
     Ok(())
 }

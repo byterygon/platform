@@ -3,18 +3,20 @@
 //! compiled by `build.rs`; this module is their client, behind the tool contract of
 //! [`crate::tools`].
 //!
-//! This batch: connect and disconnect, namespaces, and the workflow list with its count. The
-//! workflow detail, the actions, the schedules and the task queues follow in the next batches.
+//! TSK-83 built the workflows, their detail and actions, schedules and task queues; TSK-92 adds
+//! namespaces in full and the workers.
 
 mod actions;
 mod actions_types;
 mod client;
 mod detail;
 mod detail_types;
+mod namespaces;
 mod payloads;
 mod proto;
 mod search_attributes;
 mod types;
+mod workers;
 
 use std::sync::Arc;
 
@@ -30,10 +32,14 @@ use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 
 pub use self::actions_types::*;
 pub use self::detail_types::*;
+pub use self::namespaces::{Archival, NamespaceDescribeInput, NamespaceDetail, NamespaceLimits};
 pub use self::search_attributes::{
     SearchAttribute, SearchAttributeType, SearchAttributesInput, SearchAttributesOutput,
 };
 pub use self::types::*;
+pub use self::workers::{
+    SeenTaskQueue, TaskQueueSource, WorkerRow, WorkersListInput, WorkersListOutput,
+};
 
 /// The tool's id and namespace.
 pub const TOOL: &str = "temporal";
@@ -51,6 +57,8 @@ pub struct TemporalWorkflowsApi(pub Arc<Hub>);
 pub struct TemporalSchedulesApi(pub Arc<Hub>);
 /// `temporal.taskQueues.*`.
 pub struct TemporalTaskQueuesApi(pub Arc<Hub>);
+/// `temporal.workers.*`.
+pub struct TemporalWorkersApi(pub Arc<Hub>);
 
 /// RFC 3339 in UTC, `None` for an unset or out-of-range timestamp.
 fn rfc3339(timestamp: &prost_types::Timestamp) -> Option<String> {
@@ -65,7 +73,7 @@ fn millis(duration: &prost_types::Duration) -> i64 {
     duration.seconds.saturating_mul(1_000) + i64::from(duration.nanos / 1_000_000)
 }
 
-fn namespace_state(state: i32) -> &'static str {
+pub(super) fn namespace_state(state: i32) -> &'static str {
     match state {
         1 => "Registered",
         2 => "Deprecated",
@@ -313,6 +321,17 @@ impl TemporalNamespacesApi {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         Ok(search_attributes::search_attributes(&handle.value, input).await?)
     }
+
+    /// One namespace in full: id, retention, archival, clusters, capabilities and limits.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn describe(
+        &self,
+        ctx: Ctx,
+        input: NamespaceDescribeInput,
+    ) -> ToolResult<NamespaceDetail> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(namespaces::describe(&handle.value, input).await?)
+    }
 }
 
 #[rpc::router(namespace = "temporal.workflows")]
@@ -507,6 +526,17 @@ impl TemporalTaskQueuesApi {
     }
 }
 
+#[rpc::router(namespace = "temporal.workers")]
+impl TemporalWorkersApi {
+    /// The workers polling the namespace's task queues: those seen in its latest workflows and
+    /// schedules and the typed ones, one row per worker and queue.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn list(&self, ctx: Ctx, input: WorkersListInput) -> ToolResult<WorkersListOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(workers::list(&handle.value, input).await?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -548,3 +578,6 @@ mod lab_detail_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_action_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_more_tests;
