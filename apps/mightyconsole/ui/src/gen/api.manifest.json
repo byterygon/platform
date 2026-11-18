@@ -360,6 +360,13 @@
       ],
       "type": "object"
     },
+    "Auto": {
+      "description": "`\"auto\"` in a [`CodecChoice`].",
+      "enum": [
+        "auto"
+      ],
+      "type": "string"
+    },
     "Code": {
       "description": "Error codes, spec §10. Serialized as the variant name so TypeScript can narrow on\n`e.code === \"ApprovalRequired\"`.",
       "enum": [
@@ -379,6 +386,132 @@
       ],
       "type": "string"
     },
+    "CodecChoice": {
+      "description": "The decoder for one part (spec §5.2).",
+      "properties": {
+        "codec": {
+          "$ref": "#/$defs/CodecSelector",
+          "default": "auto"
+        },
+        "messageType": {
+          "default": null,
+          "description": "Protobuf: the fully qualified message type.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SchemaRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "CodecId": {
+      "description": "A codec id (spec §5.2).",
+      "enum": [
+        "utf8",
+        "json",
+        "hex",
+        "base64",
+        "msgpack",
+        "avro",
+        "protobuf",
+        "jsonschema"
+      ],
+      "type": "string"
+    },
+    "CodecInfo": {
+      "description": "One entry of `messaging.codecs.list`.",
+      "properties": {
+        "canEncode": {
+          "type": "boolean"
+        },
+        "id": {
+          "$ref": "#/$defs/CodecId"
+        },
+        "label": {
+          "type": "string"
+        },
+        "needsSchema": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "needsSchema",
+        "canEncode"
+      ],
+      "type": "object"
+    },
+    "CodecSelector": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Auto"
+        },
+        {
+          "$ref": "#/$defs/CodecId"
+        }
+      ],
+      "description": "`\"auto\"` or a codec id."
+    },
+    "ComposePayload": {
+      "description": "What the Composer sends for a key or a value (spec §5.7).",
+      "properties": {
+        "codec": {
+          "$ref": "#/$defs/CodecId"
+        },
+        "messageType": {
+          "default": null,
+          "description": "Protobuf: the fully qualified message type.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SchemaRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text": {
+          "description": "What the user typed: text, JSON, hex or base64.",
+          "type": "string"
+        },
+        "wireFormat": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WireFormat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`confluent` by default when the schema comes from the registry."
+        }
+      },
+      "required": [
+        "codec",
+        "text"
+      ],
+      "type": "object"
+    },
     "ConnectEchoProfile": {
       "description": "The echo tool's profile as `toConnect` builds it (spec §4.4).",
       "properties": {
@@ -390,8 +523,30 @@
             "null"
           ]
         },
+        "mappings": {
+          "default": null,
+          "description": "Mappings of local schemas to the topic `echo` (the profile's `extras.mappings`).",
+          "items": {
+            "$ref": "#/$defs/SchemaMapping"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "name": {
           "type": "string"
+        },
+        "schemas": {
+          "default": null,
+          "description": "Local schemas for the test topic's messages (the profile's `extras.schemas`).",
+          "items": {
+            "$ref": "#/$defs/LocalSchema"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
         },
         "token": {
           "default": null,
@@ -518,6 +673,113 @@
       ],
       "type": "string"
     },
+    "DecodeInput": {
+      "properties": {
+        "bytes": {
+          "description": "The bytes, base64.",
+          "type": "string"
+        },
+        "choice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodecChoice"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "connId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "part": {
+          "$ref": "#/$defs/Part"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Target"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "bytes",
+        "part"
+      ],
+      "type": "object"
+    },
+    "DecodeOptions": {
+      "description": "Sent by every message stream (spec §5.2).",
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/CodecChoice",
+          "default": {
+            "codec": "auto",
+            "messageType": null,
+            "schema": null
+          }
+        },
+        "maxPayloadBytes": {
+          "default": null,
+          "description": "Inline payload bytes per message; 1 MiB when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/CodecChoice",
+          "default": {
+            "codec": "auto",
+            "messageType": null,
+            "schema": null
+          }
+        }
+      },
+      "type": "object"
+    },
+    "DecodeOutput": {
+      "properties": {
+        "codec": {
+          "$ref": "#/$defs/CodecId"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "json": true,
+        "schemaRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "codec"
+      ],
+      "type": "object"
+    },
     "EchoConnIdInput": {
       "properties": {
         "connId": {
@@ -547,11 +809,39 @@
         },
         "greeting": {
           "type": "string"
+        },
+        "schemaIssues": {
+          "description": "Local schemas that did not compile, with file and line.",
+          "items": {
+            "$ref": "#/$defs/SchemaIssue"
+          },
+          "type": "array"
         }
       },
       "required": [
         "connId",
-        "greeting"
+        "greeting",
+        "schemaIssues"
+      ],
+      "type": "object"
+    },
+    "EchoGetInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "string"
+        },
+        "partition": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "connId",
+        "partition",
+        "offset"
       ],
       "type": "object"
     },
@@ -585,6 +875,80 @@
       ],
       "type": "object"
     },
+    "EchoProduceInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "headers": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/HeaderInput"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ComposePayload"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "partition": {
+          "default": null,
+          "description": "The partition; by the key's hash, or round robin, when absent.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/ComposePayload"
+        }
+      },
+      "required": [
+        "connId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "EchoProduceOutput": {
+      "properties": {
+        "offset": {
+          "description": "Decimal, as every offset on the wire.",
+          "type": "string"
+        },
+        "partition": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "schemaRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "partition",
+        "offset",
+        "size"
+      ],
+      "type": "object"
+    },
     "EchoShellInput": {
       "properties": {
         "connId": {
@@ -610,6 +974,147 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "EchoStart": {
+      "description": "Where a tail starts (Kafka's words: the test topic behaves as a Kafka topic).",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "earliest",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "latest",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The last `n` messages of each partition.",
+          "properties": {
+            "kind": {
+              "const": "latestN",
+              "type": "string"
+            },
+            "n": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "n"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "offsets",
+              "type": "string"
+            },
+            "offsets": {
+              "items": {
+                "$ref": "#/$defs/PartitionOffset"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "offsets"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "EchoTailInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Filter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "follow": {
+          "description": "Keep reading new messages; else stop at the end as of the start.",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": null,
+          "description": "Stop after this many matches.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxScan": {
+          "default": null,
+          "description": "Messages read before a filtered scan stops; 0 for no limit, 100,000 with a filter.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "push": {
+          "default": null,
+          "description": "Push-only, as core NATS: new messages only, dropped when the client does not read.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "start": {
+          "$ref": "#/$defs/EchoStart"
+        },
+        "streamId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "streamId",
+        "start",
+        "follow"
+      ],
       "type": "object"
     },
     "EchoTicksInput": {
@@ -664,6 +1169,117 @@
       "description": "The empty object, `{}`.",
       "type": "object"
     },
+    "EncodeInput": {
+      "properties": {
+        "connId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "part": {
+          "$ref": "#/$defs/Part"
+        },
+        "payload": {
+          "$ref": "#/$defs/ComposePayload"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Target"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "part",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EncodeOutput": {
+      "properties": {
+        "bytes": {
+          "description": "The bytes, base64.",
+          "type": "string"
+        },
+        "schemaId": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "schemaRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bytes",
+        "size"
+      ],
+      "type": "object"
+    },
+    "EndReason": {
+      "description": "Why a stream ended.",
+      "oneOf": [
+        {
+          "enum": [
+            "cancelled"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "end",
+          "description": "The source has no more messages (a browse reached its end).",
+          "type": "string"
+        },
+        {
+          "const": "limit",
+          "description": "`limit` messages matched.",
+          "type": "string"
+        },
+        {
+          "const": "maxScan",
+          "description": "`maxScan` messages were read.",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorPosition": {
+      "description": "Where in an input text an error is, 1-based (a codec's JSON, a schema, a jq program).",
+      "properties": {
+        "column": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "line": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "line",
+        "column"
+      ],
+      "type": "object"
+    },
     "EventCategory": {
       "description": "What an event is about, for the History filter and the Timeline's lanes.",
       "enum": [
@@ -678,6 +1294,139 @@
         "Other"
       ],
       "type": "string"
+    },
+    "Filter": {
+      "description": "The filter (spec §5.4).",
+      "properties": {
+        "headers": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/HeaderFilter"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "jq": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TextMatch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "position": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PositionRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "subject": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "FilterCheckInput": {
+      "properties": {
+        "filter": {
+          "$ref": "#/$defs/Filter"
+        }
+      },
+      "required": [
+        "filter"
+      ],
+      "type": "object"
+    },
+    "FilterCheckOutput": {
+      "properties": {
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/FilterIssue"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ok",
+        "errors"
+      ],
+      "type": "object"
+    },
+    "FilterIssue": {
+      "description": "A problem with one part of a filter (`messaging.filter.check`).",
+      "properties": {
+        "column": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "line": {
+          "description": "In the jq program, 1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "part": {
+          "description": "`key`, `subject`, `headers.0`, `text`, `time.from`, `position.to`, `jq`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "part",
+        "message"
+      ],
+      "type": "object"
     },
     "FollowHistoryInput": {
       "properties": {
@@ -726,6 +1475,41 @@
       },
       "required": [
         "closed"
+      ],
+      "type": "object"
+    },
+    "FullMessage": {
+      "description": "A whole message, for \"Load full payload\" (spec §5.1).",
+      "properties": {
+        "key": {
+          "description": "Base64.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "offset": {
+          "type": "string"
+        },
+        "partition": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "payload": {
+          "description": "Base64, the whole payload.",
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "partition",
+        "offset",
+        "payload",
+        "size"
       ],
       "type": "object"
     },
@@ -786,6 +1570,63 @@
       ],
       "type": "string"
     },
+    "HeaderEncoding": {
+      "enum": [
+        "text",
+        "base64"
+      ],
+      "type": "string"
+    },
+    "HeaderFilter": {
+      "description": "A header that must be present, and match when `match` is given.",
+      "properties": {
+        "match": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TextMatch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "HeaderInput": {
+      "description": "A header as the UI sends it (Composer, KeyValueEditor): text or base64.",
+      "properties": {
+        "encoding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HeaderEncoding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
     "HeaderPair": {
       "description": "An extra header of the profile (custom auth); its value is a secret.",
       "properties": {
@@ -834,6 +1675,83 @@
         "eventType",
         "category",
         "attributes"
+      ],
+      "type": "object"
+    },
+    "InspectInput": {
+      "properties": {
+        "connId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "messageType": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema": {
+          "$ref": "#/$defs/InspectSchema"
+        }
+      },
+      "required": [
+        "schema"
+      ],
+      "type": "object"
+    },
+    "InspectSchema": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LocalSchema"
+        },
+        {
+          "$ref": "#/$defs/SchemaRef"
+        }
+      ],
+      "description": "A schema to inspect: a reference, or a local schema not saved yet (the schema editor)."
+    },
+    "Inspection": {
+      "description": "What `messaging.schemas.inspect` answers.",
+      "properties": {
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/SchemaIssue"
+          },
+          "type": "array"
+        },
+        "example": {
+          "description": "An example payload as JSON text.",
+          "type": "string"
+        },
+        "jsonSchema": {
+          "description": "The JSON Schema (draft 2020-12) of the codec's JSON."
+        },
+        "messageTypes": {
+          "description": "Protobuf: the message types offered; empty for the other types.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text": {
+          "description": "The schema text (Avro, `.proto` main file or JSON Schema).",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/SchemaType"
+        }
+      },
+      "required": [
+        "type",
+        "messageTypes",
+        "jsonSchema",
+        "example",
+        "text",
+        "errors"
       ],
       "type": "object"
     },
@@ -909,6 +1827,171 @@
       ],
       "type": "object"
     },
+    "LastPosition": {
+      "description": "Where a stream stopped, per source and partition: the last message read, so a restart\ncontinues at the next one (offset + 1, sequence + 1). Decimal strings keep 64 bits exact.",
+      "properties": {
+        "offset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "partition": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sequence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "timestampUs": {
+          "description": "Microseconds since the epoch, of the last message read.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source",
+        "timestampUs"
+      ],
+      "type": "object"
+    },
+    "Latest": {
+      "description": "`\"latest\"`.",
+      "enum": [
+        "latest"
+      ],
+      "type": "string"
+    },
+    "LocalSchema": {
+      "description": "A schema the user added to a profile (spec §4.2, `extras.schemas`).",
+      "properties": {
+        "files": {
+          "$ref": "#/$defs/LocalSchemaFiles"
+        },
+        "id": {
+          "type": "string"
+        },
+        "messageTypes": {
+          "default": null,
+          "description": "Protobuf: the message types offered (all top-level messages of the first file when absent).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/SchemaType"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "files"
+      ],
+      "type": "object"
+    },
+    "LocalSchemaFiles": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/SchemaFile"
+          },
+          "type": "array"
+        },
+        {
+          "properties": {
+            "descriptorSetBase64": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "descriptorSetBase64"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "The sources of a local schema: files, or a compiled Protobuf `FileDescriptorSet`."
+    },
+    "MappingTarget": {
+      "description": "What a mapping applies to (spec §4.2).",
+      "oneOf": [
+        {
+          "description": "A NATS subject pattern with `*` and `>`.",
+          "properties": {
+            "kind": {
+              "const": "subject",
+              "type": "string"
+            },
+            "pattern": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "pattern"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "topic",
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "bucket": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "kvBucket",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bucket"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MatchOp": {
+      "description": "How a text is matched.",
+      "enum": [
+        "equals",
+        "contains",
+        "prefix",
+        "regex"
+      ],
+      "type": "string"
+    },
     "NamespaceSummary": {
       "description": "One namespace of the cluster.",
       "properties": {
@@ -951,6 +2034,32 @@
       ],
       "type": "object"
     },
+    "Part": {
+      "description": "Which part of a message a codec reads or writes.",
+      "enum": [
+        "key",
+        "value"
+      ],
+      "type": "string"
+    },
+    "PartitionOffset": {
+      "description": "One partition's start offset.",
+      "properties": {
+        "offset": {
+          "description": "Decimal.",
+          "type": "string"
+        },
+        "partition": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "partition",
+        "offset"
+      ],
+      "type": "object"
+    },
     "Poller": {
       "properties": {
         "identity": {
@@ -972,6 +2081,59 @@
         "ratePerSecond"
       ],
       "type": "object"
+    },
+    "PositionRange": {
+      "description": "An inclusive range of offsets or sequences, as decimal strings.",
+      "properties": {
+        "from": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RegistryRef": {
+      "anyOf": [
+        {
+          "properties": {
+            "id": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "subject": {
+              "type": "string"
+            },
+            "version": {
+              "$ref": "#/$defs/SchemaVersion"
+            }
+          },
+          "required": [
+            "subject",
+            "version"
+          ],
+          "type": "object"
+        }
+      ],
+      "description": "A schema in the registry, by id or by subject and version."
     },
     "RemoteError": {
       "description": "The target's own error code, for Details.",
@@ -1500,6 +2662,194 @@
       ],
       "type": "object"
     },
+    "SchemaFile": {
+      "description": "One source file of a local schema.",
+      "properties": {
+        "path": {
+          "description": "For Protobuf, the import path (`lab/common/money.proto`).",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "text"
+      ],
+      "type": "object"
+    },
+    "SchemaIssue": {
+      "description": "A problem found compiling a schema, with the file and line when known (spec §5.3).",
+      "properties": {
+        "column": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "schemaId": {
+          "description": "The local schema's id, when the issue is about one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "SchemaMapping": {
+      "description": "A local schema mapped to messages (spec §4.2, `extras.mappings`).",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "messageType": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "part": {
+          "$ref": "#/$defs/Part"
+        },
+        "schemaId": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/MappingTarget"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "part",
+        "schemaId"
+      ],
+      "type": "object"
+    },
+    "SchemaRef": {
+      "description": "Where a schema comes from (spec §5.7): `{ registry: … }` or `{ local: schemaId }`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "registry": {
+              "$ref": "#/$defs/RegistryRef"
+            }
+          },
+          "required": [
+            "registry"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "local": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "local"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SchemaType": {
+      "description": "The type of a schema.",
+      "enum": [
+        "avro",
+        "protobuf",
+        "jsonschema"
+      ],
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "anyOf": [
+        {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "$ref": "#/$defs/Latest"
+        }
+      ],
+      "description": "A registry schema version: a number or `\"latest\"`."
+    },
+    "SchemasUpdateInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "mappings": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/SchemaMapping"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "schemas": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/LocalSchema"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "SchemasUpdateOutput": {
+      "properties": {
+        "issues": {
+          "description": "Schemas that do not compile, with file and line; the others are in use.",
+          "items": {
+            "$ref": "#/$defs/SchemaIssue"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "issues"
+      ],
+      "type": "object"
+    },
     "StateTask": {
       "description": "A task of the next step: the node to run, its error, its interrupts.",
       "properties": {
@@ -1699,6 +3049,102 @@
         "namespacePrefix"
       ],
       "type": "object"
+    },
+    "TailSummary": {
+      "description": "The summary of a message stream (spec §5.5, `TailSummary`).",
+      "properties": {
+        "decodeErrors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dropped": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "endReason": {
+          "$ref": "#/$defs/EndReason"
+        },
+        "lastPositions": {
+          "items": {
+            "$ref": "#/$defs/LastPosition"
+          },
+          "type": "array"
+        },
+        "matched": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scanned": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "scanned",
+        "matched",
+        "dropped",
+        "decodeErrors",
+        "endReason",
+        "lastPositions"
+      ],
+      "type": "object"
+    },
+    "Target": {
+      "description": "Where a message lives, for mappings and subject naming: a Kafka topic, a NATS subject (core\nor JetStream) or a KV bucket.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "topic",
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "subject",
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "subject"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "bucket": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "kvBucket",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bucket"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "TaskQueueDescribeInput": {
       "properties": {
@@ -1929,6 +3375,29 @@
       ],
       "type": "object"
     },
+    "TextMatch": {
+      "description": "A text match (spec §5.4, `TextMatch`).",
+      "properties": {
+        "caseSensitive": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "op": {
+          "$ref": "#/$defs/MatchOp"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "value"
+      ],
+      "type": "object"
+    },
     "Thread": {
       "properties": {
         "createdAt": {
@@ -2148,6 +3617,26 @@
       ],
       "type": "object"
     },
+    "TimeRange": {
+      "description": "An inclusive range of RFC 3339 times.",
+      "properties": {
+        "from": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "TlsOptions": {
       "description": "TLS settings of a profile, as `toConnect` sends them (spec §4.2). `clientKeyPem` comes from\nthe profile's `secrets`; procedures that take it list it in `redact`.",
       "properties": {
@@ -2209,6 +3698,17 @@
         },
         "message": {
           "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorPosition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For `Invalid`: where in the field's text, when known."
         },
         "remote": {
           "anyOf": [
@@ -2361,6 +3861,14 @@
         "checkpoint"
       ],
       "type": "object"
+    },
+    "WireFormat": {
+      "description": "Whether encoding writes the Confluent wire format (spec §5.3).",
+      "enum": [
+        "confluent",
+        "none"
+      ],
+      "type": "string"
     },
     "WorkflowDetail": {
       "description": "Everything `DescribeWorkflowExecution` says, payloads decoded.",
@@ -3000,6 +4508,69 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/EchoGetInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "echo.messages.get",
+      "output": {
+        "$ref": "#/$defs/FullMessage"
+      },
+      "perm": "echo.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/EchoProduceInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "echo.messages.produce",
+      "output": {
+        "$ref": "#/$defs/EchoProduceOutput"
+      },
+      "perm": "echo.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/EchoTailInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "echo.messages.tail",
+      "output": {
+        "$ref": "#/$defs/TailSummary"
+      },
+      "perm": "echo.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/EchoPingInput"
       },
       "kind": "query",
@@ -3567,6 +5138,131 @@
     {
       "agent": "hidden",
       "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/Empty"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.codecs.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/CodecInfo"
+        },
+        "type": "array"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/DecodeInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.decode",
+      "output": {
+        "$ref": "#/$defs/DecodeOutput"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/EncodeInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.encode",
+      "output": {
+        "$ref": "#/$defs/EncodeOutput"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": false,
+      "input": {
+        "$ref": "#/$defs/FilterCheckInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.filter.check",
+      "output": {
+        "$ref": "#/$defs/FilterCheckOutput"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/InspectInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.schemas.inspect",
+      "output": {
+        "$ref": "#/$defs/Inspection"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/SchemasUpdateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "messaging.schemas.update",
+      "output": {
+        "$ref": "#/$defs/SchemasUpdateOutput"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
       "error": {
         "$ref": "#/$defs/ToolError"
       },
@@ -4060,5 +5756,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:81b078665d9f6c91ad462da56fb29b1bfb072f5c40a3c56ce44c9c216082350c"
+  "schema_hash": "sha256:90bcce119b15e983e5ef6decf9307f036303b7d7b125efb9b617baac0edc0e0a"
 }

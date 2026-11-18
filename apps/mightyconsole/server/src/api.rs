@@ -74,7 +74,7 @@ impl AppApi {
             certificate_fingerprint: facts.certificate_fingerprint.clone(),
             os: std::env::consts::OS.into(),
             tools: crate::tools::infos(),
-            codecs: Vec::new(),
+            codecs: crate::core::messaging::codec_ids(),
         })
     }
 

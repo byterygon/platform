@@ -86,6 +86,7 @@ fn mount(router: &Router, state: &Arc<AppState>) {
     router
         .mount(TermApi(Arc::clone(state)))
         .expect("term API registers");
+    core::messaging::mount(router, &state.hub).expect("messaging APIs register");
     tools::mount(router, &state.hub).expect("tool APIs register");
 }
 

@@ -46,6 +46,14 @@ pub struct RemoteError {
     pub detail: Option<String>,
 }
 
+/// Where in an input text an error is, 1-based (a codec's JSON, a schema, a jq program).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorPosition {
+    pub line: u32,
+    pub column: u32,
+}
+
 /// `details` of every tool procedure's errors (spec §2.6).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +74,10 @@ pub struct ToolError {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub field: Option<String>,
+    /// For `Invalid`: where in the field's text, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub position: Option<ErrorPosition>,
 }
 
 impl ToolError {
@@ -78,6 +90,7 @@ impl ToolError {
             retryable: matches!(kind, ToolErrorKind::Connect),
             resource: None,
             field: None,
+            position: None,
         }
     }
 

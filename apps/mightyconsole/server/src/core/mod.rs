@@ -20,6 +20,7 @@
 //! tool's client.
 
 pub mod error;
+pub mod messaging;
 pub mod tls;
 pub mod types;
 
@@ -33,7 +34,7 @@ use security_types::Clock;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
-pub use error::{RemoteError, ToolError, ToolErrorKind, ToolResult};
+pub use error::{ErrorPosition, RemoteError, ToolError, ToolErrorKind, ToolResult};
 pub use types::{AppEvent, ConnectionState, Empty};
 
 /// Idle time after which the sweep releases a handle with no running stream (spec §2.2).
@@ -85,6 +86,8 @@ struct HandleEntry {
     last_used_ms: u64,
     /// Streams running on the handle; the sweep leaves it alone while any runs.
     active: usize,
+    /// The message codecs of a tool that carries messages (spec §5), for `messaging.*`.
+    codecs: Option<message_codecs::Codecs>,
 }
 
 struct SessionEntry {
@@ -276,6 +279,11 @@ impl Hub {
         }
     }
 
+    /// The server's clock (tests use a fake one).
+    pub fn clock(&self) -> Arc<dyn Clock> {
+        Arc::clone(&self.clock)
+    }
+
     fn lock(&self) -> MutexGuard<'_, State> {
         // Every critical section leaves the maps consistent; a panic cannot break them.
         self.state.lock().unwrap_or_else(|e| e.into_inner())
@@ -301,6 +309,7 @@ impl Hub {
                 token: token.clone(),
                 last_used_ms: now,
                 active: 0,
+                codecs: None,
             },
         );
         state.publish(
@@ -342,6 +351,48 @@ impl Hub {
             conn_id: conn_id.to_owned(),
             value,
             token: entry.token.clone(),
+        })
+    }
+
+    /// Gives a handle of `session` its message codecs (on connect, and when the profile's local
+    /// schemas change).
+    pub fn set_codecs(
+        &self,
+        session: &str,
+        conn_id: &str,
+        codecs: message_codecs::Codecs,
+    ) -> Result<(), ToolError> {
+        let mut state = self.lock();
+        let entry = state
+            .handles
+            .get_mut(conn_id)
+            .filter(|e| e.session == session)
+            .ok_or_else(|| ToolError::connection_gone(messaging::SYSTEM))?;
+        entry.codecs = Some(codecs);
+        Ok(())
+    }
+
+    /// The message codecs of a handle of `session`, whatever its tool; `Invalid` for a handle
+    /// whose tool carries no messages.
+    pub fn codecs(
+        &self,
+        session: &str,
+        conn_id: &str,
+    ) -> Result<message_codecs::Codecs, ToolError> {
+        let now = self.clock.now_unix_ms();
+        let mut state = self.lock();
+        let entry = state
+            .handles
+            .get_mut(conn_id)
+            .filter(|e| e.session == session)
+            .ok_or_else(|| ToolError::connection_gone(messaging::SYSTEM))?;
+        entry.last_used_ms = now;
+        entry.codecs.clone().ok_or_else(|| {
+            ToolError::invalid(
+                messaging::SYSTEM,
+                "connId",
+                format!("a {} connection has no message codecs", entry.tool),
+            )
         })
     }
 

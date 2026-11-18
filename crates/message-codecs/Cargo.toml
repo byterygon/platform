@@ -20,6 +20,10 @@ apache-avro = { version = "=0.23.0", default-features = false }
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
 jsonschema = { version = "=0.61.2", default-features = false }
+jaq-core = "=3.1.2"
+jaq-json = { version = "=2.0.3", features = ["serde"] }
+jaq-std = "=3.0.4"
+regex = "1.13.1"
 miette = { version = "7.6.0", default-features = false }
 prost = { version = "0.14.6", default-features = false, features = ["std"] }
 prost-reflect = { version = "=0.16.5", default-features = false, features = ["serde"] }

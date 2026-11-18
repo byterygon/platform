@@ -24,8 +24,10 @@ name = "mightyconsole-server"
 path = "src/main.rs"
 
 [dependencies]
-ambidex = { path = "../../../crates/ambidex" }
+ambidex = { path = "../../../crates/ambidex", features = ["arrow"] }
 ambidex-axum = { path = "../../../crates/ambidex-axum" }
+arrow-array = { version = "60.1.0", default-features = false }
+arrow-schema = { version = "60.1.0", default-features = false }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "tokio"] }
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 bytes = "1.12.1"
@@ -33,6 +35,7 @@ dirs = "7.0.0"
 eventsource-stream = "0.2.3"
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 getrandom = "0.4.3"
+message-codecs = { path = "../../../crates/message-codecs", features = ["codegen"] }
 http-body-util = "0.1.5"
 hyper = { version = "1.12.0", default-features = false, features = ["client", "http1"] }
 hyper-rustls = { version = "0.27.10", default-features = false, features = ["http1", "ring", "tls12"] }
@@ -58,6 +61,8 @@ ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compa
 url = "2.5.8"
 
 [dev-dependencies]
+arrow-ipc = { version = "60.1.0", default-features = false }
+arrow-select = { version = "60.1.0", default-features = false }
 ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
 tempfile = "3.27.0"
