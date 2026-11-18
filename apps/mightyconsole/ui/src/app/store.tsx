@@ -30,6 +30,15 @@ export interface Layout {
   shellSizes: number[];
   /** The selected tool. */
   tool: string;
+  /**
+   * The tool navigation (DOC-21 §3.1): `true` the rail, `false` the drawer, `null` by window
+   * width (the drawer from 1280 px, the rail below).
+   */
+  navCollapsed: boolean | null;
+  /** Tools pinned to the top of the navigation, in pin order. */
+  pinnedTools: string[];
+  /** Navigation categories the user folded. */
+  closedCategories: string[];
 }
 
 export interface Persisted {
@@ -180,6 +189,7 @@ export function tabIdOf(tool: string, profileId: string, kind: string, params: R
 
 // --- Persistence ---------------------------------------------------------------------------------
 
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
 const num = (v: unknown, fallback: number, min: number, max: number) => (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : fallback);
 
 /** Reads the persisted tabs, layout and settings; anything missing or malformed takes its default. */
@@ -205,6 +215,9 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
       sidebarOpen: layoutDoc?.sidebarOpen !== false,
       shellSizes: Array.isArray(sizes) && sizes.length === 2 && sizes.every((n) => typeof n === "number") ? sizes : [22, 78],
       tool: typeof layoutDoc?.tool === "string" && tools.includes(layoutDoc.tool) ? layoutDoc.tool : (tools[0] ?? ""),
+      navCollapsed: typeof layoutDoc?.navCollapsed === "boolean" ? layoutDoc.navCollapsed : null,
+      pinnedTools: strings(layoutDoc?.pinnedTools).filter((id) => tools.includes(id)),
+      closedCategories: strings(layoutDoc?.closedCategories),
     },
     settings: {
       preset: isPreset(s.preset) ? s.preset : DEFAULT_SETTINGS.preset,

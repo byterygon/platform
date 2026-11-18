@@ -10,6 +10,11 @@ export type ActionId =
   | "tool4"
   | "tool5"
   | "tool6"
+  | "tool7"
+  | "tool8"
+  | "tool9"
+  | "toggleToolNav"
+  | "findTool"
   | "addConnection"
   | "closeTab"
   | "nextTab"
@@ -51,6 +56,12 @@ export const ACTIONS: readonly Action[] = [
   { id: "tool4", label: "Switch to tool 4", group: "Tools", keys: ["Alt+Shift+4"] },
   { id: "tool5", label: "Switch to tool 5", group: "Tools", keys: ["Alt+Shift+5"] },
   { id: "tool6", label: "Switch to tool 6", group: "Tools", keys: ["Alt+Shift+6"] },
+  { id: "tool7", label: "Switch to tool 7", group: "Tools", keys: ["Alt+Shift+7"] },
+  { id: "tool8", label: "Switch to tool 8", group: "Tools", keys: ["Alt+Shift+8"] },
+  { id: "tool9", label: "Switch to tool 9", group: "Tools", keys: ["Alt+Shift+9"] },
+  // Palette only: Shift+Alt+B and Shift+Alt+T are Chrome's own on Windows and Linux (DOC-21 §3.4).
+  { id: "toggleToolNav", label: "Collapse or expand the tool list", group: "Tools", keys: [], keywords: ["navigation", "rail", "drawer"] },
+  { id: "findTool", label: "Find a tool", group: "Tools", keys: [], keywords: ["navigation", "search", "tools"] },
   { id: "addConnection", label: "Add connection", group: "Connections", keys: ["Mod+Alt+N"], keywords: ["new", "profile"] },
   { id: "exportProfiles", label: "Export profiles", group: "Connections", keys: [], keywords: ["backup", "save", "file"] },
   { id: "importProfiles", label: "Import profiles", group: "Connections", keys: [], keywords: ["restore", "load", "file"] },

@@ -8,13 +8,14 @@ import { ServicesContext, createServices } from "./app/client";
 import { applyAppearance } from "./app/presets";
 import { StoreProvider, loadPersisted } from "./app/store";
 import { openStorage } from "./profiles/storage";
-import { TOOLS } from "./tools/registry";
+import { TOOLS, orderedTools } from "./tools/registry";
 
 async function boot(): Promise<void> {
   const storage = await openStorage();
   const persisted = await loadPersisted(
     storage,
-    TOOLS.map((t) => t.id),
+    // The first tool of the navigation is the default selection (DOC-21 §3.1).
+    orderedTools(TOOLS).map((t) => t.id),
   );
   applyAppearance(persisted.settings);
   const services = createServices(storage);
