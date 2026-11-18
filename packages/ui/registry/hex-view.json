@@ -1,0 +1,250 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "hex-view",
+  "type": "registry:ui",
+  "title": "HexView",
+  "description": "Bytes as a hex dump: an offset column, the bytes in hex and as ASCII, virtualized, with keyboard selection and copy as hex or as text.",
+  "dependencies": [],
+  "registryDependencies": [
+    "@byterygon/button",
+    "@byterygon/cn",
+    "@byterygon/control",
+    "@byterygon/theme-scope"
+  ],
+  "files": [
+    {
+      "path": "ui/hex-view.tsx",
+      "type": "registry:ui",
+      "content": "import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type Ref } from \"react\";\nimport { Button } from \"@/components/ui/button\";\nimport { cn } from \"@/lib/cn\";\nimport { focusRing } from \"@/lib/control\";\nimport { tokenPx } from \"@/lib/theme-scope\";\n\n// Bytes as a hex dump (Mightyconsole spec section 12, TSK-80): an offset column, the bytes in\n// hex and the same bytes as ASCII, a row per `bytesPerRow` bytes. Virtualized like JsonViewer:\n// rows of size.control.xs, only those in view are rendered, so a 16 MiB payload stays fast. It is\n// the ARIA grid pattern with one tab stop and aria-activedescendant: arrows move the active byte,\n// Shift extends the selection, Ctrl+C copies it as hex and Ctrl+Shift+C as text (the footer's\n// buttons do the same). Base UI has no part for it, so it is plain elements.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const hexViewVariants = {} as const;\n\nconst classes = {\n  root: \"flex w-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-editor font-mono text-code-sm text-editor-fg\",\n  scroller: [\"relative min-h-0 flex-1 overflow-auto overscroll-contain\", focusRing],\n  row: \"absolute inset-x-0 flex h-control-xs items-center gap-inline-md px-inset-sm whitespace-pre\",\n  offset: \"shrink-0 text-editor-gutter tabular-nums\",\n  bytes: \"shrink-0\",\n  byte: [\n    \"cursor-default tabular-nums\",\n    \"hover:bg-hover data-selected:bg-editor-selection\",\n    \"in-focus-visible:data-active:outline-solid in-focus-visible:data-active:outline-[length:var(--by-ring-width)] in-focus-visible:data-active:-outline-offset-[var(--by-ring-width)] in-focus-visible:data-active:outline-ring\",\n  ],\n  ascii: \"shrink-0 text-syntax-string\",\n  asciiChar: \"data-selected:bg-editor-selection data-dot:text-editor-gutter\",\n  footer: \"flex shrink-0 items-center gap-inline-sm border-t border-border-subtle px-inset-sm py-inset-xs font-sans text-caption-1 text-fg-muted\",\n  footerText: \"min-w-0 flex-1 truncate\",\n  empty: \"p-inset-sm font-sans text-body-1 text-fg-muted\",\n} as const;\n\nconst HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, \"0\"));\nconst printable = (b: number) => b >= 0x20 && b < 0x7f;\n\n/** The bytes as hex text, `00 1a ff`. */\nexport function bytesToHex(bytes: Uint8Array): string {\n  let out = \"\";\n  for (let i = 0; i < bytes.length; i += 1) out += (i ? \" \" : \"\") + HEX[bytes[i]!];\n  return out;\n}\n\n/** The bytes as text: UTF-8 when they decode as UTF-8, else Latin-1 with `.` for non-printables. */\nexport function bytesToText(bytes: Uint8Array): string {\n  try {\n    return new TextDecoder(\"utf-8\", { fatal: true }).decode(bytes);\n  } catch {\n    let out = \"\";\n    for (const b of bytes) out += printable(b) ? String.fromCharCode(b) : \".\";\n    return out;\n  }\n}\n\nexport type HexCopyFormat = \"hex\" | \"text\";\n\nexport interface HexViewProps {\n  /** The bytes to show (an array of numbers 0 to 255 is taken too). */\n  bytes?: Uint8Array | readonly number[] | undefined;\n  /** Bytes per row; 16 by default, grouped by 8. */\n  bytesPerRow?: number | undefined;\n  /** The offset of the first byte, for the offset column (a slice of a larger payload). */\n  baseOffset?: number | undefined;\n  /** Called after a copy, with the text and its format. */\n  onCopy?: ((text: string, format: HexCopyFormat) => void) | undefined;\n  /** Accessible name of the grid. */\n  \"aria-label\"?: string | undefined;\n  /** Rows rendered beyond the viewport on each side. */\n  overscan?: number | undefined;\n  /** Extra classes, merged after the component's own so they win; set the height here. */\n  className?: string | undefined;\n  ref?: Ref<HTMLDivElement> | undefined;\n}\n\nconst EMPTY = new Uint8Array();\n\n/** Bytes as a virtualized, keyboard-navigable hex dump with selection and copy (role=\"grid\"). */\nexport function HexView({ bytes: bytesProp = EMPTY, bytesPerRow = 16, baseOffset = 0, onCopy, \"aria-label\": label = \"Bytes\", overscan = 8, className, ref }: HexViewProps) {\n  const bytes = useMemo(() => (bytesProp instanceof Uint8Array ? bytesProp : Uint8Array.from(bytesProp)), [bytesProp]);\n  const perRow = Math.max(1, Math.floor(bytesPerRow));\n  const rowCount = Math.ceil(bytes.length / perRow);\n  const offsetDigits = Math.max(8, (baseOffset + bytes.length).toString(16).length);\n  const [anchor, setAnchor] = useState(0);\n  const [focus, setFocus] = useState(0);\n  // A new payload starts with the first byte active.\n  useEffect(() => {\n    setAnchor(0);\n    setFocus(0);\n  }, [bytes]);\n  const lo = Math.min(anchor, focus);\n  const hi = Math.max(anchor, focus);\n\n  const baseId = useId();\n  const idFor = useCallback((index: number) => `${baseId}-b${index}`, [baseId]);\n\n  const scroller = useRef<HTMLDivElement | null>(null);\n  const [view, setView] = useState({ scrollTop: 0, viewport: 0, rowHeight: 20 });\n  useEffect(() => {\n    const element = scroller.current;\n    if (!element) return undefined;\n    const measure = () =>\n      setView((previous) => {\n        const next = { scrollTop: element.scrollTop, viewport: element.clientHeight, rowHeight: tokenPx(element, \"--by-size-control-xs\", previous.rowHeight) };\n        return next.scrollTop === previous.scrollTop && next.viewport === previous.viewport && next.rowHeight === previous.rowHeight ? previous : next;\n      });\n    measure();\n    element.addEventListener(\"scroll\", measure, { passive: true });\n    const observer = typeof ResizeObserver === \"undefined\" ? undefined : new ResizeObserver(measure);\n    observer?.observe(element);\n    return () => {\n      element.removeEventListener(\"scroll\", measure);\n      observer?.disconnect();\n    };\n  }, []);\n  const { rowHeight } = view;\n  const height = view.viewport || rowHeight * 24;\n  const first = Math.max(0, Math.floor(view.scrollTop / rowHeight) - overscan);\n  const last = Math.min(rowCount, Math.ceil((view.scrollTop + height) / rowHeight) + overscan);\n\n  const reveal = useCallback(\n    (index: number) => {\n      const element = scroller.current;\n      if (!element) return;\n      const top = Math.floor(index / perRow) * rowHeight;\n      const visible = element.clientHeight || height;\n      if (top < element.scrollTop) element.scrollTop = top;\n      else if (top + rowHeight > element.scrollTop + visible) element.scrollTop = top + rowHeight - visible;\n      setView((previous) => ({ ...previous, scrollTop: element.scrollTop }));\n    },\n    [perRow, rowHeight, height],\n  );\n\n  const select = useCallback(\n    (index: number, extend: boolean) => {\n      const at = Math.max(0, Math.min(bytes.length - 1, index));\n      setFocus(at);\n      if (!extend) setAnchor(at);\n      reveal(at);\n    },\n    [bytes.length, reveal],\n  );\n\n  const copy = useCallback(\n    (format: HexCopyFormat) => {\n      const slice = bytes.subarray(lo, hi + 1);\n      const text = format === \"hex\" ? bytesToHex(slice) : bytesToText(slice);\n      void globalThis.navigator?.clipboard?.writeText(text).catch(() => undefined);\n      onCopy?.(text, format);\n    },\n    [bytes, lo, hi, onCopy],\n  );\n\n  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {\n    if (bytes.length === 0) return;\n    const mod = event.ctrlKey || event.metaKey;\n    const pageRows = Math.max(1, Math.floor((scroller.current?.clientHeight || height) / rowHeight) - 1);\n    const moves: Record<string, number | undefined> = {\n      ArrowRight: focus + 1,\n      ArrowLeft: focus - 1,\n      ArrowDown: focus + perRow,\n      ArrowUp: focus - perRow,\n      PageDown: focus + perRow * pageRows,\n      PageUp: focus - perRow * pageRows,\n      Home: mod ? 0 : focus - (focus % perRow),\n      End: mod ? bytes.length - 1 : focus - (focus % perRow) + perRow - 1,\n    };\n    if (event.key in moves) {\n      event.preventDefault();\n      select(moves[event.key]!, event.shiftKey);\n      return;\n    }\n    if (mod && event.key.toLowerCase() === \"a\") {\n      event.preventDefault();\n      setAnchor(0);\n      setFocus(bytes.length - 1);\n      return;\n    }\n    if (mod && event.key.toLowerCase() === \"c\") {\n      event.preventDefault();\n      copy(event.shiftKey ? \"text\" : \"hex\");\n      return;\n    }\n    if (event.key === \"Escape\" && anchor !== focus) {\n      event.preventDefault();\n      setAnchor(focus);\n    }\n  };\n\n  const rows = [];\n  const activeRow = Math.floor(focus / perRow);\n  const indexes = new Set<number>();\n  for (let r = first; r < last; r += 1) indexes.add(r);\n  if (rowCount > 0) indexes.add(activeRow); // the active byte is always in the DOM for aria-activedescendant\n  for (const r of [...indexes].sort((a, b) => a - b)) {\n    const start = r * perRow;\n    const end = Math.min(bytes.length, start + perRow);\n    const cells = [];\n    const ascii = [];\n    for (let i = start; i < start + perRow; i += 1) {\n      // The font is monospace: spaces keep the columns (two between groups of 8).\n      if (i > start) cells.push(i % 8 === 0 ? \"  \" : \" \");\n      if (i >= end) {\n        cells.push(\"  \");\n        continue;\n      }\n      const b = bytes[i]!;\n      const selected = i >= lo && i <= hi;\n      cells.push(\n        <span\n          key={i}\n          id={idFor(i)}\n          role=\"gridcell\"\n          aria-selected={selected}\n          aria-label={`${(baseOffset + i).toString(16)}: ${HEX[b]}`}\n          data-slot=\"hex-view-byte\"\n          data-selected={selected ? \"\" : undefined}\n          data-active={i === focus ? \"\" : undefined}\n          onPointerDown={(event) => {\n            event.preventDefault();\n            scroller.current?.focus();\n            select(i, event.shiftKey);\n          }}\n          className={cn(classes.byte)}\n        >\n          {HEX[b]}\n        </span>,\n      );\n      ascii.push(\n        <span key={i} data-selected={selected ? \"\" : undefined} data-dot={printable(b) ? undefined : \"\"} className={classes.asciiChar}>\n          {printable(b) ? String.fromCharCode(b) : \".\"}\n        </span>,\n      );\n    }\n    rows.push(\n      <div key={r} role=\"row\" aria-rowindex={r + 1} data-slot=\"hex-view-row\" className={classes.row} style={{ top: r * rowHeight }}>\n        <span role=\"rowheader\" className={classes.offset}>\n          {(baseOffset + start).toString(16).padStart(offsetDigits, \"0\")}\n        </span>\n        <span className={classes.bytes}>{cells}</span>\n        <span role=\"gridcell\" aria-label={`text: ${bytesToText(bytes.subarray(start, end))}`} className={classes.ascii}>\n          {ascii}\n        </span>\n      </div>,\n    );\n  }\n\n  const count = bytes.length;\n  const selection = hi - lo + 1;\n  return (\n    <div data-slot=\"hex-view\" ref={ref} className={cn(classes.root, className)}>\n      {count === 0 ? (\n        <p className={classes.empty}>No bytes</p>\n      ) : (\n        <div\n          ref={scroller}\n          role=\"grid\"\n          tabIndex={0}\n          aria-label={label}\n          aria-readonly\n          aria-multiselectable\n          aria-rowcount={rowCount}\n          aria-colcount={perRow + 2}\n          aria-activedescendant={idFor(focus)}\n          data-slot=\"hex-view-grid\"\n          onKeyDown={onKeyDown}\n          className={cn(classes.scroller)}\n        >\n          <div style={{ height: rowCount * rowHeight, position: \"relative\" }}>{rows}</div>\n        </div>\n      )}\n      <div data-slot=\"hex-view-footer\" className={classes.footer}>\n        <span className={classes.footerText} aria-live=\"polite\">\n          {count === 0\n            ? \"0 bytes\"\n            : selection > 1\n              ? `${selection} of ${count} bytes selected, from 0x${(baseOffset + lo).toString(16)}`\n              : `${count} ${count === 1 ? \"byte\" : \"bytes\"}, at 0x${(baseOffset + focus).toString(16)}`}\n        </span>\n        <Button appearance=\"subtle\" size=\"small\" disabled={count === 0} onClick={() => copy(\"hex\")}>\n          Copy hex\n        </Button>\n        <Button appearance=\"subtle\" size=\"small\" disabled={count === 0} onClick={() => copy(\"text\")}>\n          Copy text\n        </Button>\n      </div>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "hex-view",
+      "title": "HexView",
+      "description": "Bytes as a hex dump: an offset column, the bytes in hex and as ASCII, virtualized, with keyboard selection and copy as hex or as text.",
+      "usage": "Use HexView to show binary payloads exactly: a message's raw key or value, a file's first bytes, a protocol frame. Set the height with className (it scrolls inside). Arrows move the active byte, Shift extends the selection, Ctrl+A selects everything, Ctrl+C copies the selection as hex and Ctrl+Shift+C as text (UTF-8 when it decodes, else Latin-1 with dots); the footer's buttons do the same, and onCopy reports the text. baseOffset numbers a slice of a larger payload. For decoded values use JsonViewer or CodeBlock; for one short value inline, Code.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [],
+      "props": [
+        {
+          "name": "bytes",
+          "type": "Uint8Array | number[]",
+          "description": "The bytes to show; an array of numbers from 0 to 255 is taken too.",
+          "default": "empty"
+        },
+        {
+          "name": "bytesPerRow",
+          "type": "number",
+          "default": 16,
+          "description": "Bytes per row, grouped by 8."
+        },
+        {
+          "name": "baseOffset",
+          "type": "number",
+          "default": 0,
+          "description": "The offset of the first byte, for the offset column."
+        },
+        {
+          "name": "onCopy",
+          "type": "(text: string, format: \"hex\" | \"text\") => void",
+          "description": "Called after a copy (keyboard or footer) with the copied text; the text also goes to the clipboard when the page may write it."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "default": "Bytes",
+          "description": "Accessible name of the grid."
+        },
+        {
+          "name": "overscan",
+          "type": "number",
+          "default": 8,
+          "description": "Rows rendered beyond the viewport on each side."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own; set the height here."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root element."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "The frame in editor.bg; data-slot=\"hex-view\"."
+        },
+        {
+          "name": "grid",
+          "element": "div",
+          "description": "role=\"grid\", the scroll container and the one tab stop; data-slot=\"hex-view-grid\"."
+        },
+        {
+          "name": "row",
+          "element": "div",
+          "description": "role=\"row\" of size.control.xs: the offset (rowheader), the bytes and the ASCII; data-slot=\"hex-view-row\"."
+        },
+        {
+          "name": "byte",
+          "element": "span",
+          "description": "role=\"gridcell\", one byte in hex; data-slot=\"hex-view-byte\", data-selected, data-active."
+        },
+        {
+          "name": "footer",
+          "element": "div",
+          "description": "The selection's size and offset and the copy buttons; data-slot=\"hex-view-footer\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "selected",
+          "variant": "data-selected",
+          "description": "Bytes in the selection, and their ASCII: editor.selection.",
+          "props": {
+            "bytes": [
+              72,
+              105,
+              0,
+              1,
+              255,
+              46,
+              10,
+              65
+            ]
+          }
+        },
+        {
+          "name": "active",
+          "variant": "data-active",
+          "description": "The byte the keyboard is on: a ring while the grid has keyboard focus.",
+          "props": {
+            "bytes": [
+              72,
+              105,
+              0,
+              1,
+              255,
+              46,
+              10,
+              65
+            ]
+          }
+        },
+        {
+          "name": "non-printable",
+          "variant": "data-dot",
+          "description": "An ASCII column dot for a byte outside 0x20 to 0x7e, in editor.gutter.",
+          "props": {
+            "bytes": [
+              72,
+              105,
+              0,
+              1,
+              255,
+              46,
+              10,
+              65
+            ]
+          }
+        },
+        {
+          "name": "hover",
+          "variant": "hover",
+          "description": "Pointer over a byte: color.interactive.hover.",
+          "props": {
+            "bytes": [
+              72,
+              105,
+              0,
+              1,
+              255,
+              46,
+              10,
+              65
+            ]
+          }
+        },
+        {
+          "name": "focus-visible",
+          "variant": "focus-visible",
+          "description": "Keyboard focus on the grid: Fluent's double ring (focusRing).",
+          "props": {
+            "bytes": [
+              72,
+              105,
+              0,
+              1,
+              255,
+              46,
+              10,
+              65
+            ]
+          }
+        }
+      ],
+      "tokens": [
+        "color.accent.subtle-fg",
+        "color.border.subtle",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.ring",
+        "color.ring-inner",
+        "editor.bg",
+        "editor.fg",
+        "editor.gutter",
+        "editor.selection",
+        "font.mono",
+        "font.sans",
+        "motion.duration.faster",
+        "motion.easing.easy-ease",
+        "radius.lg",
+        "radius.md",
+        "ring.inner-width",
+        "ring.width",
+        "size.control.sm",
+        "size.control.xs",
+        "size.icon.md",
+        "space.inline.md",
+        "space.inline.sm",
+        "space.inset.sm",
+        "space.inset.xs",
+        "syntax.string",
+        "text.body-1.leading",
+        "text.body-1.size",
+        "text.body-1.tracking",
+        "text.body-1.weight",
+        "text.caption-1.leading",
+        "text.caption-1.size",
+        "text.caption-1.tracking",
+        "text.caption-1.weight",
+        "text.code-sm.leading",
+        "text.code-sm.size",
+        "text.code-sm.tracking",
+        "text.code-sm.weight"
+      ],
+      "examples": {
+        "minimal": "HexViewMinimal",
+        "realistic": "HexViewRealistic"
+      },
+      "accessibility": [
+        "The bytes are an ARIA grid (role=\"grid\", aria-readonly, aria-multiselectable) with one tab stop; the active byte is aria-activedescendant and is always rendered, even while scrolled away.",
+        "Each byte cell is labelled with its offset and value (\"1f: 6c\"); each row has its offset as rowheader and its ASCII as one cell labelled \"text: …\".",
+        "The footer announces the selection (aria-live=\"polite\") and its copy buttons are ordinary buttons.",
+        "Focus shows the double ring on the grid and a ring on the active byte: ring.width in color.ring."
+      ]
+    },
+    "example": "import { HexView } from \"@/components/hex-view/hex-view\";\n\nconst encoder = new TextEncoder();\n\n/** The smallest useful HexView. */\nexport function HexViewMinimal() {\n  return <HexView bytes={encoder.encode(\"Hello, Mightyconsole\")} className=\"h-panel-xs\" aria-label=\"Payload bytes\" />;\n}\n\n/** A Kafka value in the Confluent wire format: magic byte 0, the schema id, then Avro bytes. */\nexport function HexViewRealistic() {\n  const body = encoder.encode(\"\\u0008o-17\\u0006c-9\\u0002\\u0004ÒPAID\");\n  const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x07, ...body, ...Array.from({ length: 64 }, (_, i) => (i * 37) & 0xff)]);\n  return <HexView bytes={bytes} className=\"h-panel-xs\" aria-label=\"Raw value of record 41\" />;\n}\n",
+    "dependencyVersions": {}
+  }
+}

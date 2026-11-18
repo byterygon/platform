@@ -56,7 +56,14 @@ export function loadMonaco(): Promise<Monaco> {
     const holder = globalThis as MonacoEnvironmentHolder;
     const EditorWorker = worker.default;
     if (!holder.MonacoEnvironment?.getWorker && !holder.MonacoEnvironment?.getWorkerUrl) {
-      holder.MonacoEnvironment = { ...holder.MonacoEnvironment, getWorker: () => new EditorWorker({ name: "monaco-editor" }) };
+      // The JSON language service has a worker of its own, loaded with the language (below).
+      holder.MonacoEnvironment = {
+        ...holder.MonacoEnvironment,
+        getWorker: (_workerId: string, label: string) => {
+          const Language = languageWorkers.get(label);
+          return Language ? new Language({ name: `monaco-${label}` }) : new EditorWorker({ name: "monaco-editor" });
+        },
+      };
     }
     return monaco;
   })();
@@ -64,6 +71,66 @@ export function loadMonaco(): Promise<Monaco> {
     loading = undefined;
   });
   return loading;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Languages beyond SQL (CodeEditor, TSK-80): loaded on demand, each in a chunk of its own. JSON
+// brings Monaco's JSON language service (validation, completion and hovers from a JSON Schema)
+// and its worker; schemas are given by the app and never fetched (enableSchemaRequest is off).
+
+/** The languages CodeEditor offers. */
+export type CodeLanguage = "json" | "yaml" | "protobuf" | "plaintext";
+
+type WorkerConstructor = new (options?: { name?: string }) => Worker;
+const languageWorkers = new Map<string, WorkerConstructor>();
+const languageLoads = new Map<CodeLanguage, Promise<void>>();
+
+interface JsonDefaults {
+  setDiagnosticsOptions: (options: Record<string, unknown>) => void;
+}
+let jsonDefaults: JsonDefaults | undefined;
+/** The JSON Schema of each model (by its URI), all given to the language service together. */
+const jsonSchemas = new Map<string, unknown>();
+
+/** Loads a language's grammar (and, for JSON, its language service and worker) once. */
+export function loadMonacoLanguage(language: CodeLanguage): Promise<void> {
+  if (language === "plaintext") return Promise.resolve();
+  let load = languageLoads.get(language);
+  if (!load) {
+    load = (async () => {
+      if (language === "json") {
+        const [json, worker] = await Promise.all([import("monaco-editor/languages/features/json/register"), import("monaco-editor/languages/features/json/json.worker?worker")]);
+        languageWorkers.set("json", worker.default as WorkerConstructor);
+        jsonDefaults = (json as unknown as { jsonDefaults: JsonDefaults }).jsonDefaults;
+        applyJsonSchemas();
+      } else if (language === "yaml") {
+        await import("monaco-editor/languages/definitions/yaml/register");
+      } else {
+        await import("monaco-editor/languages/definitions/protobuf/register");
+      }
+    })();
+    load.catch(() => languageLoads.delete(language));
+    languageLoads.set(language, load);
+  }
+  return load;
+}
+
+function applyJsonSchemas() {
+  jsonDefaults?.setDiagnosticsOptions({
+    validate: true,
+    allowComments: false,
+    trailingCommas: "error",
+    enableSchemaRequest: false,
+    schemaValidation: "error",
+    schemas: [...jsonSchemas].map(([uri, schema]) => ({ uri: `${uri}#schema`, fileMatch: [uri], schema })),
+  });
+}
+
+/** Validates the JSON model at `modelUri` against `schema` (undefined: no schema). */
+export function setJsonSchema(modelUri: string, schema: unknown): void {
+  if (schema === undefined) jsonSchemas.delete(modelUri);
+  else jsonSchemas.set(modelUri, schema);
+  applyJsonSchemas();
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -703,6 +703,20 @@ async function worker(page: Page, base: string) {
   return ok;
 }
 
+/** CodeEditor (TSK-80): the JSON language service runs in its own bundled worker and validates against the schema. */
+async function jsonSchema(page: Page, base: string) {
+  if (!check(await waitFor(page, "window.__check.jsonReady"), "CodeEditor: the JSON editor did not mount")) return {};
+  await page.evaluate(`window.__check.setJson('{ "id": 7, "status": "LOST", "extra": true }')`);
+  const flagged = await waitFor(page, "(window.__check.jsonDiagnostics ?? []).length >= 3", 20_000);
+  const found = await page.evaluate<{ message: string; severity: string }[] | null>("window.__check.jsonDiagnostics");
+  check(flagged, `CodeEditor: the schema violations were not reported (got ${JSON.stringify(found)})`);
+  await page.evaluate(`window.__check.setJson('{ "id": "o-2" }')`);
+  const cleared = await waitFor(page, "(window.__check.jsonDiagnostics ?? [1]).length === 0", 20_000);
+  check(cleared, "CodeEditor: valid JSON still had problems");
+  check(page.requests.some((u) => u.startsWith(`${base}/assets/`) && /json/i.test(u) && /worker/i.test(u)), "CodeEditor: no request for the bundled JSON worker was seen");
+  return { violations: found?.length ?? 0, cleared };
+}
+
 const verbose = process.argv.includes("--verbose");
 const step = (name: string) => {
   if (verbose) process.stderr.write(`browser-check: ${name}\n`);
@@ -769,6 +783,8 @@ async function main(argv: string[]): Promise<number> {
     report.codeKeyboard = await within(60_000, "CodeInput keyboard", codeKeyboard(page));
     step("CodeInput 1 MB");
     report.codeLargeDocument = await within(90_000, "CodeInput 1 MB", codeLargeDocument(page));
+    step("CodeEditor JSON Schema");
+    report.jsonSchema = await within(60_000, "CodeEditor JSON Schema", jsonSchema(page, base));
     step("internal network: sub-path and DBee CSPs");
     report.internalNetwork = await within(120_000, "internal network", internalNetwork(cdp, out));
     if (screenshotPath) {

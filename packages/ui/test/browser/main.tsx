@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { EditorView } from "@codemirror/view";
 import { createRoot } from "react-dom/client";
+import { CodeEditor, type CodeDiagnostic } from "@/components/code-editor/code-editor";
 import { CodeInput } from "@/components/code-input/code-input";
 import { Field, FieldLabel } from "@/components/field/field";
 import { SqlEditor, type SqlRun } from "@/components/sql-editor/sql-editor";
@@ -49,6 +50,10 @@ interface Check {
   setViewer: (value: string) => void;
   /** The CodeMirror view of the n-th CodeInput on the page. */
   codeView: (index: number) => EditorView;
+  /** CodeEditor (TSK-80): the JSON editor's text, and what its language service reported last. */
+  setJson: (value: string) => void;
+  jsonDiagnostics: CodeDiagnostic[] | null;
+  jsonReady: boolean;
 }
 
 let resolveReady: () => void = () => {};
@@ -84,6 +89,9 @@ const check: Check = {
   submits: [],
   setViewer: () => {},
   codeView: (index) => EditorView.findFromDOM(document.querySelectorAll<HTMLElement>("[data-slot=code-input] .cm-editor")[index]!)!,
+  setJson: () => {},
+  jsonDiagnostics: null,
+  jsonReady: false,
 };
 check.bothReady = Promise.all([check.ready, second]).then(() => {});
 (window as unknown as { __check: Check }).__check = check;
@@ -146,9 +154,13 @@ function sampleCode(index: number) {
 }
 (window as unknown as { __sampleCode: typeof sampleCode }).__sampleCode = sampleCode;
 
+const ORDER_SCHEMA = { type: "object", properties: { id: { type: "string" }, status: { enum: ["PLACED", "PAID"] } }, required: ["id"], additionalProperties: false };
+
 function Codes() {
   const [viewer, setViewer] = useState('{"id":42,"tags":["new","vip"],"active":true}');
   check.setViewer = setViewer;
+  const [json, setJson] = useState('{ "id": "o-1", "status": "PAID" }');
+  check.setJson = setJson;
   return (
     <div id="region-3" data-theme="light" data-density="comfortable" className="flex flex-col gap-stack-md bg-surface p-inset-md">
       <button id="before-code" type="button">Before code</button>
@@ -158,6 +170,14 @@ function Codes() {
       </Field>
       <button id="after-code" type="button">After code</button>
       <CodeInput aria-label="Cell value" language="json" pretty value={viewer} className="max-h-panel-md" />
+      <CodeEditor
+        aria-label="Payload"
+        value={json}
+        onValueChange={setJson}
+        jsonSchema={ORDER_SCHEMA}
+        onDiagnosticsChange={(d) => (check.jsonDiagnostics = d)}
+        onEditorReady={() => (check.jsonReady = true)}
+      />
     </div>
   );
 }

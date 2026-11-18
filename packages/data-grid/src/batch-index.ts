@@ -51,6 +51,22 @@ export class BatchIndex {
     this.#bytes += batchByteLength(batch);
   }
 
+  /**
+   * Removes the first `count` batches (a live view keeping only its newest rows); the rows that
+   * stay are renumbered from 0. Returns how many rows went.
+   */
+  dropFirst(count: number): number {
+    const n = Math.max(0, Math.min(count, this.#batches.length));
+    if (n === 0) return 0;
+    const removed = n === this.#batches.length ? this.#rows : this.#starts[n]!;
+    for (const batch of this.#batches.splice(0, n)) this.#bytes -= batchByteLength(batch);
+    this.#starts.splice(0, n);
+    for (let b = 0; b < this.#starts.length; b += 1) this.#starts[b]! -= removed;
+    this.#rows -= removed;
+    this.#last = 0;
+    return removed;
+  }
+
   /** The batch holding global row `row` (0 <= row < rowCount). */
   locate(row: number): number {
     const starts = this.#starts;

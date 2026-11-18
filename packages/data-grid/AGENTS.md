@@ -47,6 +47,13 @@ WeakMap so a StrictMode remount does not iterate twice). The source:
 - on `cancel()` (handle) or unmount (after a task with no subscriber) cancels the stream and keeps
   the loaded rows.
 
+**A live view's window** (Mightyconsole spec §5.5, TSK-80): `maxRows` and `maxBytes` keep the newest
+rows and drop the oldest batches whole (`BatchIndex.dropFirst`; the newest batch always stays), and
+`ResultProgress.dropped` counts them; `hold` stops pulling (Pause: the stream's credits run out and
+the server waits); `handle.clear()` drops every loaded row and keeps the stream (Clear). Rows are
+renumbered from 1 after a drop; the rows in view stay in view (or the newest, when following at the
+bottom), and the selection moves with its rows or goes when they leave.
+
 The viewport never moves when rows arrive (with a scaled scroll range the scroll position is
 corrected to keep the same top row); `follow` keeps the newest rows in view when the user is at
 the bottom. `aria-rowcount` is -1 until the stream is no longer live.

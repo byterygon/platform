@@ -1,0 +1,185 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "code-editor",
+  "title": "CodeEditor",
+  "description": "A code editor on Monaco for JSON, YAML, Protobuf and plain text, loaded lazily from the app's own bundle (no CDN, no network), themed from the editor.* and syntax.* tokens of its region, with JSON Schema validation, markers by line and column, Mod+Enter to submit and a diff view.",
+  "usage": "Use CodeEditor for structured text the user writes or reviews: a message payload in the Composer (language=\"json\" with the schema's JSON Schema: validation, completion and hovers, onDiagnosticsChange for a status line), a manifest to apply (language=\"yaml\" with diff={{ original }} to review a change), a .proto file. Mod+Enter calls onSubmit with the text. markers take 1-based lines and columns (a codec's or parser's error position). Monaco loads on first mount; until then a textarea with the same text and keys stands in. Schemas are given, never fetched. Use SqlEditor for SQL, CodeInput for a one-line expression, JsonViewer or CodeBlock to show code.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [
+    "monaco-editor"
+  ],
+  "props": [
+    {
+      "name": "variant",
+      "type": "\"outline\" | \"ghost\"",
+      "default": "outline",
+      "description": "outline: a bordered field. ghost: no border, to fill a pane."
+    },
+    {
+      "name": "language",
+      "type": "\"json\" | \"yaml\" | \"protobuf\" | \"plaintext\"",
+      "default": "json",
+      "description": "The grammar; JSON also loads Monaco's JSON language service and its worker."
+    },
+    {
+      "name": "value",
+      "type": "string",
+      "description": "The text, when controlled; a new value replaces the text as one undoable edit."
+    },
+    {
+      "name": "defaultValue",
+      "type": "string",
+      "default": "",
+      "description": "The initial text, when uncontrolled."
+    },
+    {
+      "name": "onValueChange",
+      "type": "(value: string) => void",
+      "description": "Called with the whole text after every change."
+    },
+    {
+      "name": "onSubmit",
+      "type": "(value: string) => void",
+      "description": "Mod+Enter (Ctrl+Enter, Cmd+Enter on macOS) with the text."
+    },
+    {
+      "name": "jsonSchema",
+      "type": "object",
+      "description": "JSON only: the JSON Schema the text is validated against; completion and hovers follow it. Applies to this editor's model only."
+    },
+    {
+      "name": "markers",
+      "type": "CodeMarker[]",
+      "description": "The app's problems: { line, column, endLine?, endColumn?, message, severity? }, 1-based; a hover shows the message, F8 goes to the next."
+    },
+    {
+      "name": "onDiagnosticsChange",
+      "type": "(diagnostics: CodeDiagnostic[]) => void",
+      "description": "The language service's problems ({ line, column, message, severity }) whenever they change: JSON syntax and schema violations."
+    },
+    {
+      "name": "diff",
+      "type": "{ original: string }",
+      "description": "Shows the text against original (side by side, inline when narrow); the original is never editable."
+    },
+    {
+      "name": "readOnly",
+      "type": "boolean",
+      "default": false,
+      "description": "Text can be selected, searched and copied but not changed; sets data-readonly."
+    },
+    {
+      "name": "placeholder",
+      "type": "string",
+      "description": "Shown while the editor is empty."
+    },
+    {
+      "name": "lineNumbers",
+      "type": "boolean",
+      "default": true,
+      "description": "Line numbers in the gutter, in editor.gutter."
+    },
+    {
+      "name": "tabMovesFocus",
+      "type": "boolean",
+      "default": false,
+      "description": "Tab moves focus out instead of indenting; Ctrl+M toggles it at any time."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Accessible name of the text area (\"JSON editor\" by default, after the language)."
+    },
+    {
+      "name": "onEditorReady",
+      "type": "(editor, monaco) => void",
+      "description": "Called once Monaco has mounted, with the (modified) editor and the Monaco API."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own; set the height here (240 px by default)."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root element."
+    }
+  ],
+  "variants": {
+    "variant": [
+      "outline",
+      "ghost"
+    ]
+  },
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The editor's frame in editor.bg; data-slot=\"code-editor\", data-variant, data-language, data-loading, data-readonly, data-focused."
+    },
+    {
+      "name": "fallback",
+      "element": "textarea",
+      "description": "The stand-in until Monaco loads, with the same text, colours and keys; data-slot=\"code-editor-fallback\"."
+    },
+    {
+      "name": "surface",
+      "element": "div",
+      "description": "Where Monaco mounts; data-slot=\"code-editor-surface\"."
+    }
+  ],
+  "states": [
+    {
+      "name": "focused",
+      "variant": "data-focused",
+      "description": "The text area has focus: a ring of ring.width in color.ring around the frame."
+    },
+    {
+      "name": "loading",
+      "variant": "data-loading",
+      "description": "Monaco is loading (aria-busy); the fallback textarea works meanwhile and the pointer shows progress."
+    },
+    {
+      "name": "read-only",
+      "variant": "data-readonly",
+      "props": {
+        "readOnly": true
+      },
+      "description": "Read-only: the outline border lightens to color.border.default."
+    }
+  ],
+  "tokens": [
+    "color.border.control-bottom",
+    "color.border.subtle",
+    "color.ring",
+    "color.ring-inner",
+    "editor.bg",
+    "editor.cursor",
+    "editor.fg",
+    "editor.gutter",
+    "editor.selection",
+    "font.mono",
+    "radius.lg",
+    "ring.inner-width",
+    "ring.width",
+    "size.panel.xs",
+    "space.inset.sm",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight"
+  ],
+  "examples": {
+    "minimal": "CodeEditorMinimal",
+    "realistic": "CodeEditorRealistic"
+  },
+  "accessibility": [
+    "Monaco's text area has the accessible name (aria-label, or aria-labelledby on a visible label); the fallback textarea carries the same name until Monaco has loaded.",
+    "Tab indents; Ctrl+M toggles Tab moving focus (tabMovesFocus starts in that mode) so keyboard users can leave the editor.",
+    "Problems are underlined and announced on hover and with F8; onDiagnosticsChange lets the app also show them as text.",
+    "Focus shows the double ring on the frame: ring.width in color.ring around ring.inner-width in color.ring-inner."
+  ]
+}
