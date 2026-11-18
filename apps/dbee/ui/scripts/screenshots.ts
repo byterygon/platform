@@ -26,6 +26,7 @@ export const SCREENS = [
   { id: "settings", title: "Settings", query: "scene=main&run=0&open=settings" },
   { id: "toast", title: "Access about to expire", query: "scene=toast" },
   { id: "tabs", title: "More tabs than fit (overflow menu)", query: "scene=main&tabs=12" },
+  { id: "shortcuts", title: "Keyboard shortcuts (a Table)", query: "scene=main&run=0&open=shortcuts" },
 ] as const;
 const SCHEMES = ["light", "dark"] as const;
 const DENSITIES = ["comfortable", "compact"] as const;
@@ -87,7 +88,7 @@ async function main(): Promise<void> {
           const file = `${screen.id}-${scheme}-${density}.png`;
           const url = `http://127.0.0.1:${port}/preview.html?${screen.query}&scheme=${scheme}&density=${density}`;
           // Asynchronous: the dev server runs in this process and must answer while the browser loads.
-          const result = await run(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", `--user-data-dir=${join(profile, `${screen.id}-${scheme}-${density}`)}`, "--window-size=1280,800", "--virtual-time-budget=8000", `--screenshot=${join(out, file)}`, url]);
+          const result = await run(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", `--user-data-dir=${join(profile, `${screen.id}-${scheme}-${density}`)}`, "--window-size=1280,800", "--virtual-time-budget=12000", `--screenshot=${join(out, file)}`, url]);
           if (result.code !== 0 || !existsSync(join(out, file))) throw new Error(`screenshots: ${file} failed (${result.code}): ${result.stderr.split("\n").filter((l) => /error/i.test(l) && !/CVDisplayLink|GPU|gl_/.test(l)).slice(-4).join(" | ")}`);
           shots.push({ screen: screen.id, scheme, density, file });
           console.log(`screenshots: ${file}`);

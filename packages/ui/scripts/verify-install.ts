@@ -416,7 +416,7 @@ function Data() {
           <TableRow><TableCell>note</TableCell><TableCell><TableNull /></TableCell></TableRow>
         </TableBody>
       </Table>
-      <Table aria-label="Result" variant="bordered">
+      <Table aria-label="Result" variant="bordered" appearance="surface">
         <TableHeader><TableRow><TableHead align="end">id</TableHead></TableRow></TableHeader>
         <TableVirtualBody count={100000} renderRow={(i) => <TableRow key={i}><TableCell align="end">{i}</TableCell></TableRow>} />
       </Table>
@@ -696,9 +696,9 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["bg-danger-subtle", "background-color", "color.status.danger.bg", "Byterygon Alert danger"],
   ["[&_[data-slot=progress-indicator]]:bg-success", "background-color", "color.status.success.solid", "Byterygon Progress success"],
   ["size-control-lg", "width", "size.control.lg", "Byterygon Avatar lg (density)"],
-  ["h-grid-row", "height", "grid.row-height", "Byterygon Table row (density)"],
-  ["px-grid-cell-x", "padding-inline", "grid.cell-padding-x", "Byterygon Table cell padding (density)"],
-  ["bg-grid-header", "background-color", "grid.header-bg", "Byterygon Table header"],
+  ["[&_td]:h-table-row", "height", "table.row-height-medium", "Byterygon Table medium row (density)"],
+  ["px-table-cell-x", "padding-inline", "table.cell-padding-x", "Byterygon Table cell padding (density)"],
+  ["[&_th]:bg-grid-header", "background-color", "grid.header-bg", "Byterygon Table surface header"],
   ["text-grid-null", "color", "grid.null-fg", "Byterygon TableNull"],
   ["text-type-integer", "color", "data.type.integer", "Byterygon TypeBadge integer"],
   ["bg-editor", "background-color", "editor.bg", "Byterygon CodeBlock and JsonViewer"],

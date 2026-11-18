@@ -47,7 +47,7 @@ export const roleNames = {
     "stack-xs", "stack-sm", "stack-md", "stack-lg", "stack-xl",
     "inset-xs", "inset-sm", "inset-md", "inset-lg", "inset-xl",
     "gap-xs", "gap-sm", "gap-md", "gap-lg", "gap-xl",
-    "grid-row", "grid-cell-x",
+    "grid-row", "grid-cell-x", "table-row", "table-row-sm", "table-row-xs", "table-cell-x",
   ],
   /** `shadow-<role>`: elevation, and the focus underline of a field. */
   shadow: ["raised", "overlay", "modal", "focus-underline", "layer", "flyout", "dialog"],

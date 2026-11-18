@@ -113,7 +113,7 @@ describe("Table", () => {
 
     // Scroll to the middle: the window moves, the top spacer grows, rows keep their absolute index.
     const scroller = ref.current!;
-    const rowHeight = tokenPx(scroller, "--by-grid-row-height", 28);
+    const rowHeight = tokenPx(scroller, "--by-table-row-height-medium", 44);
     Object.defineProperty(scroller, "clientHeight", { configurable: true, value: 400 });
     scroller.scrollTop = rowHeight * 50_000;
     await act(async () => {
@@ -132,5 +132,89 @@ describe("Table", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<table><TableVirtualBody count={1} renderRow={() => <tr />} /></table>)).toThrow(/inside a Table/);
     vi.restoreAllMocks();
+  });
+});
+
+describe("Table as Fluent 2's (TSK-90)", () => {
+  const shell = ["rounded-lg", "border", "bg-layer", "shadow-layer"];
+
+  test("no shell by default: no border, fill or shadow, so it sits on its layer", () => {
+    const { container } = render(<Small />);
+    const root = container.querySelector<HTMLElement>("[data-slot=table]")!;
+    expect(root.dataset["appearance"]).toBe("transparent");
+    for (const name of shell) expect(root.classList.contains(name)).toBe(false);
+  });
+
+  test("appearance surface brings back the earlier card and its filled header", () => {
+    const { container } = render(
+      <Table aria-label="Columns" appearance="surface">
+        <TableBody>
+          <TableRow>
+            <TableCell>id</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    const root = container.querySelector<HTMLElement>("[data-slot=table]")!;
+    expect(root.dataset["appearance"]).toBe("surface");
+    for (const name of shell) expect(root.classList.contains(name)).toBe(true);
+    expect(root.className).toContain("[&_th]:bg-grid-header");
+  });
+
+  test("size sets Fluent's row heights on header and body cells; medium by default", () => {
+    const heights = (size?: "medium" | "small" | "extra-small") => {
+      const { container, unmount } = render(
+        <Table aria-label="t" size={size}>
+          <TableBody>
+            <TableRow>
+              <TableCell>a</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>,
+      );
+      const root = container.querySelector<HTMLElement>("[data-slot=table]")!;
+      const result = [root.dataset["size"], root.className.match(/\[&_td\]:h-table-row(-sm|-xs)?/)?.[0]];
+      unmount();
+      return result;
+    };
+    expect(heights()).toEqual(["medium", "[&_td]:h-table-row"]);
+    expect(heights("small")).toEqual(["small", "[&_td]:h-table-row-sm"]);
+    expect(heights("extra-small")).toEqual(["extra-small", "[&_td]:h-table-row-xs"]);
+  });
+
+  test("the header is regular weight on the default text colour, with a divider; rows hover, press and select", () => {
+    const { container } = render(<Small />);
+    const head = container.querySelector<HTMLElement>("th")!;
+    expect(head.classList.contains("text-body-1")).toBe(true);
+    expect(head.classList.contains("text-fg")).toBe(true);
+    expect(head.classList.contains("border-border")).toBe(true);
+    const row = container.querySelector<HTMLElement>("tbody tr")!;
+    for (const name of ["hover:bg-hover", "active:bg-pressed", "data-selected:bg-selected"]) expect(row.classList.contains(name)).toBe(true);
+    expect(container.querySelector("thead")!.className).toContain("[&>tr]:hover:bg-transparent");
+  });
+
+  test("the sticky header takes its fill only while the table is scrolled", async () => {
+    const ref = createRef<HTMLDivElement>();
+    render(
+      <Table aria-label="t" ref={ref}>
+        <TableBody>
+          <TableRow>
+            <TableCell>a</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    const root = ref.current!;
+    expect(root.hasAttribute("data-scrolled")).toBe(false);
+    root.scrollTop = 40;
+    await act(async () => {
+      root.dispatchEvent(new Event("scroll"));
+    });
+    expect(root.hasAttribute("data-scrolled")).toBe(true);
+    root.scrollTop = 0;
+    await act(async () => {
+      root.dispatchEvent(new Event("scroll"));
+    });
+    expect(root.hasAttribute("data-scrolled")).toBe(false);
   });
 });

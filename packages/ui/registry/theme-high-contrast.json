@@ -293,6 +293,10 @@
       "color-grid-null": "var(--by-grid-null-fg)",
       "spacing-grid-row": "var(--by-grid-row-height)",
       "spacing-grid-cell-x": "var(--by-grid-cell-padding-x)",
+      "spacing-table-row": "var(--by-table-row-height-medium)",
+      "spacing-table-row-sm": "var(--by-table-row-height-small)",
+      "spacing-table-row-xs": "var(--by-table-row-height-extra-small)",
+      "spacing-table-cell-x": "var(--by-table-cell-padding-x)",
       "color-chart-1": "var(--chart-1)",
       "color-chart-2": "var(--chart-2)",
       "color-chart-3": "var(--chart-3)",
@@ -1553,7 +1557,11 @@
       "--by-space-gap-lg": "var(--by-space-4)",
       "--by-space-gap-xl": "var(--by-space-6)",
       "--by-grid-row-height": "var(--by-size-control-md)",
-      "--by-grid-cell-padding-x": "var(--by-space-control-x)"
+      "--by-grid-cell-padding-x": "var(--by-space-control-x)",
+      "--by-table-row-height-medium": "44px",
+      "--by-table-row-height-small": "34px",
+      "--by-table-row-height-extra-small": "24px",
+      "--by-table-cell-padding-x": "var(--by-space-inset-xs)"
     },
     "[data-density=\"compact\"]": {
       "--by-size-scrollbar": "8px",
@@ -1583,7 +1591,11 @@
       "--by-space-gap-lg": "var(--by-space-3)",
       "--by-space-gap-xl": "var(--by-space-4)",
       "--by-grid-row-height": "var(--by-size-control-sm)",
-      "--by-grid-cell-padding-x": "var(--by-space-control-x)"
+      "--by-grid-cell-padding-x": "var(--by-space-control-x)",
+      "--by-table-row-height-medium": "36px",
+      "--by-table-row-height-small": "28px",
+      "--by-table-row-height-extra-small": "20px",
+      "--by-table-cell-padding-x": "var(--by-space-inset-xs)"
     },
     ":root, [data-theme=\"light\"], .light, [data-theme=\"dark\"], .dark": {
       "--background": "var(--by-color-bg-canvas)",

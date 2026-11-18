@@ -17,19 +17,22 @@ import {
 } from "react";
 import { Icon } from "@/components/icon/icon";
 import { cn } from "@/lib/cn";
-import { focusRing } from "@/lib/control";
+import { focusRing, focusRingInset } from "@/lib/control";
 import { ArrowSort, ArrowSortDown, ArrowSortUp } from "@/lib/icons";
 import { tokenPx } from "@/lib/theme-scope";
 
-// A plain, semantic data table (<table>, <thead>, <th scope="col">…) styled with the grid.* roles
-// it shares with DBee's DataGrid (TSK-39), so a schema's column list and a query result look
-// alike: grid.row-height rows (density-aware), grid.cell-padding-x, a sticky grid.header-bg
-// header, grid.row-hover, grid.selection-bg for selected rows, NULL in grid.null-fg (TableNull).
-// It is presentational: sorting is the app's (TableHead `sort` + `onSort`), and so are selection
+// A plain, semantic data table (<table>, <thead>, <th scope="col">…) as Fluent 2's Table (TSK-90):
+// no shell of its own, so it sits on the layer or card around it; rows of table.row-height-* by
+// `size` (medium 44, small 34, extra-small 24 px; compact density a step lower), cells padded by
+// table.cell-padding-x, a header in the regular body weight, a color.border.default divider under
+// every row, the interactive washes for hover, press and selection, and the double ring inside a
+// focused row. The header sticks while the table scrolls and takes a surface fill only then.
+// `appearance="surface"` brings back the earlier card (border, layer, shadow, a filled header).
+// NULL in grid.null-fg (TableNull), as DBee's DataGrid shows it. It is presentational: sorting is the app's (TableHead `sort` + `onSort`), and so are selection
 // and data. Cells keep one line and truncate (`wrap` lets a cell wrap). For more than ~1,000 rows
 // use TableVirtualBody, which renders only the rows in view between two spacer rows, keeps the
 // semantic table, and sets aria-rowcount and aria-rowindex. Spacers are real heights, and browsers
-// cap an element near 33.5 million px: about 900,000 rows at 36 px (1.5 million at 22 px). The
+// cap an element near 33.5 million px: about 760,000 rows at 44 px (1.4 million at 24 px). The
 // Arrow-backed, cell-selectable, resizable DataGrid is a separate package; this is not it.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
@@ -39,42 +42,70 @@ export const tableVariants = {
     striped: "[&_tbody>tr[data-odd]:not([data-selected])]:bg-grid-row-alt",
     bordered: "[&_td:not(:last-child)]:border-e [&_th:not(:last-child)]:border-e",
   },
+  /** Fluent's Table has no shell (`transparent`, default); `surface` is the earlier card with a filled header. */
+  appearance: {
+    transparent: "",
+    surface: "rounded-lg border border-border-subtle bg-layer shadow-layer [&_th]:bg-grid-header [&_th]:text-body-1-strong [&_th]:text-fg-muted [&_tfoot_td]:bg-grid-header",
+  },
+  /**
+   * Fluent's body rows: medium 44, small 34, extra-small 24 px (12 px text, no dividers);
+   * compact density a step lower. The header row is size.control.md (32 px) in every size, as Fluent's.
+   */
+  size: {
+    medium: "[&_td]:h-table-row",
+    small: "[&_td]:h-table-row-sm",
+    "extra-small": "[&_td]:h-table-row-xs [&_td]:border-b-0 [&_th]:border-b-0 [&_td]:text-caption-1 [&_th]:text-caption-1",
+  },
 } as const;
 
-const base = [
-  "relative w-full min-w-0 overflow-auto overscroll-contain rounded-lg border border-border-subtle bg-layer font-sans shadow-layer",
-  focusRing,
-];
+export type TableSize = keyof typeof tableVariants.size;
+
+/** The CSS variable of each size's row height, which TableVirtualBody reads. */
+const ROW_HEIGHT_VAR: Record<TableSize, `--by-${string}`> = {
+  medium: "--by-table-row-height-medium",
+  small: "--by-table-row-height-small",
+  "extra-small": "--by-table-row-height-extra-small",
+};
+
+const base = ["relative w-full min-w-0 overflow-auto overscroll-contain font-sans", focusRing];
 
 const classes = {
   table: "w-full caption-bottom border-separate border-spacing-[var(--by-border-width-0)] text-body-1 text-fg",
-  header: "",
+  // A header row never takes the body rows' hover and press washes.
+  header: "[&>tr]:hover:bg-transparent [&>tr]:active:bg-transparent",
   body: "",
-  footer: "[&_td]:border-t [&_td]:border-b-0 [&_td]:bg-grid-header [&_td]:text-body-1-strong",
-  row: "hover:bg-grid-row-hover data-selected:bg-grid-selection data-selected:hover:bg-grid-selection",
+  footer: "[&_td]:border-t [&_td]:border-b-0 [&_td]:text-body-1-strong",
+  row: [
+    "hover:bg-hover active:bg-pressed data-selected:bg-selected data-selected:hover:bg-selected-hover",
+    focusRingInset,
+  ],
   head: [
-    "sticky top-0 z-[var(--by-z-sticky)] h-grid-row whitespace-nowrap border-b border-grid-border bg-grid-header px-grid-cell-x text-start align-middle text-body-1-strong text-fg-muted",
+    "sticky top-0 z-[var(--by-z-sticky)] h-control-md whitespace-nowrap border-b border-border px-table-cell-x text-start align-middle text-body-1 text-fg",
+    // Rows scroll under the sticky header: it takes a fill only while the table is scrolled.
+    "in-data-scrolled:bg-surface",
     "data-[align=center]:text-center data-[align=end]:text-end",
   ],
   sortButton: [
-    "-mx-inline-xs inline-flex max-w-full cursor-default items-center gap-inline-xs rounded-md px-inline-xs text-body-1-strong text-fg-muted hover:text-fg",
+    "-mx-inline-xs inline-flex max-w-full cursor-default items-center gap-inline-xs rounded-md px-inline-xs text-fg hover:bg-hover active:bg-pressed",
     "in-data-[align=end]:flex-row-reverse",
-    focusRing,
+    focusRingInset,
     "[&_svg]:size-icon-xs [&_svg]:shrink-0",
   ],
   sortIcon: "text-fg-subtle in-[[aria-sort]]:text-fg",
   cell: [
-    "h-grid-row max-w-panel-sm truncate whitespace-nowrap border-b border-grid-border px-grid-cell-x align-middle",
+    "max-w-panel-sm truncate whitespace-nowrap border-b border-border px-table-cell-x align-middle",
     "data-[align=center]:text-center data-[align=end]:text-end data-[align=end]:tabular-nums",
     "data-wrap:whitespace-normal data-wrap:wrap-break-word",
   ],
-  caption: "px-grid-cell-x py-inset-xs text-start text-caption-1 text-fg-muted",
+  caption: "px-table-cell-x py-inset-xs text-start text-caption-1 text-fg-muted",
   null: "italic text-grid-null",
 } as const;
 
 interface TableContextValue {
   container: RefObject<HTMLDivElement | null>;
   setRowCount: (count: number | undefined) => void;
+  /** The CSS variable holding the row height of the table's size. */
+  rowHeightVar: `--by-${string}`;
 }
 
 const TableContext = createContext<TableContextValue | null>(null);
@@ -82,6 +113,10 @@ const TableContext = createContext<TableContextValue | null>(null);
 export interface TableProps extends Omit<ComponentProps<"table">, "className" | "ref"> {
   /** plain, striped (alternate rows in grid.row-bg-alt) or bordered (vertical rules between columns). */
   variant?: keyof typeof tableVariants.variant;
+  /** `transparent` (default, Fluent 2's Table: no border, fill or shadow; it sits on its layer) or `surface` (the earlier card). */
+  appearance?: keyof typeof tableVariants.appearance | undefined;
+  /** Row height, as Fluent's: `medium` (default, 44 px), `small` (34 px) or `extra-small` (24 px, 12 px text). */
+  size?: TableSize | undefined;
   /** Extra classes on the scroll container (give it a height to scroll: h-panel-md), merged after the component's own. */
   className?: string;
   /** Extra classes on the `<table>`. */
@@ -94,7 +129,7 @@ export interface TableProps extends Omit<ComponentProps<"table">, "className" | 
  * The table in a scroll container. A label (aria-label or aria-labelledby) names the table and
  * makes the container a focusable region, so keyboard users can scroll a tall or wide table.
  */
-export function Table({ variant = "plain", className, tableClassName, children, ref, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy, ...props }: TableProps) {
+export function Table({ variant = "plain", appearance = "transparent", size = "medium", className, tableClassName, children, ref, "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy, ...props }: TableProps) {
   const container = useRef<HTMLDivElement | null>(null);
   const [rowCount, setRowCount] = useState<number | undefined>(undefined);
   const labelled = ariaLabel !== undefined || ariaLabelledBy !== undefined;
@@ -106,18 +141,31 @@ export function Table({ variant = "plain", className, tableClassName, children, 
     },
     [ref],
   );
-  const context = useMemo(() => ({ container, setRowCount }), []);
+  const rowHeightVar = ROW_HEIGHT_VAR[size];
+  const context = useMemo(() => ({ container, setRowCount, rowHeightVar }), [rowHeightVar]);
+  // data-scrolled while the table is scrolled down: the sticky header takes its fill. Written on
+  // the element directly, so scrolling renders nothing.
+  useEffect(() => {
+    const element = container.current;
+    if (!element) return undefined;
+    const update = () => element.toggleAttribute("data-scrolled", element.scrollTop > 0);
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    return () => element.removeEventListener("scroll", update);
+  }, []);
   return (
     <TableContext value={context}>
       <div
         ref={setRef}
         data-slot="table"
         data-variant={variant}
+        data-appearance={appearance}
+        data-size={size}
         role={labelled ? "region" : undefined}
         tabIndex={labelled ? 0 : undefined}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
-        className={cn(base, tableVariants.variant[variant], className)}
+        className={cn(base, tableVariants.variant[variant], tableVariants.appearance[appearance], tableVariants.size[size], className)}
       >
         <table data-slot="table-element" aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} aria-rowcount={rowCount} className={cn(classes.table, tableClassName)} {...props}>
           {children}
@@ -160,12 +208,12 @@ export function TableFooter({ className, ...props }: SectionProps) {
 }
 
 export interface TableRowProps extends Omit<ComponentProps<"tr">, "className"> {
-  /** Shows the row as selected (grid.selection-bg) and sets aria-selected. */
+  /** Shows the row as selected (color.interactive.selected, Fluent's neutral selection) and sets aria-selected. */
   selected?: boolean;
   className?: string;
 }
 
-/** A `<tr>`. */
+/** A `<tr>`: hover and press washes in the body; give it tabIndex to make it focusable (the ring is drawn inside). */
 export function TableRow({ selected, className, ...props }: TableRowProps) {
   return <tr data-slot="table-row" data-selected={selected ? "" : undefined} aria-selected={selected} className={cn(classes.row, className)} {...props} />;
 }
@@ -248,15 +296,15 @@ export interface TableVirtualBodyProps {
 
 /**
  * A `<tbody>` that renders only the rows in view (plus `overscan`) inside a Table with a fixed
- * height. Rows are grid.row-height tall, one line each; spacer rows keep the scroll height, so
+ * height. Rows are the table's row height (table.row-height-*), one line each; spacer rows keep the scroll height, so
  * the header still sticks and the table stays a table for assistive technology.
  */
 export function TableVirtualBody({ count, renderRow, overscan = 10, headerRows = 1, className, ref }: TableVirtualBodyProps) {
   const context = useContext(TableContext);
   if (!context) throw new Error("TableVirtualBody must be inside a Table");
-  const { container, setRowCount } = context;
+  const { container, setRowCount, rowHeightVar } = context;
   const body = useRef<HTMLTableSectionElement | null>(null);
-  const [view, setView] = useState({ scrollTop: 0, viewport: 0, rowHeight: 28, bodyTop: 0 });
+  const [view, setView] = useState({ scrollTop: 0, viewport: 0, rowHeight: 44, bodyTop: 0 });
 
   useEffect(() => {
     setRowCount(count + headerRows);
@@ -273,7 +321,7 @@ export function TableVirtualBody({ count, renderRow, overscan = 10, headerRows =
         const next = {
           scrollTop: element.scrollTop,
           viewport: element.clientHeight,
-          rowHeight: tokenPx(element, "--by-grid-row-height", previous.rowHeight),
+          rowHeight: tokenPx(element, rowHeightVar, previous.rowHeight),
           bodyTop: body.current?.offsetTop ?? 0,
         };
         return next.scrollTop === previous.scrollTop && next.viewport === previous.viewport && next.rowHeight === previous.rowHeight && next.bodyTop === previous.bodyTop ? previous : next;
@@ -291,7 +339,7 @@ export function TableVirtualBody({ count, renderRow, overscan = 10, headerRows =
       observer?.disconnect();
       if (frame && typeof cancelAnimationFrame === "function") cancelAnimationFrame(frame);
     };
-  }, [container]);
+  }, [container, rowHeightVar]);
 
   const { scrollTop, rowHeight, bodyTop } = view;
   // jsdom and a container not laid out yet report 0: render a screenful anyway.

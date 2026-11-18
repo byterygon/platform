@@ -1290,7 +1290,7 @@
       "name": "table",
       "type": "registry:ui",
       "title": "Table",
-      "description": "A plain, semantic data table styled with the grid.* roles DBee's DataGrid uses: sticky header, density-aware rows, sortable headers, NULL marker, and a virtualized body for large row counts.",
+      "description": "Fluent 2's Table on semantic table elements: no shell of its own (it sits on its layer), rows of 44, 34 or 24 px by size under a 32 px regular-weight header, a divider under each row, hover, press and selection washes, a focus ring inside a focused row; a sticky header that fills only while scrolled, sortable headers, NULL marker, a virtualized body for large row counts, and an opt-in surface appearance (the earlier card).",
       "dependencies": [],
       "registryDependencies": [
         "@byterygon/cn",

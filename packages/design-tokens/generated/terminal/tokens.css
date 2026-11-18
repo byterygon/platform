@@ -1226,6 +1226,10 @@
   --by-space-gap-xl: var(--by-space-4);
   --by-grid-row-height: var(--by-size-control-sm);
   --by-grid-cell-padding-x: var(--by-space-control-x);
+  --by-table-row-height-medium: 36px;
+  --by-table-row-height-small: 28px;
+  --by-table-row-height-extra-small: 20px;
+  --by-table-cell-padding-x: var(--by-space-inset-xs);
 }
 
 /* Roles, density: comfortable. */
@@ -1258,4 +1262,8 @@
   --by-space-gap-xl: var(--by-space-6);
   --by-grid-row-height: var(--by-size-control-md);
   --by-grid-cell-padding-x: var(--by-space-control-x);
+  --by-table-row-height-medium: 44px;
+  --by-table-row-height-small: 34px;
+  --by-table-row-height-extra-small: 24px;
+  --by-table-cell-padding-x: var(--by-space-inset-xs);
 }
