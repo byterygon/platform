@@ -352,11 +352,19 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   renders optional inner elements from props (Progress's label and value) exports them as parts,
   or their classes go unchecked.
 - Table is the plain semantic table (TSK-45 decision: a presentational primitive; the Arrow
-  DataGrid is TSK-39's own package). It shares the `grid.*` roles with the DataGrid so they look
-  alike. `TableVirtualBody` renders the rows in view between two `aria-hidden` spacer rows inside
+  DataGrid is TSK-39's own package). Since TSK-90 it is Fluent 2's Table: no shell of its own
+  (it sits on the layer, card or dialog around it; `appearance="surface"` brings back the earlier
+  card with a filled `grid.header-bg` header), body rows of `table.row-height-*` by `size` (medium
+  44, small 34, extra-small 24 px with 12 px text and no dividers; compact a step lower) under a
+  32 px (`size.control.md`) header in the regular body weight, `table.cell-padding-x`, a
+  `color.border.default` divider, the `color.interactive.*` washes for hover, press and selection,
+  `focusRingInset` on a focusable row, and a sticky header that takes `bg-surface` only while the
+  table is scrolled (`data-scrolled` on the container). Striped rows and NULL keep the `grid.*`
+  roles the DataGrid uses. `TableVirtualBody` renders the rows in view between two `aria-hidden` spacer rows inside
   a Table with a height, sets `aria-rowcount` on the table and `aria-rowindex` on rows, and
-  needs one-line rows (cells truncate). Browsers cap an element near 33.5 million px, so it
-  serves up to ~900k rows (comfortable) or ~1.5M (compact); beyond that, the DataGrid.
+  needs one-line rows (cells truncate); it reads the row height of the table's size. Browsers cap
+  an element near 33.5 million px, so it serves up to ~760k rows (medium) or ~1.4M (extra-small);
+  beyond that, the DataGrid.
 - Anything that can show more than ~1,000 rows or items is virtualized (Tree, Table's virtual
   body, CodeBlock and JsonViewer); state the limit in the manifest.
 - CodeBlock highlights without an editor: the CodeMirror grammars (`PostgreSQL.language.parser`,
@@ -447,7 +455,8 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
 
 ## Fluent 2 surfaces (TSK-55)
 
-Card, Table, Sidebar, Tabs, StatusBar and Toolbar are translucent layers over the backdrop:
+Card, Sidebar, Tabs, StatusBar and Toolbar are translucent layers over the backdrop (Table too
+with `appearance="surface"`; by default it has no shell since TSK-90):
 `bg-layer`, a `border-border-subtle` hairline, radius.lg (8 px), and `shadow-layer` on the free-standing
 ones (`layerSurface` in `@/lib/control`). Card takes `appearance` = `filled` (default) |
 `filled-alternative` | `outline` | `subtle` (old `variant`: outline, raised = filled, inset =

@@ -18345,6 +18345,78 @@
               "name": "space/control/x"
             }
           }
+        },
+        {
+          "name": "table/row-height-medium",
+          "type": "FLOAT",
+          "description": "Height of a header and body row of a Table of size medium: Fluent's medium (default) table row: 44 px, 36 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-table-row-height-medium)"
+          },
+          "valuesByMode": {
+            "Comfortable": 44,
+            "Compact": 36
+          }
+        },
+        {
+          "name": "table/row-height-small",
+          "type": "FLOAT",
+          "description": "Height of a header and body row of a Table of size small: Fluent's small table row: 34 px, 28 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-table-row-height-small)"
+          },
+          "valuesByMode": {
+            "Comfortable": 34,
+            "Compact": 28
+          }
+        },
+        {
+          "name": "table/row-height-extra-small",
+          "type": "FLOAT",
+          "description": "Height of a header and body row of a Table of size extra-small: Fluent's extra-small table row (12 px text): 24 px, 20 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-table-row-height-extra-small)"
+          },
+          "valuesByMode": {
+            "Comfortable": 24,
+            "Compact": 20
+          }
+        },
+        {
+          "name": "table/cell-padding-x",
+          "type": "FLOAT",
+          "description": "Horizontal padding inside a Table cell: Fluent's spacingHorizontalS (8 px), 4 px compact. Not for the result grid: use grid.cell-padding-x.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-table-cell-padding-x)"
+          },
+          "valuesByMode": {
+            "Comfortable": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Density",
+              "name": "space/inset/xs"
+            },
+            "Compact": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Density",
+              "name": "space/inset/xs"
+            }
+          }
         }
       ]
     }

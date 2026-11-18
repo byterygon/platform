@@ -8,7 +8,7 @@
  * Their pairs are listed at the bottom and checked in both modes of every preset.
  */
 import type { ContrastPair } from "../model.js";
-import { type RoleDef, byDensity, pairs, ramp, ref } from "./authoring.js";
+import { type RoleDef, byDensity, pairs, px, ramp, ref } from "./authoring.js";
 
 const color = (path: string, value: RoleDef["value"], use: string, avoid: string, tailwind?: string): RoleDef => ({
   path,
@@ -138,6 +138,34 @@ const grid: RoleDef[] = [
     tailwind: "--spacing-grid-cell-x",
     use: "Horizontal padding inside a grid cell: it follows the density mode.",
     avoid: "Not for padding of cards or panels: use space.inset.*.",
+  },
+  // Byterygon UI's Table as Fluent 2's (TSK-90): rows of 44, 34 and 24 px (medium, small,
+  // extra-small) and 8 px cell padding; compact density takes them down a step.
+  ...(
+    [
+      ["medium", 44, 36, "--spacing-table-row", "Fluent's medium (default) table row: 44 px, 36 px compact."],
+      ["small", 34, 28, "--spacing-table-row-sm", "Fluent's small table row: 34 px, 28 px compact."],
+      ["extra-small", 24, 20, "--spacing-table-row-xs", "Fluent's extra-small table row (12 px text): 24 px, 20 px compact."],
+    ] as const
+  ).map(
+    ([size, comfortable, compact, tailwind, use]): RoleDef => ({
+      path: `table.row-height-${size}`,
+      type: "dimension",
+      tier: "component",
+      value: byDensity(px(comfortable), px(compact)),
+      tailwind,
+      use: `Height of a header and body row of a Table of size ${size}: ${use}`,
+      avoid: "Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+    }),
+  ),
+  {
+    path: "table.cell-padding-x",
+    type: "dimension",
+    tier: "component",
+    value: ref("space.inset.xs"),
+    tailwind: "--spacing-table-cell-x",
+    use: "Horizontal padding inside a Table cell: Fluent's spacingHorizontalS (8 px), 4 px compact.",
+    avoid: "Not for the result grid: use grid.cell-padding-x.",
   },
 ];
 

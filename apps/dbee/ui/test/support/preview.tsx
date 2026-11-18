@@ -117,4 +117,5 @@ if (scene !== "empty" && params.get("run") !== "0") after(1200, () => click("[ro
 if (scene === "toast") after(1800, () => fake.emit({ kind: "GrantExpiring", connectionId: "conn-1", expiresAt: Date.now() + 13 * MINUTE }));
 if (open === "settings") after(1600, () => click("button[aria-label='Settings']"));
 if (open === "sheet") after(1600, () => click("button[aria-label='Add connection']"));
+if (open === "shortcuts") after(1600, () => click("button[aria-label='Keyboard shortcuts']"));
 after(2600, () => (document.documentElement.dataset["previewReady"] = "true"));

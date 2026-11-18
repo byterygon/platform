@@ -313,6 +313,10 @@
 
   --spacing-grid-row: var(--by-grid-row-height);
   --spacing-grid-cell-x: var(--by-grid-cell-padding-x);
+  --spacing-table-row: var(--by-table-row-height-medium);
+  --spacing-table-row-sm: var(--by-table-row-height-small);
+  --spacing-table-row-xs: var(--by-table-row-height-extra-small);
+  --spacing-table-cell-x: var(--by-table-cell-padding-x);
 
   --color-chart-1: var(--by-chart-cat-1);
   --color-chart-2: var(--by-chart-cat-2);

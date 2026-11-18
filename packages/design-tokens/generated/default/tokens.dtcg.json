@@ -20287,6 +20287,94 @@
       }
     }
   },
+  "table": {
+    "row-height-medium": {
+      "$type": "dimension",
+      "$value": {
+        "value": 44,
+        "unit": "px"
+      },
+      "$description": "Height of a header and body row of a Table of size medium: Fluent's medium (default) table row: 44 px, 36 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "component",
+          "axis": "density",
+          "modes": {
+            "comfortable": {
+              "value": 44,
+              "unit": "px"
+            },
+            "compact": {
+              "value": 36,
+              "unit": "px"
+            }
+          },
+          "tailwind": "--spacing-table-row"
+        }
+      }
+    },
+    "row-height-small": {
+      "$type": "dimension",
+      "$value": {
+        "value": 34,
+        "unit": "px"
+      },
+      "$description": "Height of a header and body row of a Table of size small: Fluent's small table row: 34 px, 28 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "component",
+          "axis": "density",
+          "modes": {
+            "comfortable": {
+              "value": 34,
+              "unit": "px"
+            },
+            "compact": {
+              "value": 28,
+              "unit": "px"
+            }
+          },
+          "tailwind": "--spacing-table-row-sm"
+        }
+      }
+    },
+    "row-height-extra-small": {
+      "$type": "dimension",
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      },
+      "$description": "Height of a header and body row of a Table of size extra-small: Fluent's extra-small table row (12 px text): 24 px, 20 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "component",
+          "axis": "density",
+          "modes": {
+            "comfortable": {
+              "value": 24,
+              "unit": "px"
+            },
+            "compact": {
+              "value": 20,
+              "unit": "px"
+            }
+          },
+          "tailwind": "--spacing-table-row-xs"
+        }
+      }
+    },
+    "cell-padding-x": {
+      "$type": "dimension",
+      "$value": "{space.inset.xs}",
+      "$description": "Horizontal padding inside a Table cell: Fluent's spacingHorizontalS (8 px), 4 px compact. Not for the result grid: use grid.cell-padding-x.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "component",
+          "tailwind": "--spacing-table-cell-x"
+        }
+      }
+    }
+  },
   "chart": {
     "cat": {
       "1": {
