@@ -51,6 +51,8 @@ export interface DataGridHandle {
   readonly progress: ResultProgress;
   /** Cancels the stream; loaded rows stay. */
   cancel(): void;
+  /** Drops every loaded row and keeps the stream (a live view's Clear). */
+  clear(): void;
   focus(): void;
 }
 
@@ -65,6 +67,12 @@ export interface DataGridProps {
   readonly memoryBudget?: number;
   /** Keep the newest rows in view while streaming, when the user is at the bottom. */
   readonly follow?: boolean;
+  /** A live view keeps at most this many rows: the oldest batches are dropped whole. */
+  readonly maxRows?: number;
+  /** ... and at most this many buffer bytes. */
+  readonly maxBytes?: number;
+  /** Stops pulling the stream while true (Pause): its credits run out and the server waits. */
+  readonly hold?: boolean;
   /** The grid's accessible name (or `aria-labelledby`). */
   readonly "aria-label"?: string;
   readonly "aria-labelledby"?: string;
@@ -146,6 +154,12 @@ export function DataGrid(props: DataGridProps) {
   useEffect(() => {
     source.budget = memoryBudget;
   }, [source, memoryBudget]);
+  useEffect(() => {
+    source.window = { maxRows: props.maxRows, maxBytes: props.maxBytes };
+  }, [source, props.maxRows, props.maxBytes]);
+  useEffect(() => {
+    source.hold = props.hold ?? false;
+  }, [source, props.hold]);
 
   // A new result starts without a selection and with its own widths.
   useLayoutEffect(() => {
@@ -243,8 +257,30 @@ export function DataGrid(props: DataGridProps) {
   useEffect(() => {
     let frame = 0;
     let lastState = source.state;
+    let lastDropped = source.dropped;
     const onChange = () => {
       const layer = layerRef.current;
+      const removed = source.dropped - lastDropped;
+      if (removed > 0) {
+        lastDropped = source.dropped;
+        layer?.rowsDropped(removed, propsRef.current.follow ?? false);
+        // The selection moves with its rows; one that left with them is gone.
+        const s = selectionRef.current;
+        if (s !== undefined) {
+          const shift = (p: CellPos) => ({ row: p.row - removed, column: p.column });
+          if (s.kind === "columns" || s.kind === "all") {
+            selectionRef.current = s;
+          } else if (s.active.row - removed < 0 || s.anchor.row - removed < 0) {
+            selectionRef.current = undefined;
+            layer?.setActive(undefined);
+          } else {
+            selectionRef.current = { kind: s.kind, anchor: shift(s.anchor), active: shift(s.active) };
+            layer?.setActive(selectionRef.current.active);
+          }
+          rangeRef.current = rangeNowRef.current();
+          layer?.redecorate();
+        }
+      }
       layer?.rowsAdded(propsRef.current.follow ?? false);
       // Whole columns and "all" grow with the rows.
       const kind = selectionRef.current?.kind;
@@ -335,6 +371,7 @@ export function DataGrid(props: DataGridProps) {
     props.ref,
     () => ({
       copy,
+      clear: () => source.clear(),
       selectionText: (format = "tsv", headers = false) => {
         const range = rangeNow();
         return range === undefined ? "" : serializeRange(index, fields, formats, range, format, headers);

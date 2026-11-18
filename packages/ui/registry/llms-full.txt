@@ -942,6 +942,66 @@ export function CodeBlockRealistic() {
 }
 ```
 
+### CodeEditor
+
+[code-editor.json](code-editor.json): A code editor on Monaco for JSON, YAML, Protobuf and plain text, loaded lazily from the app's own bundle (no CDN, no network), themed from the editor.* and syntax.* tokens of its region, with JSON Schema validation, markers by line and column, Mod+Enter to submit and a diff view.
+
+Usage: Use CodeEditor for structured text the user writes or reviews: a message payload in the Composer (language="json" with the schema's JSON Schema: validation, completion and hovers, onDiagnosticsChange for a status line), a manifest to apply (language="yaml" with diff={{ original }} to review a change), a .proto file. Mod+Enter calls onSubmit with the text. markers take 1-based lines and columns (a codec's or parser's error position). Monaco loads on first mount; until then a textarea with the same text and keys stands in. Schemas are given, never fetched. Use SqlEditor for SQL, CodeInput for a one-line expression, JsonViewer or CodeBlock to show code.
+
+- Wraps: no Base UI part
+- variant: outline, ghost
+- Props: variant ("outline" | "ghost", default "outline"); language ("json" | "yaml" | "protobuf" | "plaintext", default "json"); value (string); defaultValue (string, default ""); onValueChange ((value: string) => void); onSubmit ((value: string) => void); jsonSchema (object); markers (CodeMarker[]); onDiagnosticsChange ((diagnostics: CodeDiagnostic[]) => void); diff ({ original: string }); readOnly (boolean, default false); placeholder (string); lineNumbers (boolean, default true); tabMovesFocus (boolean, default false); aria-label (string); onEditorReady ((editor, monaco) => void); className (string); ref (Ref<HTMLDivElement>)
+- States: focused (data-focused), loading (data-loading), read-only (data-readonly)
+- Tokens: color.border.control-bottom, color.border.subtle, color.ring, color.ring-inner, editor.bg, editor.cursor, editor.fg, editor.gutter, editor.selection, font.mono, radius.lg, ring.inner-width, ring.width, size.panel.xs, space.inset.sm, text.code.leading, text.code.size, text.code.tracking, text.code.weight
+- Accessibility: Monaco's text area has the accessible name (aria-label, or aria-labelledby on a visible label); the fallback textarea carries the same name until Monaco has loaded. Tab indents; Ctrl+M toggles Tab moving focus (tabMovesFocus starts in that mode) so keyboard users can leave the editor. Problems are underlined and announced on hover and with F8; onDiagnosticsChange lets the app also show them as text. Focus shows the double ring on the frame: ring.width in color.ring around ring.inner-width in color.ring-inner.
+
+Examples (CodeEditorMinimal, CodeEditorRealistic):
+
+```tsx
+import { useState } from "react";
+import { CodeEditor, type CodeDiagnostic } from "@/components/ui/code-editor";
+
+/** The smallest useful CodeEditor: a JSON value. */
+export function CodeEditorMinimal() {
+  return <CodeEditor aria-label="Value" defaultValue={'{\n  "id": "o-17",\n  "total": 12.5\n}'} className="h-panel-xs" />;
+}
+
+const orderSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    status: { enum: ["PLACED", "PAID", "SHIPPED"] },
+    total: { type: "number", minimum: 0 },
+  },
+  required: ["id", "status"],
+  additionalProperties: false,
+};
+
+/** A Composer payload: JSON checked against the message's schema, Mod+Enter sends; a YAML diff. */
+export function CodeEditorRealistic() {
+  const [text, setText] = useState('{\n  "id": "o-17",\n  "status": "PAID",\n  "total": 12.5\n}');
+  const [problems, setProblems] = useState<CodeDiagnostic[]>([]);
+  const [sent, setSent] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col gap-stack-sm">
+      <CodeEditor aria-label="Payload" value={text} onValueChange={setText} jsonSchema={orderSchema} onDiagnosticsChange={setProblems} onSubmit={setSent} className="h-panel-xs" />
+      <p className="text-caption-1 text-fg-muted" aria-live="polite">
+        {problems.length ? `${problems.length} problem(s): ${problems[0]!.message}` : sent ? "Sent" : "Ctrl+Enter sends"}
+      </p>
+      <CodeEditor
+        aria-label="Changes to apply"
+        language="yaml"
+        diff={{ original: "replicas: 2\nimage: shop:1.4\n" }}
+        defaultValue={"replicas: 3\nimage: shop:1.5\n"}
+        markers={[{ line: 2, column: 8, endColumn: 16, message: "Image not found in the registry", severity: "warning" }]}
+        readOnly
+        className="h-panel-xs"
+      />
+    </div>
+  );
+}
+```
+
 ### CodeInput
 
 [code-input.json](code-input.json): A small code field on CodeMirror 6: one line (Enter submits) or several, PostgreSQL or JSON highlighting in the syntax.* colours, a read-only pretty viewer for JSON; themed through the token CSS variables and usable inside a Field.
@@ -2247,6 +2307,38 @@ export function GraphViewRealistic() {
 }
 ```
 
+### HexView
+
+[hex-view.json](hex-view.json): Bytes as a hex dump: an offset column, the bytes in hex and as ASCII, virtualized, with keyboard selection and copy as hex or as text.
+
+Usage: Use HexView to show binary payloads exactly: a message's raw key or value, a file's first bytes, a protocol frame. Set the height with className (it scrolls inside). Arrows move the active byte, Shift extends the selection, Ctrl+A selects everything, Ctrl+C copies the selection as hex and Ctrl+Shift+C as text (UTF-8 when it decodes, else Latin-1 with dots); the footer's buttons do the same, and onCopy reports the text. baseOffset numbers a slice of a larger payload. For decoded values use JsonViewer or CodeBlock; for one short value inline, Code.
+
+- Wraps: no Base UI part
+- Props: bytes (Uint8Array | number[], default "empty"); bytesPerRow (number, default 16); baseOffset (number, default 0); onCopy ((text: string, format: "hex" | "text") => void); aria-label (string, default "Bytes"); overscan (number, default 8); className (string); ref (Ref<HTMLDivElement>)
+- States: selected (data-selected), active (data-active), non-printable (data-dot), hover (hover), focus-visible (focus-visible)
+- Tokens: color.accent.subtle-fg, color.border.subtle, color.fg.default, color.fg.disabled, color.fg.muted, color.interactive.active, color.interactive.hover, color.ring, color.ring-inner, editor.bg, editor.fg, editor.gutter, editor.selection, font.mono, font.sans, motion.duration.faster, motion.easing.easy-ease, radius.lg, radius.md, ring.inner-width, ring.width, size.control.sm, size.control.xs, size.icon.md, space.inline.md, space.inline.sm, space.inset.sm, space.inset.xs, syntax.string, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight, text.code-sm.leading, text.code-sm.size, text.code-sm.tracking, text.code-sm.weight
+- Accessibility: The bytes are an ARIA grid (role="grid", aria-readonly, aria-multiselectable) with one tab stop; the active byte is aria-activedescendant and is always rendered, even while scrolled away. Each byte cell is labelled with its offset and value ("1f: 6c"); each row has its offset as rowheader and its ASCII as one cell labelled "text: …". The footer announces the selection (aria-live="polite") and its copy buttons are ordinary buttons. Focus shows the double ring on the grid and a ring on the active byte: ring.width in color.ring.
+
+Examples (HexViewMinimal, HexViewRealistic):
+
+```tsx
+import { HexView } from "@/components/ui/hex-view";
+
+const encoder = new TextEncoder();
+
+/** The smallest useful HexView. */
+export function HexViewMinimal() {
+  return <HexView bytes={encoder.encode("Hello, Mightyconsole")} className="h-panel-xs" aria-label="Payload bytes" />;
+}
+
+/** A Kafka value in the Confluent wire format: magic byte 0, the schema id, then Avro bytes. */
+export function HexViewRealistic() {
+  const body = encoder.encode("\u0008o-17\u0006c-9\u0002\u0004ÒPAID");
+  const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x07, ...body, ...Array.from({ length: 64 }, (_, i) => (i * 37) & 0xff)]);
+  return <HexView bytes={bytes} className="h-panel-xs" aria-label="Raw value of record 41" />;
+}
+```
+
 ### HoverCard
 
 [hover-card.json](hover-card.json): A preview of what a link points to, on Base UI's PreviewCard: shown while the pointer rests on the link or the link has keyboard focus, styled as a Popover, size.panel.sm wide.
@@ -2695,6 +2787,52 @@ export function KbdRealistic() {
         </KbdGroup>
       </li>
     </ul>
+  );
+}
+```
+
+### KeyValueEditor
+
+[key-value-editor.json](key-value-editor.json): Edit a list of key and value pairs: message headers, labels, environment variables; rows added with Enter, removed with a button or Mod+Backspace, values in text or base64.
+
+Usage: Use KeyValueEditor where the user writes pairs whose keys they choose: the Composer's headers (keyLabel="Name", valueEncodings=["text", "base64"], repeated names allowed), resource labels (allowDuplicates={false}). It is controlled: pass value and onChange. Enter in a key moves to its value; Enter in a value adds a row below; Mod+Backspace removes the row; focus follows. keySuggestions feeds a datalist. Duplicate keys (when not allowed), a value without a key and a value that is not base64 are marked invalid with a message; the app decides whether to block sending. Show pairs read-only with DescriptionList, or readOnly here to keep the columns.
+
+- Wraps: no Base UI part
+- Props: value (KeyValueEntry[]); onChange ((value: KeyValueEntry[]) => void); keySuggestions (string[]); allowDuplicates (boolean, default true); valueEncodings (("text" | "base64")[]); keyLabel (string, default "Key"); valueLabel (string, default "Value"); addLabel (string, default "Add"); readOnly (boolean, default false); size ("small" | "medium" | "large", default "medium"); aria-label (string, default "Key and value pairs"); className (string); ref (Ref<HTMLDivElement>)
+- States: invalid (data-invalid)
+- Tokens: color.accent.subtle-fg, color.bg.layer-alt, color.border.control-bottom, color.border.disabled, color.border.subtle, color.fg.default, color.fg.disabled, color.fg.muted, color.fg.subtle, color.interactive.active, color.interactive.hover, color.ring, color.ring-inner, color.status.danger.border, color.status.danger.fg, color.status.danger.solid, font.sans, motion.duration.faster, motion.easing.easy-ease, radius.md, ring.inner-width, ring.width, shadow.focus-underline, size.control.md, size.control.sm, size.icon.lg, size.icon.md, space.control.x, space.inline.sm, space.inset.xs, space.stack.xs, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.caption-1-strong.leading, text.caption-1-strong.size, text.caption-1-strong.tracking, text.caption-1-strong.weight, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight
+- Accessibility: The list is a group (role="group") with an accessible name; every input is labelled with its column and row ("Name 2", "Value 2"), and the column header is aria-hidden. Enter moves from a key to its value and adds a row from a value; Mod+Backspace removes the row (aria-keyshortcuts on the remove button); focus moves to the new row's key or to the previous row. Invalid inputs are aria-invalid and aria-describedby their message. The remove buttons are labelled "Remove row n"; the add button has visible text.
+
+Examples (KeyValueEditorMinimal, KeyValueEditorRealistic):
+
+```tsx
+import { useState } from "react";
+import { KeyValueEditor, type KeyValueEntry } from "@/components/ui/key-value-editor";
+
+/** The smallest useful KeyValueEditor: labels of a resource. */
+export function KeyValueEditorMinimal() {
+  const [labels, setLabels] = useState<KeyValueEntry[]>([{ key: "app", value: "orders" }]);
+  return <KeyValueEditor aria-label="Labels" value={labels} onChange={setLabels} allowDuplicates={false} addLabel="Add label" />;
+}
+
+/** Message headers in the Composer: repeated names allowed, a binary value in base64, suggestions. */
+export function KeyValueEditorRealistic() {
+  const [headers, setHeaders] = useState<KeyValueEntry[]>([
+    { key: "trace-id", value: "4bf92f3577b34da6", encoding: "text" },
+    { key: "tag", value: "eu", encoding: "text" },
+    { key: "tag", value: "priority", encoding: "text" },
+    { key: "signature", value: "3q2+7w==", encoding: "base64" },
+  ]);
+  return (
+    <KeyValueEditor
+      aria-label="Headers"
+      keyLabel="Name"
+      value={headers}
+      onChange={setHeaders}
+      valueEncodings={["text", "base64"]}
+      keySuggestions={["content-type", "trace-id", "tag", "correlation-id"]}
+      addLabel="Add header"
+    />
   );
 }
 ```

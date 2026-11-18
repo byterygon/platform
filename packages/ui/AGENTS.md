@@ -14,7 +14,7 @@ src/components/<name>/<name>.tsx            the component (Base UI part + token 
 src/lib/cn.ts                               class merging that knows the role names
 src/lib/control.ts                          the double focus ring, Fluent's size names and the aliases kept for one release
 src/lib/theme-scope.ts                      a popup in a portal takes its trigger's theme and density
-src/lib/monaco.ts                           Monaco loaded lazily and offline, and its theme from the tokens
+src/lib/monaco.ts                           Monaco loaded lazily and offline, its languages (JSON with schemas, YAML, Protobuf) and its theme from the tokens
                                             (its colour mapping is @byterygon/design-tokens/monaco)
 src/lib/icons.ts                            Fluent UI System Icons as path data (generated from icons/, committed)
 icons/                                      the vendored Fluent icons: fluent/*.svg, manifest.json, LICENSE (MIT)
@@ -387,6 +387,20 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   `monaco-theme.ts` output and the Theme Studio's export; `lib/monaco.ts` imports them, and the
   registry ships that file as the `monaco-theme` lib item (`@/lib/monaco-theme`), a registry
   dependency of `monaco`. A lib item with `source` in `LIBS` is a token-package module shipped as is.
+- CodeEditor (TSK-80) is SqlEditor's sibling for JSON, YAML, Protobuf and plain text, on the same
+  `loadMonaco`, theme, fallback textarea and controlled-value rules. `loadMonacoLanguage` loads a
+  language once in a chunk of its own: YAML and Protobuf are grammars; JSON adds Monaco's JSON
+  language service and its own worker (`json.worker?worker`; `getWorker` routes by label).
+  `setJsonSchema(modelUri, schema)` keeps one schema per model (each CodeEditor has its own
+  `inmemory://` URI) and gives them all to the service with `enableSchemaRequest: false`, so a
+  `$ref` is never fetched. `onDiagnosticsChange` reports the service's markers (not the app's
+  `markers`, which carry the owner `byterygon`); `diff` mounts a diff editor whose original side is
+  never editable. Mod+Enter calls `onSubmit`. The browser check proves the JSON worker validates a
+  schema in Chromium.
+- HexView and KeyValueEditor (TSK-80) are plain components: HexView virtualizes rows as JsonViewer
+  does (rows of `size.control.xs`, the active byte always rendered for `aria-activedescendant`) and
+  lines columns up with spaces in the monospace font (no `ch` widths: arbitrary values must be
+  tokens); KeyValueEditor is Input, Select, IconButton and Button, controlled by `value`/`onChange`.
 - CodeInput is CodeMirror 6, imported statically (small, and a form field must work at once). Its
   `EditorView.theme` and `HighlightStyle` use the token variables directly (`var(--by-editor-fg)`,
   `var(--by-syntax-keyword)`, `var(--by-text-code-size)`), so modes, density and presets apply with

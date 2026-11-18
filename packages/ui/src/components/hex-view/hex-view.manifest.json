@@ -1,0 +1,226 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "hex-view",
+  "title": "HexView",
+  "description": "Bytes as a hex dump: an offset column, the bytes in hex and as ASCII, virtualized, with keyboard selection and copy as hex or as text.",
+  "usage": "Use HexView to show binary payloads exactly: a message's raw key or value, a file's first bytes, a protocol frame. Set the height with className (it scrolls inside). Arrows move the active byte, Shift extends the selection, Ctrl+A selects everything, Ctrl+C copies the selection as hex and Ctrl+Shift+C as text (UTF-8 when it decodes, else Latin-1 with dots); the footer's buttons do the same, and onCopy reports the text. baseOffset numbers a slice of a larger payload. For decoded values use JsonViewer or CodeBlock; for one short value inline, Code.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    {
+      "name": "bytes",
+      "type": "Uint8Array | number[]",
+      "description": "The bytes to show; an array of numbers from 0 to 255 is taken too.",
+      "default": "empty"
+    },
+    {
+      "name": "bytesPerRow",
+      "type": "number",
+      "default": 16,
+      "description": "Bytes per row, grouped by 8."
+    },
+    {
+      "name": "baseOffset",
+      "type": "number",
+      "default": 0,
+      "description": "The offset of the first byte, for the offset column."
+    },
+    {
+      "name": "onCopy",
+      "type": "(text: string, format: \"hex\" | \"text\") => void",
+      "description": "Called after a copy (keyboard or footer) with the copied text; the text also goes to the clipboard when the page may write it."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "default": "Bytes",
+      "description": "Accessible name of the grid."
+    },
+    {
+      "name": "overscan",
+      "type": "number",
+      "default": 8,
+      "description": "Rows rendered beyond the viewport on each side."
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own; set the height here."
+    },
+    {
+      "name": "ref",
+      "type": "Ref<HTMLDivElement>",
+      "description": "Reaches the root element."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The frame in editor.bg; data-slot=\"hex-view\"."
+    },
+    {
+      "name": "grid",
+      "element": "div",
+      "description": "role=\"grid\", the scroll container and the one tab stop; data-slot=\"hex-view-grid\"."
+    },
+    {
+      "name": "row",
+      "element": "div",
+      "description": "role=\"row\" of size.control.xs: the offset (rowheader), the bytes and the ASCII; data-slot=\"hex-view-row\"."
+    },
+    {
+      "name": "byte",
+      "element": "span",
+      "description": "role=\"gridcell\", one byte in hex; data-slot=\"hex-view-byte\", data-selected, data-active."
+    },
+    {
+      "name": "footer",
+      "element": "div",
+      "description": "The selection's size and offset and the copy buttons; data-slot=\"hex-view-footer\"."
+    }
+  ],
+  "states": [
+    {
+      "name": "selected",
+      "variant": "data-selected",
+      "description": "Bytes in the selection, and their ASCII: editor.selection.",
+      "props": {
+        "bytes": [
+          72,
+          105,
+          0,
+          1,
+          255,
+          46,
+          10,
+          65
+        ]
+      }
+    },
+    {
+      "name": "active",
+      "variant": "data-active",
+      "description": "The byte the keyboard is on: a ring while the grid has keyboard focus.",
+      "props": {
+        "bytes": [
+          72,
+          105,
+          0,
+          1,
+          255,
+          46,
+          10,
+          65
+        ]
+      }
+    },
+    {
+      "name": "non-printable",
+      "variant": "data-dot",
+      "description": "An ASCII column dot for a byte outside 0x20 to 0x7e, in editor.gutter.",
+      "props": {
+        "bytes": [
+          72,
+          105,
+          0,
+          1,
+          255,
+          46,
+          10,
+          65
+        ]
+      }
+    },
+    {
+      "name": "hover",
+      "variant": "hover",
+      "description": "Pointer over a byte: color.interactive.hover.",
+      "props": {
+        "bytes": [
+          72,
+          105,
+          0,
+          1,
+          255,
+          46,
+          10,
+          65
+        ]
+      }
+    },
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the grid: Fluent's double ring (focusRing).",
+      "props": {
+        "bytes": [
+          72,
+          105,
+          0,
+          1,
+          255,
+          46,
+          10,
+          65
+        ]
+      }
+    }
+  ],
+  "tokens": [
+    "color.accent.subtle-fg",
+    "color.border.subtle",
+    "color.fg.default",
+    "color.fg.disabled",
+    "color.fg.muted",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.ring",
+    "color.ring-inner",
+    "editor.bg",
+    "editor.fg",
+    "editor.gutter",
+    "editor.selection",
+    "font.mono",
+    "font.sans",
+    "motion.duration.faster",
+    "motion.easing.easy-ease",
+    "radius.lg",
+    "radius.md",
+    "ring.inner-width",
+    "ring.width",
+    "size.control.sm",
+    "size.control.xs",
+    "size.icon.md",
+    "space.inline.md",
+    "space.inline.sm",
+    "space.inset.sm",
+    "space.inset.xs",
+    "syntax.string",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight",
+    "text.code-sm.leading",
+    "text.code-sm.size",
+    "text.code-sm.tracking",
+    "text.code-sm.weight"
+  ],
+  "examples": {
+    "minimal": "HexViewMinimal",
+    "realistic": "HexViewRealistic"
+  },
+  "accessibility": [
+    "The bytes are an ARIA grid (role=\"grid\", aria-readonly, aria-multiselectable) with one tab stop; the active byte is aria-activedescendant and is always rendered, even while scrolled away.",
+    "Each byte cell is labelled with its offset and value (\"1f: 6c\"); each row has its offset as rowheader and its ASCII as one cell labelled \"text: \u2026\".",
+    "The footer announces the selection (aria-live=\"polite\") and its copy buttons are ordinary buttons.",
+    "Focus shows the double ring on the grid and a ring on the active byte: ring.width in color.ring."
+  ]
+}

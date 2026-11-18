@@ -1,0 +1,206 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "key-value-editor",
+  "type": "registry:ui",
+  "title": "KeyValueEditor",
+  "description": "Edit a list of key and value pairs: message headers, labels, environment variables; rows added with Enter, removed with a button or Mod+Backspace, values in text or base64.",
+  "dependencies": [
+    "@base-ui/react"
+  ],
+  "registryDependencies": [
+    "@byterygon/button",
+    "@byterygon/cn",
+    "@byterygon/icon",
+    "@byterygon/icon-button",
+    "@byterygon/icons",
+    "@byterygon/input",
+    "@byterygon/select"
+  ],
+  "files": [
+    {
+      "path": "ui/key-value-editor.tsx",
+      "type": "registry:ui",
+      "content": "import { useEffect, useId, useRef, type KeyboardEvent, type Ref } from \"react\";\nimport { Button } from \"@/components/ui/button\";\nimport { Icon } from \"@/components/ui/icon\";\nimport { IconButton } from \"@/components/ui/icon-button\";\nimport { Input } from \"@/components/ui/input\";\nimport { Select, SelectItem } from \"@/components/ui/select\";\nimport { cn } from \"@/lib/cn\";\nimport { Add, Delete } from \"@/lib/icons\";\n\n// Edit a list of key and value pairs (Mightyconsole spec section 12, TSK-80): message headers in\n// the Composer, labels, environment variables. Each row is a key Input, a value Input, an\n// optional encoding Select (text or base64) and a remove button; Enter in a value adds a row\n// below, Mod+Backspace removes the row, focus follows. Duplicate keys (when not allowed) and\n// values that are not base64 are marked invalid with a message. Read-only display is\n// DescriptionList. Built on Input, Select, IconButton and Button; Base UI has no list part.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const keyValueEditorVariants = {} as const;\n\nconst classes = {\n  root: \"flex w-full min-w-0 flex-col gap-stack-xs\",\n  row: \"flex min-w-0 items-start gap-inline-sm\",\n  cell: \"flex min-w-0 flex-1 flex-col gap-stack-xs\",\n  encoding: \"w-auto shrink-0\",\n  message: \"font-sans text-caption-1 text-danger-fg\",\n  header: \"flex min-w-0 gap-inline-sm font-sans text-caption-1-strong text-fg-muted\",\n  headerCell: \"min-w-0 flex-1\",\n  empty: \"font-sans text-body-1 text-fg-muted\",\n  footer: \"flex\",\n} as const;\n\nexport type KeyValueEncoding = \"text\" | \"base64\";\n\n/** One row. */\nexport interface KeyValueEntry {\n  key: string;\n  value: string;\n  /** How the value is written; text when absent. */\n  encoding?: KeyValueEncoding;\n}\n\nconst BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;\n\n/** Whether `text` is base64 (standard alphabet; padding optional; whitespace ignored). */\nexport function isBase64(text: string): boolean {\n  const t = text.replace(/\\s+/g, \"\");\n  return t.length % 4 !== 1 && BASE64.test(t);\n}\n\n/** The problems of each row: a duplicate key, an empty key with a value, a value that is not base64. */\nexport function keyValueProblems(entries: readonly KeyValueEntry[], allowDuplicates: boolean): { key: string | undefined; value: string | undefined }[] {\n  const seen = new Map<string, number>();\n  for (const e of entries) if (e.key !== \"\") seen.set(e.key, (seen.get(e.key) ?? 0) + 1);\n  return entries.map((e) => ({\n    key: e.key === \"\" && e.value !== \"\" ? \"A key is needed\" : !allowDuplicates && e.key !== \"\" && (seen.get(e.key) ?? 0) > 1 ? \"Duplicate key\" : undefined,\n    value: e.encoding === \"base64\" && !isBase64(e.value) ? \"Not valid base64\" : undefined,\n  }));\n}\n\nexport interface KeyValueEditorProps {\n  /** The rows. */\n  value?: readonly KeyValueEntry[] | undefined;\n  /** Called with the new rows after every edit. */\n  onChange?: ((value: KeyValueEntry[]) => void) | undefined;\n  /** Keys offered while typing a key (a datalist). */\n  keySuggestions?: readonly string[] | undefined;\n  /** Whether the same key may appear twice (headers may); a repeated key is invalid otherwise. */\n  allowDuplicates?: boolean | undefined;\n  /** Encodings a value may take; with more than one, each row has a Select. */\n  valueEncodings?: readonly KeyValueEncoding[] | undefined;\n  /** Column names: \"Key\" and \"Value\" by default (\"Name\" and \"Value\" for headers). */\n  keyLabel?: string | undefined;\n  valueLabel?: string | undefined;\n  /** The add button's text. */\n  addLabel?: string | undefined;\n  /** Rows can be read and copied but not changed, added or removed. */\n  readOnly?: boolean | undefined;\n  /** Fluent's size for the inputs and buttons. */\n  size?: \"small\" | \"medium\" | \"large\" | undefined;\n  /** Accessible name of the group. */\n  \"aria-label\"?: string | undefined;\n  /** Extra classes, merged after the component's own so they win. */\n  className?: string | undefined;\n  ref?: Ref<HTMLDivElement> | undefined;\n}\n\nconst ENCODING_LABELS: Record<KeyValueEncoding, string> = { text: \"Text\", base64: \"Base64\" };\n\nconst NONE: readonly KeyValueEntry[] = [];\nconst ignore = () => {};\n\n/** A list of key and value inputs with add, remove and keyboard row editing (role=\"group\"). */\nexport function KeyValueEditor({\n  value = NONE,\n  onChange = ignore,\n  keySuggestions,\n  allowDuplicates = true,\n  valueEncodings,\n  keyLabel = \"Key\",\n  valueLabel = \"Value\",\n  addLabel = \"Add\",\n  readOnly = false,\n  size = \"medium\",\n  \"aria-label\": label = \"Key and value pairs\",\n  className,\n  ref,\n}: KeyValueEditorProps) {\n  const id = useId();\n  const listId = `${id}-keys`;\n  const inputs = useRef(new Map<string, HTMLInputElement>());\n  const pendingFocus = useRef<string | null>(null);\n  const problems = keyValueProblems(value, allowDuplicates);\n  const encodings = valueEncodings && valueEncodings.length > 1 ? valueEncodings : null;\n\n  useEffect(() => {\n    if (!pendingFocus.current) return;\n    inputs.current.get(pendingFocus.current)?.focus();\n    pendingFocus.current = null;\n  });\n\n  const update = (index: number, patch: Partial<KeyValueEntry>) => onChange(value.map((e, i) => (i === index ? { ...e, ...patch } : e)));\n  const add = (at: number) => {\n    const next = [...value];\n    next.splice(at, 0, { key: \"\", value: \"\", ...(encodings ? { encoding: encodings[0]! } : {}) });\n    pendingFocus.current = `${at}-key`;\n    onChange(next);\n  };\n  const remove = (index: number) => {\n    pendingFocus.current = value.length > 1 ? `${Math.max(0, index - 1)}-key` : \"add\";\n    onChange(value.filter((_, i) => i !== index));\n  };\n  const onRowKeyDown = (index: number, part: \"key\" | \"value\") => (event: KeyboardEvent<HTMLInputElement>) => {\n    if (readOnly) return;\n    if (event.key === \"Enter\" && !event.shiftKey && !event.nativeEvent.isComposing) {\n      event.preventDefault();\n      if (part === \"key\") inputs.current.get(`${index}-value`)?.focus();\n      else add(index + 1);\n    } else if (event.key === \"Backspace\" && (event.ctrlKey || event.metaKey)) {\n      event.preventDefault();\n      remove(index);\n    }\n  };\n  const bind = (name: string) => (node: HTMLInputElement | null) => {\n    if (node) inputs.current.set(name, node);\n    else inputs.current.delete(name);\n  };\n\n  return (\n    <div data-slot=\"key-value-editor\" role=\"group\" aria-label={label} ref={ref} className={cn(classes.root, className)}>\n      {value.length > 0 ? (\n        <div className={classes.header} aria-hidden>\n          <span className={classes.headerCell}>{keyLabel}</span>\n          <span className={classes.headerCell}>{valueLabel}</span>\n        </div>\n      ) : (\n        <p className={classes.empty}>None</p>\n      )}\n      {keySuggestions?.length ? (\n        <datalist id={listId}>\n          {keySuggestions.map((k) => (\n            <option key={k} value={k} />\n          ))}\n        </datalist>\n      ) : null}\n      {value.map((entry, index) => {\n        const n = index + 1;\n        const problem = problems[index]!;\n        const keyMessage = `${id}-${index}-key-message`;\n        const valueMessage = `${id}-${index}-value-message`;\n        return (\n          <div key={index} data-slot=\"key-value-editor-row\" data-invalid={problem.key || problem.value ? \"\" : undefined} className={classes.row}>\n            <div className={classes.cell}>\n              <Input\n                ref={bind(`${index}-key`)}\n                size={size}\n                value={entry.key}\n                readOnly={readOnly}\n                list={keySuggestions?.length ? listId : undefined}\n                aria-label={`${keyLabel} ${n}`}\n                aria-invalid={problem.key ? true : undefined}\n                aria-describedby={problem.key ? keyMessage : undefined}\n                spellCheck={false}\n                autoComplete=\"off\"\n                onValueChange={(next: string) => update(index, { key: next })}\n                onKeyDown={onRowKeyDown(index, \"key\")}\n              />\n              {problem.key ? (\n                <span id={keyMessage} className={classes.message}>\n                  {problem.key}\n                </span>\n              ) : null}\n            </div>\n            <div className={classes.cell}>\n              <Input\n                ref={bind(`${index}-value`)}\n                size={size}\n                value={entry.value}\n                readOnly={readOnly}\n                aria-label={`${valueLabel} ${n}`}\n                aria-invalid={problem.value ? true : undefined}\n                aria-describedby={problem.value ? valueMessage : undefined}\n                spellCheck={false}\n                autoComplete=\"off\"\n                onValueChange={(next: string) => update(index, { value: next })}\n                onKeyDown={onRowKeyDown(index, \"value\")}\n              />\n              {problem.value ? (\n                <span id={valueMessage} className={classes.message}>\n                  {problem.value}\n                </span>\n              ) : null}\n            </div>\n            {encodings ? (\n              <Select<KeyValueEncoding>\n                size={size}\n                className={classes.encoding}\n                aria-label={`Encoding of ${valueLabel.toLowerCase()} ${n}`}\n                items={encodings.map((e) => ({ value: e, label: ENCODING_LABELS[e] }))}\n                value={entry.encoding ?? \"text\"}\n                disabled={readOnly}\n                onValueChange={(next) => update(index, { encoding: (next ?? \"text\") as KeyValueEncoding })}\n              >\n                {encodings.map((e) => (\n                  <SelectItem key={e} value={e}>\n                    {ENCODING_LABELS[e]}\n                  </SelectItem>\n                ))}\n              </Select>\n            ) : null}\n            {readOnly ? null : (\n              <IconButton size={size} aria-label={`Remove row ${n}`} aria-keyshortcuts=\"Control+Backspace\" onClick={() => remove(index)}>\n                <Icon icon={Delete} />\n              </IconButton>\n            )}\n          </div>\n        );\n      })}\n      {readOnly ? null : (\n        <div className={classes.footer}>\n          <Button\n            ref={(node: HTMLButtonElement | null) => {\n              if (node) inputs.current.set(\"add\", node as unknown as HTMLInputElement);\n            }}\n            appearance=\"subtle\"\n            size={size === \"large\" ? \"medium\" : \"small\"}\n            onClick={() => add(value.length)}\n          >\n            <Icon icon={Add} />\n            {addLabel}\n          </Button>\n        </div>\n      )}\n    </div>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "key-value-editor",
+      "title": "KeyValueEditor",
+      "description": "Edit a list of key and value pairs: message headers, labels, environment variables; rows added with Enter, removed with a button or Mod+Backspace, values in text or base64.",
+      "usage": "Use KeyValueEditor where the user writes pairs whose keys they choose: the Composer's headers (keyLabel=\"Name\", valueEncodings=[\"text\", \"base64\"], repeated names allowed), resource labels (allowDuplicates={false}). It is controlled: pass value and onChange. Enter in a key moves to its value; Enter in a value adds a row below; Mod+Backspace removes the row; focus follows. keySuggestions feeds a datalist. Duplicate keys (when not allowed), a value without a key and a value that is not base64 are marked invalid with a message; the app decides whether to block sending. Show pairs read-only with DescriptionList, or readOnly here to keep the columns.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [
+        "@base-ui/react"
+      ],
+      "props": [
+        {
+          "name": "value",
+          "type": "KeyValueEntry[]",
+          "description": "The rows: { key, value, encoding?: \"text\" | \"base64\" }."
+        },
+        {
+          "name": "onChange",
+          "type": "(value: KeyValueEntry[]) => void",
+          "description": "Called with the new rows after every edit, add and remove."
+        },
+        {
+          "name": "keySuggestions",
+          "type": "string[]",
+          "description": "Keys offered while typing a key (a datalist)."
+        },
+        {
+          "name": "allowDuplicates",
+          "type": "boolean",
+          "default": true,
+          "description": "Whether a key may repeat; a repeated key is invalid (\"Duplicate key\") when false."
+        },
+        {
+          "name": "valueEncodings",
+          "type": "(\"text\" | \"base64\")[]",
+          "description": "With more than one, each row has an encoding Select; a base64 value is checked."
+        },
+        {
+          "name": "keyLabel",
+          "type": "string",
+          "default": "Key",
+          "description": "The key column's name, used in the header and in each input's label (\"Key 1\")."
+        },
+        {
+          "name": "valueLabel",
+          "type": "string",
+          "default": "Value",
+          "description": "The value column's name."
+        },
+        {
+          "name": "addLabel",
+          "type": "string",
+          "default": "Add",
+          "description": "The add button's text (\"Add header\")."
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "default": false,
+          "description": "Inputs read-only, no add or remove buttons, the encoding fixed."
+        },
+        {
+          "name": "size",
+          "type": "\"small\" | \"medium\" | \"large\"",
+          "default": "medium",
+          "description": "Fluent's size of the inputs and buttons."
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "default": "Key and value pairs",
+          "description": "Accessible name of the group."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own."
+        },
+        {
+          "name": "ref",
+          "type": "Ref<HTMLDivElement>",
+          "description": "Reaches the root element."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "role=\"group\"; data-slot=\"key-value-editor\"."
+        },
+        {
+          "name": "row",
+          "element": "div",
+          "description": "A key Input, a value Input, the encoding Select and the remove IconButton; data-slot=\"key-value-editor-row\", data-invalid."
+        }
+      ],
+      "states": [
+        {
+          "name": "invalid",
+          "variant": "data-invalid",
+          "props": {
+            "value": [
+              {
+                "key": "x",
+                "value": "1"
+              },
+              {
+                "key": "x",
+                "value": "2"
+              }
+            ],
+            "allowDuplicates": false
+          },
+          "description": "A row with a duplicate key, a value without a key or a value that is not base64: the input is aria-invalid and a message in color.danger.fg follows it."
+        }
+      ],
+      "tokens": [
+        "color.accent.subtle-fg",
+        "color.bg.layer-alt",
+        "color.border.control-bottom",
+        "color.border.disabled",
+        "color.border.subtle",
+        "color.fg.default",
+        "color.fg.disabled",
+        "color.fg.muted",
+        "color.fg.subtle",
+        "color.interactive.active",
+        "color.interactive.hover",
+        "color.ring",
+        "color.ring-inner",
+        "color.status.danger.border",
+        "color.status.danger.fg",
+        "color.status.danger.solid",
+        "font.sans",
+        "motion.duration.faster",
+        "motion.easing.easy-ease",
+        "radius.md",
+        "ring.inner-width",
+        "ring.width",
+        "shadow.focus-underline",
+        "size.control.md",
+        "size.control.sm",
+        "size.icon.lg",
+        "size.icon.md",
+        "space.control.x",
+        "space.inline.sm",
+        "space.inset.xs",
+        "space.stack.xs",
+        "text.body-1.leading",
+        "text.body-1.size",
+        "text.body-1.tracking",
+        "text.body-1.weight",
+        "text.caption-1-strong.leading",
+        "text.caption-1-strong.size",
+        "text.caption-1-strong.tracking",
+        "text.caption-1-strong.weight",
+        "text.caption-1.leading",
+        "text.caption-1.size",
+        "text.caption-1.tracking",
+        "text.caption-1.weight"
+      ],
+      "examples": {
+        "minimal": "KeyValueEditorMinimal",
+        "realistic": "KeyValueEditorRealistic"
+      },
+      "accessibility": [
+        "The list is a group (role=\"group\") with an accessible name; every input is labelled with its column and row (\"Name 2\", \"Value 2\"), and the column header is aria-hidden.",
+        "Enter moves from a key to its value and adds a row from a value; Mod+Backspace removes the row (aria-keyshortcuts on the remove button); focus moves to the new row's key or to the previous row.",
+        "Invalid inputs are aria-invalid and aria-describedby their message.",
+        "The remove buttons are labelled \"Remove row n\"; the add button has visible text."
+      ]
+    },
+    "example": "import { useState } from \"react\";\nimport { KeyValueEditor, type KeyValueEntry } from \"@/components/key-value-editor/key-value-editor\";\n\n/** The smallest useful KeyValueEditor: labels of a resource. */\nexport function KeyValueEditorMinimal() {\n  const [labels, setLabels] = useState<KeyValueEntry[]>([{ key: \"app\", value: \"orders\" }]);\n  return <KeyValueEditor aria-label=\"Labels\" value={labels} onChange={setLabels} allowDuplicates={false} addLabel=\"Add label\" />;\n}\n\n/** Message headers in the Composer: repeated names allowed, a binary value in base64, suggestions. */\nexport function KeyValueEditorRealistic() {\n  const [headers, setHeaders] = useState<KeyValueEntry[]>([\n    { key: \"trace-id\", value: \"4bf92f3577b34da6\", encoding: \"text\" },\n    { key: \"tag\", value: \"eu\", encoding: \"text\" },\n    { key: \"tag\", value: \"priority\", encoding: \"text\" },\n    { key: \"signature\", value: \"3q2+7w==\", encoding: \"base64\" },\n  ]);\n  return (\n    <KeyValueEditor\n      aria-label=\"Headers\"\n      keyLabel=\"Name\"\n      value={headers}\n      onChange={setHeaders}\n      valueEncodings={[\"text\", \"base64\"]}\n      keySuggestions={[\"content-type\", \"trace-id\", \"tag\", \"correlation-id\"]}\n      addLabel=\"Add header\"\n    />\n  );\n}\n",
+    "dependencyVersions": {
+      "@base-ui/react": "1.9.0"
+    }
+  }
+}

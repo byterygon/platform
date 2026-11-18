@@ -149,6 +149,27 @@ export class CellLayer {
     this.schedule();
   }
 
+  /**
+   * `removed` rows left the front of the index (a live view's window, or Clear): every cell is
+   * rewritten (rows are renumbered) and the rows in view stay in view, or the newest when
+   * following at the bottom.
+   */
+  rowsDropped(removed: number, follow = false): void {
+    const index = this.#index;
+    if (index === undefined || removed <= 0) return;
+    const rows = this.rows;
+    const scroller = this.#scroller;
+    const atBottom = scroller.scrollTop >= rows.scrollHeight - rows.viewport - 1;
+    const virtualTop = rows.toVirtual(scroller.scrollTop);
+    this.#cache.clear();
+    this.#invalidateCells();
+    rows.count = index.rowCount;
+    this.#applySize();
+    if (follow && atBottom) scroller.scrollTop = rows.scrollHeight;
+    else scroller.scrollTop = rows.toScroll(Math.max(0, virtualTop - removed * rows.rowHeight));
+    this.schedule();
+  }
+
   /** The active cell: it gets tabindex 0 and, while the grid has focus, the focus. */
   setActive(active: { row: number; column: number } | undefined): void {
     this.#active = active;

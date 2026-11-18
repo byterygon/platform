@@ -21,11 +21,13 @@ export const KeyCode = { Enter: 3 };
 class FakeModel {
   value: string;
   language: string;
+  uri: { toString: () => string };
   disposed = false;
   readonly listeners = new Set<Listener>();
-  constructor(value: string, language: string) {
+  constructor(value: string, language: string, uri?: { toString: () => string }) {
     this.value = value;
     this.language = language;
+    this.uri = uri ?? { toString: () => `inmemory://model/${Math.random()}` };
   }
   getValue() {
     return this.value;
@@ -140,10 +142,22 @@ export const fake = {
   theme: undefined as string | undefined,
   markers: [] as unknown[],
   editors: [] as FakeEditor[],
+  diffEditors: [] as FakeDiffEditor[],
+  jsonOptions: undefined as Record<string, unknown> | undefined,
+  /** What the fake language service reports (getModelMarkers), and who listens. */
+  diagnostics: [] as unknown[],
+  markerListeners: new Set<(uris: unknown[]) => void>(),
   /** Clears per-test state; themes stay, as Monaco's do for the page's lifetime. */
   reset() {
     this.markers = [];
     this.editors = [];
+    this.diffEditors = [];
+    this.diagnostics = [];
+  },
+  /** Reports diagnostics as the JSON worker would. */
+  report(diagnostics: unknown[]) {
+    this.diagnostics = diagnostics;
+    for (const l of this.markerListeners) l([]);
   },
 };
 
@@ -154,8 +168,20 @@ export const editor = {
   setTheme(name: string) {
     fake.theme = name;
   },
-  createModel(value: string, language: string) {
-    return new FakeModel(value, language);
+  createModel(value: string, language: string, uri?: { toString: () => string }) {
+    return new FakeModel(value, language, uri);
+  },
+  createDiffEditor(container: HTMLElement, options: Record<string, unknown>) {
+    const diff = new FakeDiffEditor(container, options);
+    fake.diffEditors.push(diff);
+    return diff;
+  },
+  onDidChangeMarkers(listener: (uris: unknown[]) => void) {
+    fake.markerListeners.add(listener);
+    return { dispose: () => fake.markerListeners.delete(listener) };
+  },
+  getModelMarkers() {
+    return fake.diagnostics;
   },
   create(container: HTMLElement, options: Record<string, unknown> & { model: FakeModel }) {
     const instance = new FakeEditor(container, options);
@@ -168,6 +194,48 @@ export const editor = {
   setModelMarkers(_model: FakeModel, _owner: string, markers: unknown[]) {
     fake.markers = markers;
   },
+};
+
+class FakeDiffEditor {
+  readonly container: HTMLElement;
+  options: Record<string, unknown>;
+  models: { original: FakeModel; modified: FakeModel } | null = null;
+  modifiedEditor: FakeEditor | null = null;
+  disposed = false;
+  constructor(container: HTMLElement, options: Record<string, unknown>) {
+    this.container = container;
+    this.options = { ...options };
+  }
+  setModel(models: { original: FakeModel; modified: FakeModel }) {
+    this.models = models;
+    this.modifiedEditor = new FakeEditor(this.container, { ...this.options, model: models.modified });
+    fake.editors.push(this.modifiedEditor);
+  }
+  getModifiedEditor() {
+    return this.modifiedEditor!;
+  }
+  getOriginalEditor() {
+    return this.modifiedEditor!;
+  }
+  updateOptions(options: Record<string, unknown>) {
+    this.options = { ...this.options, ...options };
+    this.modifiedEditor?.updateOptions(options);
+  }
+  dispose() {
+    this.disposed = true;
+    this.modifiedEditor?.dispose();
+  }
+}
+
+/** JSON's language service defaults (`monaco-editor/languages/features/json/register`). */
+export const jsonDefaults = {
+  setDiagnosticsOptions(options: Record<string, unknown>) {
+    fake.jsonOptions = options;
+  },
+};
+
+export const Uri = {
+  parse: (value: string) => ({ toString: () => value }),
 };
 
 /** The `?worker` import's default export. */

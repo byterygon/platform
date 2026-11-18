@@ -43,7 +43,7 @@ const ITEMS = [
   "tabs", "toast", "command-palette",
   "breadcrumb", "pagination", "stepper", "navigation-menu",
   "sidebar", "tree",
-  "sql-editor", "code-input",
+  "sql-editor", "code-input", "code-editor", "hex-view", "key-value-editor",
   "separator", "scroll-area", "card", "collapsible", "accordion",
   "resizable", "toolbar", "status-bar", "badge", "tag",
   "avatar", "progress", "spinner", "skeleton", "empty-state", "alert",
@@ -204,6 +204,9 @@ import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/co
 import { Tag, TagGroup } from "@/components/ui/tag";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarInput, ToolbarLink, ToolbarSeparator } from "@/components/ui/toolbar";
 import { SqlEditor } from "@/components/ui/sql-editor";
+import { CodeEditor } from "@/components/ui/code-editor";
+import { HexView } from "@/components/ui/hex-view";
+import { KeyValueEditor } from "@/components/ui/key-value-editor";
 import { CodeInput } from "@/components/ui/code-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toast } from "@/components/ui/toast";
@@ -525,6 +528,9 @@ createRoot(document.getElementById("root")!).render(
     <Data />
     <Viewers />
     <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
+    <CodeEditor aria-label="Payload" defaultValue={'{"id":1}'} jsonSchema={{ type: "object" }} onSubmit={(v) => console.log(v)} />
+    <HexView aria-label="Bytes" bytes={[0, 1, 72, 105]} />
+    <KeyValueEditor aria-label="Headers" value={[{ key: "a", value: "b" }]} onChange={() => {}} valueEncodings={["text", "base64"]} />
     <Field><FieldLabel>Filter</FieldLabel><CodeInput language="sql" defaultValue="id = 1" onSubmit={(v) => console.log(v)} /></Field>
     <CodeInput aria-label="Cell value" language="json" pretty value='{"id":1}' />
     <Card>

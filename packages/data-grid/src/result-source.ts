@@ -39,6 +39,14 @@ export interface ResultProgress {
   readonly bytes: number;
   /** The stream's failure when `state` is `error` (or `cancelled` by the server). */
   readonly error?: unknown;
+  /** Rows dropped from the front so far to keep the window (`maxRows`, `maxBytes`) or by `clear()`. */
+  readonly dropped: number;
+}
+
+/** A live view's limits: the newest rows are kept, the oldest batches dropped whole. */
+export interface ResultWindow {
+  readonly maxRows?: number | undefined;
+  readonly maxBytes?: number | undefined;
 }
 
 const isCancelled = (error: unknown): boolean => typeof error === "object" && error !== null && (error as { code?: unknown }).code === "Cancelled";
@@ -57,6 +65,10 @@ export class ResultSource {
   /** The last row in view and the rows per screen, reported by the grid after each frame. */
   #viewEnd = 0;
   #screenRows = 0;
+  #maxRows = Number.POSITIVE_INFINITY;
+  #maxBytes = Number.POSITIVE_INFINITY;
+  #hold = false;
+  #dropped = 0;
 
   private constructor(state: ResultState) {
     this.#state = state;
@@ -91,7 +103,7 @@ export class ResultSource {
   }
 
   get progress(): ResultProgress {
-    const base = { state: this.#state, rows: this.index.rowCount, bytes: this.index.byteLength };
+    const base = { state: this.#state, rows: this.index.rowCount, bytes: this.index.byteLength, dropped: this.#dropped };
     return this.#error === undefined ? base : { ...base, error: this.#error };
   }
 
@@ -103,6 +115,49 @@ export class ResultSource {
   set budget(bytes: number) {
     this.#budget = Math.max(0, bytes);
     this.#signal();
+  }
+
+  /**
+   * Keeps at most `maxRows` rows and `maxBytes` buffer bytes, dropping the oldest batches whole
+   * (the newest batch always stays). A live tail's "Showing the latest 10,000".
+   */
+  set window(window: ResultWindow) {
+    this.#maxRows = window.maxRows ?? Number.POSITIVE_INFINITY;
+    this.#maxBytes = window.maxBytes ?? Number.POSITIVE_INFINITY;
+    if (this.#trim() > 0) this.#emit();
+  }
+
+  /** Rows dropped from the front so far (the window and `clear()`). */
+  get dropped(): number {
+    return this.#dropped;
+  }
+
+  /** While held, nothing is pulled: the stream's credits run out and the server waits (Pause). */
+  get hold(): boolean {
+    return this.#hold;
+  }
+
+  set hold(hold: boolean) {
+    if (hold === this.#hold) return;
+    this.#hold = hold;
+    if (!hold) this.#signal();
+    else if (this.#state === "streaming") this.#set("paused");
+  }
+
+  /** Drops every row loaded so far and keeps the stream (Clear). */
+  clear(): void {
+    const removed = this.index.dropFirst(this.index.batchCount);
+    if (removed === 0) return;
+    this.#dropped += removed;
+    this.#emit();
+  }
+
+  #trim(): number {
+    let removed = 0;
+    const index = this.index;
+    while (index.batchCount > 1 && (index.rowCount > this.#maxRows || index.byteLength > this.#maxBytes)) removed += index.dropFirst(1);
+    this.#dropped += removed;
+    return removed;
   }
 
   /** Where the viewport is: the last row in view and how many rows a screen holds. */
@@ -140,7 +195,7 @@ export class ResultSource {
   }
 
   #mayPull(): boolean {
-    return this.index.byteLength < this.#budget || this.#nearEnd();
+    return !this.#hold && (this.index.byteLength < this.#budget || this.#nearEnd());
   }
 
   #signal(): void {
@@ -182,6 +237,7 @@ export class ResultSource {
         const next = await iterator.next();
         if (next.done) break;
         this.index.append(next.value);
+        this.#trim();
         this.#emit();
       }
       this.#set(this.#stopping ? "cancelled" : "done");
