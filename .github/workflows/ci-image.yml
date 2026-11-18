@@ -1,0 +1,79 @@
+name: CI image
+
+# TSK-89: the Linux image the Rust and DBee desktop budget jobs of ci.yml run in
+# (.github/ci-image/Dockerfile: WebKitGTK, PostgreSQL, Xvfb, Chrome, the Rust toolchain), so they
+# no longer spend 45 s to 20 min in apt on every run. A pull request that changes the image builds
+# it and runs .github/ci-image/verify.sh inside it with the options ci.yml uses. On main (and by
+# hand on main) the publish job builds it again, verifies it and pushes it to
+# ghcr.io/byterygon/ci-linux, tagged with the commit; the job summary gives the digest to pin in
+# ci.yml. `packages: write` belongs to the publish job alone, which never runs for a pull request.
+
+on:
+  pull_request:
+    paths: [".github/ci-image/**", ".github/workflows/ci-image.yml"]
+  push:
+    branches: [main]
+    paths: [".github/ci-image/**", ".github/workflows/ci-image.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/byterygon/ci-linux
+  # The options ci.yml gives the jobs that run in the image (see .github/ci-image/README.md).
+  RUN_OPTIONS: --user 1001 --cap-add SYS_ADMIN --cap-add NET_ADMIN --shm-size 2g
+
+jobs:
+  verify:
+    name: Build and verify
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        run: docker build --pull -t ci-linux:verify .github/ci-image
+      - name: Verify inside the image
+        run: |
+          # shellcheck disable=SC2086 # RUN_OPTIONS is a list of options
+          docker run --rm $RUN_OPTIONS -v "$PWD/.github/ci-image/verify.sh:/verify.sh:ro" ci-linux:verify sh /verify.sh
+      - name: Size
+        run: docker image ls ci-linux:verify --format 'ci-linux {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Build, verify and push to ghcr.io
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: ci-image-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io/byterygon/ci-linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        run: docker build --pull -t "$IMAGE:$GITHUB_SHA" .github/ci-image
+      - name: Verify inside the image
+        run: |
+          # shellcheck disable=SC2086 # RUN_OPTIONS is a list of options
+          docker run --rm $RUN_OPTIONS -v "$PWD/.github/ci-image/verify.sh:/verify.sh:ro" "$IMAGE:$GITHUB_SHA" sh /verify.sh
+      - name: Log in to ghcr.io
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Push
+        run: |
+          docker push "$IMAGE:$GITHUB_SHA"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$GITHUB_SHA")
+          size=$(docker image ls "$IMAGE:$GITHUB_SHA" --format '{{.Size}}')
+          {
+            echo "Pushed \`$IMAGE:$GITHUB_SHA\` ($size). Pin it in ci.yml as:"
+            echo
+            echo "    image: $digest"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io
