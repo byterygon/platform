@@ -24,7 +24,7 @@ import { Add, ArrowImport, Info, Options, QuestionCircle, Search, Server, Settin
 import { loadProfiles } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
 import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } from "@/profiles/transfer";
-import { TOOLS, toolById } from "@/tools/registry";
+import { TOOLS, toolById, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabProps, TabRecord, ToolModule } from "@/tools/types";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
@@ -593,7 +593,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
                     />
                   }
                 >
-                  <Icon icon={t.icon} filled={t.id === tool.id} />
+                  <Icon icon={toolIcon(t)} filled={t.id === tool.id} />
                   {anyConnected(t) ? <span role="img" aria-label="connected" className="absolute inset-e-0 top-0 size-icon-xs rounded-full border-2 border-bg-canvas bg-success" /> : null}
                 </TooltipTrigger>
                 <TooltipContent>
@@ -658,7 +658,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
                   <section aria-label="Start" className={cn(layerSurface, "flex h-full min-h-0 flex-col")}>
                     <EmptyState className="m-auto">
                       <EmptyStateIcon className="size-auto bg-accent-subtle p-inset-md text-accent-subtle-fg [&_svg]:size-inset-xl!">
-                        <Icon icon={tool.icon} />
+                        <Icon icon={toolIcon(tool)} />
                       </EmptyStateIcon>
                       <EmptyStateTitle className="text-subtitle-1">{profiles.some((p) => p.tool === tool.id) ? "No tabs open" : `Add a ${tool.label} connection`}</EmptyStateTitle>
                       <EmptyStateDescription>Connect a profile on the left, then open what you need from its tree or the command palette.</EmptyStateDescription>
@@ -714,7 +714,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
         </div>
         <StatusBar aria-label="Status" className="h-auto gap-inline-md border-t-0 bg-transparent py-inset-xs ps-inset-sm pe-inset-xs">
           <StatusBarItem className="text-fg">
-            <Icon icon={tool.icon} />
+            <Icon icon={toolIcon(tool)} />
             <span>{activeProfile ? `${toolById(tools, activeProfile.tool)?.label ?? activeProfile.tool} · ${activeProfile.name}` : tool.label}</span>
           </StatusBarItem>
           {activeConn ? (

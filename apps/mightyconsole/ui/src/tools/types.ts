@@ -123,11 +123,27 @@ export interface ToolAction {
   run(context: { client: MightyClient; profile: ProfileRecord; connId: string }): void | Promise<void>;
 }
 
+/**
+ * The navigation's groups (DOC-21 Open question 45 (a)): what a tool is for. A tool without one
+ * sits under "Other".
+ */
+export type ToolCategory = "Messaging" | "Infrastructure" | "Workflows and agents" | "Other";
+
 export interface ToolModule {
   /** The server namespace: `echo`, `nats`, `kafka`, `k8s`, `temporal`, `docker`, `langgraph`. */
   readonly id: string;
   readonly label: string;
+  /** A Fluent icon: the fallback when the tool has no `mark`, and its sign wherever a mark is not wanted. */
   readonly icon: IconDefinition;
+  /**
+   * The tool's own mark from `src/tools/marks.ts` (vendored, sha256-pinned, notices in
+   * `marks/NOTICE.md`), drawn monochrome by the Icon component. Optional: `toolIcon` falls back to `icon`.
+   */
+  readonly mark?: IconDefinition;
+  /** The navigation group; `toolCategory` gives "Other" when it is missing. */
+  readonly category?: ToolCategory;
+  /** Position in the navigation, lower first; tools without one follow in registry order. */
+  readonly order?: number;
   /** "No Kafka connections yet" uses the label; this line explains the tool. */
   readonly description: string;
   readonly profile: ProfileSchema;
