@@ -74,18 +74,23 @@ jobs:
         run: |
           # The checklists CI runs against the lab: foundation (every service), LangGraph, the
           # messaging core (TSK-80; the kafka profile's Confluent Schema Registry) and Temporal
-          # (TSK-83, TSK-92: the dev server and the lab worker).
+          # (TSK-83, TSK-92: the dev server and the lab worker). temporal-more runs only the items
+          # TSK-92 has wired so far (a not wired item fails the run); each batch adds its id here,
+          # and the --only goes when all seven are wired.
+          more=""
           case " $LAB_TOOLS " in
-            " all ") lists="foundation langgraph messaging temporal temporal-more" ;;
+            " all ") lists="foundation langgraph messaging temporal" ;;
             *)
               lists=""
               case " $LAB_TOOLS " in *" langgraph "*) lists="langgraph" ;; esac
               case " $LAB_TOOLS " in *" kafka "*) lists="${lists:+$lists }messaging" ;; esac
-              case " $LAB_TOOLS " in *" temporal "*) lists="${lists:+$lists }temporal temporal-more" ;; esac
+              case " $LAB_TOOLS " in *" temporal "*) lists="${lists:+$lists }temporal" ;; esac
               ;;
           esac
-          echo "checklists: ${lists:-none}"
+          case " $lists " in *" temporal "*) more="namespaces,workers,start-workflow,schedule-edit" ;; esac
+          echo "checklists: ${lists:-none}${more:+, temporal-more ($more)}"
           echo "lists=$lists" >> "$GITHUB_OUTPUT"
+          echo "more=$more" >> "$GITHUB_OUTPUT"
       - name: Install toolchain from rust-toolchain.toml
         if: ${{ steps.checklists.outputs.lists != '' }}
         run: rustup show active-toolchain || rustup toolchain install
@@ -104,9 +109,11 @@ jobs:
         env:
           BYTERYGON_REQUIRE_BROWSER: "1"
           LISTS: ${{ steps.checklists.outputs.lists }}
+          MORE: ${{ steps.checklists.outputs.more }}
         run: |
           status=0
           node apps/mightyconsole/acceptance/acceptance.mts $LISTS || status=$?
+          if [ -n "$MORE" ]; then node apps/mightyconsole/acceptance/acceptance.mts temporal-more --only "$MORE" || status=$?; fi
           cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
