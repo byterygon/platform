@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { HexView } from "@/components/ui/hex-view";
 import { JsonViewer } from "@/components/ui/json-viewer";
@@ -24,7 +25,8 @@ const JSON_CODECS = new Set(["json", "msgpack", "avro", "protobuf", "jsonschema"
 function ValueView({ text, codec, raw, label }: { text: string | null; codec: string | null; raw: Uint8Array | null; label: string }) {
   if (raw === null && text === null) return <EmptyLine>No {label.toLowerCase()}.</EmptyLine>;
   if (text !== null && codec !== null && JSON_CODECS.has(codec)) return <JsonViewer aria-label={label} text={text} defaultExpandDepth={2} className="min-h-0 flex-1" />;
-  if (text !== null && codec !== "hex") return <CodeBlock code={text} language="text" />;
+  // The Text view: read-only Monaco (TSK-93), with find, selection and line numbers.
+  if (text !== null && codec !== "hex") return <CodeEditor language="plaintext" readOnly variant="ghost" aria-label={label} value={text} className="h-auto min-h-0 flex-1" />;
   return <HexView aria-label={label} bytes={raw ?? new Uint8Array()} className="min-h-0 flex-1" />;
 }
 

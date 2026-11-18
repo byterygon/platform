@@ -3,24 +3,32 @@
 // rewrites the query's ExecutionStatus clause, Open question 45 (f)), the visibility query and Run;
 // the table on the layer with copy buttons on the IDs, paged by token (Previous, Next). An invalid
 // query shows the server's message under the row, not in place of the list.
-import { useCallback, useEffect, useRef, useState } from "react";
+//
+// The query is a one-line Monaco editor in the temporal-visibility language (TSK-93, Open question
+// 45 (m)): highlighting, suggestions from the namespace's search attributes, the operators of
+// their types, values seen in the rows and recent and saved queries (Ctrl+Space), Enter or
+// Mod+Enter runs, and the server's error marked on the part it names.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
-import { Input } from "@/components/ui/input";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CopyButton, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
-import type { NamespaceSummary, WorkflowRow, WorkflowStatus } from "@/gen/api";
+import type { NamespaceSummary, SearchAttribute, WorkflowRow, WorkflowStatus } from "@/gen/api";
 import { ArrowClockwise, Play } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { formatDuration, formatTime } from "./format";
-import { namespaceOf, pageSizeOf } from "./profile";
+import { namespaceOf, pageSizeOf, savedQueriesOf } from "./profile";
 import { STATUS_CHIPS, statusOf, withStatus } from "./query";
+import { VISIBILITY_LANGUAGE, collectValues, queryErrorMarker, recentQueries, registerVisibilityLanguage, rememberQuery, visibilityCompletion } from "./visibility";
+
+registerVisibilityLanguage();
 
 const STATUS_VARIANT: Record<WorkflowStatus, "neutral" | "accent" | "danger" | "warning" | "success" | "info"> = {
   Running: "accent",
@@ -55,6 +63,9 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
   const tokens = useRef<(string | null)[]>([null]);
   const [error, setError] = useState<DescribedError | null>(null);
   const [invalid, setInvalid] = useState<string | null>(null);
+  const [attributes, setAttributes] = useState<readonly SearchAttribute[]>([]);
+  // Values of the rows loaded so far in this tab, per attribute, for the query's suggestions.
+  const seen = useRef(new Map<string, Set<string>>());
   // A response that arrives after a newer request started is dropped.
   const generation = useRef(0);
   const pageSize = pageSizeOf(profile);
@@ -73,6 +84,8 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
         ]);
         if (mine !== generation.current) return;
         setRows(page.executions);
+        collectValues(page.executions, seen.current);
+        rememberQuery(profile.id, ns, q);
         setNext(page.nextPageToken ?? null);
         tokens.current = page.nextPageToken ? [null, page.nextPageToken] : [null];
         setPage(1);
@@ -89,7 +102,7 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
         if (mine === generation.current) setLoading(false);
       }
     },
-    [client, connId, note, pageSize],
+    [client, connId, note, pageSize, profile.id],
   );
 
   // Paging by token (Open question 45 (i)): tokens[i] fetches page i + 1; Previous reuses the
@@ -103,6 +116,7 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
       const result = await client.temporal.workflows.list({ connId, namespace, query, pageSize, nextPageToken: token });
       if (mine !== generation.current) return;
       setRows(result.executions);
+      collectValues(result.executions, seen.current);
       setNext(result.nextPageToken ?? null);
       if (result.nextPageToken) tokens.current[target] = result.nextPageToken;
       setPage(target);
@@ -131,6 +145,34 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
     };
   }, [client, connId]);
 
+  // The namespace's search attributes, for the query's suggestions (the built-in ones when the
+  // server does not list them; nothing when the call fails, and the editor still works).
+  useEffect(() => {
+    if (connId === null) return;
+    let live = true;
+    setAttributes([]);
+    client.temporal.namespaces.searchAttributes({ connId, namespace }).then(
+      (out) => live && setAttributes(out.attributes),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, connId, namespace]);
+
+  const sources = useRef({ attributes, namespace, extras: profile.extras });
+  sources.current = { attributes, namespace, extras: profile.extras };
+  const completion = useMemo(
+    () =>
+      visibilityCompletion(() => ({
+        attributes: sources.current.attributes,
+        values: seen.current,
+        recent: recentQueries(profile.id, sources.current.namespace),
+        saved: savedQueriesOf(sources.current.extras),
+      })),
+    [profile.id],
+  );
+
   const run = () => {
     const q = draft.trim();
     if (q === query) void load(namespace, q);
@@ -142,6 +184,9 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
   if (connId === null) return <DisconnectedState name={profile.name} onConnect={() => undefined} />;
 
   const chip = statusOf(draft);
+  // The server's error belongs to the query that ran; it is marked while the text is still that query.
+  const marker = invalid !== null && draft.trim() === query ? queryErrorMarker(invalid, draft) : null;
+  const markers = marker ? [marker] : undefined;
   const names = namespaces.length > 0 ? namespaces.map((n) => n.name) : [namespace];
   if (!names.includes(namespace)) names.push(namespace);
   const first = (page - 1) * pageSize + 1;
@@ -206,14 +251,18 @@ export function WorkflowsTab({ tab, profile, connId, client, useTabActions, note
                 </SelectItem>
               ))}
             </Select>
-            <Input
+            <CodeEditor
+              singleLine
+              language={VISIBILITY_LANGUAGE}
               aria-label="Visibility query"
               value={draft}
               onValueChange={setDraft}
+              onSubmit={run}
+              completion={completion}
+              invalid={invalid !== null}
+              markers={markers}
               placeholder='WorkflowType = "Order" AND StartTime > "2026-01-01T00:00:00Z"'
-              spellCheck={false}
-              autoComplete="off"
-              className="min-w-0 flex-1 font-mono"
+              className="min-w-0 flex-1"
             />
             <Button type="submit" appearance="primary" loading={loading}>
               <Icon icon={Play} /> Run

@@ -199,3 +199,29 @@ async fn a_bad_page_size_or_token_is_invalid_before_any_call() {
         .unwrap_err();
     assert_eq!(error.field.as_deref(), Some("nextPageToken"));
 }
+
+#[tokio::test]
+async fn search_attributes_come_from_the_operator_service_with_their_types() {
+    use super::search_attributes::{SearchAttributeType, SearchAttributesInput, search_attributes};
+    let out = search_attributes(
+        &lab().await,
+        SearchAttributesInput {
+            conn_id: String::new(),
+            namespace: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        out.fallback, None,
+        "the dev server answers ListSearchAttributes"
+    );
+    let find = |name: &str| out.attributes.iter().find(|a| a.name == name);
+    let workflow_type = find("WorkflowType").expect("WorkflowType is built in");
+    assert_eq!(workflow_type.value_type, SearchAttributeType::Keyword);
+    assert!(!workflow_type.custom);
+    assert_eq!(
+        find("StartTime").map(|a| a.value_type),
+        Some(SearchAttributeType::Datetime)
+    );
+}

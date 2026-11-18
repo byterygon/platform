@@ -47,6 +47,15 @@ class FakeModel {
     for (let i = 0; i < lineNumber - 1; i += 1) offset += lines[i]!.length + 1;
     return offset + column - 1;
   }
+  getWordUntilPosition(position: Position) {
+    const line = this.value.split("\n")[position.lineNumber - 1] ?? "";
+    const before = line.slice(0, position.column - 1);
+    const word = /[A-Za-z0-9_$]*$/.exec(before)![0];
+    return { word, startColumn: position.column - word.length, endColumn: position.column };
+  }
+  isDisposed() {
+    return this.disposed;
+  }
   getFullModelRange(): Range {
     const end = this.getPositionAt(this.value.length);
     return { startLineNumber: 1, startColumn: 1, endLineNumber: end.lineNumber, endColumn: end.column };
@@ -65,12 +74,20 @@ interface Action {
   keybindings?: number[];
   run: () => void;
 }
+interface Command {
+  keybinding: number;
+  run: () => void;
+  context: string | undefined;
+}
 
 class FakeEditor {
   readonly textarea: HTMLTextAreaElement;
   readonly model: FakeModel;
   options: Record<string, unknown>;
   readonly actions: Action[] = [];
+  readonly commands: Command[] = [];
+  /** Whether the suggest widget is open, for commands bound with `!suggestWidgetVisible`. */
+  suggestVisible = false;
   readonly focusListeners = new Set<Listener>();
   readonly blurListeners = new Set<Listener>();
   disposed = false;
@@ -90,6 +107,12 @@ class FakeEditor {
     this.textarea.addEventListener("keydown", (event) => {
       const code = (event.ctrlKey || event.metaKey ? KeyMod.CtrlCmd : 0) | (event.key === "Enter" ? KeyCode.Enter : 0);
       for (const action of this.actions) if (action.keybindings?.includes(code)) action.run();
+      for (const command of this.commands) {
+        if (command.keybinding !== code) continue;
+        if (command.context === "!suggestWidgetVisible" && this.suggestVisible) continue;
+        event.preventDefault();
+        command.run();
+      }
     });
   }
   getModel() {
@@ -109,6 +132,10 @@ class FakeEditor {
     const end = this.model.getPositionAt(this.textarea.selectionEnd);
     return { getStartPosition: () => start, getEndPosition: () => end };
   }
+  addCommand(keybinding: number, run: () => void, context?: string) {
+    this.commands.push({ keybinding, run, context });
+    return String(this.commands.length);
+  }
   addAction(action: Action) {
     this.actions.push(action);
     return { dispose: () => this.actions.splice(this.actions.indexOf(action), 1) };
@@ -121,6 +148,13 @@ class FakeEditor {
   executeEdits(_source: string, edits: { text: string }[]) {
     this.model.setValue(edits[0]!.text);
     return true;
+  }
+  /** Places the cursor (a 0-based offset) for completion tests. */
+  cursorAt(offset: number) {
+    this.textarea.setSelectionRange(offset, offset);
+  }
+  getPosition() {
+    return this.model.getPositionAt(this.textarea.selectionStart);
   }
   onDidFocusEditorWidget(listener: Listener) {
     this.focusListeners.add(listener);
@@ -144,11 +178,16 @@ export const fake = {
   editors: [] as FakeEditor[],
   diffEditors: [] as FakeDiffEditor[],
   jsonOptions: undefined as Record<string, unknown> | undefined,
+  /** Languages registered, with their Monarch grammar and configuration. */
+  languages: new Map<string, { tokens?: unknown; configuration?: unknown }>(),
+  /** Completion providers by language. */
+  providers: [] as { language: string; provider: FakeCompletionProvider; disposed: boolean }[],
   /** What the fake language service reports (getModelMarkers), and who listens. */
   diagnostics: [] as unknown[],
   markerListeners: new Set<(uris: unknown[]) => void>(),
   /** Clears per-test state; themes stay, as Monaco's do for the page's lifetime. */
   reset() {
+    this.providers = [];
     this.markers = [];
     this.editors = [];
     this.diffEditors = [];
@@ -226,6 +265,42 @@ class FakeDiffEditor {
     this.modifiedEditor?.dispose();
   }
 }
+
+interface FakeCompletionProvider {
+  triggerCharacters?: string[];
+  provideCompletionItems(model: FakeModel, position: Position, context: { triggerKind: number }): Promise<{ suggestions: unknown[] }> | { suggestions: unknown[] };
+}
+
+/** Asks the providers of an editor's language for suggestions at its cursor, as Ctrl+Space does. */
+export async function suggest(target: FakeEditor, triggerKind = 0): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  for (const p of fake.providers) {
+    if (p.disposed || p.language !== target.model.language) continue;
+    const result = await p.provider.provideCompletionItems(target.model, target.getPosition(), { triggerKind });
+    out.push(...(result.suggestions as Record<string, unknown>[]));
+  }
+  return out;
+}
+
+export const languages = {
+  register({ id }: { id: string }) {
+    if (!fake.languages.has(id)) fake.languages.set(id, {});
+  },
+  setMonarchTokensProvider(id: string, tokens: unknown) {
+    fake.languages.set(id, { ...fake.languages.get(id), tokens });
+  },
+  setLanguageConfiguration(id: string, configuration: unknown) {
+    fake.languages.set(id, { ...fake.languages.get(id), configuration });
+  },
+  registerCompletionItemProvider(language: string, provider: FakeCompletionProvider) {
+    const entry = { language, provider, disposed: false };
+    fake.providers.push(entry);
+    return { dispose: () => (entry.disposed = true) };
+  },
+  CompletionItemKind: { Function: 1, Field: 3, Variable: 4, Operator: 11, Value: 13, Constant: 14, Keyword: 17, Reference: 21, TypeParameter: 24, Snippet: 27 },
+  CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
+  CompletionTriggerKind: { Invoke: 0, TriggerCharacter: 1 },
+};
 
 /** JSON's language service defaults (`monaco-editor/languages/features/json/register`). */
 export const jsonDefaults = {

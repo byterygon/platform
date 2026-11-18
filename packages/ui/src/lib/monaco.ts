@@ -50,6 +50,19 @@ export function loadMonaco(): Promise<Monaco> {
       import("monaco-editor/features/readOnlyMessage/register"),
       import("monaco-editor/features/placeholderText/register"),
       import("monaco-editor/features/toggleTabFocusMode/register"),
+      // Completion (TSK-93): the suggest widget (Ctrl+Space) and the snippets its items insert.
+      // @ts-expect-error -- the module has no declaration file; it only registers the widget.
+      import("monaco-editor/editor/contrib/suggest/browser/suggestController"),
+      import("monaco-editor/features/snippet/register"),
+      // The services the JSON language's contributions need (code lenses, outline, drag and drop).
+      // Monaco collects services once, when the first editor is created, so they are registered
+      // here: a JSON editor that mounts after a jq or SQL one would otherwise fail (TSK-93).
+      // @ts-expect-error -- no declaration file; the module registers a service.
+      import("monaco-editor/editor/contrib/codelens/browser/codeLensCache"),
+      // @ts-expect-error -- no declaration file; the module registers a service.
+      import("monaco-editor/editor/contrib/documentSymbols/browser/outlineModel"),
+      // @ts-expect-error -- no declaration file; the module registers a service.
+      import("monaco-editor/editor/common/services/treeViewsDndService"),
       import("monaco-editor/languages/definitions/pgsql/register"),
       import("monaco-editor/languages/definitions/sql/register"),
     ]);
@@ -78,12 +91,25 @@ export function loadMonaco(): Promise<Monaco> {
 // brings Monaco's JSON language service (validation, completion and hovers from a JSON Schema)
 // and its worker; schemas are given by the app and never fetched (enableSchemaRequest is off).
 
-/** The languages CodeEditor offers. */
-export type CodeLanguage = "json" | "yaml" | "protobuf" | "plaintext";
+/** The languages CodeEditor offers; an app adds its own with `registerCodeLanguage`. */
+export type CodeLanguage = "json" | "yaml" | "protobuf" | "plaintext" | "jq";
+
+/** Sets up a language an app defines (a Monarch grammar, a configuration) on the Monaco API. */
+export type CodeLanguageSetup = (monaco: Monaco) => void | Promise<void>;
+const customLanguages = new Map<string, CodeLanguageSetup>();
+
+/**
+ * Registers a language for CodeEditor's `language` prop under `id` (TSK-93: Mightyconsole's
+ * `temporal-visibility`). `setup` runs once, the first time an editor uses the language, after
+ * `monaco.languages.register({ id })`. Registering the same id again keeps the first setup.
+ */
+export function registerCodeLanguage(id: string, setup: CodeLanguageSetup): void {
+  if (!customLanguages.has(id)) customLanguages.set(id, setup);
+}
 
 type WorkerConstructor = new (options?: { name?: string }) => Worker;
 const languageWorkers = new Map<string, WorkerConstructor>();
-const languageLoads = new Map<CodeLanguage, Promise<void>>();
+const languageLoads = new Map<string, Promise<void>>();
 
 interface JsonDefaults {
   setDiagnosticsOptions: (options: Record<string, unknown>) => void;
@@ -92,20 +118,34 @@ let jsonDefaults: JsonDefaults | undefined;
 /** The JSON Schema of each model (by its URI), all given to the language service together. */
 const jsonSchemas = new Map<string, unknown>();
 
-/** Loads a language's grammar (and, for JSON, its language service and worker) once. */
-export function loadMonacoLanguage(language: CodeLanguage): Promise<void> {
+/**
+ * Loads a language's grammar (and, for JSON, its language service and worker) once: a built-in
+ * one, or one an app registered with `registerCodeLanguage`. An unknown id loads nothing (the
+ * text shows plain).
+ */
+export function loadMonacoLanguage(language: CodeLanguage | (string & {})): Promise<void> {
   if (language === "plaintext") return Promise.resolve();
   let load = languageLoads.get(language);
   if (!load) {
     load = (async () => {
-      if (language === "json") {
+      const setup = customLanguages.get(language);
+      if (setup) {
+        const monaco = await loadMonaco();
+        monaco.languages.register({ id: language });
+        await setup(monaco);
+      } else if (language === "jq") {
+        const monaco = await loadMonaco();
+        monaco.languages.register({ id: "jq", aliases: ["jq"] });
+        monaco.languages.setMonarchTokensProvider("jq", JQ_GRAMMAR);
+        monaco.languages.setLanguageConfiguration("jq", JQ_CONFIGURATION);
+      } else if (language === "json") {
         const [json, worker] = await Promise.all([import("monaco-editor/languages/features/json/register"), import("monaco-editor/languages/features/json/json.worker?worker")]);
         languageWorkers.set("json", worker.default as WorkerConstructor);
         jsonDefaults = (json as unknown as { jsonDefaults: JsonDefaults }).jsonDefaults;
         applyJsonSchemas();
       } else if (language === "yaml") {
         await import("monaco-editor/languages/definitions/yaml/register");
-      } else {
+      } else if (language === "protobuf") {
         await import("monaco-editor/languages/definitions/protobuf/register");
       }
     })();
@@ -114,6 +154,68 @@ export function loadMonacoLanguage(language: CodeLanguage): Promise<void> {
   }
   return load;
 }
+
+// jq (TSK-93: the messaging filter): a Monarch grammar of jq 1.7 as jaq reads it. Tokens are the
+// ones the design tokens colour (MONACO_TOKENS): keywords, builtins as `predefined`, fields as
+// `identifier`, `$variables` as `type`, `@formats` as `support.function`, and string
+// interpolation `\(…)` back to code.
+
+/** jq's builtin filters (jq 1.7, as jaq implements them), for highlighting and completion. */
+export const JQ_BUILTINS: readonly string[] = [
+  "abs", "add", "all", "any", "arrays", "ascii", "ascii_downcase", "ascii_upcase", "booleans", "capture", "ceil",
+  "combinations", "contains", "debug", "del", "delpaths", "empty", "endswith", "env", "error", "explode", "first",
+  "flatten", "floor", "from_entries", "fromdate", "fromdateiso8601", "fromjson", "getpath", "group_by", "gsub", "halt",
+  "halt_error", "has", "implode", "in", "index", "indices", "infinite", "input", "inputs", "inside", "isinfinite",
+  "isnan", "isnormal", "isvalid", "iterables", "join", "keys", "keys_unsorted", "last", "leaf_paths", "length", "limit",
+  "log", "ltrimstr", "map", "map_values", "match", "max", "max_by", "min", "min_by", "mktime", "nan", "not", "now",
+  "nth", "nulls", "numbers", "objects", "path", "paths", "pick", "pow", "range", "recurse", "repeat", "reverse",
+  "rindex", "round", "rtrimstr", "scalars", "scan", "select", "setpath", "sort", "sort_by", "split", "splits", "sqrt",
+  "startswith", "strftime", "strings", "strptime", "sub", "test", "to_entries", "toarray", "todate", "todateiso8601",
+  "tojson", "tonumber", "tostream", "tostring", "transpose", "trim", "ltrim", "rtrim", "type", "unique", "unique_by",
+  "until", "utf8bytelength", "values", "walk", "while", "with_entries",
+];
+
+const JQ_KEYWORDS = ["def", "if", "then", "elif", "else", "end", "as", "reduce", "foreach", "try", "catch", "label", "import", "include", "and", "or", "__loc__"];
+
+/** The jq Monarch grammar (`monaco.languages.IMonarchLanguage`). */
+export const JQ_GRAMMAR: MonacoNamespace.languages.IMonarchLanguage = {
+  defaultToken: "",
+  keywords: JQ_KEYWORDS,
+  constants: ["true", "false", "null"],
+  builtins: [...JQ_BUILTINS],
+  tokenizer: {
+    root: [{ include: "@code" }],
+    code: [
+      [/#.*$/, "comment"],
+      [/"/, "string", "@string"],
+      [/\$[A-Za-z_][\w]*/, "type"],
+      [/@[A-Za-z_][\w]*/, "support.function"],
+      [/\.\.?(?:[A-Za-z_][\w]*)?/, "identifier"],
+      [/\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, "number"],
+      [/[A-Za-z_][\w]*(?:::[A-Za-z_][\w]*)*/, { cases: { "@keywords": "keyword", "@constants": "constant", "@builtins": "predefined", "@default": "identifier" } }],
+      [/\|=|\+=|-=|\*=|\/=|%=|\/\/=|\/\/|==|!=|<=|>=|\?\/\/|[|,+\-*\/%=<>?]/, "operator"],
+      [/[()[\]{}:;]/, "delimiter"],
+    ],
+    string: [
+      [/[^\\"]+/, "string"],
+      [/\\\(/, { token: "delimiter", next: "@interpolation" }],
+      [/\\./, "string"],
+      [/"/, "string", "@pop"],
+    ],
+    interpolation: [
+      [/\(/, { token: "delimiter", next: "@interpolation" }],
+      [/\)/, { token: "delimiter", next: "@pop" }],
+      { include: "@code" },
+    ],
+  },
+};
+
+const JQ_CONFIGURATION: MonacoNamespace.languages.LanguageConfiguration = {
+  comments: { lineComment: "#" },
+  brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
+  autoClosingPairs: [{ open: "{", close: "}" }, { open: "[", close: "]" }, { open: "(", close: ")" }, { open: '"', close: '"', notIn: ["string"] }],
+  surroundingPairs: [{ open: "{", close: "}" }, { open: "[", close: "]" }, { open: "(", close: ")" }, { open: '"', close: '"' }],
+};
 
 function applyJsonSchemas() {
   jsonDefaults?.setDiagnosticsOptions({
@@ -331,7 +433,9 @@ export function scopedCss(theme: MonacoThemeData, monacoCss: string): string {
       rules.push(`${SCOPE} .mtk${index} { color: var(${cssVar}); }`);
     }
   }
-  return [`${SCOPE} .monaco-editor {`, ...variables, "}", ...rules].join("\n");
+  // A one-line editor sits in a field's frame and shows the field's fill (CodeEditor singleLine).
+  const singleLine = `${SCOPE}[data-single-line] .monaco-editor { --vscode-editor-background: transparent; --vscode-editorGutter-background: transparent; }`;
+  return [`${SCOPE} .monaco-editor {`, ...variables, "}", singleLine, ...rules].join("\n");
 }
 
 /** Monaco's own stylesheets, and the scoped one, so an observer can ignore their updates. */

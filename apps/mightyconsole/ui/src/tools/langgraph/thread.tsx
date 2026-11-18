@@ -31,7 +31,7 @@ import * as api from "@/gen/api";
 import { ArrowClockwise, ArrowUndo, Edit, History, Play, Stop } from "@/lib/icons";
 import type { DescribedError, LiveState, TabProps } from "../types";
 import { EMPTY_RUN, type RunEvent, type RunInterrupt, type RunView, eventName, interruptsOf, parseChunk, reduceRun } from "./run-events";
-import { JsonField, StatusBadge, parseJson, preview, shortId, toGraphView, useLoad } from "./shared";
+import { JsonField, StatusBadge, configSchema, parseJson, partialSchema, preview, schemaObject, shortId, toGraphView, useLoad } from "./shared";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 const pretty = (v: unknown) => (v === undefined ? "" : JSON.stringify(v, null, 2));
@@ -181,6 +181,9 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
   const [rollingBack, setRollingBack] = useState(false);
   const [resumeMode, setResumeMode] = useState<ResumeMode>("resume");
   const [resumeText, setResumeText] = useState('"approved"');
+  // The run's config and context (TSK-93): optional JSON, checked against the assistant's schemas.
+  const [configText, setConfigText] = useState("");
+  const [contextText, setContextText] = useState("");
   const [gotoNode, setGotoNode] = useState<string | null>(null);
   const [eventsView, setEventsView] = useState<"messages" | "events">("messages");
   const running = useRef<Running | null>(null);
@@ -289,8 +292,8 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
         assistantId,
         input: command ? null : ((parsed.ok ? (parsed.value ?? null) : null) as api.JsonValue | null),
         command,
-        config: null,
-        context: null,
+        config: (configParsed.ok ? (configParsed.value ?? null) : null) as api.JsonValue | null,
+        context: (contextParsed.ok ? (contextParsed.value ?? null) : null) as api.JsonValue | null,
         checkpointId: command ? null : fromCheckpoint,
         streamMode,
         streamSubgraphs: subgraphs,
@@ -367,7 +370,10 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
   const inputParsed = parseJson(input ?? "");
   // A new run needs an input; continuing from a checkpoint may go without one.
   const inputMissing = inputParsed.ok && inputParsed.value === undefined && !fromCheckpoint;
-  const canRun = input !== null && inputParsed.ok && !inputMissing;
+  const configParsed = parseJson(configText);
+  const contextParsed = parseJson(contextText);
+  const canRun = input !== null && inputParsed.ok && !inputMissing && configParsed.ok && contextParsed.ok;
+  const contextSchema = schemaObject(schemas.data?.contextSchema);
   const shownEvents = run.events.filter((e) => eventName(e.event).mode !== "tasks" || modes.includes("debug"));
   const items = Object.fromEntries((assistants.data ?? []).map((a) => [a.assistantId, `${a.name} (${a.graphId})`]));
 
@@ -413,7 +419,17 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
                 </AlertActions>
               </Alert>
             ) : null}
-            <JsonField label="Input" value={input ?? ""} onChange={setInput} rows={8} description={fromCheckpoint ? "Leave it empty to continue from the checkpoint as it is." : inputMissing ? "A new run needs an input." : "The graph's input as JSON. Ctrl+Enter runs."} />
+            <JsonField
+              label="Input"
+              value={input ?? ""}
+              onChange={setInput}
+              rows={8}
+              schema={schemaObject(schemas.data?.inputSchema)}
+              onSubmit={() => start(null)}
+              description={fromCheckpoint ? "Leave it empty to continue from the checkpoint as it is." : inputMissing ? "A new run needs an input." : "The graph's input as JSON, checked against its input schema (Ctrl+Space suggests). Ctrl+Enter runs."}
+            />
+            <JsonField label="Config" value={configText} onChange={setConfigText} rows={4} schema={configSchema(schemas.data?.configSchema)} onSubmit={() => start(null)} description={`Optional, e.g. {"configurable": {"model": "small"}}; checked against the assistant’s config schema.`} />
+            {contextSchema ? <JsonField label="Context" value={contextText} onChange={setContextText} rows={4} schema={contextSchema} onSubmit={() => start(null)} description="Optional: the graph's runtime context, checked against its context schema." /> : null}
             <fieldset className="flex flex-col gap-stack-xs">
               <legend className="text-body-1-strong text-fg">Stream modes</legend>
               <div className="flex flex-wrap gap-inline-md">
@@ -478,7 +494,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
                       ))}
                   </Select>
                 ) : (
-                  <JsonField label={resumeMode === "resume" ? "Value for interrupt()" : "State update"} value={resumeText} onChange={setResumeText} rows={3} />
+                  <JsonField label={resumeMode === "resume" ? "Value for interrupt()" : "State update"} value={resumeText} onChange={setResumeText} rows={3} schema={resumeMode === "update" ? partialSchema(schemas.data?.stateSchema) : undefined} />
                 )}
                 <div>
                   <Button appearance="primary" disabled={resumeCommand() === null} onClick={() => start(resumeCommand())}>

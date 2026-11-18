@@ -103,6 +103,16 @@ export async function type(input: HTMLInputElement | HTMLTextAreaElement, value:
   await settle(1);
 }
 
+/**
+ * The text area of a CodeEditor by its accessible name (aria-label, or the text of the label its
+ * aria-labelledby names): Monaco's (the test fake's) once it has loaded, else the fallback.
+ */
+export function editorArea(name: string): HTMLTextAreaElement | null {
+  const labelIds = [...document.querySelectorAll("[id]")].filter((l) => l.textContent === name).map((l) => l.id);
+  const areas = [...document.querySelectorAll<HTMLTextAreaElement>('[data-slot="code-editor"] textarea')].filter((t) => !t.hidden);
+  return areas.find((t) => t.getAttribute("aria-label") === name || labelIds.includes(t.getAttribute("aria-labelledby") ?? "")) ?? null;
+}
+
 export async function blur(input: HTMLElement): Promise<void> {
   await act(async () => {
     input.dispatchEvent(new FocusEvent("blur", { bubbles: true }));

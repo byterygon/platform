@@ -269,6 +269,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.namespaces.searchAttributes",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.schedules.delete",
             Mutation,
             "temporal.write",

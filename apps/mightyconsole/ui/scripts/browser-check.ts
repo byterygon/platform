@@ -9,7 +9,11 @@
 //     and after a reload the tab comes back and connects again;
 //   - the page opened through 127.0.0.1 is redirected to the public origin;
 //   - every request goes to the server's origin (or data:/blob:), and no script or CSP error is
-//     logged.
+//     logged;
+//   - Monaco (TSK-93: every query, JSON and jq input) is in chunks of its own that the page loads
+//     on demand, and the report gives their size and the time to the first keystroke in the
+//     Messages tab's jq editor (median of three cold loads), as packages/ui's check does for
+//     SqlEditor.
 //
 //   node scripts/browser-check.ts
 //
@@ -21,9 +25,10 @@
 // MIGHTYCONSOLE_EMBEDDED_UI=1 checks a release binary (TSK-87) instead: no Vite build and no
 // --ui, so the page and every asset come from the UI compiled into the binary.
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
 import { findBrowser } from "../../../../packages/ui/scripts/browser-check.ts";
@@ -40,6 +45,50 @@ const check = (ok: boolean, message: string) => {
 };
 const until = async (page: Page, expression: string, what: string, timeoutMs = 20_000) => (await waitUntil(page, expression, timeoutMs)) || check(false, `timed out waiting for ${what}`);
 
+/** Monaco's share of the built UI: its chunks, workers and CSS, and whether the page loads any of it up front. */
+function monacoBundle(dist: string) {
+  const assets = join(dist, "assets");
+  const html = readFileSync(join(dist, "index.html"), "utf8");
+  const initial = new Set([...html.matchAll(/(?:src|href)="\.\/assets\/([^"]+)"/g)].map((m) => m[1]!));
+  const files = readdirSync(assets).map((name) => ({ name, bytes: readFileSync(join(assets, name)) }));
+  // A class only Monaco's own scrollbar code uses, and its stylesheet's root class.
+  const monaco = files.filter((f) => /worker/.test(f.name) || (f.name.endsWith(".js") && f.bytes.includes("monaco-scrollable-element")) || (f.name.endsWith(".css") && f.bytes.includes(".monaco-editor")));
+  const size = (list: typeof files) => ({ bytes: list.reduce((n, f) => n + f.bytes.length, 0), gzip: list.reduce((n, f) => n + gzipSync(f.bytes).length, 0) });
+  return {
+    files: monaco.length,
+    ...size(monaco),
+    initial: monaco.filter((f) => initial.has(f.name)).map((f) => f.name),
+    largest: [...monaco].sort((a, b) => b.bytes.length - a.bytes.length).slice(0, 3).map((f) => `${f.name} ${(f.bytes.length / 1024).toFixed(0)} kB`),
+  };
+}
+
+const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
+
+/**
+ * The jq editor of the restored Messages tab after a cold load: when its fallback textarea is
+ * there, when Monaco has mounted (both from navigation start), and how long a key takes to show.
+ */
+async function firstKeystroke(page: Page, url: string) {
+  const editor = `document.querySelector("[data-slot=filter-bar] [data-slot=code-editor]")`;
+  const runs: { fallback: number; ready: number; latency: number }[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    await page.navigate(url);
+    if (!(await until(page, editor, "the jq editor of the restored Messages tab", 30_000))) return null;
+    const fallback = await page.evaluate<number>("performance.now()");
+    if (!(await until(page, `${editor} && !${editor}.hasAttribute("data-loading") && ${editor}.querySelector(".monaco-editor .view-lines")`, "Monaco in the jq editor", 30_000))) return null;
+    const ready = await page.evaluate<number>("performance.now()");
+    await page.evaluate(
+      `(() => { const root = ${editor}; (root.querySelector(".monaco-editor [role=textbox]") ?? root.querySelector(".monaco-editor textarea")).focus(); window.__key = null; new MutationObserver((_, o) => { window.__key = performance.now(); o.disconnect(); }).observe(root.querySelector(".view-lines"), { subtree: true, childList: true, characterData: true }); window.__before = performance.now(); return true; })()`,
+    );
+    await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "x", code: "KeyX", windowsVirtualKeyCode: 88, nativeVirtualKeyCode: 88, text: "x", unmodifiedText: "x" });
+    await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "x", code: "KeyX", windowsVirtualKeyCode: 88, nativeVirtualKeyCode: 88 });
+    if (!(await until(page, "window.__key !== null", "the key in the jq editor", 5_000))) return null;
+    runs.push({ fallback, ready, latency: await page.evaluate<number>("window.__key - window.__before") });
+  }
+  const round = (n: number) => Math.round(n);
+  return { fallbackMs: round(median(runs.map((r) => r.fallback))), monacoReadyMs: round(median(runs.map((r) => r.ready))), keystrokeMs: round(median(runs.map((r) => r.latency))) };
+}
+
 async function main(): Promise<number> {
   const browser = findBrowser();
   const serverBinary = process.env.MIGHTYCONSOLE_SERVER ?? join(REPO, "target", "debug", process.platform === "win32" ? "mightyconsole-server.exe" : "mightyconsole-server");
@@ -55,6 +104,12 @@ async function main(): Promise<number> {
 
   const embedded = process.env.MIGHTYCONSOLE_EMBEDDED_UI === "1";
   if (!embedded) await build({ root: APP, configFile: join(APP, "vite.config.ts"), logLevel: "warn" });
+  if (!embedded) {
+    const bundle = monacoBundle(join(APP, "dist"));
+    console.log(`browser-check: Monaco is ${bundle.files} files, ${(bundle.bytes / 1024).toFixed(0)} kB (${(bundle.gzip / 1024).toFixed(0)} kB gzip), loaded on demand; largest: ${bundle.largest.join(", ")}`);
+    check(bundle.files > 0, "bundle: no Monaco chunk found");
+    check(bundle.initial.length === 0, `bundle: Monaco is in the page's initial files (${bundle.initial.join(", ")}); it must load on demand`);
+  }
   const data = mkdtempSync(join(tmpdir(), "mightyconsole-check-"));
   const port = await freePort();
   const origin = `https://localhost:${port}`;
@@ -115,6 +170,10 @@ async function main(): Promise<number> {
     await page.navigate(`${origin}/`);
     await until(page, `[...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ticks · smoke"))`, "the restored tab");
     await until(page, `__mc.button("Start") && !__mc.has("Connect to smoke")`, "the restored tab to connect");
+
+    // 3b. Monaco cold (TSK-93): the restored Messages tab's jq editor, three loads.
+    const keystroke = await firstKeystroke(page, `${origin}/`);
+    if (keystroke) console.log(`browser-check: jq editor: fallback at ${keystroke.fallbackMs} ms, Monaco ready at ${keystroke.monacoReadyMs} ms, first key shown ${keystroke.keystrokeMs} ms after it was pressed (median of 3 cold loads)`);
 
     // 4. Another accepted host is sent to the public origin.
     await page.navigate(`https://127.0.0.1:${port}/`);

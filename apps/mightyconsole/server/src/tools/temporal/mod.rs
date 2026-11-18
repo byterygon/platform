@@ -13,6 +13,7 @@ mod detail;
 mod detail_types;
 mod payloads;
 mod proto;
+mod search_attributes;
 mod types;
 
 use std::sync::Arc;
@@ -29,6 +30,9 @@ use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 
 pub use self::actions_types::*;
 pub use self::detail_types::*;
+pub use self::search_attributes::{
+    SearchAttribute, SearchAttributeType, SearchAttributesInput, SearchAttributesOutput,
+};
 pub use self::types::*;
 
 /// The tool's id and namespace.
@@ -296,6 +300,18 @@ impl TemporalNamespacesApi {
     ) -> ToolResult<Vec<NamespaceSummary>> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         Ok(list_namespaces(&handle.value).await?)
+    }
+
+    /// The search attributes a visibility query can name in a namespace, with their types (the
+    /// built-in ones, and why, when the server does not list them).
+    #[rpc::query(name = "searchAttributes", perm = "temporal.read", risk = Risk::Read)]
+    async fn search_attributes(
+        &self,
+        ctx: Ctx,
+        input: SearchAttributesInput,
+    ) -> ToolResult<SearchAttributesOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(search_attributes::search_attributes(&handle.value, input).await?)
     }
 }
 

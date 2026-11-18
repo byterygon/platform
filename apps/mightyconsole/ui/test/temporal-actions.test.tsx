@@ -1,7 +1,6 @@
 // The actions of the workflow tab (Mightyconsole spec §9.4): signal, cancel, terminate and reset,
 // each behind a confirmation that names the workflow, with the destructive ones needing their
 // reason; the server's error stays in the dialog; and the Queries view.
-import { EditorView } from "@codemirror/view";
 import { RpcError } from "@byterygon/ambidex";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { describeError } from "@/app/messages";
@@ -13,7 +12,7 @@ import { queryNamesOf } from "@/tools/temporal/QueriesPanel";
 import { WorkflowTab } from "@/tools/temporal/WorkflowTab";
 import { profile as schema } from "@/tools/temporal/profile";
 import type { TabProps, TabRecord } from "@/tools/types";
-import { byRole, byText, cleanup, click, dialogWith, render, settle, type, waitFor } from "./support/render";
+import { byRole, byText, cleanup, click, dialogWith, editorArea, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
 
@@ -89,11 +88,11 @@ const field = (dialogText: string, label: string): HTMLInputElement => {
 };
 const isDisabled = (el: HTMLElement | null) => el !== null && (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true" || el.hasAttribute("data-disabled"));
 
+/** Writes the arguments into their CodeEditor (Monaco's test fake). */
 async function writeCode(json: string) {
-  const content = document.querySelector<HTMLElement>(".cm-content");
-  if (!content) throw new Error("no code field");
-  const view = EditorView.findFromDOM(content)!;
-  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: json } });
+  const area = editorArea("Arguments");
+  if (!area) throw new Error("no code field");
+  await type(area, json);
   await settle(2);
 }
 
@@ -126,7 +125,7 @@ describe("actions (spec §9.4)", () => {
     await waitFor(() => dialogWith("Signal fulfilment-long-running") !== null, "the dialog");
     expect(isDisabled(dialogButton("Signal fulfilment-long-running", "Send signal"))).toBe(true);
     await type(field("Signal fulfilment-long-running", "Signal name"), "approve");
-    await waitFor(() => document.querySelector(".cm-content") !== null, "the editor");
+    await waitFor(() => editorArea("Arguments") !== null, "the editor");
     await writeCode('["tester", 2]');
     expect(isDisabled(dialogButton("Signal fulfilment-long-running", "Send signal"))).toBe(false);
     await click(dialogButton("Signal fulfilment-long-running", "Send signal"));
@@ -139,7 +138,7 @@ describe("actions (spec §9.4)", () => {
     const { wf } = setup();
     await ready();
     await click(byRole("button", "Signal"));
-    await waitFor(() => document.querySelector(".cm-content") !== null, "the editor");
+    await waitFor(() => editorArea("Arguments") !== null, "the editor");
     await type(field("Signal fulfilment-long-running", "Signal name"), "approve");
     await writeCode("{oops");
     expect(isDisabled(dialogButton("Signal fulfilment-long-running", "Send signal"))).toBe(true);
@@ -220,7 +219,7 @@ describe("Queries (spec §9.3)", () => {
     expect(document.querySelector("datalist option[value='__stack_trace']")).not.toBeNull();
     const queryType = document.querySelector<HTMLInputElement>("input[list]")!;
     await type(queryType, "status");
-    await waitFor(() => document.querySelector(".cm-content") !== null, "the editor");
+    await waitFor(() => editorArea("Arguments") !== null, "the editor");
     await writeCode('["x"]');
     await click(byRole("button", "Run query"));
     await waitFor(() => byText(/approved by tester/) !== null || document.body.textContent?.includes("approved by tester") === true, "the result");

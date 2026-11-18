@@ -89,7 +89,7 @@ export function QueriesPanel({ client, connId, namespace, workflowId, runId, act
           ))}
         </datalist>
       </Field>
-      <ArgsField value={args} onChange={setArgs} />
+      <ArgsField value={args} onChange={setArgs} onSubmit={() => void run()} />
       <div>
         <Button type="submit" appearance="primary" loading={busy} disabled={type.trim() === "" || "error" in parsed}>
           <Icon icon={Play} /> Run query

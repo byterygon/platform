@@ -14,7 +14,8 @@ import { exportObject, toJsonLines } from "@/messaging/export";
 import { parseSchemaRef } from "@/messaging/schema-ref";
 import { useLiveTail } from "@/messaging/useLiveTail";
 import { messageCall, messageTable, type TestMessage } from "./support/messages";
-import { act, axeViolations, byRole, byText, cleanup, click, key, render, settle, type, waitFor } from "./support/render";
+import { fake as monaco } from "../../../../packages/ui/test/fakes/monaco.ts";
+import { act, axeViolations, byRole, byText, cleanup, click, editorArea, key, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
 
@@ -85,7 +86,9 @@ describe("MessageViewer (spec §5.6)", () => {
     await waitFor(() => detail() !== null, "the detail");
     expect(detail().textContent).toContain("Payload cut");
     await click(byRole("button", /Load full payload/, detail()));
-    await waitFor(() => detail().textContent!.includes("the whole payload"), "the full payload");
+    // The Text view is a read-only CodeEditor (TSK-93): the text is in its text area.
+    await waitFor(() => editorArea("Value")?.value.includes("the whole payload") === true, "the full payload");
+    expect(detail().querySelector('[data-slot="code-editor"][data-readonly]')).not.toBeNull();
     await click(gridRows(container)[2]!.querySelector("[role=gridcell]"));
     await waitFor(() => detail().querySelector("[data-slot=hex-view]") !== null, "the hex view");
     expect(detail().textContent).toContain("Not decoded as chosen");
@@ -180,12 +183,15 @@ describe("FilterBar (spec §5.4)", () => {
     const input = (label: string) => [...container.querySelectorAll<HTMLInputElement>("input")].find((i) => i.labels?.[0]?.textContent === label)!;
     await type(input("Key contains"), "order");
     await type(input("Header"), "tag=eu");
-    await type(input("jq"), ".a ==");
+    const jq = () => editorArea("jq")!;
+    await type(jq(), ".a ==");
     await waitFor(() => byText(/expected term \(line 1, column 5\)/) !== null, "the jq error");
     expect(byRole("button", "Apply")!.hasAttribute("disabled") || byRole("button", "Apply")!.getAttribute("aria-disabled") === "true").toBe(true);
-    await type(input("jq"), ".value.total > 10");
+    await waitFor(() => (monaco.markers as unknown[]).length === 1, "the jq marker");
+    expect(monaco.markers).toEqual([{ startLineNumber: 1, startColumn: 5, endLineNumber: 1, endColumn: 6, message: "expected term", severity: 8 }]);
+    await type(jq(), ".value.total > 10");
     await waitFor(() => byText(/expected term/) === null, "the error cleared");
-    await key("Enter", {}, input("jq"));
+    await key("Enter", {}, jq());
     expect(onApply).toHaveBeenLastCalledWith({ key: { op: "contains", value: "order", caseSensitive: false }, headers: [{ name: "tag", match: { op: "equals", value: "eu" } }], jq: ".value.total > 10" });
     expect(await axeViolations(container)).toEqual([]);
   });

@@ -1,12 +1,12 @@
 // Threads: search by status and metadata, create, delete; a row opens the thread (spec §11.2). Laid
 // out by TSK-91: a header with the context and New thread, the filters in one row, the table on the
 // layer with copy buttons, paged by offset (Previous, Next; the API has no count).
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
-import { Input } from "@/components/ui/input";
+import { CodeEditor } from "@/components/ui/code-editor";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -17,7 +17,7 @@ import { cn } from "@/lib/cn";
 import type * as api from "@/gen/api";
 import { Add, ArrowClockwise, Delete } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
-import { StatusBadge, parseJson, preview, shortId, useLoad } from "./shared";
+import { StatusBadge, parseJson, preview, seenKeysSchema, shortId, useLoad } from "./shared";
 
 /** Threads per page (spec §11.2 lists the latest 50). */
 const PAGE = 50;
@@ -34,6 +34,8 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
   const toast = useToast();
   const metadata = parseJson(metadataText);
   const { data, error, loading, reload } = useLoad(connId ? () => client.langgraph.threads.search({ connId, metadata: applied.metadata, status: applied.status, limit: PAGE, offset: page === 1 ? null : (page - 1) * PAGE }) : null, [connId, applied, page], note);
+  // The metadata keys and values of the threads listed, as suggestions for the filter (TSK-93).
+  const metadataSchema = useMemo(() => seenKeysSchema((data ?? []).map((t) => t.metadata)), [data]);
 
   const search = () => {
     if (!metadata.ok) return;
@@ -100,7 +102,18 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
               </SelectItem>
             ))}
           </Select>
-          <Input aria-label="Metadata (JSON)" aria-invalid={!metadata.ok || undefined} placeholder='Metadata, e.g. {"user": "ana"}' value={metadataText} onValueChange={setMetadataText} className="min-w-0 flex-1 font-mono" />
+          <CodeEditor
+            singleLine
+            language="json"
+            aria-label="Metadata (JSON)"
+            invalid={!metadata.ok}
+            placeholder='Metadata, e.g. {"user": "ana"}'
+            value={metadataText}
+            onValueChange={setMetadataText}
+            onSubmit={search}
+            jsonSchema={metadataSchema}
+            className="min-w-0 flex-1"
+          />
           <Button type="submit" appearance="secondary" disabled={!metadata.ok}>
             Search
           </Button>
