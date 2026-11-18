@@ -71,6 +71,9 @@ async function main(): Promise<number> {
 
     // 1. The page, its session and the WebSocket.
     await page.navigate(`${origin}/`);
+    // The navigation opens on its first tool (TSK-91); this check uses Echo.
+    await until(page, `__mc.button("Echo")`, "the tool navigation");
+    await run(page, `__mc.click(__mc.button("Echo"))`);
     await until(page, `__mc.has("No Echo connections yet")`, "the empty connection list");
     await until(page, `__mc.has(${JSON.stringify(origin)})`, "app.info over /rpc/ws (the status bar shows the origin)");
     console.log(`browser-check: interactive after ${Date.now() - started} ms`);
