@@ -72,6 +72,13 @@ loopback (spec §12: the suite must pass network-disconnected). Protocol behavio
 on every transport goes in `crates/ambidex-conformance/src/cases.rs`, not in one transport's tests.
 The Rust toolchain is pinned in `rust-toolchain.toml`; pnpm is pinned via `packageManager`.
 
+On pull requests CI runs only what the change affects (TSK-89): `node scripts/affected.mjs --pretty`
+prints it for your working tree against `origin/main` (crates, packages, jobs, `cargo -p` and
+`pnpm --filter` arguments); `node --test scripts/affected.test.mjs` tests it. A new cross-language
+dependency (Rust reading or embedding a JS package's files, or the reverse) needs a line in
+`scripts/affected-rules.mjs`. Pushes to main run everything; "CI result" sums up the run. The
+Linux Rust jobs run in the CI image (`.github/ci-image/`, see its README).
+
 Codegen (spec §2, TSK-7): `#[rpc::router]` attaches ts-rs and schemars types to every procedure;
 `ambidex::codegen` turns a `Router` into `api.ts` and `api.manifest.json` (with the schema hash the
 server puts in `ServerConfig`) and fails if ts-rs and schemars disagree. Procedure input/output

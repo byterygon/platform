@@ -16,8 +16,61 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # TSK-89: what a pull request affects, from the real dependency graphs (scripts/affected.mjs:
+  # pnpm packages, Cargo crates, Cargo.lock and pnpm-lock.yaml diffed per crate and package, the
+  # JS-Rust edges of scripts/affected-rules.mjs). The jobs below switch on from its outputs and
+  # scope their work (cargo -p, pnpm --filter). Pushes to main run everything. Every condition is
+  # written `!= 'false'` and every argument has a run-everything default, so if this job fails the
+  # others run in full (and "CI result" still fails).
+  affected:
+    name: Affected
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      all: ${{ steps.affected.outputs.all }}
+      rust: ${{ steps.affected.outputs.rust }}
+      typescript: ${{ steps.affected.outputs.typescript }}
+      dbee_desktop: ${{ steps.affected.outputs.dbee_desktop }}
+      dbee_budget: ${{ steps.affected.outputs.dbee_budget }}
+      mightyconsole: ${{ steps.affected.outputs.mightyconsole }}
+      cargo_args: ${{ steps.affected.outputs.cargo_args }}
+      pnpm_select: ${{ steps.affected.outputs.pnpm_select }}
+      pnpm_build_select: ${{ steps.affected.outputs.pnpm_build_select }}
+      crate_list: ${{ steps.affected.outputs.crate_list }}
+      package_list: ${{ steps.affected.outputs.package_list }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # The script's own tests, on this repository's real graphs. The cargo metadata cross-check
+      # uses the runner's stable cargo (no toolchain install here); the pnpm one needs an install
+      # and skips.
+      - name: Test scripts/affected.mjs
+        run: node --test scripts/affected.test.mjs
+        env:
+          RUSTUP_TOOLCHAIN: stable
+      - name: Affected crates, packages and jobs
+        id: affected
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node scripts/affected.mjs --event "$GITHUB_EVENT_NAME" ${BASE:+--base "$BASE"} --head HEAD --github-output --pretty > "$RUNNER_TEMP/affected.json"
+          cat "$RUNNER_TEMP/affected.json"
+          {
+            echo '### Affected'
+            echo
+            echo '```json'
+            cat "$RUNNER_TEMP/affected.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   rust:
     name: Rust (fmt, clippy, test)
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.rust != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # TSK-89: in the CI image (.github/ci-image), which has what this job used to install with apt
@@ -28,6 +81,12 @@ jobs:
     container:
       image: ghcr.io/byterygon/ci-linux@sha256:f9905fe25d880d1f92bc1e25886db63b42f9bace8d5ff3bbb099a294e94f2bfd
       options: --user 1001 --cap-add SYS_ADMIN --cap-add NET_ADMIN --shm-size 2g
+    env:
+      # TSK-89: the affected crates as `-p a -p b ...`, or `--workspace`; read from the
+      # environment (not interpolated into the scripts).
+      CARGO_ARGS: ${{ needs.affected.outputs.cargo_args || '--workspace' }}
+      AFFECTED_ALL: ${{ needs.affected.outputs.all }}
+      AFFECTED_CRATES: ${{ needs.affected.outputs.crate_list }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install toolchain from rust-toolchain.toml
@@ -35,20 +94,25 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # DBee spec §2 (TSK-38): the desktop app embeds the built UI (apps/dbee/ui/dist), so the
       # bundle is built before the Rust steps and the cold start below measures the real app.
+      # (TSK-89: Node and the UI only when dbee-desktop or Mightyconsole is affected.)
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: ${{ needs.affected.outputs.dbee_desktop != 'false' || needs.affected.outputs.mightyconsole != 'false' }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ needs.affected.outputs.dbee_desktop != 'false' || needs.affected.outputs.mightyconsole != 'false' }}
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        if: ${{ needs.affected.outputs.dbee_desktop != 'false' || needs.affected.outputs.mightyconsole != 'false' }}
       - run: pnpm --filter @byterygon/dbee build
+        if: ${{ needs.affected.outputs.dbee_desktop != 'false' }}
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy $CARGO_ARGS --all-targets --locked -- -D warnings
       - name: Build documentation
-        run: cargo doc --workspace --no-deps --locked
+        run: cargo doc $CARGO_ARGS --no-deps --locked
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: cargo test --workspace --locked
+      - run: cargo test $CARGO_ARGS --locked
         env:
           BYTERYGON_REQUIRE_POSTGRES: "1"
           BYTERYGON_REQUIRE_WRITER_GATE: "1"
@@ -56,6 +120,7 @@ jobs:
       # (WebKitGTK, the built UI) starts under Xvfb, prints the time from process start to the
       # core being ready, the window being ready and the first page load, and exits.
       - name: DBee desktop cold start (Xvfb)
+        if: ${{ needs.affected.outputs.dbee_desktop != 'false' }}
         run: |
           cargo build -p dbee-desktop --locked
           DBEE_WORKSPACE="$RUNNER_TEMP/dbee-workspace" DBEE_COLD_START_EXIT=1 \
@@ -71,8 +136,10 @@ jobs:
       # §18 (TSK-79): the Mightyconsole server end to end (page session, upgrade checks, the tool
       # contract on the echo sample) runs here too, showing it opens no outbound connection.
       # Every crate was already downloaded by the steps above, so nothing is fetched here. The
-      # script stops at the first failing command.
+      # script stops at the first failing command. TSK-89: each of the four runs when its crate is
+      # affected (all four when everything runs or the affected job gave no answer).
       - name: Conformance suite (network disconnected)
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.crate_list), ' ambidex-conformance ') || contains(format(' {0} ', needs.affected.outputs.crate_list), ' plugin-host ') || contains(format(' {0} ', needs.affected.outputs.crate_list), ' dbee-server ') || contains(format(' {0} ', needs.affected.outputs.crate_list), ' mightyconsole-server ') }}
         run: |
           sudo unshare --net -- sh -c '
             set -e
@@ -81,20 +148,22 @@ jobs:
               echo "network is reachable"; exit 1
             fi
             as_runner() {
+              case "$4" in false) case " $5 " in *" $3 "*) ;; *) echo "$3: not affected"; return 0 ;; esac ;; esac
               setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
                 env PATH="$1" HOME="$2" CARGO_TERM_COLOR=always BYTERYGON_REQUIRE_WRITER_GATE=1 \
                 BYTERYGON_REQUIRE_POSTGRES=1 cargo test -p "$3" --locked --offline
             }
-            as_runner "$1" "$2" ambidex-conformance
-            as_runner "$1" "$2" plugin-host
-            as_runner "$1" "$2" dbee-server
-            as_runner "$1" "$2" mightyconsole-server
-          ' sh "$PATH" "$HOME"
+            as_runner "$1" "$2" ambidex-conformance "$3" "$4"
+            as_runner "$1" "$2" plugin-host "$3" "$4"
+            as_runner "$1" "$2" dbee-server "$3" "$4"
+            as_runner "$1" "$2" mightyconsole-server "$3" "$4"
+          ' sh "$PATH" "$HOME" "$AFFECTED_ALL" "$AFFECTED_CRATES"
       # Mightyconsole spec §18 (TSK-79): the real server serving the built UI, in Chrome, in a
       # network namespace with only loopback: the page's session (cookie, CSRF meta, Origin) and
       # CSP hold, a profile added in the UI connects and streams, a reload restores its tab, and
       # nothing is requested outside the server.
       - name: Mightyconsole in Chrome (network disconnected)
+        if: ${{ needs.affected.outputs.mightyconsole != 'false' }}
         run: |
           cargo build -p mightyconsole-server --locked
           sudo unshare --net -- sh -c '
@@ -114,6 +183,8 @@ jobs:
     # acceptance data (bench_rows 1M x 10, 10,000 tables). It reports; it fails only when a step
     # does not work (a budget over target is recorded in DOC-16, not enforced here).
     name: DBee desktop budget (Linux, WebKitGTK)
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.dbee_budget != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     # TSK-89: in the CI image (WebKitGTK, PostgreSQL, Xvfb, the toolchain), like the Rust job.
@@ -148,33 +219,43 @@ jobs:
   typescript:
     # Must match the required status check in the protect-main ruleset; do not rename without updating it.
     name: TypeScript (typecheck)
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.typescript != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    env:
+      # TSK-89: the affected packages as `--filter a --filter b ...` (build: with their own
+      # dependencies, `--filter a...`), or `--recursive`; read from the environment.
+      PNPM_SELECT: ${{ needs.affected.outputs.pnpm_select || '--recursive' }}
+      PNPM_BUILD_SELECT: ${{ needs.affected.outputs.pnpm_build_select || '--recursive' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The runtime's integration tests run against the Rust conformance server
       # (ambidex-conformance, WebSocket feature only, so no WebKitGTK is needed).
       - name: Install toolchain from rust-toolchain.toml
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/ambidex ') }}
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/ambidex ') }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm build
+      - run: pnpm $PNPM_SELECT run --if-present typecheck
+      - run: pnpm $PNPM_BUILD_SELECT run --if-present build
       # Byterygon UI spec §9a.4 (TSK-50): the design-token lint rules (@byterygon/lint) on
       # packages/ui, packages/theme-studio, packages/data-grid and apps/dbee/ui. Needs the token engine built above.
-      - run: pnpm lint
-      - run: pnpm test
+      - run: pnpm $PNPM_SELECT run --if-present lint
+      - run: pnpm $PNPM_SELECT run --if-present test
         env:
           AMBIDEX_REQUIRE_RUST_SERVER: "1"
       # Byterygon UI spec §4: the token build needs no network. Check the committed outputs and
       # run the package's tests (compiled by the step above) again in a network namespace with
       # only loopback, as the runner user. The script stops at the first failing command.
       - name: Design tokens (network disconnected)
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/design-tokens ') }}
         working-directory: packages/design-tokens
         run: |
           sudo unshare --net -- sh -c '
@@ -194,6 +275,7 @@ jobs:
       # Byterygon UI spec §9a.5 (TSK-50): the MCP server (stdio only) answers every tool, reads the
       # registry and installs items into a project with no network. Same network namespace.
       - name: Byterygon UI MCP server (network disconnected)
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/ui-mcp ') }}
         working-directory: packages/mcp
         run: |
           sudo unshare --net -- sh -c '
@@ -209,6 +291,7 @@ jobs:
       # offline, from the folder and from a loopback static server, into a blank Vite app whose
       # build resolves stock and Byterygon classes to the tokens. Same network namespace.
       - name: Byterygon UI registry install (network disconnected)
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/ui ') }}
         working-directory: packages/ui
         run: |
           sudo unshare --net -- sh -c '
@@ -224,6 +307,7 @@ jobs:
       # app's own files with its worker, follows the tokens of every preset, mode and density at
       # run time, works by keyboard and with a 1 MB document. Same network namespace.
       - name: Byterygon UI editors in Chrome (network disconnected)
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/ui ') }}
         working-directory: packages/ui
         run: |
           sudo unshare --net -- sh -c '
@@ -239,6 +323,7 @@ jobs:
       # request outside its own files, every preset's every export (downloaded through the Export
       # dialog) byte for byte what by-tokens prints, edits and storage. Same network namespace.
       - name: Theme Studio in Chrome (network disconnected)
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/theme-studio ') }}
         working-directory: packages/theme-studio
         run: |
           sudo unshare --net -- sh -c '
@@ -255,6 +340,7 @@ jobs:
       # per-row objects, nothing leaves loopback. Headless pacing makes it a smoke test, not the
       # benchmark (the gate is not enforced). Same network namespace.
       - name: Data grid in Chrome (network disconnected)
+        if: ${{ needs.affected.outputs.all != 'false' || contains(format(' {0} ', needs.affected.outputs.package_list), ' @byterygon/data-grid ') }}
         working-directory: packages/data-grid
         run: |
           sudo unshare --net -- sh -c '
@@ -273,6 +359,8 @@ jobs:
   # embeds it, then clippy and the crate's tests run on the native toolchain.
   desktop:
     name: DBee desktop (${{ matrix.os }})
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.dbee_desktop != 'false' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -335,3 +423,28 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
       - name: Scan full git history
         run: '"$RUNNER_TEMP/gitleaks" git --redact --verbose --exit-code 1 .'
+
+  # TSK-89: one check that sums up the run, for the protect-main ruleset: it fails when the
+  # affected job failed or any other job failed or was cancelled; a job switched off by the
+  # affected job (skipped) counts as passed.
+  result:
+    name: CI result
+    if: ${{ always() }}
+    needs: [affected, rust, dbee-desktop-budget, typescript, desktop, licenses, secrets]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed or was not needed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          node -e '
+            const needs = JSON.parse(process.env.NEEDS);
+            let ok = true;
+            for (const [job, { result }] of Object.entries(needs)) {
+              const fine = result === "success" || (result === "skipped" && job !== "affected");
+              console.log(`${fine ? "ok  " : "FAIL"} ${job}: ${result}`);
+              ok &&= fine;
+            }
+            process.exit(ok ? 0 : 1);
+          '
