@@ -14,7 +14,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { CopyButton, NoticeContext } from "@/app/page";
+import { CopyButton, NoticeContext, gutterTable } from "@/app/page";
 import { EmptyLine } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
@@ -250,7 +250,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
             <EmptyLine>{query ? `No event matches "${query}".` : "No events of this kind."}</EmptyLine>
           </div>
         ) : (
-          <Table ref={scroller} aria-label="History events" className="min-h-0 min-w-0 flex-1">
+          <Table ref={scroller} aria-label="History events" className={cn("min-h-0 min-w-0 flex-1", gutterTable)}>
             <TableHeader>
               <TableRow>
                 <TableHead align="end">ID</TableHead>
@@ -372,7 +372,7 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw }: { 
             <ToggleGroupItem value="raw">Raw</ToggleGroupItem>
           </ToggleGroup>
         ) : (
-          <Badge variant="neutral">Decoded</Badge>
+          <Badge appearance="tint" variant="neutral">Decoded</Badge>
         )}
         <span className="text-caption-1 text-fg-muted">{payloadLabel(event.encodings)}</span>
       </div>

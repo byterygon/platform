@@ -182,12 +182,13 @@ describe("Table as Fluent 2's (TSK-90)", () => {
     expect(heights("extra-small")).toEqual(["extra-small", "[&_td]:h-table-row-xs"]);
   });
 
-  test("the header is regular weight on the default text colour, with a divider; rows hover, press and select", () => {
+  test("the header is strong on the default text colour (the TSK-91 mockup), with a subtle divider; rows hover, press and select", () => {
     const { container } = render(<Small />);
     const head = container.querySelector<HTMLElement>("th")!;
-    expect(head.classList.contains("text-body-1")).toBe(true);
+    expect(head.classList.contains("text-body-1-strong")).toBe(true);
     expect(head.classList.contains("text-fg")).toBe(true);
-    expect(head.classList.contains("border-border")).toBe(true);
+    expect(head.classList.contains("border-border-subtle")).toBe(true);
+    expect(container.querySelector<HTMLElement>("td")!.classList.contains("border-border-subtle")).toBe(true);
     const row = container.querySelector<HTMLElement>("tbody tr")!;
     for (const name of ["hover:bg-hover", "active:bg-pressed", "data-selected:bg-selected"]) expect(row.classList.contains(name)).toBe(true);
     expect(container.querySelector("thead")!.className).toContain("[&>tr]:hover:bg-transparent");

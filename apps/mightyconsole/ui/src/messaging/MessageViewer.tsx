@@ -166,7 +166,7 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
       {tail.error ? <ErrorState error={tail.error} onRetry={() => tail.start(true)} /> : null}
       <p data-slot="message-viewer-status" className="flex flex-wrap items-center gap-inline-sm px-inset-sm py-inset-xs text-caption-1 text-fg-muted" aria-live="polite">
         {tail.status === "idle" ? `No ${labels.items} yet. Press Start (Ctrl+Enter).` : `${rows.toLocaleString()} ${labels.items} shown`}
-        {dropped > 0 ? <Badge variant="warning">Showing the latest {rows.toLocaleString()}</Badge> : null}
+        {dropped > 0 ? <Badge appearance="tint" variant="warning">Showing the latest {rows.toLocaleString()}</Badge> : null}
         {p ? (
           <span>
             scanned {p.scanned.toLocaleString()} · matched {p.matched.toLocaleString()} · dropped {p.dropped.toLocaleString()} · decode errors {p.decodeErrors.toLocaleString()} · {formatBytes(p.bytesPerSec)}/s

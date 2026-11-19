@@ -17,7 +17,7 @@ import { CodeEditor } from "@/components/ui/code-editor";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { CopyButton, NoticeContext, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable } from "@/app/page";
+import { CopyButton, NoticeContext, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable, LinkButton } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
@@ -35,11 +35,11 @@ import { VISIBILITY_LANGUAGE, collectValues, queryErrorMarker, recentQueries, re
 registerVisibilityLanguage();
 
 const STATUS_VARIANT: Record<WorkflowStatus, "neutral" | "accent" | "danger" | "warning" | "success" | "info"> = {
-  Running: "accent",
+  Running: "info",
   Completed: "success",
   Failed: "danger",
   Canceled: "neutral",
-  Terminated: "warning",
+  Terminated: "danger",
   ContinuedAsNew: "info",
   TimedOut: "warning",
   Paused: "neutral",
@@ -244,7 +244,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
       case "status":
         return (
           <TableCell key={c}>
-            <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge>
+            <Badge appearance="tint" variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge>
           </TableCell>
         );
       case "type":
@@ -270,9 +270,9 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
       case "taskQueue":
         return (
           <TableCell key={c}>
-            <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+            <LinkButton onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
               {w.taskQueue}
-            </Button>
+            </LinkButton>
           </TableCell>
         );
       case "history":
@@ -301,7 +301,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
         title="Workflows"
         subtitle={
           <>
-            {profile.name} · namespace <span className="text-fg">{namespace}</span>
+            {profile.name} · namespace <span className="text-body-1-strong text-fg">{namespace}</span>
             {count !== null ? (
               <span role="status">
                 {" "}
@@ -392,7 +392,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
           </div>
           {invalid ? (
             <FieldError match>
-              <Badge variant="danger">Invalid</Badge> {invalid}
+              <Badge appearance="tint" variant="danger">Invalid</Badge> {invalid}
             </FieldError>
           ) : null}
         </Field>
@@ -429,9 +429,9 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
                       <TableRow key={`${w.workflowId}/${w.runId}`} data-key={`${w.workflowId}/${w.runId}`} tabIndex={0} onKeyDown={(e) => onRowKey(e, w)} className="group">
                         <TableCell>
                           <span className="flex items-center gap-inline-xs">
-                            <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openWorkflow(w)}>
+                            <LinkButton onClick={() => openWorkflow(w)}>
                               {w.workflowId}
-                            </Button>
+                            </LinkButton>
                             <CopyButton value={w.workflowId} what="workflow ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
                           </span>
                         </TableCell>

@@ -75,8 +75,8 @@ export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadS
   return (
     <div data-slot="message-detail" className="flex size-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-inline-sm px-inset-sm py-inset-xs">
-        <Badge variant="neutral">{m.payloadCodec}</Badge>
-        {m.schemaRef ? <Badge variant="info">{m.schemaRef}</Badge> : null}
+        <Badge appearance="tint" variant="neutral">{m.payloadCodec}</Badge>
+        {m.schemaRef ? <Badge appearance="tint" variant="info">{m.schemaRef}</Badge> : null}
         <span className="min-w-0 flex-1" />
         {onCompose ? (
           <Button appearance="subtle" size="small" onClick={() => onCompose(m)}>
@@ -129,7 +129,7 @@ export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadS
                 <DescriptionListItem key={`${name}-${i}`}>
                   <DescriptionListTerm>{name}</DescriptionListTerm>
                   <DescriptionListDetails>
-                    <span className="font-mono">{value}</span> {encoding === "base64" ? <Badge variant="neutral">base64</Badge> : null}
+                    <span className="font-mono">{value}</span> {encoding === "base64" ? <Badge appearance="tint" variant="neutral">base64</Badge> : null}
                   </DescriptionListDetails>
                 </DescriptionListItem>
               ))}

@@ -19,9 +19,9 @@
     },
     {
       "name": "appearance",
-      "type": "\"subtle\" | \"solid\" | \"outline\" | \"dot\"",
+      "type": "\"subtle\" | \"tint\" | \"solid\" | \"outline\" | \"dot\"",
       "default": "subtle",
-      "description": "subtle tinted, solid filled, outline bordered, dot a coloured dot before plain text."
+      "description": "subtle tinted, solid filled, outline bordered, dot a coloured dot before plain text; tint is Fluent's tint (the tone's fill and stroke, strong text), as Mightyconsole's statuses use."
     },
     {
       "name": "size",
@@ -61,6 +61,7 @@
     ],
     "appearance": [
       "subtle",
+      "tint",
       "solid",
       "outline",
       "dot"
@@ -90,6 +91,7 @@
     "color.accent.subtle-bg",
     "color.accent.subtle-fg",
     "color.border.default",
+    "color.border.subtle",
     "color.fg.default",
     "color.fg.muted",
     "color.neutral.bg",
@@ -120,8 +122,17 @@
     "size.control.sm",
     "size.control.xs",
     "size.icon.xs",
+    "space.inline.md",
     "space.inline.sm",
     "space.inline.xs",
+    "text.body-1-strong.leading",
+    "text.body-1-strong.size",
+    "text.body-1-strong.tracking",
+    "text.body-1-strong.weight",
+    "text.caption-1-strong.leading",
+    "text.caption-1-strong.size",
+    "text.caption-1-strong.tracking",
+    "text.caption-1-strong.weight",
     "text.caption.leading",
     "text.caption.size",
     "text.caption.tracking",

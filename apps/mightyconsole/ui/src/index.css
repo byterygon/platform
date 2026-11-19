@@ -24,6 +24,8 @@ body {
   background: var(--by-color-bg-canvas);
   color: var(--by-color-fg-default);
   font-family: var(--by-font-sans);
+  /* Tabular figures everywhere, as the TSK-91 mockup sets them: times, counts and IDs line up. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* The base layer (TSK-64, Fluent 2 layering): the window paints the theme's backdrop. */

@@ -20,7 +20,8 @@ export const fieldVariants = {} as const;
 const base = ["flex min-w-0 flex-col gap-stack-xs font-sans"];
 
 const labelClasses = [
-  "inline-flex w-fit items-center gap-inline-sm text-body-1 text-fg",
+  "inline-flex w-fit items-center gap-inline-sm text-body-1-strong text-fg",
+  "in-data-[field-orientation=horizontal]:text-body-1 in-data-[slot=field-item]:text-body-1 has-data-[slot=checkbox]:text-body-1 has-data-[slot=switch]:text-body-1 has-data-[slot=radio]:text-body-1",
   // An option of a group keeps its colour; the group says it is invalid through FieldLegend.
   "not-in-data-[slot=field-item]:data-invalid:text-danger-fg",
   "data-disabled:cursor-not-allowed data-disabled:text-fg-disabled",
@@ -80,6 +81,8 @@ export interface FieldProps extends Omit<FieldPrimitive.Root.Props, "className">
    * marks every field touched on submit). Explicit `name`, `invalid`, `touched`, `dirty` win.
    */
   field?: FieldState;
+  /** vertical (default): the label above the control, strong. horizontal: the control and its label in a row, the label regular (a checkbox, a switch). */
+  orientation?: "vertical" | "horizontal" | undefined;
   /** Extra classes, merged after the component's own so they win. */
   className?: string;
 }
@@ -88,18 +91,19 @@ export interface FieldProps extends Omit<FieldPrimitive.Root.Props, "className">
  * A form field on Base UI's Field.Root: a column of FieldLabel, the control (Input, Textarea,
  * InputGroup), FieldDescription and FieldError. The ref reaches the `<div>`.
  */
-export function Field({ field, name, invalid, touched, dirty, className, ...props }: FieldProps) {
+export function Field({ field, name, invalid, touched, dirty, orientation = "vertical", className, ...props }: FieldProps) {
   const meta = field?.state.meta;
   const shown = invalid ?? (meta ? meta.isTouched && !meta.isValid : undefined);
   return (
     <FieldErrorsContext value={{ invalid: shown, errors: meta?.errors ?? [] }}>
       <FieldPrimitive.Root
         data-slot="field"
+        data-field-orientation={orientation}
         name={name ?? field?.name}
         invalid={shown}
         touched={touched ?? meta?.isTouched}
         dirty={dirty ?? meta?.isDirty}
-        className={cn(base, className)}
+        className={cn(base, orientation === "horizontal" && "flex-row items-center gap-inline-sm", className)}
         {...props}
       />
     </FieldErrorsContext>

@@ -10,7 +10,8 @@ import { DescriptionList, DescriptionListDetails, DescriptionListItem, Descripti
 import { Icon } from "@/components/ui/icon";
 import { JsonViewer } from "@/components/ui/json-viewer";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CopyButton, NoticeContext } from "@/app/page";
+import { CopyButton, LinkButton, NoticeContext, gutterTable } from "@/app/page";
+import { cn } from "@/lib/cn";
 import type { WorkflowDetail } from "@/gen/api";
 import { ArrowClockwise, Copy } from "@/lib/icons";
 import { clockText, durationMs, failureChain, spanText } from "./history";
@@ -123,7 +124,7 @@ export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detai
           </Button>
         </div>
         {activities.length > 0 ? (
-          <Table aria-label="Pending activities" className="shrink-0">
+          <Table aria-label="Pending activities" className={cn("shrink-0", gutterTable)}>
             <TableHeader>
               <TableRow>
                 <TableHead>Activity</TableHead>
@@ -145,7 +146,7 @@ export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detai
                   </TableCell>
                   <TableCell>{a.type}</TableCell>
                   <TableCell>
-                    <Badge variant={a.retrying ? "warning" : "accent"}>{a.state}</Badge>
+                    <Badge appearance="tint" variant={a.retrying ? "warning" : "info"}>{a.state}</Badge>
                   </TableCell>
                   <TableCell align="end" className="whitespace-nowrap">
                     {a.attempt}
@@ -165,7 +166,7 @@ export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detai
           <span className="text-body-1 text-fg-muted">{children.length === 0 ? "None pending" : `${children.length} pending`}</span>
         </div>
         {children.length > 0 ? (
-          <Table aria-label="Pending child workflows" className="shrink-0">
+          <Table aria-label="Pending child workflows" className={cn("shrink-0", gutterTable)}>
             <TableHeader>
               <TableRow>
                 <TableHead>Workflow ID</TableHead>
@@ -178,9 +179,9 @@ export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detai
               {children.map((c, i) => (
                 <TableRow key={text(c["workflowId"]) || i}>
                   <TableCell>
-                    <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => onOpenWorkflow(text(c["workflowId"]), text(c["runId"]))}>
+                    <LinkButton onClick={() => onOpenWorkflow(text(c["workflowId"]), text(c["runId"]))}>
                       {text(c["workflowId"])}
-                    </Button>
+                    </LinkButton>
                   </TableCell>
                   <TableCell>{text(c["workflowTypeName"])}</TableCell>
                   <TableCell className="font-mono text-code">{text(c["runId"]).slice(0, 8)}</TableCell>

@@ -378,7 +378,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
                 <DurationField label="Catch-up window" value={d.catchupWindow} onChange={(catchupWindow) => set({ catchupWindow })} placeholder="1 year" description="How late a missed run may still start." />
                 <DurationField label="Jitter" value={d.jitter} onChange={(jitter) => set({ jitter })} placeholder="None" description="Each run starts up to this much later, at random." />
               </div>
-              <Field className="flex-row items-center gap-inline-sm">
+              <Field orientation="horizontal">
                 <Checkbox checked={d.pauseOnFailure} onCheckedChange={(v) => set({ pauseOnFailure: v === true })} />
                 <FieldLabel>Pause when a run fails</FieldLabel>
               </Field>
@@ -394,7 +394,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
               <ObjectField label="Search attributes" value={d.searchAttributes} onChange={(searchAttributes) => set({ searchAttributes })} description="Custom search attributes of the namespace, as a JSON object." onSubmit={submit} />
             </Fold>
             <Fold title="State" value={stateText}>
-              <Field className="flex-row items-center gap-inline-sm">
+              <Field orientation="horizontal">
                 <Checkbox checked={d.paused} onCheckedChange={(v) => set({ paused: v === true })} />
                 <FieldLabel>Paused</FieldLabel>
               </Field>

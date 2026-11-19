@@ -16,7 +16,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RelativeTime } from "@/components/ui/relative-time";
-import { CopyButton, Page, PageBar, PageFooter, PageHeader, PageRegion, gutterTable } from "@/app/page";
+import { CopyButton, Page, PageBar, PageFooter, PageHeader, PageRegion, gutterTable, LinkButton } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
@@ -130,7 +130,7 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
         title="Workers"
         subtitle={
           <>
-            {profile.name} · namespace <span className="text-fg">{namespace}</span>
+            {profile.name} · namespace <span className="text-body-1-strong text-fg">{namespace}</span>
             {out ? ` · ${formatCount(workers.length)} ${workers.length === 1 ? "worker" : "workers"} polling ${formatCount(polled)} of ${formatCount(queues.length)} task ${queues.length === 1 ? "queue" : "queues"}` : ""}
             {idle > 0 ? ` · ${formatCount(idle)} idle` : ""}
           </>
@@ -177,7 +177,7 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
           <SelectItem value="activity">Activity</SelectItem>
         </Select>
         <SearchInput aria-label="Filter by identity or build" placeholder="Filter by identity or build" value={filter} onValueChange={setFilter} className="min-w-0 flex-1" />
-        <Field className="shrink-0 flex-row items-center gap-inline-sm">
+        <Field orientation="horizontal" className="shrink-0">
           <Checkbox checked={grouped} onCheckedChange={(v) => setGrouped(v === true)} />
           <FieldLabel className="whitespace-nowrap">Group by task queue</FieldLabel>
         </Field>
@@ -223,14 +223,14 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
                       <span className="flex items-center gap-inline-xs">
                         <span role="img" aria-label={stale ? "idle" : "polling"} className={cn("size-icon-xs shrink-0 rounded-full", stale ? "bg-warning" : "bg-success")} />
                         <span className="font-mono text-code">{w.identity}</span>
-                        {stale ? <Badge variant="warning">Idle</Badge> : null}
+                        {stale ? <Badge appearance="tint" variant="warning">Idle</Badge> : null}
                         <CopyButton value={w.identity} what="worker identity" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+                      <LinkButton onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
                         {w.taskQueue}
-                      </Button>
+                      </LinkButton>
                     </TableCell>
                     <TableCell>{pollsFor(w)}</TableCell>
                     <TableCell>{w.buildId || w.deploymentName ? <span className="font-mono text-code text-fg-muted" title={[w.deploymentName, w.buildId].filter(Boolean).join(" · ")}>{versionText(w.deploymentName, w.buildId)}</span> : <span className="text-fg-muted">—</span>}</TableCell>

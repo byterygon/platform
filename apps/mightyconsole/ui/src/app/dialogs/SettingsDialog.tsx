@@ -31,7 +31,7 @@ export interface SettingsDialogProps {
 
 function SettingRow({ icon, label, description, children }: { icon: IconDefinition; label: string; description?: ReactNode; children: ReactNode }) {
   return (
-    <Field className="flex-row items-center gap-inline-lg rounded-md border border-border-subtle bg-layer-alt px-inset-md py-inset-sm">
+    <Field orientation="horizontal" className="gap-inline-lg rounded-md border border-border-subtle bg-layer-alt px-inset-md py-inset-sm">
       <Icon icon={icon} size="lg" tone="muted" />
       <div className="flex min-w-0 flex-1 flex-col gap-stack-xs">
         <FieldLabel>{label}</FieldLabel>

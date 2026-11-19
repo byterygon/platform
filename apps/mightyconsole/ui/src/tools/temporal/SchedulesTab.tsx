@@ -125,7 +125,7 @@ export function SchedulesTab({ tab, profile, connId, client, active, useTabActio
                     <TableCell>{s.workflowType}</TableCell>
                     <TableCell>{s.spec}</TableCell>
                     <TableCell>
-                      <Badge variant={s.paused ? "warning" : "success"}>{s.paused ? "Paused" : "Active"}</Badge>
+                      <Badge appearance="tint" variant={s.paused ? "warning" : "success"}>{s.paused ? "Paused" : "Active"}</Badge>
                     </TableCell>
                     <TableCell>{formatTime(s.nextRuns[0])}</TableCell>
                     <TableCell>{last ? `${formatTime(last.actualTime ?? last.scheduledTime)} ${last.status ? statusLabel(last.status as never) : ""}`.trim() : ""}</TableCell>
@@ -193,7 +193,7 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
         adornment={
           <>
             <CopyButton value={scheduleId} what="schedule ID" />
-            {s ? <Badge variant={s.paused ? "warning" : "success"}>{s.paused ? "Paused" : "Active"}</Badge> : null}
+            {s ? <Badge appearance="tint" variant={s.paused ? "warning" : "success"}>{s.paused ? "Paused" : "Active"}</Badge> : null}
           </>
         }
         subtitle={s ? [s.workflowType, s.spec, s.notes ? `“${s.notes}”` : ""].filter(Boolean).join(" · ") : `${namespace} · ${profile.name}`}

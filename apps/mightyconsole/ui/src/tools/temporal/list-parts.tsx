@@ -94,7 +94,7 @@ export function ColumnsButton({ choice, onChange }: { choice: ColumnChoice; onCh
         <ul className="flex flex-col gap-stack-xs">
           {choice.order.map((id, i) => (
             <li key={id} className="flex items-center gap-inline-sm">
-              <Field className="min-w-0 flex-1 flex-row items-center gap-inline-sm">
+              <Field orientation="horizontal" className="min-w-0 flex-1">
                 <Checkbox checked={!choice.hidden.includes(id)} onCheckedChange={(v) => onChange({ ...choice, hidden: v === true ? choice.hidden.filter((h) => h !== id) : [...choice.hidden, id] })} />
                 <FieldLabel>{label(id)}</FieldLabel>
               </Field>

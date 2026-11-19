@@ -35,7 +35,7 @@ import { PendingPanel } from "./PendingPanel";
 import { statusLabel } from "./WorkflowsTab";
 import { useWorkflow } from "./useWorkflow";
 
-const STATUS_VARIANT = { Running: "accent", Completed: "success", Failed: "danger", Canceled: "neutral", Terminated: "warning", ContinuedAsNew: "info", TimedOut: "warning", Paused: "neutral", Unspecified: "neutral" } as const;
+const STATUS_VARIANT = { Running: "info", Completed: "success", Failed: "danger", Canceled: "neutral", Terminated: "danger", ContinuedAsNew: "info", TimedOut: "warning", Paused: "neutral", Unspecified: "neutral" } as const;
 
 type Section = "timeline" | "history" | "io" | "pending" | "stack" | "queries";
 type Dialog = "signal" | "cancel" | "terminate" | "reset" | "startAnother" | null;
@@ -130,13 +130,13 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
         adornment={
           <>
             <CopyButton value={workflowId} what="workflow ID" />
-            {w ? <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge> : null}
+            {w ? <Badge appearance="tint" variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge> : null}
           </>
         }
         subtitle={
           w ? (
             <>
-              {w.workflowType} · task queue <span className="text-fg">{w.taskQueue}</span>
+              {w.workflowType} · task queue <span className="text-body-1-strong text-fg">{w.taskQueue}</span>
               {w.startTime ? ` · started ${formatTime(w.startTime)}` : ""}
               {running && w.startTime ? ` · running for ${spanText(now - Date.parse(w.startTime))}` : w.durationMs !== undefined ? ` · took ${formatDuration(w.durationMs)}` : ""}
             </>
@@ -216,11 +216,11 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           <TabsList aria-label="Workflow views" className="px-inset-lg">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="history">
-              History <span className="text-fg-muted">{formatCount(events.length)}</span>
+              History <span className="text-body-1 text-fg-muted">{formatCount(events.length)}</span>
             </TabsTrigger>
             <TabsTrigger value="io">Input and result</TabsTrigger>
             <TabsTrigger value="pending">
-              Pending {pending > 0 ? <span className="text-fg-muted">{pending}</span> : null}
+              Pending {pending > 0 ? <span className="text-body-1 text-fg-muted">{pending}</span> : null}
             </TabsTrigger>
             <TabsTrigger value="queries">Queries</TabsTrigger>
             <TabsTrigger value="stack">Stack trace</TabsTrigger>
@@ -365,7 +365,7 @@ const KIND_CHIPS: readonly { kind: LaneKind; label: string }[] = [
   { kind: "update", label: "Updates" },
   { kind: "workflowTask", label: "Workflow tasks" },
 ];
-const ITEM_BADGE: Record<ItemStatus, "accent" | "success" | "danger" | "warning" | "info" | "neutral"> = { running: "accent", success: "success", danger: "danger", warning: "warning", info: "info", neutral: "neutral" };
+const ITEM_BADGE: Record<ItemStatus, "accent" | "success" | "danger" | "warning" | "info" | "neutral"> = { running: "info", success: "success", danger: "danger", warning: "warning", info: "info", neutral: "neutral" };
 
 interface TimelinePanelProps {
   events: HistoryEvent[];
@@ -483,7 +483,7 @@ function SelectedStrip({ info, onOpenHistory }: { info: ItemInfo | undefined; on
         <p className="flex items-center gap-inline-sm text-body-1-strong text-fg">
           {info.name} · {info.what}
           <CopyButton value={info.name} what="name" />
-          <Badge variant={ITEM_BADGE[info.status]}>{info.state}</Badge>
+          <Badge appearance="tint" variant={ITEM_BADGE[info.status]}>{info.state}</Badge>
         </p>
         <p className="truncate text-body-1 text-fg-muted">
           {facts.join(" · ")}
@@ -539,7 +539,7 @@ function InputResultPanel({ events, detail }: { events: HistoryEvent[]; detail: 
               <li key={i} className="flex flex-col gap-stack-xs">
                 <p className="text-body-1 text-fg">
                   {i > 0 ? <span className="text-fg-muted">Caused by: </span> : null}
-                  {f.type ? <Badge variant="danger">{f.type}</Badge> : null} {f.message}
+                  {f.type ? <Badge appearance="tint" variant="danger">{f.type}</Badge> : null} {f.message}
                 </p>
                 {f.stackTrace ? <CodeBlock code={f.stackTrace} language="text" copyable aria-label={`Stack of failure ${i + 1}`} className="max-h-panel-sm" /> : null}
               </li>

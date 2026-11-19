@@ -11,15 +11,17 @@ import { cn } from "@/lib/cn";
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const badgeVariants = {
   variant: {
-    neutral: "data-[appearance=solid]:bg-neutral-solid data-[appearance=solid]:text-neutral-solid-fg data-[appearance=subtle]:bg-neutral-subtle data-[appearance=subtle]:text-neutral-subtle-fg data-[appearance=outline]:border-border data-[appearance=outline]:text-fg [&>[data-slot=badge-dot]]:bg-fg-muted",
-    accent: "data-[appearance=solid]:bg-accent-solid data-[appearance=solid]:text-accent-solid-fg data-[appearance=subtle]:bg-accent-subtle data-[appearance=subtle]:text-accent-subtle-fg data-[appearance=outline]:border-accent-compound data-[appearance=outline]:text-accent-subtle-fg [&>[data-slot=badge-dot]]:bg-accent-compound",
-    danger: "data-[appearance=solid]:bg-danger data-[appearance=solid]:text-danger-solid-fg data-[appearance=subtle]:bg-danger-subtle data-[appearance=subtle]:text-danger-fg data-[appearance=outline]:border-danger-border data-[appearance=outline]:text-danger-fg [&>[data-slot=badge-dot]]:bg-danger",
-    warning: "data-[appearance=solid]:bg-warning data-[appearance=solid]:text-warning-solid-fg data-[appearance=subtle]:bg-warning-subtle data-[appearance=subtle]:text-warning-fg data-[appearance=outline]:border-warning-border data-[appearance=outline]:text-warning-fg [&>[data-slot=badge-dot]]:bg-warning",
-    success: "data-[appearance=solid]:bg-success data-[appearance=solid]:text-success-solid-fg data-[appearance=subtle]:bg-success-subtle data-[appearance=subtle]:text-success-fg data-[appearance=outline]:border-success-border data-[appearance=outline]:text-success-fg [&>[data-slot=badge-dot]]:bg-success",
-    info: "data-[appearance=solid]:bg-info data-[appearance=solid]:text-info-solid-fg data-[appearance=subtle]:bg-info-subtle data-[appearance=subtle]:text-info-fg data-[appearance=outline]:border-info-border data-[appearance=outline]:text-info-fg [&>[data-slot=badge-dot]]:bg-info",
+    neutral: "data-[appearance=tint]:bg-neutral-subtle data-[appearance=tint]:text-fg-muted data-[appearance=tint]:border-border-subtle data-[appearance=solid]:bg-neutral-solid data-[appearance=solid]:text-neutral-solid-fg data-[appearance=subtle]:bg-neutral-subtle data-[appearance=subtle]:text-neutral-subtle-fg data-[appearance=outline]:border-border data-[appearance=outline]:text-fg [&>[data-slot=badge-dot]]:bg-fg-muted",
+    accent: "data-[appearance=tint]:bg-accent-subtle data-[appearance=tint]:text-accent-subtle-fg data-[appearance=tint]:border-accent-compound data-[appearance=solid]:bg-accent-solid data-[appearance=solid]:text-accent-solid-fg data-[appearance=subtle]:bg-accent-subtle data-[appearance=subtle]:text-accent-subtle-fg data-[appearance=outline]:border-accent-compound data-[appearance=outline]:text-accent-subtle-fg [&>[data-slot=badge-dot]]:bg-accent-compound",
+    danger: "data-[appearance=tint]:bg-danger-subtle data-[appearance=tint]:text-danger-fg data-[appearance=tint]:border-danger-border data-[appearance=solid]:bg-danger data-[appearance=solid]:text-danger-solid-fg data-[appearance=subtle]:bg-danger-subtle data-[appearance=subtle]:text-danger-fg data-[appearance=outline]:border-danger-border data-[appearance=outline]:text-danger-fg [&>[data-slot=badge-dot]]:bg-danger",
+    warning: "data-[appearance=tint]:bg-warning-subtle data-[appearance=tint]:text-warning-fg data-[appearance=tint]:border-warning-border data-[appearance=solid]:bg-warning data-[appearance=solid]:text-warning-solid-fg data-[appearance=subtle]:bg-warning-subtle data-[appearance=subtle]:text-warning-fg data-[appearance=outline]:border-warning-border data-[appearance=outline]:text-warning-fg [&>[data-slot=badge-dot]]:bg-warning",
+    success: "data-[appearance=tint]:bg-success-subtle data-[appearance=tint]:text-success-fg data-[appearance=tint]:border-success-border data-[appearance=solid]:bg-success data-[appearance=solid]:text-success-solid-fg data-[appearance=subtle]:bg-success-subtle data-[appearance=subtle]:text-success-fg data-[appearance=outline]:border-success-border data-[appearance=outline]:text-success-fg [&>[data-slot=badge-dot]]:bg-success",
+    info: "data-[appearance=tint]:bg-info-subtle data-[appearance=tint]:text-info-fg data-[appearance=tint]:border-info-border data-[appearance=solid]:bg-info data-[appearance=solid]:text-info-solid-fg data-[appearance=subtle]:bg-info-subtle data-[appearance=subtle]:text-info-fg data-[appearance=outline]:border-info-border data-[appearance=outline]:text-info-fg [&>[data-slot=badge-dot]]:bg-info",
   },
   appearance: {
     subtle: "",
+    /** Fluent's tint: the tone's tinted fill and stroke, strong text, a little more room. */
+    tint: "data-[size=sm]:px-inline-md data-[size=sm]:text-caption-1-strong data-[size=md]:px-inline-md data-[size=md]:text-body-1-strong",
     solid: "",
     outline: "bg-transparent",
     dot: "bg-transparent px-0 text-fg",
@@ -41,7 +43,7 @@ const dotClasses = "size-inline-sm shrink-0 rounded-full";
 export interface BadgeProps extends Omit<useRender.ComponentProps<"span">, "className"> {
   /** The tone: neutral, accent, or a status (danger, warning, success, info). */
   variant?: keyof typeof badgeVariants.variant;
-  /** subtle (tinted), solid (filled), outline (bordered) or dot (a coloured dot before plain text). */
+  /** subtle (tinted), tint (tinted with a stroke and strong text, Fluent's), solid (filled), outline (bordered) or dot (a coloured dot before plain text). */
   appearance?: keyof typeof badgeVariants.appearance;
   /** sm in tables and trees, md beside headings. */
   size?: keyof typeof badgeVariants.size;

@@ -149,7 +149,7 @@ export function JsonField({
 /** A thread's or run's status as a badge. */
 export function StatusBadge({ status }: { status: string }) {
   const variant = status === "busy" || status === "running" || status === "pending" ? "info" : status === "interrupted" ? "warning" : status === "error" || status === "timeout" ? "danger" : status === "success" ? "success" : "neutral";
-  return <Badge variant={variant}>{status}</Badge>;
+  return <Badge appearance="tint" variant={variant}>{status}</Badge>;
 }
 
 /** The server's graph in GraphView's shape: xray nodes `<subgraph>:<node>` drawn in their group. */

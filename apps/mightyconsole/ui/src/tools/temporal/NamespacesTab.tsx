@@ -10,7 +10,7 @@ import { DescriptionList, DescriptionListDetails, DescriptionListItem, Descripti
 import { Icon } from "@/components/ui/icon";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CopyButton, Page, PageHeader, PageRegion, gutterTable } from "@/app/page";
+import { CopyButton, Page, PageHeader, PageRegion, gutterTable, LinkButton } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
@@ -117,15 +117,15 @@ export function NamespacesTab({ profile, connId, client, useTabActions, note, op
                     <TableRow key={n.name} selected={n.name === selected} className="group">
                       <TableCell>
                         <span className="flex items-center gap-inline-xs">
-                          <Button appearance="transparent" className="text-body-1 text-fg-link" aria-pressed={n.name === selected} onClick={() => setSelected(n.name)}>
+                          <LinkButton aria-pressed={n.name === selected} onClick={() => setSelected(n.name)}>
                             {n.name}
-                          </Button>
-                          {n.isDefault ? <Badge variant="neutral">profile</Badge> : null}
+                          </LinkButton>
+                          {n.isDefault ? <Badge appearance="tint" variant="neutral">profile</Badge> : null}
                           <CopyButton value={n.name} what="namespace" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={STATE_VARIANT[n.state] ?? "neutral"}>{n.state}</Badge>
+                        <Badge appearance="tint" variant={STATE_VARIANT[n.state] ?? "neutral"}>{n.state}</Badge>
                       </TableCell>
                       <TableCell>{formatRetention(n.retentionSecs)}</TableCell>
                       <TableCell>{n.description ? n.description : <span className="text-fg-muted">—</span>}</TableCell>
