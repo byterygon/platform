@@ -147,6 +147,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
               storedSecrets={stored}
               errors={errors}
               disabled={readOnly}
+              {...(mode === "edit" && base ? { profileId: base.id } : {})}
               onFields={(patch) => setDraft((d) => ({ ...d, fields: { ...d.fields, ...patch } }))}
               onSecrets={(patch) => setDraft((d) => ({ ...d, secrets: { ...d.secrets, ...patch } }))}
             />

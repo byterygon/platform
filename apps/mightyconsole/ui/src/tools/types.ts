@@ -33,6 +33,8 @@ export interface ConnectionFormProps {
   onFields(patch: Record<string, unknown>): void;
   onSecrets(patch: Record<string, unknown>): void;
   disabled?: boolean;
+  /** The saved profile's id (none while it is being added): the Temporal codec endpoint's path names it. */
+  profileId?: string;
 }
 
 /** A node under a connected profile in the sidebar (the tool's resource tree). */

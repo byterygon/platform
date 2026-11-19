@@ -2,6 +2,10 @@
 // Open question 45 (h), (k), (l)): namespaces, workers, start workflow, schedule create and edit,
 // standalone activities, the codec server and large payloads, against the lab. Each batch of the
 // task wires its items; an item with no check yet is reported as not wired.
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { browser, cargo, type Checklist, vitest } from "../checklist.mts";
 
 /** One cargo check per test function, against the lab. */
@@ -42,6 +46,29 @@ async function connectLab({ page, origin, until, run }: Ctx): Promise<void> {
   if (!auto) await run(`__mc.dblclick(__mc.item("lab-temporal"))`);
   await until(`__mc.item("Workers")`, "temporal.connect and the resource tree");
 }
+
+/** The lab's Temporal image: its `temporal` CLI calls the codec endpoint as a person would. */
+const TEMPORAL_IMAGE = "temporalio/temporal:1.10.1@sha256:b228dadf9cdb6c7c02a1394b89dd76f827aac9760e458fce42f0899a10141225";
+/**
+ * The `temporal` CLI of the lab's image, copied out once (a static Go binary): it runs on this
+ * machine, where the server's loopback codec listener is (a container's host network may not be).
+ */
+function temporalCli(): string {
+  const path = join(tmpdir(), "mightyconsole-acceptance-temporal-1.10.1");
+  if (!existsSync(path)) {
+    const id = execFileSync("docker", ["create", TEMPORAL_IMAGE], { encoding: "utf8" }).trim();
+    try {
+      execFileSync("docker", ["cp", `${id}:/usr/local/bin/temporal`, path]);
+    } finally {
+      execFileSync("docker", ["rm", id]);
+    }
+  }
+  return path;
+}
+/** A switch by the text of its label. */
+const switchOf = (label: string) => `[...document.querySelectorAll("label")].find((l) => l.checkVisibility() && l.textContent.trim() === ${JSON.stringify(label)})?.querySelector("[role=switch]")`;
+/** A field of the profile sheet by its label (the sheet's own form). */
+const profileField = (label: string) => `(() => { const l = [...document.querySelectorAll("label")].find((x) => x.checkVisibility() && x.textContent.replace("*", "").trim() === ${JSON.stringify(label)}); return l ? (l.control || document.getElementById(l.htmlFor) || l.parentElement?.querySelector("input, textarea")) : null; })()`;
 
 export default {
   id: "temporal-more",
@@ -159,6 +186,73 @@ export default {
           await run(`__mc.click(${shownButton("Update schedule")})`);
           await until(`__mc.has(${JSON.stringify(`Updated ${id}`)})`, "the update");
           await shot("schedule-updated");
+        }),
+      ],
+    },
+    {
+      id: "external-storage",
+      text: "External Storage on S3 (TSK-103): the lab worker's 300 KiB payloads (SDK S3 driver, SeaweedFS) read back in Mightyconsole with the profile's keys; large inputs stored when the keys may write and refused with read-only keys; the codec endpoint serves the Web UI's origin and the temporal CLI (decode and encode), refuses other origins, asks Temporal per namespace, and stops with the connection.",
+      lab: true,
+      checks: [
+        ...lab(
+          "a_stored_input_is_read_back_with_the_profiles_credentials",
+          "without_external_storage_the_reference_says_where_it_is",
+          "a_large_input_is_stored_outside_and_the_worker_reads_it",
+          "read_only_credentials_cannot_store_an_input",
+          "decode_swaps_a_reference_for_the_stored_payload",
+          "encode_stores_a_large_payload_and_decode_reads_it_back",
+          "browsers_need_an_allowed_origin_and_every_call_a_namespace",
+          "the_profile_is_served_only_while_connected",
+        ),
+        ...unit("signs_as_aws_does", "a_reference_round_trips", "the_legacy_form_and_snake_case_are_read", "the_wire_form_round_trips"),
+        vitest("test/temporal.test.ts", "External Storage"),
+        vitest("test/temporal.test.ts", "codec endpoint"),
+        browser("a profile with External Storage and the codec endpoint; the temporal CLI decodes through it", async ({ page, origin, codecOrigin, until, run, shot, lab: creds }) => {
+          const s3 = (creds as { temporal?: { externalStorage?: Record<string, string> } } | null)?.temporal?.externalStorage;
+          if (!s3) throw new Error("lab/.generated/credentials.json has no temporal.externalStorage: run `lab up temporal`");
+          await page.navigate(`${origin}/`);
+          await until(`__mc.button("Temporal")`, "the tool rail");
+          await run(`__mc.click(__mc.button("Temporal"))`);
+          await until(`__mc.button("Add connection")`, "the connection list");
+          await run(`__mc.click(__mc.button("Add connection"))`);
+          await until(`__mc.field("Name")`, "the profile sheet");
+          await run(`__mc.type(__mc.field("Name"), "lab-s3")`);
+          await run(`__mc.type(__mc.field("Namespace"), "lab")`);
+          await run(`__mc.click(${switchOf("External Storage on S3")})`);
+          await until(profileField("Bucket"), "the External Storage fields");
+          await run(`__mc.type(${profileField("Bucket")}, ${JSON.stringify(s3["bucket"])})`);
+          await run(`__mc.type(${profileField("Endpoint")}, ${JSON.stringify(s3["endpoint"])})`);
+          await run(`__mc.click(${switchOf("Path-style addressing")})`);
+          await run(`__mc.type(${profileField("Access key ID")}, ${JSON.stringify(s3["accessKeyId"])})`);
+          await run(`__mc.type(${profileField("Secret access key")}, ${JSON.stringify(s3["secretAccessKey"])})`);
+          await run(`__mc.click(${switchOf("Serve as a codec endpoint")})`);
+          await shot("profile-external-storage");
+          await run(`__mc.click(__mc.button("Save"))`);
+          await until(`__mc.item("lab-s3")`, "the saved profile");
+          await run(`__mc.dblclick(__mc.item("lab-s3"))`);
+          await until(`__mc.item("Workers")`, "temporal.connect with External Storage");
+          // Mightyconsole reads the stored input with the profile's keys.
+          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await until(`__mc.has("big-payload-1")`, "the workflow list");
+          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "big-payload-1"))`);
+          await until(`[...document.querySelectorAll("[role=tab]")].some((t) => t.checkVisibility() && t.textContent.trim() === "Input and result")`, "the workflow tab");
+          await run(`(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.checkVisibility() && x.textContent.trim() === "Input and result"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`);
+          await until(`document.body.innerText.includes("received")`, "the decoded result (received, echo)");
+          await shot("input-and-result");
+          // The profile's id, from the browser's store: the endpoint's path names it.
+          const id = await run<string>(`new Promise((resolve, reject) => { const open = indexedDB.open("mightyconsole"); open.onerror = () => reject(open.error); open.onsuccess = () => { const all = open.result.transaction("profiles").objectStore("profiles").getAll(); all.onsuccess = () => resolve(all.result.find((p) => p.name === "lab-s3").id); }; })`);
+          const endpoint = `${codecOrigin}/codec/${id}`;
+          const binary = temporalCli();
+          const cli = (args: string[]) => execFileSync(binary, [...args, "--address", "127.0.0.1:7233", "--namespace", "lab", "--codec-endpoint", endpoint], { encoding: "utf8", timeout: 120_000 });
+          const shown = cli(["workflow", "show", "--workflow-id", "big-payload-1", "--detailed"]);
+          if (!shown.includes("big") || !shown.includes("input xxxx")) throw new Error(`the CLI did not show the decoded input:\n${shown.slice(0, 2000)}`);
+          // Encode: a 300 KiB input started from the CLI goes through the endpoint, the worker reads it.
+          const wid = `acceptance-codec-${Date.now()}`;
+          const inputFile = join(mkdtempSync(join(tmpdir(), "codec-input-")), "input.json");
+          writeFileSync(inputFile, JSON.stringify({ text: "c".repeat(300 * 1024) }));
+          cli(["workflow", "start", "--type", "BigPayload", "--task-queue", "lab", "--workflow-id", wid, "--input-file", inputFile]);
+          const result = cli(["workflow", "result", "--workflow-id", wid]);
+          if (!result.includes(String(300 * 1024))) throw new Error(`the worker did not read the CLI's stored input:\n${result.slice(0, 2000)}`);
         }),
       ],
     },

@@ -118,6 +118,9 @@ pub struct ServeConfig {
     /// The built UI (`index.html`, `assets/`). Without it: the UI compiled into the binary
     /// (feature `embed-ui`), else a placeholder page.
     pub ui: Option<PathBuf>,
+    /// A plain-HTTP listener on loopback for the codec endpoint only (TSK-103, Open question
+    /// (a)): the `temporal` CLI trusts the system's roots, not the self-signed certificate.
+    pub codec_listen: Option<SocketAddr>,
 }
 
 impl ServeConfig {
@@ -190,6 +193,7 @@ pub struct Server {
     stop: Option<oneshot::Sender<()>>,
     task: JoinHandle<io::Result<()>>,
     sweep: Option<JoinHandle<()>>,
+    codec_task: Option<JoinHandle<()>>,
 }
 
 impl Server {
@@ -241,7 +245,19 @@ impl Server {
             Arc::clone(&sessions),
             DEFAULT_SESSION_COOKIE,
             &config.public_origin,
-        );
+        )
+        .merge(tools::temporal::codec::routes());
+        let codec_task = match config.codec_listen {
+            Some(addr) => {
+                let listener = TcpListener::bind(addr)
+                    .await
+                    .map_err(|error| StartError::Bind { addr, error })?;
+                Some(tokio::spawn(async move {
+                    let _ = axum::serve(listener, tools::temporal::codec::routes()).await;
+                }))
+            }
+            None => None,
+        };
 
         let listener =
             TcpListener::bind(config.listen)
@@ -283,6 +299,7 @@ impl Server {
             stop: Some(stop),
             task,
             sweep,
+            codec_task,
         })
     }
 
@@ -320,6 +337,9 @@ impl Server {
     pub async fn shutdown(mut self) -> io::Result<()> {
         if let Some(sweep) = self.sweep.take() {
             sweep.abort();
+        }
+        if let Some(codec) = self.codec_task.take() {
+            codec.abort();
         }
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());

@@ -536,6 +536,30 @@
       ],
       "description": "`\"auto\"` or a codec id."
     },
+    "CodecServerOptions": {
+      "description": "The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at\n`/codec/<profileId>/decode` and `/encode` while the profile is connected.",
+      "properties": {
+        "allowedOrigins": {
+          "default": null,
+          "description": "The browser origins allowed to call it (the Temporal Web UI's); callers without an Origin\n(the CLI) are accepted.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ComposePayload": {
       "description": "What the Composer sends for a key or a value (spec §5.7).",
       "properties": {
@@ -845,6 +869,17 @@
             "null"
           ]
         },
+        "codecServer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodecServerOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Serve the profile on the codec endpoint (TSK-103)."
+        },
         "externalStorage": {
           "anyOf": [
             {
@@ -862,6 +897,14 @@
         "namespace": {
           "default": null,
           "description": "The namespace opened first; `default` when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profileId": {
+          "default": null,
+          "description": "The profile's stable id in the browser: the codec endpoint's path names it.",
           "type": [
             "string",
             "null"
@@ -9365,5 +9408,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:c82274475f66c31196e7df4fce06081cd37ce520c112e44af3dc3abb04e4bb3a"
+  "schema_hash": "sha256:255b87e485adeae35a51c36985a69e9a12727832bee83e91d29895902ee0fd4e"
 }
