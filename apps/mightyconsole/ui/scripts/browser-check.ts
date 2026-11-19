@@ -50,7 +50,12 @@ const check = (ok: boolean, message: string) => {
   if (!ok) failures.push(message);
   return ok;
 };
-const until = async (page: Page, expression: string, what: string, timeoutMs = 20_000) => (await waitUntil(page, expression, timeoutMs)) || check(false, `timed out waiting for ${what}`);
+const until = async (page: Page, expression: string, what: string, timeoutMs = 20_000) => {
+  if (await waitUntil(page, expression, timeoutMs)) return true;
+  // What the page showed, so a failure in CI says more than its name.
+  const shown = await page.evaluate<string>(`document.body.innerText.replace(/\\s+/g, " ").slice(0, 600)`).catch(() => "");
+  return check(false, `timed out waiting for ${what}; the page showed: ${shown}`);
+};
 
 /** Monaco's share of the built UI: its chunks, workers and CSS, and whether the page loads any of it up front. */
 function monacoBundle(dist: string) {
@@ -249,7 +254,7 @@ async function main(): Promise<number> {
     await run(page, `__mc.type(__mc.field("Name"), "lab")`);
     // A port nothing listens on, so the profile never connects, with or without a lab running.
     await until(page, `__mc.field("Address")`, "the Temporal form's Address");
-    await run(page, `__mc.type(__mc.field("Address"), "127.0.0.1:9")`);
+    await run(page, `__mc.field("Address") && __mc.type(__mc.field("Address"), "127.0.0.1:9")`);
     await run(page, `__mc.click(__mc.button("Save"))`);
     await until(page, `__mc.item("lab")`, "the saved Temporal profile");
     await page.navigate(`${origin}/temporal/lab/orders/workflows/order-48213/history`);
@@ -367,6 +372,7 @@ async function main(): Promise<number> {
 main().then(
   (code) => process.exit(code),
   (error: unknown) => {
+    if (failures.length > 0) console.error(`browser-check: before the error:\n- ${failures.join("\n- ")}`);
     console.error(`browser-check: ${error instanceof Error ? error.stack : String(error)}`);
     process.exit(1);
   },
