@@ -7,7 +7,8 @@ import { CalendarClock, Clock, Flash, Folder, List, Search, Server } from "@/lib
 import type { ResourceNode, ToolModule } from "../types";
 import { ConnectionForm } from "./ConnectionForm";
 import { NamespacesTab } from "./NamespacesTab";
-import { ScheduleTab, SchedulesTab } from "./SchedulesTab";
+import { ScheduleTab } from "./ScheduleTab";
+import { SchedulesTab } from "./SchedulesTab";
 import { TaskQueueTab } from "./TaskQueueTab";
 import { WorkersTab } from "./WorkersTab";
 import { WorkflowTab } from "./WorkflowTab";

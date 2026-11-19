@@ -247,7 +247,7 @@ export default {
           await until(`__mc.has("every-minute") && __mc.has("Every 1 minute")`, "the seeded schedule");
           await shot("schedules");
           await run(click("every-minute"));
-          await until(`__mc.has("Upcoming runs")`, "the schedule's detail");
+          await until(`__mc.has("Computed by the server") && __mc.has("TemporalScheduledById")`, "the schedule's detail");
           await shot("schedule detail");
           await run(`__mc.dblclick(__mc.item("Task queues"))`);
           await until(`__mc.field("Task queue")`, "the task queue form");

@@ -19,6 +19,7 @@ mod proto;
 mod relations;
 mod relations_types;
 mod s3;
+mod schedule_detail;
 mod schedule_form;
 mod search_attributes;
 mod start;
@@ -41,6 +42,10 @@ pub use self::actions_types::*;
 pub use self::detail_types::*;
 pub use self::namespaces::{Archival, NamespaceDescribeInput, NamespaceDetail, NamespaceLimits};
 pub use self::relations_types::*;
+pub use self::schedule_detail::{
+    ScheduleBackfillInput, ScheduleRun, ScheduleRunsInput, ScheduleRunsOutput, ScheduleTimesInput,
+    ScheduleTimesOutput,
+};
 pub use self::schedule_form::{
     CalendarForm, IntervalForm, ScheduleActionForm, ScheduleForm, SchedulePoliciesForm,
     ScheduleSpecForm, ScheduleStateForm, ScheduleWriteInput,
@@ -588,6 +593,34 @@ impl TemporalSchedulesApi {
         Ok(Empty {})
     }
 
+    /// The times the schedule's spec matches in a range, or the next `limit` from a time
+    /// (`ListScheduleMatchingTimes`, TSK-104).
+    #[rpc::query(name = "matchingTimes", perm = "temporal.read", risk = Risk::Read)]
+    async fn matching_times(
+        &self,
+        ctx: Ctx,
+        input: ScheduleTimesInput,
+    ) -> ToolResult<ScheduleTimesOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(schedule_detail::matching_times(&handle.value, input).await?)
+    }
+
+    /// The workflows the schedule started, newest first, with the matched times it did not run
+    /// (TSK-104).
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn runs(&self, ctx: Ctx, input: ScheduleRunsInput) -> ToolResult<ScheduleRunsOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(schedule_detail::runs(&handle.value, input).await?)
+    }
+
+    /// Runs the schedule's action for every time its spec matched in a past range (TSK-104).
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn backfill(&self, ctx: Ctx, input: ScheduleBackfillInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        schedule_detail::backfill(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+
     /// Deletes the schedule; runs it already started go on.
     #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
     async fn delete(&self, ctx: Ctx, input: ScheduleRef) -> ToolResult<Empty> {
@@ -678,3 +711,6 @@ mod lab_form_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_relations_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_schedule_detail_tests;

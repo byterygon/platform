@@ -9,6 +9,12 @@ import { connectLab, shownButton } from "./temporal-more.mts";
 const lab = (...names: string[]) => names.map((name) => cargo(name, { features: ["lab-tests"] }));
 /** One cargo check per test function that needs no lab. */
 const unit = (...names: string[]) => names.map((name) => cargo(name));
+/** A field of the schedule sheet by its label. */
+const sc = (label: string) => `(() => { const f = document.getElementById("schedule-form"); const l = f && [...f.querySelectorAll("label")].find((x) => x.textContent.replace("*", "").trim() === ${JSON.stringify(label)}); return l ? (l.control || document.getElementById(l.htmlFor)) : null; })()`;
+/** A button of the open dialog by its text. */
+const dialogButton = (label: string) => `[...document.querySelectorAll("[role=dialog] button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)})`;
+/** An item of the open menu by its text. */
+const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.includes(${JSON.stringify(label)}))`;
 
 export default {
   id: "temporal-detail",
@@ -56,7 +62,57 @@ export default {
       id: "schedule-detail",
       text: "Schedule detail: Trigger now starts a run that appears in Runs; Pause with a note and Unpause; the next five times are the server's; Backfill over a past hour names the count it starts and the runs appear; Delete removes it; CI green.",
       lab: true,
-      checks: [],
+      checks: [
+        ...lab("the_next_times_are_the_servers_and_a_range_counts_its_runs", "trigger_and_backfill_runs_are_listed_with_their_scheduled_times", "a_future_backfill_is_refused"),
+        ...unit("a_matched_time_without_a_run_is_skipped_with_its_reason", "runs_tokens_round_trip"),
+        vitest("test/temporal-schedules.test.tsx"),
+        browser("a schedule of the walk's own: triggered, paused with a note and unpaused, the backfill's count, deleted", async (ctx) => {
+          const { run, until, shot } = ctx;
+          await connectLab(ctx);
+          await run(`__mc.dblclick(__mc.item("Schedules"))`);
+          await until(shownButton("Create schedule"), "the Schedules header");
+          await run(`__mc.click(${shownButton("Create schedule")})`);
+          await until(sc("Schedule ID"), "the schedule sheet");
+          const id = `acceptance-detail-${Date.now()}`;
+          for (const [label, value] of [["Schedule ID", id], ["Time zone", "Europe/Berlin"], ["Hour", "2"], ["Minute", "0"], ["Workflow type", "Completed"], ["Task queue", "lab"], ["Workflow ID", id]]) {
+            await run(`__mc.type(${sc(label!)}, ${JSON.stringify(value)})`);
+          }
+          await run(`__mc.click(document.querySelector('button[form="schedule-form"]'))`);
+          await until(`__mc.has(${JSON.stringify(id)}) && __mc.has("Computed by the server") && __mc.has("TemporalScheduledById")`, "the schedule's tab");
+          // Trigger now: the run appears in Runs (from the recent actions until visibility has it).
+          await run(`__mc.click(${shownButton("Trigger now")})`);
+          await until(dialogButton("Trigger now"), "the trigger dialog");
+          await run(`__mc.click(${dialogButton("Trigger now")})`);
+          await until(`!document.querySelector("[role=dialog]") && __mc.has(${JSON.stringify(`${id}-20`)})`, "the triggered run in Runs");
+          await shot("schedule-detail");
+          // Pause with a note, then Unpause.
+          await run(`__mc.click(${shownButton("Pause…")})`);
+          await until(`document.querySelector("[role=dialog] input")`, "the pause dialog");
+          await run(`__mc.type(document.querySelector("[role=dialog] input"), "paused by the acceptance walk")`);
+          await run(`__mc.click(${dialogButton("Pause")})`);
+          await until(`${shownButton("Unpause…")} && __mc.has("paused by the acceptance walk")`, "Paused with the note");
+          await shot("schedule-paused");
+          await run(`__mc.click(${shownButton("Unpause…")})`);
+          await until(dialogButton("Unpause"), "the unpause dialog");
+          await run(`__mc.click(${dialogButton("Unpause")})`);
+          await until(shownButton("Pause…"), "Active again");
+          // Backfill: the count the server matched (the walk does not start them: lab tests do).
+          await run(`__mc.click(${shownButton("More actions")})`);
+          await until(menuItem("Backfill"), "the menu");
+          await run(`__mc.click(${menuItem("Backfill")})`);
+          await until(`[...document.querySelectorAll("[role=dialog] [role=status]")].some((s) => /^Starts|nothing would start/.test(s.textContent))`, "the backfill's count");
+          await shot("schedule-backfill");
+          await run(`__mc.click(${dialogButton("Cancel")})`);
+          await until(`!document.querySelector("[role=dialog]")`, "the dialog closed");
+          await run(`__mc.click(${shownButton("More actions")})`);
+          await until(menuItem("Delete"), "the menu");
+          await run(`__mc.click(${menuItem("Delete")})`);
+          await until(`document.querySelector("[role=dialog] input")`, "the delete dialog");
+          await run(`__mc.type(document.querySelector("[role=dialog] input"), ${JSON.stringify(id)})`);
+          await run(`__mc.click(${dialogButton("Delete schedule")})`);
+          await until(`__mc.has(${JSON.stringify(`${id} was deleted`)})`, "the schedule deleted");
+        }),
+      ],
     },
   ],
 } satisfies Checklist;

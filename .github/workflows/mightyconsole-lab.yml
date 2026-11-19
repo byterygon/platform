@@ -90,7 +90,7 @@ jobs:
               case " $LAB_TOOLS " in *" temporal "*) lists="${lists:+$lists }temporal" ;; esac
               ;;
           esac
-          case " $lists " in *" temporal "*) more="namespaces,workers,start-workflow,schedule-edit"; detail="relations" ;; esac
+          case " $lists " in *" temporal "*) more="namespaces,workers,start-workflow,schedule-edit"; detail="relations,schedule-detail" ;; esac
           case " $LAB_TOOLS " in " all "|*" nats "*) nats_only="connect,core,streams,consumers" ;; esac
           echo "checklists: ${lists:-none}${more:+, temporal-more ($more)}${detail:+, temporal-detail ($detail)}${nats_only:+, nats ($nats_only)}"
           echo "lists=$lists" >> "$GITHUB_OUTPUT"
