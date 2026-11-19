@@ -105,6 +105,16 @@
       "description": "Line numbers in the gutter, in editor.gutter (never when singleLine)."
     },
     {
+      "name": "rows",
+      "type": "number",
+      "description": "Multi-line only: the editor is sized by its text, at least this many lines of text.code tall, growing to maxRows (a JSON input about 7, a config about 3); scrollbars and the overview ruler show only when the text overflows, and long lines wrap. Without it, set the height with className."
+    },
+    {
+      "name": "maxRows",
+      "type": "number",
+      "description": "With rows: the most lines shown before the text scrolls (twice rows by default)."
+    },
+    {
       "name": "tabMovesFocus",
       "type": "boolean",
       "default": false,
@@ -163,7 +173,12 @@
     {
       "name": "focused",
       "variant": "data-focused",
-      "description": "The text area has focus: a ring of ring.width in color.ring around the frame (singleLine: the field's accent underline)."
+      "description": "The text area has focus. Multi-line outline: focused by the pointer, Fluent accent underline (shadow.focus-underline), as a one-line field; singleLine: always the underline."
+    },
+    {
+      "name": "focus-visible",
+      "variant": "data-focus-visible",
+      "description": "Multi-line, focused from the keyboard: the double ring (ring.width in color.ring outside a ring.inner-width stroke in color.ring-inner) instead of the underline."
     },
     {
       "name": "loading",
@@ -226,6 +241,10 @@
     "text.body-1.size",
     "text.body-1.tracking",
     "text.body-1.weight",
+    "text.code-sm.leading",
+    "text.code-sm.size",
+    "text.code-sm.tracking",
+    "text.code-sm.weight",
     "text.code.leading",
     "text.code.size",
     "text.code.tracking",
