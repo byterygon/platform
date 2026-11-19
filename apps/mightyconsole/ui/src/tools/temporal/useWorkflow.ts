@@ -157,11 +157,15 @@ export function useWorkflow(target: WorkflowTarget): WorkflowState {
     }
   }, [client, connId, namespace, workflowId, runId, stop, follow, note, onLive]);
 
+  // One page at a time: the History view asks again as it is scrolled.
+  const loadingMore = useRef(false);
   const loadMore = useCallback(() => {
-    if (connId === null || token === null) return;
+    if (connId === null || token === null || loadingMore.current) return;
+    loadingMore.current = true;
     const mine = generation.current;
     client.temporal.workflows.history({ connId, namespace, workflowId, runId: run.current, pageSize: 1000, nextPageToken: token }).then(
       (out) => {
+        loadingMore.current = false;
         if (mine !== generation.current) return;
         lastId.current = out.events.length > 0 ? out.events[out.events.length - 1]!.eventId : lastId.current;
         setEvents((prev) => [...prev, ...out.events]);
@@ -169,6 +173,7 @@ export function useWorkflow(target: WorkflowTarget): WorkflowState {
         if (out.nextPageToken === undefined && detail?.workflow.status === "Running") follow(mine);
       },
       (e: unknown) => {
+        loadingMore.current = false;
         if (mine === generation.current) setError(note(e));
       },
     );

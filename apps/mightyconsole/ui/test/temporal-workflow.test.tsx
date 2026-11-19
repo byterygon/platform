@@ -2,6 +2,7 @@
 // header, the Timeline, the History table with its detail and filter, input and result, the
 // pending activities, the stack trace, and the history followed live until the run closes.
 import { RpcError } from "@byterygon/ambidex";
+import { act } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { describeError } from "@/app/messages";
 import type { MightyClient } from "@/app/client";
@@ -11,7 +12,7 @@ import { WorkflowTab } from "@/tools/temporal/WorkflowTab";
 import { splitLines } from "@/tools/temporal/useWorkflow";
 import { profile as schema } from "@/tools/temporal/profile";
 import type { LiveState, TabProps, TabRecord } from "@/tools/types";
-import { axeViolations, byRole, byText, cleanup, click, render, settle, waitFor } from "./support/render";
+import { axeViolations, byRole, byText, cleanup, click, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
 
@@ -164,18 +165,38 @@ describe("Workflow tab (spec §9.3)", () => {
     await waitFor(() => d.mock.calls.length > before, "a fresh describe");
   });
 
-  test("History: a table of events, a category filter, and the attributes of the chosen row", async () => {
+  test("History: the table with time since start, chips with counts, a search, Go to, and the chosen event's detail", async () => {
     const { container } = setup();
     await waitFor(() => tabButton("History") !== null, "the tabs");
     await click(tabButton("History"));
-    await waitFor(() => container.querySelectorAll("table[aria-label='History events'] tbody tr:not([data-spacer])").length === 4, "four rows");
     const rows = () => Array.from(container.querySelectorAll("table[aria-label='History events'] tbody tr:not([data-spacer])"));
+    await waitFor(() => rows().length === 4, "four rows");
     expect(rows()[2]!.textContent).toContain("ActivityTaskScheduled");
-    expect(rows()[2]!.textContent).toContain("charge id 1");
-    expect(byText("Select an event.")).not.toBeNull();
-    await click(rows()[0]!);
-    await waitFor(() => byRole("tree", /Attributes of event 1/) !== null || container.querySelector("[role=tree]") !== null, "the attributes");
-    expect(container.textContent).toContain("#1 WorkflowExecutionStarted");
+    expect(rows()[2]!.textContent).toContain("+500 ms");
+    expect(rows()[2]!.textContent).toContain("charge");
+    expect(rows()[3]!.textContent).toContain("approve · 1 payload");
+    // Chips name each category with its count; an empty one is disabled.
+    const chip = (name: RegExp) => byRole("button", name, container.querySelector('[aria-label="Category"]')!);
+    expect(chip(/^All 4$/)?.getAttribute("aria-pressed")).toBe("true");
+    expect(chip(/^Timers 0$/)?.hasAttribute("disabled") || chip(/^Timers 0$/)?.hasAttribute("data-disabled")).toBe(true);
+    await click(chip(/^Signals 1$/));
+    await waitFor(() => rows().length === 1, "the signal only");
+    await click(chip(/^All 4$/));
+    // Find searches the decoded attributes too.
+    await type(container.querySelector<HTMLInputElement>('input[aria-label="Find in events"]')!, "ord-long");
+    await waitFor(() => rows().length === 1 && rows()[0]!.textContent!.includes("WorkflowExecutionStarted"), "the match");
+    await type(container.querySelector<HTMLInputElement>('input[aria-label="Find in events"]')!, "");
+    await waitFor(() => rows().length === 4, "all again");
+    // Go to selects the event and shows its detail.
+    const goTo = container.querySelector<HTMLInputElement>('input[aria-label="Go to event"]')!;
+    await type(goTo, "3");
+    await act(async () => {
+      goTo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    await waitFor(() => container.textContent?.includes("Event 3 · ActivityTaskScheduled") === true, "the detail");
+    expect(container.textContent).toContain("Activity charge:");
+    expect(byRole("button", "Copy event")).not.toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
   });
 
   test("Input and result: the input, and a running workflow has no result yet", async () => {
