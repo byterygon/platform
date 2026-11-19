@@ -29,7 +29,7 @@ const row = (n: number, patch: Partial<WorkflowRow> = {}): WorkflowRow => ({
 
 const opened = vi.fn();
 
-function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ executions: WorkflowRow[]; nextPageToken?: string }>; connId?: string | null; query?: string } = {}) {
+function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ executions: WorkflowRow[]; nextPageToken?: string }>; connId?: string | null; query?: string; updateProfile?: TabProps["updateProfile"] } = {}) {
   const list = vi.fn(options.list ?? (async () => ({ executions: [row(1), row(2, { status: "Failed", closeTime: "2026-11-18T01:05:03Z", durationMs: 180_000 })] })));
   const count = vi.fn(async () => ({ count: 1234 }));
   const namespaces = vi.fn(async () => [
@@ -57,6 +57,7 @@ function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ execut
     onLive: () => {},
     note: describeError,
     openTab: opened,
+    ...(options.updateProfile ? { updateProfile: options.updateProfile } : {}),
   };
   const view = render(<WorkflowsTab {...props} />);
   return { list, count, namespaces, searchAttributes, ...view };
@@ -65,6 +66,42 @@ function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ execut
 const queryInput = () => editorArea("Visibility query")!;
 
 describe("Workflows (spec §9.3)", () => {
+  test("Save query keeps the query shown in the profile's saved queries", async () => {
+    let record = { id: "01T", extras: { savedQueries: [] as { name: string; query: string }[] } } as unknown as ProfileRecord;
+    const updateProfile = vi.fn(async (change: (r: ProfileRecord) => ProfileRecord) => {
+      record = change(record);
+    });
+    setup({ query: 'ExecutionStatus = "Failed"', updateProfile });
+    await waitFor(() => byText("order-1") !== null, "the rows");
+    await click(byRole("button", "Save query"));
+    await waitFor(() => document.querySelector('input[placeholder="Failed today"]') !== null, "the name field");
+    await type(document.querySelector<HTMLInputElement>('input[placeholder="Failed today"]')!, "Failed today");
+    await click(byRole("button", "Save"));
+    await waitFor(() => updateProfile.mock.calls.length === 1, "the save");
+    expect((record.extras as { savedQueries: unknown }).savedQueries).toEqual([{ name: "Failed today", query: 'ExecutionStatus = "Failed"' }]);
+  });
+
+  test("Columns hides a column and Ctrl+C on a row copies its workflow ID", async () => {
+    localStorage.removeItem("mightyconsole.columns.temporal.workflows");
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const { container } = setup();
+    await waitFor(() => byText("order-1") !== null, "the rows");
+    const heads = () => Array.from(container.querySelectorAll("thead th")).map((h) => h.textContent);
+    expect(heads()).toContain("Run ID");
+    await click(byRole("button", "Columns"));
+    await waitFor(() => byRole("button", "Move Run ID up") !== null, "the chooser");
+    const box = Array.from(document.querySelectorAll('[role="checkbox"]')).find((b) => b.closest("li")?.textContent?.includes("Run ID"));
+    await click(box as HTMLElement);
+    await waitFor(() => !heads().includes("Run ID"), "the column hidden");
+    expect(JSON.parse(localStorage.getItem("mightyconsole.columns.temporal.workflows")!).hidden).toEqual(["runId"]);
+    const first = container.querySelector<HTMLElement>("tbody tr")!;
+    await key("c", { ctrlKey: true }, first);
+    await waitFor(() => writeText.mock.calls.length === 1, "the copy");
+    expect(writeText).toHaveBeenCalledWith("order-1");
+    localStorage.removeItem("mightyconsole.columns.temporal.workflows");
+  });
+
   test("lists the workflows with status, times, duration and the count", async () => {
     const { list, count, container } = setup();
     await waitFor(() => byText("order-1") !== null, "the rows");

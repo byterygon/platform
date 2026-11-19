@@ -160,6 +160,7 @@ export default {
         vitest("test/temporal-history.test.ts"),
         vitest("test/temporal-history-view.test.ts"),
         vitest("test/temporal-polish.test.ts"),
+        vitest("test/temporal-list-parts.test.ts"),
         browser("the Timeline, History, pending activity and stack trace of lab workflows", async (ctx) => {
           const { run, until, shot } = ctx;
           await runningWorkflows(ctx);
