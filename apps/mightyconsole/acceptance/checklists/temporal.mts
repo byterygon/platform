@@ -273,17 +273,22 @@ export default {
           const { run, until, shot } = ctx;
           await runningWorkflows(ctx);
           await run(click("retrying-1"));
-          const panel = `document.querySelector("[role=tabpanel]:not([hidden]) [data-slot=timeline-aside]")`;
+          // The tab may be open already from the detail walk, on another view: go to the Timeline.
+          await until(`__mc.has("Input and result") && ${panelButton("Timeline")}`, "the workflow's views");
+          await run(click("Timeline"));
+          // Other workflow tabs stay mounted (hidden), so every query takes the element on screen.
+          const shown = (selector: string) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.offsetParent !== null)`;
+          const panel = shown("[data-slot=timeline-aside]");
           await until(`${panel} && __mc.has("Click a bar, a diamond or a pin")`, "the Timeline with its empty pane");
-          await run(`__mc.click(document.querySelector("[role=tabpanel]:not([hidden]) [data-slot=timeline-item][data-shape=hatched]"))`);
+          await run(`__mc.click(${shown("[data-slot=timeline-item][data-shape=hatched]")})`);
           await until(`${panel}.textContent.includes("Retrying") && ${panel}.textContent.includes("Events") && ${panel}.textContent.includes("the payment provider is down")`, "the retrying activity's details, failure and events");
-          const hints = await run<number>(`document.querySelectorAll("[role=tabpanel]:not([hidden]) button kbd").length`);
+          const hints = await run<number>(`[...document.querySelectorAll("button kbd")].filter((k) => k.offsetParent !== null).length`);
           if (hints > 0) throw new Error(`${hints} key hint(s) drawn on buttons`);
           await shot("timeline with the retrying activity's pane");
           await run(click("History"));
-          await until(`document.querySelector("[role=tabpanel]:not([hidden]) button[aria-label^='Unfold events']")`, "a folded workflow task");
-          await run(`__mc.click(document.querySelector("[role=tabpanel]:not([hidden]) button[aria-label^='Unfold events']"))`);
-          await until(`document.querySelector("[role=tabpanel]:not([hidden]) tr[data-in-fold] [data-slot=fold-guide]")`, "the fold's events indented with the guide line");
+          await until(shown("button[aria-label^='Unfold events']"), "a folded workflow task");
+          await run(`__mc.click(${shown("button[aria-label^='Unfold events']")})`);
+          await until(shown("tr[data-in-fold] [data-slot=fold-guide]"), "the fold's events indented with the guide line");
           await shot("history with an open fold");
         }),
       ],
