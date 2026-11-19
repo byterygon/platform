@@ -1,6 +1,7 @@
 // `temporal.taskQueue { namespace, name }` (Mightyconsole spec §9.3): the workflow and activity
 // pollers of a task queue (who is polling, when they last did, at what rate) and its backlog when
 // the server reports it. With no name yet, it asks for one.
+import { linkTo } from "@/app/tab-view";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,9 @@ import { formatTime } from "./format";
 
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export function TaskQueueTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function TaskQueueTab({ tab, profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const namespace = text(tab.params["namespace"]) || "default";
   const name = text(tab.params["name"]);
   const [typed, setTyped] = useState(name);
@@ -57,7 +60,7 @@ export function TaskQueueTab({ tab, profile, connId, client, useTabActions, note
         onSubmit={(e) => {
           e.preventDefault();
           const n = typed.trim();
-          if (n) openTab({ kind: "temporal.taskQueue", params: { namespace, name: n }, title: n });
+          if (n) go({ kind: "temporal.taskQueue", params: { namespace, name: n }, title: n });
         }}
       >
         <Field>

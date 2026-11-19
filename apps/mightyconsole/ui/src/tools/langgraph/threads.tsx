@@ -1,6 +1,8 @@
 // Threads: search by status and metadata, create, delete; a row opens the thread (spec §11.2). Laid
 // out by TSK-91: a header with the context and New thread, the filters in one row, the table on the
 // layer with copy buttons, paged by offset (Previous, Next; the API has no count).
+import type { LinkEvent } from "../types";
+import { linkTo } from "@/app/tab-view";
 import { useMemo, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
@@ -11,7 +13,7 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { CopyButton, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable } from "@/app/page";
+import { CopyButton, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable, linkHandlers } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { cn } from "@/lib/cn";
 import type * as api from "@/gen/api";
@@ -24,7 +26,9 @@ const PAGE = 50;
 
 const STATUSES = { any: "Any status", idle: "Idle", busy: "Busy", interrupted: "Interrupted", error: "Error" } as const;
 
-export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const [status, setStatus] = useState<keyof typeof STATUSES>("any");
   const [metadataText, setMetadataText] = useState("");
   const [applied, setApplied] = useState<{ status: string | null; metadata: api.JsonValue | null }>({ status: null, metadata: null });
@@ -42,7 +46,7 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
     setApplied({ status: status === "any" ? null : status, metadata: (metadata.value ?? null) as api.JsonValue | null });
     setPage(1);
   };
-  const open = (t: api.Thread) => openTab({ kind: "langgraph.thread", params: { threadId: t.threadId }, title: `Thread ${shortId(t.threadId)} · ${profile.name}` });
+  const open = (t: api.Thread, event?: LinkEvent) => go({ kind: "langgraph.thread", params: { threadId: t.threadId }, title: `Thread ${shortId(t.threadId)} · ${profile.name}` }, event);
   const create = async () => {
     if (!connId) return;
     setActionError(null);
@@ -151,10 +155,10 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
             </TableHeader>
             <TableBody>
               {data.map((t) => (
-                <TableRow key={t.threadId} onDoubleClick={() => open(t)} className="group">
+                <TableRow key={t.threadId} onDoubleClick={(e) => open(t, e)} className="group">
                   <TableCell>
                     <span className="flex items-center gap-inline-xs">
-                      <Button appearance="transparent" size="small" className="font-mono text-fg-link" onClick={() => open(t)} title={t.threadId}>
+                      <Button appearance="transparent" size="small" className="font-mono text-fg-link" {...linkHandlers((e) => open(t, e))} title={t.threadId}>
                         {shortId(t.threadId)}
                       </Button>
                       <CopyButton value={t.threadId} what="thread ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />

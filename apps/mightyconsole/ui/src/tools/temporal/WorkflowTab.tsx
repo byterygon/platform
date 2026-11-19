@@ -2,6 +2,7 @@
 // tabs: Timeline, History, Input and result, Pending, Stack trace. The history loads page by page
 // and, while the run is open, follows live. Signal, cancel, terminate and reset are in the toolbar,
 // each behind its confirmation (ActionDialogs); Queries is the sixth view.
+import { linkTo } from "@/app/tab-view";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import { Add, ArrowClockwise, ArrowCounterclockwise, Checkmark, Code, Dismiss, F
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IconButton } from "@/components/ui/icon-button";
-import type { DescribedError, TabProps } from "../types";
+import type { DescribedError, LinkEvent, TabProps } from "../types";
 import { STATUS_TONE, formatDuration, formatTime } from "./format";
 import { RelationsPanel } from "./RelationsPanel";
 import { formatDurationText } from "./schedule-preview";
@@ -89,7 +90,8 @@ function stateLabel(value: unknown): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
 
-export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab, navigate }: TabProps) {
+export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab, navigate, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const namespace = text(tab.params["namespace"]) || "default";
   const workflowId = text(tab.params["workflowId"]);
   const runId = text(tab.params["runId"]) || undefined;
@@ -205,7 +207,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             The reset made run <span className="font-mono text-code">{newRun}</span>.
           </AlertDescription>
           <AlertActions>
-            <Button size="small" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId, runId: newRun }, title: workflowId })}>
+            <Button size="small" onClick={() => go({ kind: "temporal.workflow", params: { namespace, workflowId, runId: newRun }, title: workflowId })}>
               Open new run
             </Button>
             <Button size="small" appearance="subtle" onClick={() => setNewRun(null)}>
@@ -243,7 +245,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               workflowId={workflowId}
               selected={selected}
               onSelect={(id) => setSelected(id)}
-              onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 ?? null }, title: workflowId2 })}
+              onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 ?? null }, title: workflowId2 }, event)}
             />
           </TabsContent>
           <TabsContent value="history" className="flex min-h-0 flex-1 flex-col">
@@ -277,15 +279,15 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               version={events.length}
               now={now}
               note={note}
-              onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, ...(runId2 ? { runId: runId2 } : {}) }, title: workflowId2 })}
-              onListWorkflows={(query) => openTab({ kind: "temporal.workflows", params: { namespace, query }, title: `Workflows · ${namespace}` })}
+              onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, ...(runId2 ? { runId: runId2 } : {}) }, title: workflowId2 }, event)}
+              onListWorkflows={(query) => go({ kind: "temporal.workflows", params: { namespace, query }, title: `Workflows · ${namespace}` })}
             />
           </TabsContent>
           <TabsContent value="input" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <InputResultPanel events={events} detail={detail} />
           </TabsContent>
           <TabsContent value="pending" className="flex min-h-0 flex-1 flex-col">
-            <PendingPanel detail={detail} now={now} onRefresh={state.refresh} onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })} />
+            <PendingPanel detail={detail} now={now} onRefresh={state.refresh} onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 }, event)} />
           </TabsContent>
           <TabsContent value="queries" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <QueriesPanel client={client} connId={connId} namespace={namespace} workflowId={workflowId} runId={detail.workflow.runId} active={section === "queries"} note={note} />
@@ -305,7 +307,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           namespace={namespace}
           prefill={prefillOf(w, events)}
           note={note}
-          onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })}
+          onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 }, event)}
         />
       ) : null}
       <SignalDialog
@@ -396,7 +398,7 @@ interface TimelinePanelProps {
   selected: number | null;
   onSelect(id: number): void;
   /** Opens a child workflow in its own tab. */
-  onOpenWorkflow(workflowId: string, runId?: string): void;
+  onOpenWorkflow(workflowId: string, runId?: string, event?: LinkEvent): void;
 }
 
 function TimelinePanel({ events, pending, now, live, workflowId, selected, onSelect, onOpenWorkflow }: TimelinePanelProps) {

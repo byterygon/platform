@@ -1,4 +1,6 @@
 // Assistants (grouped by graph) and an assistant's Graph, Schemas and Config (spec §11.2).
+import type { LinkEvent } from "../types";
+import { linkTo } from "@/app/tab-view";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
@@ -9,7 +11,7 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CopyButton, PageHeader, gutterTable } from "@/app/page";
+import { CopyButton, PageHeader, gutterTable, linkHandlers } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { useTabView } from "@/app/tab-view";
 import { cn } from "@/lib/cn";
@@ -21,7 +23,9 @@ import { shortId, toGraphView, useLoad } from "./shared";
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 
 /** Every assistant, grouped by graph id; a row opens the assistant. */
-export function AssistantsTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function AssistantsTab({ tab, profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const { data, error, loading, reload } = useLoad(connId ? () => client.langgraph.assistants.search({ connId, graphId: null, metadata: null, limit: 1000, offset: null }) : null, [connId], note);
   useTabActions({ refresh: () => void reload() });
   const groups = useMemo(() => {
@@ -29,7 +33,7 @@ export function AssistantsTab({ tab, profile, connId, client, useTabActions, not
     for (const a of data ?? []) byGraph.set(a.graphId, [...(byGraph.get(a.graphId) ?? []), a]);
     return [...byGraph.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [data]);
-  const open = (a: api.Assistant) => openTab({ kind: "langgraph.assistant", params: { assistantId: a.assistantId, name: a.name }, title: `Assistant ${a.name} · ${profile.name}` });
+  const open = (a: api.Assistant, event?: LinkEvent) => go({ kind: "langgraph.assistant", params: { assistantId: a.assistantId, name: a.name }, title: `Assistant ${a.name} · ${profile.name}` }, event);
   return (
     <div className="flex min-h-0 flex-1 flex-col" aria-label={tab.title}>
       <PageHeader
@@ -59,10 +63,10 @@ export function AssistantsTab({ tab, profile, connId, client, useTabActions, not
           <TableBody>
             {groups.flatMap(([graph, list]) =>
               list.map((a, i) => (
-                <TableRow key={a.assistantId} onDoubleClick={() => open(a)}>
+                <TableRow key={a.assistantId} onDoubleClick={(e) => open(a, e)}>
                   <TableCell>{i === 0 ? graph : ""}</TableCell>
                   <TableCell>
-                    <Button appearance="transparent" size="small" onClick={() => open(a)}>
+                    <Button appearance="transparent" size="small" {...linkHandlers((e) => open(a, e))}>
                       {a.name}
                     </Button>
                   </TableCell>
@@ -84,7 +88,9 @@ export function AssistantsTab({ tab, profile, connId, client, useTabActions, not
 /** The assistant's sections, the view words of its URL (DOC-21 §3.7). */
 export const ASSISTANT_VIEWS = ["graph", "schemas", "config"] as const;
 
-export function AssistantTab({ tab, profile, connId, client, useTabActions, note, openTab, navigate }: TabProps) {
+export function AssistantTab({ tab, profile, connId, client, useTabActions, note, openTab, navigate, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const [section, setSection] = useTabView({ tab, navigate }, ASSISTANT_VIEWS, "graph");
   const assistantId = text(tab.params["assistantId"]);
   const [xray, setXray] = useState(true);
@@ -100,7 +106,7 @@ export function AssistantTab({ tab, profile, connId, client, useTabActions, note
   useTabActions({ refresh: reload });
   const view = useMemo(() => (graph.data ? toGraphView(graph.data) : null), [graph.data]);
   const a = assistant.data;
-  const threadsOf = () => openTab({ kind: "langgraph.threads", params: {}, title: tab.title.replace(/^Assistant/, "Threads") });
+  const threadsOf = (event?: LinkEvent) => go({ kind: "langgraph.threads", params: {}, title: "Threads" }, event);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
@@ -112,7 +118,7 @@ export function AssistantTab({ tab, profile, connId, client, useTabActions, note
             <Button appearance="subtle" onClick={reload}>
               <Icon icon={ArrowClockwise} /> Refresh
             </Button>
-            <Button appearance="secondary" onClick={threadsOf}>
+            <Button appearance="secondary" {...linkHandlers(threadsOf)}>
               <Icon icon={History} /> Threads
             </Button>
           </>

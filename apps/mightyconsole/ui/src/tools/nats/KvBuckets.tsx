@@ -1,6 +1,9 @@
 // `nats.kvs {}`: the account's KV buckets as a table (`nats.kv.buckets.list`: values, bytes, history,
 // TTL, storage), and New bucket (§6.4: history, TTL, max value size, storage, replicas). The tree's
 // Key-Value group opens it, as Streams opens the streams (DOC-21 Open question 47).
+import { useSheetGuard } from "@/app/leave-guard";
+import type { LinkEvent } from "../types";
+import { linkTo } from "@/app/tab-view";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -80,6 +83,7 @@ export function bucketConfigOf(d: BucketDraft): NatsKvConfig {
 
 export function BucketSheet({ open, onOpenChange, profileName, connId, client, onCreated }: { open: boolean; onOpenChange(open: boolean): void; profileName: string; connId: string; client: MightyClient; onCreated(info: NatsKvBucketInfo): void }) {
   const [d, setD] = useState<BucketDraft>(EMPTY_BUCKET);
+  useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState<{ title: string; field: string | null } | null>(null);
@@ -185,7 +189,9 @@ export function BucketSheet({ open, onOpenChange, profileName, connId, client, o
   );
 }
 
-export function KvBucketsTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function KvBucketsTab({ tab, profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const notify = useContext(NoticeContext);
   const [buckets, setBuckets] = useState<NatsKvBucketInfo[] | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -211,7 +217,7 @@ export function KvBucketsTab({ tab, profile, connId, client, useTabActions, note
   }, [load]);
   useTabActions({ refresh: () => void load(), primary: () => setCreating(true) });
   if (connId === null) return <DisconnectedState name={profile.name} onConnect={() => undefined} />;
-  const open = (bucket: string) => openTab({ kind: "nats.kv", params: { bucket }, title: bucket });
+  const open = (bucket: string, event?: LinkEvent) => go({ kind: "nats.kv", params: { bucket }, title: bucket }, event);
   return (
     <Page>
       <PageHeader
@@ -253,7 +259,7 @@ export function KvBucketsTab({ tab, profile, connId, client, useTabActions, note
               {buckets.map((b) => (
                 <TableRow key={b.bucket}>
                   <TableCell>
-                    <LinkButton className="font-mono" onClick={() => open(b.bucket)}>
+                    <LinkButton className="font-mono" onOpen={(e) => open(b.bucket, e)}>
                       {b.bucket}
                     </LinkButton>
                   </TableCell>

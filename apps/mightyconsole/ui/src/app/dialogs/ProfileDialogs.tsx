@@ -3,6 +3,7 @@
 // conflicting profile (Replace, Keep both, Skip); the confirmation for closing a busy tab.
 import { useContext, useEffect, useMemo, useState } from "react";
 import { ServicesContext } from "@/app/client";
+import { useSheetGuard } from "@/app/leave-guard";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
     return { name: mode === "duplicate" ? `${base.name} copy` : base.name, color: base.color ?? "", fields: structuredClone(base.fields), secrets: {} as Record<string, unknown>, extras: structuredClone(base.extras) };
   };
   const [draft, setDraft] = useState(fresh);
+  useSheetGuard(open, draft);
   const [clearSecrets, setClearSecrets] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
@@ -207,6 +209,26 @@ export function CloseTabDialog({ title, open, onCancel, onClose }: { title: stri
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction appearance="primary" onClick={onClose}>
             Close tab
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/** Leaving a tab whose sheet has changes that are not saved (DOC-21 §3.7, TSK-105). */
+export function DiscardChangesDialog({ open, onKeep, onDiscard }: { open: boolean; onKeep: () => void; onDiscard: () => void }) {
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => !o && onKeep()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+          <AlertDialogDescription>A sheet in this tab has changes that are not saved. Leaving drops them.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction appearance="danger" onClick={onDiscard}>
+            Discard changes
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

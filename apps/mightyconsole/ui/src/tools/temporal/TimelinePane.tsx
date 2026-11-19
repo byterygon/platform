@@ -3,6 +3,7 @@
 // with no trip to History. Its kind and state, the times with the waits, the worker, the retry
 // policy, the failure with Copy, and its own events, each unfolding to its attributes with the
 // payloads decoded. The facts come from `itemDetail` (timeline-detail.ts).
+import type { LinkEvent } from "../types";
 import { useContext, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ export interface TimelinePaneProps {
   pending: readonly Record<string, unknown>[];
   now: number;
   /** Opens a child workflow in its own tab. */
-  onOpenWorkflow?: ((workflowId: string, runId?: string) => void) | undefined;
+  onOpenWorkflow?: ((workflowId: string, runId?: string, event?: LinkEvent) => void) | undefined;
 }
 
 /** The pane's content; the Timeline puts it in its `aside`. Keyed by the item, so its folds reset. */
@@ -54,7 +55,7 @@ export function TimelinePane({ info, events, pending, now, onOpenWorkflow }: Tim
   return <ItemPane key={info.firstEventId} info={info} byId={byId} pending={pending} now={now} onOpenWorkflow={onOpenWorkflow} />;
 }
 
-function ItemPane({ info, byId, pending, now, onOpenWorkflow }: { info: ItemInfo; byId: ReadonlyMap<number, HistoryEvent>; pending: readonly Record<string, unknown>[]; now: number; onOpenWorkflow?: ((workflowId: string, runId?: string) => void) | undefined }) {
+function ItemPane({ info, byId, pending, now, onOpenWorkflow }: { info: ItemInfo; byId: ReadonlyMap<number, HistoryEvent>; pending: readonly Record<string, unknown>[]; now: number; onOpenWorkflow?: ((workflowId: string, runId?: string, event?: LinkEvent) => void) | undefined }) {
   const notify = useContext(NoticeContext);
   const detail = itemDetail(info, byId, pending, now);
   // The first event starts open, as the mockup draws it; the others unfold on a click.
@@ -90,7 +91,7 @@ function ItemPane({ info, byId, pending, now, onOpenWorkflow }: { info: ItemInfo
         {detail.context.length > 0 ? <p className="text-body-1 text-fg-muted">{detail.context.join(" · ")}</p> : null}
       </div>
       {workflow && onOpenWorkflow ? (
-        <Button size="small" appearance="secondary" className="self-start" onClick={() => onOpenWorkflow(workflow.workflowId, workflow.runId)}>
+        <Button size="small" appearance="secondary" className="self-start" onClick={(e) => onOpenWorkflow(workflow.workflowId, workflow.runId, e)} onAuxClick={(e) => e.button === 1 && onOpenWorkflow(workflow.workflowId, workflow.runId, e)}>
           <Icon icon={Window} /> Open {workflow.workflowId}
         </Button>
       ) : null}

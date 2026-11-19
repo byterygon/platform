@@ -3,6 +3,7 @@
 // its search attributes, which are what the query bar suggests in it. Buttons open that
 // namespace's Workflows, Workers and Schedules. Read only: registering and changing namespaces is
 // cluster administration (spec §9.4).
+import { linkTo } from "@/app/tab-view";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,13 +11,13 @@ import { DescriptionList, DescriptionListDetails, DescriptionListItem, Descripti
 import { Icon } from "@/components/ui/icon";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CopyButton, Page, PageHeader, PageRegion, gutterTable, LinkButton } from "@/app/page";
+import { CopyButton, Page, PageHeader, PageRegion, gutterTable, LinkButton, linkHandlers } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
 import type { NamespaceDetail, NamespaceSummary, SearchAttributesOutput } from "@/gen/api";
 import { ArrowClockwise, CalendarClock, Flash, Server } from "@/lib/icons";
-import type { DescribedError, TabProps } from "../types";
+import type { DescribedError, LinkEvent, TabPlace, TabProps } from "../types";
 import { namespaceOf } from "./profile";
 
 /** "30 days", "36 hours", "" when unknown. */
@@ -37,7 +38,9 @@ export function formatBytes(bytes: number): string {
 
 const STATE_VARIANT: Record<string, "success" | "warning" | "danger" | "neutral"> = { Registered: "success", Deprecated: "warning", Deleted: "danger" };
 
-export function NamespacesTab({ profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function NamespacesTab({ profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const [rows, setRows] = useState<NamespaceSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -137,7 +140,7 @@ export function NamespacesTab({ profile, connId, client, useTabActions, note, op
             </ResizablePanel>
             <ResizableHandle />
             <ResizablePanel defaultSize={47.3} minSize={25} className="flex min-h-0 flex-col">
-              <NamespacePane key={selected} namespace={selected} connId={connId} client={client} note={note} openTab={openTab} />
+              <NamespacePane key={selected} namespace={selected} connId={connId} client={client} note={note} go={go} />
             </ResizablePanel>
           </Resizable>
         ) : null}
@@ -146,7 +149,7 @@ export function NamespacesTab({ profile, connId, client, useTabActions, note, op
   );
 }
 
-function NamespacePane({ namespace, connId, client, note, openTab }: { namespace: string; connId: string; client: TabProps["client"]; note: TabProps["note"]; openTab: TabProps["openTab"] }) {
+function NamespacePane({ namespace, connId, client, note, go }: { namespace: string; connId: string; client: TabProps["client"]; note: TabProps["note"]; go: (place: TabPlace, event?: LinkEvent) => void }) {
   const [detail, setDetail] = useState<NamespaceDetail | null>(null);
   const [attributes, setAttributes] = useState<SearchAttributesOutput | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -166,7 +169,7 @@ function NamespacePane({ namespace, connId, client, note, openTab }: { namespace
     void load();
   }, [load]);
 
-  const open = (kind: string, title: string, params: Record<string, unknown> = {}) => openTab({ kind, params: { namespace, ...params }, title: `${title} · ${namespace}` });
+  const open = (kind: string, title: string, params: Record<string, unknown> = {}) => (event?: LinkEvent) => go({ kind, params: { namespace, ...params }, title: `${title} · ${namespace}` }, event);
 
   return (
     <aside aria-label={`Namespace ${namespace}`} className="flex min-h-0 flex-1 flex-col gap-stack-md overflow-auto px-inset-lg py-inset-md">
@@ -231,13 +234,13 @@ function NamespacePane({ namespace, connId, client, note, openTab }: { namespace
       ) : null}
       {detail ? (
         <div className="flex flex-wrap gap-inline-md">
-          <Button appearance="secondary" onClick={() => open("temporal.workflows", "Workflows", { query: "" })}>
+          <Button appearance="secondary" {...linkHandlers(open("temporal.workflows", "Workflows", { query: "" }))}>
             <Icon icon={Flash} /> Workflows
           </Button>
-          <Button appearance="secondary" onClick={() => open("temporal.workers", "Workers")}>
+          <Button appearance="secondary" {...linkHandlers(open("temporal.workers", "Workers"))}>
             <Icon icon={Server} /> Workers
           </Button>
-          <Button appearance="secondary" onClick={() => open("temporal.schedules", "Schedules")}>
+          <Button appearance="secondary" {...linkHandlers(open("temporal.schedules", "Schedules"))}>
             <Icon icon={CalendarClock} /> Schedules
           </Button>
         </div>

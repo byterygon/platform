@@ -4,7 +4,7 @@
 // tool's connection list) and the tab layer (a command bar, then the screen); a status bar. The
 // command palette is the menu. Every action of spec §3.4 is here with its binding. The whole shell
 // is the root route of the router (DOC-21 §3.7); `useRouteSync` keeps the URL on the active tab.
-import { type AnyRouter, type HistoryLocation, type RouterHistory, RouterProvider, createMemoryHistory, useRouter } from "@tanstack/react-router";
+import { type AnyRouter, type HistoryLocation, type RouterHistory, RouterProvider, createMemoryHistory, useBlocker, useRouter } from "@tanstack/react-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette, type CommandGroup } from "@/components/ui/command-palette";
@@ -30,7 +30,7 @@ import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
-import { CloseTabDialog, DeleteProfileDialog, ExportDialog, ImportDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
+import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
 import { describeError } from "./messages";
 import { applyAppearance, followSystemScheme } from "./presets";
@@ -38,8 +38,9 @@ import { ACTIONS, type ActionId, actionFor, bindingOf, inTextControl } from "./s
 import { ToolNav, type ToolState, navOrder } from "./nav/ToolNav";
 import { type Notice, NoticeContext } from "./page";
 import { ConnectionList, parseNode, profileNodeId } from "./sidebar/ConnectionList";
+import { LeaveGuardContext, type LeaveGuardSetter } from "./leave-guard";
 import { MissingProfilePage } from "./missing-profile";
-import { type NavCrumb, NavRow, type NavRowProps, type SiblingMenu } from "./nav-row";
+import { type NavCrumb, NavRow, type NavRowProps, type SiblingMenu, wantsNewTab } from "./nav-row";
 import { type EntryState, type RouteCrumb, type RouterConfig, createAppRouter, crumbsOf, placeHref, segment, targetOf, targetOfHref, withParams } from "./router";
 import { DisconnectedState, ErrorState, liveText } from "./states";
 import { type ConnState, type MissingLink, type State, tabIdOf, useStore } from "./store";
@@ -62,6 +63,8 @@ export const NAV_OVERLAY_BELOW = 1024;
 const FIND_TOOL_ID = "mc-find-tool";
 /** The tab strip's value of a link to a missing profile (DOC-21 §3.7). */
 const LINK_TAB = "mc-link";
+/** The guard of the shell's own sheets (a profile being added or edited). */
+const SHELL_GUARD = "mc-shell";
 
 function useWindowWidth(): number {
   const [width, setWidth] = useState(() => window.innerWidth);
@@ -116,8 +119,10 @@ function useRouteSync(options: {
   stateRef: { readonly current: State };
   dispatch: ReturnType<typeof useStore>["dispatch"];
   missingProfile: (tool: ToolModule, name: string, place: Omit<TabPlace, "title"> | null) => void;
+  /** Set when the router's blocker held a browser move: its notification is not a move. */
+  heldPop: { current: boolean };
 }): { pushNext: (tabId: string) => void } {
-  const { router, config, tools, state, stateRef, dispatch, missingProfile } = options;
+  const { router, config, tools, state, stateRef, dispatch, missingProfile, heldPop } = options;
   const history: RouterHistory = router.history;
   const ready = state.profiles !== null;
   const arrived = useRef(false);
@@ -183,6 +188,11 @@ function useRouteSync(options: {
       arrive(history.location);
     }
     return history.subscribe(({ location, action }) => {
+      // The blocker reverted a held move and still notifies it.
+      if (heldPop.current && (action.type === "BACK" || action.type === "FORWARD" || action.type === "GO")) {
+        heldPop.current = false;
+        return;
+      }
       if (action.type === "BACK") pop(location, -1);
       else if (action.type === "FORWARD") pop(location, 1);
       else if (action.type === "GO") pop(location, action.index);
@@ -243,6 +253,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   const toast = useToast();
   const stateRef = useRef(state);
   stateRef.current = state;
+  const heldPop = useRef(false);
   const tool = toolById(tools, state.layout.tool) ?? tools[0]!;
   // The tool navigation (DOC-21 §3.1): its order sets Alt+Shift+1…9; the drawer is the default from
   // 1280 px of window width, the rail below; an expanded drawer floats over the panes below 1024 px.
@@ -446,6 +457,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     state,
     stateRef,
     dispatch,
+    heldPop,
     missingProfile: (t, name, place) => {
       const kind = place ? t.tabKinds[place.kind] : undefined;
       const href = place ? placeHref(t, { name }, place) : `/${t.id}/${segment(name)}`;
@@ -544,11 +556,11 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       onCopyLink: () => copyLink(href),
       canBack: canGo(t, -1),
       canForward: canGo(t, 1),
-      onBack: () => dispatch({ type: "tabGo", id: t.id, delta: -1 }),
-      onForward: () => dispatch({ type: "tabGo", id: t.id, delta: 1 }),
+      onBack: () => guarded(t.id, () => dispatch({ type: "tabGo", id: t.id, delta: -1 })),
+      onForward: () => guarded(t.id, () => dispatch({ type: "tabGo", id: t.id, delta: 1 })),
       stepCount: t.history.entries.length,
       steps: () => t.history.entries.map((e, i) => ({ label: stepLabel(tabTool, profile, e), current: i === t.history.index })),
-      onStep: (index) => dispatch({ type: "tabStep", id: t.id, step: index }),
+      onStep: (index) => guarded(t.id, () => dispatch({ type: "tabStep", id: t.id, step: index })),
     };
   };
 
@@ -560,18 +572,77 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     parent?.open?.(false);
   };
 
+  // --- Unsaved changes (DOC-21 §3.7) ------------------------------------------------------------
+  // A sheet with a changed draft guards its tab (useSheetGuard): the tab's own moves ask first, the
+  // browser's Back and Forward are held by the router's blocker, leaving the page asks the browser.
+
+  const guards = useRef(new Map<string, Set<object>>());
+  const guardSetters = useRef(new Map<string, LeaveGuardSetter>());
+  const guardFor = (tabId: string): LeaveGuardSetter => {
+    let set = guardSetters.current.get(tabId);
+    if (!set) {
+      set = (key, dirty) => {
+        const keys = guards.current.get(tabId) ?? new Set<object>();
+        if (dirty) keys.add(key);
+        else keys.delete(key);
+        if (keys.size > 0) guards.current.set(tabId, keys);
+        else guards.current.delete(tabId);
+      };
+      guardSetters.current.set(tabId, set);
+    }
+    return set;
+  };
+  const isGuarded = (tabId: string | null) => tabId !== null && (guards.current.get(tabId)?.size ?? 0) > 0;
+  const [leaving, setLeaving] = useState<{ tabId: string; run: () => void } | null>(null);
+  /** Runs a move of the tab, after "Discard changes?" when a sheet in it has changes. */
+  const guarded = (tabId: string, run: () => void) => {
+    if (isGuarded(tabId)) setLeaving({ tabId, run });
+    else run();
+  };
+  const blocker = useBlocker({
+    shouldBlockFn: ({ action }) => (action === "BACK" || action === "FORWARD" || action === "GO") && (isGuarded(stateRef.current.activeTab) || isGuarded(SHELL_GUARD)),
+    enableBeforeUnload: () => guards.current.size > 0,
+    withResolver: true,
+  });
+  const keepEditing = () => {
+    if (blocker.status === "blocked") {
+      heldPop.current = true;
+      blocker.reset();
+    }
+    setLeaving(null);
+  };
+  const discardChanges = () => {
+    if (blocker.status === "blocked") {
+      const active = stateRef.current.activeTab;
+      if (active) guards.current.delete(active);
+      guards.current.delete(SHELL_GUARD);
+      blocker.proceed();
+      return;
+    }
+    if (!leaving) return;
+    guards.current.delete(leaving.tabId);
+    setLeaving(null);
+    leaving.run();
+  };
+
   const navigateTab = useCallback(
     (tabId: string, place: TabPlace, options?: { replace?: boolean }) => {
-      if (!options?.replace) routes.pushNext(tabId);
-      dispatch({ type: "navigateTab", id: tabId, place, ...(options?.replace ? { replace: true } : {}) });
+      const run = () => {
+        if (!options?.replace) routes.pushNext(tabId);
+        dispatch({ type: "navigateTab", id: tabId, place, ...(options?.replace ? { replace: true } : {}) });
+      };
+      // A section shown (replace) stays on the place; a step leaves it.
+      if (options?.replace) run();
+      else guarded(tabId, run);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [routes, dispatch],
   );
 
   /** Back (`-1`) or forward (`1`) in the active tab's own history. */
   const goActive = (delta: number) => {
     const tab = stateRef.current.tabs.find((t) => t.id === stateRef.current.activeTab);
-    if (tab && canGo(tab, delta)) dispatch({ type: "tabGo", id: tab.id, delta });
+    if (tab && canGo(tab, delta)) guarded(tab.id, () => dispatch({ type: "tabGo", id: tab.id, delta }));
   };
 
   // In memory mode no browser history turns the mouse's back and forward buttons into steps.
@@ -588,6 +659,10 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   }, [routerConfig.mode]);
 
   const closeTab = (id: string, force = false) => {
+    if (!force && isGuarded(id)) {
+      setLeaving({ tabId: id, run: () => closeTab(id) });
+      return;
+    }
     const live = stateRef.current.live[id];
     if (!force && live && live.status !== "ended") {
       dispatch({ type: "dialog", dialog: { kind: "closeTab", id } });
@@ -1128,6 +1203,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                           cancelConnect={() => dispatch({ type: "conn", profileId: t.profileId, conn: DISCONNECTED })}
                           editProfile={() => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.tool, editId: t.profileId } })}
                           nav={navOf(t, profiles.find((p) => p.id === t.profileId))}
+                          guard={guardFor(t.id)}
                           tabProps={{
                             client,
                             useTabActions: hookFor(t.id),
@@ -1135,6 +1211,10 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                             note,
                             openTab: (open) => openResource(t.profileId, { id: "", label: open.title, open }),
                             navigate: (place, options) => navigateTab(t.id, place, options),
+                            go: (place, event) =>
+                              event && wantsNewTab({ ctrlKey: event.ctrlKey ?? false, metaKey: event.metaKey ?? false, button: event.button ?? 0 })
+                                ? openResource(t.profileId, { id: "", label: place.title, open: place })
+                                : navigateTab(t.id, place),
                             updateProfile: async (change) => {
                               const record = profileById(t.profileId);
                               if (record) await saveProfile({ ...change(record), updatedAt: new Date().toISOString() });
@@ -1185,6 +1265,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
       <CommandPalette groups={paletteGroups} open={state.paletteOpen} onOpenChange={(open) => dispatch({ type: "palette", open })} hotkeys={["Mod+K", "Mod+Shift+P"]} placeholder="Type a command, a resource or a connection" />
 
+      <LeaveGuardContext value={guardFor(SHELL_GUARD)}>
       <ProfileSheet
         open={profileDialog !== null}
         onOpenChange={(open) => !open && closeDialog()}
@@ -1201,7 +1282,9 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
           toast.add({ title: `${record.name} saved`, description: "Connect when you are ready.", type: "success" });
         }}
       />
+      </LeaveGuardContext>
       <DeleteProfileDialog open={deleting !== undefined} name={deleting?.name ?? ""} onCancel={closeDialog} onDelete={() => deleting && void doDelete(deleting.id)} />
+      <DiscardChangesDialog open={leaving !== null || blocker.status === "blocked"} onKeep={keepEditing} onDiscard={discardChanges} />
       <CloseTabDialog open={closing !== undefined} title={closing?.title ?? ""} onCancel={closeDialog} onClose={() => closing && closeTab(closing.id, true)} />
       <ExportDialog open={dialog.kind === "export"} onOpenChange={(open) => !open && closeDialog()} count={exportCount} onExport={doExport} />
       <ImportDialog open={dialog.kind === "import"} onOpenChange={(open) => !open && closeDialog()} plan={(text) => planImport(text, profiles, schemaOf)} onImport={doImport} toolLabel={(id) => toolById(tools, id)?.label ?? id} />
@@ -1264,13 +1347,15 @@ interface TabBodyProps {
   connect: () => void;
   cancelConnect: () => void;
   editProfile: () => void;
-  tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab" | "navigate" | "updateProfile">;
+  tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab" | "navigate" | "go" | "updateProfile">;
   /** The navigation row (DOC-21 §3.7); none when the tab's profile or tool is gone. */
   nav: NavRowProps | null;
+  /** Where the tab's sheets report unsaved changes. */
+  guard: LeaveGuardSetter;
 }
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */
-function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, tabProps, nav }: TabBodyProps) {
+function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, tabProps, nav, guard }: TabBodyProps) {
   const t = toolById(tools, tab.tool);
   const kind = t?.tabKinds[tab.kind];
   let overlay: ReactNode = null;
@@ -1297,7 +1382,9 @@ function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, ed
     {nav ? <NavRow {...nav} /> : null}
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className={cn("flex min-h-0 flex-1 flex-col", overlay ? "pointer-events-none opacity-40" : "")} inert={overlay ? true : undefined} aria-hidden={overlay ? true : undefined}>
-        <Component tab={tab} profile={profile} connId={conn.status === "connected" ? conn.connId : null} active={active} {...tabProps} />
+        <LeaveGuardContext value={guard}>
+          <Component tab={tab} profile={profile} connId={conn.status === "connected" ? conn.connId : null} active={active} {...tabProps} />
+        </LeaveGuardContext>
       </div>
       {overlay ? <div className="absolute inset-0 flex flex-col overflow-auto">{overlay}</div> : null}
     </div>

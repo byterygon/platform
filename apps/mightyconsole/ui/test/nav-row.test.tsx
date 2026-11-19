@@ -6,7 +6,11 @@
 // real route tree.
 import { type RouterHistory, createMemoryHistory } from "@tanstack/react-router";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { useState } from "react";
 import { App } from "@/app/App";
+import { useSheetGuard } from "@/app/leave-guard";
+import { LinkButton } from "@/app/page";
+import { linkTo } from "@/app/tab-view";
 import { ServicesContext } from "@/app/client";
 import { type SiblingList, crumbsOf, createAppRouter, levelRoute, placeRoute, targetOfHref, withParams } from "@/app/router";
 import { StoreProvider, loadPersisted } from "@/app/store";
@@ -57,8 +61,31 @@ describe("crumbs and siblings on the route tree (DOC-21 §3.7)", () => {
 
 // --- The shell ------------------------------------------------------------------------------------
 
-function ListTab() {
-  return <p>All pages</p>;
+function ListTab(props: TabProps) {
+  const go = linkTo(props);
+  return (
+    <div>
+      <p>All pages</p>
+      <LinkButton onOpen={(e) => go({ kind: "walk.page", params: { n: "5" }, title: "Page 5" }, e)}>Open page 5</LinkButton>
+    </div>
+  );
+}
+
+/** A sheet-like editor: open, a draft; a changed draft guards the tab. */
+function Editor() {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const changed = useSheetGuard(open, text);
+  return open ? (
+    <div>
+      <input aria-label="Draft" value={text} onChange={(e) => setText(e.target.value)} />
+      <span>{changed ? "Changed" : "Unchanged"}</span>
+    </div>
+  ) : (
+    <button type="button" onClick={() => setOpen(true)}>
+      Edit
+    </button>
+  );
 }
 
 function PageTab({ tab, navigate }: TabProps) {
@@ -69,6 +96,7 @@ function PageTab({ tab, navigate }: TabProps) {
       <button type="button" onClick={() => navigate?.({ kind: "walk.page", params: { n: String(n + 1) }, title: `Page ${n + 1}` })}>
         Next page
       </button>
+      <Editor key={n} />
     </div>
   );
 }
@@ -219,6 +247,68 @@ describe("the navigation row (DOC-21 §3.7)", () => {
     await waitFor(() => shown("On page 0"), "the step picked");
     await click(byRole("button", "Forward", row()!));
     await waitFor(() => shown("On page 1"), "its steps ahead kept");
+  });
+});
+
+describe("links and unsaved changes (DOC-21 §3.7)", () => {
+  test("a link steps in the same tab; Mod+click and middle-click open another", async () => {
+    const fake = createFakeServices();
+    await fake.storage.putProfile(profile());
+    const { history } = await mount(fake, "/walk/lab/pages");
+    await waitFor(() => shown("All pages"), "the list");
+    await click(byRole("button", "Open page 5"));
+    await waitFor(() => shown("On page 5"), "the link in the same tab");
+    expect(document.querySelectorAll("[role=tab]")).toHaveLength(1);
+    expect(history.location.href).toBe("/walk/lab/pages/5/view");
+    await click(byRole("button", "Back", row()!));
+    await waitFor(() => shown("All pages"), "back to the list");
+    await act(async () => byRole("button", "Open page 5")!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true })));
+    await waitFor(() => document.querySelectorAll("[role=tab]").length === 2, "Mod+click: another tab");
+    await waitFor(() => shown("On page 5"), "the new tab active");
+    await click(byRole("tab", "Pages"));
+    await waitFor(() => shown("All pages"), "the list again");
+    await act(async () => byRole("button", "Open page 5")!.dispatchEvent(new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 })));
+    // The middle button opens or focuses: the tab of page 5 is there already.
+    await waitFor(() => shown("On page 5"), "middle-click: the other tab focused");
+    expect(document.querySelectorAll("[role=tab]")).toHaveLength(2);
+  });
+
+  test("a changed sheet asks before the tab moves, by the row, the keys or the mouse", async () => {
+    const fake = createFakeServices();
+    await fake.storage.putProfile(profile());
+    const { history } = await mount(fake);
+    await openFirstPage();
+    await click(byRole("button", "Next page"));
+    await waitFor(() => shown("On page 1"), "page 1");
+    await click(byRole("button", "Edit"));
+    await waitFor(() => byText("Unchanged") !== null, "the editor");
+    // Opened but untouched: nothing to lose.
+    await click(byRole("button", "Next page"));
+    await waitFor(() => shown("On page 2"), "page 2 without a question");
+    await click(byRole("button", "Edit"));
+    await waitFor(() => byText("Unchanged") !== null, "the editor again");
+    await type(document.querySelector<HTMLInputElement>("input[aria-label=Draft]")!, "half a thought");
+    await waitFor(() => byText("Changed") !== null, "the change");
+    const discard = () => byRole("button", "Discard changes");
+
+    await click(byRole("button", "Back", row()!));
+    await waitFor(() => discard() !== null, "Discard changes? (the row)");
+    await click(byRole("button", "Keep editing"));
+    await waitFor(() => discard() === null, "kept");
+    expect(shown("On page 2")).toBe(true);
+    expect(byText("Changed")).not.toBeNull();
+
+    await key("ArrowLeft", { altKey: true }, document.body);
+    await waitFor(() => discard() !== null, "Discard changes? (Alt+Left)");
+    await click(byRole("button", "Keep editing"));
+    await waitFor(() => discard() === null, "kept again");
+
+    // The mouse's back button (memory mode; in a browser the router's blocker holds its Back, check:browser).
+    await act(async () => window.dispatchEvent(new MouseEvent("mouseup", { button: 3, bubbles: true })));
+    await waitFor(() => discard() !== null, "Discard changes? (the mouse)");
+    await click(discard());
+    await waitFor(() => shown("On page 1"), "left after discarding");
+    expect(history.location.href).toBe("/walk/lab/pages/1/view");
   });
 });
 

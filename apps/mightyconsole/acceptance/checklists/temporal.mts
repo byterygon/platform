@@ -94,7 +94,7 @@ export default {
   items: [
     {
       id: "workflows",
-      text: "Namespaces; the workflow list with visibility queries, the Status menu, count and paging.",
+      text: "Namespaces; the workflow list with visibility queries, the Status menu, count and paging. TSK-105 (DOC-21 §3.7): a workflow opened from the list takes a step in the same tab; the navigation row shows the profile, the namespace, Workflows, the workflow and its view; Back's list names the steps; the namespace segment lists the cluster's namespaces and switching keeps the view; a link to a profile this browser lacks shows its page.",
       lab: true,
       checks: [
         ...lab(
@@ -128,6 +128,35 @@ export default {
           await pickStatus(ctx, "Running");
           await until(`__mc.has("fulfilment-long-running") && __mc.has("retrying-1") && !__mc.has("failed-1")`, "the Running status");
           await shot("filtered by Running");
+        }),
+        vitest("test/nav-row.test.tsx"),
+        vitest("test/routing.test.tsx"),
+        browser("a workflow in the same tab, the row, Back's list, the namespace's siblings, a missing profile", async (ctx) => {
+          const { page, origin, run, until, shot } = ctx;
+          const row = `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=toolbar][aria-label=Location]")].find((r) => r.offsetParent !== null)`;
+          const crumbs = `[...${row}.querySelectorAll("[data-slot=breadcrumb-item]")].map((el) => el.textContent.trim()).join(" / ")`;
+          const rowButton = (label: string) => `[...${row}.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
+          await runningWorkflows(ctx);
+          const tabs = await run<number>(`document.querySelectorAll("[role=tablist][aria-label=Tabs] [role=tab]").length`);
+          await run(click("fulfilment-long-running"));
+          await until(`${row} && ${crumbs} === "lab-temporal / lab / Workflows / fulfilment-long-running / Timeline"`, "the workflow's crumbs in the same tab");
+          const after = await run<number>(`document.querySelectorAll("[role=tablist][aria-label=Tabs] [role=tab]").length`);
+          if (after !== tabs) throw new Error(`a link opened a tab (${tabs} → ${after})`);
+          await shot("the navigation row on a workflow");
+          await run(`${rowButton("Back")}.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }))`);
+          await until(`${menuItem("Workflows · lab")} && ${menuItem("Timeline · fulfilment-long-running")}`, "Back's list of this tab");
+          await shot("Back's list");
+          await run(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+          await run(press(rowButton("Back")));
+          await until(`location.pathname === "/temporal/lab-temporal/lab/workflows" && ${crumbs} === "lab-temporal / lab / Workflows"`, "Back to the list in the same tab");
+          await run(press(rowButton("lab")));
+          await until(`${menuItem("default")} && __mc.has("Namespaces of lab-temporal")`, "the namespace segment's siblings");
+          await shot("the namespace's siblings");
+          await run(press(menuItem("default")));
+          await until(`location.pathname === "/temporal/lab-temporal/default/workflows" && ${crumbs} === "lab-temporal / default / Workflows"`, "Workflows of default, the view kept");
+          await page.navigate(`${origin}/temporal/prod-eu/lab/workflows/retrying-1/history`);
+          await until(`__mc.has("This link needs a Temporal profile named prod-eu") && location.pathname === "/temporal/prod-eu/lab/workflows/retrying-1/history"`, "the missing-profile page");
+          await shot("a link to a missing profile");
         }),
       ],
     },

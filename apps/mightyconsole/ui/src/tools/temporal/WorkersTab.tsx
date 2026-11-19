@@ -3,6 +3,7 @@
 // workflows and of the queues typed here (`temporal.workers.list`). Refreshed every 10 seconds
 // while the tab is shown. A worker whose last poll is over 2 minutes old is amber; the server
 // forgets a poller after 5. Filters: task queue, what it polls for, text over identity and build.
+import { linkTo } from "@/app/tab-view";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
@@ -64,7 +65,9 @@ export function versionText(deployment: string | undefined | null, build: string
   return [deployment ?? "", short].filter(Boolean).join(" · ");
 }
 
-export function WorkersTab({ tab, profile, connId, client, useTabActions, note, openTab, active }: TabProps) {
+export function WorkersTab({ tab, profile, connId, client, useTabActions, note, openTab, active, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const namespace = text(tab.params["namespace"]) || namespaceOf(profile);
   const [out, setOut] = useState<WorkersListOutput | null>(null);
   const [loading, setLoading] = useState(false);
@@ -228,7 +231,7 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
                       </span>
                     </TableCell>
                     <TableCell>
-                      <LinkButton onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+                      <LinkButton onOpen={(e) => go({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` }, e)}>
                         {w.taskQueue}
                       </LinkButton>
                     </TableCell>

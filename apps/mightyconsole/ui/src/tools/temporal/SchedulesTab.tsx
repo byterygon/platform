@@ -1,11 +1,12 @@
 // Schedules (Mightyconsole spec §9.3): `temporal.schedules { namespace }` lists them with their next
 // runs and recent actions; a row opens `temporal.schedule` (ScheduleTab.tsx).
+import { linkTo } from "@/app/tab-view";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Page, PageHeader, PageRegion, gutterTable } from "@/app/page";
+import { Page, PageHeader, PageRegion, gutterTable, linkHandlers } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
@@ -19,7 +20,9 @@ import { statusLabel } from "./WorkflowsTab";
 
 const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
 
-export function SchedulesTab({ tab, profile, connId, client, active, useTabActions, note, openTab }: TabProps) {
+export function SchedulesTab({ tab, profile, connId, client, active, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const namespace = text(tab.params["namespace"]) || "default";
   const [creating, setCreating] = useState(false);
   // "Create schedule" from the palette opens this tab and asks it for the sheet.
@@ -86,7 +89,7 @@ export function SchedulesTab({ tab, profile, connId, client, active, useTabActio
         note={note}
         onSaved={(scheduleId) => {
           void load();
-          openTab({ kind: "temporal.schedule", params: { namespace, scheduleId }, title: scheduleId });
+          go({ kind: "temporal.schedule", params: { namespace, scheduleId }, title: scheduleId });
         }}
       />
       <PageRegion>
@@ -114,7 +117,7 @@ export function SchedulesTab({ tab, profile, connId, client, active, useTabActio
                 return (
                   <TableRow key={s.scheduleId}>
                     <TableCell>
-                      <Button size="small" appearance="subtle" onClick={() => openTab({ kind: "temporal.schedule", params: { namespace, scheduleId: s.scheduleId }, title: s.scheduleId })}>
+                      <Button size="small" appearance="subtle" {...linkHandlers((e) => go({ kind: "temporal.schedule", params: { namespace, scheduleId: s.scheduleId }, title: s.scheduleId }, e))}>
                         {s.scheduleId}
                       </Button>
                     </TableCell>

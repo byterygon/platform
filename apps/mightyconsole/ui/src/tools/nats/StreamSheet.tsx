@@ -2,6 +2,7 @@
 // subjects as tags, storage, retention, then Limits open and Replication and Options folded with
 // their values. On edit, what the server cannot change after creation is read only with a lock
 // and says so. The server's error marks the field it names and keeps the rest of the form.
+import { useSheetGuard } from "@/app/leave-guard";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ function Locked({ on }: { on: boolean }) {
 export function StreamSheet({ open, onOpenChange, stream, profileName, connId, client, onSaved }: StreamSheetProps) {
   const editing = stream !== undefined;
   const [d, setD] = useState<StreamDraft>(EMPTY_STREAM);
+  useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState<{ title: string; field: StreamField | null } | null>(null);

@@ -4,6 +4,7 @@
 // ID, the input as a Monaco JSON array, and folded sections that show their values. Ctrl+Enter
 // starts; the toast carries the run ID and Open workflow. "Copy as CLI command" gives the same
 // request as `temporal workflow start`.
+import { useSheetGuard } from "@/app/leave-guard";
 import { useContext, useEffect, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
@@ -19,7 +20,7 @@ import type { MightyClient } from "@/app/client";
 import type { IdConflictPolicy, IdReusePolicy, WorkflowStartInput } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import { ArrowCounterclockwise, Code, Play } from "@/lib/icons";
-import type { DescribedError } from "../types";
+import type { DescribedError, LinkEvent } from "../types";
 import { ArgsField, parseArgs } from "./ActionDialogs";
 import { workflowStartCommand } from "./cli";
 import { addressOf, tlsOf } from "./profile";
@@ -48,7 +49,7 @@ export interface StartWorkflowSheetProps {
   /** Workflow types and task queues seen in the loaded rows. */
   suggestions?: { types: readonly string[]; queues: readonly string[] } | undefined;
   note(e: unknown): DescribedError;
-  onOpenWorkflow(workflowId: string, runId: string): void;
+  onOpenWorkflow(workflowId: string, runId: string, event?: LinkEvent): void;
   /** Called after a start, e.g. to refresh the list. */
   onStarted?: (() => void) | undefined;
 }
@@ -158,6 +159,7 @@ function keysOf(text: string): string[] {
 export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile, namespace, prefill, suggestions, note, onOpenWorkflow, onStarted }: StartWorkflowSheetProps) {
   const notify = useContext(NoticeContext);
   const [d, setD] = useState<Draft>(() => draftOf(prefill));
+  useSheetGuard(open, d);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<DescribedError | null>(null);
   const [tried, setTried] = useState(false);

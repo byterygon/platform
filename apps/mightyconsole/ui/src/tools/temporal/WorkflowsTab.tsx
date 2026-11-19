@@ -23,7 +23,8 @@ import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { NamespaceSummary, SearchAttribute, WorkflowRow, WorkflowStatus } from "@/gen/api";
 import { Add, ArrowClockwise, Copy, Play, Window } from "@/lib/icons";
-import type { DescribedError, TabProps } from "../types";
+import type { DescribedError, LinkEvent, TabProps } from "../types";
+import { linkTo } from "@/app/tab-view";
 import { formatDuration, formatShortTime, formatTime } from "./format";
 import { namespaceOf, pageSizeOf, savedQueriesOf } from "./profile";
 import { STATUS_CHIPS, statusOf, withStatus } from "./query";
@@ -55,7 +56,9 @@ export const statusLabel = (s: WorkflowStatus): string => s.replace(/([a-z])([A-
 /** The footer's choices of rows per page (the mockup's). */
 const PAGE_SIZES = [25, 50, 100, 200] as const;
 
-export function WorkflowsTab({ tab, profile, connId, client, active, useTabActions, note, openTab, updateProfile }: TabProps) {
+export function WorkflowsTab(props: TabProps) {
+  const { tab, profile, connId, client, active, useTabActions, note, openTab, updateProfile } = props;
+  const go = linkTo(props);
   const notify = useContext(NoticeContext);
   const [choice, setChoice] = useColumnChoice("temporal.workflows");
   const [menuRow, setMenuRow] = useState<WorkflowRow | null>(null);
@@ -219,7 +222,9 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
   };
 
   const columns = shownColumns(choice);
-  const openWorkflow = (w: WorkflowRow) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId });
+  const workflowPlace = (w: WorkflowRow) => ({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId });
+  /** A workflow in this tab (DOC-21 §3.7), or another with Mod or the middle button. */
+  const openWorkflow = (w: WorkflowRow, event?: LinkEvent) => go(workflowPlace(w), event);
   const copy = async (value: string, what: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -235,7 +240,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
       void copy(w.workflowId, "workflow ID");
       e.preventDefault();
     } else if (e.key === "Enter") {
-      openWorkflow(w);
+      openWorkflow(w, e);
       e.preventDefault();
     }
   };
@@ -270,7 +275,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
       case "taskQueue":
         return (
           <TableCell key={c}>
-            <LinkButton onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+            <LinkButton onOpen={(e) => go({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` }, e)}>
               {w.taskQueue}
             </LinkButton>
           </TableCell>
@@ -339,7 +344,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
         suggestions={{ types: [...new Set(rows.map((w) => w.workflowType))], queues: [...new Set(rows.map((w) => w.taskQueue))] }}
         note={note}
         onStarted={refresh}
-        onOpenWorkflow={(workflowId, runId) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId, runId }, title: workflowId })}
+        onOpenWorkflow={(workflowId, runId) => go({ kind: "temporal.workflow", params: { namespace, workflowId, runId }, title: workflowId })}
       />
       <form
         className="flex shrink-0 flex-col gap-stack-xs px-inset-lg pt-stack-md"
@@ -429,7 +434,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
                       <TableRow key={`${w.workflowId}/${w.runId}`} data-key={`${w.workflowId}/${w.runId}`} tabIndex={0} onKeyDown={(e) => onRowKey(e, w)} className="group">
                         <TableCell>
                           <span className="flex items-center gap-inline-xs">
-                            <LinkButton onClick={() => openWorkflow(w)}>
+                            <LinkButton onOpen={(e) => openWorkflow(w, e)}>
                               {w.workflowId}
                             </LinkButton>
                             <CopyButton value={w.workflowId} what="workflow ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
@@ -444,7 +449,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
               <ContextMenuContent>
                 {menuRow ? (
                   <>
-                    <ContextMenuItem onClick={() => openWorkflow(menuRow)}>
+                    <ContextMenuItem onClick={() => openTab(workflowPlace(menuRow))}>
                       <Icon icon={Window} /> Open in a new tab
                     </ContextMenuItem>
                     <ContextMenuSeparator />
