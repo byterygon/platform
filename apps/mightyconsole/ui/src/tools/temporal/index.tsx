@@ -14,6 +14,7 @@ import { WorkflowTab } from "./WorkflowTab";
 import { WorkflowsTab } from "./WorkflowsTab";
 import { namespaceOf, profile, savedQueriesOf } from "./profile";
 import { requestSheet } from "./sheet-parts";
+import { temporalTreeData, treeDataOf } from "./tree-data";
 import { TemporalMark } from "../marks";
 
 export const temporalTool: ToolModule = {
@@ -26,50 +27,80 @@ export const temporalTool: ToolModule = {
   description: "Workflows, schedules and task queues of a Temporal cluster.",
   profile,
   ConnectionForm,
-  // The profile opens one namespace, so its Workflows, Schedules, Task queues and Workers sit
-  // directly under it (no extra level to expand); the namespace is in every tab's title. Saved
-  // queries are the children of Workflows. Namespaces lists the others and opens their tabs.
-  sidebarTree({ profile: p }): readonly ResourceNode[] {
+  // The TSK-91 mockup's tree: Namespaces with their count, then a folder per namespace of the
+  // cluster (the profile's first, open; the others as the cluster lists them, once loaded), each
+  // with Workflows (saved queries under the profile's), Schedules, Task queues and Workers, the
+  // profile's namespace with its counts. Ids of the profile's namespace keep their old form.
+  sidebarTree({ profile: p, connId }): readonly ResourceNode[] {
     const namespace = namespaceOf(p);
+    const tree = treeDataOf(connId);
+    const names = tree.namespaces ?? [namespace];
+    const count = (n: number | undefined) => (n === undefined ? undefined : <span className="text-caption-1 text-fg-muted">{n}</span>);
+    const folder = (ns: string): ResourceNode => {
+      const mine = ns === namespace;
+      const id = (part: string) => (mine ? `${p.id}/${part}` : `${p.id}/ns/${ns}/${part}`);
+      const counts = tree.counts[ns] ?? {};
+      const workers = count(counts.workers);
+      const schedules = count(counts.schedules);
+      return {
+        id: `${p.id}/ns/${ns}`,
+        label: ns,
+        icon: <Icon icon={Folder} />,
+        expanded: mine,
+        children: [
+          {
+            id: id("workflows"),
+            label: "Workflows",
+            icon: <Icon icon={Flash} />,
+            open: { kind: "temporal.workflows", params: { namespace: ns, query: "" }, title: `Workflows · ${ns}` },
+            ...(mine
+              ? {
+                  children: savedQueriesOf(p.extras).map((saved) => ({
+                    id: `${p.id}/workflows/${saved.name}`,
+                    label: saved.name,
+                    icon: <Icon icon={Search} />,
+                    open: { kind: "temporal.workflows", params: { namespace, query: saved.query }, title: `${saved.name} · ${namespace}` },
+                  })),
+                  expanded: true,
+                }
+              : {}),
+          },
+          {
+            id: id("schedules"),
+            label: "Schedules",
+            icon: <Icon icon={CalendarClock} />,
+            ...(schedules ? { meta: schedules } : {}),
+            open: { kind: "temporal.schedules", params: { namespace: ns }, title: `Schedules · ${ns}` },
+          },
+          {
+            id: id("task-queues"),
+            label: "Task queues",
+            icon: <Icon icon={List} />,
+            open: { kind: "temporal.taskQueue", params: { namespace: ns, name: "" }, title: `Task queues · ${ns}` },
+          },
+          {
+            id: id("workers"),
+            label: "Workers",
+            icon: <Icon icon={Server} />,
+            ...(workers ? { meta: workers } : {}),
+            open: { kind: "temporal.workers", params: { namespace: ns }, title: `Workers · ${ns}` },
+          },
+        ],
+      };
+    };
+    const namespacesCount = count(tree.namespaces?.length);
     return [
       {
         id: `${p.id}/namespaces`,
         label: "Namespaces",
-        icon: <Icon icon={Folder} />,
+        icon: <Icon icon={List} />,
+        ...(namespacesCount ? { meta: namespacesCount } : {}),
         open: { kind: "temporal.namespaces", params: {}, title: "Namespaces" },
       },
-      {
-        id: `${p.id}/workflows`,
-        label: "Workflows",
-        icon: <Icon icon={Flash} />,
-        open: { kind: "temporal.workflows", params: { namespace, query: "" }, title: `Workflows · ${namespace}` },
-        children: savedQueriesOf(p.extras).map((saved) => ({
-          id: `${p.id}/workflows/${saved.name}`,
-          label: saved.name,
-          icon: <Icon icon={Search} />,
-          open: { kind: "temporal.workflows", params: { namespace, query: saved.query }, title: `${saved.name} · ${namespace}` },
-        })),
-      },
-      {
-        id: `${p.id}/schedules`,
-        label: "Schedules",
-        icon: <Icon icon={CalendarClock} />,
-        open: { kind: "temporal.schedules", params: { namespace }, title: `Schedules · ${namespace}` },
-      },
-      {
-        id: `${p.id}/task-queues`,
-        label: "Task queues",
-        icon: <Icon icon={List} />,
-        open: { kind: "temporal.taskQueue", params: { namespace, name: "" }, title: `Task queues · ${namespace}` },
-      },
-      {
-        id: `${p.id}/workers`,
-        label: "Workers",
-        icon: <Icon icon={Server} />,
-        open: { kind: "temporal.workers", params: { namespace }, title: `Workers · ${namespace}` },
-      },
+      ...names.map(folder),
     ];
   },
+  sidebarData: temporalTreeData,
   tabKinds: {
     "temporal.namespaces": {
       title: () => "Namespaces",

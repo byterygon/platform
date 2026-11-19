@@ -3,6 +3,7 @@
 // buttons to its tabs; the workers from the pollers, their filters, the idle mark, a typed task
 // queue and the refresh while the tab is shown.
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { resetTreeData } from "@/tools/temporal/tree-data";
 import { describeError } from "@/app/messages";
 import type { MightyClient } from "@/app/client";
 import type { NamespaceDetail, NamespaceSummary, WorkerRow, WorkersListOutput } from "@/gen/api";
@@ -166,11 +167,36 @@ describe("Workers", () => {
 });
 
 describe("the tree", () => {
-  test("has Namespaces and Workers under the profile", () => {
+  test("the tree has Namespaces, then a folder per namespace with its views and counts once loaded", async () => {
+    resetTreeData();
     const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
-    const nodes = temporalTool.sidebarTree({ profile, connId: "c" });
-    expect(nodes.map((n) => n.label)).toEqual(["Namespaces", "Workflows", "Schedules", "Task queues", "Workers"]);
-    expect(nodes[4]?.open).toEqual({ kind: "temporal.workers", params: { namespace: "default" }, title: "Workers · default" });
+    // Before anything is loaded: the profile's namespace, open.
+    const before = temporalTool.sidebarTree({ profile, connId: "c" });
+    expect(before.map((n) => n.label)).toEqual(["Namespaces", "default"]);
+    expect(before[1]?.expanded).toBe(true);
+    expect(before[1]?.children?.map((n) => n.label)).toEqual(["Workflows", "Schedules", "Task queues", "Workers"]);
+    expect(before[1]?.children?.[3]?.open).toEqual({ kind: "temporal.workers", params: { namespace: "default" }, title: "Workers · default" });
+    // Loaded: the cluster's namespaces (the profile's first, temporal-system left out) and the counts.
+    const client = {
+      temporal: {
+        namespaces: { list: async () => [{ name: "payments" }, { name: "temporal-system" }, { name: "default" }, { name: "orders" }] },
+        schedules: { list: async () => [{}, {}, {}] },
+        workers: { list: async () => ({ workers: [{ identity: "a" }, { identity: "a" }, { identity: "b" }], taskQueues: [] }) },
+      },
+    };
+    let changes = 0;
+    const stop = temporalTool.sidebarData!.subscribe(() => (changes += 1));
+    temporalTool.sidebarData!.load({ profile, connId: "c", client: client as never });
+    await waitFor(() => changes >= 3, "the tree data");
+    stop();
+    const after = temporalTool.sidebarTree({ profile, connId: "c" });
+    expect(after.map((n) => n.label)).toEqual(["Namespaces", "default", "orders", "payments"]);
+    const text = (node: { meta?: unknown } | undefined) => (node?.meta as { props: { children: number } } | undefined)?.props.children;
+    expect(text(after[0])).toBe(3);
+    expect(text(after[1]?.children?.[1])).toBe(3);
+    expect(text(after[1]?.children?.[3])).toBe(2);
+    expect(after[2]?.expanded).toBe(false);
+    expect(after[2]?.children?.[0]?.open).toEqual({ kind: "temporal.workflows", params: { namespace: "orders", query: "" }, title: "Workflows · orders" });
     expect(temporalTool.tabKinds["temporal.workers"]?.title({ namespace: "lab" })).toBe("Workers · lab");
   });
 });
