@@ -197,6 +197,38 @@ describe("Timeline", () => {
     expect(container.querySelector('[data-slot="timeline-window"]')).not.toBeNull();
   });
 
+  test("Fit names Home in its tooltip, not on the button", () => {
+    const { container } = render(<Timeline aria-label="a" lanes={lanes} items={items} now={3000} />);
+    const fit = button(container, "Fit");
+    expect(fit.textContent).toBe("Fit");
+    expect(fit.getAttribute("aria-keyshortcuts")).toBe("Home");
+    expect(container.querySelector("kbd")).toBeNull();
+  });
+
+  test("an aside sits beside the chart, and its keys and wheel leave the chart alone", async () => {
+    const { container } = render(<Timeline aria-label="a" lanes={lanes} items={items} now={3000} aside={<button type="button">Copy</button>} asideLabel="Activity 5" />);
+    const aside = container.querySelector<HTMLElement>('[data-slot="timeline-aside"]')!;
+    expect(aside.tagName).toBe("ASIDE");
+    expect(aside.getAttribute("aria-label")).toBe("Activity 5");
+    // Under the toolbar, after the chart, in one row.
+    const body = container.querySelector('[data-slot="timeline-body"]')!;
+    expect(Array.from(body.children).map((c) => c.getAttribute("data-slot"))).toEqual(["timeline-chart", "timeline-aside"]);
+    const zoomLabel = () => container.querySelector('[data-slot="timeline-zoom-label"]')?.textContent;
+    const before = zoomLabel();
+    const inside = aside.querySelector("button")!;
+    await press(inside, "+");
+    await act(async () => {
+      inside.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, ctrlKey: true, bubbles: true, cancelable: true }));
+    });
+    expect(zoomLabel()).toBe(before);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  test("without an aside there is no pane", () => {
+    const { container } = render(<Timeline aria-label="a" lanes={lanes} items={items} now={3000} />);
+    expect(container.querySelector('[data-slot="timeline-aside"]')).toBeNull();
+  });
+
   test("shapes, captions, a lane's detail and the selected lane", () => {
     const shaped: TimelineItem[] = [
       { id: "r", laneId: "wf", start: 0, end: null, status: "running", label: "run", caption: "Running · 5s" },

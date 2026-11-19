@@ -111,6 +111,16 @@ export function displayBinding(binding: string, mac = isMac()): string {
   return displayKeys(binding, mac).join("+");
 }
 
+/** An action's binding as `aria-keyshortcuts` reads it ("Control+Alt+N", "Meta+Alt+N" on macOS), or undefined for palette-only actions. */
+export function ariaBindingOf(id: ActionId, mac = isMac()): string | undefined {
+  const first = actionById(id).keys[0];
+  if (!first) return undefined;
+  return first
+    .split("+")
+    .map((key) => (key === "Mod" ? (mac ? "Meta" : "Control") : key === "Ctrl" ? "Control" : key))
+    .join("+");
+}
+
 /** The shown binding of an action, or "" for palette-only actions. */
 export function bindingOf(id: ActionId, mac = isMac()): string {
   const first = actionById(id).keys[0];

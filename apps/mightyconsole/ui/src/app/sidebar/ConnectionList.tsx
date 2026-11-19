@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
-import { Kbd } from "@/components/ui/kbd";
 import { SearchInput } from "@/components/ui/search-input";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tree, type TreeNode } from "@/components/ui/tree";
 import { Add, ArrowImport, CheckmarkCircle, Circle, Clock, ErrorCircle, Warning } from "@/lib/icons";
 import type { RecordState } from "@/profiles/migrate";
@@ -18,7 +18,7 @@ import type { ProfileRecord } from "@/profiles/record";
 import { toolIcon } from "@/tools/registry";
 import type { ResourceNode, ToolModule } from "@/tools/types";
 import { COLOR_CLASS } from "../dialogs/ProfileDialogs";
-import { bindingOf } from "../shortcuts";
+import { ariaBindingOf, bindingOf } from "../shortcuts";
 import { LoadingRows } from "../states";
 import type { ConnState } from "../store";
 
@@ -198,14 +198,19 @@ export function ConnectionList(props: ConnectionListProps) {
         </EmptyStateTitle>
         <EmptyStateDescription className="text-caption-1">Profiles stay in this browser; the server keeps nothing. {tool.description}</EmptyStateDescription>
         <EmptyStateActions>
-          <Button appearance="primary" onClick={props.onAdd}>
-            <Icon icon={Add} /> Add connection
-          </Button>
+          {/* No key hint drawn by the button (DOC-21 §3.4): the binding is in its tooltip and the palette. */}
+          <Tooltip>
+            <TooltipTrigger render={<Button appearance="primary" onClick={props.onAdd} aria-keyshortcuts={ariaBindingOf("addConnection")} />}>
+              <Icon icon={Add} /> Add connection
+            </TooltipTrigger>
+            <TooltipContent>
+              Add a {tool.label} connection <TooltipShortcut>{bindingOf("addConnection")}</TooltipShortcut>
+            </TooltipContent>
+          </Tooltip>
           <Button onClick={props.onImport}>
             <Icon icon={ArrowImport} /> Import profiles
           </Button>
         </EmptyStateActions>
-        <Kbd>{bindingOf("addConnection")}</Kbd>
       </EmptyState>
     );
   }

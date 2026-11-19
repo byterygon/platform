@@ -33,7 +33,7 @@ describe("acceptance checklists", () => {
       ["nats", "TSK-85", 7],
       ["kafka", "TSK-86", 7],
       ["k8s", "TSK-82", 7],
-      ["temporal", "TSK-83", 5],
+      ["temporal", "TSK-83", 6],
       ["temporal-more", "TSK-92", 8],
       ["temporal-detail", "TSK-104", 2],
       ["docker", "TSK-81", 5],

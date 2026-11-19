@@ -259,6 +259,36 @@ export default {
       ],
     },
     {
+      id: "timeline-pane",
+      text: "Uy Son's feedback of 2026-11-19, part 1 (TSK-100, DOC-21 Open question 45 (r)): a Timeline item's details open in a pane beside the chart (times and waits, worker, retry policy, the failure with Copy, its own events unfolding to their attributes); an open workflow-task fold in History shows its events indented with a guide line; no key hints drawn on buttons.",
+      lab: true,
+      checks: [
+        vitest("test/temporal-timeline-detail.test.ts"),
+        vitest("test/temporal-workflow.test.tsx"),
+        vitest("test/temporal-history-view.test.ts"),
+        vitest("test/temporal-write-sheets.test.tsx"),
+        vitest("test/shell.test.tsx"),
+        command("the Timeline's aside and Fit's tooltip in packages/ui", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/timeline"]),
+        browser("the retrying activity's pane beside the Timeline and an open fold in History", async (ctx) => {
+          const { run, until, shot } = ctx;
+          await runningWorkflows(ctx);
+          await run(click("retrying-1"));
+          const panel = `document.querySelector("[role=tabpanel]:not([hidden]) [data-slot=timeline-aside]")`;
+          await until(`${panel} && __mc.has("Click a bar, a diamond or a pin")`, "the Timeline with its empty pane");
+          await run(`__mc.click(document.querySelector("[role=tabpanel]:not([hidden]) [data-slot=timeline-item][data-shape=hatched]"))`);
+          await until(`${panel}.textContent.includes("Retrying") && ${panel}.textContent.includes("Events") && ${panel}.textContent.includes("the payment provider is down")`, "the retrying activity's details, failure and events");
+          const hints = await run<number>(`document.querySelectorAll("[role=tabpanel]:not([hidden]) button kbd").length`);
+          if (hints > 0) throw new Error(`${hints} key hint(s) drawn on buttons`);
+          await shot("timeline with the retrying activity's pane");
+          await run(click("History"));
+          await until(`document.querySelector("[role=tabpanel]:not([hidden]) button[aria-label^='Unfold events']")`, "a folded workflow task");
+          await run(`__mc.click(document.querySelector("[role=tabpanel]:not([hidden]) button[aria-label^='Unfold events']"))`);
+          await until(`document.querySelector("[role=tabpanel]:not([hidden]) tr[data-in-fold] [data-slot=fold-guide]")`, "the fold's events indented with the guide line");
+          await shot("history with an open fold");
+        }),
+      ],
+    },
+    {
       id: "components",
       text: "Timeline is in packages/ui; CI green.",
       checks: [

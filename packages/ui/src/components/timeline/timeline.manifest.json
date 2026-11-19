@@ -4,7 +4,7 @@
   "name": "timeline",
   "title": "Timeline",
   "description": "Spans and instants over time in lanes: a workflow's history as bars, stripes, dashes, ticks, diamonds and pins (the workflow, its activities, timers, child workflows, signals, markers) on a zoomable clock or since-start axis, with a toolbar, an overview strip of the whole range and running items that grow to now.",
-  "usage": "Use it to show when things happened and how they overlapped, for a history, a trace or a job run: one lane per thing (with an icon and a short detail such as \"activity 5\"), one mark per span or instant. Pass lanes and items with times in milliseconds on one clock (epoch ms for the clock axis) and `now` for the running ones; the app decides lanes, shapes and captions. The built-in toolbar fits (Home), zooms and switches the axis between clock time and time since the start; pass filters or a follow switch as `toolbar`. The overview strip shows the whole range with the visible window, which drags to pan. With `follow`, a zoomed view slides with `now`; panning away calls `onFollowChange(false)`. Pair it with a table of the same events for exact values. It is plain DOM, windows its lanes, and zooms with + and - (Ctrl+wheel), pans with the arrows (Shift+wheel).",
+  "usage": "Use it to show when things happened and how they overlapped, for a history, a trace or a job run: one lane per thing (with an icon and a short detail such as \"activity 5\"), one mark per span or instant. Pass lanes and items with times in milliseconds on one clock (epoch ms for the clock axis) and `now` for the running ones; the app decides lanes, shapes and captions. The built-in toolbar fits (Home, named in Fit's tooltip, never on the button), zooms and switches the axis between clock time and time since the start; pass filters or a follow switch as `toolbar`. The overview strip shows the whole range with the visible window, which drags to pan. With `follow`, a zoomed view slides with `now`; panning away calls `onFollowChange(false)`. Pass the selected item's details as `aside`: a pane beside the chart, under the toolbar, that the chart's keys and wheel leave alone. Pair it with a table of the same events for exact values. It is plain DOM, windows its lanes, and zooms with + and - (Ctrl+wheel), pans with the arrows (Shift+wheel).",
   "status": "experimental",
   "dependencies": [],
   "variants": {},
@@ -99,6 +99,17 @@
       "description": "Called with false when the person pans away from now (keys, Shift+wheel, the overview)."
     },
     {
+      "name": "aside",
+      "type": "ReactNode",
+      "description": "A pane beside the chart, under the toolbar (the pane width of the panel scale, at most half): the selected item's details, such as its times, failure and events. Keys and the wheel inside it do not zoom or pan the chart. None when absent."
+    },
+    {
+      "name": "asideLabel",
+      "type": "string",
+      "default": "\"Selected item\"",
+      "description": "The pane's accessible name (it is an aside, a complementary region)."
+    },
+    {
       "name": "className",
       "type": "string",
       "description": "Extra classes, merged after the component's own. Give it a height: the lanes scroll inside."
@@ -113,7 +124,22 @@
     {
       "name": "toolbar",
       "element": "div",
-      "description": "Fit, the zoom group with the view's width, the axis switch and the `toolbar` content; data-slot=\"timeline-toolbar\"."
+      "description": "Fit (its tooltip names Home), the zoom group with the view's width, the axis switch and the `toolbar` content; data-slot=\"timeline-toolbar\"."
+    },
+    {
+      "name": "body",
+      "element": "div",
+      "description": "Under the toolbar: the chart and the pane beside it; data-slot=\"timeline-body\"."
+    },
+    {
+      "name": "chart",
+      "element": "div",
+      "description": "The overview, the axis and the lanes; data-slot=\"timeline-chart\"."
+    },
+    {
+      "name": "aside",
+      "element": "aside",
+      "description": "The `aside` pane beside the chart, a border.subtle divider on its start side, scrolling on its own; data-slot=\"timeline-aside\"."
     },
     {
       "name": "overview",
@@ -233,7 +259,6 @@
     "color.accent.compound",
     "color.accent.subtle-bg",
     "color.accent.subtle-fg",
-    "color.bg.inset",
     "color.bg.layer",
     "color.border.default",
     "color.border.subtle",
@@ -264,7 +289,6 @@
     "size.control.sm",
     "size.control.xs",
     "size.icon.md",
-    "size.icon.xs",
     "size.panel.xs",
     "space.inline.lg",
     "space.inline.md",
@@ -294,10 +318,11 @@
     "realistic": "TimelineRealistic"
   },
   "accessibility": [
-    "The timeline is a focusable role=group named by aria-label; its keys (+, -, arrows, Home) are announced by a visually hidden hint it is described by. The toolbar's buttons do the same with a pointer and are named (Zoom in, Zoom out, Fit); the view's width is announced politely.",
+    "The timeline is a focusable role=group named by aria-label; its keys (+, -, arrows, Home) are announced by a visually hidden hint it is described by. The toolbar's buttons do the same with a pointer and are named (Zoom in, Zoom out, Fit; Fit has aria-keyshortcuts=\"Home\" and a tooltip with the key, no key drawn on the button); the view's width is announced politely.",
     "Each mark is a native button whose label is \"label, status, duration\" (or describeItem), with aria-pressed when a selection is controlled.",
     "Status is never colour alone: shapes differ (stripes, dashes, ticks, diamonds, pins), captions name the state, and the aria-label names the status. The axis and the overview are hidden from assistive technology; the marks carry the times.",
-    "Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface)."
+    "Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface).",
+    "The `aside` pane is an <aside> named by asideLabel, after the chart in the reading order, so a screen reader reaches the selected item's details right after the lanes."
   ],
   "base": null
 }

@@ -93,6 +93,10 @@ describe("Start workflow", () => {
     await type(editorArea("Input")!, '["ord-9", {"rush": true}]');
     await settle(2);
     expect(await axeViolations(sheet)).toEqual([]);
+    // No key hint on the button (DOC-21 §3.4): Ctrl+Enter is in its tooltip and aria-keyshortcuts.
+    const submit = byRole("button", "Start workflow", sheet)!;
+    expect(submit.querySelector("kbd")).toBeNull();
+    expect(submit.getAttribute("aria-keyshortcuts")).toBe("Control+Enter");
 
     await key("Enter", { ctrlKey: true }, input(sheet, "Workflow ID"));
     await waitFor(() => start.mock.calls.length === 1, "the start");
