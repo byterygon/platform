@@ -109,7 +109,7 @@ export function liveText(live: LiveState, unit = "msg/s"): string {
 export function LiveBadge({ live, unit }: { live: LiveState; unit?: string }) {
   const variant = live.status === "live" ? "success" : live.status === "paused" ? "warning" : "neutral";
   return (
-    <Badge variant={variant} role="status" aria-live="polite">
+    <Badge appearance="tint" variant={variant} role="status" aria-live="polite">
       {liveText(live, unit)}
     </Badge>
   );

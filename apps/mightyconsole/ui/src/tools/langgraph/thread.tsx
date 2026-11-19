@@ -520,7 +520,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
                     <li key={m.id} className={m.role === "human" ? "self-end rounded-lg bg-accent-subtle p-inset-xs text-body-1 text-fg" : "rounded-lg bg-layer-alt p-inset-xs text-body-1 text-fg"}>
                       <div className="flex items-center gap-inline-xs text-caption-1 text-fg-muted">
                         <span>{m.role}</span>
-                        {m.node ? <Badge variant="neutral">{m.node}</Badge> : null}
+                        {m.node ? <Badge appearance="tint" variant="neutral">{m.node}</Badge> : null}
                       </div>
                       {m.text ? <p className="whitespace-pre-wrap">{m.text}</p> : null}
                       {m.toolCalls.map((c, i) => (
@@ -542,7 +542,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
                     <li key={`${e.id ?? ""}-${i}`} className="border-b border-border-subtle py-stack-xs">
                       <details>
                         <summary className="flex cursor-pointer items-center gap-inline-sm text-body-1 text-fg">
-                          <Badge variant={eventName(e.event).mode === "error" ? "danger" : "info"}>{e.event}</Badge>
+                          <Badge appearance="tint" variant={eventName(e.event).mode === "error" ? "danger" : "info"}>{e.event}</Badge>
                           <span className="min-w-0 flex-1 truncate font-mono text-code text-fg-muted">{preview(e.data)}</span>
                         </summary>
                         <pre className="max-h-panel-sm overflow-auto font-mono text-code whitespace-pre-wrap text-fg">{pretty(e.data)}</pre>
@@ -613,7 +613,7 @@ function StateDetails({ state }: { state: api.ThreadState }) {
           <ul className="flex flex-col gap-stack-xs">
             {state.tasks.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center gap-inline-sm text-body-1 text-fg">
-                <Badge variant="neutral">{t.name}</Badge>
+                <Badge appearance="tint" variant="neutral">{t.name}</Badge>
                 {t.error ? <span className="text-danger-fg">{t.error}</span> : null}
                 {t.interrupts.map((i, n) => (
                   <span key={i.id ?? n} className="font-mono text-code text-warning-fg">

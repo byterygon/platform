@@ -151,7 +151,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
               onSecrets={(patch) => setDraft((d) => ({ ...d, secrets: { ...d.secrets, ...patch } }))}
             />
             {base && mode !== "add" && hasSecrets(base) ? (
-              <Field className="flex-row items-center gap-inline-sm">
+              <Field orientation="horizontal">
                 <Checkbox checked={clearSecrets} onCheckedChange={(v) => setClearSecrets(v === true)} disabled={readOnly} />
                 <FieldLabel>Remove the stored secrets</FieldLabel>
               </Field>
@@ -220,7 +220,7 @@ export function ExportDialog({ open, onOpenChange, count, onExport }: { open: bo
           <DialogDescription>Writes a JSON file another browser can import.</DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-stack-md">
-          <Field className="flex-row items-center gap-inline-sm">
+          <Field orientation="horizontal">
             <Checkbox checked={includeSecrets} onCheckedChange={(v) => setIncludeSecrets(v === true)} />
             <FieldLabel>Include secrets (passwords, keys, tokens, kubeconfigs)</FieldLabel>
           </Field>

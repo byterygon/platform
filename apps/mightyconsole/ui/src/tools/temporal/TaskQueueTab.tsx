@@ -103,7 +103,7 @@ function PollerTable({ title, pollers, backlog }: { title: string; pollers: Poll
     <section className="flex flex-col gap-stack-xs pb-inset-md">
       <h3 className="flex items-center gap-inline-sm text-body-1-strong text-fg">
         {title} ({pollers.length})
-        {backlog !== undefined ? <Badge variant={backlog > 0 ? "warning" : "neutral"}>{formatCount(backlog)} waiting</Badge> : null}
+        {backlog !== undefined ? <Badge appearance="tint" variant={backlog > 0 ? "warning" : "neutral"}>{formatCount(backlog)} waiting</Badge> : null}
       </h3>
       {pollers.length === 0 ? (
         <EmptyLine>No worker is polling this task queue.</EmptyLine>

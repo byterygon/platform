@@ -80,7 +80,7 @@ const classes = {
     focusRingInset,
   ],
   head: [
-    "sticky top-0 z-[var(--by-z-sticky)] h-control-md whitespace-nowrap border-b border-border px-table-cell-x text-start align-middle text-body-1 text-fg",
+    "sticky top-0 z-[var(--by-z-sticky)] h-control-md whitespace-nowrap border-b border-border-subtle px-table-cell-x text-start align-middle text-body-1-strong text-fg",
     // Rows scroll under the sticky header: it takes a fill only while the table is scrolled.
     "in-data-scrolled:bg-surface",
     "data-[align=center]:text-center data-[align=end]:text-end",
@@ -93,7 +93,7 @@ const classes = {
   ],
   sortIcon: "text-fg-subtle in-[[aria-sort]]:text-fg",
   cell: [
-    "max-w-panel-sm truncate whitespace-nowrap border-b border-border px-table-cell-x align-middle",
+    "max-w-panel-sm truncate whitespace-nowrap border-b border-border-subtle px-table-cell-x align-middle",
     "data-[align=center]:text-center data-[align=end]:text-end data-[align=end]:tabular-nums",
     "data-wrap:whitespace-normal data-wrap:wrap-break-word",
   ],

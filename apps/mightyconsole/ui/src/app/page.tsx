@@ -4,12 +4,13 @@
 // that starts with a divider. Spacing comes from the token roles on the 4 px grid: the page gutter
 // is inset-lg (24 / 16), header → bar → content stack-md (16 / 12). Tables sit directly on the
 // layer (TSK-90's Table) with their first and last cells on the page gutter.
-import { type ReactNode, createContext, useContext } from "react";
+import { type ComponentProps, type ReactNode, createContext, useContext } from "react";
 import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 import { ChevronLeft, ChevronRight, Copy } from "@/lib/icons";
 
 /** A tool screen: header, bar and region in a column that fills the tab. */
@@ -102,6 +103,11 @@ export function CopyButton({ value, what, className }: { value: string; what: st
       <TooltipContent>Copy {what}</TooltipContent>
     </Tooltip>
   );
+}
+
+/** A link-styled button for table cells and lists: the link colour, no padding, an underline on hover, the focus ring. */
+export function LinkButton({ className, type = "button", ...props }: ComponentProps<"button">) {
+  return <button type={type} className={cn("max-w-full cursor-pointer truncate rounded-sm text-start text-body-1 text-fg-link hover:underline", focusRing, className)} {...props} />;
 }
 
 export interface PagerProps {

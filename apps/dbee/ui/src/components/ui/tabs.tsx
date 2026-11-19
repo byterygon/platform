@@ -60,7 +60,7 @@ const classes = {
     "data-dragging:opacity-[var(--by-opacity-disabled)]",
   ],
   trigger: [
-    "flex min-w-0 max-w-panel-xs cursor-default select-none items-center gap-inline-sm whitespace-nowrap font-sans text-body-1",
+    "flex min-w-0 max-w-panel-xs cursor-default select-none items-center gap-inline-sm whitespace-nowrap font-sans text-body-1 data-active:text-body-1-strong",
     "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
     focusRingInset,
     "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
