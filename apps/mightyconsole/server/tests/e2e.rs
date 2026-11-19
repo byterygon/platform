@@ -443,3 +443,122 @@ async fn the_ui_directory_is_served_with_the_session_in_its_page() {
     assert!(asset.header("content-security-policy").is_some());
     assert_eq!(t.http("/../Cargo.toml", HOST, None).await.status, 404);
 }
+
+/// A UI directory with an entry script, as Vite builds it (relative `./assets/`).
+fn ui_dir() -> tempfile::TempDir {
+    let ui = tempfile::tempdir().unwrap();
+    std::fs::create_dir(ui.path().join("assets")).unwrap();
+    std::fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><html><head><title>Mightyconsole</title>\
+         <script type=\"module\" crossorigin src=\"./assets/app-1.js\"></script></head><body></body></html>",
+    )
+    .unwrap();
+    std::fs::write(ui.path().join("assets/app-1.js"), "console.log(1)").unwrap();
+    ui
+}
+
+#[tokio::test]
+async fn hash_mode_under_a_base_path_serves_only_under_it() {
+    // DOC-21 §2.3: --router hash --base-path /tools/mc.
+    let ui = ui_dir();
+    let t = start_configured(
+        Some(ui.path().to_path_buf()),
+        StartOptions::default(),
+        |c| {
+            c.router = mightyconsole_server::RouterMode::Hash;
+            c.base_path = "/tools/mc".into();
+        },
+    )
+    .await;
+    let root = t.http("/", HOST, None).await;
+    assert_eq!(root.status, 308);
+    assert_eq!(root.header("location"), Some("/tools/mc/"));
+
+    let page = t.http("/tools/mc/", HOST, None).await;
+    assert_eq!(page.status, 200);
+    assert!(
+        page.body
+            .contains("<meta name=\"mightyconsole-router\" content=\"hash\">")
+    );
+    assert!(
+        page.body
+            .contains("<meta name=\"mightyconsole-base\" content=\"/tools/mc\">")
+    );
+    assert!(page.body.contains("src=\"/tools/mc/assets/app-1.js\""));
+    assert_eq!(t.http("/tools/mc", HOST, None).await.status, 200);
+    // The cookie keeps `__Host-` and `Path=/`; its name carries the base path.
+    let set_cookie = page.header("set-cookie").unwrap().to_owned();
+    assert!(
+        set_cookie.starts_with("__Host-ambidex_session_tools_mc="),
+        "{set_cookie}"
+    );
+    assert!(set_cookie.contains("; Path=/;"), "{set_cookie}");
+    let cookie = set_cookie
+        .split(';')
+        .next()
+        .and_then(|pair| pair.split_once('='))
+        .unwrap()
+        .1
+        .to_owned();
+
+    // The assets under the base path; nothing outside it; the routes live in the hash.
+    let asset = t.http("/tools/mc/assets/app-1.js", HOST, None).await;
+    assert_eq!(asset.status, 200);
+    assert_eq!(asset.body, "console.log(1)");
+    assert_eq!(t.http("/assets/app-1.js", HOST, None).await.status, 404);
+    assert_eq!(t.http("/echo/lab/ticks", HOST, None).await.status, 404);
+    assert_eq!(
+        t.http("/tools/mc/echo/lab/ticks", HOST, None).await.status,
+        404
+    );
+    assert_eq!(t.http("/tools/mcx/", HOST, None).await.status, 404);
+
+    // The WebSocket is at <base>/rpc/ws with the same checks: the exact Origin and the cookie.
+    let browser = Browser {
+        cookie,
+        csrf: page.csrf(),
+    };
+    let mut tab = t.tab(&browser).await;
+    tab.call(1, "app.info", json!({})).await;
+    assert_eq!(tab.result(1).await["publicOrigin"], ORIGIN);
+    assert_eq!(
+        t.upgrade(HOST, Some("https://evil.test"), Some(&browser.cookie))
+            .await
+            .err(),
+        Some(403)
+    );
+}
+
+#[tokio::test]
+async fn browser_mode_under_a_base_path_serves_deep_routes() {
+    let ui = ui_dir();
+    let t = start_configured(
+        Some(ui.path().to_path_buf()),
+        StartOptions::default(),
+        |c| {
+            c.base_path = "/mc".into();
+        },
+    )
+    .await;
+    let deep = t
+        .http(
+            "/mc/temporal/lab/orders/workflows/a%3Ab/history",
+            HOST,
+            None,
+        )
+        .await;
+    assert_eq!(deep.status, 200);
+    assert!(
+        deep.body
+            .contains("<meta name=\"mightyconsole-router\" content=\"browser\">")
+    );
+    assert!(deep.body.contains("src=\"/mc/assets/app-1.js\""));
+    assert_eq!(t.http("/mc/missing.js", HOST, None).await.status, 404);
+    assert_eq!(
+        t.http("/temporal/lab/orders/workflows/w/history", HOST, None)
+            .await
+            .status,
+        404
+    );
+}

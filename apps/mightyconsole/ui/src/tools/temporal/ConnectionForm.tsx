@@ -7,6 +7,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { CopyButton } from "@/app/page";
+import { readRouterConfig } from "@/app/router";
 import type { ConnectionFormProps } from "../types";
 import { DEFAULT_ADDRESS, DEFAULT_CODEC_ORIGINS, DEFAULT_NAMESPACE, DEFAULT_PAGE_SIZE, DEFAULT_THRESHOLD_BYTES, codecEndpointOf, codecServerOf, externalStorageOf, tlsOf } from "./profile";
 
@@ -20,7 +21,7 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
   const setExt = (patch: Partial<typeof ext>) => onFields({ externalStorage: { ...ext, ...patch } });
   const codec = codecServerOf(fields);
   const setCodec = (patch: Partial<typeof codec>) => onFields({ codecServer: { ...codec, ...patch } });
-  const endpoint = profileId ? codecEndpointOf(window.location.origin, profileId) : null;
+  const endpoint = profileId ? codecEndpointOf(window.location.origin + readRouterConfig().basePath, profileId) : null;
   const loopbackEndpoint = profileId ? codecEndpointOf("http://127.0.0.1:7444", profileId) : null;
   const namespace = str(fields["namespace"]).trim() || DEFAULT_NAMESPACE;
   return (

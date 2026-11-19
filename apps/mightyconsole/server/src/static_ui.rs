@@ -37,6 +37,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 
+use crate::RouterMode;
 use crate::sessions::LocalSessions;
 
 /// The `<meta>` name the UI reads the anti-CSRF token from.
@@ -99,36 +100,56 @@ impl StaticUi {
     }
 }
 
+/// The `<meta>` names the UI reads its history and base path from (DOC-21 §3.7).
+pub const ROUTER_META: &str = "mightyconsole-router";
+pub const BASE_META: &str = "mightyconsole-base";
+
+/// How the page is served (DOC-21 §2.3).
+#[derive(Debug, Clone)]
+pub struct PageConfig {
+    pub cookie_name: String,
+    pub public_origin: String,
+    pub router: RouterMode,
+    /// `""` or a validated prefix such as `/tools/mc`.
+    pub base_path: String,
+}
+
 struct Shared {
     ui: Option<UiSource>,
     sessions: Arc<LocalSessions>,
-    cookie_name: String,
-    public_origin: String,
+    page: PageConfig,
     /// `host[:port]` of the public origin.
     origin_host: String,
     csp: HeaderValue,
 }
 
 /// The HTTP routes next to `/rpc/ws`.
-pub fn routes(
-    ui: Option<UiSource>,
-    sessions: Arc<LocalSessions>,
-    cookie_name: &str,
-    public_origin: &str,
-) -> Router {
+pub fn routes(ui: Option<UiSource>, sessions: Arc<LocalSessions>, page: PageConfig) -> Router {
     let shared = Arc::new(Shared {
         ui,
         sessions,
-        cookie_name: cookie_name.to_owned(),
-        public_origin: public_origin.to_owned(),
-        origin_host: public_origin
+        origin_host: page
+            .public_origin
             .strip_prefix("https://")
-            .unwrap_or(public_origin)
+            .unwrap_or(&page.public_origin)
             .to_owned(),
-        csp: HeaderValue::from_str(&content_security_policy(public_origin))
+        csp: HeaderValue::from_str(&content_security_policy(&page.public_origin))
             .expect("a validated origin is a header value"),
+        page,
     });
     Router::new().fallback(serve).with_state(shared)
+}
+
+/// The path under the base path (`/` for the base itself), or `None` outside it.
+fn under_base<'p>(base: &str, path: &'p str) -> Option<&'p str> {
+    if base.is_empty() {
+        return Some(path);
+    }
+    match path.strip_prefix(base) {
+        Some("") => Some("/"),
+        Some(rest) if rest.starts_with('/') => Some(rest),
+        _ => None,
+    }
 }
 
 /// The policy of spec §2.3. `connect-src` names the WebSocket explicitly for browsers that do
@@ -154,12 +175,26 @@ async fn serve(
     if method != Method::GET && method != Method::HEAD {
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
+    // Under a base path nothing else is served; `/` leads to it.
+    let base = shared.page.base_path.as_str();
+    let Some(path) = under_base(base, uri.path()) else {
+        return if uri.path() == "/" {
+            redirect(&format!("{base}/"))
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        };
+    };
     // A path that cannot name a file is the page when it looks like a route (no extension).
-    let segments = match segments(uri.path()) {
+    let hash = shared.page.router == RouterMode::Hash;
+    let segments = match segments(path) {
         Some(segments) => segments,
-        None if is_route(uri.path()) => Vec::new(),
+        None if !hash && is_route(path) => Vec::new(),
         None => return StatusCode::NOT_FOUND.into_response(),
     };
+    // In hash mode the routes are in the hash: only the base path itself is the page.
+    if hash && !segments.is_empty() && !has_extension(&segments) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     let target = match &shared.ui {
         Some(UiSource::Dir(ui)) => resolve(ui.root(), &segments).await,
         Some(UiSource::Embedded(files)) => resolve_embedded(files, &segments),
@@ -198,15 +233,7 @@ async fn page(
     let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
     if host.is_some_and(|h| !h.eq_ignore_ascii_case(&shared.origin_host)) {
         let path = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
-        let location = format!("{}{path}", shared.public_origin);
-        return match HeaderValue::from_str(&location) {
-            Ok(location) => (
-                StatusCode::PERMANENT_REDIRECT,
-                [(header::LOCATION, location)],
-            )
-                .into_response(),
-            Err(_) => StatusCode::BAD_REQUEST.into_response(),
-        };
+        return redirect(&format!("{}{path}", shared.page.public_origin));
     }
     let html = match content {
         Some(Content::Path(path)) => match tokio::fs::read_to_string(&path).await {
@@ -219,13 +246,20 @@ async fn page(
         },
         None => PLACEHOLDER.to_owned(),
     };
-    let cookie = request_cookie(headers, &shared.cookie_name);
+    let page = &shared.page;
+    let cookie = request_cookie(headers, &page.cookie_name);
     let credentials = shared.sessions.for_page(cookie);
-    let html = inject_csrf(&absolute_assets(&html), &credentials.csrf_token);
+    // DOC-21 §2.3: the history and the base path for the UI; both are fixed words or a
+    // validated path, so they need no escaping.
+    let html = absolute_assets(&html, &page.base_path);
+    let html = inject_meta(&html, ROUTER_META, page.router.as_str());
+    let html = inject_meta(&html, BASE_META, &page.base_path);
+    let html = inject_csrf(&html, &credentials.csrf_token);
+    // `__Host-` needs `Path=/`: the cookie does not follow the base path, its name does.
     let set_cookie = credentials.new.then(|| {
         HeaderValue::from_str(&format!(
             "{}={}; Path=/; Secure; HttpOnly; SameSite=Strict",
-            shared.cookie_name, credentials.cookie
+            page.cookie_name, credentials.cookie
         ))
         .expect("hex cookie value")
     });
@@ -288,17 +322,36 @@ fn respond(
 /// hex, so it needs no escaping.
 pub fn inject_csrf(html: &str, token: &str) -> String {
     debug_assert!(token.bytes().all(|b| b.is_ascii_hexdigit()));
-    let meta = format!("<meta name=\"{CSRF_META}\" content=\"{token}\">");
+    inject_meta(html, CSRF_META, token)
+}
+
+/// A `<meta name content>` before `</head>` (or at the start without one). `content` must not
+/// need escaping (no `"`, `<`, `&`).
+fn inject_meta(html: &str, name: &str, content: &str) -> String {
+    debug_assert!(!content.contains(['"', '<', '>', '&']));
+    let meta = format!("<meta name=\"{name}\" content=\"{content}\">");
     match html.find("</head>") {
         Some(at) => format!("{}{meta}\n{}", &html[..at], &html[at..]),
         None => format!("{meta}\n{html}"),
     }
 }
 
-/// The page's entry asset URLs from Vite's relative `./assets/` to `/assets/`, so they resolve
-/// from any path the page is served at.
-pub fn absolute_assets(html: &str) -> String {
-    html.replace("=\"./assets/", "=\"/assets/")
+/// The page's entry asset URLs from Vite's relative `./assets/` to `<base>/assets/`, so they
+/// resolve from any path the page is served at.
+pub fn absolute_assets(html: &str, base_path: &str) -> String {
+    html.replace("=\"./assets/", &format!("=\"{base_path}/assets/"))
+}
+
+/// A permanent redirect to `location`.
+fn redirect(location: &str) -> Response {
+    match HeaderValue::from_str(location) {
+        Ok(location) => (
+            StatusCode::PERMANENT_REDIRECT,
+            [(header::LOCATION, location)],
+        )
+            .into_response(),
+        Err(_) => StatusCode::BAD_REQUEST.into_response(),
+    }
 }
 
 /// Whether a raw request path is a client-side route: its last segment has no extension.
