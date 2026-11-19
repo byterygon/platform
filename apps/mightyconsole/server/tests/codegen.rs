@@ -572,6 +572,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.workflows.relations",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.workflows.reset",
             Mutation,
             "temporal.write",

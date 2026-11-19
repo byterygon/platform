@@ -35,6 +35,7 @@ describe("acceptance checklists", () => {
       ["k8s", "TSK-82", 7],
       ["temporal", "TSK-83", 5],
       ["temporal-more", "TSK-92", 8],
+      ["temporal-detail", "TSK-104", 2],
       ["docker", "TSK-81", 5],
       ["langgraph", "TSK-84", 6],
       ["packaging", "TSK-87", 2],

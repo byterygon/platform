@@ -16,6 +16,8 @@ mod extstore;
 mod namespaces;
 mod payloads;
 mod proto;
+mod relations;
+mod relations_types;
 mod s3;
 mod schedule_form;
 mod search_attributes;
@@ -38,6 +40,7 @@ use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 pub use self::actions_types::*;
 pub use self::detail_types::*;
 pub use self::namespaces::{Archival, NamespaceDescribeInput, NamespaceDetail, NamespaceLimits};
+pub use self::relations_types::*;
 pub use self::schedule_form::{
     CalendarForm, IntervalForm, ScheduleActionForm, ScheduleForm, SchedulePoliciesForm,
     ScheduleSpecForm, ScheduleStateForm, ScheduleWriteInput,
@@ -407,6 +410,18 @@ impl TemporalWorkflowsApi {
         Ok(detail::history(&handle.value, input).await?)
     }
 
+    /// The run's parent, children, signals and cancels with other workflows, and runs; with
+    /// `scope: "family"`, every workflow under its root (TSK-104).
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn relations(
+        &self,
+        ctx: Ctx,
+        input: WorkflowRelationsInput,
+    ) -> ToolResult<WorkflowRelations> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(relations::relations(&handle.value, input).await?)
+    }
+
     /// One event with its payloads as stored (the History view's Raw form).
     #[rpc::query(name = "rawEvent", perm = "temporal.read", risk = Risk::Read)]
     async fn raw_event(
@@ -660,3 +675,6 @@ mod lab_codec_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_form_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_relations_tests;

@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:ce34e68a83b5f85362526ccb61ffe21060ea46b142228b6fb12a72028c1f3f90";
+export const SCHEMA_HASH = "sha256:527107b72c55610ca37743383b8569b97685a63c33731855a7cc8ccc784a923b";
 
 // ---- Types
 
@@ -1241,6 +1241,150 @@ export type RecordHeaderEncoding = "text" | "base64";
 export type RegistryRef = { id: number, } | { subject: string, version: SchemaVersion, };
 
 /**
+ * A child started by this run, from its history.
+ */
+export type RelationChild = { workflowId: string, runId?: string, workflowType: string, 
+/**
+ * `Running` once started; `Unspecified` while only initiated or when it could not start.
+ */
+status: WorkflowStatus, initiatedEventId: number, startTime?: string, closeTime?: string, 
+/**
+ * The failure's message, or why it could not start.
+ */
+failure?: string, };
+
+/**
+ * An arrow: parent to child, or the sender of a signal or cancel to its target.
+ */
+export type RelationEdge = { from: string, to: string, kind: RelationEdgeKind, 
+/**
+ * The signal's name.
+ */
+label?: string, 
+/**
+ * The event of this run that records it.
+ */
+eventId?: number, };
+
+export type RelationEdgeKind = "child" | "signal" | "cancel";
+
+/**
+ * What the server can say about the family, and how much of it is drawn.
+ */
+export type RelationFamily = { 
+/**
+ * The scope the answer is for (`direct` when the server cannot list the family).
+ */
+scope: RelationScope, 
+/**
+ * The server's visibility knows `RootWorkflowId` (Temporal Server 1.24 and later).
+ */
+supported: boolean, 
+/**
+ * Why Whole family is not offered: the server's answer.
+ */
+reason?: string, 
+/**
+ * The Workflows query that lists the scope's workflows; absent when the server has no
+ * attribute for it.
+ */
+query?: string, 
+/**
+ * Workflows in the family (every run), as the server counts them; absent when unsupported.
+ */
+total?: number, 
+/**
+ * Boxes drawn in the tree (the other ends of signals not counted).
+ */
+drawn: number, 
+/**
+ * Levels drawn.
+ */
+levels: number, 
+/**
+ * Workflows of the family left out of the drawing.
+ */
+notDrawn: number, };
+
+/**
+ * One box of the graph: a workflow, by its ID (its latest run seen).
+ */
+export type RelationNode = { workflowId: string, 
+/**
+ * Empty when only the workflow ID is known (a child that did not start).
+ */
+runId: string, workflowType: string, status: WorkflowStatus, startTime?: string, closeTime?: string, durationMs?: number, parentWorkflowId?: string, 
+/**
+ * Depth below the top drawn level (0); absent for a workflow outside the tree (the other end
+ * of a signal or cancel).
+ */
+level?: number, 
+/**
+ * The failure's message, for a failed child (from this run's history).
+ */
+failure?: string, 
+/**
+ * Gone from the server (past retention, or never started).
+ */
+missing: boolean, 
+/**
+ * The run the tab shows.
+ */
+current: boolean, };
+
+/**
+ * The parent, with what happens to this child when it closes (while the child is pending in it).
+ */
+export type RelationParent = { workflowId: string, runId: string, 
+/**
+ * `Terminate`, `Abandon` or `RequestCancel`.
+ */
+parentClosePolicy?: string, };
+
+/**
+ * The run's place in its chain of runs.
+ */
+export type RelationRuns = { 
+/**
+ * The first run of the chain, when it is another run.
+ */
+firstRunId?: string, 
+/**
+ * The run this one continued from (continue-as-new, retry or cron).
+ */
+continuedFrom?: RunLink, 
+/**
+ * The run that continued this one.
+ */
+continuedAs?: RunLink, 
+/**
+ * The run this one was reset from.
+ */
+resetFrom?: string, 
+/**
+ * The latest run made by resetting this one.
+ */
+resetTo?: string, };
+
+/**
+ * Whole family (every workflow under the root) or Direct only (one level each way).
+ */
+export type RelationScope = "family" | "direct";
+
+/**
+ * A signal or cancel between this run and another workflow, from this run's history.
+ */
+export type RelationSignal = { direction: SignalDirection, 
+/**
+ * `signal` or `cancel`.
+ */
+kind: RelationEdgeKind, workflowId: string, runId?: string, signalName?: string, eventId: number, time?: string, 
+/**
+ * For a sent one: `Delivered`, `Failed: <cause>`, or absent while in flight.
+ */
+outcome?: string, };
+
+/**
  * The target's own error code, for Details.
  */
 export type RemoteError = { 
@@ -1283,6 +1427,15 @@ resume?: JsonValue | null, update?: JsonValue | null,
 goto?: JsonValue | null, };
 
 export type RunIdInput = { connId: string, threadId: string, runId: string, };
+
+/**
+ * Another run of the same workflow ID, and why it exists.
+ */
+export type RunLink = { runId: string, 
+/**
+ * `Workflow` (continue-as-new), `Retry` or `CronSchedule`; absent for a reset.
+ */
+initiator?: string, };
 
 /**
  * The end of `langgraph.runs.stream` and `langgraph.runs.join`.
@@ -1566,6 +1719,8 @@ export type SeenTaskQueue = { name: string, source: TaskQueueSource,
  * Why the queue could not be described.
  */
 error?: string, };
+
+export type SignalDirection = "received" | "sent";
 
 /**
  * A task of the next step: the node to run, its error, its interrupts.
@@ -1974,6 +2129,22 @@ reason?: string | null, };
  */
 export type WorkflowRef = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, };
 
+export type WorkflowRelations = { 
+/**
+ * The run the tab shows.
+ */
+workflow: WorkflowRow, rootWorkflowId?: string, nodes: Array<RelationNode>, edges: Array<RelationEdge>, parent?: RelationParent, children: Array<RelationChild>, signals: Array<RelationSignal>, runs: RelationRuns, family: RelationFamily, };
+
+export type WorkflowRelationsInput = { connId: string, namespace?: string | null, workflowId: string, 
+/**
+ * The latest run when absent.
+ */
+runId?: string | null, 
+/**
+ * `family` when absent; a server without `RootWorkflowId` answers as `direct`.
+ */
+scope?: RelationScope | null, };
+
 export type WorkflowResetInput = { connId: string, namespace?: string | null, workflowId: string, runId: string, 
 /**
  * The event to reset to: a WorkflowTaskCompleted, WorkflowTaskStarted or failed task event.
@@ -2206,6 +2377,7 @@ export interface Procedures {
   readonly "temporal.workflows.list": ProcedureDef<"query", WorkflowsListInput, WorkflowsListOutput, ToolError>;
   readonly "temporal.workflows.query": ProcedureDef<"query", WorkflowQueryInput, WorkflowQueryOutput, ToolError>;
   readonly "temporal.workflows.rawEvent": ProcedureDef<"query", WorkflowRawEventInput, WorkflowRawEventOutput, ToolError>;
+  readonly "temporal.workflows.relations": ProcedureDef<"query", WorkflowRelationsInput, WorkflowRelations, ToolError>;
   readonly "temporal.workflows.reset": ProcedureDef<"mutation", WorkflowResetInput, WorkflowResetOutput, ToolError>;
   readonly "temporal.workflows.signal": ProcedureDef<"mutation", WorkflowSignalInput, Empty, ToolError>;
   readonly "temporal.workflows.start": ProcedureDef<"mutation", WorkflowStartInput, WorkflowStartOutput, ToolError>;
@@ -2359,6 +2531,7 @@ export interface Api {
       readonly list: Procedures["temporal.workflows.list"];
       readonly query: Procedures["temporal.workflows.query"];
       readonly rawEvent: Procedures["temporal.workflows.rawEvent"];
+      readonly relations: Procedures["temporal.workflows.relations"];
       readonly reset: Procedures["temporal.workflows.reset"];
       readonly signal: Procedures["temporal.workflows.signal"];
       readonly start: Procedures["temporal.workflows.start"];
@@ -3336,6 +3509,16 @@ export const procedures: Api = {
       },
       rawEvent: {
         name: "temporal.workflows.rawEvent",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      relations: {
+        name: "temporal.workflows.relations",
         kind: "query",
         perm: "temporal.read",
         risk: "Read",
