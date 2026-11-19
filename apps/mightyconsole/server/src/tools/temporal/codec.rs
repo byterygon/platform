@@ -326,6 +326,17 @@ async fn authorize(
     }
 }
 
+/// The payloads of a codec answer, or why they cannot be read (the codec client's side).
+pub(super) fn parse_payloads(body: &[u8]) -> Result<Vec<Payload>, String> {
+    parse(body).map_err(|o| {
+        o.body
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("not codec JSON")
+            .to_owned()
+    })
+}
+
 /// `{ "payloads": [{ "metadata": { k: base64 }, "data": base64, "externalPayloads"?: [...] }] }`.
 fn parse(body: &[u8]) -> Result<Vec<Payload>, Outcome> {
     let value: Value =
@@ -390,7 +401,7 @@ fn parse(body: &[u8]) -> Result<Vec<Payload>, Outcome> {
         .collect()
 }
 
-fn payload_json(p: &Payload) -> Value {
+pub(super) fn payload_json(p: &Payload) -> Value {
     let mut out = Map::new();
     let metadata: Map<String, Value> = p
         .metadata

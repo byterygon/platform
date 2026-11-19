@@ -36,6 +36,10 @@ export interface ConnectionFormProps {
   disabled?: boolean;
   /** The saved profile's id (none while it is being added): the Temporal codec endpoint's path names it. */
   profileId?: string;
+  /** The server, for checks the form runs on its draft (Temporal's Test codec). */
+  client?: MightyClient;
+  /** The record as it would be saved now. */
+  draft?: () => ProfileRecord;
 }
 
 /** A node under a connected profile in the sidebar (the tool's resource tree). */

@@ -59,6 +59,52 @@ export function externalStorageOf(fields: Record<string, unknown>): ExternalStor
   return out;
 }
 
+/** The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own. Its
+ * Authorization header is the secret `codecAuthorization`. */
+export interface PayloadCodecFields {
+  enabled: boolean;
+  endpoint: string;
+  /** One "namespace url" per line. */
+  namespaces: string;
+  caPem: string;
+  sendNamespace: boolean;
+  encodeInputs: boolean;
+  timeoutMs?: number | undefined;
+}
+
+export function payloadCodecOf(fields: Record<string, unknown>): PayloadCodecFields {
+  const raw = fields["codec"];
+  const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return {
+    enabled: o["enabled"] === true,
+    endpoint: text(o["endpoint"]),
+    namespaces: text(o["namespaces"]),
+    caPem: text(o["caPem"]),
+    sendNamespace: o["sendNamespace"] !== false,
+    encodeInputs: o["encodeInputs"] !== false,
+    ...(typeof o["timeoutMs"] === "number" ? { timeoutMs: o["timeoutMs"] } : {}),
+  };
+}
+
+/** The per-namespace endpoints of "namespace url" lines; `null` for a line that is not one. */
+export function codecNamespacesOf(lines: string): { namespace: string; endpoint: string }[] | null {
+  const out: { namespace: string; endpoint: string }[] = [];
+  for (const line of lines.split("\n").map((l) => l.trim()).filter((l) => l !== "")) {
+    const m = /^(\S+)\s*(?:→|->|=|\s)\s*(https?:\/\/\S+)$/.exec(line);
+    if (!m) return null;
+    out.push({ namespace: m[1]!, endpoint: m[2]! });
+  }
+  return out;
+}
+
+/** An endpoint the server will call: https, or http on localhost. */
+export function codecEndpointError(url: string): string | null {
+  const m = /^(https?):\/\/([^/:\s]+|\[[^\]]+\])(:\d+)?(\/\S*)?$/.exec(url.trim());
+  if (!m) return "An https:// URL, for example https://codec.internal:8888.";
+  if (m[1] === "http" && !["localhost", "127.0.0.1", "[::1]"].includes(m[2]!.toLowerCase())) return "Plain http is for localhost only; use https with the codec's CA.";
+  return null;
+}
+
 /** The Web UI's origins of a local dev server, allowed by default. */
 export const DEFAULT_CODEC_ORIGINS = "http://localhost:8233, http://127.0.0.1:8233";
 
@@ -137,6 +183,15 @@ export const profile: ProfileSchema = {
     const tls = tlsOf(record.fields);
     const apiKey = text(record.secrets["apiKey"]);
     const clientKey = text(record.secrets["clientKeyPem"]);
+    const payloadCodec = payloadCodecOf(record.fields);
+    if (payloadCodec.enabled) {
+      const e = payloadCodec.endpoint.trim() === "" ? "The codec server's URL is required." : codecEndpointError(payloadCodec.endpoint);
+      if (e) errors["codec.endpoint"] = e;
+      if (codecNamespacesOf(payloadCodec.namespaces) === null) errors["codec.namespaces"] = "One namespace and its URL per line: payments https://codec-payments:8888";
+      const anyHttps = /^https:/.test(payloadCodec.endpoint.trim()) || (codecNamespacesOf(payloadCodec.namespaces) ?? []).some((n) => n.endpoint.startsWith("https:"));
+      if (anyHttps && payloadCodec.caPem.trim() === "") errors["codec.caPem"] = "An https codec needs its CA certificate; the system's roots are not used.";
+      if (payloadCodec.timeoutMs !== undefined && (!Number.isInteger(payloadCodec.timeoutMs) || payloadCodec.timeoutMs < 100)) errors["codec.timeoutMs"] = "A whole number of milliseconds, 100 or more.";
+    }
     const ext = externalStorageOf(record.fields);
     const codec = codecServerOf(record.fields);
     if (codec.enabled && !ext.enabled) errors["codecServer"] = "The codec endpoint resolves External Storage; turn External Storage on.";
@@ -180,8 +235,22 @@ export const profile: ProfileSchema = {
         }
       : null;
     const codec = codecServerOf(record.fields);
+    const pc = payloadCodecOf(record.fields);
+    const payloadCodec = pc.enabled
+      ? {
+          enabled: true,
+          endpoint: pc.endpoint.trim(),
+          namespaces: codecNamespacesOf(pc.namespaces) ?? [],
+          caPem: pc.caPem.trim() || null,
+          sendNamespace: pc.sendNamespace,
+          encodeInputs: pc.encodeInputs,
+          timeoutMs: pc.timeoutMs ?? null,
+        }
+      : null;
     return {
       name: record.name,
+      codec: payloadCodec,
+      codecAuthorization: payloadCodec ? text(record.secrets["codecAuthorization"]).trim() || null : null,
       profileId: record.id,
       codecServer: externalStorage && codec.enabled ? { enabled: true, allowedOrigins: bucketsOf(codec.allowedOrigins) } : null,
       address: text(record.fields["address"]).trim() || null,

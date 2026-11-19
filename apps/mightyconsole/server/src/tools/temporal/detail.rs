@@ -93,6 +93,7 @@ pub async fn history_events<'a>(
             .collect::<Result<Vec<_>, _>>()?,
     );
     super::extstore::resolve_json(client.external.as_deref(), namespace, &mut raws).await;
+    super::codec_client::decode_json(client.payload_codec.as_deref(), namespace, &mut raws).await;
     let Value::Array(raws) = raws else {
         unreachable!("an array stays an array")
     };
@@ -112,6 +113,7 @@ pub async fn to_json_resolved<M: prost::Message>(
 ) -> Result<Value, ToolError> {
     let mut value = to_json_raw(full_name, message)?;
     super::extstore::resolve_json(client.external.as_deref(), namespace, &mut value).await;
+    super::codec_client::decode_json(client.payload_codec.as_deref(), namespace, &mut value).await;
     decode_payloads(&mut value);
     Ok(value)
 }
@@ -392,7 +394,8 @@ pub async fn query(
                     query: Some(WorkflowQuery {
                         query_type: input.query_type.trim().to_owned(),
                         query_args: super::extstore::offload(
-                            client.external.as_deref(),
+                            client,
+                            &namespace,
                             (!args.is_empty()).then_some(Payloads { payloads: args }),
                         )
                         .await?,
