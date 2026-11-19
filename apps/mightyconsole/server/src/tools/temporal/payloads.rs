@@ -14,6 +14,11 @@
 //! | anything else, `binary/encrypted` | `{ "$opaque": <encoding>, "base64": …, "note": … }` |
 //!
 //! Raw bytes are always kept in `base64` of an opaque value.
+//!
+//! External Storage (TSK-103): [`super::extstore::resolve_json`] runs first and swaps a reference for
+//! the payload it stands for, marked `$external`; that payload decodes as any other. A reference it
+//! could not read (or one never resolved) becomes `{ "$external": { driver, bucket, key, bytes,
+//! error } }`.
 
 use std::sync::OnceLock;
 
@@ -84,11 +89,23 @@ fn collect_encodings(value: &Value, out: &mut Vec<String>) {
                 .and_then(|b| String::from_utf8(b).ok());
             match encoding {
                 Some(encoding)
-                    if object
-                        .keys()
-                        .all(|k| k == "metadata" || k == "data" || k == "externalPayloads") =>
+                    if object.keys().all(|k| {
+                        k == "metadata"
+                            || k == "data"
+                            || k == "externalPayloads"
+                            || k == "$external"
+                    }) =>
                 {
-                    out.push(encoding)
+                    // A payload read from External Storage names its driver.
+                    let via = object
+                        .get("$external")
+                        .filter(|e| e.get("error").is_none())
+                        .and_then(|e| e.get("driver"))
+                        .and_then(Value::as_str);
+                    out.push(match via {
+                        Some(driver) => format!("{encoding} via {driver}"),
+                        None => encoding,
+                    })
                 }
                 _ => object.values().for_each(|v| collect_encodings(v, out)),
             }
@@ -124,9 +141,13 @@ fn payload_value(object: &Map<String, Value>) -> Option<Value> {
     let metadata = object.get("metadata")?.as_object()?;
     if !object
         .keys()
-        .all(|k| k == "metadata" || k == "data" || k == "externalPayloads")
+        .all(|k| k == "metadata" || k == "data" || k == "externalPayloads" || k == "$external")
     {
         return None;
+    }
+    // A reference that could not be read says what and why.
+    if let Some(external) = object.get("$external").filter(|e| e.get("error").is_some()) {
+        return Some(json!({ "$external": external }));
     }
     let text_of = |key: &str| -> Option<String> {
         let bytes = BASE64.decode(metadata.get(key)?.as_str()?).ok()?;
@@ -138,7 +159,27 @@ fn payload_value(object: &Map<String, Value>) -> Option<Value> {
         Some(_) => return None,
         None => Vec::new(),
     };
-    Some(decode(&encoding, &data, text_of("messageType").as_deref()))
+    let message_type = text_of("messageType");
+    if object.get("$external").is_none()
+        && let Some(reference) =
+            super::extstore::reference_of(&encoding, message_type.as_deref(), &data, None)
+    {
+        let mut info = Map::new();
+        info.insert("driver".into(), Value::String(reference.driver));
+        for k in ["bucket", "key"] {
+            if let Some(v) = reference.claim.get(k) {
+                info.insert(k.into(), Value::String(v.clone()));
+            }
+        }
+        info.insert(
+            "error".into(),
+            Value::String(
+                "stored outside Temporal; set up External Storage in the profile to read it".into(),
+            ),
+        );
+        return Some(json!({ "$external": info }));
+    }
+    Some(decode(&encoding, &data, message_type.as_deref()))
 }
 
 /// One payload by its encoding (spec §9.5).

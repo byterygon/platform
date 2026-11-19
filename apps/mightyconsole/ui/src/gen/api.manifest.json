@@ -845,12 +845,45 @@
             "null"
           ]
         },
+        "externalStorage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExternalStorageOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "External Storage (TSK-103)."
+        },
         "name": {
           "type": "string"
         },
         "namespace": {
           "default": null,
           "description": "The namespace opened first; `default` when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "s3AccessKeyId": {
+          "default": null,
+          "description": "The S3 credentials of External Storage; never logged.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "s3SecretAccessKey": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "s3SessionToken": {
+          "default": null,
           "type": [
             "string",
             "null"
@@ -1504,6 +1537,98 @@
         "Other"
       ],
       "type": "string"
+    },
+    "ExternalStorageOptions": {
+      "description": "Temporal External Storage on an S3-compatible store (TSK-103): where the SDKs' S3 driver keeps\npayloads of 256 KiB or more. Its credentials come beside it as `s3AccessKeyId`,\n`s3SecretAccessKey` and `s3SessionToken`.",
+      "properties": {
+        "bucket": {
+          "default": null,
+          "description": "Where Mightyconsole and the codec endpoint write; read too.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "caPem": {
+          "default": null,
+          "description": "The store's CA (PEM); the system's trust store when empty (spec Open question (b)).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driverName": {
+          "default": null,
+          "description": "`aws.s3driver` when empty: the name the workers' driver has.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "default": null,
+          "description": "`https://s3.<region>.amazonaws.com` when empty; MinIO and other stores give theirs.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxPayloadBytes": {
+          "default": null,
+          "description": "The largest payload read or written (50 MiB, the Go driver's default).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pathStyle": {
+          "default": null,
+          "description": "`<endpoint>/<bucket>/<key>` addressing (MinIO and most S3-compatible stores).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "readBuckets": {
+          "default": null,
+          "description": "Other buckets references may name (the workers' buckets); `bucket` is always read.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "region": {
+          "default": null,
+          "description": "`us-east-1` when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thresholdBytes": {
+          "default": null,
+          "description": "Payloads this size or larger are stored outside (262144, the SDKs' default).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     },
     "Filter": {
       "description": "The filter (spec §5.4).",
@@ -8591,7 +8716,10 @@
       "perm": "temporal.read",
       "redact": [
         "profile.clientKeyPem",
-        "profile.apiKey"
+        "profile.apiKey",
+        "profile.s3AccessKeyId",
+        "profile.s3SecretAccessKey",
+        "profile.s3SessionToken"
       ],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -9237,5 +9365,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:3a24a2e0e2713fb963147683e38b97ca5f0a07909649ea6f76e70b59c4a41a1a"
+  "schema_hash": "sha256:c82274475f66c31196e7df4fce06081cd37ce520c112e44af3dc3abb04e4bb3a"
 }

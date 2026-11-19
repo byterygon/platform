@@ -4,6 +4,7 @@
 # Dockerfile or a seed uses an image that is not listed here, or one without a digest.
 # `lab images save FILE` writes them all, with the three built images, to one tarball.
 apache/kafka:4.1.1@sha256:0bc1bb2478f45b6cea78864df86acdc11e8df2c5172477819a4d12942cbe5d40
+chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
 busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
 confluentinc/cp-schema-registry:8.1.0@sha256:385c157f9cef42aa65e5c95050d85a439bcb0c897826aeabb3e10d36127ea223
 docker:28-dind@sha256:2a232a42256f70d78e3cc5d2b5d6b3276710a0de0596c145f627ecfae90282ac

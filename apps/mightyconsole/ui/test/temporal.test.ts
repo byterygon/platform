@@ -18,7 +18,7 @@ describe("profile (spec §9.1)", () => {
     const r = record();
     expect(profile.validate(r)).toEqual({});
     expect(r.fields).toMatchObject({ address: "127.0.0.1:7233", namespace: "default", pageSize: 50, tls: { enabled: false } });
-    expect(connect(r)).toEqual({ name: "lab", address: "127.0.0.1:7233", namespace: "default", tls: { enabled: false }, clientKeyPem: null, apiKey: null });
+    expect(connect(r)).toEqual({ name: "lab", address: "127.0.0.1:7233", namespace: "default", tls: { enabled: false }, clientKeyPem: null, apiKey: null, externalStorage: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3SessionToken: null });
   });
 
   test("addresses are host:port", () => {
@@ -50,6 +50,21 @@ describe("profile (spec §9.1)", () => {
       record({ fields: { address: " tc:7233 ", namespace: "prod", tls: { enabled: true, caPem: "CA", serverName: "tc" } }, secrets: { apiKey: "secret", clientKeyPem: "" } }),
     );
     expect(on).toMatchObject({ address: "tc:7233", namespace: "prod", tls: { enabled: true, caPem: "CA", clientCertPem: null, serverName: "tc" }, apiKey: "secret", clientKeyPem: null });
+  });
+
+  test("External Storage (TSK-103) needs a bucket and sends its keys only when on", () => {
+    const fields = { tls: { enabled: false }, externalStorage: { enabled: true, bucket: "", endpoint: "minio:9000", thresholdBytes: 0 } };
+    expect(Object.keys(profile.validate(record({ fields }))).sort()).toEqual(["externalStorage.bucket", "externalStorage.endpoint", "externalStorage.thresholdBytes"]);
+    const on = connect(
+      record({
+        fields: { tls: { enabled: false }, externalStorage: { enabled: true, bucket: " payloads ", endpoint: "http://127.0.0.1:8333", pathStyle: true, readBuckets: "old, older\nother" } },
+        secrets: { s3AccessKeyId: "AK", s3SecretAccessKey: "SK" },
+      }),
+    );
+    expect(on.externalStorage).toMatchObject({ enabled: true, bucket: "payloads", endpoint: "http://127.0.0.1:8333", pathStyle: true, readBuckets: ["old", "older", "other"], region: null });
+    expect(on).toMatchObject({ s3AccessKeyId: "AK", s3SecretAccessKey: "SK", s3SessionToken: null });
+    const off = connect(record({ fields: { tls: { enabled: false }, externalStorage: { enabled: false, bucket: "b" } }, secrets: { s3AccessKeyId: "AK" } }));
+    expect(off).toMatchObject({ externalStorage: null, s3AccessKeyId: null });
   });
 
   test("readers tolerate hand-edited records", () => {

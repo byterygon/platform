@@ -584,7 +584,13 @@ fn the_procedures_of_the_spec() {
     assert_eq!(redact("echo.connect"), ["profile.token"]);
     assert_eq!(
         redact("temporal.connect"),
-        ["profile.clientKeyPem", "profile.apiKey"]
+        [
+            "profile.clientKeyPem",
+            "profile.apiKey",
+            "profile.s3AccessKeyId",
+            "profile.s3SecretAccessKey",
+            "profile.s3SessionToken"
+        ]
     );
     assert_eq!(
         redact("nats.connect"),
