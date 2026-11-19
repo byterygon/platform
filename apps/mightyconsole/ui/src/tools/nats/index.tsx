@@ -1,15 +1,18 @@
 // `nats`: NATS on the messaging core (Mightyconsole spec §6, TSK-85): the profile and its form,
 // the Server screen, Subscribe (core NATS live tail), Publish (publish and request, with the send
 // history), and JetStream: the streams (list, Info, Messages, Consumers, the stream form, purge and
-// delete) and their consumers (state, position bar, create, delete). Key-Value, Object Store and
-// Services follow in the next batches of TSK-85.
+// delete) and their consumers (state, position bar, create, delete), and Key-Value (buckets, keys,
+// a key's entry and history with revisions compared, put through the Composer, watch). Object
+// Store and Services follow in the next batch of TSK-85.
 import { Icon } from "@/components/ui/icon";
 import type { ConnectNatsProfile } from "@/gen/api";
-import { ArrowDownload, ArrowUp, Database, Flash, NumberSymbol, Server } from "@/lib/icons";
+import { ArrowDownload, ArrowUp, Braces, Database, Flash, NumberSymbol, Server } from "@/lib/icons";
 import { NatsMark } from "../marks";
 import type { ResourceNode, ToolModule } from "../types";
 import { ConnectionForm } from "./ConnectionForm";
 import { ConsumerTab, consumerTitle } from "./ConsumerTab";
+import { KvBucketsTab } from "./KvBuckets";
+import { KvTab, kvTitle } from "./KvTab";
 import { PublishTab } from "./PublishTab";
 import { ServerTab } from "./ServerTab";
 import { StreamTab, streamTitle } from "./StreamTab";
@@ -56,6 +59,23 @@ function streamsNode(profileId: string, connId: string): ResourceNode {
   };
 }
 
+/** The Key-Value group: each bucket. */
+function kvNode(profileId: string, connId: string): ResourceNode {
+  const tree = treeDataOf(connId);
+  const buckets = tree.buckets ?? [];
+  return {
+    id: `${profileId}/kv`,
+    label: "Key-Value",
+    icon: <Icon icon={Braces} />,
+    expanded: true,
+    ...(tree.buckets ? { meta: count(buckets.length) } : {}),
+    open: { kind: "nats.kvs", params: {}, title: "Key-Value" },
+    children: tree.error
+      ? []
+      : buckets.map((b) => ({ id: `${profileId}/kv/${b}`, label: b, icon: <Icon icon={Braces} />, open: { kind: "nats.kv", params: { bucket: b }, title: b } })),
+  };
+}
+
 export const natsTool: ToolModule = {
   id: "nats",
   label: "NATS",
@@ -66,7 +86,8 @@ export const natsTool: ToolModule = {
   description: "Subjects, request-reply and the server of a NATS system.",
   profile,
   ConnectionForm,
-  // §6.2: Server · Subjects (bookmarks, "Subscribe to…") · Streams (each with its consumers) · Publish.
+  // §6.2: Server · Subjects (bookmarks, "Subscribe to…") · Streams (each with its consumers) ·
+  // Key-Value (buckets) · Publish.
   sidebarTree({ profile: p, connId }): readonly ResourceNode[] {
     const bookmarks = bookmarksOf(p.extras);
     return [
@@ -88,6 +109,7 @@ export const natsTool: ToolModule = {
         ],
       },
       streamsNode(p.id, connId),
+      kvNode(p.id, connId),
       { id: `${p.id}/publish`, label: "Publish", icon: <Icon icon={ArrowUp} />, open: { kind: "nats.publish", params: {}, title: "Publish" } },
     ];
   },
@@ -99,6 +121,8 @@ export const natsTool: ToolModule = {
     "nats.streams": { title: () => "Streams", Component: StreamsTab },
     "nats.stream": { title: streamTitle, Component: StreamTab },
     "nats.consumer": { title: consumerTitle, Component: ConsumerTab },
+    "nats.kvs": { title: () => "Key-Value", Component: KvBucketsTab },
+    "nats.kv": { title: kvTitle, Component: KvTab },
   },
   actions: [
     {
@@ -123,6 +147,22 @@ export const natsTool: ToolModule = {
       keywords: ["nats", "jetstream", "new stream"],
       run({ openTab }) {
         openTab({ kind: "nats.streams", params: { create: true }, title: "Streams" });
+      },
+    },
+    {
+      id: "kv",
+      label: "Show the KV buckets",
+      keywords: ["nats", "key-value", "kv", "bucket"],
+      run({ openTab }) {
+        openTab({ kind: "nats.kvs", params: {}, title: "Key-Value" });
+      },
+    },
+    {
+      id: "create-kv",
+      label: "Create a KV bucket",
+      keywords: ["nats", "key-value", "kv", "new bucket"],
+      run({ openTab }) {
+        openTab({ kind: "nats.kvs", params: { create: true }, title: "Key-Value" });
       },
     },
     {

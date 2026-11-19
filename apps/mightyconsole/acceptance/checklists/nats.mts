@@ -49,8 +49,6 @@ const TEXT = `((el) => (el.textContent || "").replace(/\\s+/g, " ").trim())`;
 const vbutton = (label: string) => `[...document.querySelectorAll("button")].find((b) => (${TEXT}(b) === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)}) && b.getClientRects().length > 0)`;
 /** A field shown on screen by its label. */
 const vfield = (label: string) => `(() => { const l = [...document.querySelectorAll("label")].find((x) => ${TEXT}(x) === ${JSON.stringify(label)} && x.getClientRects().length > 0); return l && (l.control || document.getElementById(l.htmlFor)); })()`;
-/** An input shown on screen by its aria-label. */
-const vinput = (label: string) => `[...document.querySelectorAll(${JSON.stringify(`[aria-label="${label}"]`)})].find((el) => el.getClientRects().length > 0)`;
 /** A radio of the open dialog by its label's text. */
 const radio = (label: string) => `[...document.querySelectorAll("[role=alertdialog] label")].find((l) => ${TEXT}(l).startsWith(${JSON.stringify(label)})).querySelector("[role=radio]")`;
 /** Presses an element as a pointer does (the data grid selects on pointerdown). */
@@ -285,7 +283,79 @@ export default {
       id: "kv-objects",
       text: "KV: buckets, keys, get, history, put with an expected revision (and its conflict), delete, purge, watch; Object Store: buckets, list, upload of the 5 MiB file in parts with progress, download, info, delete.",
       lab: true,
-      checks: [],
+      // KV (batch 3a); Object Store comes with batch 3b, and then the lab workflow runs this item.
+      checks: [
+        cargo("keys_and_buckets_are_checked"),
+        lab("kv_buckets_keys_get_history_and_the_deleted_key"),
+        lab("kv_create_put_with_revisions_delete_purge_watch_and_delete_the_bucket"),
+        vitest("test/nats-kv.test.tsx", "bucket form, keys, values and the line diff"),
+        vitest("test/nats-kv.test.tsx", "the list opens a bucket; New bucket creates one"),
+        vitest("test/nats-kv.test.tsx", "keys with a filter and Show deleted"),
+        vitest("test/nats-kv.test.tsx", "History: compare a revision with the latest"),
+        vitest("test/nats-kv.test.tsx", "Delete and Purge a key"),
+        vitest("test/nats-kv.test.tsx", "Put key: the Composer without headers"),
+        browser("a bucket's keys, a key's history compared and put back, watch", async ({ page, origin, until, run, shot }) => {
+          const bucket = `mc_walk_${Date.now().toString(36)}`;
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await until(`__mc.item("config")`, "the config bucket in the tree");
+          await run(`__mc.dblclick(__mc.item("config"))`);
+          await until(vbutton("feature.checkout") + ` && __mc.has("revision")`, "the keys and the entry");
+          await shot("config keys and an entry");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Key views"] [role=tab]')].find((t) => (t.textContent || "").startsWith("History")))`);
+          await until(`document.querySelector("[data-slot=diff]")`, "feature.checkout's revisions compared");
+          await shot("a key's revisions compared");
+          await run(`__mc.click([...document.querySelectorAll("[role=switch]")].find((s) => s.getClientRects().length > 0 && (s.closest("label")?.textContent || "").includes("Show deleted")))`);
+          await until(vbutton("legacy.flag"), "the deleted key");
+          await shot("deleted keys struck through");
+          // A bucket of the walk's own: create, put twice, compare, put the first back, delete.
+          await run(`__mc.dblclick(__mc.item("Key-Value"))`);
+          await until(vbutton("New bucket"), "the bucket list");
+          await run(`__mc.click(${vbutton("New bucket")})`);
+          await until(vfield("Bucket*"), "the bucket form");
+          await run(`__mc.type(${vfield("Bucket*")}, ${JSON.stringify(bucket)})`);
+          await run(`__mc.type(${vfield("History")}, "5")`);
+          await run(`__mc.click(${vbutton("Create bucket")})`);
+          await until(`__mc.has(${JSON.stringify(`Created bucket ${bucket}`)})`, "the created bucket");
+          await run(`__mc.click(${vbutton("Open bucket")})`);
+          await until(`${vbutton("Put key")} && !${vbutton("Put key")}.disabled`, "the bucket");
+          // The Composer's value editor is Monaco: both puts send its default value.
+          for (const n of [1, 2]) {
+            await run(`__mc.click(${vbutton("Put key")})`);
+            await until(vfield("Key"), "the put sheet");
+            await run(`__mc.type(${vfield("Key")}, "feature.walk")`);
+            if (n === 1) await shot("put a key through the Composer");
+            await run(`__mc.click(document.querySelector("[role=dialog] [data-slot=composer] button[type=submit]"))`);
+            await until(`__mc.has(${JSON.stringify(`Put feature.walk at revision ${n}`)})`, `put ${n}`);
+            await until(`!document.querySelector("[role=dialog] [data-slot=composer]")`, "the sheet closed");
+          }
+          await until(vbutton("feature.walk"), "the key");
+          await run(`__mc.click(${vbutton("feature.walk")})`);
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Key views"] [role=tab]')].find((t) => (t.textContent || "").startsWith("History") && t.getClientRects().length > 0))`);
+          await until(`[...document.querySelectorAll("[data-slot=diff]")].some((d) => d.getClientRects().length > 0)`, "the comparison");
+          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => /^Put revision \\d+ back…$/.test((b.textContent || "").trim()) && b.getClientRects().length > 0))`);
+          await until(`document.querySelector("[role=alertdialog]")`, "the confirmation");
+          await shot("put a revision back with the latest expected");
+          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => /^Put revision \\d+ back$/.test((b.textContent || "").trim()) && b.getClientRects().length > 0))`);
+          await until(`__mc.has("back as revision")`, "the revision put back");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Bucket views"] [role=tab]')].find((t) => (t.textContent || "").startsWith("Watch") && t.getClientRects().length > 0))`);
+          const historySwitch = `[...document.querySelectorAll('[aria-label="Watch"] [role=switch]')].find((s) => s.getClientRects().length > 0)`;
+          await run(press(historySwitch));
+          await until(`(${historySwitch})?.getAttribute("aria-checked") === "true" || (${historySwitch})?.hasAttribute("data-checked")`, "History first on");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Watch"] button')].find((b) => (b.textContent || "").trim() === "Watch" && b.getClientRects().length > 0))`);
+          await until(`__mc.has("entries shown") || __mc.has("Live")`, "the watch started");
+          await shot("watch started");
+          await until(`/(^|\\D)3 entries shown/.test(document.body.innerText)`, "the watch with history");
+          await shot("watch with history");
+          await run(`__mc.click(${vbutton("More: Delete bucket")})`);
+          await until(`[...document.querySelectorAll("[role=menuitem]")].find((m) => (m.textContent || "").includes("Delete bucket"))`, "the menu");
+          await run(`__mc.click([...document.querySelectorAll("[role=menuitem]")].find((m) => (m.textContent || "").includes("Delete bucket")))`);
+          await until(vfield(`Type ${bucket} to confirm`), "the delete dialog");
+          await run(`__mc.type(${vfield(`Type ${bucket} to confirm`)}, ${JSON.stringify(bucket)})`);
+          await run(`__mc.click(${vbutton("Delete bucket")})`);
+          await until(`__mc.has(${JSON.stringify(`Deleted bucket ${bucket}`)})`, "the deleted bucket");
+        }),
+      ],
     },
     {
       id: "services",

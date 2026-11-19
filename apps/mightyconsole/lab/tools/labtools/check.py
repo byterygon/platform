@@ -28,7 +28,17 @@ async def check_nats():
     consumer = await js.consumer_info("ORDERS", "billing")
     expect(consumer.num_pending > 0 and consumer.num_ack_pending > 0, f"nats: billing has pending {consumer.num_pending}, ack pending {consumer.num_ack_pending}")
     kv = await js.key_value("config")
-    history = await kv.history("feature.checkout")
+    # nats-py's history ends at once when its new consumer briefly reports nothing pending (a race
+    # in the client, seen as "NoKeysError" now and then): try again before failing.
+    from nats.js.errors import NoKeysError
+
+    history = []
+    for attempt in range(5):
+        try:
+            history = await kv.history("feature.checkout")
+            break
+        except NoKeysError:
+            await asyncio.sleep(0.2 * (attempt + 1))
     expect(len(history) == 3, f"nats: feature.checkout has {len(history)} revisions")
     store = await js.object_store("files")
     blob = await store.get_info("blob-5MiB.bin")

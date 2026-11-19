@@ -33,7 +33,7 @@ export function useAction(note: (e: unknown) => DescribedError) {
   return { busy, error, run, clear: () => setError(null) };
 }
 
-interface ShellProps {
+export interface ConfirmDialogProps {
   open: boolean;
   onOpenChange(open: boolean): void;
   title: string;
@@ -44,9 +44,12 @@ interface ShellProps {
   error: DescribedError | null;
   onConfirm(): void;
   children?: ReactNode;
+  /** The confirm button is the red one (Destructive); false for a Write such as "Put revision n back". */
+  danger?: boolean;
 }
 
-function Shell({ open, onOpenChange, title, description, confirm, disabled, busy, error, onConfirm, children }: ShellProps) {
+/** An alert dialog naming what it acts on, with Cancel and the action; the server's error shows in place. */
+export function ConfirmDialog({ open, onOpenChange, title, description, confirm, disabled, busy, error, onConfirm, children, danger = true }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -66,7 +69,7 @@ function Shell({ open, onOpenChange, title, description, confirm, disabled, busy
           </AlertDialogBody>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction type="submit" appearance="danger" disabled={disabled} loading={busy}>
+            <AlertDialogAction type="submit" appearance={danger ? "danger" : "primary"} disabled={disabled} loading={busy}>
               {confirm}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -160,7 +163,7 @@ export function PurgeDialog({ open, onOpenChange, info, profileName, busy, error
     }
   };
   return (
-    <Shell
+    <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
       title={`Purge messages from ${name} on ${profileName}?`}
@@ -214,7 +217,7 @@ export function PurgeDialog({ open, onOpenChange, info, profileName, busy, error
           <FieldDescription>Asked only for "All messages".</FieldDescription>
         </Field>
       ) : null}
-    </Shell>
+    </ConfirmDialog>
   );
 }
 
@@ -235,7 +238,7 @@ export function DeleteStreamDialog({ open, onOpenChange, name, consumers, messag
   const [typed, setTyped] = useState("");
   useFresh(open, () => setTyped(""));
   return (
-    <Shell
+    <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
       title={`Delete stream ${name} on ${profileName}?`}
@@ -250,7 +253,7 @@ export function DeleteStreamDialog({ open, onOpenChange, name, consumers, messag
         <FieldLabel>Type {name} to confirm</FieldLabel>
         <Input value={typed} onValueChange={setTyped} className="font-mono" autoComplete="off" spellCheck={false} placeholder={name} />
       </Field>
-    </Shell>
+    </ConfirmDialog>
   );
 }
 
@@ -268,7 +271,7 @@ export interface DeleteConsumerDialogProps {
 /** Deletes a consumer: its position in the stream goes with it. */
 export function DeleteConsumerDialog({ open, onOpenChange, stream, name, profileName, busy, error, onDelete }: DeleteConsumerDialogProps) {
   return (
-    <Shell
+    <ConfirmDialog
       open={open}
       onOpenChange={onOpenChange}
       title={`Delete consumer ${name} of ${stream} on ${profileName}?`}
