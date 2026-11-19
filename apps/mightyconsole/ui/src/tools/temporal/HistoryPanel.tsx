@@ -18,6 +18,7 @@ import { CopyButton, LinkButton, NoticeContext, chipClass, gutterTable } from "@
 import { EmptyLine } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
 import type { EventCategory, HistoryEvent } from "@/gen/api";
 import { ArrowDownload, ArrowImport, ChevronDown, ChevronRight, Clock, Copy, ErrorCircle, CheckmarkCircle, Eye, EyeOff, Flash, Info, Link, NumberSymbol, Pin, Play, Search, SplitVertical, type IconDefinition } from "@/lib/icons";
 import { clockText, eventMs } from "./history";
@@ -26,7 +27,7 @@ import { HISTORY_CHIPS, categoryCounts, groupSummary, historyJson, historyRows, 
 const CATEGORY_ICON: Record<EventCategory, IconDefinition> = { Workflow: Link, WorkflowTask: Link, Activity: Flash, Timer: Clock, ChildWorkflow: SplitVertical, Signal: Play, Update: ArrowImport, Marker: Pin, Other: Info };
 
 /** The icon of an event: a check for a completion, a red circle for a failure, else its category's. */
-function EventIcon({ event }: { event: HistoryEvent }) {
+export function EventIcon({ event }: { event: HistoryEvent }) {
   if (isFailure(event)) return <Icon icon={ErrorCircle} className="text-danger-fg" />;
   if (event.eventType.endsWith("Completed") && event.category !== "WorkflowTask") return <Icon icon={CheckmarkCircle} className="text-success-fg" />;
   return <Icon icon={CATEGORY_ICON[event.category]} className="text-fg-muted" />;
@@ -138,9 +139,21 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
           return next;
         });
       return (
-        <TableRow key={`g${row.first}`} onClick={toggle} aria-expanded={row.open} className="text-caption-1 text-fg-muted [&&>td]:h-control-md">
+        <TableRow key={`g${row.first}`} onClick={toggle} data-fold={row.open ? "open" : "closed"} className={cn("text-caption-1 [&&>td]:h-control-md", row.open ? "text-fg" : "text-fg-muted")}>
           <TableCell align="end">
-            <Icon icon={row.open ? ChevronDown : ChevronRight} className="size-icon-md" />
+            {/* The chevron is the fold's button (aria-expanded belongs on a control, not on a plain table's row); a click anywhere on the row does the same. */}
+            <button
+              type="button"
+              aria-expanded={row.open}
+              aria-label={`${row.open ? "Fold" : "Unfold"} events ${row.first}–${row.last}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggle();
+              }}
+              className={cn("inline-flex cursor-default rounded-sm align-middle", focusRing)}
+            >
+              <Icon icon={row.open ? ChevronDown : ChevronRight} className="size-icon-md" />
+            </button>
           </TableCell>
           <TableCell>
             Events {row.first}–{row.last}
@@ -162,14 +175,24 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
     const pair = pairs.get(e.eventId);
     const failed = isFailure(e);
     return (
-      <TableRow key={e.eventId} selected={e.eventId === selected} onClick={() => onSelect(e.eventId)} aria-selected={e.eventId === selected} data-index={i} className={cn(failed && "bg-danger-subtle")}>
+      <TableRow
+        key={e.eventId}
+        selected={e.eventId === selected}
+        onClick={() => onSelect(e.eventId)}
+        aria-selected={e.eventId === selected}
+        data-index={i}
+        data-in-fold={row.inFold ? "" : undefined}
+        className={cn(failed && "bg-danger-subtle", row.inFold && "[&&>td]:h-control-md")}
+      >
         <TableCell align="end">{e.eventId}</TableCell>
         <TableCell className="whitespace-nowrap font-mono text-code">{clockText(eventMs(e), true)}</TableCell>
         <TableCell align="end" className="whitespace-nowrap text-fg-muted">
           {sinceStart(eventMs(e), start)}
         </TableCell>
-        <TableCell>
-          <span className="flex min-w-0 items-center gap-inline-sm">
+        <TableCell className={cn(row.inFold && "relative")}>
+          {/* An open fold's events sit indented under it, a guide line down from the fold's icon (the mockup's `td.ind`). */}
+          {row.inFold ? <span aria-hidden="true" data-slot="fold-guide" className="absolute inset-y-0 start-[calc(var(--by-table-cell-padding-x)+var(--by-size-icon-md)/2)] border-s border-border-strong" /> : null}
+          <span className={cn("flex min-w-0 items-center gap-inline-sm", row.inFold && "ps-inline-xl")}>
             <EventIcon event={e} />
             <span className="whitespace-nowrap">{e.eventType}</span>
           </span>

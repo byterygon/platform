@@ -1399,8 +1399,8 @@
       "registryDependencies": [
         "@byterygon/cn",
         "@byterygon/control",
-        "@byterygon/kbd",
-        "@byterygon/toggle-group"
+        "@byterygon/toggle-group",
+        "@byterygon/tooltip"
       ],
       "files": [
         {

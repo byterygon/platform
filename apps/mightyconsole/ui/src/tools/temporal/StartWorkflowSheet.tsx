@@ -10,9 +10,9 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { NoticeContext } from "@/app/page";
 import { ErrorState } from "@/app/states";
 import type { MightyClient } from "@/app/client";
@@ -339,9 +339,15 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
           </Button>
           <span className="flex-1" />
           <Button appearance="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="submit" form="start-workflow" appearance="primary" loading={busy} disabled={connId === null}>
-            <Icon icon={Play} /> Start workflow <Kbd className="ms-inline-xs">Ctrl+Enter</Kbd>
-          </Button>
+          {/* No key hint on the button (DOC-21 §3.4): Ctrl+Enter is in its tooltip. */}
+          <Tooltip>
+            <TooltipTrigger render={<Button type="submit" form="start-workflow" appearance="primary" loading={busy} disabled={connId === null} aria-keyshortcuts="Control+Enter" />}>
+              <Icon icon={Play} /> Start workflow
+            </TooltipTrigger>
+            <TooltipContent>
+              Start the workflow <TooltipShortcut>Ctrl+Enter</TooltipShortcut>
+            </TooltipContent>
+          </Tooltip>
         </SheetFooter>
       </SheetContent>
     </Sheet>
