@@ -469,3 +469,51 @@ export function applyTheme(monaco: Monaco, theme: MonacoThemeData, doc: Document
   if (style.textContent !== css) style.textContent = css;
   return name;
 }
+
+/**
+ * A node of its own for an editor's floating widgets (suggestions and their details, hovers,
+ * parameter hints), handed to Monaco as `overflowWidgetsDomNode`. It sits at the end of `<body>` on
+ * the popover layer, so a sticky table header or any other layer of the page never covers the
+ * widgets, and it carries the editor's theme scope and Monaco's `monaco-editor` class, so they keep
+ * their colours and styles. Remove it with `dispose` when the editor goes.
+ */
+export function overflowWidgetsNode(anchor: Element): { node: HTMLElement; follow: (editorNode: HTMLElement | null) => void; dispose: () => void } {
+  const doc = anchor.ownerDocument;
+  // The layer: fixed at the origin with no size, on the popover layer, in the editor's theme scope.
+  const layer = doc.createElement("div");
+  layer.setAttribute("data-slot", "code-editor-overflow");
+  // Monaco draws its own DOM in it; the conventions suite skips foreign DOM.
+  layer.setAttribute("data-foreign-dom", "");
+  const theme = anchor.closest("[data-theme], .dark, .light");
+  if (theme) layer.setAttribute("data-theme", theme.getAttribute("data-theme") ?? (theme.classList.contains("dark") ? "dark" : "light"));
+  const density = anchor.closest("[data-density]")?.getAttribute("data-density");
+  if (density) layer.setAttribute("data-density", density);
+  layer.style.cssText = "position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: var(--by-z-popover);";
+  // Monaco's styles select its widgets under a `monaco-editor` element.
+  const node = doc.createElement("div");
+  node.className = "monaco-editor";
+  layer.append(node);
+  doc.body.append(layer);
+  // Monaco's theme class (vs, vs-dark, hc-black, hc-light) sits on the editor's own node; the
+  // widgets' rules need it on theirs too, kept in step when the theme changes.
+  const THEME_CLASSES = ["vs", "vs-dark", "hc-black", "hc-light"];
+  let observer: MutationObserver | null = null;
+  const follow = (editorNode: HTMLElement | null) => {
+    observer?.disconnect();
+    if (!editorNode) return;
+    const copy = () => {
+      for (const c of THEME_CLASSES) node.classList.toggle(c, editorNode.classList.contains(c));
+    };
+    copy();
+    observer = new MutationObserver(copy);
+    observer.observe(editorNode, { attributes: true, attributeFilter: ["class"] });
+  };
+  return {
+    node,
+    follow,
+    dispose: () => {
+      observer?.disconnect();
+      layer.remove();
+    },
+  };
+}

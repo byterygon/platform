@@ -14,8 +14,7 @@ import {
   type CodeLanguage,
   type Monaco,
   type MonacoEditor,
-  type MonacoThemeData,
-} from "@/lib/monaco";
+  type MonacoThemeData, overflowWidgetsNode } from "@/lib/monaco";
 
 // CodeEditor is Monaco for JSON, YAML, Protobuf and plain text (Mightyconsole spec section 12,
 // TSK-80), as SqlEditor is for SQL: loaded lazily through @/lib/monaco, a plain textarea with
@@ -281,6 +280,8 @@ export function CodeEditor({
         const hadFocus = fallback !== null && fallback.ownerDocument.activeElement === fallback;
         const o = optionsRef.current;
         const doc = root.ownerDocument;
+        // The suggestions and hovers float above every layer of the page (a sticky table header among them).
+        const overflow = overflowWidgetsNode(root);
         let theme: MonacoThemeData = monacoTheme(reader);
         applyTheme(monaco, theme, doc);
         const initialText = fallback?.value ?? textRef.current;
@@ -303,6 +304,7 @@ export function CodeEditor({
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           fixedOverflowWidgets: true,
+          overflowWidgetsDomNode: overflow.node,
           fontLigatures: false,
           stickyScroll: { enabled: false },
           wordBasedSuggestions: "off" as const,
@@ -322,6 +324,7 @@ export function CodeEditor({
         }
         applyTheme(monaco, theme, doc);
         pendingFocus.current = hadFocus;
+        overflow.follow(instance.getDomNode());
         if (ariaLabelledBy) instance.getDomNode()?.querySelector("textarea, [role='textbox']")?.setAttribute("aria-labelledby", ariaLabelledBy);
 
         instance.addAction({
@@ -401,6 +404,7 @@ export function CodeEditor({
           model.dispose();
           originalModel?.dispose();
           reader.dispose();
+          overflow.dispose();
           setJsonSchema(uri, undefined);
         };
       },
