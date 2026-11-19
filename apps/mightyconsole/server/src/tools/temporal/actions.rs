@@ -61,7 +61,8 @@ pub async fn signal(client: &TemporalClient, input: WorkflowSignalInput) -> Resu
                     )?),
                     signal_name: name.to_owned(),
                     input: super::extstore::offload(
-                        client.external.as_deref(),
+                        client,
+                        &namespace,
                         (!args.is_empty()).then_some(Payloads { payloads: args }),
                     )
                     .await?,

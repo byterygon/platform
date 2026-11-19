@@ -408,10 +408,15 @@ impl ExternalStore {
 /// Without a store, or under the threshold, the payloads go as they are; a store that refuses
 /// fails the action rather than sending the payload inline.
 pub async fn offload(
-    store: Option<&ExternalStore>,
+    client: &super::client::TemporalClient,
+    namespace: &str,
     payloads: Option<super::proto::temporal::api::common::v1::Payloads>,
 ) -> Result<Option<super::proto::temporal::api::common::v1::Payloads>, crate::core::ToolError> {
-    let (Some(store), Some(mut payloads)) = (store, payloads.clone()) else {
+    // As the SDKs: the payload codec first, then External Storage.
+    let payloads =
+        super::codec_client::encode_input(client.payload_codec.as_deref(), namespace, payloads)
+            .await?;
+    let (Some(store), Some(mut payloads)) = (client.external.as_deref(), payloads.clone()) else {
         return Ok(payloads);
     };
     let mut stored = Vec::with_capacity(payloads.payloads.len());

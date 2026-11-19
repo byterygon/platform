@@ -244,10 +244,31 @@ def ensure_s3():
     print("generate: added the S3 store of Temporal External Storage")
 
 
+def ensure_codec():
+    """The lab's payload codec (TSK-92): an AES-256-GCM key and the codec server's bearer token,
+    added to an existing credentials.json without touching the rest."""
+    path = os.path.join(OUT, "credentials.json")
+    with open(path) as f:
+        credentials = json.load(f)
+    temporal = credentials.setdefault("temporal", {})
+    if "codec" in temporal:
+        return
+    temporal["codec"] = {
+        "endpoint": "http://127.0.0.1:8234",
+        "internalEndpoint": "http://temporal-codec:8234",
+        "authorization": "Bearer " + secrets.token_urlsafe(24),
+        "key": base64.b64encode(os.urandom(32)).decode(),
+        "taskQueue": "lab-encrypted",
+    }
+    write("credentials.json", json.dumps(credentials, indent=2) + "\n")
+    print("generate: added the payload codec of Temporal")
+
+
 def main(argv):
     force = "--force" in argv
     if all(os.path.exists(os.path.join(OUT, f)) for f in REQUIRED) and not force:
         ensure_s3()
+        ensure_codec()
         print("generate: lab/.generated is already there (use --force for new credentials)")
         return 0
     ca_key, ca_cert = ca()
@@ -321,6 +342,7 @@ def main(argv):
     }
     write("credentials.json", json.dumps(credentials, indent=2) + "\n")
     ensure_s3()
+    ensure_codec()
     print(f"generate: wrote {OUT}")
     return 0
 

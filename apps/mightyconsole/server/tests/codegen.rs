@@ -530,6 +530,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.testCodec",
+            Mutation,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.workers.list",
             Query,
             "temporal.read",
@@ -664,9 +671,12 @@ fn the_procedures_of_the_spec() {
             "profile.apiKey",
             "profile.s3AccessKeyId",
             "profile.s3SecretAccessKey",
-            "profile.s3SessionToken"
+            "profile.s3SessionToken",
+            "profile.codecAuthorization"
         ]
     );
+    // Test codec takes the same draft profile, secrets and all.
+    assert_eq!(redact("temporal.testCodec"), redact("temporal.connect"));
     assert_eq!(
         redact("nats.connect"),
         [
