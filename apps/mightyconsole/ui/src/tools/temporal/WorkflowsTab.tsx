@@ -8,7 +8,7 @@
 // 45 (m)): highlighting, suggestions from the namespace's search attributes, the operators of
 // their types, values seen in the rows and recent and saved queries (Ctrl+Space), Enter or
 // Mod+Enter runs, and the server's error marked on the part it names.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
@@ -16,17 +16,19 @@ import { Icon } from "@/components/ui/icon";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CopyButton, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable } from "@/app/page";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { CopyButton, NoticeContext, Page, PageFooter, PageHeader, PageRegion, Pager, gutterTable } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { NamespaceSummary, SearchAttribute, WorkflowRow, WorkflowStatus } from "@/gen/api";
-import { Add, ArrowClockwise, Play } from "@/lib/icons";
+import { Add, ArrowClockwise, Copy, Play, Window } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { formatDuration, formatShortTime, formatTime } from "./format";
 import { namespaceOf, pageSizeOf, savedQueriesOf } from "./profile";
 import { STATUS_CHIPS, statusOf, withStatus } from "./query";
 import { useSheetRequest } from "./sheet-parts";
+import { ColumnsButton, SaveQueryButton, WORKFLOW_COLUMNS, shownColumns, useColumnChoice, withSaved, type WorkflowColumn } from "./list-parts";
 import { StartWorkflowSheet } from "./StartWorkflowSheet";
 import { VISIBILITY_LANGUAGE, collectValues, queryErrorMarker, recentQueries, registerVisibilityLanguage, rememberQuery, visibilityCompletion } from "./visibility";
 
@@ -53,7 +55,10 @@ export const statusLabel = (s: WorkflowStatus): string => s.replace(/([a-z])([A-
 /** The footer's choices of rows per page (the mockup's). */
 const PAGE_SIZES = [25, 50, 100, 200] as const;
 
-export function WorkflowsTab({ tab, profile, connId, client, active, useTabActions, note, openTab }: TabProps) {
+export function WorkflowsTab({ tab, profile, connId, client, active, useTabActions, note, openTab, updateProfile }: TabProps) {
+  const notify = useContext(NoticeContext);
+  const [choice, setChoice] = useColumnChoice("temporal.workflows");
+  const [menuRow, setMenuRow] = useState<WorkflowRow | null>(null);
   const [namespace, setNamespace] = useState(typeof tab.params["namespace"] === "string" ? tab.params["namespace"] : namespaceOf(profile));
   const initial = typeof tab.params["query"] === "string" ? tab.params["query"] : "";
   const [draft, setDraft] = useState(initial);
@@ -213,6 +218,83 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
     else setQuery(q);
   };
 
+  const columns = shownColumns(choice);
+  const openWorkflow = (w: WorkflowRow) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId });
+  const copy = async (value: string, what: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      notify({ title: `Copied ${what}`, description: value.length > 64 ? `${value.slice(0, 61)}…` : value, type: "success" });
+    } catch {
+      notify({ title: `Could not copy ${what}`, description: "The browser refused the clipboard. Select the text instead.", type: "warning" });
+    }
+  };
+  /** Ctrl+C on a focused row copies its workflow ID; Enter opens it. */
+  const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, w: WorkflowRow) => {
+    if (e.target !== e.currentTarget) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+      void copy(w.workflowId, "workflow ID");
+      e.preventDefault();
+    } else if (e.key === "Enter") {
+      openWorkflow(w);
+      e.preventDefault();
+    }
+  };
+  const cell = (c: WorkflowColumn, w: WorkflowRow): ReactNode => {
+    switch (c) {
+      case "status":
+        return (
+          <TableCell key={c}>
+            <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge>
+          </TableCell>
+        );
+      case "type":
+        return <TableCell key={c}>{w.workflowType}</TableCell>;
+      case "start":
+        return (
+          <TableCell key={c} className="whitespace-nowrap" title={formatTime(w.startTime)}>
+            {formatShortTime(w.startTime)}
+          </TableCell>
+        );
+      case "close":
+        return (
+          <TableCell key={c} className="whitespace-nowrap" title={w.closeTime ? formatTime(w.closeTime) : undefined}>
+            {w.closeTime ? formatShortTime(w.closeTime) : <span className="text-fg-muted">—</span>}
+          </TableCell>
+        );
+      case "duration":
+        return (
+          <TableCell key={c} align="end">
+            {w.durationMs === undefined ? "" : formatDuration(w.durationMs)}
+          </TableCell>
+        );
+      case "taskQueue":
+        return (
+          <TableCell key={c}>
+            <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+              {w.taskQueue}
+            </Button>
+          </TableCell>
+        );
+      case "history":
+        return (
+          <TableCell key={c} align="end">
+            {formatCount(w.historyLength)}
+          </TableCell>
+        );
+      case "runId":
+        return (
+          <TableCell key={c}>
+            <span className="flex items-center gap-inline-xs">
+              <span className="font-mono text-code text-fg-muted" title={w.runId}>
+                {w.runId.slice(0, 8)}
+              </span>
+              <CopyButton value={w.runId} what="run ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
+            </span>
+          </TableCell>
+        );
+    }
+  };
+
   return (
     <Page>
       <PageHeader
@@ -234,6 +316,13 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
             <Button appearance="subtle" onClick={refresh} aria-label="Refresh" loading={loading && rows.length > 0}>
               <Icon icon={ArrowClockwise} /> Refresh
             </Button>
+            <SaveQueryButton
+              query={query}
+              saved={savedQueriesOf(profile.extras)}
+              disabled={updateProfile === undefined}
+              onSave={(name) => (updateProfile ? updateProfile((r) => ({ ...r, extras: { ...r.extras, savedQueries: withSaved(savedQueriesOf(r.extras), name, query) } })) : Promise.resolve())}
+              onRemove={(name) => (updateProfile ? updateProfile((r) => ({ ...r, extras: { ...r.extras, savedQueries: savedQueriesOf(r.extras).filter((q) => q.name !== name) } })) : Promise.resolve())}
+            />
             <Button appearance="primary" onClick={() => setStarting(true)}>
               <Icon icon={Add} /> Start workflow
             </Button>
@@ -296,6 +385,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
               placeholder='WorkflowType = "Order" AND StartTime > "2026-01-01T00:00:00Z"'
               className="min-w-0 flex-1"
             />
+            <ColumnsButton choice={choice} onChange={setChoice} />
             <Button type="submit" appearance="primary" loading={loading}>
               <Icon icon={Play} /> Run
             </Button>
@@ -315,60 +405,62 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
           <EmptyLine>{query === "" ? `No workflows in ${namespace}.` : "No workflow matches this query."}</EmptyLine>
         ) : rows.length > 0 ? (
           <>
-            <Table aria-label="Workflows" className={cn("min-h-0 flex-1", gutterTable)}>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Workflow ID</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Start</TableHead>
-                  <TableHead>Close</TableHead>
-                  <TableHead align="end">Duration</TableHead>
-                  <TableHead>Task queue</TableHead>
-                  <TableHead align="end">History</TableHead>
-                  <TableHead>Run ID</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((w) => (
-                  <TableRow key={`${w.workflowId}/${w.runId}`} className="group">
-                    <TableCell>
-                      <span className="flex items-center gap-inline-xs">
-                        <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId })}>
-                          {w.workflowId}
-                        </Button>
-                        <CopyButton value={w.workflowId} what="workflow ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge>
-                    </TableCell>
-                    <TableCell>{w.workflowType}</TableCell>
-                    <TableCell className="whitespace-nowrap" title={formatTime(w.startTime)}>
-                      {formatShortTime(w.startTime)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap" title={w.closeTime ? formatTime(w.closeTime) : undefined}>
-                      {w.closeTime ? formatShortTime(w.closeTime) : <span className="text-fg-muted">—</span>}
-                    </TableCell>
-                    <TableCell align="end">{w.durationMs === undefined ? "" : formatDuration(w.durationMs)}</TableCell>
-                    <TableCell>
-                      <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
-                        {w.taskQueue}
-                      </Button>
-                    </TableCell>
-                    <TableCell align="end">{formatCount(w.historyLength)}</TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-inline-xs">
-                        <span className="font-mono text-code text-fg-muted" title={w.runId}>
-                          {w.runId.slice(0, 8)}
-                        </span>
-                        <CopyButton value={w.runId} what="run ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <ContextMenu>
+              <ContextMenuTrigger
+                render={<div className="contents" />}
+                onContextMenu={(e) => {
+                  const key = (e.target as HTMLElement).closest("tr[data-key]")?.getAttribute("data-key");
+                  setMenuRow(rows.find((w) => `${w.workflowId}/${w.runId}` === key) ?? null);
+                }}
+              >
+                <Table aria-label="Workflows" className={cn("min-h-0 flex-1", gutterTable)}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Workflow ID</TableHead>
+                      {columns.map((c) => (
+                        <TableHead key={c} align={c === "duration" || c === "history" ? "end" : "start"}>
+                          {WORKFLOW_COLUMNS.find((x) => x.id === c)!.label}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((w) => (
+                      <TableRow key={`${w.workflowId}/${w.runId}`} data-key={`${w.workflowId}/${w.runId}`} tabIndex={0} onKeyDown={(e) => onRowKey(e, w)} className="group">
+                        <TableCell>
+                          <span className="flex items-center gap-inline-xs">
+                            <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openWorkflow(w)}>
+                              {w.workflowId}
+                            </Button>
+                            <CopyButton value={w.workflowId} what="workflow ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
+                          </span>
+                        </TableCell>
+                        {columns.map((c) => cell(c, w))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                {menuRow ? (
+                  <>
+                    <ContextMenuItem onClick={() => openWorkflow(menuRow)}>
+                      <Icon icon={Window} /> Open in a new tab
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem onClick={() => void copy(menuRow.workflowId, "workflow ID")}>
+                      <Icon icon={Copy} /> Copy workflow ID
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => void copy(menuRow.runId, "run ID")}>
+                      <Icon icon={Copy} /> Copy run ID
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => void copy(JSON.stringify(menuRow, null, 2), "the row as JSON")}>
+                      <Icon icon={Copy} /> Copy as JSON
+                    </ContextMenuItem>
+                  </>
+                ) : null}
+              </ContextMenuContent>
+            </ContextMenu>
             <PageFooter>
               <span className="whitespace-nowrap">Rows per page</span>
               <Select aria-label="Rows per page" size="small" className="w-auto shrink-0" value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))} items={Object.fromEntries(PAGE_SIZES.map((n) => [String(n), String(n)]))}>
