@@ -106,7 +106,7 @@
       "name": "breadcrumb",
       "type": "registry:ui",
       "title": "Breadcrumb",
-      "description": "Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list of links, the current place, separators and an ellipsis for collapsed items, on Base UI's useRender.",
+      "description": "Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list of links, the current place, separators and an ellipsis for collapsed items, on Base UI's useRender; useBreadcrumbOverflow folds the first items into the ellipsis when the trail does not fit.",
       "dependencies": [
         "@base-ui/react"
       ],

@@ -66,7 +66,8 @@ export interface ConnState {
 
 export type Dialog =
   | { kind: "none" }
-  | { kind: "profile"; tool: string; editId?: string; duplicateOf?: string }
+  /** `name` fills a new profile's name (a link's missing profile). */
+  | { kind: "profile"; tool: string; editId?: string; duplicateOf?: string; name?: string }
   | { kind: "deleteProfile"; id: string }
   | { kind: "export"; ids: string[] | null }
   | { kind: "import" }
@@ -94,6 +95,20 @@ export interface State {
   paletteOpen: boolean;
   selectedNode: string | null;
   diagnostics: string[];
+  /** A link naming a profile this browser lacks (DOC-21 §3.7): its page shows in a link tab. */
+  missingLink: MissingLink | null;
+}
+
+/** What a link to a missing profile names. */
+export interface MissingLink {
+  tool: string;
+  profileName: string;
+  /** The router href, without the base path. */
+  href: string;
+  /** The place it points to; `null` for a profile's own URL. */
+  place: Omit<TabPlace, "title"> | null;
+  /** The link tab's title: the place's, or the profile name. */
+  title: string;
 }
 
 export type Action =
@@ -120,7 +135,9 @@ export type Action =
   | { type: "dialog"; dialog: Dialog }
   | { type: "palette"; open: boolean }
   | { type: "select"; nodeId: string | null }
-  | { type: "diagnostic"; line: string };
+  | { type: "diagnostic"; line: string }
+  /** The missing-profile page shown, or dropped. */
+  | { type: "missingLink"; link: MissingLink | null };
 
 export function initialState(persisted: Persisted, storageKind: "indexeddb" | "memory"): State {
   return {
@@ -140,6 +157,7 @@ export function initialState(persisted: Persisted, storageKind: "indexeddb" | "m
     paletteOpen: false,
     selectedNode: null,
     diagnostics: [],
+    missingLink: null,
   };
 }
 
@@ -161,11 +179,11 @@ export function reducer(state: State, action: Action): State {
       // every param asked for. A tab's id no longer follows its place, so a new id must be free.
       const { tab } = action;
       const existing = state.tabs.find((t) => t.tool === tab.tool && t.profileId === tab.profileId && placeHas(placeOf(t), tab));
-      if (existing) return { ...state, activeTab: existing.id };
+      if (existing) return { ...state, activeTab: existing.id, missingLink: null };
       const taken = new Set(state.tabs.map((t) => t.id));
       let id = tab.id;
       for (let n = 2; taken.has(id); n++) id = `${tab.id}#${n}`;
-      return { ...state, tabs: [...state.tabs, { ...tab, id }], activeTab: id, closedTabs: state.closedTabs.filter((t) => t.id !== id) };
+      return { ...state, tabs: [...state.tabs, { ...tab, id }], activeTab: id, closedTabs: state.closedTabs.filter((t) => t.id !== id), missingLink: null };
     }
     case "navigateTab":
       return mapTab(state, action.id, (t) => (action.replace ? replacePlace(t, action.place) : pushPlace(t, action.place)));
@@ -173,12 +191,12 @@ export function reducer(state: State, action: Action): State {
       return mapTab(state, action.id, (t) => goTab(t, action.delta));
     case "tabStep": {
       const next = mapTab(state, action.id, (t) => stepTab(t, action.step));
-      return next.tabs.some((t) => t.id === action.id) ? { ...next, activeTab: action.id } : next;
+      return next.tabs.some((t) => t.id === action.id) ? { ...next, activeTab: action.id, missingLink: null } : next;
     }
     case "reopenTab": {
       const closed = state.closedTabs.find((t) => t.id === action.id);
       if (!closed || state.tabs.some((t) => t.id === action.id)) return state;
-      return { ...state, tabs: [...state.tabs, stepTab(closed, action.step)], activeTab: closed.id, closedTabs: state.closedTabs.filter((t) => t.id !== action.id) };
+      return { ...state, tabs: [...state.tabs, stepTab(closed, action.step)], activeTab: closed.id, closedTabs: state.closedTabs.filter((t) => t.id !== action.id), missingLink: null };
     }
     case "closeTab": {
       const i = state.tabs.findIndex((t) => t.id === action.id);
@@ -190,7 +208,7 @@ export function reducer(state: State, action: Action): State {
       return { ...state, tabs, activeTab, live, closedTabs, dialog: state.dialog.kind === "closeTab" ? { kind: "none" } : state.dialog };
     }
     case "activateTab":
-      return state.tabs.some((t) => t.id === action.id) ? { ...state, activeTab: action.id } : state;
+      return state.tabs.some((t) => t.id === action.id) ? { ...state, activeTab: action.id, missingLink: null } : state;
     case "reorderTab": {
       const tab = state.tabs.find((t) => t.id === action.id);
       if (!tab) return state;
@@ -216,6 +234,8 @@ export function reducer(state: State, action: Action): State {
       return { ...state, selectedNode: action.nodeId };
     case "diagnostic":
       return { ...state, diagnostics: [action.line, ...state.diagnostics].slice(0, 100) };
+    case "missingLink":
+      return { ...state, missingLink: action.link };
   }
 }
 

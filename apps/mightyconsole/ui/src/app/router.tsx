@@ -18,6 +18,7 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import type { MightyClient } from "@/app/client";
 import type { ProfileRecord } from "@/profiles/record";
 import type { PlaceHref, TabPlace, ToolModule } from "@/tools/types";
 
@@ -30,7 +31,119 @@ declare module "@tanstack/react-router" {
      * not make one. Its tool's tab kind gives the URL back with `href`.
      */
     place?: (params: Record<string, string>, search: Record<string, unknown>) => Omit<TabPlace, "title"> | null;
+    /**
+     * The places beside this level (TSK-105): the namespaces of a cluster, a workflow's recent
+     * neighbours. Picking one replaces this level's params in the URL and keeps the rest.
+     */
+    siblings?: (context: SiblingContext) => Promise<SiblingList>;
   }
+}
+
+/** What a route's `siblings` gets: the segment's params and the tab's profile and handle. */
+export interface SiblingContext {
+  params: Record<string, string>;
+  profile: ProfileRecord;
+  client: MightyClient;
+  /** `null` while the profile is not connected. */
+  connId: string | null;
+}
+
+export interface Sibling {
+  label: string;
+  /** A short note beside it ("6 schedules", "Running"). */
+  description?: string;
+  /** The path params it replaces, e.g. `{ namespace: "payments" }`. */
+  params: Record<string, string>;
+  /** Search keys it sets; `undefined` drops one (a workflow's `run`). */
+  search?: Record<string, string | undefined>;
+}
+
+export interface SiblingList {
+  /** The menu's heading: "Namespaces of prod-cluster". */
+  heading: string;
+  items: Sibling[];
+  /** The whole list as a place: "All namespaces…". */
+  all?: { label: string; place: Omit<TabPlace, "title"> };
+}
+
+/** A segment of the navigation row's breadcrumb: one matched route below the tool (DOC-21 §3.7). */
+export interface RouteCrumb {
+  routeId: string;
+  label: string;
+  /** The route's params (the location's, down to this level). */
+  params: Record<string, string>;
+  /** The router href of this level when it is a place; the leaf keeps the search. */
+  href: string | null;
+  place: Omit<TabPlace, "title"> | null;
+  /** The profile's own segment. */
+  profile: boolean;
+  siblings?: (context: SiblingContext) => Promise<SiblingList>;
+}
+
+interface Match {
+  routeId: string;
+  fullPath: string;
+  pathname: string;
+  params: Record<string, string>;
+  search: Record<string, unknown>;
+  staticData: { crumb?: (params: Record<string, string>) => string; place?: (params: Record<string, string>, search: Record<string, unknown>) => Omit<TabPlace, "title"> | null; siblings?: (context: SiblingContext) => Promise<SiblingList> };
+  _notFound?: boolean;
+}
+
+function matchesOf(router: AnyRouter, href: string): { matches: Match[]; search: Record<string, unknown> } {
+  const q = href.indexOf("?");
+  const pathname = q < 0 ? href : href.slice(0, q);
+  const search = parseSearch(q < 0 ? "" : href.slice(q));
+  return { matches: router.matchRoutes(pathname, search) as unknown as Match[], search };
+}
+
+/**
+ * The breadcrumb of a router href (DOC-21 §3.7): its matched routes from the profile down (the
+ * root and the tool are left out), each with its label, and its href when it is a place.
+ */
+export function crumbsOf(router: AnyRouter, href: string): RouteCrumb[] {
+  const { matches, search } = matchesOf(router, href);
+  if (matches.some((m) => m._notFound)) return [];
+  const below = matches.slice(2);
+  return below.map((m, i) => {
+    const leaf = i === below.length - 1;
+    const place = m.staticData.place?.(m.params, leaf ? search : {}) ?? null;
+    const crumb: RouteCrumb = {
+      routeId: m.routeId,
+      label: m.staticData.crumb?.(m.params) ?? "",
+      params: m.params,
+      href: place ? (leaf ? href : m.pathname.replace(/\/$/, "")) : null,
+      place,
+      profile: i === 0,
+    };
+    if (m.staticData.siblings) crumb.siblings = m.staticData.siblings;
+    return crumb;
+  });
+}
+
+/** `fullPath` with its `$params` filled in, each percent-encoded. */
+function interpolate(fullPath: string, params: Record<string, string>): string {
+  return fullPath
+    .split("/")
+    .map((s) => (s.startsWith("$") ? segment(params[s.slice(1)] ?? "") : s))
+    .join("/")
+    .replace(/\/$/, "");
+}
+
+/**
+ * The href of `href` with some params replaced (a sibling picked): the rest of the path and the
+ * search stay, so the view does; `search` sets keys, `undefined` drops one.
+ */
+export function withParams(router: AnyRouter, href: string, params: Record<string, string>, search: Record<string, string | undefined> = {}): string | null {
+  const { matches, search: current } = matchesOf(router, href);
+  const leaf = matches[matches.length - 1];
+  if (!leaf || matches.some((m) => m._notFound)) return null;
+  const next: Record<string, unknown> = { ...current };
+  for (const [k, v] of Object.entries(search)) {
+    if (v === undefined) delete next[k];
+    else next[k] = v;
+  }
+  return interpolate(leaf.fullPath, { ...leaf.params, ...params }) + stringifySearch(next);
 }
 
 /** What a browser entry's history state says about its tab (DOC-21 §3.7). */
@@ -131,9 +244,15 @@ export function placeRoute(
   return children.length > 0 ? (route.addChildren(children as AnyRoute[]) as AnyRoute) : route;
 }
 
-/** A level of the path that is not a place itself (a namespace, a workflow): only a crumb. */
-export function levelRoute(parent: AnyRoute, path: string, crumb: (params: Record<string, string>) => string, children: (self: AnyRoute) => readonly AnyRoute[]): AnyRoute {
-  const route = createRoute({ getParentRoute: () => parent, path, staticData: { crumb } }) as unknown as AnyRoute;
+/** A level of the path that is not a place itself (a namespace, a workflow): a crumb, maybe siblings. */
+export function levelRoute(
+  parent: AnyRoute,
+  path: string,
+  crumb: (params: Record<string, string>) => string,
+  children: (self: AnyRoute) => readonly AnyRoute[],
+  siblings?: (context: SiblingContext) => Promise<SiblingList>,
+): AnyRoute {
+  const route = createRoute({ getParentRoute: () => parent, path, staticData: { crumb, ...(siblings ? { siblings } : {}) } }) as unknown as AnyRoute;
   return route.addChildren(children(route) as AnyRoute[]) as AnyRoute;
 }
 
@@ -210,6 +329,12 @@ export function targetOf(router: AnyRouter, location: Pick<ParsedLocation, "path
     if (place && tool.tabKinds[place.kind]) return { type: "place", tool: tool.id, profileName, place };
   }
   return profileName ? { type: "tool", tool: tool.id, profileName } : { type: "tool", tool: tool.id };
+}
+
+/** The target of a router href (no base path): a crumb's or a sibling's. */
+export function targetOfHref(router: AnyRouter, href: string, tools: readonly ToolModule[]): UrlTarget {
+  const q = href.indexOf("?");
+  return targetOf(router, { pathname: q < 0 ? href : href.slice(0, q), search: parseSearch(q < 0 ? "" : href.slice(q)) as never }, tools);
 }
 
 /** The router-internal href (no base path) of a tab place, or `/<tool>` when its kind has no URL. */

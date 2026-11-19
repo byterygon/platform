@@ -47,13 +47,15 @@ export interface ProfileSheetProps {
   /** The base record's load state; `newer` makes the sheet read-only. */
   recordState?: RecordState;
   onSave: (record: ProfileRecord) => Promise<void>;
+  /** A new profile's name, filled in (a link's missing profile). */
+  name?: string;
 }
 
-export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave }: ProfileSheetProps) {
+export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave, name = "" }: ProfileSheetProps) {
   const services = useContext(ServicesContext);
   const fresh = () => {
     const defaults = tool.profile.defaults();
-    if (!base) return { name: "", color: "", fields: defaults.fields, secrets: {} as Record<string, unknown>, extras: defaults.extras };
+    if (!base) return { name, color: "", fields: defaults.fields, secrets: {} as Record<string, unknown>, extras: defaults.extras };
     return { name: mode === "duplicate" ? `${base.name} copy` : base.name, color: base.color ?? "", fields: structuredClone(base.fields), secrets: {} as Record<string, unknown>, extras: structuredClone(base.extras) };
   };
   const [draft, setDraft] = useState(fresh);
@@ -67,7 +69,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
       setClearSecrets(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, base?.id, mode]);
+  }, [open, base?.id, mode, name]);
   const readOnly = recordState?.kind === "newer";
   const stored = useMemo(() => new Set(base && mode !== "add" && !clearSecrets ? Object.keys(base.secrets).filter((k) => base.secrets[k] !== "" && base.secrets[k] != null) : []), [base, mode, clearSecrets]);
 

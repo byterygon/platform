@@ -29,6 +29,8 @@ export const ITEMS = [
   "code-editor", "hex-view", "key-value-editor",
   // TSK-92 (Temporal): workflow types and task queues suggested, any name typed.
   "combobox",
+  // TSK-105 (navigation row): the breadcrumb with its overflow.
+  "breadcrumb",
 ];
 
 interface Item {
