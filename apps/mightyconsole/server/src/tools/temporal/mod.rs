@@ -11,9 +11,11 @@ mod actions_types;
 mod client;
 mod detail;
 mod detail_types;
+mod extstore;
 mod namespaces;
 mod payloads;
 mod proto;
+mod s3;
 mod schedule_form;
 mod search_attributes;
 mod start;
@@ -280,7 +282,7 @@ impl TemporalApi {
     #[rpc::mutation(
         perm = "temporal.read",
         risk = Risk::Read,
-        redact = ["profile.clientKeyPem", "profile.apiKey"]
+        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken"]
     )]
     async fn connect(
         &self,
@@ -637,6 +639,9 @@ mod lab_action_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_more_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_extstore_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_form_tests;

@@ -119,6 +119,12 @@ async def check_temporal():
     expect(status == "waiting for approval", f"temporal: fulfilment says {status!r}")
     schedules = [s.id async for s in await client.list_schedules()]
     expect("every-minute" in schedules, "temporal: schedule every-minute is missing")
+    # External Storage (TSK-103): the large input is a reference in the history, not the data.
+    expect("big-payload-1" in ids, "temporal: workflow big-payload-1 is missing")
+    if "big-payload-1" in ids:
+        history = await client.get_workflow_handle("big-payload-1").fetch_history()
+        payload = history.events[0].workflow_execution_started_event_attributes.input.payloads[0]
+        expect(payload.metadata.get("messageType") == b"temporal.api.sdk.v1.ExternalStorageReference", "temporal: big-payload-1's input is not stored outside")
 
 
 def check_langgraph():

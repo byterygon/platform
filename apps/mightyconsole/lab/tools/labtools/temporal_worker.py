@@ -2,14 +2,18 @@
 a long-running one with a signal and a query, a completed one, a failed one, one with an activity
 that keeps retrying, a parent with a child, one with a Protobuf payload, and a schedule that runs
 every minute. Started once when the worker starts; ids are fixed, so a restart starts nothing
-twice."""
+twice. External Storage (TSK-103): payloads of 256 KiB or more go to the lab's S3 store through the
+SDK's S3 driver; `big-payload-1` has a 300 KiB input and result."""
 
 import asyncio
+import dataclasses
 from datetime import timedelta
 
 from temporalio import activity, workflow
 from temporalio.client import Client, Schedule, ScheduleActionStartWorkflow, ScheduleIntervalSpec, ScheduleSpec
 from temporalio.common import RetryPolicy
+from temporalio.contrib.aws.s3driver import S3StorageDriver
+from temporalio.converter import DataConverter, ExternalStorage
 from temporalio.exceptions import ApplicationError
 from temporalio.service import RPCError
 from temporalio.worker import Worker
@@ -17,6 +21,7 @@ from temporalio.worker import Worker
 with workflow.unsafe.imports_passed_through():
     from . import protos
     from .common import log
+    from .s3 import LabS3, lab_s3
 
 TASK_QUEUE = "lab"
 
@@ -86,6 +91,18 @@ class Parent:
         return f"parent of {child}"
 
 
+def big_text(seed: str, size: int = 300 * 1024) -> str:
+    line = f"{seed} " + "x" * 100 + "\n"
+    return (line * (size // len(line) + 1))[:size]
+
+
+@workflow.defn
+class BigPayload:
+    @workflow.run
+    async def run(self, document: dict) -> dict:
+        return {"received": len(document.get("text", "")), "echo": big_text("result")}
+
+
 @workflow.defn
 class ProtoOrder:
     @workflow.run
@@ -104,6 +121,7 @@ async def start_samples(client: Client) -> None:
         (Retrying.run, "ord-flaky", "retrying-1"),
         (Parent.run, "ord-parent", "parent-1"),
         (ProtoOrder.run, protos.order(7), "proto-1"),
+        (BigPayload.run, {"kind": "big", "text": big_text("input")}, "big-payload-1"),
     ]
     for run, arg, workflow_id in samples:
         try:
@@ -121,18 +139,28 @@ async def start_samples(client: Client) -> None:
             raise
 
 
+def data_converter() -> DataConverter:
+    s3 = lab_s3()
+    store = LabS3(s3["internalEndpoint"], s3["accessKeyId"], s3["secretAccessKey"], s3["region"])
+    store.create_bucket(s3["bucket"])
+    driver = S3StorageDriver(client=store, bucket=s3["bucket"])
+    return dataclasses.replace(DataConverter.default, external_storage=ExternalStorage(drivers=[driver]))
+
+
 async def main() -> None:
     client = None
+    converter = None
     for _ in range(120):
         try:
-            client = await Client.connect("temporal:7233", namespace="lab")
+            converter = converter or data_converter()
+            client = await Client.connect("temporal:7233", namespace="lab", data_converter=converter)
             break
         except RPCError:
             await asyncio.sleep(1)
-        except OSError:
+        except (OSError, RuntimeError):
             await asyncio.sleep(1)
     assert client is not None, "Temporal did not answer"
-    worker = Worker(client, task_queue=TASK_QUEUE, workflows=[Fulfilment, Completed, Failed, Retrying, Parent, ProtoOrder], activities=[charge, flaky])
+    worker = Worker(client, task_queue=TASK_QUEUE, workflows=[Fulfilment, Completed, Failed, Retrying, Parent, ProtoOrder, BigPayload], activities=[charge, flaky])
     async with worker:
         await start_samples(client)
         log("temporal-worker: samples started in namespace lab, schedule every-minute")

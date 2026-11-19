@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:3a24a2e0e2713fb963147683e38b97ca5f0a07909649ea6f76e70b59c4a41a1a";
+export const SCHEMA_HASH = "sha256:c82274475f66c31196e7df4fce06081cd37ce520c112e44af3dc3abb04e4bb3a";
 
 // ---- Types
 
@@ -262,7 +262,15 @@ clientKeyPem?: string | null,
 /**
  * Sent as `Authorization: Bearer`; never logged.
  */
-apiKey?: string | null, };
+apiKey?: string | null, 
+/**
+ * External Storage (TSK-103).
+ */
+externalStorage?: ExternalStorageOptions | null, 
+/**
+ * The S3 credentials of External Storage; never logged.
+ */
+s3AccessKeyId?: string | null, s3SecretAccessKey?: string | null, s3SessionToken?: string | null, };
 
 /**
  * The state of a live handle (spec §2.2, "Status").
@@ -380,6 +388,49 @@ export type ErrorPosition = { line: number, column: number, };
  * What an event is about, for the History filter and the Timeline's lanes.
  */
 export type EventCategory = "Workflow" | "WorkflowTask" | "Activity" | "Timer" | "ChildWorkflow" | "Signal" | "Update" | "Marker" | "Other";
+
+/**
+ * Temporal External Storage on an S3-compatible store (TSK-103): where the SDKs' S3 driver keeps
+ * payloads of 256 KiB or more. Its credentials come beside it as `s3AccessKeyId`,
+ * `s3SecretAccessKey` and `s3SessionToken`.
+ */
+export type ExternalStorageOptions = { enabled?: boolean | null, 
+/**
+ * Where Mightyconsole and the codec endpoint write; read too.
+ */
+bucket?: string | null, 
+/**
+ * Other buckets references may name (the workers' buckets); `bucket` is always read.
+ */
+readBuckets?: Array<string> | null, 
+/**
+ * `us-east-1` when empty.
+ */
+region?: string | null, 
+/**
+ * `https://s3.<region>.amazonaws.com` when empty; MinIO and other stores give theirs.
+ */
+endpoint?: string | null, 
+/**
+ * `<endpoint>/<bucket>/<key>` addressing (MinIO and most S3-compatible stores).
+ */
+pathStyle?: boolean | null, 
+/**
+ * The store's CA (PEM); the system's trust store when empty (spec Open question (b)).
+ */
+caPem?: string | null, 
+/**
+ * `aws.s3driver` when empty: the name the workers' driver has.
+ */
+driverName?: string | null, 
+/**
+ * Payloads this size or larger are stored outside (262144, the SDKs' default).
+ */
+thresholdBytes?: number | null, 
+/**
+ * The largest payload read or written (50 MiB, the Go driver's default).
+ */
+maxPayloadBytes?: number | null, };
 
 /**
  * The filter (spec §5.4).

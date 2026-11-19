@@ -1,6 +1,6 @@
 // The Temporal profile (Mightyconsole spec §9.1): its versioned schema, defaults, validation and
 // the input of `temporal.connect`. Pure, so the form and the tests share it.
-import type { ConnectTemporalProfile, TemporalTlsOptions } from "@/gen/api";
+import type { ConnectTemporalProfile, ExternalStorageOptions, TemporalTlsOptions } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import type { FieldErrors, ProfileSchema } from "../types";
 
@@ -23,6 +23,49 @@ export interface TlsFields {
 }
 
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
+
+/** The SDKs' default threshold: payloads this size or larger are stored outside. */
+export const DEFAULT_THRESHOLD_BYTES = 256 * 1024;
+
+/**
+ * External Storage (TSK-103): where the SDKs' S3 driver keeps large payloads. Its keys are
+ * secrets: `s3AccessKeyId`, `s3SecretAccessKey`, `s3SessionToken`.
+ */
+export interface ExternalStorageFields {
+  enabled: boolean;
+  bucket: string;
+  endpoint: string;
+  region: string;
+  pathStyle: boolean;
+  /** Other buckets references may name, comma or line separated. */
+  readBuckets: string;
+  caPem: string;
+  thresholdBytes?: number | undefined;
+}
+
+export function externalStorageOf(fields: Record<string, unknown>): ExternalStorageFields {
+  const raw = fields["externalStorage"];
+  const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const out: ExternalStorageFields = {
+    enabled: o["enabled"] === true,
+    bucket: text(o["bucket"]),
+    endpoint: text(o["endpoint"]),
+    region: text(o["region"]),
+    pathStyle: o["pathStyle"] === true,
+    readBuckets: text(o["readBuckets"]),
+    caPem: text(o["caPem"]),
+  };
+  if (typeof o["thresholdBytes"] === "number") out.thresholdBytes = o["thresholdBytes"];
+  return out;
+}
+
+/** The buckets of a comma- or line-separated list. */
+export function bucketsOf(list: string): string[] {
+  return list
+    .split(/[\s,]+/)
+    .map((b) => b.trim())
+    .filter((b) => b !== "");
+}
 
 export function tlsOf(fields: Record<string, unknown>): TlsFields {
   const raw = fields["tls"];
@@ -73,6 +116,12 @@ export const profile: ProfileSchema = {
     const tls = tlsOf(record.fields);
     const apiKey = text(record.secrets["apiKey"]);
     const clientKey = text(record.secrets["clientKeyPem"]);
+    const ext = externalStorageOf(record.fields);
+    if (ext.enabled) {
+      if (ext.bucket.trim() === "") errors["externalStorage.bucket"] = "Name the bucket.";
+      if (ext.endpoint.trim() !== "" && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(ext.endpoint.trim())) errors["externalStorage.endpoint"] = "An http:// or https:// URL, for example https://minio.example.com:9000.";
+      if (ext.thresholdBytes !== undefined && (!Number.isInteger(ext.thresholdBytes) || ext.thresholdBytes < 1)) errors["externalStorage.thresholdBytes"] = "A whole number of bytes, 1 or more.";
+    }
     if (apiKey !== "" && !tls.enabled) errors["tls"] = "An API key is only sent over TLS; turn TLS on.";
     else if ((tls.clientCertPem !== undefined) !== (clientKey !== "") && tls.enabled) {
       errors["tls"] = tls.clientCertPem === undefined ? "A client key needs its certificate." : "A client certificate needs its private key.";
@@ -90,6 +139,22 @@ export const profile: ProfileSchema = {
     }
     const apiKey = text(record.secrets["apiKey"]);
     const clientKeyPem = text(record.secrets["clientKeyPem"]);
+    const ext = externalStorageOf(record.fields);
+    const secret = (key: string) => text(record.secrets[key]).trim() || null;
+    const externalStorage: ExternalStorageOptions | null = ext.enabled
+      ? {
+          enabled: true,
+          bucket: ext.bucket.trim(),
+          readBuckets: bucketsOf(ext.readBuckets),
+          region: ext.region.trim() || null,
+          endpoint: ext.endpoint.trim() || null,
+          pathStyle: ext.pathStyle,
+          caPem: ext.caPem.trim() || null,
+          driverName: null,
+          thresholdBytes: ext.thresholdBytes ?? null,
+          maxPayloadBytes: null,
+        }
+      : null;
     return {
       name: record.name,
       address: text(record.fields["address"]).trim() || null,
@@ -97,6 +162,10 @@ export const profile: ProfileSchema = {
       tls: options,
       clientKeyPem: clientKeyPem !== "" ? clientKeyPem : null,
       apiKey: apiKey !== "" ? apiKey : null,
+      externalStorage,
+      s3AccessKeyId: externalStorage ? secret("s3AccessKeyId") : null,
+      s3SecretAccessKey: externalStorage ? secret("s3SecretAccessKey") : null,
+      s3SessionToken: externalStorage ? secret("s3SessionToken") : null,
     };
   },
 };

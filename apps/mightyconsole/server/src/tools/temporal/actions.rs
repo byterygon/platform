@@ -50,18 +50,27 @@ pub async fn signal(client: &TemporalClient, input: WorkflowSignalInput) -> Resu
     let namespace = client.namespace_or_default(input.namespace.as_deref());
     client
         .service()
-        .signal_workflow_execution(client.request(
-            &namespace,
-            ws::SignalWorkflowExecutionRequest {
-                namespace: namespace.clone(),
-                workflow_execution: Some(execution(&input.workflow_id, input.run_id.as_deref())?),
-                signal_name: name.to_owned(),
-                input: (!args.is_empty()).then_some(Payloads { payloads: args }),
-                identity: IDENTITY.into(),
-                request_id: random_id(),
-                ..Default::default()
-            },
-        ))
+        .signal_workflow_execution(
+            client.request(
+                &namespace,
+                ws::SignalWorkflowExecutionRequest {
+                    namespace: namespace.clone(),
+                    workflow_execution: Some(execution(
+                        &input.workflow_id,
+                        input.run_id.as_deref(),
+                    )?),
+                    signal_name: name.to_owned(),
+                    input: super::extstore::offload(
+                        client.external.as_deref(),
+                        (!args.is_empty()).then_some(Payloads { payloads: args }),
+                    )
+                    .await?,
+                    identity: IDENTITY.into(),
+                    request_id: random_id(),
+                    ..Default::default()
+                },
+            ),
+        )
         .await
         .map_err(|s| status_error(&client.address, &s))?;
     Ok(())

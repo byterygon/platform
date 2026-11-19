@@ -212,9 +212,42 @@ auto.create.topics.enable=false
 """
 
 
+def ensure_s3():
+    """The S3 store of Temporal External Storage (TSK-103, SeaweedFS): a read-write identity and a
+    read-only one, added to an existing credentials.json without touching the rest."""
+    path = os.path.join(OUT, "credentials.json")
+    with open(path) as f:
+        credentials = json.load(f)
+    temporal = credentials.setdefault("temporal", {})
+    if "externalStorage" in temporal and os.path.exists(os.path.join(OUT, "seaweedfs/s3.json")):
+        return
+    writer = {"accessKeyId": "lab" + secrets.token_hex(6), "secretAccessKey": secrets.token_urlsafe(24)}
+    reader = {"accessKeyId": "labro" + secrets.token_hex(6), "secretAccessKey": secrets.token_urlsafe(24)}
+    temporal["externalStorage"] = {
+        "endpoint": "http://127.0.0.1:8333",
+        "internalEndpoint": "http://seaweedfs:8333",
+        "region": "us-east-1",
+        "pathStyle": True,
+        "bucket": "temporal-payloads",
+        "driverName": "aws.s3driver",
+        **writer,
+        "readOnly": reader,
+    }
+    s3_config = {
+        "identities": [
+            {"name": "lab", "credentials": [{"accessKey": writer["accessKeyId"], "secretKey": writer["secretAccessKey"]}], "actions": ["Admin", "Read", "List", "Tagging", "Write"]},
+            {"name": "lab-read-only", "credentials": [{"accessKey": reader["accessKeyId"], "secretKey": reader["secretAccessKey"]}], "actions": ["Read", "List"]},
+        ]
+    }
+    write("seaweedfs/s3.json", json.dumps(s3_config, indent=2) + "\n")
+    write("credentials.json", json.dumps(credentials, indent=2) + "\n")
+    print("generate: added the S3 store of Temporal External Storage")
+
+
 def main(argv):
     force = "--force" in argv
     if all(os.path.exists(os.path.join(OUT, f)) for f in REQUIRED) and not force:
+        ensure_s3()
         print("generate: lab/.generated is already there (use --force for new credentials)")
         return 0
     ca_key, ca_cert = ca()
@@ -287,6 +320,7 @@ def main(argv):
         "langgraph": {"url": "http://127.0.0.1:2024", "graph": "agent"},
     }
     write("credentials.json", json.dumps(credentials, indent=2) + "\n")
+    ensure_s3()
     print(f"generate: wrote {OUT}")
     return 0
 
