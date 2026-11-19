@@ -208,8 +208,14 @@ describe("Workflows (spec §9.3)", () => {
       await waitFor(() => byText(/invalid search attribute/) !== null, "the message");
       await waitFor(() => (fake.markers as unknown[]).length > 0, "the marker");
       expect(fake.markers).toEqual([{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 6, message: "invalid search attribute: Bogus", severity: 8 }]);
+      // Only the query takes the danger edges, not the namespace and status Selects (TSK-94).
+      const form = document.querySelector('form[aria-label="Workflow query"]')!;
+      expect([...form.querySelectorAll("[data-invalid]")].map((e) => e.getAttribute("data-slot"))).toEqual(["code-editor"]);
       await type(queryInput(), 'Bogus = "y"');
       await waitFor(() => (fake.markers as unknown[]).length === 0, "no marker once the text changed");
+      expect(form.querySelectorAll("[data-invalid]")).toHaveLength(0);
+      // The message stays under the row until the next run.
+      expect(byText(/invalid search attribute/)).not.toBeNull();
     });
   });
 

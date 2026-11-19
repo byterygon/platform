@@ -378,6 +378,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
   const contextParsed = parseJson(contextText);
   const canRun = input !== null && inputParsed.ok && !inputMissing && configParsed.ok && contextParsed.ok;
   const contextSchema = schemaObject(schemas.data?.contextSchema);
+  const assistantName = assistants.data?.find((a) => a.assistantId === assistantId)?.name;
   const shownEvents = run.events.filter((e) => eventName(e.event).mode !== "tasks" || modes.includes("debug"));
   const items = Object.fromEntries((assistants.data ?? []).map((a) => [a.assistantId, `${a.name} (${a.graphId})`]));
 
@@ -427,13 +428,14 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
               label="Input"
               value={input ?? ""}
               onChange={setInput}
-              rows={8}
+              rows={7}
               schema={schemaObject(schemas.data?.inputSchema)}
+              schemaLabel={assistantName ? `${assistantName}'s input schema` : "the input schema"}
               onSubmit={() => start(null)}
               description={fromCheckpoint ? "Leave it empty to continue from the checkpoint as it is." : inputMissing ? "A new run needs an input." : "The graph's input as JSON, checked against its input schema (Ctrl+Space suggests). Ctrl+Enter runs."}
             />
-            <JsonField label="Config" value={configText} onChange={setConfigText} rows={4} schema={configSchema(schemas.data?.configSchema)} onSubmit={() => start(null)} description={`Optional, e.g. {"configurable": {"model": "small"}}; checked against the assistant’s config schema.`} />
-            {contextSchema ? <JsonField label="Context" value={contextText} onChange={setContextText} rows={4} schema={contextSchema} onSubmit={() => start(null)} description="Optional: the graph's runtime context, checked against its context schema." /> : null}
+            <JsonField label="Config" value={configText} onChange={setConfigText} rows={3} schema={configSchema(schemas.data?.configSchema)} schemaLabel={assistantName ? `${assistantName}'s config schema` : "the config schema"} onSubmit={() => start(null)} description={`Optional, e.g. {"configurable": {"model": "small"}}; checked against the assistant’s config schema.`} />
+            {contextSchema ? <JsonField label="Context" value={contextText} onChange={setContextText} rows={3} schema={contextSchema} schemaLabel={assistantName ? `${assistantName}'s context schema` : "the context schema"} onSubmit={() => start(null)} description="Optional: the graph's runtime context, checked against its context schema." /> : null}
             <fieldset className="flex flex-col gap-stack-xs">
               <legend className="text-body-1-strong text-fg">Stream modes</legend>
               <div className="flex flex-wrap gap-inline-md">

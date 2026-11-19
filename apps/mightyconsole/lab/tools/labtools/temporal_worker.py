@@ -3,7 +3,8 @@ a long-running one with a signal and a query, a completed one, a failed one, one
 that keeps retrying, a parent with a child, one with a Protobuf payload, a family for Relations
 (TSK-104: family-root starts family-order, which starts three children, one failing, and is
 signalled by family-support), and a schedule that runs every minute. Started once when the worker starts; ids are fixed, so a restart starts nothing
-twice. External Storage (TSK-103): payloads of 256 KiB or more go to the lab's S3 store through the
+twice. The samples carry the custom search attribute `OrderId` (TSK-94), their order id, except
+the ones the payload tests read event by event (completed-1, proto-1, big-payload-1). External Storage (TSK-103): payloads of 256 KiB or more go to the lab's S3 store through the
 SDK's S3 driver; `big-payload-1` has a 300 KiB input and result. A payload codec (TSK-92): a second
 worker on task queue `lab-encrypted` encrypts its payloads with the lab's AES-GCM codec;
 `encrypted-1` is stored encrypted."""
@@ -14,7 +15,7 @@ from datetime import timedelta
 
 from temporalio import activity, workflow
 from temporalio.client import Client, Schedule, ScheduleActionStartWorkflow, ScheduleIntervalSpec, ScheduleSpec
-from temporalio.common import RetryPolicy
+from temporalio.common import RetryPolicy, SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
 from temporalio.contrib.aws.s3driver import S3StorageDriver
 from temporalio.converter import DataConverter, ExternalStorage
 from temporalio.exceptions import ApplicationError, ChildWorkflowError, TemporalError
@@ -28,6 +29,8 @@ with workflow.unsafe.imports_passed_through():
     from .s3 import LabS3, lab_s3
 
 TASK_QUEUE = "lab"
+# The custom search attribute compose.yaml registers (`--search-attribute OrderId=Keyword`).
+ORDER_ID = SearchAttributeKey.for_keyword("OrderId")
 
 
 @activity.defn
@@ -187,8 +190,9 @@ async def start_samples(client: Client) -> None:
         (BigPayload.run, {"kind": "big", "text": big_text("input")}, "big-payload-1"),
     ]
     for run, arg, workflow_id in samples:
+        order_id = arg if isinstance(arg, str) else workflow_id
         try:
-            await client.start_workflow(run, arg, id=workflow_id, task_queue=TASK_QUEUE)
+            await client.start_workflow(run, arg, id=workflow_id, task_queue=TASK_QUEUE, search_attributes=TypedSearchAttributes([SearchAttributePair(ORDER_ID, order_id)]))
         except Exception as e:  # noqa: BLE001 - already started on an earlier start
             if "already" not in str(e).lower():
                 raise

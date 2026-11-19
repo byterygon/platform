@@ -3,7 +3,7 @@
 // namespace's search attributes (temporal.namespaces.searchAttributes), the operators that fit
 // an attribute's type, AND/OR, values seen in the loaded rows and recent and saved queries, and
 // the server's error turned into a marker on the part it names.
-import type { CodeCompletion, CodeCompletionItem, CodeMarker } from "@/components/ui/code-editor";
+import type { CodeCompletion, CodeCompletionItem, CodeCompletionKind, CodeMarker } from "@/components/ui/code-editor";
 import type { SearchAttribute, SearchAttributeType, WorkflowRow } from "@/gen/api";
 import { registerCodeLanguage, type Monaco } from "@/lib/monaco";
 import { STATUS_CHIPS } from "./query";
@@ -73,6 +73,87 @@ const TYPE_WORDS: Record<SearchAttributeType, string> = {
   Bool: "Bool",
   Unspecified: "Unknown type",
 };
+
+/** The icon of an attribute in the list, by its type (TSK-94): coloured by the syntax role of the kind. */
+const KIND_OF: Record<SearchAttributeType, CodeCompletionKind> = {
+  Keyword: "keyword-value",
+  KeywordList: "list",
+  Text: "text",
+  Int: "number",
+  Double: "number",
+  Datetime: "date",
+  Bool: "boolean",
+  Unspecified: "field",
+};
+
+/**
+ * What Temporal's built-in attributes hold (its `searchattribute/defs.go`), for the details pane.
+ * A built-in attribute that is not here gets its type and "built-in" only.
+ */
+export const BUILT_IN_DOCS: Readonly<Record<string, string>> = {
+  WorkflowId: "The workflow's ID, as the starter gave it.",
+  WorkflowType: "The workflow's type: the name of its workflow function.",
+  RunId: "The ID of one run of the workflow.",
+  ExecutionStatus: "The run's state.",
+  StartTime: "When the run started.",
+  CloseTime: "When the run closed (completed, failed, timed out, was canceled or terminated). Open runs have none.",
+  ExecutionTime: "When the run's first workflow task was due: the start time, or later for a cron or delayed start.",
+  ExecutionDuration: "How long a closed run took, in nanoseconds, from its execution time to its close time.",
+  TaskQueue: "The task queue the run's workflow tasks go to.",
+  HistoryLength: "How many events the run's history has.",
+  HistorySizeBytes: "The size of the run's history, in bytes.",
+  StateTransitionCount: "How many times the run's state changed.",
+  ParentWorkflowId: "The parent's workflow ID, for a child workflow.",
+  ParentRunId: "The parent's run ID, for a child workflow.",
+  RootWorkflowId: "The workflow ID at the root of the run's parent chain.",
+  RootRunId: "The run ID at the root of the run's parent chain.",
+  BuildIds: "The worker build IDs that processed the run, as versioning records them.",
+  BatcherUser: "Who started the batch operation, on the batcher's own workflows.",
+  TemporalChangeVersion: "The change IDs and versions the workflow's GetVersion calls recorded.",
+  TemporalScheduledById: "The ID of the schedule that started the run.",
+  TemporalScheduledStartTime: "When the schedule meant the run to start.",
+  TemporalSchedulePaused: "Whether the schedule is paused, on a schedule's own workflow.",
+};
+
+/** A value written as the query takes it: a quoted string, a number, a boolean. */
+const literal = (type: SearchAttributeType, value: string) => (type === "Int" || type === "Double" || type === "Bool" ? value : quote(value));
+
+/** An example clause for an attribute, from a value seen in the rows when there is one. */
+function exampleOf(name: string, type: SearchAttributeType, seen: readonly string[], now: Date): string {
+  const field = /^[A-Za-z_][\w]*$/.test(name) ? name : `\`${name}\``;
+  switch (type) {
+    case "Int":
+      return `${field} > ${seen[0] ?? "100"}`;
+    case "Double":
+      return `${field} > ${seen[0] ?? "1.5"}`;
+    case "Bool":
+      return `${field} = true`;
+    case "Datetime":
+      return `${field} > ${datetimeExamples(now)[0]!.label}`;
+    case "KeywordList":
+      return `${field} IN (${(seen.length > 0 ? seen.slice(0, 2) : ["a", "b"]).map(quote).join(", ")})`;
+    case "Text":
+      return `${field} = ${quote(seen[0] ?? "words in the text")}`;
+    default:
+      return `${field} = ${literal(type, seen[0] ?? (name === "ExecutionStatus" ? "Running" : "…"))}`;
+  }
+}
+
+/**
+ * The details pane of an attribute, in Markdown (the mockup's): its name, type and origin, what
+ * it holds, its values where they are known, and an example.
+ */
+export function attributeDocumentation(a: SearchAttribute, seen: readonly string[], now: Date): string {
+  // A code span; text with a backquote (a `quoted name`) takes a double-backquote span.
+  const code = (text: string) => (text.includes("`") ? `\`\` ${text} \`\`` : `\`${text}\``);
+  const lines = [`**${a.name.replace(/[*_`]/g, "\\$&")}** · ${TYPE_WORDS[a.valueType]} · ${a.custom ? "custom" : "built-in"}`];
+  const about = a.custom ? "Registered for this namespace by its users." : (BUILT_IN_DOCS[a.name] ?? "Built into Temporal.");
+  const values = a.name === "ExecutionStatus" && !a.custom ? [...STATUS_CHIPS] : seen.slice(0, 8);
+  lines.push(values.length > 0 ? `${about} ${a.name === "ExecutionStatus" ? "Values" : "Seen in the list"}: ${values.map(code).join(", ")}.` : about);
+  lines.push(`Example: ${code(exampleOf(a.name, a.valueType, seen, now))}`);
+  lines.push("From the namespace's search attributes. Ctrl+Space toggles details.");
+  return lines.join("\n\n");
+}
 
 /** What the completion knows: the namespace's attributes, values seen, recent and saved queries. */
 export interface VisibilitySources {
@@ -229,21 +310,42 @@ export function visibilityCompletion(sources: () => VisibilitySources): CodeComp
       const place = placeOf(prior);
       const items: CodeCompletionItem[] = [];
       if (place.kind === "attribute") {
+        // Built-in attributes before custom ones (the mockup's order, DOC-21 Open question 45),
+        // each with its type's icon and a details pane.
+        const now = (s.now ?? (() => new Date()))();
         for (const a of s.attributes) {
           items.push({
             label: a.name,
-            kind: "field",
+            kind: KIND_OF[a.valueType],
             detail: `${TYPE_WORDS[a.valueType]}${a.custom ? " · custom" : ""}`,
+            documentation: { markdown: attributeDocumentation(a, [...(s.values.get(a.name) ?? [])], now) },
             insertText: /^[A-Za-z_][\w]*$/.test(a.name) ? a.name : `\`${a.name}\``,
-            sortText: `${a.custom ? "1" : "2"}${a.name}`,
+            sortText: `${a.custom ? "2" : "1"}${a.name}`,
           });
         }
-        items.push({ label: "NOT", kind: "keyword", sortText: "3" }, { label: "(", kind: "operator", sortText: "3" });
-        if (place.start) {
-          // At the start of an empty or one-word query: whole queries, replacing the text.
-          s.saved.forEach((q, i) => items.push({ label: q.query, kind: "history", detail: `saved: ${q.name}`, sortText: `0a${i}`, filterText: `${q.name} ${q.query}`, replace: { start: 0, end: text.length } }));
-          s.recent.forEach((q, i) => items.push({ label: q, kind: "history", detail: "recent", sortText: `0b${String(i).padStart(2, "0")}`, replace: { start: 0, end: text.length } }));
-        }
+        items.push({ label: "NOT", kind: "keyword", sortText: "4" }, { label: "(", kind: "operator", sortText: "4" });
+        // Recent and saved queries: first in an empty query, after the attributes while typing,
+        // filtered by what is typed. At the start they replace the text; later in the query they
+        // go in at the cursor in parentheses, as one more clause.
+        const empty = text.trim() === "";
+        const whole = place.start;
+        const insert = (q: string) => (whole ? q : `(${q})`);
+        const range = whole ? { start: 0, end: text.length } : undefined;
+        s.recent.forEach((q, i) =>
+          items.push({ label: q, kind: "history", detail: "recent", insertText: insert(q), sortText: `${empty ? "0" : "3"}a${String(i).padStart(2, "0")}`, ...(range ? { replace: range } : {}) }),
+        );
+        s.saved.forEach((q, i) =>
+          items.push({
+            label: q.name,
+            kind: "saved",
+            detail: "saved",
+            documentation: { markdown: `**${q.name.replace(/[*_`]/g, "\\$&")}** · saved query\n\n\`${q.query.replace(/`/g, "'")}\`` },
+            insertText: insert(q.query),
+            filterText: `${q.name} ${q.query}`,
+            sortText: `${empty ? "0" : "3"}b${String(i).padStart(2, "0")}`,
+            ...(range ? { replace: range } : {}),
+          }),
+        );
       } else if (place.kind === "operator") {
         OPERATORS[typeOf(place.attribute)].forEach((op, i) => items.push({ label: op, kind: "operator", sortText: String(i).padStart(2, "0") }));
       } else if (place.kind === "value") {

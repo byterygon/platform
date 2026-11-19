@@ -3,7 +3,7 @@
 // the status badge, the graph in GraphView's shape.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { CodeEditor } from "@/components/ui/code-editor";
+import { CodeEditor, type CodeDiagnostic } from "@/components/ui/code-editor";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import type { GraphViewEdge, GraphViewGroup, GraphViewNode } from "@/components/ui/graph-view";
 import type * as api from "@/gen/api";
@@ -102,29 +102,60 @@ export function seenKeysSchema(objects: readonly unknown[]): object {
   };
 }
 
-/** A multi-line JSON editor (Monaco) in a Field, with the parse error under it; Mod+Enter submits. */
+/**
+ * The schema's problems as one line under the editor (TSK-94, the mockup's): `1 problem: missing
+ * property "customer_id" (required by support-agent's input schema)`, or a count and a list.
+ * `schemaLabel` names the schema ("support-agent's input schema").
+ */
+export function schemaProblems(diagnostics: readonly CodeDiagnostic[], schemaLabel?: string): { summary: string; items: string[] } | null {
+  const found = diagnostics.filter((d) => d.severity !== "info");
+  if (found.length === 0) return null;
+  const words = (d: CodeDiagnostic) => {
+    const text = d.message.trim().replace(/\.$/, "");
+    const lower = text.charAt(0).toLowerCase() + text.slice(1);
+    return /^missing property/i.test(text) && schemaLabel ? `${lower} (required by ${schemaLabel})` : lower;
+  };
+  if (found.length === 1) return { summary: `1 problem: ${words(found[0]!)}`, items: [] };
+  return { summary: `${found.length} problems${schemaLabel ? ` with ${schemaLabel}` : ""}:`, items: found.map((d) => `line ${d.line}: ${words(d)}`) };
+}
+
+/**
+ * A multi-line JSON editor (Monaco) in a Field, sized by its text (`rows` lines, growing to
+ * `maxRows`), with the parse error, or else the schema's problems, under it; Mod+Enter submits.
+ */
 export function JsonField({
   label,
   value,
   onChange,
   description,
   rows = 6,
+  maxRows,
   disabled = false,
   schema,
+  schemaLabel,
   onSubmit,
 }: {
   label: string;
   value: string;
   onChange: (text: string) => void;
   description?: string | undefined;
+  /** The lines shown at least (Input about 7, Config and Context about 3), as CodeEditor's rows. */
   rows?: number;
+  /** The most lines shown before the text scrolls (twice `rows` by default). */
+  maxRows?: number | undefined;
   disabled?: boolean;
   /** The JSON Schema the text follows: completion, hovers and validation. */
   schema?: object | undefined;
+  /** What the schema is, for its problems: "support-agent's input schema". */
+  schemaLabel?: string | undefined;
   onSubmit?: (() => void) | undefined;
 }) {
   const parsed = parseJson(value);
   const labelId = useId();
+  const [diagnostics, setDiagnostics] = useState<CodeDiagnostic[]>([]);
+  // The language service reports syntax errors too; while the text does not parse, the parser's
+  // message stands alone, so the schema's problems are listed only for text that parses.
+  const problems = parsed.ok && schema ? schemaProblems(diagnostics, schemaLabel) : null;
   return (
     <Field invalid={!parsed.ok}>
       <FieldLabel id={labelId}>{label}</FieldLabel>
@@ -135,13 +166,27 @@ export function JsonField({
         onValueChange={onChange}
         readOnly={disabled}
         jsonSchema={schema}
+        onDiagnosticsChange={setDiagnostics}
         onSubmit={onSubmit ? () => onSubmit() : undefined}
         invalid={!parsed.ok}
         lineNumbers={rows > 3}
-        className={rows > 8 ? "h-panel-sm" : "h-panel-xs"}
+        rows={rows}
+        maxRows={maxRows}
       />
       {description ? <FieldDescription>{description}</FieldDescription> : null}
       {!parsed.ok ? <FieldError match>Not valid JSON: {parsed.message}</FieldError> : null}
+      {problems ? (
+        <FieldError match data-schema-problems="">
+          {problems.summary}
+          {problems.items.length > 0 ? (
+            <ul className="list-none">
+              {problems.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          ) : null}
+        </FieldError>
+      ) : null}
     </Field>
   );
 }

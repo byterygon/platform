@@ -349,6 +349,7 @@ describe("CodeEditor", () => {
       await settle();
       const items = await suggest(fake.editors[0]!);
       expect(items[0]!.documentation).toEqual({ value: 'Example: `ExecutionStatus = "Running"`', isTrusted: false, supportHtml: false });
+      expect(items[0]!.detail).toBeUndefined();
       expect(items[1]!.documentation).toBe("text");
     });
 

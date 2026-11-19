@@ -585,7 +585,8 @@ export function CodeEditor({
             kind: kinds[COMPLETION_KIND[item.kind ?? "value"]] ?? 0,
             insertText: item.insertText ?? item.label,
             range: item.replace ? rangeOf(item.replace) : wordRange,
-            ...(item.detail !== undefined ? { detail: item.detail } : {}),
+            // The details pane's header repeats `detail`; documentation that says it already goes without it (TSK-94).
+            ...(item.detail !== undefined && item.documentation === undefined ? { detail: item.detail } : {}),
             ...(item.documentation !== undefined ? { documentation: typeof item.documentation === "string" ? item.documentation : { value: item.documentation.markdown, isTrusted: false, supportHtml: false } } : {}),
             ...(item.snippet ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet } : {}),
             ...(item.sortText !== undefined ? { sortText: item.sortText } : {}),

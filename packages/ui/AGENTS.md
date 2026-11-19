@@ -457,6 +457,10 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   (`data-focused`), from the keyboard the double ring (`data-focus-visible`). A small one-line
   editor reads `text.code-sm`. Completion kinds include value types (`keyword-value`, `list`,
   `text`, `number`, `boolean`, `date`) and `saved`; `documentation` can be `{ markdown }`.
+- The details pane (TSK-94): Monaco sets the editor's font size inline on the pane, so the
+  caption text goes on its body; Monaco sizes the pane before its Markdown has its final width, so
+  the pane takes its text's height (at most the room Monaco gave it). An item with documentation
+  goes to Monaco without `detail`, which the pane's header would repeat; its note stays on the row.
 - JSON completion names each property's type and whether it is required ("string · required",
   `"email" | "chat"`, "integer 1–5"): `loadMonacoLanguage("json")` turns the language service's
   own completion provider off and registers Monaco's `CompletionAdapter` (lspLanguageFeatures)

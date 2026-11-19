@@ -45,7 +45,12 @@ export function StoreTab({ tab, profile, connId, client, useTabActions, note }: 
     void namespaces.reload();
     void items.reload();
   };
-  const search = () => filter.ok && setApplied({ query: query.trim() || null, filter: (filter.value ?? null) as api.JsonValue | null });
+  // As in Threads (TSK-94): the parse error shows once Search is asked for, not while typing.
+  const [tried, setTried] = useState(false);
+  const search = () => {
+    setTried(!filter.ok);
+    if (filter.ok) setApplied({ query: query.trim() || null, filter: (filter.value ?? null) as api.JsonValue | null });
+  };
   useTabActions({ refresh: reload, primary: search });
 
   const put = async () => {
@@ -133,15 +138,19 @@ export function StoreTab({ tab, profile, connId, client, useTabActions, note }: 
                 invalid={!filter.ok}
                 placeholder='Filter, e.g. {"approved": true}'
                 value={filterText}
-                onValueChange={setFilterText}
+                onValueChange={(text) => {
+                  setFilterText(text);
+                  if (parseJson(text).ok) setTried(false);
+                }}
                 onSubmit={search}
                 jsonSchema={filterSchema}
                 className="min-w-panel-xs flex-1"
               />
-              <Button type="submit" disabled={!filter.ok}>
+              <Button type="submit">
                 Search
               </Button>
             </form>
+            {tried && !filter.ok ? <p className="-mt-stack-sm px-inset-lg pb-stack-sm text-caption-1 text-danger-fg">Filter is not valid JSON: {filter.message}</p> : null}
             {items.error && !unavailable ? <ErrorState error={items.error} onRetry={() => void items.reload()} /> : null}
             {items.loading && !items.data ? <LoadingRows label="Loading items" /> : null}
             {items.data?.length === 0 ? (
