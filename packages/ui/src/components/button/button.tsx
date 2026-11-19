@@ -25,8 +25,8 @@ export const buttonVariants = {
     danger: "border-transparent bg-danger text-danger-solid-fg hover:bg-danger-hover active:bg-danger-hover data-disabled:border-transparent data-disabled:bg-disabled",
   },
   size: {
-    /** Fluent small: 24 px comfortable, caption-1, a 16 px icon. */
-    small: "h-control-sm px-inset-xs text-caption-1 [&_svg]:size-icon-md",
+    /** Small: 24 px comfortable, body-1 (the TSK-91 mockup's small button keeps the body text), a 16 px icon. */
+    small: "h-control-sm px-inset-xs text-body-1 [&_svg]:size-icon-md",
     /** Fluent medium: 32 px comfortable, body-1-strong, a 20 px icon. */
     medium: "h-control-md px-control-x text-body-1-strong [&_svg]:size-icon-lg",
     /** Fluent large: 40 px comfortable, subtitle-2, a 24 px icon. */

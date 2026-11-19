@@ -102,7 +102,7 @@ export function StreamSheet({ open, onOpenChange, stream, profileName, connId, c
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange} size="lg">
-      <SheetContent>
+      <SheetContent className="max-w-panel-sheet">
         <SheetHeader>
           <SheetTitle>{editing ? `Edit stream ${stream.name}` : "New stream"}</SheetTitle>
           <SheetDescription>{editing ? `${profileName} · fields the server cannot change are read only` : profileName}</SheetDescription>
@@ -114,13 +114,13 @@ export function StreamSheet({ open, onOpenChange, stream, profileName, connId, c
             <form
               id="stream-form"
               aria-label={editing ? "Edit stream" : "New stream"}
-              className="flex flex-col gap-stack-md"
+              className="flex flex-col gap-stack-lg"
               onSubmit={(e) => {
                 e.preventDefault();
                 void save();
               }}
             >
-              <div className="grid grid-cols-2 gap-x-inline-md gap-y-stack-md">
+              <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                 <Field invalid={errorOf("name") !== null}>
                   <FieldLabel>
                     Name
@@ -172,7 +172,7 @@ export function StreamSheet({ open, onOpenChange, stream, profileName, connId, c
                 </Field>
               </div>
               <Fold title="Limits" value={`${limitsLine} · empty means no limit`} open>
-                <div className="grid grid-cols-3 gap-inline-md">
+                <div className="grid grid-cols-3 gap-x-inline-xl gap-y-stack-md">
                   {text("maxBytes", "Max bytes", "No limit")}
                   {text("maxMessages", "Max messages", "No limit")}
                   {text("maxAge", "Max age", "No limit", "Such as 24h or 7d.")}
@@ -180,7 +180,7 @@ export function StreamSheet({ open, onOpenChange, stream, profileName, connId, c
                   {text("maxMessagesPerSubject", "Per subject", "No limit", "Messages kept per subject.")}
                   {text("maxConsumers", "Max consumers", "No limit")}
                 </div>
-                <div className="grid grid-cols-2 gap-inline-md">
+                <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                   <Field>
                     <FieldLabel>Discard</FieldLabel>
                     <Select<StreamDraft["discard"]>
@@ -200,13 +200,13 @@ export function StreamSheet({ open, onOpenChange, stream, profileName, connId, c
                 </div>
               </Fold>
               <Fold title="Replication" value={replicationLine}>
-                <div className="grid grid-cols-2 gap-inline-md">
+                <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                   {text("replicas", "Replicas", "1", "1 to 5; a cluster needs as many servers.")}
                   {text("duplicateWindow", "Duplicate window", "2m", "Messages with the same Nats-Msg-Id inside it are stored once.")}
                 </div>
               </Fold>
               <Fold title="Options" value={optionsLine}>
-                <div className="grid grid-cols-2 gap-inline-md">
+                <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                   {toggle("allowDirect", "Allow direct get", "Any replica answers reads of one message (Load full payload uses it).")}
                   {toggle("allowRollup", "Allow rollup", "A message with Nats-Rollup replaces the subject's earlier ones.")}
                   {toggle("denyDelete", "Deny delete", "Messages cannot be deleted one by one.")}

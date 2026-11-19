@@ -162,17 +162,18 @@ export function ToolNav(props: ToolNavProps) {
     if (list.length === 0) return null;
     const closed = category !== undefined && closedCategories.includes(category) && !collapsed;
     return (
-      <div key={key} role="group" aria-label={label} className="flex flex-col gap-stack-xs">
+      <div key={key} role="group" aria-label={label} className="group/section flex flex-col">
         {collapsed ? (
           <span aria-hidden="true" className="mx-auto my-stack-xs h-px w-icon-lg bg-border-subtle first:hidden" />
         ) : category !== undefined ? (
-          <button type="button" aria-expanded={!closed} onClick={() => onToggleCategory(category)} className={cn("flex h-control-sm items-center gap-inline-sm rounded-md px-inline-md pt-stack-sm text-caption-1-strong text-fg-muted hover:text-fg", focusRing)}>
-            <Icon icon={closed ? ChevronRight : ChevronDown} size="sm" />
+          <button type="button" aria-expanded={!closed} onClick={() => onToggleCategory(category)} className={cn("group/head flex items-center gap-inline-sm rounded-md px-inline-md pt-stack-md pb-stack-xs text-caption-1-strong text-fg-muted group-first/section:pt-stack-xs hover:text-fg", focusRing)}>
             <span className="flex-1 text-start">{label}</span>
             {closed ? <span className="text-caption-1 font-normal">{list.length}</span> : null}
+            {/* The fold mark at the end, shown on hover or focus and while folded: the label stays where the mockup puts it. */}
+            <Icon icon={closed ? ChevronRight : ChevronDown} size="sm" className={closed ? "" : "opacity-0 group-hover/head:opacity-100 group-focus-visible/head:opacity-100"} />
           </button>
         ) : (
-          <span className="flex h-control-sm items-center px-inline-md pt-stack-sm text-caption-1-strong text-fg-muted">{label}</span>
+          <span className="flex items-center px-inline-md pt-stack-md pb-stack-xs text-caption-1-strong text-fg-muted group-first/section:pt-stack-xs">{label}</span>
         )}
         {closed ? null : list.map((t) => item(t, key === "pinned"))}
       </div>
@@ -185,7 +186,7 @@ export function ToolNav(props: ToolNavProps) {
 
   const footerButton = (label: string, icon: typeof Info, onClick: () => void, extra?: Record<string, unknown>) => {
     const b = (
-      <button type="button" aria-label={label} onClick={onClick} className={cn(itemClass, "h-control-md text-fg-muted", collapsed && "w-control-lg justify-center px-0")} {...extra}>
+      <button type="button" aria-label={label} onClick={onClick} className={cn(itemClass, "text-fg-muted", collapsed && "w-control-lg justify-center px-0")} {...extra}>
         <Icon icon={icon} />
         {collapsed ? null : <span className="min-w-0 flex-1 truncate">{label}</span>}
       </button>
@@ -207,13 +208,13 @@ export function ToolNav(props: ToolNavProps) {
       data-collapsed={collapsed ? "" : undefined}
       data-overlay={overlay ? "" : undefined}
       className={cn(
-        "flex shrink-0 flex-col gap-stack-xs pb-inset-xs",
+        "flex shrink-0 flex-col pb-inset-xs",
         collapsed ? "w-control-xl items-center" : "w-panel-xs px-inset-xs",
         overlay && "absolute inset-y-0 inset-s-0 z-[var(--by-z-overlay)] rounded-e-lg border-e border-border-subtle bg-surface pt-inset-xs shadow-flyout",
       )}
     >
-      {!collapsed && tools.length >= FIND_FROM ? <SearchInput id={findId} aria-label="Find a tool" placeholder="Find a tool" value={query} onValueChange={setQuery} /> : null}
-      <div className="flex min-h-0 flex-1 flex-col gap-stack-xs overflow-y-auto" onKeyDown={onKeyDown}>
+      {!collapsed && tools.length >= FIND_FROM ? <SearchInput id={findId} aria-label="Find a tool" placeholder="Find a tool" value={query} onValueChange={setQuery} className="mb-stack-xs" /> : null}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" onKeyDown={onKeyDown}>
         {finding ? (
           matches.length > 0 ? matches.map((t) => item(t, pinned.includes(t.id))) : <p className="px-inline-md text-caption-1 text-fg-muted">No tool matches.</p>
         ) : (
@@ -223,7 +224,7 @@ export function ToolNav(props: ToolNavProps) {
           </>
         )}
       </div>
-      <span aria-hidden="true" className={cn("h-px bg-border-subtle", collapsed ? "mx-auto w-icon-lg" : "mx-inline-md")} />
+      <span aria-hidden="true" className={cn("my-stack-sm h-px shrink-0 bg-border-subtle", collapsed ? "mx-auto w-icon-lg" : "mx-inline-md")} />
       {footerButton(collapsed ? "Expand the tool list" : "Collapse the tool list", collapsed ? ChevronRight : ChevronLeft, onToggleCollapsed, { "aria-expanded": !collapsed })}
       {footerButton("About Mightyconsole", Info, onAbout)}
     </nav>

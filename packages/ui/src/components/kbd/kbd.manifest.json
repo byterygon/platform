@@ -54,25 +54,17 @@
   ],
   "states": [],
   "tokens": [
-    "color.bg.layer-alt",
-    "color.border.control-bottom",
+    "color.bg.inset",
     "color.border.subtle",
     "color.fg.muted",
-    "font.mono",
     "font.sans",
-    "radius.md",
-    "size.control.xs",
+    "radius.sm",
     "size.icon.xs",
-    "space.inline.sm",
     "space.inline.xs",
     "text.caption-1.leading",
     "text.caption-1.size",
     "text.caption-1.tracking",
-    "text.caption-1.weight",
-    "text.code.leading",
-    "text.code.size",
-    "text.code.tracking",
-    "text.code.weight"
+    "text.caption-1.weight"
   ],
   "examples": {
     "minimal": "KbdMinimal",

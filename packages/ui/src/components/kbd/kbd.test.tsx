@@ -23,7 +23,7 @@ describe("Kbd", () => {
     const { container } = render(<Kbd render={<span />}>K</Kbd>);
     const span = container.querySelector("span")!;
     expect(span.dataset.slot).toBe("kbd");
-    expect(span.className).toContain("text-code");
+    expect(span.className).toContain("text-caption-1");
   });
 
   test("KbdGroup nests the keys in an outer <kbd> and keeps the separators as text", async () => {
@@ -44,6 +44,6 @@ describe("Kbd", () => {
     const classes = container.querySelector("kbd")!.className.split(" ");
     expect(classes).toContain("text-fg");
     expect(classes).not.toContain("text-fg-muted");
-    expect(classes).toContain("text-code");
+    expect(classes).toContain("text-caption-1");
   });
 });

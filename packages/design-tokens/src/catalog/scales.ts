@@ -207,6 +207,9 @@ const PANELS: readonly (readonly [string, number, string])[] = [
   ["md", 448, "a dialog or an alert dialog, a side sheet"],
   ["lg", 576, "a wide dialog, the command palette"],
   ["xl", 768, "a dialog that holds a table or a form in two columns"],
+  // Named by use: the widths the Mightyconsole mockup (TSK-91) gives these two.
+  ["pane", 420, "a detail pane beside a table: the chosen row's fields, payload and actions"],
+  ["sheet", 600, "a side sheet that holds a form in two columns"],
 ];
 const panelSize: RoleDef[] = PANELS.map(([name, value, fit]): RoleDef => ({
   path: `size.panel.${name}`,

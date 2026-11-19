@@ -666,7 +666,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
           <Resizable orientation="horizontal" sizes={state.layout.sidebarOpen ? state.layout.shellSizes : [0, 100]} onSizesChange={(sizes) => state.layout.sidebarOpen && dispatch({ type: "layout", layout: { shellSizes: sizes } })} className="min-h-0 flex-1 ps-gap-sm pe-gap-sm" aria-label="Sidebar and workspace">
             <ResizablePanel minSize={state.layout.sidebarOpen ? 12 : 0} maxSize={state.layout.sidebarOpen ? 50 : 0}>
               <Sidebar aria-label={`${tool.label} connections`} collapsible="offcanvas" className="h-full w-full rounded-lg border shadow-layer" data-pane="sidebar">
-                <SidebarHeader className="flex-row items-start justify-between pt-inset-sm pb-stack-xs ps-inset-md pe-inset-xs">
+                <SidebarHeader className="flex-row items-start justify-between gap-inline-md pt-inset-md pb-stack-sm ps-inset-md pe-inset-sm">
                   <span className="flex min-w-0 flex-col gap-stack-xs">
                     <span className="text-subtitle-2">{tool.label}</span>
                     <span className="text-caption-1 text-fg-muted" data-testid="connections-summary">
@@ -676,7 +676,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
                       })()}
                     </span>
                   </span>
-                  <span className="flex items-center">
+                  <span className="flex items-center gap-inline-md">
                     <Tooltip>
                       <TooltipTrigger render={<IconButton aria-label="Import profiles" onClick={() => perform("importProfiles")} />}>
                         <Icon icon={ArrowImport} />

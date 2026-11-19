@@ -20,6 +20,12 @@
       "description": "The text."
     },
     {
+      "name": "appearance",
+      "type": "\"editor\" | \"inset\"",
+      "default": "editor",
+      "description": "editor: a framed card in the editor's colours with a title bar and line numbers; inset: a quiet block on the inset fill (a payload in a detail pane), without title bar or line numbers unless asked."
+    },
+    {
       "name": "language",
       "type": "\"text\" | \"sql\" | \"json\"",
       "default": "text",
@@ -28,7 +34,7 @@
     {
       "name": "lineNumbers",
       "type": "boolean",
-      "description": "Line numbers in a gutter; on for more than one line."
+      "description": "Line numbers in a gutter; on for more than one line in the editor appearance."
     },
     {
       "name": "startLine",
@@ -55,7 +61,7 @@
     {
       "name": "copyable",
       "type": "boolean",
-      "default": true,
+      "default": "true in the editor appearance",
       "description": "A copy button in the title bar."
     },
     {
@@ -85,7 +91,12 @@
       "description": "Reaches the frame."
     }
   ],
-  "variants": {},
+  "variants": {
+    "appearance": [
+      "editor",
+      "inset"
+    ]
+  },
   "slots": [
     {
       "name": "root",
@@ -147,6 +158,7 @@
   ],
   "tokens": [
     "color.accent.subtle-fg",
+    "color.bg.inset",
     "color.border.subtle",
     "color.fg.default",
     "color.fg.disabled",

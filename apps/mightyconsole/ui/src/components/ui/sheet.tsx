@@ -140,9 +140,9 @@ export function SheetBody({ className, ...props }: SheetSectionProps) {
   return <div data-slot="sheet-body" className={cn(dialogClasses.body, className)} {...props} />;
 }
 
-/** The actions, pinned under the body, the primary action last. */
+/** The actions, pinned under the body behind a divider that spans the sheet, the primary action last. */
 export function SheetFooter({ className, ...props }: SheetSectionProps) {
-  return <div data-slot="sheet-footer" className={cn(dialogClasses.footer, "mt-auto", className)} {...props} />;
+  return <div data-slot="sheet-footer" className={cn(dialogClasses.footer, "mt-auto -mx-inset-lg -mb-inset-lg gap-inline-md border-t border-border-subtle px-inset-lg py-inset-md", className)} {...props} />;
 }
 
 export interface SheetTitleProps extends Omit<DialogPrimitive.Title.Props, "className"> {

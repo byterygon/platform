@@ -56,6 +56,16 @@ export const MONACO_COLORS: Readonly<Record<string, string>> = {
   "editorHoverWidget.background": "--by-color-bg-overlay",
   "editorHoverWidget.foreground": "--by-color-fg-default",
   "editorHoverWidget.border": "--by-color-border-default",
+  // The suggest widget as the Mightyconsole mockup's flyout (TSK-102): the chosen row in the
+  // editor's selection colour, the matched letters in the link colour.
+  "editorSuggestWidget.background": "--by-color-bg-overlay",
+  "editorSuggestWidget.border": "--by-color-border-default",
+  "editorSuggestWidget.foreground": "--by-editor-fg",
+  "editorSuggestWidget.selectedBackground": "--by-editor-selection",
+  "editorSuggestWidget.selectedForeground": "--by-editor-fg",
+  "editorSuggestWidget.selectedIconForeground": "--by-editor-fg",
+  "editorSuggestWidget.highlightForeground": "--by-color-fg-link",
+  "editorSuggestWidget.focusHighlightForeground": "--by-color-fg-link",
   "menu.background": "--by-color-bg-overlay",
   "menu.foreground": "--by-color-fg-default",
   "menu.selectionBackground": "--by-color-interactive-hover",

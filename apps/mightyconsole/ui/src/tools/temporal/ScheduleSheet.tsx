@@ -232,7 +232,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange} size="lg">
-      <SheetContent onKeyDown={onKeyDown}>
+      <SheetContent onKeyDown={onKeyDown} className="max-w-panel-sheet">
         <SheetHeader>
           <SheetTitle>{editing ? `Edit ${scheduleId}` : "Create schedule"}</SheetTitle>
           <SheetDescription>
@@ -243,13 +243,13 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
           <form
             id="schedule-form"
             aria-label={editing ? "Edit schedule" : "Create schedule"}
-            className="flex flex-col gap-stack-md"
+            className="flex flex-col gap-stack-lg"
             onSubmit={(e) => {
               e.preventDefault();
               submit();
             }}
           >
-            <div className="grid grid-cols-2 gap-x-inline-md gap-y-stack-md">
+            <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
               {editing ? null : text("scheduleId", "Schedule ID", { placeholder: "nightly-report", required: true, description: "Unique in the namespace; cannot change later." })}
               {text("workflowType", "Workflow type", { required: true, suggest: suggestions?.types ?? [], description: "Suggested from types seen in this namespace." })}
               <Field invalid={shown("taskQueue") !== undefined}>
@@ -268,24 +268,24 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
               {text("workflowId", "Workflow ID", { required: true, mono: true, description: "Temporal appends the scheduled time." })}
             </div>
 
-            <section aria-label="When" className="flex flex-col gap-stack-sm border-t border-border-subtle pt-stack-sm">
+            <section aria-label="When" className="flex flex-col gap-stack-md border-t border-border-subtle pt-stack-sm">
               <h3 className="flex items-center gap-inline-sm text-body-1-strong text-fg">
-                <Icon icon={ChevronDown} className="text-fg-muted" /> When
+                <Icon icon={ChevronDown} className="size-icon-md text-fg-muted" /> When
               </h3>
-              <ToggleGroup aria-label="Spec" value={[d.when]} onValueChange={(v) => v[0] && set({ when: v[0] as WhenKind })} className="self-start">
+              <ToggleGroup aria-label="Spec" size="small" value={[d.when]} onValueChange={(v) => v[0] && set({ when: v[0] as WhenKind })} className="self-start">
                 <ToggleGroupItem value="calendar">Calendar</ToggleGroupItem>
                 <ToggleGroupItem value="interval">Interval</ToggleGroupItem>
                 <ToggleGroupItem value="cron">Cron</ToggleGroupItem>
               </ToggleGroup>
               {d.when === "calendar" ? null : d.when === "interval" ? (
-                <div className="grid grid-cols-2 gap-inline-md">
+                <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                   {text("every", "Every", { placeholder: "1h", description: "Aligned on the Unix epoch." })}
                   {text("offset", "Offset", { placeholder: "0s", description: "Shifts the runs, e.g. 15m past each hour." })}
                 </div>
               ) : (
                 text("cron", "Cron string", { placeholder: "0 9 * * 1-5", description: "5, 6 (with year) or 7 (seconds first) fields, @daily and friends, CRON_TZ=…", mono: true })
               )}
-              <div className="grid grid-cols-2 gap-inline-md">
+              <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                 <Field>
                   <FieldLabel>Runs</FieldLabel>
                   {d.when === "calendar" ? (
@@ -308,18 +308,17 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
                   )}
                   {d.when === "calendar" && runsDraft !== null && parseRunsText(runsDraft) === null ? (
                     <FieldError match>Write it as "Every day at 02:00", "Mon to Fri at 09:30", "Every hour at :15" or "Every 15 minutes", or set the calendar fields.</FieldError>
+                  ) : d.when === "calendar" && cronOfCalendar(d.calendar) ? (
+                    <FieldDescription>
+                      Or cron: <span className="font-mono text-code">{cronOfCalendar(d.calendar)}</span>
+                    </FieldDescription>
                   ) : null}
                 </Field>
                 {text("timezone", "Time zone", { placeholder: "UTC", suggest: zones })}
               </div>
-              {d.when === "calendar" && cronOfCalendar(d.calendar) ? (
-                <p className="text-caption-1 text-fg-muted">
-                  Or cron: <span className="font-mono text-code">{cronOfCalendar(d.calendar)}</span>
-                </p>
-              ) : null}
               {d.when === "calendar" ? (
                 <Fold title="Calendar fields" value={CALENDAR_FIELDS.map((f) => d.calendar[f].trim() || (f === "second" || f === "minute" || f === "hour" ? "0" : "*")).join(" ")} open={CALENDAR_FIELDS.some((f) => errors[`calendar.${f}`] !== undefined)}>
-                    <div className="grid grid-cols-3 gap-inline-md">
+                    <div className="grid grid-cols-3 gap-x-inline-xl gap-y-stack-md">
                       {CALENDAR_FIELDS.map((f) => (
                         <Field key={f} invalid={errors[`calendar.${f}`] !== undefined}>
                           <FieldLabel>{CALENDAR_LABELS[f].label}</FieldLabel>
@@ -329,7 +328,6 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
                       ))}
                     </div>
                     <p className="text-caption-1 text-fg-muted">Temporal's calendar strings: 5, 1-5, */15, 0,30, mon-fri, jan. Empty is the default shown.</p>
-                  <p className="text-caption-1 text-fg-muted">Temporal's calendar strings: 5, 1-5, */15, 0,30, mon-fri, jan. Empty is the default shown.</p>
                 </Fold>
               ) : null}
               {rest.length > 0 ? (
@@ -342,8 +340,8 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
                   </ul>
                 </div>
               ) : null}
-              <div aria-label="Next runs" className="flex flex-col gap-stack-xs rounded-md bg-layer-alt px-inset-md py-stack-sm text-body-1 text-fg-muted">
-                <span className="text-body-1-strong text-fg">Next 5 runs</span>
+              <div aria-label="Next runs" className="flex flex-col gap-stack-xs rounded-md bg-inset p-inset-sm text-caption-1 text-fg-muted">
+                <span className="text-caption-1-stronger text-fg">Next 5 runs</span>
                 {preview.runs.length === 0 ? (
                   <span>{Object.keys(preview.errors).length > 0 ? "Correct the spec to see its runs." : "No run in the next ten years."}</span>
                 ) : (
@@ -374,7 +372,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
                   ))}
                 </Select>
               </Field>
-              <div className="grid grid-cols-2 gap-inline-md">
+              <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                 <DurationField label="Catch-up window" value={d.catchupWindow} onChange={(catchupWindow) => set({ catchupWindow })} placeholder="1 year" description="How late a missed run may still start." />
                 <DurationField label="Jitter" value={d.jitter} onChange={(jitter) => set({ jitter })} placeholder="None" description="Each run starts up to this much later, at random." />
               </div>
@@ -384,7 +382,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
               </Field>
             </Fold>
             <Fold title="Workflow options" value={options}>
-              <div className="grid grid-cols-3 gap-inline-md">
+              <div className="grid grid-cols-3 gap-x-inline-xl gap-y-stack-md">
                 <DurationField label="Execution timeout" value={d.executionTimeout} onChange={(executionTimeout) => set({ executionTimeout })} placeholder="None" />
                 <DurationField label="Run timeout" value={d.runTimeout} onChange={(runTimeout) => set({ runTimeout })} placeholder="None" />
                 <DurationField label="Task timeout" value={d.taskTimeout} onChange={(taskTimeout) => set({ taskTimeout })} placeholder="10s" />
@@ -398,7 +396,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
                 <Checkbox checked={d.paused} onCheckedChange={(v) => set({ paused: v === true })} />
                 <FieldLabel>Paused</FieldLabel>
               </Field>
-              <div className="grid grid-cols-2 gap-inline-md">
+              <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                 {text("startTime", "Start time", { placeholder: "2026-12-01T09:00:00Z", description: "No run before it." })}
                 {text("endTime", "End time", { placeholder: "None", description: "No run after it." })}
               </div>

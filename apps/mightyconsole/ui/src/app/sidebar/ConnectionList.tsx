@@ -210,9 +210,9 @@ export function ConnectionList(props: ConnectionListProps) {
     );
   }
   return (
-    <div className="flex h-full min-h-0 flex-col gap-stack-xs">
-      <div className="px-inset-sm pt-inset-xs">
-        <SearchInput size="small" aria-label="Filter connections" placeholder="Filter" value={filter} onValueChange={setFilter} />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="px-inset-md pb-stack-sm">
+        <SearchInput aria-label="Filter connections" placeholder="Filter" value={filter} onValueChange={setFilter} />
       </div>
       <ContextMenu>
         <ContextMenuTrigger className="min-h-0 flex-1" data-pane="sidebar">

@@ -1397,12 +1397,8 @@
       "description": "Spans and instants over time in lanes: a workflow's history as bars, stripes, dashes, ticks, diamonds and pins (the workflow, its activities, timers, child workflows, signals, markers) on a zoomable clock or since-start axis, with a toolbar, an overview strip of the whole range and running items that grow to now.",
       "dependencies": [],
       "registryDependencies": [
-        "@byterygon/button",
         "@byterygon/cn",
         "@byterygon/control",
-        "@byterygon/icon",
-        "@byterygon/icon-button",
-        "@byterygon/icons",
         "@byterygon/kbd",
         "@byterygon/toggle-group"
       ],

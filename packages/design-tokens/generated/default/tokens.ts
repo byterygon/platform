@@ -4315,6 +4315,20 @@ export const tokens = {
     description: "Width of a xl panel (768 px), for a dialog that holds a table or a form in two columns: the w-panel-xl and max-w-panel-xl utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
     values: { "base": "768px" },
   },
+  "size.panel.pane": {
+    cssVar: "--by-size-panel-pane",
+    type: "dimension",
+    tier: "primitive",
+    description: "Width of a pane panel (420 px), for a detail pane beside a table: the chosen row's fields, payload and actions: the w-panel-pane and max-w-panel-pane utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+    values: { "base": "420px" },
+  },
+  "size.panel.sheet": {
+    cssVar: "--by-size-panel-sheet",
+    type: "dimension",
+    tier: "primitive",
+    description: "Width of a sheet panel (600 px), for a side sheet that holds a form in two columns: the w-panel-sheet and max-w-panel-sheet utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+    values: { "base": "600px" },
+  },
   "border.width.0": {
     cssVar: "--by-border-width-0",
     type: "dimension",

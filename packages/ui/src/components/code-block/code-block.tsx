@@ -17,13 +17,20 @@ import { Checkmark, Copy } from "@/lib/icons";
 // then keep to one line each (`wrap` is ignored). Copy always copies the whole text.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
-export const codeBlockVariants = {} as const;
+export const codeBlockVariants = {
+  appearance: {
+    /** The editor's colours in a framed card, a title bar with the copy button, line numbers. */
+    editor: "rounded-lg border border-border-subtle bg-editor text-editor-fg",
+    /** A quiet block on the inset fill, 12 px around: a payload in a detail pane. No title bar or line numbers unless asked. */
+    inset: "rounded-md bg-inset text-fg [&_[data-slot=code-block-scroller]]:py-inset-sm",
+  },
+} as const;
 
 /** Languages CodeBlock highlights. */
 export type CodeBlockLanguage = "text" | "sql" | "json";
 
 const classes = {
-  root: "flex min-w-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-editor font-mono text-code text-editor-fg",
+  root: "flex min-w-0 flex-col overflow-hidden font-mono text-code",
   header: "flex h-control-sm shrink-0 items-center gap-inline-sm border-b border-border-subtle ps-inset-sm pe-inline-xs font-sans text-caption-1 text-fg-muted",
   title: "min-w-0 flex-1 truncate",
   scroller: [
@@ -72,9 +79,11 @@ function lineIndex(code: string): { starts: number[]; longest: number } {
 export interface CodeBlockProps {
   /** The text to show. */
   code: string;
+  /** editor: a framed card in the editor's colours; inset: a quiet block on the inset fill, without title bar or line numbers by default. */
+  appearance?: keyof typeof codeBlockVariants.appearance;
   /** Grammar for highlighting: sql (PostgreSQL), json, or text (none). */
   language?: CodeBlockLanguage;
-  /** Shows line numbers in a gutter; on by default for more than one line. */
+  /** Shows line numbers in a gutter; on by default for more than one line in the editor appearance. */
   lineNumbers?: boolean;
   /** The number of the first line (a statement taken from line 40 of a file). */
   startLine?: number;
@@ -84,7 +93,7 @@ export interface CodeBlockProps {
   wrap?: boolean;
   /** A title bar above the code (a file name, "Statement 2"). */
   title?: ReactNode;
-  /** Shows a copy button (in the title bar, or floating when there is no title). */
+  /** Shows a copy button in the title bar; on by default in the editor appearance. */
   copyable?: boolean;
   /** Called after the text was copied. */
   onCopy?: (code: string) => void;
@@ -101,13 +110,14 @@ export interface CodeBlockProps {
 /** Read-only, highlighted code with optional line numbers, title and copy; virtualized when long. */
 export function CodeBlock({
   code,
+  appearance = "editor",
   language = "text",
   lineNumbers,
   startLine = 1,
   highlightLines = [],
   wrap = false,
   title,
-  copyable = true,
+  copyable = appearance === "editor",
   onCopy,
   virtualizeAfter = 1000,
   "aria-label": ariaLabel,
@@ -118,7 +128,7 @@ export function CodeBlock({
   const { starts, longest } = useMemo(() => lineIndex(text), [text]);
   const count = starts.length;
   const tree = useMemo(() => parserFor(language)?.parse(text) ?? null, [text, language]);
-  const showNumbers = lineNumbers ?? count > 1;
+  const showNumbers = lineNumbers ?? (appearance === "editor" && count > 1);
   const virtual = count > virtualizeAfter;
   const wraps = wrap && !virtual;
   const highlighted = useMemo(() => new Set(highlightLines), [highlightLines]);
@@ -215,7 +225,7 @@ export function CodeBlock({
   ) : null;
 
   return (
-    <div ref={ref} data-slot="code-block" data-language={language} data-virtual={virtual ? "" : undefined} className={cn(classes.root, className)}>
+    <div ref={ref} data-slot="code-block" data-appearance={appearance} data-language={language} data-virtual={virtual ? "" : undefined} className={cn(classes.root, codeBlockVariants.appearance[appearance], className)}>
       {title !== undefined || copyable ? (
         <div data-slot="code-block-header" className={classes.header}>
           <span className={classes.title}>{title}</span>

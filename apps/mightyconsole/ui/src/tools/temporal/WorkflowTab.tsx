@@ -12,7 +12,7 @@ import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
-import { CopyButton, Page, PageHeader, gutterTable } from "@/app/page";
+import { CopyButton, Page, PageHeader, chipClass, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
@@ -402,22 +402,21 @@ function TimelinePanel({ events, pending, now, live, workflowId, selected, onSel
 
   const toolbar = (
     <>
-      <span aria-hidden="true" className="h-control-sm border-s border-border-subtle" />
-      <div role="group" aria-label="Lanes shown" className="flex flex-wrap items-center gap-inline-sm">
+      <div role="group" aria-label="Lanes shown" className="flex flex-wrap items-center gap-inline-xs">
         {KIND_CHIPS.map(({ kind, label }) => {
           const count = data.counts[kind];
           const on = count > 0 && !hidden.has(kind);
           return (
-            <ToggleButton key={kind} size="small" appearance="outline" pressed={on} disabled={count === 0} onPressedChange={(p) => toggle(kind, p)} className="rounded-full data-pressed:text-accent-subtle-fg">
+            <ToggleButton key={kind} size="small" appearance="outline" pressed={on} disabled={count === 0} onPressedChange={(p) => toggle(kind, p)} className={chipClass}>
               {on ? <Icon icon={Checkmark} /> : null}
-              {label} {count}
+              {label} <span className={on || count === 0 ? undefined : "text-fg-muted"}>{count}</span>
             </ToggleButton>
           );
         })}
       </div>
       {live ? (
         <div className="ms-auto flex items-center gap-inline-sm">
-          <ToggleButton size="small" appearance="outline" pressed={follow} onPressedChange={setFollow} className="rounded-full">
+          <ToggleButton size="small" appearance="outline" pressed={follow} onPressedChange={setFollow} className={chipClass}>
             <span aria-hidden="true" className={cn("size-icon-xs rounded-full", follow ? "bg-success" : "bg-fg-muted")} /> Following
           </ToggleButton>
           <Button size="small" appearance="subtle" disabled={follow} onClick={() => setFollow(true)}>
