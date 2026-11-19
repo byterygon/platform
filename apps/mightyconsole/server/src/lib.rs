@@ -121,12 +121,51 @@ pub struct ServeConfig {
     /// A plain-HTTP listener on loopback for the codec endpoint only (TSK-103, Open question
     /// (a)): the `temporal` CLI trusts the system's roots, not the self-signed certificate.
     pub codec_listen: Option<SocketAddr>,
+    /// The UI's history (DOC-21 §2.3, §3.7): real paths, or routes in the hash.
+    pub router: RouterMode,
+    /// The path everything is served under (`""` or e.g. `/tools/mc`, see
+    /// [`ambidex_axum::valid_path_prefix`]): the page, its assets, `/rpc/ws` and the codec endpoint.
+    pub base_path: String,
 }
 
 impl ServeConfig {
     /// Whether the listener accepts connections from other machines.
     pub fn is_exposed(&self) -> bool {
         !self.listen.ip().is_loopback()
+    }
+
+    /// The session cookie (DOC-21 §2.3): `__Host-` and `Path=/` always, so under a base path the
+    /// name carries the path instead, keeping servers under different paths of one host apart.
+    pub fn session_cookie(&self) -> String {
+        session_cookie_for(&self.base_path)
+    }
+}
+
+/// [`ServeConfig::session_cookie`] for a base path: `/tools/mc` gives `__Host-ambidex_session_tools_mc`.
+pub fn session_cookie_for(base_path: &str) -> String {
+    if base_path.is_empty() {
+        DEFAULT_SESSION_COOKIE.to_owned()
+    } else {
+        format!("{DEFAULT_SESSION_COOKIE}{}", base_path.replace('/', "_"))
+    }
+}
+
+/// How the UI keeps its place in the URL (DOC-21 §3.7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RouterMode {
+    /// Real paths; every extension-less path under the base path is the page.
+    #[default]
+    Browser,
+    /// `<base path>/#/<route>`, for a proxy or host that cannot send the page for every path.
+    Hash,
+}
+
+impl RouterMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RouterMode::Browser => "browser",
+            RouterMode::Hash => "hash",
+        }
     }
 }
 
@@ -206,7 +245,12 @@ impl Server {
         options: StartOptions,
     ) -> Result<Server, StartError> {
         let tls = tls::load(&config.tls).map_err(StartError::Tls)?;
-        let ws_config = WsConfig::new(config.allowed_hosts.clone(), config.public_origin.clone());
+        let mut ws_config =
+            WsConfig::new(config.allowed_hosts.clone(), config.public_origin.clone());
+        // DOC-21 §2.3: under a base path the WebSocket is at <base>/rpc/ws, and the cookie keeps
+        // `__Host-` (so `Path=/`) with the path in its name.
+        ws_config.path_prefix = config.base_path.clone();
+        ws_config.session_cookie = config.session_cookie();
         let ui = match &config.ui {
             Some(path) => Some(static_ui::UiSource::Dir(
                 static_ui::StaticUi::open(path).map_err(|error| StartError::Ui {
@@ -240,13 +284,18 @@ impl Server {
         let sessions = Arc::new(LocalSessions::new(principal));
         let transport = WsTransport::new(ws_config, engine, Arc::clone(&sessions), router)
             .map_err(StartError::Web)?;
-        let routes = static_ui::routes(
-            ui,
-            Arc::clone(&sessions),
-            DEFAULT_SESSION_COOKIE,
-            &config.public_origin,
-        )
-        .merge(tools::temporal::codec::routes());
+        let page = static_ui::PageConfig {
+            cookie_name: config.session_cookie(),
+            public_origin: config.public_origin.clone(),
+            router: config.router,
+            base_path: config.base_path.clone(),
+        };
+        let codec = if config.base_path.is_empty() {
+            tools::temporal::codec::routes()
+        } else {
+            axum::Router::new().nest(&config.base_path, tools::temporal::codec::routes())
+        };
+        let routes = static_ui::routes(ui, Arc::clone(&sessions), page).merge(codec);
         let codec_task = match config.codec_listen {
             Some(addr) => {
                 let listener = TcpListener::bind(addr)

@@ -67,6 +67,9 @@ pub struct WsConfig {
     /// header must equal it byte for byte.
     pub public_origin: String,
     pub session_cookie: String,
+    /// A path the product is served under (`""`, or e.g. `/tools/mc`): the WebSocket is then at
+    /// `<path_prefix>/rpc/ws`. `/`-led segments of `A-Z a-z 0-9 - _ ~`, no trailing slash.
+    pub path_prefix: String,
     /// Time allowed for the TLS handshake and for reading request headers.
     pub tls_handshake_timeout: Duration,
 }
@@ -80,6 +83,7 @@ impl WsConfig {
             allowed_hosts: allowed_hosts.into_iter().map(Into::into).collect(),
             public_origin: public_origin.into(),
             session_cookie: DEFAULT_SESSION_COOKIE.into(),
+            path_prefix: String::new(),
             tls_handshake_timeout: Duration::from_secs(10),
         }
     }
@@ -103,8 +107,27 @@ impl WsConfig {
         if !self.session_cookie.starts_with("__Host-") {
             return Err(ConfigError::SessionCookie);
         }
+        if !valid_path_prefix(&self.path_prefix) {
+            return Err(ConfigError::PathPrefix);
+        }
         Ok(())
     }
+
+    /// Where the WebSocket is served: [`RPC_WS_PATH`] under [`WsConfig::path_prefix`].
+    pub fn rpc_path(&self) -> String {
+        format!("{}{RPC_WS_PATH}", self.path_prefix)
+    }
+}
+
+/// `""`, or `/`-led segments of unreserved characters with no trailing slash.
+pub fn valid_path_prefix(prefix: &str) -> bool {
+    prefix.is_empty()
+        || (prefix.starts_with('/')
+            && prefix[1..].split('/').all(|s| {
+                !s.is_empty()
+                    && s.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'~'))
+            }))
 }
 
 /// Invalid [`WsConfig`].
@@ -116,6 +139,8 @@ pub enum ConfigError {
     PublicOrigin,
     /// The session cookie name lacks the `__Host-` prefix.
     SessionCookie,
+    /// The path prefix is not `""` or `/`-led segments of unreserved characters.
+    PathPrefix,
 }
 
 impl std::fmt::Display for ConfigError {
@@ -124,6 +149,9 @@ impl std::fmt::Display for ConfigError {
             ConfigError::AllowedHosts => "allowed_hosts must list at least one non-empty host",
             ConfigError::PublicOrigin => "public_origin must be a lowercase https://host[:port]",
             ConfigError::SessionCookie => "session_cookie must start with __Host-",
+            ConfigError::PathPrefix => {
+                "path_prefix must be empty or /-led segments of A-Z a-z 0-9 - _ ~"
+            }
         })
     }
 }
@@ -173,7 +201,7 @@ impl<S: WebSessions, D: Dispatch> WsTransport<S, D> {
     /// never reachable without TLS.
     fn router(&self, routes: Router) -> Router {
         Router::new()
-            .route(RPC_WS_PATH, get(upgrade::<S, D>))
+            .route(&self.state.config.rpc_path(), get(upgrade::<S, D>))
             .with_state(Arc::clone(&self.state))
             .merge(routes)
             .layer(middleware::from_fn_with_state(
@@ -409,6 +437,24 @@ mod tests {
         let mut config = ok.clone();
         config.session_cookie = "session".into();
         assert_eq!(config.validate(), Err(ConfigError::SessionCookie));
+        for (prefix, valid) in [
+            ("", true),
+            ("/mc", true),
+            ("/tools/mc-1_~", true),
+            ("/", false),
+            ("mc", false),
+            ("/mc/", false),
+            ("/a//b", false),
+            ("/a/../b", false),
+            ("/a%2fb", false),
+        ] {
+            let mut config = ok.clone();
+            config.path_prefix = prefix.into();
+            assert_eq!(config.validate().is_ok(), valid, "{prefix}");
+        }
+        let mut config = ok.clone();
+        config.path_prefix = "/mc".into();
+        assert_eq!(config.rpc_path(), "/mc/rpc/ws");
     }
 
     #[test]

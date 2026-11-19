@@ -9,7 +9,8 @@
 //     and after a reload the tab comes back and connects again;
 //   - routing (DOC-21 §3.7): the URL follows the active tab, a deep link loads at its path and
 //     focuses its tab, Back and Forward and a reload keep each URL's place, a missing profile is
-//     named;
+//     named; and again on a second server with --router hash --base-path /tools/mc (the page,
+//     assets and WebSocket under the prefix, the place in the hash, reload, an edited hash, Back);
 //   - the page opened through 127.0.0.1 is redirected to the public origin;
 //   - every request goes to the server's origin (or data:/blob:), and no script or CSP error is
 //     logged;
@@ -150,6 +151,7 @@ async function main(): Promise<number> {
   const uiArgs = embedded ? [] : ["--ui", join(APP, "dist")];
   const server = spawn(serverBinary, ["--listen", `127.0.0.1:${port}`, ...uiArgs, "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
   let chrome: ChildProcess | undefined;
+  let hashServer: ChildProcess | undefined;
   let cdp: Cdp | undefined;
   try {
     const [startup] = await waitForLine(server, /[\s\S]*open https:\/\/localhost:\d+\//, "mightyconsole-server");
@@ -245,7 +247,47 @@ async function main(): Promise<number> {
     check(foreign.length === 0, `requests outside the server: ${foreign.join(", ")}`);
     check(page.requests.some((url) => url === `wss://localhost:${port}/rpc/ws`), "no WebSocket to /rpc/ws");
     check(page.errors.length === 0, `errors in the page:\n  ${page.errors.join("\n  ")}`);
+
+    // 6. Hash mode under a base path (DOC-21 §2.3, §3.7): a second server with --router hash
+    // --base-path /tools/mc. `/` leads to the base path; the page, its assets and the WebSocket
+    // are under it; the place is in the hash; a reload, an edited hash and Back keep it.
+    const hashPort = await freePort();
+    const hashOrigin = `https://localhost:${hashPort}`;
+    hashServer = spawn(serverBinary, ["--listen", `127.0.0.1:${hashPort}`, ...uiArgs, "--data", data, "--router", "hash", "--base-path", "/tools/mc"], { stdio: ["ignore", "ignore", "pipe"] });
+    await waitForLine(hashServer, /[\s\S]*open https:\/\/localhost:\d+\/tools\/mc\//, "mightyconsole-server --router hash");
+    const errorsBefore = page.errors.length;
+    await page.navigate(`${hashOrigin}/`);
+    await until(page, `location.pathname === "/tools/mc/" && __mc.button("Echo")`, "the page under the base path");
+    await run(page, `__mc.click(__mc.button("Echo"))`);
+    await until(page, `__mc.has(${JSON.stringify(hashOrigin)})`, "app.info over /tools/mc/rpc/ws");
+    await run(page, `__mc.click(__mc.button("Add connection"))`);
+    await until(page, `__mc.field("Name")`, "the profile sheet (hash mode)");
+    await run(page, `__mc.type(__mc.field("Name"), "smoke")`);
+    await run(page, `__mc.click(__mc.button("Save"))`);
+    await until(page, `__mc.item("smoke")`, "the saved profile (hash mode)");
+    await run(page, `__mc.dblclick(__mc.item("smoke"))`);
+    await until(page, `__mc.item("Ticks")`, "echo.connect (hash mode)");
+    await run(page, `__mc.dblclick(__mc.item("Ticks"))`);
+    await until(page, `location.hash === "#/echo/smoke/ticks" && location.pathname === "/tools/mc/"`, "the place in the hash");
+    await run(page, `__mc.dblclick(__mc.item("Composer"))`);
+    await until(page, `location.hash === "#/echo/smoke/compose" && ${selected("Composer")}`, "the Composer's place in the hash");
+    await savedTab(page, "Composer", 15_000);
+    // A reload keeps the hash: the restored page opens its place (the marker tells the pages apart).
+    await run(page, `(window.__old = true)`);
+    await page.send("Page.reload", {});
+    await until(page, `!window.__old && ${selected("Composer")} && location.hash === "#/echo/smoke/compose"`, "the place after a reload (hash mode)");
+    // An edited hash opens or focuses its tab; Back shows the entry before it.
+    await run(page, `(location.hash = "#/echo/smoke/ticks", true)`);
+    await until(page, `${selected("Ticks · smoke")}`, "the edited hash's tab");
+    await run(page, `history.back()`);
+    await until(page, `location.hash === "#/echo/smoke/compose" && ${selected("Composer")}`, "Back to the Composer (hash mode)");
+    const hashRequests = page.requests.filter((url) => url.startsWith(`${hashOrigin}/`) || url.startsWith(`wss://localhost:${hashPort}/`));
+    check(hashRequests.some((url) => url === `wss://localhost:${hashPort}/tools/mc/rpc/ws`), "hash mode: no WebSocket to /tools/mc/rpc/ws");
+    const outside = hashRequests.filter((url) => url.startsWith(`${hashOrigin}/`) && url !== `${hashOrigin}/` && !url.startsWith(`${hashOrigin}/tools/mc/`));
+    check(outside.length === 0, `hash mode: requests outside the base path: ${outside.join(", ")}`);
+    check(page.errors.length === errorsBefore, `hash mode: errors in the page:\n  ${page.errors.slice(errorsBefore).join("\n  ")}`);
   } finally {
+    hashServer?.kill();
     cdp?.close();
     chrome?.kill();
     server.kill();
