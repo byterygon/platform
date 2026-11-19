@@ -132,6 +132,13 @@ services:
       retries: 60
     profiles: [temporal, all]
 
+  # The lab's payload codec server (TSK-92): AES-GCM, Temporal's codec-server protocol.
+  temporal-codec:
+    <<: *tools
+    command: ["temporal-codec"]
+    ports: ["127.0.0.1:8234:8234"]
+    profiles: [temporal, all]
+
   temporal-worker:
     <<: *tools
     command: ["temporal-worker"]

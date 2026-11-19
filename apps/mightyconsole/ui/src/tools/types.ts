@@ -1,6 +1,7 @@
 // The UI side of the tool contract (Mightyconsole spec §2.2, §4.4): a tool is one module,
 // `src/tools/<tool>/index.ts`, exporting a ToolModule. The shell knows tools only through
 // `src/tools/registry.ts`, so a later plugin system can supply the same object.
+import type { AnyRoute } from "@tanstack/react-router";
 import type { ComponentType, ReactNode } from "react";
 import type { IconDefinition } from "@/lib/icons";
 import type { MightyClient } from "@/app/client";
@@ -35,6 +36,10 @@ export interface ConnectionFormProps {
   disabled?: boolean;
   /** The saved profile's id (none while it is being added): the Temporal codec endpoint's path names it. */
   profileId?: string;
+  /** The server, for checks the form runs on its draft (Temporal's Test codec). */
+  client?: MightyClient;
+  /** The record as it would be saved now. */
+  draft?: () => ProfileRecord;
 }
 
 /** A node under a connected profile in the sidebar (the tool's resource tree). */
@@ -63,7 +68,7 @@ export interface SidebarData {
 
 /** What a tab's component gets from the shell. */
 export interface TabProps {
-  tab: TabRecord;
+  tab: TabView;
   profile: ProfileRecord;
   /** The live handle, `null` while the profile is not connected (the Disconnected state). */
   connId: string | null;
@@ -78,6 +83,11 @@ export interface TabProps {
   note(error: unknown): DescribedError;
   /** Opens (or focuses) another tab of this tool and profile, e.g. a thread from a list of threads. */
   openTab(open: { kind: string; params: Record<string, unknown>; title: string }): void;
+  /**
+   * Moves this tab to another place of its tool and profile (DOC-21 §3.7): a step in the tab's own
+   * back and forward history, or with `replace` a change of the current step (a section shown).
+   */
+  navigate?: (place: TabPlace, options?: { replace?: boolean }) => void;
   /** Saves a change to this tab's profile (its extras: templates, saved filters). */
   updateProfile?: (change: (record: ProfileRecord) => ProfileRecord) => Promise<void>;
 }
@@ -111,13 +121,39 @@ export interface DescribedError {
   remoteCode?: string;
 }
 
+/** Where a tab is: one of its tool's tab kinds with its params (DOC-21 §3.7). */
+export interface TabPlace {
+  kind: string;
+  params: Record<string, unknown>;
+  title: string;
+}
+
+/** A tab place's URL under `/<tool>/<profile name>/` (DOC-21 §3.7). */
+export interface PlaceHref {
+  /** Percent-encoded segments ending with a view word, e.g. `orders/workflows/order-1/history`. */
+  path: string;
+  /** Short identity values only: never a secret, a payload or a form value. */
+  search?: Record<string, string>;
+}
+
 export interface TabKind {
   /** The tab's title from its params. */
   title(params: Record<string, unknown>): string;
   Component: ComponentType<TabProps>;
+  /**
+   * The URL of a place of this kind, matching a route of the tool's `routes` whose
+   * `staticData.place` gives the params back. A kind without one keeps the URL at `/<tool>`.
+   */
+  href?(params: Record<string, unknown>): PlaceHref | null;
 }
 
-/** A persisted tab (spec §3.2). */
+/** A tab's own back and forward history (DOC-21 §3.7): at most 50 places. */
+export interface TabHistory {
+  entries: TabPlace[];
+  index: number;
+}
+
+/** A persisted tab (spec §3.2, §3.7): `kind`, `params` and `title` are `history.entries[history.index]`. */
 export interface TabRecord {
   id: string;
   tool: string;
@@ -127,7 +163,11 @@ export interface TabRecord {
   params: Record<string, unknown>;
   title: string;
   pinned: boolean;
+  history: TabHistory;
 }
+
+/** A tab as its screen sees it: the history is the shell's. */
+export type TabView = Omit<TabRecord, "history">;
 
 /** An action a tool adds to the palette. */
 export interface ToolAction {
@@ -168,6 +208,12 @@ export interface ToolModule {
   /** What the tree loads after connecting; none when absent. */
   readonly sidebarData?: SidebarData;
   readonly tabKinds: Readonly<Record<string, TabKind>>;
+  /**
+   * The tool's routes under `/<tool>/<profile name>` (DOC-21 §3.7), built with `createRoute` on the
+   * given parent: each with `staticData.crumb`, the places with `staticData.place`. Optional: a
+   * tool without routes keeps working, its tabs' URL staying at `/<tool>`.
+   */
+  routes?(profileRoute: AnyRoute): readonly AnyRoute[];
   readonly actions: readonly ToolAction[];
   /** Opens the live handle (`<tool>.connect { profile: toConnect(record) }`). */
   connect(client: MightyClient, record: ProfileRecord): Promise<{ connId: string }>;

@@ -10,14 +10,43 @@ import { Textarea } from "@/components/ui/textarea";
 import type * as api from "@/gen/api";
 import { Braces, DatabaseMultiple, Flash, History } from "@/lib/icons";
 import type { ProfileRecord } from "@/profiles/record";
+import { type SiblingContext, type SiblingList, levelRoute, path, placeRoute } from "@/app/router";
+import { viewOf } from "@/app/tab-view";
 import type { ConnectionFormProps, ProfileSchema, ToolModule } from "../types";
-import { AssistantsTab, AssistantTab } from "./assistants";
+import { ASSISTANT_VIEWS, AssistantsTab, AssistantTab } from "./assistants";
+import { shortId } from "./shared";
 import { StoreTab } from "./store";
-import { ThreadTab } from "./thread";
+import { THREAD_VIEWS, ThreadTab } from "./thread";
 import { ThreadsTab } from "./threads";
 import { LangGraphMark } from "../marks";
 
 export const DEFAULT_URL = "http://127.0.0.1:2024";
+
+const NOT_CONNECTED = "Connect the profile to list them.";
+/** How many recent threads a thread segment lists beside it. */
+export const RECENT_THREADS = 20;
+
+/** The assistant segment's siblings: the server's assistants (DOC-21 §3.7). */
+export async function assistantSiblings({ client, connId }: SiblingContext): Promise<SiblingList> {
+  if (!connId) throw new Error(NOT_CONNECTED);
+  const list = await client.langgraph.assistants.search({ connId, graphId: null, metadata: null, limit: 100, offset: null });
+  return {
+    heading: "Assistants",
+    items: list.map((a) => ({ label: a.name || a.assistantId, description: a.graphId, params: { assistantId: a.assistantId } })),
+    all: { label: "All assistants…", place: { kind: "langgraph.assistants", params: {} } },
+  };
+}
+
+/** The thread segment's siblings: the most recently updated threads. */
+export async function threadSiblings({ client, connId }: SiblingContext): Promise<SiblingList> {
+  if (!connId) throw new Error(NOT_CONNECTED);
+  const list = await client.langgraph.threads.search({ connId, metadata: null, status: null, limit: RECENT_THREADS, offset: null });
+  return {
+    heading: "Recent threads",
+    items: list.map((t) => ({ label: shortId(t.threadId), description: t.status, params: { threadId: t.threadId } })),
+    all: { label: "All threads…", place: { kind: "langgraph.threads", params: {} } },
+  };
+}
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 
@@ -145,13 +174,51 @@ export const langgraphTool: ToolModule = {
     { id: `${p.id}/threads`, label: "Threads", icon: <Icon icon={History} />, open: { kind: "langgraph.threads", params: {}, title: `Threads · ${p.name}` } },
     { id: `${p.id}/store`, label: "Store", icon: <Icon icon={DatabaseMultiple} />, open: { kind: "langgraph.store", params: {}, title: `Store · ${p.name}` } },
   ],
+  // DOC-21 §3.7: /langgraph/<profile>/assistants, …/assistants/<id>/<graph|schemas|config>,
+  // …/threads, …/threads/<id>/<run|state|history>, …/store.
   tabKinds: {
-    "langgraph.assistants": { title: () => "Assistants", Component: AssistantsTab },
-    "langgraph.assistant": { title: (params) => `Assistant ${text(params["name"]) || text(params["assistantId"])}`, Component: AssistantTab },
-    "langgraph.threads": { title: () => "Threads", Component: ThreadsTab },
-    "langgraph.thread": { title: (params) => `Thread ${text(params["threadId"]).slice(0, 8)}`, Component: ThreadTab },
-    "langgraph.store": { title: () => "Store", Component: StoreTab },
+    "langgraph.assistants": { title: () => "Assistants", Component: AssistantsTab, href: () => ({ path: "assistants" }) },
+    "langgraph.assistant": {
+      title: (params) => `Assistant ${text(params["name"]) || text(params["assistantId"])}`,
+      Component: AssistantTab,
+      href: (p) => (text(p["assistantId"]) ? { path: path("assistants", text(p["assistantId"]), viewOf(p, ASSISTANT_VIEWS, "graph")) } : null),
+    },
+    "langgraph.threads": { title: () => "Threads", Component: ThreadsTab, href: () => ({ path: "threads" }) },
+    "langgraph.thread": {
+      title: (params) => `Thread ${text(params["threadId"]).slice(0, 8)}`,
+      Component: ThreadTab,
+      href: (p) => (text(p["threadId"]) ? { path: path("threads", text(p["threadId"]), viewOf(p, THREAD_VIEWS, "run")) } : null),
+    },
+    "langgraph.store": { title: () => "Store", Component: StoreTab, href: () => ({ path: "store" }) },
   },
+  routes: (parent) => [
+    placeRoute(parent, "assistants", "Assistants", () => ({ kind: "langgraph.assistants", params: {} }), {
+      children: (assistants) => [
+        levelRoute(
+          assistants,
+          "$assistantId",
+          (p) => p["assistantId"] ?? "",
+          (assistant) =>
+            ASSISTANT_VIEWS.map((view) =>
+              placeRoute(assistant, view, view === "config" ? "Config" : view.charAt(0).toUpperCase() + view.slice(1), (p) => ({ kind: "langgraph.assistant", params: { assistantId: p["assistantId"] ?? "", view } })),
+            ),
+          assistantSiblings,
+        ),
+      ],
+    }),
+    placeRoute(parent, "threads", "Threads", () => ({ kind: "langgraph.threads", params: {} }), {
+      children: (threads) => [
+        levelRoute(
+          threads,
+          "$threadId",
+          (p) => shortId(p["threadId"] ?? ""),
+          (thread) => THREAD_VIEWS.map((view) => placeRoute(thread, view, view.charAt(0).toUpperCase() + view.slice(1), (p) => ({ kind: "langgraph.thread", params: { threadId: p["threadId"] ?? "", view } }))),
+          threadSiblings,
+        ),
+      ],
+    }),
+    placeRoute(parent, "store", "Store", () => ({ kind: "langgraph.store", params: {} })),
+  ],
   actions: [],
   async connect(client, record) {
     const out = await client.langgraph.connect({ profile: profile.toConnect(record) as api.ConnectLanggraphProfile });

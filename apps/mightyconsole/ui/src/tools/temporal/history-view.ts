@@ -178,7 +178,8 @@ export function historySummary(event: HistoryEvent, ctx: SummaryContext): string
 }
 
 /** A row of the History table: one event, or a run of workflow task events folded into one. */
-export type HistoryRow = { kind: "event"; event: HistoryEvent } | { kind: "group"; events: HistoryEvent[]; first: number; last: number; open: boolean };
+/** `inFold`: the event is one of an open fold's, drawn indented under it with a guide line. */
+export type HistoryRow = { kind: "event"; event: HistoryEvent; inFold?: true } | { kind: "group"; events: HistoryEvent[]; first: number; last: number; open: boolean };
 
 export interface RowOptions {
   category: EventCategory | "All";
@@ -205,7 +206,7 @@ export function historyRows(events: readonly HistoryEvent[], options: RowOptions
       const first = run[0]!.eventId;
       const open = options.expanded.has(first);
       rows.push({ kind: "group", events: run, first, last: run[run.length - 1]!.eventId, open });
-      if (open) for (const event of run) rows.push({ kind: "event", event });
+      if (open) for (const event of run) rows.push({ kind: "event", event, inFold: true });
     } else {
       for (const event of run) rows.push({ kind: "event", event });
     }

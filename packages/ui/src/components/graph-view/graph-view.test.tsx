@@ -80,6 +80,37 @@ describe("GraphView", () => {
     expect(container.querySelector("ul")!.textContent).toContain("plan to approve (conditional): done");
   });
 
+  test("a detail line with a status dot, an emphasised node, dashed edges and double-click", () => {
+    const onNodeOpen = vi.fn();
+    const nodes: GraphViewNode[] = [
+      { id: "root", label: "checkout-9912", detail: "Running · CheckoutWorkflow", tone: "info" },
+      { id: "cur", label: "order-48213", detail: "Running · OrderWorkflow", tone: "info", emphasis: true },
+      { id: "kid", label: "receipt-48213", detail: "Failed · ReceiptWorkflow", tone: "danger" },
+      { id: "plain", label: "support-ticket-771" },
+    ];
+    const edges: GraphViewEdge[] = [
+      { source: "root", target: "cur" },
+      { source: "cur", target: "kid" },
+      { source: "plain", target: "cur", dashed: true, label: "customerConfirmed" },
+    ];
+    const { container } = render(<GraphView nodes={nodes} edges={edges} direction="LR" onNodeOpen={onNodeOpen} />);
+    const kid = nodeEl(container, "kid");
+    expect(kid.dataset.detail).toBe("");
+    expect(kid.textContent).toBe("receipt-48213Failed · ReceiptWorkflow");
+    expect(kid.getAttribute("aria-label")).toBe("receipt-48213, Failed · ReceiptWorkflow");
+    expect(kid.querySelector<HTMLElement>('[data-slot="graph-view-dot"]')!.dataset.tone).toBe("danger");
+    expect(nodeEl(container, "cur").dataset.emphasis).toBe("");
+    expect(nodeEl(container, "cur").getAttribute("aria-label")).not.toContain("done");
+    expect(nodeEl(container, "plain").dataset.detail).toBeUndefined();
+    expect(nodeSize(nodes[0]!).height).toBe(GEOMETRY.detailHeight);
+    const dashed = container.querySelector('[data-slot="graph-view-edge"][data-dashed]')!;
+    expect(dashed.querySelector("path")!.getAttribute("stroke-dasharray")).toBe("6 4");
+    expect(container.querySelector("ul")!.textContent).toContain("support-ticket-771 to order-48213: customerConfirmed");
+    expect(container.querySelector("ul")!.textContent).not.toContain("conditional");
+    act(() => void kid.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(onNodeOpen).toHaveBeenCalledWith("kid");
+  });
+
   test("one tab stop; arrows follow the edges and the ranks; Enter selects", () => {
     const onNodeSelect = vi.fn();
     const { container } = render(<GraphView nodes={NODES} edges={EDGES} onNodeSelect={onNodeSelect} selectedId="plan" />);

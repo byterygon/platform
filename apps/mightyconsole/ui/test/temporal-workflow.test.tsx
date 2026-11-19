@@ -11,7 +11,7 @@ import type { ProfileRecord } from "@/profiles/record";
 import { WorkflowTab } from "@/tools/temporal/WorkflowTab";
 import { splitLines } from "@/tools/temporal/useWorkflow";
 import { profile as schema } from "@/tools/temporal/profile";
-import type { LiveState, TabProps, TabRecord } from "@/tools/types";
+import type { LiveState, TabProps, TabView } from "@/tools/types";
 import { axeViolations, byRole, byText, cleanup, click, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
@@ -104,7 +104,7 @@ function setup(options: Options = {}) {
   const rawEvent = vi.fn(async (_input: unknown) => ({ attributes: { input: { payloads: [{ metadata: { encoding: "anNvbi9wbGFpbg==" }, data: "Im9yZC1sb25nIg==" }] } } }));
   const client = { temporal: { workflows: { describe, history, followHistory, query, rawEvent } } } as unknown as MightyClient;
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
-  const tab: TabRecord = { id: "t2", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "fulfilment-long-running" }, title: "fulfilment-long-running", pinned: false };
+  const tab: TabView = { id: "t2", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "fulfilment-long-running" }, title: "fulfilment-long-running", pinned: false };
   const lives: (LiveState | null)[] = [];
   const props: TabProps = {
     tab,
@@ -148,6 +148,84 @@ describe("Workflow tab (spec §9.3)", () => {
     expect(items.some((l) => l?.startsWith("fulfilment-long-running, running"))).toBe(true);
     expect(items.some((l) => l?.startsWith("charge, running"))).toBe(true);
     expect(items.some((l) => l?.startsWith("Signal approve"))).toBe(true);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  test("Timeline: a bar or a diamond opens its details beside the chart, with its own events (TSK-100)", async () => {
+    const { container } = setup();
+    await waitFor(() => container.querySelector('[data-slot="timeline-item"]') !== null, "the timeline");
+    const aside = () => container.querySelector<HTMLElement>('[data-slot="timeline-aside"]')!;
+    // Nothing selected: the pane beside the chart says how to pick an item.
+    expect(aside().textContent).toContain("Click a bar, a diamond or a pin");
+    const mark = (label: string) => Array.from(container.querySelectorAll<HTMLElement>('[data-slot="timeline-item"]')).find((i) => i.getAttribute("aria-label")?.startsWith(label))!;
+    await click(mark("charge, running"));
+    await waitFor(() => aside().textContent?.includes("charge · activity 3") === true, "the activity's details");
+    expect(aside().getAttribute("aria-label")).toBe("charge, activity 3");
+    expect(byRole("button", "Copy activity ID", aside())).not.toBeNull();
+    expect(aside().textContent).toContain("Scheduled");
+    // Its events, the first unfolded to its attributes; the others unfold on a click.
+    const events = byRole("region", "Events", aside()) ?? aside().querySelector('[aria-label="Events"]')!;
+    const rows = Array.from(events.querySelectorAll<HTMLElement>("button[aria-expanded]"));
+    expect(rows.map((b) => b.textContent)).toEqual([expect.stringContaining("ActivityTaskScheduled")]);
+    expect(rows[0]!.getAttribute("aria-expanded")).toBe("true");
+    expect(aside().querySelector('[aria-label="Attributes of event 3"]')).not.toBeNull();
+    await click(rows[0]!);
+    expect(aside().querySelector('[aria-label="Attributes of event 3"]')).toBeNull();
+    // No strip under the chart and no jump to History.
+    expect(byRole("button", /in History$/)).toBeNull();
+    expect(container.querySelector('[aria-label="Selected item"]')).toBeNull();
+    // A diamond: the signal, received.
+    await click(mark("Signal approve"));
+    await waitFor(() => aside().textContent?.includes("approve · signal 4") === true, "the signal's details");
+    expect(aside().textContent).toContain("Received");
+    expect(aside().textContent).toContain("1 payload");
+    // No key hint drawn on any button of the tab (DOC-21 §3.4).
+    expect(container.querySelectorAll("button kbd").length).toBe(0);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  test("an event chosen in History selects its item on the Timeline", async () => {
+    const withStart = [...events.slice(0, 3), ev(5, "ActivityTaskStarted", 600, "Activity", { scheduledEventId: 3, identity: "worker-1@lab", attempt: 1 }), events[3]!];
+    const { container } = setup({ events: withStart });
+    await waitFor(() => tabButton("History") !== null, "the tabs");
+    await click(tabButton("History"));
+    const goTo = await (async () => {
+      await waitFor(() => container.querySelector('input[aria-label="Go to event"]') !== null, "Go to");
+      return container.querySelector<HTMLInputElement>('input[aria-label="Go to event"]')!;
+    })();
+    await type(goTo, "5");
+    await act(async () => {
+      goTo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    await waitFor(() => container.textContent?.includes("Event 5 · ActivityTaskStarted") === true, "event 5");
+    await click(tabButton("Timeline"));
+    const aside = () => container.querySelector<HTMLElement>('[data-slot="timeline-aside"]')!;
+    await waitFor(() => aside().textContent?.includes("charge · activity 3") === true, "its activity in the pane");
+    expect(aside().textContent).toContain("worker-1@lab");
+    expect(aside().textContent).toContain("waited 100 ms");
+  });
+
+  test("History: an open workflow-task fold shows its events indented under it, with a guide line (TSK-100)", async () => {
+    const folded = [events[0]!, ev(2, "WorkflowTaskScheduled", 1, "WorkflowTask"), ev(3, "WorkflowTaskStarted", 5, "WorkflowTask", { scheduledEventId: 2, identity: "w@lab" }), ev(4, "WorkflowTaskCompleted", 40, "WorkflowTask", { scheduledEventId: 2 }), ev(5, "ActivityTaskScheduled", 41, "Activity", { activityType: { name: "charge" }, activityId: "1" })];
+    const { container } = setup({ events: folded });
+    await waitFor(() => tabButton("History") !== null, "the tabs");
+    await click(tabButton("History"));
+    const rows = () => Array.from(container.querySelectorAll<HTMLTableRowElement>("table[aria-label='History events'] tbody tr:not([data-spacer])"));
+    await waitFor(() => rows().length === 3, "the fold closed");
+    const fold = rows()[1]!;
+    const chevron = fold.querySelector<HTMLElement>("button[aria-expanded]")!;
+    expect(chevron.getAttribute("aria-expanded")).toBe("false");
+    expect(chevron.getAttribute("aria-label")).toBe("Unfold events 2–4");
+    await click(chevron);
+    await waitFor(() => rows().length === 6, "the fold open");
+    expect(rows()[1]!.querySelector("button[aria-expanded]")?.getAttribute("aria-expanded")).toBe("true");
+    const kids = rows().filter((r) => r.hasAttribute("data-in-fold"));
+    expect(kids.map((r) => r.cells[3]?.textContent)).toEqual(["WorkflowTaskScheduled", "WorkflowTaskStarted", "WorkflowTaskCompleted"]);
+    expect(rows().indexOf(kids[0]!)).toBe(2);
+    expect(kids.every((r) => r.querySelector('[data-slot="fold-guide"]') !== null)).toBe(true);
+    // Events outside the fold are not indented.
+    expect(rows()[5]!.hasAttribute("data-in-fold")).toBe(false);
+    expect(rows()[5]!.querySelector('[data-slot="fold-guide"]')).toBeNull();
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -279,7 +357,7 @@ describe("Workflow tab (spec §9.3)", () => {
     const stream = fakeStream();
     const client = { temporal: { workflows: { describe: () => Promise.reject(missing), history: vi.fn(), followHistory: () => stream.call, query: vi.fn() } } } as unknown as MightyClient;
     const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
-    const tab: TabRecord = { id: "t", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "gone" }, title: "gone", pinned: false };
+    const tab: TabView = { id: "t", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "gone" }, title: "gone", pinned: false };
     render(<WorkflowTab tab={tab} profile={profile} connId="c" client={client} active useTabActions={() => {}} onLive={() => {}} note={describeError} openTab={() => {}} />);
     await waitFor(() => byText("workflow not found") !== null, "the error");
     expect(byRole("button", "Retry") ?? byRole("button", "Refresh")).not.toBeNull();

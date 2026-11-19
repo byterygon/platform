@@ -247,7 +247,7 @@ export default {
           await until(`__mc.has("every-minute") && __mc.has("Every 1 minute")`, "the seeded schedule");
           await shot("schedules");
           await run(click("every-minute"));
-          await until(`__mc.has("Upcoming runs")`, "the schedule's detail");
+          await until(`__mc.has("Computed by the server") && __mc.has("TemporalScheduledById")`, "the schedule's detail");
           await shot("schedule detail");
           await run(`__mc.dblclick(__mc.item("Task queues"))`);
           await until(`__mc.field("Task queue")`, "the task queue form");
@@ -255,6 +255,42 @@ export default {
           await run(click("Look up"));
           await until(`__mc.has("Workflow pollers") && __mc.has("Activity pollers")`, "the pollers");
           await shot("task queue pollers");
+        }),
+      ],
+    },
+    {
+      id: "timeline-pane",
+      text: "Uy Son's feedback of 2026-11-19, part 1 (TSK-100, DOC-21 Open question 45 (r)): a Timeline item's details open in a pane beside the chart (times and waits, worker, retry policy, the failure with Copy, its own events unfolding to their attributes); an open workflow-task fold in History shows its events indented with a guide line; no key hints drawn on buttons.",
+      lab: true,
+      checks: [
+        vitest("test/temporal-timeline-detail.test.ts"),
+        vitest("test/temporal-workflow.test.tsx"),
+        vitest("test/temporal-history-view.test.ts"),
+        vitest("test/temporal-write-sheets.test.tsx"),
+        vitest("test/shell.test.tsx"),
+        command("the Timeline's aside and Fit's tooltip in packages/ui", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/timeline"]),
+        browser("the retrying activity's pane beside the Timeline and an open fold in History", async (ctx) => {
+          const { run, until, shot } = ctx;
+          await runningWorkflows(ctx);
+          await run(click("retrying-1"));
+          // The tab may be open already from the detail walk, on another view: go to the Timeline.
+          await until(`__mc.has("Input and result") && ${panelButton("Timeline")}`, "the workflow's views");
+          await run(click("Timeline"));
+          // Other workflow tabs stay mounted (hidden), so every query takes the element on screen.
+          const shown = (selector: string) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.offsetParent !== null)`;
+          const panel = shown("[data-slot=timeline-aside]");
+          await until(`${panel} && __mc.has("Click a bar, a diamond or a pin")`, "the Timeline with its empty pane");
+          await run(`__mc.click(${shown("[data-slot=timeline-item][data-shape=hatched]")})`);
+          await until(`${panel}.textContent.includes("Retrying") && ${panel}.textContent.includes("Events") && ${panel}.textContent.includes("the payment provider is down")`, "the retrying activity's details, failure and events");
+          // Within the workflow's tab (its outermost tab panel): the title bar's command search box keeps its Ctrl+K, as search fields do.
+          const hints = await run<number>(`(() => { let tab = ${panel}; while (tab.parentElement && tab.parentElement.closest("[role=tabpanel]")) tab = tab.parentElement.closest("[role=tabpanel]"); return tab.querySelectorAll("button kbd").length; })()`);
+          if (hints > 0) throw new Error(`${hints} key hint(s) drawn on buttons`);
+          await shot("timeline with the retrying activity's pane");
+          await run(click("History"));
+          await until(shown("button[aria-label^='Unfold events']"), "a folded workflow task");
+          await run(`__mc.click(${shown("button[aria-label^='Unfold events']")})`);
+          await until(shown("tr[data-in-fold] [data-slot=fold-guide]"), "the fold's events indented with the guide line");
+          await shot("history with an open fold");
         }),
       ],
     },

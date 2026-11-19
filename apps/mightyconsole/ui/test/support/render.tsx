@@ -6,6 +6,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// The router scrolls the window to the top after each URL change; jsdom has no layout to scroll.
+window.scrollTo = () => {};
 
 export interface RenderOptions {
   theme?: "light" | "dark";

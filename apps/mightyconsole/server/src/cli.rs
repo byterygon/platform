@@ -3,8 +3,8 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use crate::ServeConfig;
 use crate::tls::TlsSource;
+use crate::{RouterMode, ServeConfig};
 
 /// The default listener (spec §2.3, Open question 16).
 pub const DEFAULT_LISTEN: &str = "127.0.0.1:7443";
@@ -34,12 +34,22 @@ OPTIONS
   --codec-listen ADDR:PORT a plain-HTTP listener for the Temporal codec endpoint only
                            (/codec/PROFILE/decode, /encode), for the temporal CLI; loopback
                            addresses only. Off by default; the TLS listener serves it too.
+  --router browser|hash    how the UI keeps its place in the URL (default browser: real
+                           paths, every path without an extension is the page); hash puts
+                           the place after #, for a proxy or host that sends one page only
+  --base-path /PREFIX      serve everything under PREFIX (the page, its assets, /rpc/ws,
+                           the codec endpoint); / redirects there. A proxy forwards the
+                           prefix unchanged.
 
 The server keeps no connection settings: profiles live in the browser.
 ";
 
 /// What the command line asked for.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "parsed once at startup; boxing would only obscure the matches"
+)]
 pub enum Command {
     Serve(ServeConfig),
     Help,
@@ -83,6 +93,8 @@ fn parse_serve(
     let mut ui = None;
     let mut data = None;
     let mut codec_listen: Option<SocketAddr> = None;
+    let mut router = RouterMode::default();
+    let mut base_path = String::new();
 
     while let Some(arg) = args.next() {
         let (flag, inline) = match arg.split_once('=') {
@@ -123,6 +135,22 @@ fn parse_serve(
                 }
                 codec_listen = Some(addr);
             }
+            "--router" => {
+                router = match value()?.as_str() {
+                    "browser" => RouterMode::Browser,
+                    "hash" => RouterMode::Hash,
+                    other => return Err(format!("--router {other:?}: browser or hash")),
+                };
+            }
+            "--base-path" => {
+                let text = value()?;
+                if text.is_empty() || !ambidex_axum::valid_path_prefix(&text) {
+                    return Err(format!(
+                        "--base-path {text:?}: /-led segments of A-Z a-z 0-9 - _ ~, no trailing slash"
+                    ));
+                }
+                base_path = text;
+            }
             other => return Err(format!("unknown option {other:?}")),
         }
     }
@@ -156,6 +184,8 @@ fn parse_serve(
         tls,
         ui,
         codec_listen,
+        router,
+        base_path,
     })
 }
 
@@ -182,6 +212,9 @@ mod tests {
             }
         );
         assert_eq!(config.ui, None);
+        assert_eq!(config.router, RouterMode::Browser);
+        assert_eq!(config.base_path, "");
+        assert_eq!(config.session_cookie(), "__Host-ambidex_session");
         assert!(!config.is_exposed());
         assert_eq!(
             parse(args("serve"), Some("/data".into())).unwrap(),
@@ -226,6 +259,14 @@ mod tests {
             panic!("serve");
         };
         assert_eq!(config.codec_listen, Some("127.0.0.1:7444".parse().unwrap()));
+        let Command::Serve(modes) =
+            parse(args("--data /x --router hash --base-path /tools/mc"), None).unwrap()
+        else {
+            panic!("serve");
+        };
+        assert_eq!(modes.router, RouterMode::Hash);
+        assert_eq!(modes.base_path, "/tools/mc");
+        assert_eq!(modes.session_cookie(), "__Host-ambidex_session_tools_mc");
         assert_eq!(
             config.tls,
             TlsSource::Generated {
@@ -243,6 +284,11 @@ mod tests {
             ("--nope", "unknown option"),
             ("--codec-listen 0.0.0.0:7444", "loopback only"),
             ("--codec-listen nowhere", "--codec-listen"),
+            ("--router memory", "browser or hash"),
+            ("--base-path mc", "--base-path"),
+            ("--base-path /mc/", "--base-path"),
+            ("--base-path /", "--base-path"),
+            ("--base-path /a/../b", "--base-path"),
         ] {
             let err = parse(args(bad), Some("/d".into())).unwrap_err();
             assert!(err.contains(message), "{bad}: {err}");

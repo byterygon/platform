@@ -446,6 +446,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.schedules.backfill",
+            Mutation,
+            "temporal.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
             "temporal.schedules.create",
             Mutation,
             "temporal.write",
@@ -474,10 +481,24 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.schedules.matchingTimes",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.schedules.pause",
             Mutation,
             "temporal.write",
             Risk::Write,
+            defaults,
+        ),
+        (
+            "temporal.schedules.runs",
+            Query,
+            "temporal.read",
+            Risk::Read,
             defaults,
         ),
         (
@@ -504,6 +525,13 @@ fn the_procedures_of_the_spec() {
         (
             "temporal.taskQueues.describe",
             Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.testCodec",
+            Mutation,
             "temporal.read",
             Risk::Read,
             defaults,
@@ -566,6 +594,13 @@ fn the_procedures_of_the_spec() {
         ),
         (
             "temporal.workflows.rawEvent",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.workflows.relations",
             Query,
             "temporal.read",
             Risk::Read,
@@ -636,9 +671,12 @@ fn the_procedures_of_the_spec() {
             "profile.apiKey",
             "profile.s3AccessKeyId",
             "profile.s3SecretAccessKey",
-            "profile.s3SessionToken"
+            "profile.s3SessionToken",
+            "profile.codecAuthorization"
         ]
     );
+    // Test codec takes the same draft profile, secrets and all.
+    assert_eq!(redact("temporal.testCodec"), redact("temporal.connect"));
     assert_eq!(
         redact("nats.connect"),
         [

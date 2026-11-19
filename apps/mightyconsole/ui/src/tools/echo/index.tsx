@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
 import { liveTimeout } from "@/app/client";
+import { placeRoute } from "@/app/router";
 import { EmptyLine, ErrorState, LiveBadge } from "@/app/states";
 import * as api from "@/gen/api";
 import { ArrowUp as Send, Braces, Edit, Flash, List, Pause, Play, Stop, Subtract } from "@/lib/icons";
@@ -251,12 +252,19 @@ export const echoTool: ToolModule = {
     { id: `${p.id}/messages`, label: "Messages", icon: <Icon icon={List} />, open: { kind: "echo.messages", params: {}, title: `Messages · ${p.name}` } },
     { id: `${p.id}/compose`, label: "Composer", icon: <Icon icon={Edit} />, open: { kind: "echo.compose", params: {}, title: `Composer · ${p.name}` } },
   ],
+  // DOC-21 §3.7: /echo/<profile>/ping, …/ticks, …/messages, …/compose.
   tabKinds: {
-    "echo.ping": { title: () => "Ping", Component: PingTab },
-    "echo.ticks": { title: () => "Ticks", Component: TicksTab },
-    "echo.messages": { title: () => "Messages", Component: MessagesTab },
-    "echo.compose": { title: () => "Composer", Component: ComposeTab },
+    "echo.ping": { title: () => "Ping", Component: PingTab, href: () => ({ path: "ping" }) },
+    "echo.ticks": { title: () => "Ticks", Component: TicksTab, href: () => ({ path: "ticks" }) },
+    "echo.messages": { title: () => "Messages", Component: MessagesTab, href: () => ({ path: "messages" }) },
+    "echo.compose": { title: () => "Composer", Component: ComposeTab, href: () => ({ path: "compose" }) },
   },
+  routes: (parent) => [
+    placeRoute(parent, "ping", "Ping", () => ({ kind: "echo.ping", params: {} })),
+    placeRoute(parent, "ticks", "Ticks", () => ({ kind: "echo.ticks", params: {} })),
+    placeRoute(parent, "messages", "Messages", () => ({ kind: "echo.messages", params: {} })),
+    placeRoute(parent, "compose", "Composer", () => ({ kind: "echo.compose", params: {} })),
+  ],
   actions: [],
   async connect(client, record) {
     const out = await client.echo.connect({ profile: profile.toConnect(record) as api.ConnectEchoProfile });

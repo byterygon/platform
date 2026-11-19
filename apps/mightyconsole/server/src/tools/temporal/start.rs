@@ -318,11 +318,8 @@ pub async fn start(
     input: WorkflowStartInput,
 ) -> Result<WorkflowStartOutput, ToolError> {
     let namespace = client.namespace_or_default(input.namespace.as_deref());
-    let args = super::extstore::offload(
-        client.external.as_deref(),
-        payloads_of(input.args.as_deref())?,
-    )
-    .await?;
+    let args =
+        super::extstore::offload(client, &namespace, payloads_of(input.args.as_deref())?).await?;
     let request = ws::StartWorkflowExecutionRequest {
         namespace: namespace.clone(),
         workflow_id: required("workflowId", &input.workflow_id, "a workflow ID")?,

@@ -10,13 +10,17 @@ mod actions;
 mod actions_types;
 mod client;
 pub mod codec;
+mod codec_client;
 mod detail;
 mod detail_types;
 mod extstore;
 mod namespaces;
 mod payloads;
 mod proto;
+mod relations;
+mod relations_types;
 mod s3;
+mod schedule_detail;
 mod schedule_form;
 mod search_attributes;
 mod start;
@@ -38,6 +42,11 @@ use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 pub use self::actions_types::*;
 pub use self::detail_types::*;
 pub use self::namespaces::{Archival, NamespaceDescribeInput, NamespaceDetail, NamespaceLimits};
+pub use self::relations_types::*;
+pub use self::schedule_detail::{
+    ScheduleBackfillInput, ScheduleRun, ScheduleRunsInput, ScheduleRunsOutput, ScheduleTimesInput,
+    ScheduleTimesOutput,
+};
 pub use self::schedule_form::{
     CalendarForm, IntervalForm, ScheduleActionForm, ScheduleForm, SchedulePoliciesForm,
     ScheduleSpecForm, ScheduleStateForm, ScheduleWriteInput,
@@ -279,11 +288,27 @@ async fn count_workflows(
 
 #[rpc::router(namespace = "temporal")]
 impl TemporalApi {
+    /// "Test codec" in the profile sheet (TSK-92, spec §9.5): the draft profile's codec decodes the
+    /// inputs of the namespace's 3 latest workflows. The connection is not kept.
+    #[rpc::mutation(
+        name = "testCodec",
+        perm = "temporal.read",
+        risk = Risk::Read,
+        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"]
+    )]
+    async fn test_codec(
+        &self,
+        _ctx: Ctx,
+        input: TemporalTestCodecInput,
+    ) -> ToolResult<TemporalTestCodecOutput> {
+        Ok(codec_client::test(&input).await?)
+    }
+
     /// Opens the connection from the profile and asks the server who it is.
     #[rpc::mutation(
         perm = "temporal.read",
         risk = Risk::Read,
-        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken"]
+        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"]
     )]
     async fn connect(
         &self,
@@ -405,6 +430,18 @@ impl TemporalWorkflowsApi {
     ) -> ToolResult<WorkflowHistoryOutput> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         Ok(detail::history(&handle.value, input).await?)
+    }
+
+    /// The run's parent, children, signals and cancels with other workflows, and runs; with
+    /// `scope: "family"`, every workflow under its root (TSK-104).
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn relations(
+        &self,
+        ctx: Ctx,
+        input: WorkflowRelationsInput,
+    ) -> ToolResult<WorkflowRelations> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(relations::relations(&handle.value, input).await?)
     }
 
     /// One event with its payloads as stored (the History view's Raw form).
@@ -573,6 +610,34 @@ impl TemporalSchedulesApi {
         Ok(Empty {})
     }
 
+    /// The times the schedule's spec matches in a range, or the next `limit` from a time
+    /// (`ListScheduleMatchingTimes`, TSK-104).
+    #[rpc::query(name = "matchingTimes", perm = "temporal.read", risk = Risk::Read)]
+    async fn matching_times(
+        &self,
+        ctx: Ctx,
+        input: ScheduleTimesInput,
+    ) -> ToolResult<ScheduleTimesOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(schedule_detail::matching_times(&handle.value, input).await?)
+    }
+
+    /// The workflows the schedule started, newest first, with the matched times it did not run
+    /// (TSK-104).
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn runs(&self, ctx: Ctx, input: ScheduleRunsInput) -> ToolResult<ScheduleRunsOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(schedule_detail::runs(&handle.value, input).await?)
+    }
+
+    /// Runs the schedule's action for every time its spec matched in a past range (TSK-104).
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn backfill(&self, ctx: Ctx, input: ScheduleBackfillInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        schedule_detail::backfill(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+
     /// Deletes the schedule; runs it already started go on.
     #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
     async fn delete(&self, ctx: Ctx, input: ScheduleRef) -> ToolResult<Empty> {
@@ -659,4 +724,13 @@ mod lab_extstore_tests;
 mod lab_codec_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
+mod lab_payload_codec_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
 mod lab_form_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_relations_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_schedule_detail_tests;

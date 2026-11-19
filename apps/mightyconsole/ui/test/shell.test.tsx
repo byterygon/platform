@@ -82,6 +82,11 @@ describe("profiles through the shell (spec §4)", () => {
     // No profile: the tool's EmptyState with Add connection and Import.
     expect(byText("No Echo connections yet")).not.toBeNull();
     expect(byText(/Profiles stay in this browser/)).not.toBeNull();
+    // No key hint on or under the button (DOC-21 §3.4): the binding is its aria-keyshortcuts and tooltip.
+    const empty = byText("No Echo connections yet")!.closest<HTMLElement>("[data-slot=empty-state]")!;
+    const add = byRole("button", /^Add connection$/, empty)!;
+    expect(add.getAttribute("aria-keyshortcuts")).toMatch(/^(Control|Meta)\+Alt\+N$/);
+    expect(empty.querySelector("kbd")).toBeNull();
     await click(byRole("button", /^Add connection$/));
     await waitFor(() => dialogWith("Add Echo connection") !== null, "the profile sheet");
     // A name is required.

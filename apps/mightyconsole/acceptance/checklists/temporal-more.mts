@@ -18,7 +18,7 @@ type Ctx = Parameters<Parameters<typeof browser>[1]>[0];
 // Tabs stay mounted when another is shown, so the walks look only at what is visible: a button
 // on the shown tab, a field in the open sheet's form, the list of the shown schedule.
 /** A visible button by its text or accessible name (an expression for `run` and `until`). */
-const shownButton = (label: string) => `[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && (b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)}))`;
+export const shownButton = (label: string) => `[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && (b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)}))`;
 /** The control of a label inside the form `formId` (the open sheet). */
 const sheetField = (formId: string, label: string) => `(() => { const f = document.getElementById(${JSON.stringify(formId)}); const l = f && [...f.querySelectorAll("label")].find((x) => x.textContent.replace("*", "").trim() === ${JSON.stringify(label)}); return l ? (l.control || document.getElementById(l.htmlFor)) : null; })()`;
 /** The `data-at` instants of the visible list labelled `label`. */
@@ -27,7 +27,7 @@ const sw = (label: string) => sheetField("start-workflow", label);
 const sc = (label: string) => sheetField("schedule-form", label);
 
 /** Opens the page and connects the lab's Temporal profile (made by the TSK-83 checklist or here). */
-async function connectLab({ page, origin, until, run }: Ctx): Promise<void> {
+export async function connectLab({ page, origin, until, run }: Ctx): Promise<void> {
   await page.navigate(`${origin}/`);
   await until(`__mc.button("Temporal")`, "the tool rail");
   await run(`__mc.click(__mc.button("Temporal"))`);
@@ -257,7 +257,53 @@ export default {
       ],
     },
     { id: "activities", text: "Standalone activities: listed, run from the sheet (the lab worker completes it), described with input and result, cancelled and terminated; a server without them shows the reason.", lab: true, checks: [] },
-    { id: "codec", text: "Codec server: the encrypted payloads of the lab's codec workflow show decoded and labelled; with the codec stopped they show as stored with the reason; inputs sent with Encode inputs arrive encoded; Test codec reports the sample.", lab: true, checks: [] },
+    {
+      id: "codec",
+      text: "Codec server: the encrypted payloads of the lab's codec workflow show decoded and labelled; with the codec stopped they show as stored with the reason; inputs sent with Encode inputs arrive encoded; Test codec reports the sample.",
+      lab: true,
+      checks: [
+        ...lab(
+          "encrypted_payloads_are_decoded_through_the_codec_and_labelled",
+          "without_the_codec_they_show_as_stored",
+          "a_refusing_codec_leaves_them_as_stored_and_says_why",
+          "inputs_are_encoded_and_the_worker_reads_them",
+          "an_encode_failure_fails_the_action",
+          "test_codec_reports_the_sample",
+        ),
+        ...unit("endpoints_are_https_or_loopback_http", "an_https_codec_needs_its_ca", "plain_payloads_are_collected_but_errors_skip_them"),
+        vitest("test/temporal.test.ts", "payload codec"),
+        browser("a profile with the lab's codec: Test codec, then encrypted-1 decoded", async ({ page, origin, until, run, shot, lab: creds }) => {
+          const codec = (creds as { temporal?: { codec?: Record<string, string> } } | null)?.temporal?.codec;
+          if (!codec) throw new Error("lab/.generated/credentials.json has no temporal.codec: run `lab up temporal`");
+          await page.navigate(`${origin}/`);
+          await until(`__mc.button("Temporal")`, "the tool rail");
+          await run(`__mc.click(__mc.button("Temporal"))`);
+          await until(`__mc.button("Add connection")`, "the connection list");
+          await run(`__mc.click(__mc.button("Add connection"))`);
+          await until(`__mc.field("Name")`, "the profile sheet");
+          await run(`__mc.type(__mc.field("Name"), "lab-codec")`);
+          await run(`__mc.type(__mc.field("Namespace"), "lab")`);
+          await run(`__mc.click([...document.querySelectorAll("label")].find((l) => l.checkVisibility() && l.textContent.trim() === "Codec server")?.querySelector("button, [role=radio]"))`);
+          await until(profileField("Authorization header"), "the codec fields");
+          await run(`__mc.type(${profileField("Endpoint")}, ${JSON.stringify(codec["endpoint"])})`);
+          await run(`__mc.type(${profileField("Authorization header")}, ${JSON.stringify(codec["authorization"])})`);
+          await run(`__mc.click(__mc.button("Test codec"))`);
+          await until(`__mc.has("Codec answered")`, "Test codec's report", 30_000);
+          await shot("test-codec");
+          await run(`__mc.click(__mc.button("Save"))`);
+          await until(`__mc.item("lab-codec")`, "the saved profile");
+          await run(`__mc.dblclick(__mc.item("lab-codec"))`);
+          await until(`__mc.item("Workers")`, "temporal.connect with the codec");
+          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await until(`__mc.has("encrypted-1")`, "the workflow list");
+          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "encrypted-1"))`);
+          await until(`[...document.querySelectorAll("[role=tab]")].some((t) => t.checkVisibility() && t.textContent.trim() === "Input and result")`, "the workflow tab");
+          await run(`(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.checkVisibility() && x.textContent.trim() === "Input and result"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`);
+          await until(`document.body.innerText.includes("4111111111111111")`, "the decrypted input");
+          await shot("encrypted-input-decoded");
+        }),
+      ],
+    },
     {
       id: "large-payloads",
       text: "Large payloads: a stub for the lab's large input; the payload tab loads nodes, pages a large array, runs jq on the server, shows the size breakdown and limits, downloads both forms; History has the Size column; CI green.",

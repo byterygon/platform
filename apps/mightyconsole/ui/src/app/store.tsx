@@ -1,16 +1,22 @@
 // The app's state (Mightyconsole spec §3, §4): profiles and their live connections, tabs, the
 // selected tool, layout, settings, dialogs and the server's status. Tabs and layout persist in the
-// `workspace` store, settings in `settings` (spec §4.1), written shortly after each change.
+// `workspace` store, settings in `settings` (spec §4.1), written shortly after each change. Each
+// tab keeps its own back and forward history (DOC-21 §3.7), saved with it.
 import { type Dispatch, type ReactNode, createContext, useContext, useEffect, useReducer, useRef } from "react";
 import type { AppInfo } from "@/gen/api";
 import type { RecordState } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
 import type { AppStorage } from "@/profiles/storage";
-import type { DescribedError, LiveState, TabRecord } from "@/tools/types";
+import type { DescribedError, LiveState, TabPlace, TabRecord } from "@/tools/types";
 import { type Appearance, DEFAULT_APPEARANCE, isPreset } from "./presets";
 import type { ServerStatus } from "./supervisor";
+import { goTab, migrateTab, placeHas, placeOf, pushPlace, replacePlace, stepTab } from "./tab-history";
 
 export const SETTINGS_VERSION = 1;
+/** The `tabs` workspace document: version 2 adds each tab's history (DOC-21 §3.7). */
+export const TABS_VERSION = 2;
+/** Closed tabs kept with their history while the page lives, so a browser step back reopens one. */
+export const CLOSED_TABS_KEPT = 20;
 
 export interface Settings extends Appearance {
   editorFontSize: number;
@@ -60,7 +66,8 @@ export interface ConnState {
 
 export type Dialog =
   | { kind: "none" }
-  | { kind: "profile"; tool: string; editId?: string; duplicateOf?: string }
+  /** `name` fills a new profile's name (a link's missing profile). */
+  | { kind: "profile"; tool: string; editId?: string; duplicateOf?: string; name?: string }
   | { kind: "deleteProfile"; id: string }
   | { kind: "export"; ids: string[] | null }
   | { kind: "import" }
@@ -76,6 +83,8 @@ export interface State {
   conns: Record<string, ConnState>;
   tabs: TabRecord[];
   activeTab: string | null;
+  /** The last closed tabs, newest first (memory only). */
+  closedTabs: TabRecord[];
   /** Live state per tab, from the tab components. */
   live: Record<string, LiveState | null>;
   layout: Layout;
@@ -86,6 +95,20 @@ export interface State {
   paletteOpen: boolean;
   selectedNode: string | null;
   diagnostics: string[];
+  /** A link naming a profile this browser lacks (DOC-21 §3.7): its page shows in a link tab. */
+  missingLink: MissingLink | null;
+}
+
+/** What a link to a missing profile names. */
+export interface MissingLink {
+  tool: string;
+  profileName: string;
+  /** The router href, without the base path. */
+  href: string;
+  /** The place it points to; `null` for a profile's own URL. */
+  place: Omit<TabPlace, "title"> | null;
+  /** The link tab's title: the place's, or the profile name. */
+  title: string;
 }
 
 export type Action =
@@ -93,6 +116,14 @@ export type Action =
   | { type: "conn"; profileId: string; conn: ConnState }
   | { type: "connsReset"; status: ConnState["status"]; message?: string }
   | { type: "openTab"; tab: TabRecord }
+  /** A step of the tab: pushed onto its history, or replacing its current step. */
+  | { type: "navigateTab"; id: string; place: TabPlace; replace?: boolean }
+  /** Back (`-1`) or forward (`1`) in the tab's history. */
+  | { type: "tabGo"; id: string; delta: number }
+  /** The tab at a step of its history, activated. */
+  | { type: "tabStep"; id: string; step: number }
+  /** A closed tab back, at a step of its history. */
+  | { type: "reopenTab"; id: string; step: number }
   | { type: "closeTab"; id: string }
   | { type: "activateTab"; id: string }
   | { type: "reorderTab"; id: string; index: number }
@@ -104,7 +135,9 @@ export type Action =
   | { type: "dialog"; dialog: Dialog }
   | { type: "palette"; open: boolean }
   | { type: "select"; nodeId: string | null }
-  | { type: "diagnostic"; line: string };
+  | { type: "diagnostic"; line: string }
+  /** The missing-profile page shown, or dropped. */
+  | { type: "missingLink"; link: MissingLink | null };
 
 export function initialState(persisted: Persisted, storageKind: "indexeddb" | "memory"): State {
   return {
@@ -114,6 +147,7 @@ export function initialState(persisted: Persisted, storageKind: "indexeddb" | "m
     conns: {},
     tabs: persisted.tabs,
     activeTab: persisted.activeTab,
+    closedTabs: [],
     live: {},
     layout: persisted.layout,
     settings: persisted.settings,
@@ -123,6 +157,7 @@ export function initialState(persisted: Persisted, storageKind: "indexeddb" | "m
     paletteOpen: false,
     selectedNode: null,
     diagnostics: [],
+    missingLink: null,
   };
 }
 
@@ -140,8 +175,28 @@ export function reducer(state: State, action: Action): State {
       return { ...state, conns };
     }
     case "openTab": {
-      if (state.tabs.some((t) => t.id === action.tab.id)) return { ...state, activeTab: action.tab.id };
-      return { ...state, tabs: [...state.tabs, action.tab], activeTab: action.tab.id };
+      // Opening a resource focuses the tab already showing it (spec §3.2): its current place has
+      // every param asked for. A tab's id no longer follows its place, so a new id must be free.
+      const { tab } = action;
+      const existing = state.tabs.find((t) => t.tool === tab.tool && t.profileId === tab.profileId && placeHas(placeOf(t), tab));
+      if (existing) return { ...state, activeTab: existing.id, missingLink: null };
+      const taken = new Set(state.tabs.map((t) => t.id));
+      let id = tab.id;
+      for (let n = 2; taken.has(id); n++) id = `${tab.id}#${n}`;
+      return { ...state, tabs: [...state.tabs, { ...tab, id }], activeTab: id, closedTabs: state.closedTabs.filter((t) => t.id !== id), missingLink: null };
+    }
+    case "navigateTab":
+      return mapTab(state, action.id, (t) => (action.replace ? replacePlace(t, action.place) : pushPlace(t, action.place)));
+    case "tabGo":
+      return mapTab(state, action.id, (t) => goTab(t, action.delta));
+    case "tabStep": {
+      const next = mapTab(state, action.id, (t) => stepTab(t, action.step));
+      return next.tabs.some((t) => t.id === action.id) ? { ...next, activeTab: action.id, missingLink: null } : next;
+    }
+    case "reopenTab": {
+      const closed = state.closedTabs.find((t) => t.id === action.id);
+      if (!closed || state.tabs.some((t) => t.id === action.id)) return state;
+      return { ...state, tabs: [...state.tabs, stepTab(closed, action.step)], activeTab: closed.id, closedTabs: state.closedTabs.filter((t) => t.id !== action.id), missingLink: null };
     }
     case "closeTab": {
       const i = state.tabs.findIndex((t) => t.id === action.id);
@@ -149,10 +204,11 @@ export function reducer(state: State, action: Action): State {
       const tabs = state.tabs.filter((t) => t.id !== action.id);
       const activeTab = state.activeTab === action.id ? (tabs[Math.min(i, tabs.length - 1)]?.id ?? null) : state.activeTab;
       const { [action.id]: _, ...live } = state.live;
-      return { ...state, tabs, activeTab, live, dialog: state.dialog.kind === "closeTab" ? { kind: "none" } : state.dialog };
+      const closedTabs = [state.tabs[i]!, ...state.closedTabs.filter((t) => t.id !== action.id)].slice(0, CLOSED_TABS_KEPT);
+      return { ...state, tabs, activeTab, live, closedTabs, dialog: state.dialog.kind === "closeTab" ? { kind: "none" } : state.dialog };
     }
     case "activateTab":
-      return state.tabs.some((t) => t.id === action.id) ? { ...state, activeTab: action.id } : state;
+      return state.tabs.some((t) => t.id === action.id) ? { ...state, activeTab: action.id, missingLink: null } : state;
     case "reorderTab": {
       const tab = state.tabs.find((t) => t.id === action.id);
       if (!tab) return state;
@@ -178,10 +234,26 @@ export function reducer(state: State, action: Action): State {
       return { ...state, selectedNode: action.nodeId };
     case "diagnostic":
       return { ...state, diagnostics: [action.line, ...state.diagnostics].slice(0, 100) };
+    case "missingLink":
+      return { ...state, missingLink: action.link };
   }
 }
 
-/** The tab id for a resource, so opening it again focuses the same tab (spec §3.2). */
+function mapTab(state: State, id: string, change: (tab: TabRecord) => TabRecord): State {
+  let changed = false;
+  const tabs = state.tabs.map((t) => {
+    if (t.id !== id) return t;
+    const next = change(t);
+    changed ||= next !== t;
+    return next;
+  });
+  return changed ? { ...state, tabs } : state;
+}
+
+/**
+ * The id a new tab of a resource starts with (spec §3.2). A tab keeps its id when it moves
+ * (DOC-21 §3.7), so ids are compared only to keep them unique.
+ */
 export function tabIdOf(tool: string, profileId: string, kind: string, params: Record<string, unknown>): string {
   const keys = Object.keys(params).sort();
   return `${tool}|${profileId}|${kind}|${keys.map((k) => `${k}=${JSON.stringify(params[k])}`).join("&")}`;
@@ -195,7 +267,7 @@ const num = (v: unknown, fallback: number, min: number, max: number) => (typeof 
 /** Reads the persisted tabs, layout and settings; anything missing or malformed takes its default. */
 export async function loadPersisted(storage: AppStorage, tools: readonly string[]): Promise<Persisted> {
   const [tabsDoc, layoutDoc, settingsDoc] = await Promise.all([
-    storage.getWorkspace<{ tabs?: unknown; activeTab?: unknown }>("tabs").catch(() => undefined),
+    storage.getWorkspace<{ version?: unknown; tabs?: unknown; activeTab?: unknown }>("tabs").catch(() => undefined),
     storage.getWorkspace<Partial<Layout>>("layout").catch(() => undefined),
     storage.getSettings<{ version?: unknown; settings?: Partial<Settings> }>().catch(() => undefined),
   ]);
@@ -203,7 +275,9 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
     ? (tabsDoc.tabs as unknown[]).filter((t): t is TabRecord => {
         const r = t as Partial<TabRecord>;
         return typeof r?.id === "string" && typeof r.tool === "string" && tools.includes(r.tool) && typeof r.profileId === "string" && typeof r.kind === "string" && typeof r.title === "string" && typeof r.params === "object" && r.params !== null;
-      }).map((t) => ({ ...t, pinned: t.pinned === true }))
+      })
+        // Version 1 tabs (TSK-79) have no history: each gets its one step (DOC-21 §3.7).
+        .map((t) => migrateTab({ ...t, pinned: t.pinned === true }))
     : [];
   const activeTab = typeof tabsDoc?.activeTab === "string" && tabs.some((t) => t.id === tabsDoc.activeTab) ? tabsDoc.activeTab : (tabs[0]?.id ?? null);
   const s = settingsDoc?.settings ?? {};
@@ -256,7 +330,7 @@ export function StoreProvider({ persisted, storage, children, saveDelayMs = 200 
       return;
     }
     const timer = setTimeout(() => {
-      void storage.putWorkspace("tabs", { tabs: state.tabs, activeTab: state.activeTab }).catch(() => {});
+      void storage.putWorkspace("tabs", { version: TABS_VERSION, tabs: state.tabs, activeTab: state.activeTab }).catch(() => {});
       void storage.putWorkspace("layout", state.layout).catch(() => {});
       void storage.putSettings({ version: SETTINGS_VERSION, settings: state.settings }).catch(() => {});
     }, saveDelayMs);

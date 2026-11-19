@@ -88,23 +88,25 @@ fn collect_encodings(value: &Value, out: &mut Vec<String>) {
                 .and_then(|b| BASE64.decode(b).ok())
                 .and_then(|b| String::from_utf8(b).ok());
             match encoding {
-                Some(encoding)
-                    if object.keys().all(|k| {
-                        k == "metadata"
-                            || k == "data"
-                            || k == "externalPayloads"
-                            || k == "$external"
-                    }) =>
-                {
-                    // A payload read from External Storage names its driver.
+                Some(encoding) if object.keys().all(|k| PAYLOAD_KEYS.contains(&k.as_str())) => {
+                    // A payload read from External Storage names its driver; one the payload codec
+                    // decoded, what it was ("binary/encrypted → json/plain").
                     let via = object
                         .get("$external")
                         .filter(|e| e.get("error").is_none())
                         .and_then(|e| e.get("driver"))
                         .and_then(Value::as_str);
-                    out.push(match via {
-                        Some(driver) => format!("{encoding} via {driver}"),
+                    let from = object
+                        .get("$codec")
+                        .and_then(|c| c.get("from"))
+                        .and_then(Value::as_str);
+                    let shown = match from {
+                        Some(from) => format!("{from} → {encoding}"),
                         None => encoding,
+                    };
+                    out.push(match via {
+                        Some(driver) => format!("{shown} via {driver}"),
+                        None => shown,
                     })
                 }
                 _ => object.values().for_each(|v| collect_encodings(v, out)),
@@ -114,6 +116,17 @@ fn collect_encodings(value: &Value, out: &mut Vec<String>) {
         _ => {}
     }
 }
+
+/// The members of a payload object: protobuf's, and the marks External Storage and the payload
+/// codec leave (`$external`, `$codec`, `$codecError`).
+const PAYLOAD_KEYS: &[&str] = &[
+    "metadata",
+    "data",
+    "externalPayloads",
+    "$external",
+    "$codec",
+    "$codecError",
+];
 
 /// Replaces every payload in `value` by its decoded form, and `{ "payloads": [...] }` by the array.
 pub fn decode_payloads(value: &mut Value) {
@@ -139,10 +152,7 @@ pub fn decode_payloads(value: &mut Value) {
 /// The decoded form of `object` if it is a payload (`metadata.encoding` is a string).
 fn payload_value(object: &Map<String, Value>) -> Option<Value> {
     let metadata = object.get("metadata")?.as_object()?;
-    if !object
-        .keys()
-        .all(|k| k == "metadata" || k == "data" || k == "externalPayloads" || k == "$external")
-    {
+    if !object.keys().all(|k| PAYLOAD_KEYS.contains(&k.as_str())) {
         return None;
     }
     // A reference that could not be read says what and why.
@@ -179,7 +189,21 @@ fn payload_value(object: &Map<String, Value>) -> Option<Value> {
         );
         return Some(json!({ "$external": info }));
     }
-    Some(decode(&encoding, &data, message_type.as_deref()))
+    let mut decoded = decode(&encoding, &data, message_type.as_deref());
+    // The payload codec could not read it: as stored, saying why.
+    if let Some(error) = object
+        .get("$codecError")
+        .and_then(|e| e.get("error"))
+        .and_then(Value::as_str)
+        && let Value::Object(opaque) = &mut decoded
+    {
+        opaque.insert(
+            "note".into(),
+            Value::String(format!("Codec failed: {error}")),
+        );
+        opaque.insert("codecError".into(), Value::String(error.to_owned()));
+    }
+    Some(decoded)
 }
 
 /// One payload by its encoding (spec §9.5).
