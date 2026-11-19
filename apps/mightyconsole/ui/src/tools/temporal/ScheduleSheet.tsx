@@ -409,7 +409,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
             ) : null}
           </form>
         </SheetBody>
-        <SheetFooter>
+        <SheetFooter className="flex-nowrap">
           <Button appearance="subtle" disabled={!form} aria-pressed={asJson} onClick={() => setAsJson((v) => !v)}>
             <Icon icon={Braces} /> {asJson ? "Hide JSON" : "Show as JSON"}
           </Button>

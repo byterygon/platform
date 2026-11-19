@@ -23,7 +23,7 @@ import { formatCount } from "@/app/messages";
 import type { NamespaceSummary, SearchAttribute, WorkflowRow, WorkflowStatus } from "@/gen/api";
 import { Add, ArrowClockwise, Play } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
-import { formatDuration, formatTime } from "./format";
+import { formatDuration, formatShortTime, formatTime } from "./format";
 import { namespaceOf, pageSizeOf, savedQueriesOf } from "./profile";
 import { STATUS_CHIPS, statusOf, withStatus } from "./query";
 import { useSheetRequest } from "./sheet-parts";
@@ -50,6 +50,9 @@ const ANY = "any";
 
 export const statusLabel = (s: WorkflowStatus): string => s.replace(/([a-z])([A-Z])/g, "$1 $2");
 
+/** The footer's choices of rows per page (the mockup's). */
+const PAGE_SIZES = [25, 50, 100, 200] as const;
+
 export function WorkflowsTab({ tab, profile, connId, client, active, useTabActions, note, openTab }: TabProps) {
   const [namespace, setNamespace] = useState(typeof tab.params["namespace"] === "string" ? tab.params["namespace"] : namespaceOf(profile));
   const initial = typeof tab.params["query"] === "string" ? tab.params["query"] : "";
@@ -70,7 +73,8 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
   const seen = useRef(new Map<string, Set<string>>());
   // A response that arrives after a newer request started is dropped.
   const generation = useRef(0);
-  const pageSize = pageSizeOf(profile);
+  // Rows per page: the profile's setting, changed for this tab from the footer.
+  const [pageSize, setPageSize] = useState(() => pageSizeOf(profile));
   const [starting, setStarting] = useState(false);
   // "Start workflow" from the palette opens this tab and asks it for the sheet.
   const request = useSheetRequest(profile.id, "startWorkflow");
@@ -330,7 +334,7 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
                   <TableRow key={`${w.workflowId}/${w.runId}`} className="group">
                     <TableCell>
                       <span className="flex items-center gap-inline-xs">
-                        <Button size="small" appearance="transparent" className="text-fg-link" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId })}>
+                        <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: w.workflowId, runId: w.runId }, title: w.workflowId })}>
                           {w.workflowId}
                         </Button>
                         <CopyButton value={w.workflowId} what="workflow ID" className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" />
@@ -340,11 +344,15 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
                       <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge>
                     </TableCell>
                     <TableCell>{w.workflowType}</TableCell>
-                    <TableCell>{formatTime(w.startTime)}</TableCell>
-                    <TableCell>{w.closeTime ? formatTime(w.closeTime) : <span className="text-fg-muted">—</span>}</TableCell>
+                    <TableCell className="whitespace-nowrap" title={formatTime(w.startTime)}>
+                      {formatShortTime(w.startTime)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap" title={w.closeTime ? formatTime(w.closeTime) : undefined}>
+                      {w.closeTime ? formatShortTime(w.closeTime) : <span className="text-fg-muted">—</span>}
+                    </TableCell>
                     <TableCell align="end">{w.durationMs === undefined ? "" : formatDuration(w.durationMs)}</TableCell>
                     <TableCell>
-                      <Button size="small" appearance="transparent" className="text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+                      <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
                         {w.taskQueue}
                       </Button>
                     </TableCell>
@@ -362,12 +370,21 @@ export function WorkflowsTab({ tab, profile, connId, client, active, useTabActio
               </TableBody>
             </Table>
             <PageFooter>
+              <span className="whitespace-nowrap">Rows per page</span>
+              <Select aria-label="Rows per page" size="small" className="w-auto shrink-0" value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))} items={Object.fromEntries(PAGE_SIZES.map((n) => [String(n), String(n)]))}>
+                {PAGE_SIZES.map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </Select>
               <Pager
                 range={`${formatCount(first)}–${formatCount(first + rows.length - 1)}${count !== null ? ` of ${formatCount(count)}` : ""}`}
                 page={page}
                 hasPrev={page > 1}
                 hasNext={next !== null}
                 busy={loading}
+                onFirst={() => void goPage(1)}
                 onPrev={() => void goPage(page - 1)}
                 onNext={() => void goPage(page + 1)}
               />
