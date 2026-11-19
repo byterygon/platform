@@ -282,7 +282,8 @@ export default {
           await until(`${panel} && __mc.has("Click a bar, a diamond or a pin")`, "the Timeline with its empty pane");
           await run(`__mc.click(${shown("[data-slot=timeline-item][data-shape=hatched]")})`);
           await until(`${panel}.textContent.includes("Retrying") && ${panel}.textContent.includes("Events") && ${panel}.textContent.includes("the payment provider is down")`, "the retrying activity's details, failure and events");
-          const hints = await run<number>(`[...document.querySelectorAll("button kbd")].filter((k) => k.offsetParent !== null).length`);
+          // Within the workflow's tab (its outermost tab panel): the title bar's command search box keeps its Ctrl+K, as search fields do.
+          const hints = await run<number>(`(() => { let tab = ${panel}; while (tab.parentElement && tab.parentElement.closest("[role=tabpanel]")) tab = tab.parentElement.closest("[role=tabpanel]"); return tab.querySelectorAll("button kbd").length; })()`);
           if (hints > 0) throw new Error(`${hints} key hint(s) drawn on buttons`);
           await shot("timeline with the retrying activity's pane");
           await run(click("History"));
