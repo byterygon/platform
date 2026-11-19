@@ -59,6 +59,27 @@ export function externalStorageOf(fields: Record<string, unknown>): ExternalStor
   return out;
 }
 
+/** The Web UI's origins of a local dev server, allowed by default. */
+export const DEFAULT_CODEC_ORIGINS = "http://localhost:8233, http://127.0.0.1:8233";
+
+/** The codec endpoint (TSK-103): Temporal's codec-server protocol for the Web UI and the CLI. */
+export interface CodecServerFields {
+  enabled: boolean;
+  /** Comma or line separated. */
+  allowedOrigins: string;
+}
+
+export function codecServerOf(fields: Record<string, unknown>): CodecServerFields {
+  const raw = fields["codecServer"];
+  const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return { enabled: o["enabled"] === true, allowedOrigins: typeof o["allowedOrigins"] === "string" ? o["allowedOrigins"] : DEFAULT_CODEC_ORIGINS };
+}
+
+/** The codec endpoint of a saved profile on this server. */
+export function codecEndpointOf(origin: string, profileId: string): string {
+  return `${origin.replace(/\/+$/, "")}/codec/${encodeURIComponent(profileId)}`;
+}
+
 /** The buckets of a comma- or line-separated list. */
 export function bucketsOf(list: string): string[] {
   return list
@@ -117,6 +138,9 @@ export const profile: ProfileSchema = {
     const apiKey = text(record.secrets["apiKey"]);
     const clientKey = text(record.secrets["clientKeyPem"]);
     const ext = externalStorageOf(record.fields);
+    const codec = codecServerOf(record.fields);
+    if (codec.enabled && !ext.enabled) errors["codecServer"] = "The codec endpoint resolves External Storage; turn External Storage on.";
+    if (codec.enabled && bucketsOf(codec.allowedOrigins).some((o) => !/^https?:\/\/[^\s/]+$/.test(o))) errors["codecServer.allowedOrigins"] = "Origins are scheme://host[:port], for example http://localhost:8233.";
     if (ext.enabled) {
       if (ext.bucket.trim() === "") errors["externalStorage.bucket"] = "Name the bucket.";
       if (ext.endpoint.trim() !== "" && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(ext.endpoint.trim())) errors["externalStorage.endpoint"] = "An http:// or https:// URL, for example https://minio.example.com:9000.";
@@ -155,8 +179,11 @@ export const profile: ProfileSchema = {
           maxPayloadBytes: null,
         }
       : null;
+    const codec = codecServerOf(record.fields);
     return {
       name: record.name,
+      profileId: record.id,
+      codecServer: externalStorage && codec.enabled ? { enabled: true, allowedOrigins: bucketsOf(codec.allowedOrigins) } : null,
       address: text(record.fields["address"]).trim() || null,
       namespace: text(record.fields["namespace"]).trim() || null,
       tls: options,

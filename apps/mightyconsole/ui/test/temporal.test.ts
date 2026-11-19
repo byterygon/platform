@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import type { ConnectTemporalProfile } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import { formatDuration, formatShortTime, formatTime } from "@/tools/temporal/format";
-import { namespaceOf, pageSizeOf, profile, savedQueriesOf, tlsOf, validateAddress } from "@/tools/temporal/profile";
+import { codecEndpointOf, namespaceOf, pageSizeOf, profile, savedQueriesOf, tlsOf, validateAddress } from "@/tools/temporal/profile";
 import { STATUS_CHIPS, statusOf, withStatus } from "@/tools/temporal/query";
 
 const connect = (r: ProfileRecord) => profile.toConnect(r) as ConnectTemporalProfile;
@@ -18,7 +18,7 @@ describe("profile (spec §9.1)", () => {
     const r = record();
     expect(profile.validate(r)).toEqual({});
     expect(r.fields).toMatchObject({ address: "127.0.0.1:7233", namespace: "default", pageSize: 50, tls: { enabled: false } });
-    expect(connect(r)).toEqual({ name: "lab", address: "127.0.0.1:7233", namespace: "default", tls: { enabled: false }, clientKeyPem: null, apiKey: null, externalStorage: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3SessionToken: null });
+    expect(connect(r)).toEqual({ name: "lab", profileId: "01T", codecServer: null, address: "127.0.0.1:7233", namespace: "default", tls: { enabled: false }, clientKeyPem: null, apiKey: null, externalStorage: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3SessionToken: null });
   });
 
   test("addresses are host:port", () => {
@@ -65,6 +65,16 @@ describe("profile (spec §9.1)", () => {
     expect(on).toMatchObject({ s3AccessKeyId: "AK", s3SecretAccessKey: "SK", s3SessionToken: null });
     const off = connect(record({ fields: { tls: { enabled: false }, externalStorage: { enabled: false, bucket: "b" } }, secrets: { s3AccessKeyId: "AK" } }));
     expect(off).toMatchObject({ externalStorage: null, s3AccessKeyId: null });
+  });
+
+  test("the codec endpoint (TSK-103) needs External Storage and well-formed origins", () => {
+    const ext = { enabled: true, bucket: "b" };
+    expect(profile.validate(record({ fields: { tls: { enabled: false }, codecServer: { enabled: true } } }))["codecServer"]).toMatch(/External Storage/);
+    expect(profile.validate(record({ fields: { tls: { enabled: false }, externalStorage: ext, codecServer: { enabled: true, allowedOrigins: "localhost:8233" } } }))["codecServer.allowedOrigins"]).toMatch(/scheme/);
+    const on = connect(record({ fields: { tls: { enabled: false }, externalStorage: ext, codecServer: { enabled: true } } }));
+    expect(on.codecServer).toEqual({ enabled: true, allowedOrigins: ["http://localhost:8233", "http://127.0.0.1:8233"] });
+    expect(on.profileId).toBe("01T");
+    expect(codecEndpointOf("https://localhost:7443/", "01T")).toBe("https://localhost:7443/codec/01T");
   });
 
   test("readers tolerate hand-edited records", () => {

@@ -76,6 +76,7 @@ pub fn config(dir: &Path, ui: Option<std::path::PathBuf>) -> ServeConfig {
             dir: dir.join("tls"),
         },
         ui,
+        codec_listen: None,
     }
 }
 

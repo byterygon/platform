@@ -9,6 +9,7 @@
 mod actions;
 mod actions_types;
 mod client;
+pub mod codec;
 mod detail;
 mod detail_types;
 mod extstore;
@@ -289,9 +290,20 @@ impl TemporalApi {
         ctx: Ctx,
         input: TemporalConnectInput,
     ) -> ToolResult<TemporalConnectOutput> {
-        let client = client::connect(&input.profile).await?;
+        let client = Arc::new(client::connect(&input.profile).await?);
         let info = server_info(&client).await?;
-        let handle = self.0.insert(&ctx.session().id, TOOL, Arc::new(client));
+        // The codec endpoint serves the profile while this connection lives (TSK-103).
+        if client.codec.is_some()
+            && let Some(id) = input
+                .profile
+                .profile_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+        {
+            codec::register(id, &client);
+        }
+        let handle = self.0.insert(&ctx.session().id, TOOL, client);
         Ok(TemporalConnectOutput {
             conn_id: handle.conn_id,
             server_version: info.server_version,
@@ -642,6 +654,9 @@ mod lab_more_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_extstore_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_codec_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_form_tests;

@@ -73,6 +73,21 @@ pub struct ExternalStorageOptions {
     pub max_payload_bytes: Option<u64>,
 }
 
+/// The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at
+/// `/codec/<profileId>/decode` and `/encode` while the profile is connected.
+#[derive(Debug, Clone, Default, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CodecServerOptions {
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub enabled: Option<bool>,
+    /// The browser origins allowed to call it (the Temporal Web UI's); callers without an Origin
+    /// (the CLI) are accepted.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub allowed_origins: Option<Vec<String>>,
+}
+
 /// The Temporal profile as `toConnect` builds it (spec §9.1).
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +116,14 @@ pub struct ConnectTemporalProfile {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub external_storage: Option<ExternalStorageOptions>,
+    /// The profile's stable id in the browser: the codec endpoint's path names it.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile_id: Option<String>,
+    /// Serve the profile on the codec endpoint (TSK-103).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub codec_server: Option<CodecServerOptions>,
     /// The S3 credentials of External Storage; never logged.
     #[serde(default)]
     #[ts(optional = nullable)]

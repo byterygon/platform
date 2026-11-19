@@ -8,6 +8,8 @@ export interface BrowserContext {
   page: Page;
   /** `https://localhost:<port>`, the server's public origin. */
   origin: string;
+  /** `http://127.0.0.1:<port>`, the server's plain loopback codec listener (`--codec-listen`, TSK-103). */
+  codecOrigin: string;
   /** Waits until `expression` holds in the page (with the `__mc` helpers of cdp.ts); throws after the timeout. */
   until: (expression: string, what: string, timeoutMs?: number) => Promise<void>;
   /** Evaluates `expression` with the helpers. */
