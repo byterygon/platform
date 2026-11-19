@@ -51,7 +51,10 @@ Each tool ships when it is done (Uy Son, 2026-11-17). Before it closes, a tool t
 runs its acceptance checklist (`pnpm --filter @byterygon/mightyconsole acceptance <tool> --lab-up
 --strict`, `acceptance/README.md`) and attaches the evidence to its last PR. A finished tool adds
 `release/notes/<N>-<tool>.md` (the next N, from its task's "Release after this tool" notes); the
-version follows: `0.1.0-alpha.N`, and `0.1.0` once all six are in. Then run the workflow
+version follows: `0.1.0-alpha.N`, and `0.1.0` once all six are in. To ship a bug fix for the same
+tools, write `<N>.<R>` in `release/FIX` (for example `2.1`): the version is then
+`0.1.0-alpha.N.R` (tag `mightyconsole-v0.1.0-alpha.2.1`), and the file goes stale, so the version
+returns to `0.1.0-alpha.N+1`, as soon as the next tool's note is added. Then run the workflow
 (Actions > Mightyconsole release > Run workflow): it builds one file per platform with the UI
 built in (Linux x64 and arm64 static, macOS Apple silicon and Intel, Windows x64), a container
 image per Linux architecture, the licence, the third-party notices, the README, the release notes

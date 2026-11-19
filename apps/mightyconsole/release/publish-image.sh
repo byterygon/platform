@@ -10,7 +10,7 @@
 # REPOSITORY:VERSION-amd64 / -arm64, and `docker buildx imagetools create` joins them under the
 # tags below, so the pushed bytes are the checked bytes.
 #
-# Tags: the exact VERSION; `alpha` (floating) for 0.1.0-alpha.N; `latest` only for a version with
+# Tags: the exact VERSION; `alpha` (floating) for 0.1.0-alpha.N and 0.1.0-alpha.N.R; `latest` only for a version with
 # no pre-release part (0.1.0 on). It refuses to run when REPOSITORY:VERSION already exists: a
 # version tag is never overwritten. DEST_TLS_VERIFY=false for the plain-HTTP local registry.
 # Prints the manifest digest on its last line (and to $GITHUB_OUTPUT as `digest`).

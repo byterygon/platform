@@ -3,7 +3,8 @@ name: Mightyconsole release
 # TSK-87: Mightyconsole as one file per platform with the UI built in, plus a container image,
 # both working offline, with SHA-256 checksums, the AGPL text, third-party notices, a short
 # README and release notes made from the tools' notes (apps/mightyconsole/release/notes). The
-# version comes from those notes: 0.1.0-alpha.N with N finished tools, 0.1.0 with all six.
+# version comes from those notes: 0.1.0-alpha.N with N finished tools, 0.1.0 with all six; a fix
+# release of the same tools is 0.1.0-alpha.N.R (release/FIX holds `N.R`, TSK-97).
 #
 # Run it by hand (Actions > Mightyconsole release > Run workflow): the files are the workflow's
 # artifacts. It never creates a tag and never publishes: only a tag `mightyconsole-v<version>`
