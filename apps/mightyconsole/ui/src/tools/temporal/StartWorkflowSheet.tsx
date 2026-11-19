@@ -296,7 +296,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
               ))}
             </datalist>
             <Fold title="Input" value="JSON, one payload per argument" open>
-              <ArgsField label="Input" hideLabel description={null} value={d.input} onChange={(input) => set({ input })} onSubmit={() => void start()} />
+              <ArgsField label="Input" hideLabel compact description={null} value={d.input} onChange={(input) => set({ input })} onSubmit={() => void start()} />
             </Fold>
             <Fold title="Timeouts and retries" value={timeouts}>
               <div className="grid grid-cols-3 gap-inline-md">

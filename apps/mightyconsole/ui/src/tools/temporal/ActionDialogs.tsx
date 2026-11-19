@@ -110,10 +110,12 @@ export interface ArgsFieldProps {
   hideLabel?: boolean;
   /** Replaces the default description; null shows none. */
   description?: string | null;
+  /** A short editor with line numbers, as the Write sheets lay it out (the mockup); the dialogs keep the tall one. */
+  compact?: boolean;
 }
 
 /** The arguments of a signal or query: a JSON array (one argument each) or a single JSON value. */
-export function ArgsField({ value, onChange, label = "Arguments", onSubmit, hideLabel = false, description }: ArgsFieldProps) {
+export function ArgsField({ value, onChange, label = "Arguments", onSubmit, hideLabel = false, description, compact = false }: ArgsFieldProps) {
   const parsed = parseArgs(value);
   const bad = "error" in parsed ? parsed.error : null;
   const labelId = useId();
@@ -122,7 +124,7 @@ export function ArgsField({ value, onChange, label = "Arguments", onSubmit, hide
       <FieldLabel id={labelId} {...(hideLabel ? { className: "sr-only" } : {})}>
         {label}
       </FieldLabel>
-      <CodeEditor value={value} onValueChange={onChange} language="json" aria-labelledby={labelId} placeholder='["approver", 42]' invalid={bad !== null} lineNumbers={false} onSubmit={onSubmit ? () => onSubmit() : undefined} className="h-panel-xs" />
+      <CodeEditor value={value} onValueChange={onChange} language="json" aria-labelledby={labelId} placeholder='["approver", 42]' invalid={bad !== null} lineNumbers={compact} onSubmit={onSubmit ? () => onSubmit() : undefined} className={compact ? "h-[calc(var(--by-size-control-md)*3)]" : "h-panel-xs"} />
       {description === null ? null : <FieldDescription>{description ?? "A JSON array sends one argument per item; any other JSON value is one argument. Each goes as json/plain."}</FieldDescription>}
       {bad ? <FieldError match>{bad}</FieldError> : null}
     </Field>

@@ -119,7 +119,7 @@ describe("Workers", () => {
     const rows = Array.from(container.querySelectorAll("tbody tr")).map((r) => r.textContent ?? "");
     expect(rows[0]).toContain("Workflow, activity");
     expect(rows[0]).toContain("8c1e2a");
-    expect(rows[0]).toContain("1.50");
+    expect(rows[0]).toContain("1.5 / s");
     expect(rows[1]).toContain("Activity");
     expect(rows[1]).toContain("Idle");
     await click(byRole("button", "payments"));

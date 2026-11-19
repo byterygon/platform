@@ -70,13 +70,13 @@ export function WritesTo({ profile, children }: { profile: string; children: Rea
 /** A section folded by default; its summary line shows what it holds ("Not set" when nothing). */
 export function Fold({ title, value, children, open }: { title: string; value: string; children: ReactNode; open?: boolean }) {
   return (
-    <details className="group rounded-md border border-border-subtle" open={open}>
-      <summary className="flex cursor-pointer list-none items-center gap-inline-sm px-inset-md py-stack-sm text-body-1 text-fg">
+    <details className="group border-t border-border-subtle" open={open}>
+      <summary className="flex cursor-pointer list-none items-center gap-inline-sm py-stack-sm text-body-1 text-fg">
         <Icon icon={ChevronRight} className="transition-transform group-open:rotate-90" />
         <span className="text-body-1-strong">{title}</span>
         <span className="min-w-0 flex-1 truncate text-fg-muted">{value}</span>
       </summary>
-      <div className="flex flex-col gap-stack-md border-t border-border-subtle px-inset-md py-stack-md">{children}</div>
+      <div className="flex flex-col gap-stack-md pb-stack-md">{children}</div>
     </details>
   );
 }
