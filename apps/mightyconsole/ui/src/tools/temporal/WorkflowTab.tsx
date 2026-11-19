@@ -31,6 +31,7 @@ import { CancelDialog, ResetDialog, SignalDialog, TerminateDialog, useAction } f
 import { QueriesPanel } from "./QueriesPanel";
 import { StartWorkflowSheet, type StartPrefill } from "./StartWorkflowSheet";
 import { HistoryPanel } from "./HistoryPanel";
+import { PendingPanel } from "./PendingPanel";
 import { statusLabel } from "./WorkflowsTab";
 import { useWorkflow } from "./useWorkflow";
 
@@ -257,8 +258,8 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           <TabsContent value="io" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <InputResultPanel events={events} detail={detail} />
           </TabsContent>
-          <TabsContent value="pending" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
-            <PendingPanel detail={detail} onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })} />
+          <TabsContent value="pending" className="flex min-h-0 flex-1 flex-col">
+            <PendingPanel detail={detail} now={now} onRefresh={state.refresh} onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })} />
           </TabsContent>
           <TabsContent value="queries" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <QueriesPanel client={client} connId={connId} namespace={namespace} workflowId={workflowId} runId={detail.workflow.runId} active={section === "queries"} note={note} />
@@ -557,85 +558,6 @@ function InputResultPanel({ events, detail }: { events: HistoryEvent[]; detail: 
       {hasSearch ? (
         <Section title="Search attributes">
           <JsonViewer value={detail.searchAttributes} defaultExpandDepth={2} aria-label="Search attributes" className="max-h-panel-sm" />
-        </Section>
-      ) : null}
-    </div>
-  );
-}
-
-function PendingPanel({ detail, onOpenWorkflow }: { detail: WorkflowDetail; onOpenWorkflow(workflowId: string, runId: string): void }) {
-  const { pendingActivities: activities, pendingChildren: children, pendingWorkflowTask: task } = detail;
-  if (activities.length === 0 && children.length === 0 && !task) return <EmptyLine>Nothing is pending.</EmptyLine>;
-  return (
-    <div className="flex flex-col">
-      {activities.length > 0 ? (
-        <Section title={`Pending activities (${activities.length})`}>
-          <Table aria-label="Pending activities">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Activity</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead align="end">Attempt</TableHead>
-                <TableHead>Last failure</TableHead>
-                <TableHead>Heartbeat</TableHead>
-                <TableHead>Scheduled</TableHead>
-                <TableHead>Last started</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {activities.map((a, i) => {
-                const max = Number(a["maximumAttempts"]);
-                const failure = obj(a["lastFailure"]);
-                const heartbeat = a["heartbeatDetails"];
-                return (
-                  <TableRow key={text(a["activityId"]) || i}>
-                    <TableCell>{text(obj(a["activityType"])["name"]) || text(a["activityId"])}</TableCell>
-                    <TableCell>
-                      <Badge variant={failure["message"] ? "danger" : "accent"}>{stateLabel(a["state"])}</Badge>
-                    </TableCell>
-                    <TableCell align="end">{text(a["attempt"])}{max > 0 ? ` of ${max}` : ""}</TableCell>
-                    <TableCell wrap>{text(failure["message"])}</TableCell>
-                    <TableCell>{heartbeat === undefined ? "" : JSON.stringify(heartbeat)}</TableCell>
-                    <TableCell>{formatTime(text(a["scheduledTime"]))}</TableCell>
-                    <TableCell>{formatTime(text(a["lastStartedTime"]))}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Section>
-      ) : null}
-      {children.length > 0 ? (
-        <Section title={`Pending child workflows (${children.length})`}>
-          <Table aria-label="Pending child workflows">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Workflow ID</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Run ID</TableHead>
-                <TableHead>Parent close policy</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {children.map((c, i) => (
-                <TableRow key={text(c["workflowId"]) || i}>
-                  <TableCell>
-                    <Button size="small" appearance="subtle" onClick={() => onOpenWorkflow(text(c["workflowId"]), text(c["runId"]))}>
-                      {text(c["workflowId"])}
-                    </Button>
-                  </TableCell>
-                  <TableCell>{text(c["workflowTypeName"])}</TableCell>
-                  <TableCell className="font-mono text-code">{text(c["runId"]).slice(0, 8)}</TableCell>
-                  <TableCell>{stateLabel(c["parentClosePolicy"])}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Section>
-      ) : null}
-      {task ? (
-        <Section title="Pending workflow task">
-          <JsonViewer value={task} defaultExpandDepth={2} aria-label="Pending workflow task" className="max-h-panel-sm" />
         </Section>
       ) : null}
     </div>

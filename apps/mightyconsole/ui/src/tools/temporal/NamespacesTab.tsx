@@ -104,7 +104,7 @@ export function NamespacesTab({ profile, connId, client, useTabActions, note, op
                     <TableRow key={n.name} selected={n.name === selected} className="group">
                       <TableCell>
                         <span className="flex items-center gap-inline-xs">
-                          <Button size="small" appearance="transparent" className="text-fg-link" aria-pressed={n.name === selected} onClick={() => setSelected(n.name)}>
+                          <Button appearance="transparent" className="text-body-1 text-fg-link" aria-pressed={n.name === selected} onClick={() => setSelected(n.name)}>
                             {n.name}
                           </Button>
                           {n.isDefault ? <Badge variant="neutral">profile</Badge> : null}
@@ -187,13 +187,13 @@ function NamespacePane({ namespace, connId, client, note, openTab }: { namespace
       ) : null}
       {detail ? (
         <div className="flex flex-wrap gap-inline-md">
-          <Button onClick={() => open("temporal.workflows", "Workflows", { query: "" })}>
+          <Button appearance="secondary" onClick={() => open("temporal.workflows", "Workflows", { query: "" })}>
             <Icon icon={Flash} /> Workflows
           </Button>
-          <Button onClick={() => open("temporal.workers", "Workers")}>
+          <Button appearance="secondary" onClick={() => open("temporal.workers", "Workers")}>
             <Icon icon={Server} /> Workers
           </Button>
-          <Button onClick={() => open("temporal.schedules", "Schedules")}>
+          <Button appearance="secondary" onClick={() => open("temporal.schedules", "Schedules")}>
             <Icon icon={CalendarClock} /> Schedules
           </Button>
         </div>

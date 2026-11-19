@@ -5,6 +5,8 @@
 // forgets a poller after 5. Filters: task queue, what it polls for, text over identity and build.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
@@ -53,6 +55,13 @@ export function filterWorkers(rows: readonly WorkerRow[], queue: string, kind: K
 
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
 
+/** "2.4.0 · build 8c1e2a": the deployment, then the build; a long hash build is cut to 7 characters (the whole is in the title). */
+export function versionText(deployment: string | undefined | null, build: string | undefined | null): string {
+  const b = build ?? "";
+  const short = /^[0-9a-f]{12,}$/i.test(b) ? `build ${b.slice(0, 7)}` : b;
+  return [deployment ?? "", short].filter(Boolean).join(" · ");
+}
+
 export function WorkersTab({ tab, profile, connId, client, useTabActions, note, openTab, active }: TabProps) {
   const namespace = text(tab.params["namespace"]) || namespaceOf(profile);
   const [out, setOut] = useState<WorkersListOutput | null>(null);
@@ -63,6 +72,7 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
   const [queue, setQueue] = useState(ALL);
   const [kind, setKind] = useState<Kind>("any");
   const [filter, setFilter] = useState("");
+  const [grouped, setGrouped] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const generation = useRef(0);
 
@@ -95,7 +105,9 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
   }, [active, connId, load]);
   useTabActions({ refresh: () => void load() });
 
-  const rows = useMemo(() => filterWorkers(out?.workers ?? [], queue, kind, filter), [out, queue, kind, filter]);
+  const filtered = useMemo(() => filterWorkers(out?.workers ?? [], queue, kind, filter), [out, queue, kind, filter]);
+  // Grouped: by task queue, in name order, each queue's workers together.
+  const rows = useMemo(() => (grouped ? [...filtered].sort((a, b) => a.taskQueue.localeCompare(b.taskQueue)) : filtered), [filtered, grouped]);
 
   if (connId === null) return <DisconnectedState name={profile.name} onConnect={() => undefined} />;
 
@@ -142,6 +154,10 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
           <SelectItem value="activity">Activity</SelectItem>
         </Select>
         <SearchInput aria-label="Filter by identity or build" placeholder="Filter by identity or build" value={filter} onValueChange={setFilter} className="min-w-0 flex-1" />
+        <Field className="shrink-0 flex-row items-center gap-inline-sm">
+          <Checkbox checked={grouped} onCheckedChange={(v) => setGrouped(v === true)} />
+          <FieldLabel className="whitespace-nowrap">Group by task queue</FieldLabel>
+        </Field>
         <form
           className="flex items-center gap-inline-sm"
           aria-label="Add a task queue"
@@ -175,13 +191,22 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
                 <TableHead>Polls for</TableHead>
                 <TableHead>Version</TableHead>
                 <TableHead>Last poll</TableHead>
-                <TableHead align="end">Tasks per second</TableHead>
+                <TableHead align="end">Max rate</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((w) => {
+              {rows.flatMap((w, i) => {
                 const stale = isIdle(w, now);
-                return (
+                const header =
+                  grouped && (i === 0 || rows[i - 1]!.taskQueue !== w.taskQueue) ? (
+                    <TableRow key={`q/${w.taskQueue}`}>
+                      <TableCell colSpan={6} className="text-body-1-strong text-fg">
+                        {w.taskQueue} <span className="text-body-1 text-fg-muted">· {formatCount(rows.filter((r) => r.taskQueue === w.taskQueue).length)} polling</span>
+                      </TableCell>
+                    </TableRow>
+                  ) : null;
+                return [
+                  header,
                   <TableRow key={`${w.identity}/${w.taskQueue}`} className="group">
                     <TableCell>
                       <span className="flex items-center gap-inline-xs">
@@ -192,16 +217,18 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Button size="small" appearance="transparent" className="text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
+                      <Button appearance="transparent" className="text-body-1 text-fg-link" onClick={() => openTab({ kind: "temporal.taskQueue", params: { namespace, name: w.taskQueue }, title: `Task queue ${w.taskQueue}` })}>
                         {w.taskQueue}
                       </Button>
                     </TableCell>
                     <TableCell>{pollsFor(w)}</TableCell>
-                    <TableCell>{w.buildId || w.deploymentName ? <span className="font-mono text-code text-fg-muted">{[w.deploymentName, w.buildId].filter(Boolean).join(" · ")}</span> : <span className="text-fg-muted">—</span>}</TableCell>
+                    <TableCell>{w.buildId || w.deploymentName ? <span className="font-mono text-code text-fg-muted" title={[w.deploymentName, w.buildId].filter(Boolean).join(" · ")}>{versionText(w.deploymentName, w.buildId)}</span> : <span className="text-fg-muted">—</span>}</TableCell>
                     <TableCell>{w.lastAccessTime ? <RelativeTime date={w.lastAccessTime} /> : <span className="text-fg-muted">—</span>}</TableCell>
-                    <TableCell align="end">{w.ratePerSecond > 0 ? w.ratePerSecond.toFixed(2) : "0"}</TableCell>
-                  </TableRow>
-                );
+                    <TableCell align="end" className="whitespace-nowrap" title="The poller's own limit on tasks per second (DescribeTaskQueue's ratePerSecond), not the tasks it handles.">
+                      {w.ratePerSecond > 0 ? `${w.ratePerSecond < 10 ? Number(w.ratePerSecond.toFixed(1)) : formatCount(Math.round(w.ratePerSecond))} / s` : "—"}
+                    </TableCell>
+                  </TableRow>,
+                ].filter(Boolean);
               })}
             </TableBody>
           </Table>

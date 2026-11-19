@@ -22,7 +22,7 @@ import { ErrorState } from "@/app/states";
 import type { MightyClient } from "@/app/client";
 import type { ScheduleForm, ScheduleOverlap } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
-import { Braces, CalendarClock, Code } from "@/lib/icons";
+import { Braces, CalendarClock, ChevronDown, Code } from "@/lib/icons";
 import type { DescribedError } from "../types";
 import { ArgsField } from "./ActionDialogs";
 import { scheduleCommand } from "./cli";
@@ -96,6 +96,14 @@ function whenInWords(d: ScheduleDraft): string | null {
   if (cron.interval) return `Every ${cron.interval.every}`;
   const words = cron.calendar ? describeCalendar(cron.calendar) : null;
   return words && cron.timezone ? `${words} (${cron.timezone})` : words;
+}
+
+/** The calendar as a 5-field cron string ("0 2 * * *"), or null when it has seconds or names cron cannot take. */
+export function cronOfCalendar(c: Record<string, string>): string | null {
+  const v = (k: string, fallback: string) => (c[k] ?? "").trim() || fallback;
+  if (v("second", "0") !== "0") return null;
+  const fields = [v("minute", "0"), v("hour", "0"), v("dayOfMonth", "*"), v("month", "*"), v("dayOfWeek", "*")];
+  return fields.every((f) => /^[\w*,\-/]+$/.test(f)) ? fields.join(" ") : null;
 }
 
 export function ScheduleSheet({ open, onOpenChange, client, connId, profile, namespace, mode, suggestions, note, onSaved, onReload }: ScheduleSheetProps) {
@@ -260,8 +268,10 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
               ))}
             </datalist>
 
-            <section aria-label="When" className="flex flex-col gap-stack-sm rounded-md border border-border-subtle px-inset-md py-stack-md">
-              <h3 className="text-body-1-strong text-fg">When</h3>
+            <section aria-label="When" className="flex flex-col gap-stack-sm border-t border-border-subtle pt-stack-sm">
+              <h3 className="flex items-center gap-inline-sm text-body-1-strong text-fg">
+                <Icon icon={ChevronDown} className="text-fg-muted" /> When
+              </h3>
               <ToggleGroup aria-label="Spec" value={[d.when]} onValueChange={(v) => v[0] && set({ when: v[0] as WhenKind })} className="self-start">
                 <ToggleGroupItem value="calendar">Calendar</ToggleGroupItem>
                 <ToggleGroupItem value="interval">Interval</ToggleGroupItem>
@@ -278,7 +288,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
                       </Field>
                     ))}
                   </div>
-                  <p className="text-body-1 text-fg-muted">Temporal's calendar strings: 5, 1-5, */15, 0,30, mon-fri, jan. Empty is the default shown.</p>
+                  <p className="text-caption-1 text-fg-muted">Temporal's calendar strings: 5, 1-5, */15, 0,30, mon-fri, jan. Empty is the default shown.</p>
                 </>
               ) : d.when === "interval" ? (
                 <div className="grid grid-cols-2 gap-inline-md">
@@ -291,12 +301,17 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
               <div className="grid grid-cols-2 gap-inline-md">
                 <Field>
                   <FieldLabel>Runs</FieldLabel>
-                  <p className="text-body-1 text-fg" role="status">
+                  <p className="flex h-control-md items-center rounded-md border border-border-subtle px-inset-sm text-body-1 text-fg" role="status">
                     {words ?? "Correct the spec to read it."}
                   </p>
                 </Field>
                 {text("timezone", "Time zone", { placeholder: "UTC", list: zoneList })}
               </div>
+              {d.when === "calendar" && cronOfCalendar(d.calendar) ? (
+                <p className="text-caption-1 text-fg-muted">
+                  Or cron: <span className="font-mono text-code">{cronOfCalendar(d.calendar)}</span>
+                </p>
+              ) : null}
               <datalist id={zoneList}>
                 {timeZones().map((z) => (
                   <option key={z} value={z} />
@@ -331,7 +346,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
             </section>
 
             <Fold title="Input" value="JSON, one payload per argument" open>
-              <ArgsField label="Input" hideLabel description={null} value={d.input} onChange={(input) => set({ input })} onSubmit={submit} />
+              <ArgsField label="Input" hideLabel compact description={null} value={d.input} onChange={(input) => set({ input })} onSubmit={submit} />
             </Fold>
             <Fold title="Policies" value={policies}>
               <Field>

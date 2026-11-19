@@ -228,7 +228,10 @@ describe("Workflow tab (spec §9.3)", () => {
     await click(tabButton("Pending"));
     await waitFor(() => byText("flaky") !== null, "the pending activity");
     const row = byText("flaky")!.closest("tr")!;
-    expect(row.textContent).toContain("Scheduled");
+    // Past its first attempt with a failure: retrying, as the mockup says; the split pane shows the chosen one.
+    expect(row.textContent).toContain("Retrying");
+    expect(document.querySelector("[aria-label=\"Pending activity\"]")?.textContent).toContain("flaky · activity 1");
+    expect(document.querySelector("[aria-label=\"Pending activity\"]")?.textContent).toContain("Last failure");
     expect(row.textContent).toContain("4");
     expect(row.textContent).toContain("the payment provider is down");
     await click(byRole("button", "child-1"));
