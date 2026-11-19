@@ -9,7 +9,7 @@ import type { WorkflowRow, WorkflowsListInput } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import { WorkflowsTab } from "@/tools/temporal/WorkflowsTab";
 import { profile as schema } from "@/tools/temporal/profile";
-import type { TabProps, TabRecord } from "@/tools/types";
+import type { TabProps, TabView } from "@/tools/types";
 import { fake, suggest } from "../../../../packages/ui/test/fakes/monaco.ts";
 import { axeViolations, byRole, byText, cleanup, click, editorArea, key, render, settle, type, waitFor } from "./support/render";
 
@@ -46,7 +46,7 @@ function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ execut
   }));
   const client = { temporal: { workflows: { list, count }, namespaces: { list: namespaces, searchAttributes } } } as unknown as MightyClient;
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
-  const tab: TabRecord = { id: "t1", tool: "temporal", profileId: "01T", kind: "temporal.workflows", params: { namespace: "default", query: options.query ?? "" }, title: "Workflows · default", pinned: false };
+  const tab: TabView = { id: "t1", tool: "temporal", profileId: "01T", kind: "temporal.workflows", params: { namespace: "default", query: options.query ?? "" }, title: "Workflows · default", pinned: false };
   const props: TabProps = {
     tab,
     profile,

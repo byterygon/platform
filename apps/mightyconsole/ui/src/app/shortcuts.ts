@@ -19,6 +19,8 @@ export type ActionId =
   | "closeTab"
   | "nextTab"
   | "prevTab"
+  | "back"
+  | "forward"
   | "primary"
   | "stop"
   | "pause"
@@ -68,6 +70,9 @@ export const ACTIONS: readonly Action[] = [
   { id: "closeTab", label: "Close tab", group: "Tabs", keys: ["Alt+Shift+W"] },
   { id: "nextTab", label: "Next tab", group: "Tabs", keys: ["Alt+Shift+]"] },
   { id: "prevTab", label: "Previous tab", group: "Tabs", keys: ["Alt+Shift+["] },
+  // DOC-21 §3.7: each tab's own history, as in a browser tab (the browser's buttons do the same).
+  { id: "back", label: "Back in this tab", group: "Tabs", keys: ["Alt+Left"], keywords: ["history", "previous place"] },
+  { id: "forward", label: "Forward in this tab", group: "Tabs", keys: ["Alt+Right"], keywords: ["history", "next place"] },
   { id: "primary", label: "Primary action of the tab (Send, Apply, Run, Consume)", group: "Tabs", keys: ["Mod+Enter"], keywords: ["run", "send", "start"] },
   { id: "stop", label: "Stop the tab's stream", group: "Live views", keys: ["Shift+Escape"], keywords: ["cancel"] },
   { id: "pause", label: "Pause or resume a live view", group: "Live views", keys: ["Alt+Shift+P"] },
@@ -112,7 +117,7 @@ export function bindingOf(id: ActionId, mac = isMac()): string {
   return first ? displayBinding(first, mac) : "";
 }
 
-const KEY_NAMES: Record<string, string> = { " ": "Space" };
+const KEY_NAMES: Record<string, string> = { " ": "Space", ArrowLeft: "Left", ArrowRight: "Right" };
 const CODES: Record<string, string> = { "]": "BracketRight", "[": "BracketLeft", ",": "Comma", "/": "Slash" };
 
 /** Whether a keydown event is the binding (modifiers exactly, key case-insensitively). */

@@ -27,6 +27,7 @@ import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/compon
 import { liveTimeout } from "@/app/client";
 import { CopyButton, Page, PageHeader } from "@/app/page";
 import { EmptyLine, ErrorState, LiveBadge, LoadingRows } from "@/app/states";
+import { useTabView } from "@/app/tab-view";
 import * as api from "@/gen/api";
 import { ArrowClockwise, ArrowUndo, Edit, History, Play, Stop } from "@/lib/icons";
 import type { DescribedError, LiveState, TabProps } from "../types";
@@ -59,10 +60,13 @@ export function defaultInput(schema: unknown): string {
   return "{}";
 }
 
+/** The thread's sections, the view words of its URL (DOC-21 §3.7). */
+export const THREAD_VIEWS = ["run", "state", "history"] as const;
+
 export function ThreadTab(props: TabProps) {
   const { tab, connId, client, note, useTabActions } = props;
   const threadId = text(tab.params["threadId"]);
-  const [view, setView] = useState<"run" | "state" | "history">("run");
+  const [view, setView] = useTabView(props, THREAD_VIEWS, "run");
   const [fromCheckpoint, setFromCheckpoint] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const thread = useLoad(connId ? () => client.langgraph.threads.get({ connId, threadId }) : null, [connId, threadId, version], note);

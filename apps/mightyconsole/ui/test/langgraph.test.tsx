@@ -18,7 +18,7 @@ import { toGraphView } from "@/tools/langgraph/shared";
 import { StoreTab } from "@/tools/langgraph/store";
 import { ThreadTab, defaultInput } from "@/tools/langgraph/thread";
 import { ThreadsTab } from "@/tools/langgraph/threads";
-import type { LiveState, TabProps, TabRecord } from "@/tools/types";
+import type { LiveState, TabProps, TabView } from "@/tools/types";
 import { axeViolations, cleanup, render, settle } from "./support/render";
 
 afterEach(cleanup);
@@ -237,7 +237,7 @@ function fakeClient() {
 const PROFILE = record({ url: DEFAULT_URL });
 
 function tabProps(client: MightyClient, kind: string, params: Record<string, unknown>, extra: Partial<TabProps> = {}): TabProps {
-  const tab: TabRecord = { id: "t1", tool: "langgraph", profileId: "p1", kind, params, title: kind, pinned: false };
+  const tab: TabView = { id: "t1", tool: "langgraph", profileId: "p1", kind, params, title: kind, pinned: false };
   return {
     tab,
     profile: PROFILE,

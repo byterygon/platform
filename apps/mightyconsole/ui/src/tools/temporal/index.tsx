@@ -13,6 +13,7 @@ import { WorkersTab } from "./WorkersTab";
 import { WorkflowTab } from "./WorkflowTab";
 import { WorkflowsTab } from "./WorkflowsTab";
 import { namespaceOf, profile, savedQueriesOf } from "./profile";
+import { temporalHrefs, temporalRoutes } from "./routes";
 import { requestSheet } from "./sheet-parts";
 import { temporalTreeData, treeDataOf } from "./tree-data";
 import { TemporalMark } from "../marks";
@@ -101,34 +102,42 @@ export const temporalTool: ToolModule = {
     ];
   },
   sidebarData: temporalTreeData,
+  routes: temporalRoutes,
   tabKinds: {
     "temporal.namespaces": {
       title: () => "Namespaces",
       Component: NamespacesTab,
+      href: temporalHrefs["temporal.namespaces"]!,
     },
     "temporal.workers": {
       title: (params) => `Workers · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
       Component: WorkersTab,
+      href: temporalHrefs["temporal.workers"]!,
     },
     "temporal.workflows": {
       title: (params) => `Workflows · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
       Component: WorkflowsTab,
+      href: temporalHrefs["temporal.workflows"]!,
     },
     "temporal.schedules": {
       title: (params) => `Schedules · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
       Component: SchedulesTab,
+      href: temporalHrefs["temporal.schedules"]!,
     },
     "temporal.schedule": {
       title: (params) => (typeof params["scheduleId"] === "string" ? params["scheduleId"] : "Schedule"),
       Component: ScheduleTab,
+      href: temporalHrefs["temporal.schedule"]!,
     },
     "temporal.taskQueue": {
       title: (params) => (typeof params["name"] === "string" && params["name"] !== "" ? `Task queue ${params["name"]}` : "Task queues"),
       Component: TaskQueueTab,
+      href: temporalHrefs["temporal.taskQueue"]!,
     },
     "temporal.workflow": {
       title: (params) => (typeof params["workflowId"] === "string" ? params["workflowId"] : "Workflow"),
       Component: WorkflowTab,
+      href: temporalHrefs["temporal.workflow"]!,
     },
   },
   // The Write sheets from the palette: each opens the profile namespace's tab and its sheet.

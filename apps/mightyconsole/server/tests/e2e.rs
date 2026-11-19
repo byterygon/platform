@@ -403,7 +403,8 @@ async fn the_ui_directory_is_served_with_the_session_in_its_page() {
     std::fs::create_dir(ui.path().join("assets")).unwrap();
     std::fs::write(
         ui.path().join("index.html"),
-        "<!doctype html><html><head><title>Mightyconsole</title></head><body></body></html>",
+        "<!doctype html><html><head><title>Mightyconsole</title>\
+         <script type=\"module\" crossorigin src=\"./assets/app-1.js\"></script></head><body></body></html>",
     )
     .unwrap();
     std::fs::write(ui.path().join("assets/app-1.js"), "console.log(1)").unwrap();
@@ -414,6 +415,23 @@ async fn the_ui_directory_is_served_with_the_session_in_its_page() {
     assert!(page.body.contains("<meta name=\"mightyconsole-csrf\""));
     let route = t.http("/k8s/pods", HOST, None).await;
     assert!(route.body.contains("<title>Mightyconsole</title>"));
+    // DOC-21 §3.7: a deep route finds the entry assets from any path, also with ids that are not
+    // file names (`:`, an encoded `/`, a dot before the view word).
+    assert!(
+        page.body.contains("src=\"/assets/app-1.js\""),
+        "{}",
+        page.body
+    );
+    let deep = t
+        .http(
+            "/temporal/prod.eu/orders/workflows/order%3A1%2Fv2.0/history?run=ab",
+            HOST,
+            None,
+        )
+        .await;
+    assert_eq!(deep.status, 200);
+    assert!(deep.body.contains("src=\"/assets/app-1.js\""));
+    assert_eq!(t.http("/%2e%2e/Cargo.toml", HOST, None).await.status, 404);
     let asset = t.http("/assets/app-1.js", HOST, None).await;
     assert_eq!(asset.status, 200);
     assert_eq!(asset.body, "console.log(1)");

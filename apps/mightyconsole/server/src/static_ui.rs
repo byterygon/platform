@@ -9,6 +9,13 @@
 //! public origin. Without a UI directory the page is a short placeholder with the same session,
 //! so the server is usable by tests and before the UI is built.
 //!
+//! **Deep paths** (DOC-21 §2.3, §3.7). The UI's URLs are `/<tool>/<profile>/<place>/<view>`, the
+//! last segment always a view word. A path whose segments are not plain file names (a workflow id
+//! with `:` or an encoded `/`) is still the page when its last segment has no extension: no file
+//! is read for it. The page's entry asset URLs (`./assets/…`, Vite's relative base) are written
+//! as `/assets/…`, so a page loaded at a deep path finds them; the bundle's own imports stay
+//! relative to the module that makes them.
+//!
 //! **Files.** Paths are resolved only inside the UI directory, as DBee's server does: each
 //! segment percent-decoded and a plain file name, the file still canonicalizing under the
 //! directory. `assets/` (content-hashed by Vite) is cached for a year.
@@ -147,8 +154,11 @@ async fn serve(
     if method != Method::GET && method != Method::HEAD {
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
-    let Some(segments) = segments(uri.path()) else {
-        return StatusCode::NOT_FOUND.into_response();
+    // A path that cannot name a file is the page when it looks like a route (no extension).
+    let segments = match segments(uri.path()) {
+        Some(segments) => segments,
+        None if is_route(uri.path()) => Vec::new(),
+        None => return StatusCode::NOT_FOUND.into_response(),
     };
     let target = match &shared.ui {
         Some(UiSource::Dir(ui)) => resolve(ui.root(), &segments).await,
@@ -211,7 +221,7 @@ async fn page(
     };
     let cookie = request_cookie(headers, &shared.cookie_name);
     let credentials = shared.sessions.for_page(cookie);
-    let html = inject_csrf(&html, &credentials.csrf_token);
+    let html = inject_csrf(&absolute_assets(&html), &credentials.csrf_token);
     let set_cookie = credentials.new.then(|| {
         HeaderValue::from_str(&format!(
             "{}={}; Path=/; Secure; HttpOnly; SameSite=Strict",
@@ -283,6 +293,18 @@ pub fn inject_csrf(html: &str, token: &str) -> String {
         Some(at) => format!("{}{meta}\n{}", &html[..at], &html[at..]),
         None => format!("{meta}\n{html}"),
     }
+}
+
+/// The page's entry asset URLs from Vite's relative `./assets/` to `/assets/`, so they resolve
+/// from any path the page is served at.
+pub fn absolute_assets(html: &str) -> String {
+    html.replace("=\"./assets/", "=\"/assets/")
+}
+
+/// Whether a raw request path is a client-side route: its last segment has no extension.
+fn is_route(path: &str) -> bool {
+    let last = path.rsplit('/').find(|s| !s.is_empty()).unwrap_or("");
+    !last.contains('.')
 }
 
 /// The value of cookie `name` in the request, if it appears exactly once.
