@@ -7,6 +7,7 @@ export interface TestMessage {
   partition?: number;
   offset?: bigint;
   subject?: string;
+  replyTo?: string;
   sequence?: bigint;
   timestampUs?: bigint;
   key?: string;
@@ -44,7 +45,7 @@ export function messageTable(messages: readonly TestMessage[], batchRows = messa
       ),
       timestampKind: col(new A.Utf8(), ms.map(() => "create")),
       operation: col(new A.Utf8(), ms.map(() => null)),
-      replyTo: col(new A.Utf8(), ms.map(() => null)),
+      replyTo: col(new A.Utf8(), ms.map((m) => m.replyTo ?? null)),
       headers: col(new A.Utf8(), ms.map((m) => JSON.stringify(m.headers ?? []))),
       keyRaw: col(new A.Binary(), ms.map((m) => (m.key === undefined ? null : enc.encode(m.key)))),
       keyText: col(new A.Utf8(), ms.map((m) => m.key ?? null)),

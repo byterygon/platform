@@ -680,6 +680,144 @@
       ],
       "type": "object"
     },
+    "ConnectNatsProfile": {
+      "description": "The NATS profile as `toConnect` builds it (spec §4.4, §6.1). Secrets (`password`, `token`,\n`nkeySeed`, `creds`, `tls.clientKeyPem`) are redacted from every log.",
+      "properties": {
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsAuth"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "connectionName": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "creds": {
+          "default": null,
+          "description": "The text of a `.creds` file: the user JWT and its seed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inboxPrefix": {
+          "default": null,
+          "description": "`_INBOX` when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "jetstream": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsJetStreamOptions"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mappings": {
+          "default": null,
+          "description": "The profile's `extras.mappings` (subject patterns, KV buckets).",
+          "items": {
+            "$ref": "#/$defs/SchemaMapping"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "nkeySeed": {
+          "default": null,
+          "description": "A user nkey seed (`SU…`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "password": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestTimeoutMs": {
+          "default": null,
+          "description": "Request-reply and JetStream API calls; 5,000 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "schemas": {
+          "default": null,
+          "description": "The profile's `extras.schemas`.",
+          "items": {
+            "$ref": "#/$defs/LocalSchema"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "servers": {
+          "default": null,
+          "description": "`nats://` or `tls://` URLs, or `host:port`; several for a cluster.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tls": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TlsOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`tls://` URLs turn TLS on as well."
+        },
+        "token": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "user": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
     "ConnectTemporalProfile": {
       "description": "The Temporal profile as `toConnect` builds it (spec §9.1).",
       "properties": {
@@ -2110,6 +2248,140 @@
       ],
       "type": "string"
     },
+    "MessageRecord": {
+      "description": "One §5.1 row as JSON.",
+      "properties": {
+        "decodeError": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headers": {
+          "description": "`None` when the system has no headers for this message (KV).",
+          "items": {
+            "$ref": "#/$defs/RecordHeader"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "keyCodec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodecId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "keyRaw": {
+          "description": "Base64.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keyText": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "offset": {
+          "description": "Decimal.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "partition": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "payloadCodec": {
+          "$ref": "#/$defs/CodecId"
+        },
+        "payloadRaw": {
+          "description": "Base64, the bytes kept inline (all of them unless `payloadTruncated`).",
+          "type": "string"
+        },
+        "payloadSize": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "payloadText": {
+          "description": "The decoded value: canonical JSON text, or text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payloadTruncated": {
+          "type": "boolean"
+        },
+        "replyTo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schemaRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sequence": {
+          "description": "Stream sequence or KV revision, decimal.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "Topic, subject, stream or bucket.",
+          "type": "string"
+        },
+        "subject": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timestampKind": {
+          "description": "`create`, `log-append`, `received` or `stored`.",
+          "type": "string"
+        },
+        "timestampUs": {
+          "description": "Microseconds since the epoch, UTC.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source",
+        "timestampUs",
+        "timestampKind",
+        "payloadRaw",
+        "payloadSize",
+        "payloadTruncated",
+        "payloadCodec"
+      ],
+      "type": "object"
+    },
     "NamespaceDescribeInput": {
       "properties": {
         "connId": {
@@ -2278,6 +2550,576 @@
       ],
       "type": "object"
     },
+    "NatsAccountInfo": {
+      "description": "The JetStream account of the connection (spec §6.3, Server).",
+      "properties": {
+        "apiErrors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "apiTotal": {
+          "description": "JetStream API calls of the account, and how many failed.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "consumers": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "domain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limits": {
+          "$ref": "#/$defs/NatsAccountLimits"
+        },
+        "memory": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "storage": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "streams": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "memory",
+        "storage",
+        "streams",
+        "consumers",
+        "limits",
+        "apiTotal",
+        "apiErrors"
+      ],
+      "type": "object"
+    },
+    "NatsAccountLimits": {
+      "description": "A JetStream limit; absent means unlimited.",
+      "properties": {
+        "maxConsumers": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxMemory": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxStorage": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxStreams": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "NatsAuth": {
+      "description": "How the profile authenticates (spec §6.1, `fields.auth`).",
+      "enum": [
+        "none",
+        "userPassword",
+        "token",
+        "nkey",
+        "creds"
+      ],
+      "type": "string"
+    },
+    "NatsConnIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "NatsConnectInput": {
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ConnectNatsProfile"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "NatsConnectOutput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "schemaIssues": {
+          "description": "Local schemas that did not compile, with file and line.",
+          "items": {
+            "$ref": "#/$defs/SchemaIssue"
+          },
+          "type": "array"
+        },
+        "server": {
+          "$ref": "#/$defs/NatsServerInfo"
+        }
+      },
+      "required": [
+        "connId",
+        "server",
+        "schemaIssues"
+      ],
+      "type": "object"
+    },
+    "NatsConnection": {
+      "description": "The client's own connection.",
+      "properties": {
+        "auth": {
+          "description": "`none`, `userPassword`, `token`, `nkey` or `creds`.",
+          "type": "string"
+        },
+        "connects": {
+          "description": "Connections made, the first one included.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inMessages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "outBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "outMessages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "servers": {
+          "description": "The profile's servers.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "state": {
+          "description": "`connected`, `disconnected` (reconnecting) or `pending`.",
+          "type": "string"
+        },
+        "tls": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "servers",
+        "tls",
+        "auth",
+        "state",
+        "inMessages",
+        "outMessages",
+        "inBytes",
+        "outBytes",
+        "connects"
+      ],
+      "type": "object"
+    },
+    "NatsJetStreamOptions": {
+      "description": "JetStream through a domain or an API prefix (leaf nodes, imported JetStream).",
+      "properties": {
+        "apiPrefix": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "domain": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "NatsPublishInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "headers": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/HeaderInput"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "payload": {
+          "$ref": "#/$defs/ComposePayload"
+        },
+        "replyTo": {
+          "default": null,
+          "description": "The reply subject a responder answers to.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "subject",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "NatsPublishOutput": {
+      "properties": {
+        "bytes": {
+          "description": "Payload bytes sent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schemaRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "NatsRequestInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How to decode the reply; Auto when absent."
+        },
+        "headers": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/HeaderInput"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "payload": {
+          "$ref": "#/$defs/ComposePayload"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "timeoutMs": {
+          "default": null,
+          "description": "The profile's request timeout when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "subject",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "NatsRequestOutput": {
+      "properties": {
+        "bytes": {
+          "description": "Request payload bytes sent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "elapsedMs": {
+          "format": "double",
+          "type": "number"
+        },
+        "reply": {
+          "$ref": "#/$defs/MessageRecord"
+        }
+      },
+      "required": [
+        "reply",
+        "elapsedMs",
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "NatsServerInfo": {
+      "description": "What the server said about itself when the client connected (`INFO`).",
+      "properties": {
+        "authRequired": {
+          "type": "boolean"
+        },
+        "clientId": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "clientIp": {
+          "type": "string"
+        },
+        "cluster": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connectUrls": {
+          "description": "Other servers of the cluster the client may connect to.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "domain": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "go": {
+          "description": "The Go version the server was built with.",
+          "type": "string"
+        },
+        "headers": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "jetstream": {
+          "type": "boolean"
+        },
+        "lameDuckMode": {
+          "type": "boolean"
+        },
+        "maxPayload": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "port": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "proto": {
+          "format": "int32",
+          "type": "integer"
+        },
+        "serverId": {
+          "type": "string"
+        },
+        "serverName": {
+          "type": "string"
+        },
+        "tlsRequired": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "serverId",
+        "serverName",
+        "version",
+        "go",
+        "host",
+        "port",
+        "maxPayload",
+        "proto",
+        "clientId",
+        "clientIp",
+        "connectUrls",
+        "headers",
+        "authRequired",
+        "tlsRequired",
+        "jetstream",
+        "lameDuckMode"
+      ],
+      "type": "object"
+    },
+    "NatsServerInfoOutput": {
+      "properties": {
+        "connection": {
+          "$ref": "#/$defs/NatsConnection"
+        },
+        "jetstream": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsAccountInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`null` when JetStream is off on the server or for this account; `jetstreamError` says why."
+        },
+        "jetstreamError": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rttMs": {
+          "description": "A round trip through the server, in milliseconds.",
+          "format": "double",
+          "type": "number"
+        },
+        "server": {
+          "$ref": "#/$defs/NatsServerInfo"
+        }
+      },
+      "required": [
+        "server",
+        "rttMs",
+        "connection",
+        "jetstream"
+      ],
+      "type": "object"
+    },
+    "NatsSubscribeInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Filter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "limit": {
+          "default": null,
+          "description": "Stop after this many matches.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxScan": {
+          "default": null,
+          "description": "Messages read before a filtered tail stops; 0 for no limit, 100,000 with a filter.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "queueGroup": {
+          "default": null,
+          "description": "Share the messages with other members of the queue group.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "streamId": {
+          "type": "string"
+        },
+        "subjects": {
+          "description": "Subjects and patterns (`orders.*.created`, `orders.>`), at most 32.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connId",
+        "streamId",
+        "subjects"
+      ],
+      "type": "object"
+    },
     "Part": {
       "description": "Which part of a message a codec reads or writes.",
       "enum": [
@@ -2345,6 +3187,34 @@
         }
       },
       "type": "object"
+    },
+    "RecordHeader": {
+      "description": "One header of a [`MessageRecord`]; names repeat when the system allows several values.",
+      "properties": {
+        "encoding": {
+          "$ref": "#/$defs/RecordHeaderEncoding"
+        },
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "encoding"
+      ],
+      "type": "object"
+    },
+    "RecordHeaderEncoding": {
+      "description": "How a header value travels: as text when it is valid UTF-8, else as base64.",
+      "enum": [
+        "text",
+        "base64"
+      ],
+      "type": "string"
     },
     "RegistryRef": {
       "anyOf": [
@@ -6206,6 +7076,138 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/NatsConnectInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.connect",
+      "output": {
+        "$ref": "#/$defs/NatsConnectOutput"
+      },
+      "perm": "nats.read",
+      "redact": [
+        "profile.password",
+        "profile.token",
+        "profile.nkeySeed",
+        "profile.creds",
+        "profile.tls.clientKeyPem"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsPublishInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.core.publish",
+      "output": {
+        "$ref": "#/$defs/NatsPublishOutput"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsRequestInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.core.request",
+      "output": {
+        "$ref": "#/$defs/NatsRequestOutput"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsSubscribeInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "nats.core.subscribe",
+      "output": {
+        "$ref": "#/$defs/TailSummary"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsConnIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.disconnect",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsConnIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.server.info",
+      "output": {
+        "$ref": "#/$defs/NatsServerInfoOutput"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/TemporalConnectInput"
       },
       "kind": "mutation",
@@ -6863,5 +7865,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:d30e09d2bee1d2609449bf6935e50fab32749cd6fd420d388d7d7ba28e11e967"
+  "schema_hash": "sha256:9d12eb2462c0025ed80c5004b2c6bb01a9052a8cb1c71af78d28493fd359dfba"
 }

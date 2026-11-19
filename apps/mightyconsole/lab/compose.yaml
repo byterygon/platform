@@ -35,6 +35,29 @@ services:
       retries: 30
     profiles: [nats, all]
 
+  # Token and `.creds` (operator mode) authentication, each on a server of its own (TSK-85).
+  nats-token:
+    image: nats:2.12-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
+    command: ["-c", "/generated/nats-token.conf"]
+    volumes: ["./.generated:/generated:ro"]
+    ports: ["127.0.0.1:4223:4223"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      retries: 30
+    profiles: [nats, all]
+
+  nats-jwt:
+    image: nats:2.12-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
+    command: ["-c", "/generated/nats-jwt.conf"]
+    volumes: ["./.generated:/generated:ro"]
+    ports: ["127.0.0.1:4224:4224"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      retries: 30
+    profiles: [nats, all]
+
   nats-echo:
     <<: *tools
     command: ["nats-echo"]

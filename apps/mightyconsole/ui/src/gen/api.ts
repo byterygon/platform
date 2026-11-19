@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:d30e09d2bee1d2609449bf6935e50fab32749cd6fd420d388d7d7ba28e11e967";
+export const SCHEMA_HASH = "sha256:9d12eb2462c0025ed80c5004b2c6bb01a9052a8cb1c71af78d28493fd359dfba";
 
 // ---- Types
 
@@ -204,6 +204,44 @@ headers?: Array<HeaderPair> | null,
  * For `https` URLs: a pinned CA, a client certificate, the expected name.
  */
 tls?: TlsOptions | null, };
+
+/**
+ * The NATS profile as `toConnect` builds it (spec §4.4, §6.1). Secrets (`password`, `token`,
+ * `nkeySeed`, `creds`, `tls.clientKeyPem`) are redacted from every log.
+ */
+export type ConnectNatsProfile = { name: string, 
+/**
+ * `nats://` or `tls://` URLs, or `host:port`; several for a cluster.
+ */
+servers?: Array<string> | null, auth?: NatsAuth | null, user?: string | null, password?: string | null, token?: string | null, 
+/**
+ * A user nkey seed (`SU…`).
+ */
+nkeySeed?: string | null, 
+/**
+ * The text of a `.creds` file: the user JWT and its seed.
+ */
+creds?: string | null, 
+/**
+ * `tls://` URLs turn TLS on as well.
+ */
+tls?: TlsOptions | null, connectionName?: string | null, jetstream?: NatsJetStreamOptions | null, 
+/**
+ * `_INBOX` when absent.
+ */
+inboxPrefix?: string | null, 
+/**
+ * Request-reply and JetStream API calls; 5,000 when absent.
+ */
+requestTimeoutMs?: number | null, 
+/**
+ * The profile's `extras.schemas`.
+ */
+schemas?: Array<LocalSchema> | null, 
+/**
+ * The profile's `extras.mappings` (subject patterns, KV buckets).
+ */
+mappings?: Array<SchemaMapping> | null, };
 
 /**
  * The Temporal profile as `toConnect` builds it (spec §9.1).
@@ -558,6 +596,47 @@ export type MappingTarget = { "kind": "subject", pattern: string, } | { "kind": 
  */
 export type MatchOp = "equals" | "contains" | "prefix" | "regex";
 
+/**
+ * One §5.1 row as JSON.
+ */
+export type MessageRecord = { 
+/**
+ * Topic, subject, stream or bucket.
+ */
+source: string, subject?: string, partition?: number, 
+/**
+ * Decimal.
+ */
+offset?: string, 
+/**
+ * Stream sequence or KV revision, decimal.
+ */
+sequence?: string, 
+/**
+ * Microseconds since the epoch, UTC.
+ */
+timestampUs: number, 
+/**
+ * `create`, `log-append`, `received` or `stored`.
+ */
+timestampKind: string, operation?: string, replyTo?: string, 
+/**
+ * `None` when the system has no headers for this message (KV).
+ */
+headers?: Array<RecordHeader>, 
+/**
+ * Base64.
+ */
+keyRaw?: string, keyText?: string, keyCodec?: CodecId, 
+/**
+ * Base64, the bytes kept inline (all of them unless `payloadTruncated`).
+ */
+payloadRaw: string, payloadSize: number, payloadTruncated: boolean, 
+/**
+ * The decoded value: canonical JSON text, or text.
+ */
+payloadText?: string, payloadCodec: CodecId, schemaRef?: string, decodeError?: string, };
+
 export type NamespaceDescribeInput = { connId: string, namespace: string, };
 
 /**
@@ -609,6 +688,130 @@ retentionSecs?: number, description: string, ownerEmail: string, isGlobal: boole
 isDefault: boolean, };
 
 /**
+ * The JetStream account of the connection (spec §6.3, Server).
+ */
+export type NatsAccountInfo = { memory: number, storage: number, streams: number, consumers: number, domain?: string, limits: NatsAccountLimits, 
+/**
+ * JetStream API calls of the account, and how many failed.
+ */
+apiTotal: number, apiErrors: number, };
+
+/**
+ * A JetStream limit; absent means unlimited.
+ */
+export type NatsAccountLimits = { maxMemory?: number, maxStorage?: number, maxStreams?: number, maxConsumers?: number, };
+
+/**
+ * How the profile authenticates (spec §6.1, `fields.auth`).
+ */
+export type NatsAuth = "none" | "userPassword" | "token" | "nkey" | "creds";
+
+export type NatsConnIdInput = { connId: string, };
+
+export type NatsConnectInput = { profile: ConnectNatsProfile, };
+
+export type NatsConnectOutput = { connId: string, server: NatsServerInfo, 
+/**
+ * Local schemas that did not compile, with file and line.
+ */
+schemaIssues: Array<SchemaIssue>, };
+
+/**
+ * The client's own connection.
+ */
+export type NatsConnection = { name: string, 
+/**
+ * The profile's servers.
+ */
+servers: Array<string>, tls: boolean, 
+/**
+ * `none`, `userPassword`, `token`, `nkey` or `creds`.
+ */
+auth: string, 
+/**
+ * `connected`, `disconnected` (reconnecting) or `pending`.
+ */
+state: string, inMessages: number, outMessages: number, inBytes: number, outBytes: number, 
+/**
+ * Connections made, the first one included.
+ */
+connects: number, };
+
+/**
+ * JetStream through a domain or an API prefix (leaf nodes, imported JetStream).
+ */
+export type NatsJetStreamOptions = { domain?: string | null, apiPrefix?: string | null, };
+
+export type NatsPublishInput = { connId: string, subject: string, 
+/**
+ * The reply subject a responder answers to.
+ */
+replyTo?: string | null, headers?: Array<HeaderInput> | null, payload: ComposePayload, };
+
+export type NatsPublishOutput = { 
+/**
+ * Payload bytes sent.
+ */
+bytes: number, schemaRef?: string, };
+
+export type NatsRequestInput = { connId: string, subject: string, headers?: Array<HeaderInput> | null, payload: ComposePayload, 
+/**
+ * The profile's request timeout when absent.
+ */
+timeoutMs?: number | null, 
+/**
+ * How to decode the reply; Auto when absent.
+ */
+decode?: DecodeOptions | null, };
+
+export type NatsRequestOutput = { reply: MessageRecord, elapsedMs: number, 
+/**
+ * Request payload bytes sent.
+ */
+bytes: number, };
+
+/**
+ * What the server said about itself when the client connected (`INFO`).
+ */
+export type NatsServerInfo = { serverId: string, serverName: string, version: string, 
+/**
+ * The Go version the server was built with.
+ */
+go: string, host: string, port: number, maxPayload: number, proto: number, clientId: number, clientIp: string, 
+/**
+ * Other servers of the cluster the client may connect to.
+ */
+connectUrls: Array<string>, headers: boolean, authRequired: boolean, tlsRequired: boolean, jetstream: boolean, lameDuckMode: boolean, cluster?: string, domain?: string, };
+
+export type NatsServerInfoOutput = { server: NatsServerInfo, 
+/**
+ * A round trip through the server, in milliseconds.
+ */
+rttMs: number, connection: NatsConnection, 
+/**
+ * `null` when JetStream is off on the server or for this account; `jetstreamError` says why.
+ */
+jetstream: NatsAccountInfo | null, jetstreamError?: string, };
+
+export type NatsSubscribeInput = { connId: string, streamId: string, 
+/**
+ * Subjects and patterns (`orders.*.created`, `orders.>`), at most 32.
+ */
+subjects: Array<string>, 
+/**
+ * Share the messages with other members of the queue group.
+ */
+queueGroup?: string | null, decode?: DecodeOptions | null, filter?: Filter | null, 
+/**
+ * Messages read before a filtered tail stops; 0 for no limit, 100,000 with a filter.
+ */
+maxScan?: number | null, 
+/**
+ * Stop after this many matches.
+ */
+limit?: number | null, };
+
+/**
  * Which part of a message a codec reads or writes.
  */
 export type Part = "key" | "value";
@@ -628,6 +831,16 @@ export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond:
  * An inclusive range of offsets or sequences, as decimal strings.
  */
 export type PositionRange = { from?: string | null, to?: string | null, };
+
+/**
+ * One header of a [`MessageRecord`]; names repeat when the system allows several values.
+ */
+export type RecordHeader = { name: string, value: string, encoding: RecordHeaderEncoding, };
+
+/**
+ * How a header value travels: as text when it is valid UTF-8, else as base64.
+ */
+export type RecordHeaderEncoding = "text" | "base64";
 
 /**
  * A schema in the registry, by id or by subject and version.
@@ -1547,6 +1760,12 @@ export interface Procedures {
   readonly "messaging.filter.check": ProcedureDef<"query", FilterCheckInput, FilterCheckOutput, never>;
   readonly "messaging.schemas.inspect": ProcedureDef<"query", InspectInput, Inspection, ToolError>;
   readonly "messaging.schemas.update": ProcedureDef<"mutation", SchemasUpdateInput, SchemasUpdateOutput, ToolError>;
+  readonly "nats.connect": ProcedureDef<"mutation", NatsConnectInput, NatsConnectOutput, ToolError>;
+  readonly "nats.core.publish": ProcedureDef<"mutation", NatsPublishInput, NatsPublishOutput, ToolError>;
+  readonly "nats.core.request": ProcedureDef<"mutation", NatsRequestInput, NatsRequestOutput, ToolError>;
+  readonly "nats.core.subscribe": ProcedureDef<"stream", NatsSubscribeInput, TailSummary, ToolError>;
+  readonly "nats.disconnect": ProcedureDef<"mutation", NatsConnIdInput, Empty, ToolError>;
+  readonly "nats.server.info": ProcedureDef<"query", NatsConnIdInput, NatsServerInfoOutput, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
   readonly "temporal.info": ProcedureDef<"query", TemporalConnIdInput, TemporalInfoOutput, ToolError>;
@@ -1643,6 +1862,18 @@ export interface Api {
     readonly schemas: {
       readonly inspect: Procedures["messaging.schemas.inspect"];
       readonly update: Procedures["messaging.schemas.update"];
+    };
+  };
+  readonly nats: {
+    readonly connect: Procedures["nats.connect"];
+    readonly core: {
+      readonly publish: Procedures["nats.core.publish"];
+      readonly request: Procedures["nats.core.request"];
+      readonly subscribe: Procedures["nats.core.subscribe"];
+    };
+    readonly disconnect: Procedures["nats.disconnect"];
+    readonly server: {
+      readonly info: Procedures["nats.server.info"];
     };
   };
   readonly temporal: {
@@ -2100,6 +2331,72 @@ export const procedures: Api = {
         name: "messaging.schemas.update",
         kind: "mutation",
         perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+  },
+  nats: {
+    connect: {
+      name: "nats.connect",
+      kind: "mutation",
+      perm: "nats.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    core: {
+      publish: {
+        name: "nats.core.publish",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      request: {
+        name: "nats.core.request",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      subscribe: {
+        name: "nats.core.subscribe",
+        kind: "stream",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
+      },
+    },
+    disconnect: {
+      name: "nats.disconnect",
+      kind: "mutation",
+      perm: "nats.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    server: {
+      info: {
+        name: "nats.server.info",
+        kind: "query",
+        perm: "nats.read",
         risk: "Read",
         agent: "hidden",
         deprecated: false,
