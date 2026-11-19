@@ -1,7 +1,8 @@
 // Profile dialogs (Mightyconsole spec §4): add, edit and duplicate in a Sheet with the tool's
 // connection form; delete; export with "Include secrets" off by default; import with a choice per
 // conflicting profile (Replace, Keep both, Skip); the confirmation for closing a busy tab.
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
+import { ServicesContext } from "@/app/client";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ export interface ProfileSheetProps {
 }
 
 export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave }: ProfileSheetProps) {
+  const services = useContext(ServicesContext);
   const fresh = () => {
     const defaults = tool.profile.defaults();
     if (!base) return { name: "", color: "", fields: defaults.fields, secrets: {} as Record<string, unknown>, extras: defaults.extras };
@@ -148,6 +150,8 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
               errors={errors}
               disabled={readOnly}
               {...(mode === "edit" && base ? { profileId: base.id } : {})}
+              {...(services ? { client: services.client } : {})}
+              draft={build}
               onFields={(patch) => setDraft((d) => ({ ...d, fields: { ...d.fields, ...patch } }))}
               onSecrets={(patch) => setDraft((d) => ({ ...d, secrets: { ...d.secrets, ...patch } }))}
             />

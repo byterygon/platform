@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:5d9392f613adfde124d96b39ad44405d335e7e4cadec1186cef03a8aa430c140";
+export const SCHEMA_HASH = "sha256:7f8c60aebcc8020f54a03ce445569421edf73556b06a0e9cc6005373a23d1e75";
 
 // ---- Types
 
@@ -140,6 +140,11 @@ export type CodecId = "utf8" | "json" | "hex" | "base64" | "msgpack" | "avro" | 
  * One entry of `messaging.codecs.list`.
  */
 export type CodecInfo = { id: CodecId, label: string, needsSchema: boolean, canEncode: boolean, };
+
+/**
+ * One namespace's own codec endpoint.
+ */
+export type CodecNamespaceEndpoint = { namespace: string, endpoint: string, };
 
 /**
  * `"auto"` or a codec id.
@@ -282,6 +287,14 @@ externalStorage?: ExternalStorageOptions | null,
  * The profile's stable id in the browser: the codec endpoint's path names it.
  */
 profileId?: string | null, 
+/**
+ * The payload codec (TSK-92, spec §9.5).
+ */
+codec?: PayloadCodecOptions | null, 
+/**
+ * The codec's `Authorization` header value; never logged, never sent to the browser again.
+ */
+codecAuthorization?: string | null, 
 /**
  * Serve the profile on the codec endpoint (TSK-103).
  */
@@ -1218,6 +1231,37 @@ export type PartitionOffset = { partition: number,
  */
 offset: string, };
 
+/**
+ * The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that
+ * mightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header
+ * comes beside it as `codecAuthorization`.
+ */
+export type PayloadCodecOptions = { enabled?: boolean | null, 
+/**
+ * `https://codec.internal:8888`; plain http on localhost only.
+ */
+endpoint?: string | null, 
+/**
+ * Namespaces with their own endpoint.
+ */
+namespaces?: Array<CodecNamespaceEndpoint> | null, 
+/**
+ * The codec's CA (PEM): the only trusted root (Open question 31).
+ */
+caPem?: string | null, 
+/**
+ * Send `X-Namespace` (on when empty).
+ */
+sendNamespace?: boolean | null, 
+/**
+ * Encode the inputs Mightyconsole sends through `/encode` (on when empty).
+ */
+encodeInputs?: boolean | null, 
+/**
+ * Per call (10000 when empty).
+ */
+timeoutMs?: number | null, };
+
 export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond: number, };
 
 /**
@@ -1880,6 +1924,37 @@ clusterName?: string, capabilities: TemporalCapabilities, };
 export type TemporalInfoOutput = { serverVersion: string, clusterName?: string, };
 
 /**
+ * "Test codec" in the profile sheet: the draft profile, and the namespace to sample (the
+ * profile's when empty).
+ */
+export type TemporalTestCodecInput = { profile: ConnectTemporalProfile, namespace?: string | null, };
+
+/**
+ * What the codec did with the inputs of the namespace's latest workflows.
+ */
+export type TemporalTestCodecOutput = { namespace: string, 
+/**
+ * The codec's host and port.
+ */
+codec: string, 
+/**
+ * The workflows sampled (their inputs' first payload).
+ */
+workflowIds: Array<string>, sampled: number, 
+/**
+ * Payloads the codec changed.
+ */
+decoded: number, 
+/**
+ * Encodings before and after, distinct.
+ */
+from: Array<string>, to: Array<string>, ms: number, 
+/**
+ * Why the codec failed, when it did.
+ */
+error?: string, };
+
+/**
  * TLS settings of a profile (spec §4.2 `TemporalTlsOptions`); `secrets.clientKeyPem` comes beside it as
  * `clientKeyPem`. There is no "skip verification" (spec Open question 6).
  */
@@ -2435,6 +2510,7 @@ export interface Procedures {
   readonly "temporal.schedules.unpause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.update": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
   readonly "temporal.taskQueues.describe": ProcedureDef<"query", TaskQueueDescribeInput, TaskQueueDescription, ToolError>;
+  readonly "temporal.testCodec": ProcedureDef<"mutation", TemporalTestCodecInput, TemporalTestCodecOutput, ToolError>;
   readonly "temporal.workers.list": ProcedureDef<"query", WorkersListInput, WorkersListOutput, ToolError>;
   readonly "temporal.workflows.cancel": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
   readonly "temporal.workflows.count": ProcedureDef<"query", WorkflowsCountInput, WorkflowsCountOutput, ToolError>;
@@ -2589,6 +2665,7 @@ export interface Api {
     readonly taskQueues: {
       readonly describe: Procedures["temporal.taskQueues.describe"];
     };
+    readonly testCodec: Procedures["temporal.testCodec"];
     readonly workers: {
       readonly list: Procedures["temporal.workers.list"];
     };
@@ -3523,6 +3600,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+    },
+    testCodec: {
+      name: "temporal.testCodec",
+      kind: "mutation",
+      perm: "temporal.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
     workers: {
       list: {

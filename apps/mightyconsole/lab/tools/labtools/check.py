@@ -138,6 +138,12 @@ async def check_temporal():
     expect(status == "waiting for approval", f"temporal: fulfilment says {status!r}")
     schedules = [s.id async for s in await client.list_schedules()]
     expect("every-minute" in schedules, "temporal: schedule every-minute is missing")
+    # The payload codec (TSK-92): encrypted-1's input is stored encrypted.
+    expect("encrypted-1" in ids, "temporal: workflow encrypted-1 is missing")
+    if "encrypted-1" in ids:
+        history = await client.get_workflow_handle("encrypted-1").fetch_history()
+        payload = history.events[0].workflow_execution_started_event_attributes.input.payloads[0]
+        expect(payload.metadata.get("encoding") == b"binary/encrypted", "temporal: encrypted-1's input is not encrypted")
     # External Storage (TSK-103): the large input is a reference in the history, not the data.
     expect("big-payload-1" in ids, "temporal: workflow big-payload-1 is missing")
     if "big-payload-1" in ids:

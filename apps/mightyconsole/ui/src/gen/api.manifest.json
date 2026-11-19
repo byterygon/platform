@@ -525,6 +525,22 @@
       ],
       "type": "object"
     },
+    "CodecNamespaceEndpoint": {
+      "description": "One namespace's own codec endpoint.",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace",
+        "endpoint"
+      ],
+      "type": "object"
+    },
     "CodecSelector": {
       "anyOf": [
         {
@@ -864,6 +880,25 @@
         "clientKeyPem": {
           "default": null,
           "description": "The client certificate's private key (PEM); never logged.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "codec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PayloadCodecOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The payload codec (TSK-92, spec §9.5)."
+        },
+        "codecAuthorization": {
+          "default": null,
+          "description": "The codec's `Authorization` header value; never logged, never sent to the browser again.",
           "type": [
             "string",
             "null"
@@ -4951,6 +4986,71 @@
       ],
       "type": "object"
     },
+    "PayloadCodecOptions": {
+      "description": "The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that\nmightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header\ncomes beside it as `codecAuthorization`.",
+      "properties": {
+        "caPem": {
+          "default": null,
+          "description": "The codec's CA (PEM): the only trusted root (Open question 31).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "encodeInputs": {
+          "default": null,
+          "description": "Encode the inputs Mightyconsole sends through `/encode` (on when empty).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "default": null,
+          "description": "`https://codec.internal:8888`; plain http on localhost only.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "namespaces": {
+          "description": "Namespaces with their own endpoint.",
+          "items": {
+            "$ref": "#/$defs/CodecNamespaceEndpoint"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sendNamespace": {
+          "default": null,
+          "description": "Send `X-Namespace` (on when empty).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "timeoutMs": {
+          "default": null,
+          "description": "Per call (10000 when empty).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "Poller": {
       "properties": {
         "identity": {
@@ -7220,6 +7320,91 @@
       },
       "required": [
         "serverVersion"
+      ],
+      "type": "object"
+    },
+    "TemporalTestCodecInput": {
+      "description": "\"Test codec\" in the profile sheet: the draft profile, and the namespace to sample (the\nprofile's when empty).",
+      "properties": {
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profile": {
+          "$ref": "#/$defs/ConnectTemporalProfile"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "TemporalTestCodecOutput": {
+      "description": "What the codec did with the inputs of the namespace's latest workflows.",
+      "properties": {
+        "codec": {
+          "description": "The codec's host and port.",
+          "type": "string"
+        },
+        "decoded": {
+          "description": "Payloads the codec changed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "error": {
+          "description": "Why the codec failed, when it did.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "description": "Encodings before and after, distinct.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "sampled": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "to": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workflowIds": {
+          "description": "The workflows sampled (their inputs' first payload).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "namespace",
+        "codec",
+        "workflowIds",
+        "sampled",
+        "decoded",
+        "from",
+        "to",
+        "ms"
       ],
       "type": "object"
     },
@@ -10250,7 +10435,8 @@
         "profile.apiKey",
         "profile.s3AccessKeyId",
         "profile.s3SecretAccessKey",
-        "profile.s3SessionToken"
+        "profile.s3SessionToken",
+        "profile.codecAuthorization"
       ],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -10626,6 +10812,34 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/TemporalTestCodecInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.testCodec",
+      "output": {
+        "$ref": "#/$defs/TemporalTestCodecOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [
+        "profile.clientKeyPem",
+        "profile.apiKey",
+        "profile.s3AccessKeyId",
+        "profile.s3SecretAccessKey",
+        "profile.s3SessionToken",
+        "profile.codecAuthorization"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/WorkersListInput"
       },
       "kind": "query",
@@ -10980,5 +11194,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:5d9392f613adfde124d96b39ad44405d335e7e4cadec1186cef03a8aa430c140"
+  "schema_hash": "sha256:7f8c60aebcc8020f54a03ce445569421edf73556b06a0e9cc6005373a23d1e75"
 }

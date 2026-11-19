@@ -4,7 +4,9 @@ that keeps retrying, a parent with a child, one with a Protobuf payload, a famil
 (TSK-104: family-root starts family-order, which starts three children, one failing, and is
 signalled by family-support), and a schedule that runs every minute. Started once when the worker starts; ids are fixed, so a restart starts nothing
 twice. External Storage (TSK-103): payloads of 256 KiB or more go to the lab's S3 store through the
-SDK's S3 driver; `big-payload-1` has a 300 KiB input and result."""
+SDK's S3 driver; `big-payload-1` has a 300 KiB input and result. A payload codec (TSK-92): a second
+worker on task queue `lab-encrypted` encrypts its payloads with the lab's AES-GCM codec;
+`encrypted-1` is stored encrypted."""
 
 import asyncio
 import dataclasses
@@ -22,6 +24,7 @@ from temporalio.worker import Worker
 with workflow.unsafe.imports_passed_through():
     from . import protos
     from .common import log
+    from .codec import LabEncryption, lab_codec
     from .s3 import LabS3, lab_s3
 
 TASK_QUEUE = "lab"
@@ -148,6 +151,13 @@ def big_text(seed: str, size: int = 300 * 1024) -> str:
 
 
 @workflow.defn
+class Encrypted:
+    @workflow.run
+    async def run(self, order: dict) -> dict:
+        return {"charged": order.get("amount"), "card": "****" + str(order.get("card", ""))[-4:]}
+
+
+@workflow.defn
 class BigPayload:
     @workflow.run
     async def run(self, document: dict) -> dict:
@@ -214,7 +224,18 @@ async def main() -> None:
             await asyncio.sleep(1)
     assert client is not None, "Temporal did not answer"
     worker = Worker(client, task_queue=TASK_QUEUE, workflows=[Fulfilment, Completed, Failed, Retrying, Parent, ProtoOrder, BigPayload, FamilyRoot, FamilyOrder, FamilySupport], activities=[charge, flaky])
-    async with worker:
+    # The encrypted side: the same converter with the lab's codec, its own task queue.
+    import base64
+
+    codec = lab_codec()
+    encrypted_client = await Client.connect("temporal:7233", namespace="lab", data_converter=dataclasses.replace(converter, payload_codec=LabEncryption(base64.b64decode(codec["key"]))))
+    encrypted_worker = Worker(encrypted_client, task_queue=codec["taskQueue"], workflows=[Encrypted])
+    async with worker, encrypted_worker:
+        try:
+            await encrypted_client.start_workflow(Encrypted.run, {"card": "4111111111111111", "amount": 42, "name": "Ana"}, id="encrypted-1", task_queue=codec["taskQueue"])
+        except Exception as e:  # noqa: BLE001 - already started on an earlier start
+            if "already" not in str(e).lower():
+                raise
         await start_samples(client)
         log("temporal-worker: samples started in namespace lab, schedule every-minute")
         await asyncio.Event().wait()

@@ -10,6 +10,7 @@ mod actions;
 mod actions_types;
 mod client;
 pub mod codec;
+mod codec_client;
 mod detail;
 mod detail_types;
 mod extstore;
@@ -287,11 +288,27 @@ async fn count_workflows(
 
 #[rpc::router(namespace = "temporal")]
 impl TemporalApi {
+    /// "Test codec" in the profile sheet (TSK-92, spec §9.5): the draft profile's codec decodes the
+    /// inputs of the namespace's 3 latest workflows. The connection is not kept.
+    #[rpc::mutation(
+        name = "testCodec",
+        perm = "temporal.read",
+        risk = Risk::Read,
+        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"]
+    )]
+    async fn test_codec(
+        &self,
+        _ctx: Ctx,
+        input: TemporalTestCodecInput,
+    ) -> ToolResult<TemporalTestCodecOutput> {
+        Ok(codec_client::test(&input).await?)
+    }
+
     /// Opens the connection from the profile and asks the server who it is.
     #[rpc::mutation(
         perm = "temporal.read",
         risk = Risk::Read,
-        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken"]
+        redact = ["profile.clientKeyPem", "profile.apiKey", "profile.s3AccessKeyId", "profile.s3SecretAccessKey", "profile.s3SessionToken", "profile.codecAuthorization"]
     )]
     async fn connect(
         &self,
@@ -705,6 +722,9 @@ mod lab_extstore_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_codec_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_payload_codec_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_form_tests;

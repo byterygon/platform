@@ -6,14 +6,36 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useState } from "react";
 import { CopyButton } from "@/app/page";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import type { TemporalTestCodecOutput } from "@/gen/api";
 import { readRouterConfig } from "@/app/router";
 import type { ConnectionFormProps } from "../types";
-import { DEFAULT_ADDRESS, DEFAULT_CODEC_ORIGINS, DEFAULT_NAMESPACE, DEFAULT_PAGE_SIZE, DEFAULT_THRESHOLD_BYTES, codecEndpointOf, codecServerOf, externalStorageOf, tlsOf } from "./profile";
+import { DEFAULT_ADDRESS, DEFAULT_CODEC_ORIGINS, payloadCodecOf, profile, DEFAULT_NAMESPACE, DEFAULT_PAGE_SIZE, DEFAULT_THRESHOLD_BYTES, codecEndpointOf, codecServerOf, externalStorageOf, tlsOf } from "./profile";
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled, profileId }: ConnectionFormProps) {
+export function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled, profileId, client, draft }: ConnectionFormProps) {
+  const pc = payloadCodecOf(fields);
+  const setPc = (patch: Partial<typeof pc>) => onFields({ codec: { ...pc, ...patch } });
+  const [testing, setTesting] = useState(false);
+  const [tested, setTested] = useState<TemporalTestCodecOutput | { failed: string } | null>(null);
+  const testCodec = async () => {
+    if (!client || !draft) return;
+    setTesting(true);
+    setTested(null);
+    try {
+      setTested(await client.temporal.testCodec({ profile: profile.toConnect(draft()) as Parameters<typeof client.temporal.testCodec>[0]["profile"], namespace: null }));
+    } catch (e) {
+      setTested({ failed: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
   const tls = tlsOf(fields);
   const setTls = (patch: Partial<typeof tls>) => onFields({ tls: { ...tls, ...patch } });
   const pageSize = fields["pageSize"];
@@ -97,6 +119,79 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
         />
         <FieldDescription>Temporal Cloud API key, sent as a bearer token over TLS only.</FieldDescription>
       </Field>
+      <Field>
+        <FieldLabel>Payload codec</FieldLabel>
+        <RadioGroup aria-label="Payload codec" value={pc.enabled ? "server" : "none"} onValueChange={(v) => setPc({ enabled: v === "server" })} className="flex-row gap-inline-xl" disabled={disabled}>
+          <label className="flex items-center gap-inline-md text-body-1">
+            <RadioGroupItem value="none" /> None, show payloads as stored
+          </label>
+          <label className="flex items-center gap-inline-md text-body-1">
+            <RadioGroupItem value="server" /> Codec server
+          </label>
+        </RadioGroup>
+        <FieldDescription>Decrypt and decompress payloads for display, through your own codec server.</FieldDescription>
+      </Field>
+      {pc.enabled ? (
+        <>
+          <Field invalid={errors["codec.endpoint"] !== undefined}>
+            <FieldLabel>Endpoint</FieldLabel>
+            <Input value={pc.endpoint} onValueChange={(v) => setPc({ endpoint: v })} placeholder="https://codec.internal:8888" disabled={disabled} autoComplete="off" spellCheck={false} />
+            <FieldDescription>Mightyconsole calls POST /decode and /encode on it, in Temporal's codec server format.</FieldDescription>
+            {errors["codec.endpoint"] ? <FieldError match>{errors["codec.endpoint"]}</FieldError> : null}
+          </Field>
+          <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
+            <Field>
+              <FieldLabel>Authorization header</FieldLabel>
+              <PasswordInput value={str(secrets["codecAuthorization"])} onValueChange={(v) => onSecrets({ codecAuthorization: v })} placeholder={storedSecrets.has("codecAuthorization") ? "Set (type to replace)" : "Bearer …"} autoComplete="off" disabled={disabled} />
+              <FieldDescription>Stored as a secret of this profile.</FieldDescription>
+            </Field>
+            <Field invalid={errors["codec.caPem"] !== undefined}>
+              <FieldLabel>CA certificate (PEM)</FieldLabel>
+              <Textarea value={pc.caPem} onValueChange={(v) => setPc({ caPem: v })} rows={2} spellCheck={false} placeholder="-----BEGIN CERTIFICATE-----" disabled={disabled} />
+              <FieldDescription>No system roots, as for registries (Open question 31).</FieldDescription>
+              {errors["codec.caPem"] ? <FieldError match>{errors["codec.caPem"]}</FieldError> : null}
+            </Field>
+          </div>
+          <Field invalid={errors["codec.namespaces"] !== undefined}>
+            <FieldLabel>Per namespace</FieldLabel>
+            <Textarea value={pc.namespaces} onValueChange={(v) => setPc({ namespaces: v })} rows={2} spellCheck={false} placeholder="payments https://codec-payments.internal:8888" disabled={disabled} />
+            <FieldDescription>Other namespaces use the endpoint above.</FieldDescription>
+            {errors["codec.namespaces"] ? <FieldError match>{errors["codec.namespaces"]}</FieldError> : null}
+          </Field>
+          <Field orientation="horizontal">
+            <Checkbox checked={pc.sendNamespace} onCheckedChange={(v) => setPc({ sendNamespace: v === true })} disabled={disabled} />
+            <FieldLabel>Send the namespace as X-Namespace</FieldLabel>
+          </Field>
+          <Field orientation="horizontal">
+            <Checkbox checked={pc.encodeInputs} onCheckedChange={(v) => setPc({ encodeInputs: v === true })} disabled={disabled} />
+            <FieldLabel>Encode inputs I send (start, signal, schedule, query) with /encode</FieldLabel>
+          </Field>
+          <Field invalid={errors["codec.timeoutMs"] !== undefined}>
+            <FieldLabel>Timeout (ms)</FieldLabel>
+            <Input inputMode="numeric" value={pc.timeoutMs === undefined ? "" : String(pc.timeoutMs)} onValueChange={(v) => setPc({ timeoutMs: /^\d+$/.test(v.trim()) ? Number(v.trim()) : undefined })} placeholder="10000" disabled={disabled} />
+            <FieldDescription>Per call, up to 100 payloads each. When the codec fails, payloads show as stored with the reason.</FieldDescription>
+            {errors["codec.timeoutMs"] ? <FieldError match>{errors["codec.timeoutMs"]}</FieldError> : null}
+          </Field>
+          {client && draft ? (
+            <Button appearance="secondary" className="self-start" loading={testing} onClick={() => void testCodec()} disabled={disabled}>
+              Test codec
+            </Button>
+          ) : null}
+          {tested === null ? null : "failed" in tested || tested.error ? (
+            <Alert intent="danger">
+              <AlertTitle>The codec did not answer</AlertTitle>
+              <AlertDescription>{"failed" in tested ? tested.failed : tested.error}</AlertDescription>
+            </Alert>
+          ) : (
+            <Alert intent="success">
+              <AlertTitle>Codec answered</AlertTitle>
+              <AlertDescription>
+                Decoded {tested.decoded} of {tested.sampled} sample payloads from {tested.namespace} in {tested.ms} ms{tested.from.length > 0 ? `: ${tested.from.join(", ")} → ${tested.to.join(", ")}` : ""}. mightyconsole-server makes the call, never the browser: the token stays on the server.
+              </AlertDescription>
+            </Alert>
+          )}
+        </>
+      ) : null}
       <Field>
         <FieldLabel>
           <Switch checked={ext.enabled} onCheckedChange={(enabled) => setExt({ enabled })} disabled={disabled} /> External Storage on S3

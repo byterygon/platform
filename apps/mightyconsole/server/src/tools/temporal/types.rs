@@ -73,6 +73,82 @@ pub struct ExternalStorageOptions {
     pub max_payload_bytes: Option<u64>,
 }
 
+/// "Test codec" in the profile sheet: the draft profile, and the namespace to sample (the
+/// profile's when empty).
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporalTestCodecInput {
+    pub profile: ConnectTemporalProfile,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub namespace: Option<String>,
+}
+
+/// What the codec did with the inputs of the namespace's latest workflows.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporalTestCodecOutput {
+    pub namespace: String,
+    /// The codec's host and port.
+    pub codec: String,
+    /// The workflows sampled (their inputs' first payload).
+    pub workflow_ids: Vec<String>,
+    pub sampled: u32,
+    /// Payloads the codec changed.
+    pub decoded: u32,
+    /// Encodings before and after, distinct.
+    pub from: Vec<String>,
+    pub to: Vec<String>,
+    pub ms: u64,
+    /// Why the codec failed, when it did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
+}
+
+/// One namespace's own codec endpoint.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CodecNamespaceEndpoint {
+    pub namespace: String,
+    pub endpoint: String,
+}
+
+/// The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that
+/// mightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header
+/// comes beside it as `codecAuthorization`.
+#[derive(Debug, Clone, Default, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PayloadCodecOptions {
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub enabled: Option<bool>,
+    /// `https://codec.internal:8888`; plain http on localhost only.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub endpoint: Option<String>,
+    /// Namespaces with their own endpoint.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub namespaces: Option<Vec<CodecNamespaceEndpoint>>,
+    /// The codec's CA (PEM): the only trusted root (Open question 31).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub ca_pem: Option<String>,
+    /// Send `X-Namespace` (on when empty).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub send_namespace: Option<bool>,
+    /// Encode the inputs Mightyconsole sends through `/encode` (on when empty).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub encode_inputs: Option<bool>,
+    /// Per call (10000 when empty).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub timeout_ms: Option<u64>,
+}
+
 /// The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at
 /// `/codec/<profileId>/decode` and `/encode` while the profile is connected.
 #[derive(Debug, Clone, Default, Deserialize, TS, JsonSchema)]
@@ -120,6 +196,14 @@ pub struct ConnectTemporalProfile {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub profile_id: Option<String>,
+    /// The payload codec (TSK-92, spec §9.5).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub codec: Option<PayloadCodecOptions>,
+    /// The codec's `Authorization` header value; never logged, never sent to the browser again.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub codec_authorization: Option<String>,
     /// Serve the profile on the codec endpoint (TSK-103).
     #[serde(default)]
     #[ts(optional = nullable)]

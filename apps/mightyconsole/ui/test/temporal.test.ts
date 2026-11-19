@@ -18,7 +18,7 @@ describe("profile (spec §9.1)", () => {
     const r = record();
     expect(profile.validate(r)).toEqual({});
     expect(r.fields).toMatchObject({ address: "127.0.0.1:7233", namespace: "default", pageSize: 50, tls: { enabled: false } });
-    expect(connect(r)).toEqual({ name: "lab", profileId: "01T", codecServer: null, address: "127.0.0.1:7233", namespace: "default", tls: { enabled: false }, clientKeyPem: null, apiKey: null, externalStorage: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3SessionToken: null });
+    expect(connect(r)).toEqual({ name: "lab", profileId: "01T", codecServer: null, codec: null, codecAuthorization: null, address: "127.0.0.1:7233", namespace: "default", tls: { enabled: false }, clientKeyPem: null, apiKey: null, externalStorage: null, s3AccessKeyId: null, s3SecretAccessKey: null, s3SessionToken: null });
   });
 
   test("addresses are host:port", () => {
@@ -75,6 +75,20 @@ describe("profile (spec §9.1)", () => {
     expect(on.codecServer).toEqual({ enabled: true, allowedOrigins: ["http://localhost:8233", "http://127.0.0.1:8233"] });
     expect(on.profileId).toBe("01T");
     expect(codecEndpointOf("https://localhost:7443/", "01T")).toBe("https://localhost:7443/codec/01T");
+  });
+
+  test("the payload codec (spec §9.5): https with its CA or localhost http, per-namespace lines, the secret only when on", () => {
+    const base = { tls: { enabled: false } };
+    const errors = (codec: Record<string, unknown>) => Object.keys(profile.validate(record({ fields: { ...base, codec: { enabled: true, ...codec } } }))).sort();
+    expect(errors({ endpoint: "" })).toEqual(["codec.endpoint"]);
+    expect(errors({ endpoint: "http://codec.internal:8888" })).toEqual(["codec.endpoint"]);
+    expect(errors({ endpoint: "https://codec.internal:8888" })).toEqual(["codec.caPem"]);
+    expect(errors({ endpoint: "http://127.0.0.1:8234", namespaces: "payments" })).toEqual(["codec.namespaces"]);
+    expect(errors({ endpoint: "http://127.0.0.1:8234", namespaces: "payments → http://localhost:8235\nbilling http://localhost:8236" })).toEqual([]);
+    const on = connect(record({ fields: { ...base, codec: { enabled: true, endpoint: " http://127.0.0.1:8234 ", namespaces: "payments http://localhost:8235", encodeInputs: false } }, secrets: { codecAuthorization: "Bearer t" } }));
+    expect(on.codec).toEqual({ enabled: true, endpoint: "http://127.0.0.1:8234", namespaces: [{ namespace: "payments", endpoint: "http://localhost:8235" }], caPem: null, sendNamespace: true, encodeInputs: false, timeoutMs: null });
+    expect(on.codecAuthorization).toBe("Bearer t");
+    expect(connect(record({ fields: base, secrets: { codecAuthorization: "Bearer t" } })).codecAuthorization).toBeNull();
   });
 
   test("readers tolerate hand-edited records", () => {
