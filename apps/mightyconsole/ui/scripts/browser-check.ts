@@ -62,6 +62,28 @@ function monacoBundle(dist: string) {
   };
 }
 
+/** Waits until the workspace's saved tabs (IndexedDB "mightyconsole", store "workspace", key "tabs") include `title`. */
+async function savedTab(page: Page, title: string, timeoutMs: number): Promise<boolean> {
+  const read = `new Promise((resolve) => {
+    const open = indexedDB.open("mightyconsole");
+    open.onerror = () => resolve(false);
+    open.onsuccess = () => {
+      const db = open.result;
+      try {
+        const get = db.transaction("workspace").objectStore("workspace").get("tabs");
+        get.onsuccess = () => { db.close(); resolve(JSON.stringify(get.result ?? null).includes(${JSON.stringify(title)})); };
+        get.onerror = () => { db.close(); resolve(false); };
+      } catch { db.close(); resolve(false); }
+    };
+  })`;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await page.evaluate<boolean>(read).catch(() => false)) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
 const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
 
 /**
@@ -175,7 +197,11 @@ async function main(): Promise<number> {
     );
     await until(page, `document.querySelector("[data-slot=message-detail]")`, "the detail pane");
 
-    // 3. A reload: the tab is restored and connects again.
+    // 3. A reload: the tab is restored and connects again. The tabs are saved 200 ms after they
+    // settle (the live tail keeps changing them for a while), so reload only once the Messages tab
+    // is in IndexedDB; reloading earlier restores the tabs without it.
+    const saved = await savedTab(page, "Messages", 15_000);
+    check(saved, "the Messages tab was not saved to the workspace within 15 s");
     await page.navigate(`${origin}/`);
     await until(page, `[...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ticks · smoke"))`, "the restored tab");
     await until(page, `__mc.button("Start") && !__mc.has("Connect to smoke")`, "the restored tab to connect");

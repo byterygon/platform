@@ -69,7 +69,13 @@ function setup(options: { status?: WorkflowDetail["workflow"]["status"]; fail?: 
   return { wf, openTab, ...view };
 }
 
-const ready = () => waitFor(() => byRole("button", "Signal") !== null && byText("Fulfilment") !== null, "the loaded tab");
+const ready = () => waitFor(() => byRole("button", "Signal") !== null && byRole("tab", "Queries") !== null, "the loaded tab");
+/** Opens the header's overflow menu and picks an item (Reset…, Terminate…, Refresh). */
+async function fromMenu(name: RegExp) {
+  await click(byRole("button", "More actions"));
+  await waitFor(() => byRole("menuitem", name) !== null, "the overflow menu");
+  await click(byRole("menuitem", name));
+}
 const confirm = (name: string) => byRole("button", name, dialogWith(name)!.ownerDocument.body);
 const dialogButton = (dialogText: string, button: string) => {
   const d = dialogWith(dialogText);
@@ -148,7 +154,7 @@ describe("actions (spec §9.4)", () => {
   test("Cancel is a plain confirmation that names the workflow; the reason is optional", async () => {
     const { wf } = setup();
     await ready();
-    await click(byRole("button", "Cancel"));
+    await click(byRole("button", "Request cancellation"));
     await waitFor(() => dialogWith("Request cancellation of fulfilment-long-running?") !== null, "the dialog");
     await type(field("Request cancellation", "Reason"), "no longer needed");
     await click(dialogButton("Request cancellation of", "Request cancellation"));
@@ -159,7 +165,7 @@ describe("actions (spec §9.4)", () => {
   test("Terminate needs a reason before it can be confirmed", async () => {
     const { wf } = setup();
     await ready();
-    await click(byRole("button", "Terminate"));
+    await fromMenu(/^Terminate/);
     await waitFor(() => dialogWith("Terminate fulfilment-long-running?") !== null, "the dialog");
     expect(dialogWith("Terminate fulfilment-long-running?")!.textContent).toContain("cannot be undone");
     expect(isDisabled(dialogButton("Terminate fulfilment-long-running?", "Terminate"))).toBe(true);
@@ -174,7 +180,7 @@ describe("actions (spec §9.4)", () => {
   test("Reset offers the latest completed workflow task, asks for a reason, and shows the new run", async () => {
     const { wf, openTab } = setup();
     await ready();
-    await click(byRole("button", "Reset"));
+    await fromMenu(/^Reset/);
     await waitFor(() => dialogWith("Reset fulfilment-long-running?") !== null, "the dialog");
     // The picker starts on the latest WorkflowTaskCompleted (event 8).
     expect(dialogWith("Reset fulfilment-long-running?")!.textContent).toContain("#8 WorkflowTaskCompleted");
@@ -192,7 +198,7 @@ describe("actions (spec §9.4)", () => {
     const closed = new RpcError("FailedPrecondition", "workflow execution already completed", { details: { kind: "Conflict", system: "temporal", message: "workflow execution already completed", retryable: false } });
     const { wf } = setup({ fail: closed });
     await ready();
-    await click(byRole("button", "Terminate"));
+    await fromMenu(/^Terminate/);
     await waitFor(() => dialogWith("Terminate fulfilment-long-running?") !== null, "the dialog");
     await type(field("Terminate fulfilment-long-running?", "Reason"), "x");
     await click(dialogButton("Terminate fulfilment-long-running?", "Terminate"));
@@ -203,9 +209,12 @@ describe("actions (spec §9.4)", () => {
 
   test("a closed workflow cannot be signalled, cancelled or terminated; it can still be reset", async () => {
     setup({ status: "Completed" });
-    await waitFor(() => byText("Fulfilment") !== null && byRole("button", "Reset") !== null, "the loaded tab");
-    for (const name of ["Signal", "Cancel", "Terminate"]) expect(isDisabled(byRole("button", name)), name).toBe(true);
-    expect(isDisabled(byRole("button", "Reset"))).toBe(false);
+    await waitFor(() => byRole("tab", "Queries") !== null && byRole("button", "Signal") !== null, "the loaded tab");
+    for (const name of ["Signal", "Request cancellation"]) expect(isDisabled(byRole("button", name)), name).toBe(true);
+    await click(byRole("button", "More actions"));
+    await waitFor(() => byRole("menuitem", /^Reset/) !== null, "the overflow menu");
+    expect(isDisabled(byRole("menuitem", /^Terminate/))).toBe(true);
+    expect(isDisabled(byRole("menuitem", /^Reset/))).toBe(false);
   });
 });
 

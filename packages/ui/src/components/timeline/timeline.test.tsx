@@ -1,7 +1,7 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { axeViolations, cleanup, render } from "../../../test/render.tsx";
-import { Timeline, fitRange, formatOffset, niceTicks, panRange, zoomRange, type TimelineItem, type TimelineLane } from "./timeline";
+import { Timeline, fitRange, formatClock, formatOffset, formatSpan, niceTicks, panRange, zoomRange, type TimelineItem, type TimelineLane } from "./timeline";
 
 afterEach(cleanup);
 
@@ -22,6 +22,11 @@ const press = async (el: HTMLElement, key: string, init: KeyboardEventInit = {})
     el.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }));
   });
 };
+const button = (container: HTMLElement, name: string | RegExp) =>
+  Array.from(container.querySelectorAll<HTMLElement>("button")).find((b) => {
+    const n = (b.getAttribute("aria-label") ?? b.textContent ?? "").trim();
+    return typeof name === "string" ? n === name : name.test(n);
+  })!;
 const left = (el: HTMLElement) => Number.parseFloat(el.style.left);
 const width = (el: HTMLElement) => Number.parseFloat(el.style.width);
 
@@ -60,6 +65,17 @@ describe("range maths", () => {
     expect(formatOffset(3_900_000)).toBe("1h 5m");
     expect(formatOffset(7_200_000)).toBe("2h");
     expect(formatOffset(-1500)).toBe("-1.5 s");
+  });
+
+  test("the zoom control names the view's width in one unit, the clock axis reads local time", () => {
+    expect(formatSpan(800)).toBe("800 ms");
+    expect(formatSpan(45_000)).toBe("45 s");
+    expect(formatSpan(120_000)).toBe("2 min");
+    expect(formatSpan(5_400_000)).toBe("1.5 h");
+    const t = new Date(2026, 10, 18, 10, 42, 20, 250).getTime();
+    expect(formatClock(t)).toBe("10:42:20");
+    expect(formatClock(t, 100)).toBe("10:42:20.250");
+    expect(formatClock(t, 3_600_000)).toBe("10:42");
   });
 });
 
@@ -106,7 +122,12 @@ describe("Timeline", () => {
   });
 
   test("+ and - zoom, the arrows pan, Home fits again", async () => {
-    const { container } = render(<Timeline aria-label="a" lanes={lanes} items={items} now={3000} />);
+    // a1 sits in the middle, so it stays inside the view zoomed in once and panned a little.
+    const mid: TimelineItem[] = [
+      { id: "wf", laneId: "wf", start: 0, end: 4000, status: "success", label: "Order" },
+      { id: "a1", laneId: "act", start: 1900, end: 2100, status: "success", label: "reserve" },
+    ];
+    const { container } = render(<Timeline aria-label="a" lanes={lanes} items={mid} now={4000} />);
     const target = root(container);
     const a1 = () => bars(container)[1]!;
     const fitLeft = left(a1());
@@ -152,6 +173,67 @@ describe("Timeline", () => {
   test("describeItem names a bar for screen readers", () => {
     const { container } = render(<Timeline aria-label="a" lanes={lanes} items={items} now={3000} describeItem={(i) => `custom ${i.id}`} />);
     expect(bars(container)[0]!.getAttribute("aria-label")).toBe("custom wf");
+  });
+
+  test("the toolbar fits, zooms and switches the axis to clock time", async () => {
+    const t0 = new Date(2026, 10, 18, 10, 42, 0).getTime();
+    const timed: TimelineItem[] = [
+      { id: "wf", laneId: "wf", start: t0, end: t0 + 120_000, status: "success", label: "Order" },
+      { id: "a1", laneId: "act", start: t0 + 10_000, end: t0 + 20_000, status: "success", label: "reserve" },
+    ];
+    const { container } = render(<Timeline aria-label="a" lanes={lanes} items={timed} now={t0 + 120_000} />);
+    const zoomLabel = () => container.querySelector('[aria-label="Zoom"] span')?.textContent;
+    const before = zoomLabel();
+    await act(async () => button(container, "Zoom in").click());
+    expect(zoomLabel()).not.toBe(before);
+    await act(async () => button(container, /^Fit/).click());
+    expect(zoomLabel()).toBe(before);
+    const axis = () => Array.from(container.querySelectorAll('[data-slot="timeline-axis"] span')).map((s) => s.textContent);
+    expect(axis()[0]).toBe("0");
+    await act(async () => button(container, "Clock").click());
+    expect(axis().every((l) => /^10:4\d:\d\d$/.test(l ?? ""))).toBe(true);
+    // The overview shows the whole range and the window.
+    expect(container.querySelector('[data-slot="timeline-overview"]')?.textContent).toContain("Whole range · 2m");
+    expect(container.querySelector('[data-slot="timeline-window"]')).not.toBeNull();
+  });
+
+  test("shapes, captions, a lane's detail and the selected lane", () => {
+    const shaped: TimelineItem[] = [
+      { id: "r", laneId: "wf", start: 0, end: null, status: "running", label: "run", caption: "Running · 5s" },
+      { id: "h", laneId: "act", start: 100, end: null, status: "warning", label: "charge", shape: "hatched", caption: "Retrying" },
+      { id: "k", laneId: "act", start: 200, end: 200, status: "neutral", label: "task", shape: "tick" },
+      { id: "d", laneId: "act", start: 300, end: 300, status: "info", label: "signal", shape: "diamond", caption: "1 payload" },
+    ];
+    const { container } = render(<Timeline aria-label="a" lanes={[{ id: "wf", label: "order-1", detail: "workflow" }, { id: "act", label: "charge", detail: "activity 5" }]} items={shaped} now={5000} selectedId="d" />);
+    expect(Array.from(container.querySelectorAll('[data-slot="timeline-lane"]')).map((l) => l.textContent?.startsWith("charge") ? "charge" : l.textContent)).toContain("charge");
+    expect(container.textContent).toContain("activity 5");
+    expect(bars(container).map((b) => b.dataset.shape)).toEqual(["bar", "hatched", "tick", "diamond"]);
+    expect(bars(container)[0]!.textContent).toBe("Running · 5s");
+    expect(container.textContent).toContain("1 payload");
+    const selectedLane = container.querySelector('[data-slot="timeline-lane"][data-selected]');
+    expect(selectedLane?.textContent).toContain("activity 5");
+    // Running items go on past the view: an arrow at the edge says so.
+    expect(container.querySelectorAll('[data-slot="timeline-edge"]').length).toBeGreaterThan(0);
+  });
+
+  test("following keeps now in a zoomed view; panning away stops it", async () => {
+    const onFollowChange = vi.fn();
+    const run: TimelineItem[] = [{ id: "wf", laneId: "wf", start: 0, end: null, status: "running", label: "run" }];
+    let setNow: (n: number) => void = () => undefined;
+    function Following() {
+      const [now, set] = useState(10_000);
+      setNow = set;
+      return <Timeline aria-label="a" lanes={lanes} items={run} now={now} follow onFollowChange={onFollowChange} />;
+    }
+    const { container } = render(<Following />);
+    const target = root(container);
+    await press(target, "+");
+    const nowLeft = () => left(container.querySelector<HTMLElement>('[data-slot="timeline-now"]')!);
+    expect(nowLeft()).toBeCloseTo(92, 0);
+    await act(async () => setNow(20_000));
+    expect(nowLeft()).toBeCloseTo(92, 0);
+    await press(target, "ArrowLeft");
+    expect(onFollowChange).toHaveBeenCalledWith(false);
   });
 
   test("has no axe violations", async () => {

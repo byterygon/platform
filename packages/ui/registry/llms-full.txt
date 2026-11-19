@@ -5237,21 +5237,23 @@ export function TimePickerRealistic() {
 
 ### Timeline
 
-[timeline.json](timeline.json): Spans over time in lanes: a workflow's history as bars (a workflow, its activities, timers, child workflows, signals) on a zoomable time axis, with running items that grow to now.
+[timeline.json](timeline.json): Spans and instants over time in lanes: a workflow's history as bars, stripes, dashes, ticks, diamonds and pins (the workflow, its activities, timers, child workflows, signals, markers) on a zoomable clock or since-start axis, with a toolbar, an overview strip of the whole range and running items that grow to now.
 
-Usage: Use it to show when things happened and how they overlapped, for a history, a trace or a job run: one lane per thing, one bar per span, an instant when start equals end. Pass lanes and items with times in milliseconds on one clock and `now` for the running ones; the app decides which lane an event belongs to. Pair it with a table of the same events for exact values: the Timeline is for shape, not for reading numbers. It is plain DOM (no charting library), windows its lanes, and zooms with + and - (Ctrl+wheel), pans with the arrows (Shift+wheel) and fits with Home.
+Usage: Use it to show when things happened and how they overlapped, for a history, a trace or a job run: one lane per thing (with an icon and a short detail such as "activity 5"), one mark per span or instant. Pass lanes and items with times in milliseconds on one clock (epoch ms for the clock axis) and `now` for the running ones; the app decides lanes, shapes and captions. The built-in toolbar fits (Home), zooms and switches the axis between clock time and time since the start; pass filters or a follow switch as `toolbar`. The overview strip shows the whole range with the visible window, which drags to pan. With `follow`, a zoomed view slides with `now`; panning away calls `onFollowChange(false)`. Pair it with a table of the same events for exact values. It is plain DOM, windows its lanes, and zooms with + and - (Ctrl+wheel), pans with the arrows (Shift+wheel).
 
 - Wraps: no Base UI part
-- Props: aria-label (string); lanes ({ id: string; label: string }[], default "[]"); items ({ id: string; laneId: string; start: number; end: number | null; status: TimelineStatus; label: string }[], default "[]"); now (number, default "0"); selectedId (string | null); onSelect ((id: string) => void); origin (number); describeItem ((item, end) => string); emptyLabel (string, default "Nothing to show"); className (string)
+- Props: aria-label (string); lanes ({ id: string; label: string; detail?: string; icon?: ReactNode }[], default "[]"); items ({ id: string; laneId: string; start: number; end: number | null; status: TimelineStatus; label: string; shape?: TimelineShape; caption?: string }[], default "[]"); now (number, default "0"); selectedId (string | null); onSelect ((id: string) => void); origin (number); describeItem ((item, end) => string); emptyLabel (string, default "Nothing to show"); defaultAxis ("clock" | "offset", default "\"offset\""); formatTime ((t: number, step: number) => string); controls (boolean, default "true"); toolbar (ReactNode); overviewLabel (string, default "\"Whole range\""); follow (boolean, default "false"); onFollowChange ((follow: boolean) => void); className (string)
 - States: selected (data-selected), hover (hover), focus-visible (focus-visible)
-- Tokens: color.accent.bg, color.accent.compound, color.accent.fg, color.bg.layer, color.border.subtle, color.fg.default, color.fg.muted, color.neutral.bg, color.neutral.fg, color.ring, color.ring-inner, color.status.danger.solid, color.status.danger.solid-fg, color.status.info.solid, color.status.info.solid-fg, color.status.success.solid, color.status.success.solid-fg, color.status.warning.solid, color.status.warning.solid-fg, font.sans, grid.header-bg, radius.lg, radius.sm, ring.inner-width, ring.width, size.control.md, size.control.sm, size.panel.xs, space.inline.sm, space.inline.xs, space.inset.md, space.inset.sm, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight
-- Accessibility: The timeline is a focusable role=group named by aria-label; its keys (+, -, arrows, Home) are announced by a visually hidden hint it is described by. Each bar is a native button whose label is "label, status, duration" (or describeItem), with aria-pressed when a selection is controlled. Status is never colour alone: the bar shows its label and the aria-label names the status. The axis is hidden from assistive technology; the bars carry the times. Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface).
+- Tokens: color.accent.bg, color.accent.compound, color.accent.subtle-bg, color.accent.subtle-fg, color.bg.disabled, color.bg.layer, color.bg.layer-alt, color.border.control-bottom, color.border.control-bottom-subtle, color.border.disabled, color.border.subtle, color.fg.default, color.fg.disabled, color.fg.muted, color.interactive.active, color.interactive.hover, color.interactive.selected, color.interactive.selected-hover, color.neutral.bg, color.neutral.fg, color.ring, color.ring-inner, color.status.danger.solid, color.status.danger.solid-fg, color.status.info.solid, color.status.info.solid-fg, color.status.success.solid, color.status.success.solid-fg, color.status.warning.solid, color.status.warning.solid-fg, font.mono, font.sans, motion.duration.faster, motion.easing.easy-ease, radius.md, radius.sm, ring.inner-width, ring.width, size.control.lg, size.control.sm, size.control.xs, size.icon.md, size.icon.xs, size.panel.xs, space.inline.lg, space.inline.md, space.inline.sm, space.inline.xs, space.inset.md, space.inset.sm, space.inset.xs, space.stack.sm, space.stack.xs, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.caption-1-strong.leading, text.caption-1-strong.size, text.caption-1-strong.tracking, text.caption-1-strong.weight, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight
+- Accessibility: The timeline is a focusable role=group named by aria-label; its keys (+, -, arrows, Home) are announced by a visually hidden hint it is described by. The toolbar's buttons do the same with a pointer and are named (Zoom in, Zoom out, Fit); the view's width is announced politely. Each mark is a native button whose label is "label, status, duration" (or describeItem), with aria-pressed when a selection is controlled. Status is never colour alone: shapes differ (stripes, dashes, ticks, diamonds, pins), captions name the state, and the aria-label names the status. The axis and the overview are hidden from assistive technology; the marks carry the times. Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface).
 
 Examples (TimelineMinimal, TimelineRealistic):
 
 ```tsx
 import { useState } from "react";
+import { Icon } from "@/components/ui/icon";
 import { Timeline, type TimelineItem, type TimelineLane } from "@/components/ui/timeline";
+import { Clock, Flash, Link, List, Pin, Play } from "@/lib/icons";
 
 const lanes: TimelineLane[] = [
   { id: "wf", label: "Workflow" },
@@ -5263,33 +5265,56 @@ const items: TimelineItem[] = [
   { id: "a1", laneId: "charge", start: 300, end: 1500, status: "success", label: "charge #1" },
 ];
 
-/** The smallest useful Timeline: two lanes, one workflow and one activity. */
+/** The smallest useful Timeline: two lanes, one workflow and one activity, without the toolbar. */
 export function TimelineMinimal() {
-  return <Timeline aria-label="Example timeline" lanes={lanes} items={items} now={4200} />;
+  return <Timeline aria-label="Example timeline" lanes={lanes} items={items} now={4200} controls={false} />;
 }
 
-const history: TimelineItem[] = [
-  { id: "wf", laneId: "wf", start: 0, end: null, status: "running", label: "OrderWorkflow" },
-  { id: "a1", laneId: "act", start: 400, end: 2100, status: "success", label: "reserveStock" },
-  { id: "a2", laneId: "act", start: 2200, end: 3900, status: "danger", label: "charge (attempt 1)" },
-  { id: "a3", laneId: "act", start: 5200, end: null, status: "running", label: "charge (attempt 2)" },
-  { id: "t1", laneId: "timer", start: 3900, end: 5200, status: "info", label: "retry timer" },
-  { id: "s1", laneId: "signal", start: 1800, end: 1800, status: "neutral", label: "signal approve" },
-  { id: "c1", laneId: "child", start: 2500, end: 6100, status: "warning", label: "NotifyWorkflow" },
-];
+// A run that started at 10:42:00 local time, read on the clock axis.
+const t0 = new Date(2026, 10, 18, 10, 42, 0).getTime();
+const s = (seconds: number) => t0 + seconds * 1000;
 
 const historyLanes: TimelineLane[] = [
-  { id: "wf", label: "Workflow" },
-  { id: "act", label: "Activities" },
-  { id: "timer", label: "Timers" },
-  { id: "signal", label: "Signals" },
-  { id: "child", label: "Child workflows" },
+  { id: "wf", label: "order-48213", detail: "workflow", icon: <Icon icon={Link} /> },
+  { id: "tasks", label: "Workflow tasks", detail: "4 tasks", icon: <Icon icon={List} /> },
+  { id: "reserve", label: "ReserveInventory", detail: "activity 5", icon: <Icon icon={Flash} /> },
+  { id: "charge", label: "ChargePayment", detail: "activity 12", icon: <Icon icon={Flash} /> },
+  { id: "window", label: "payment-window", detail: "timer 11", icon: <Icon icon={Clock} /> },
+  { id: "confirmed", label: "customerConfirmed", detail: "signal 13", icon: <Icon icon={Play} /> },
+  { id: "fraud", label: "fraud-score", detail: "marker 17", icon: <Icon icon={Pin} /> },
+  { id: "receipt", label: "SendReceipt", detail: "activity 18", icon: <Icon icon={Flash} /> },
 ];
 
-/** A running workflow's history: the open items grow to `now`; picking a bar selects it. */
+const history: TimelineItem[] = [
+  { id: "wf", laneId: "wf", start: s(0), end: null, status: "running", label: "order-48213", caption: "Running · 1m 50s" },
+  ...[1, 3, 85, 100].map((at, i): TimelineItem => ({ id: `t${i}`, laneId: "tasks", start: s(at), end: s(at), status: "neutral", label: "Workflow task", shape: "tick" })),
+  { id: "a5", laneId: "reserve", start: s(1), end: s(2.7), status: "success", label: "ReserveInventory", caption: "1.67 s" },
+  { id: "a12", laneId: "charge", start: s(4), end: null, status: "warning", label: "ChargePayment", shape: "hatched", caption: "Retrying · attempt 3 of 5" },
+  { id: "t11", laneId: "window", start: s(4), end: null, status: "neutral", label: "payment-window", shape: "dashed", caption: "30m · fires 11:12:00" },
+  { id: "s13", laneId: "confirmed", start: s(84), end: s(84), status: "info", label: "customerConfirmed", shape: "diamond", caption: "10:43:24 · 1 payload" },
+  { id: "m17", laneId: "fraud", start: s(85), end: s(85), status: "neutral", label: "fraud-score", shape: "pin", caption: "SideEffect" },
+  { id: "a18", laneId: "receipt", start: s(85), end: s(97), status: "danger", label: "SendReceipt", caption: "Failed · 11.8 s" },
+];
+
+/** A running workflow's history on the clock axis: a lane per thing, shapes by kind, the overview strip; picking a mark selects it. */
 export function TimelineRealistic() {
-  const [selected, setSelected] = useState<string | null>("a2");
-  return <Timeline aria-label="History timeline of order-1" lanes={historyLanes} items={history} now={7000} selectedId={selected} onSelect={setSelected} className="h-panel-md" />;
+  const [selected, setSelected] = useState<string | null>("a18");
+  const [follow, setFollow] = useState(true);
+  return (
+    <Timeline
+      aria-label="History timeline of order-48213"
+      lanes={historyLanes}
+      items={history}
+      now={s(110)}
+      selectedId={selected}
+      onSelect={setSelected}
+      defaultAxis="clock"
+      overviewLabel="Whole run"
+      follow={follow}
+      onFollowChange={setFollow}
+      className="h-panel-md"
+    />
+  );
 }
 ```
 

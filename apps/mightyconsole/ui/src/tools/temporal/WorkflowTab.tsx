@@ -2,7 +2,7 @@
 // tabs: Timeline, History, Input and result, Pending, Stack trace. The history loads page by page
 // and, while the run is open, follows live. Signal, cancel, terminate and reset are in the toolbar,
 // each behind its confirmation (ActionDialogs); Queries is the sixth view.
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -18,13 +18,15 @@ import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { EventCategory, HistoryEvent, WorkflowDetail } from "@/gen/api";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Add, ArrowClockwise, ArrowCounterclockwise, Dismiss, Flash, MoreHorizontal, Stop } from "@/lib/icons";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Add, ArrowClockwise, ArrowCounterclockwise, ArrowImport, Checkmark, Clock, Code, Copy, Dismiss, Flash, Link, List, MoreHorizontal, Pin, Play, SplitVertical, Stop, type IconDefinition } from "@/lib/icons";
+import { ToggleButton } from "@/components/ui/toggle-button";
+import { NoticeContext } from "@/app/page";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import type { DescribedError, TabProps } from "../types";
 import { formatDuration, formatTime } from "./format";
 import { formatDurationText } from "./schedule-preview";
-import { CATEGORIES, buildTimeline, eventMs, eventSummary, failureChain, inputAndResult, isClosed, itemEventId } from "./history";
+import { CATEGORIES, buildTimeline, clockText, eventMs, eventSummary, failureChain, inputAndResult, isClosed, itemEventId, spanText, type ItemInfo, type ItemStatus, type LaneKind } from "./history";
 import { CancelDialog, ResetDialog, SignalDialog, TerminateDialog, useAction } from "./ActionDialogs";
 import { QueriesPanel } from "./QueriesPanel";
 import { StartWorkflowSheet, type StartPrefill } from "./StartWorkflowSheet";
@@ -127,11 +129,6 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           <>
             <CopyButton value={workflowId} what="workflow ID" />
             {w ? <Badge variant={STATUS_VARIANT[w.status]}>{statusLabel(w.status)}</Badge> : null}
-            {state.following ? (
-              <Badge variant="success" role="status">
-                Live
-              </Badge>
-            ) : null}
           </>
         }
         subtitle={
@@ -139,7 +136,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <>
               {w.workflowType} · task queue <span className="text-fg">{w.taskQueue}</span>
               {w.startTime ? ` · started ${formatTime(w.startTime)}` : ""}
-              {w.durationMs !== undefined ? ` · ${formatDuration(w.durationMs)}` : ""}
+              {running && w.startTime ? ` · running for ${spanText(now - Date.parse(w.startTime))}` : w.durationMs !== undefined ? ` · took ${formatDuration(w.durationMs)}` : ""}
             </>
           ) : (
             `${namespace} · ${profile.name}`
@@ -147,28 +144,32 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
         }
         actions={
           <>
-            <Button appearance="subtle" onClick={state.refresh} aria-label="Refresh">
-              <Icon icon={ArrowClockwise} /> Refresh
-            </Button>
             <Button appearance="secondary" disabled={!running} onClick={() => setDialog("signal")}>
               <Icon icon={Flash} /> Signal
             </Button>
+            <Button appearance="secondary" disabled={detail === null} onClick={() => setSection("queries")}>
+              <Icon icon={Code} /> Query
+            </Button>
             <Button appearance="secondary" disabled={!running} onClick={() => setDialog("cancel")}>
-              <Icon icon={Dismiss} /> Cancel
-            </Button>
-            <Button appearance="secondary" disabled={detail === null || events.length === 0} onClick={() => setDialog("reset")}>
-              <Icon icon={ArrowCounterclockwise} /> Reset
-            </Button>
-            <Button appearance="secondary" disabled={!running} onClick={() => setDialog("terminate")}>
-              <Icon icon={Stop} /> Terminate
+              <Icon icon={Dismiss} /> Request cancellation
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger render={<IconButton appearance="subtle" aria-label="More actions" disabled={w === undefined} />}>
                 <Icon icon={MoreHorizontal} />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={state.refresh}>
+                  <Icon icon={ArrowClockwise} /> Refresh
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setDialog("startAnother")}>
                   <Icon icon={Add} /> Start another like this
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem disabled={detail === null || events.length === 0} onClick={() => setDialog("reset")}>
+                  <Icon icon={ArrowCounterclockwise} /> Reset…
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={!running} onClick={() => setDialog("terminate")}>
+                  <Icon icon={Stop} /> Terminate…
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -183,7 +184,8 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             </Fact>
             <Fact label="Namespace">{namespace}</Fact>
             <Fact label="History">{formatCount(events.length)} events</Fact>
-            <Fact label="Pending">{pending === 0 ? "Nothing" : `${pending} pending`}</Fact>
+            <Fact label="Pending">{pendingWords(detail)}</Fact>
+            <Fact label="Parent">{w.parentWorkflowId ?? "None"}</Fact>
             {w.closeTime ? <Fact label="Closed">{formatTime(w.closeTime)}</Fact> : null}
           </dl>
         ) : null}
@@ -204,21 +206,37 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           </AlertActions>
         </Alert>
       ) : null}
-      {state.error ? <ErrorState error={state.error} onRetry={state.refresh} /> : null}
+      {state.error ? <ErrorState error={state.error} onRetry={state.refresh} onRefresh={state.refresh} /> : null}
       {state.loading && detail === null ? (
         <LoadingRows label="Loading the workflow" />
       ) : detail === null ? null : (
         <Tabs value={section} onValueChange={(v) => setSection(v as Section)} className="mt-stack-md flex min-h-0 flex-1 flex-col">
           <TabsList aria-label="Workflow views" className="px-inset-lg">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
+            <TabsTrigger value="history">
+              History <span className="text-fg-muted">{formatCount(events.length)}</span>
+            </TabsTrigger>
             <TabsTrigger value="io">Input and result</TabsTrigger>
-            <TabsTrigger value="pending">Pending</TabsTrigger>
-            <TabsTrigger value="stack">Stack trace</TabsTrigger>
+            <TabsTrigger value="pending">
+              Pending {pending > 0 ? <span className="text-fg-muted">{pending}</span> : null}
+            </TabsTrigger>
             <TabsTrigger value="queries">Queries</TabsTrigger>
+            <TabsTrigger value="stack">Stack trace</TabsTrigger>
           </TabsList>
-          <TabsContent value="timeline" className="flex min-h-0 flex-1 flex-col px-inset-lg py-inset-md">
-            <TimelinePanel events={events} now={clock} workflowId={workflowId} selected={selected} onSelect={(id) => setSelected(id)} onOpenHistory={() => setSection("history")} />
+          <TabsContent value="timeline" className="flex min-h-0 flex-1 flex-col pt-stack-sm">
+            <TimelinePanel
+              events={events}
+              pending={detail.pendingActivities}
+              now={clock}
+              live={state.following}
+              workflowId={workflowId}
+              selected={selected}
+              onSelect={(id) => setSelected(id)}
+              onOpenHistory={(id) => {
+                setSelected(id);
+                setSection("history");
+              }}
+            />
           </TabsContent>
           <TabsContent value="history" className="flex min-h-0 flex-1 flex-col">
             <HistoryPanel events={events} selected={selected} onSelect={setSelected} hasMore={state.hasMore} onLoadMore={state.loadMore} />
@@ -295,6 +313,17 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
   );
 }
 
+/** "1 activity", "2 activities and 1 child workflow", "None". */
+function pendingWords(detail: WorkflowDetail | null): string {
+  if (!detail) return "None";
+  const parts: string[] = [];
+  const a = detail.pendingActivities.length;
+  const c = detail.pendingChildren.length;
+  if (a > 0) parts.push(`${a} ${a === 1 ? "activity" : "activities"}`);
+  if (c > 0) parts.push(`${c} child workflow${c === 1 ? "" : "s"}`);
+  return parts.length === 0 ? "None" : parts.join(" and ");
+}
+
 /** One fact of the header row: a muted label over its value. */
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -305,35 +334,159 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function TimelinePanel({ events, now, workflowId, selected, onSelect, onOpenHistory }: { events: HistoryEvent[]; now: number; workflowId: string; selected: number | null; onSelect(id: number): void; onOpenHistory(): void }) {
-  const { lanes, items } = useMemo(() => buildTimeline(events), [events]);
+/** The Timeline's lane icons, by kind. */
+const KIND_ICON: Record<LaneKind, IconDefinition> = { workflow: Link, workflowTask: List, activity: Flash, timer: Clock, child: SplitVertical, signal: Play, update: ArrowImport, marker: Pin };
+/** The filter chips, in the mockup's order. */
+const KIND_CHIPS: readonly { kind: LaneKind; label: string }[] = [
+  { kind: "activity", label: "Activities" },
+  { kind: "timer", label: "Timers" },
+  { kind: "signal", label: "Signals" },
+  { kind: "marker", label: "Markers" },
+  { kind: "child", label: "Child workflows" },
+  { kind: "update", label: "Updates" },
+  { kind: "workflowTask", label: "Workflow tasks" },
+];
+const ITEM_BADGE: Record<ItemStatus, "accent" | "success" | "danger" | "warning" | "info" | "neutral"> = { running: "accent", success: "success", danger: "danger", warning: "warning", info: "info", neutral: "neutral" };
+
+interface TimelinePanelProps {
+  events: HistoryEvent[];
+  pending: readonly Record<string, unknown>[];
+  now: number;
+  /** The run is followed live (open, its history streaming in). */
+  live: boolean;
+  workflowId: string;
+  selected: number | null;
+  onSelect(id: number): void;
+  /** Opens History at an event. */
+  onOpenHistory(eventId: number): void;
+}
+
+function TimelinePanel({ events, pending, now, live, workflowId, selected, onSelect, onOpenHistory }: TimelinePanelProps) {
+  const data = useMemo(() => buildTimeline(events, { workflowId, pending, now }), [events, workflowId, pending, now]);
+  const [hidden, setHidden] = useState<ReadonlySet<LaneKind>>(() => new Set());
+  const [follow, setFollow] = useState(true);
+  const lanes = useMemo(() => data.lanes.filter((l) => !hidden.has(l.kind)).map((l) => ({ id: l.id, label: l.label, detail: l.detail, icon: <Icon icon={KIND_ICON[l.kind]} /> })), [data.lanes, hidden]);
+  const items = useMemo(() => {
+    const shown = new Set(lanes.map((l) => l.id));
+    return data.items.filter((i) => shown.has(i.laneId));
+  }, [data.items, lanes]);
   if (events.length === 0) return <EmptyLine>No history yet.</EmptyLine>;
-  const picked = selected === null ? undefined : events.find((e) => e.eventId === selected);
+  const selectedId = selected === null ? null : `e${selected}`;
+  const picked = selectedId ? data.info.get(selectedId) : undefined;
+  const toggle = (kind: LaneKind, on: boolean) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      if (on) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+
+  const toolbar = (
+    <>
+      <span aria-hidden="true" className="h-control-sm border-s border-border-subtle" />
+      <div role="group" aria-label="Lanes shown" className="flex flex-wrap items-center gap-inline-sm">
+        {KIND_CHIPS.map(({ kind, label }) => {
+          const count = data.counts[kind];
+          const on = count > 0 && !hidden.has(kind);
+          return (
+            <ToggleButton key={kind} size="small" appearance="outline" pressed={on} disabled={count === 0} onPressedChange={(p) => toggle(kind, p)} className="rounded-full data-pressed:text-accent-subtle-fg">
+              {on ? <Icon icon={Checkmark} /> : null}
+              {label} {count}
+            </ToggleButton>
+          );
+        })}
+      </div>
+      {live ? (
+        <div className="ms-auto flex items-center gap-inline-sm">
+          <ToggleButton size="small" appearance="outline" pressed={follow} onPressedChange={setFollow} className="rounded-full">
+            <span aria-hidden="true" className={cn("size-icon-xs rounded-full", follow ? "bg-success" : "bg-fg-muted")} /> Following
+          </ToggleButton>
+          <Button size="small" appearance="subtle" disabled={follow} onClick={() => setFollow(true)}>
+            Jump to now
+          </Button>
+        </div>
+      ) : null}
+    </>
+  );
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-stack-sm">
+    <div className="flex min-h-0 flex-1 flex-col">
       <Timeline
         aria-label={`History timeline of ${workflowId}`}
         lanes={lanes}
         items={items}
         now={now}
-        selectedId={selected === null ? null : `e${selected}`}
+        selectedId={selectedId}
         onSelect={(id) => {
           const n = itemEventId(id);
           if (n !== null) onSelect(n);
         }}
+        defaultAxis="clock"
+        overviewLabel="Whole run"
+        follow={live && follow}
+        onFollowChange={setFollow}
+        toolbar={toolbar}
         className="min-h-0 flex-1"
       />
-      {picked ? (
-        <p className="flex items-center gap-inline-sm text-body-1 text-fg">
-          <Badge variant="neutral">#{picked.eventId}</Badge> {picked.eventType} <span className="text-fg-muted">{eventSummary(picked)}</span>
-          <Button size="small" appearance="subtle" onClick={onOpenHistory}>
-            Show in History
-          </Button>
-        </p>
-      ) : (
-        <p className="text-caption-1 text-fg-muted">Select a bar to see its event. Plus and minus zoom, the arrow keys pan, Home fits.</p>
-      )}
+      <SelectedStrip info={picked} onOpenHistory={onOpenHistory} />
     </div>
+  );
+}
+
+/** The strip under the Timeline: the selected item's times, attempt and failure, and its events in History. */
+function SelectedStrip({ info, onOpenHistory }: { info: ItemInfo | undefined; onOpenHistory(eventId: number): void }) {
+  const notify = useContext(NoticeContext);
+  if (!info) {
+    return <p className="shrink-0 border-t border-border-subtle px-inset-lg py-stack-md text-caption-1 text-fg-muted">Click a bar, or focus it and press Enter, to see its times, attempt and failure here. Plus and minus zoom, the arrow keys pan, Home fits.</p>;
+  }
+  const end = info.end;
+  const facts = [
+    `${clockText(info.start, true)} → ${end === null ? "now" : clockText(end, true)}`,
+    end === null ? "" : spanText(end - info.start),
+    info.attempt ? `attempt ${info.attempt}${info.maximumAttempts ? ` of ${info.maximumAttempts}` : ""}` : "",
+    info.taskQueue ? `task queue ${info.taskQueue}` : "",
+  ].filter(Boolean);
+  const failure = info.failure;
+  const copyFailure = async () => {
+    if (!failure) return;
+    const value = `${failure.type ? `${failure.type}: ` : ""}${failure.message}`;
+    try {
+      await navigator.clipboard.writeText(value);
+      notify({ title: "Copied the failure", description: value.length > 64 ? `${value.slice(0, 61)}…` : value, type: "success" });
+    } catch {
+      notify({ title: "Could not copy the failure", description: "The browser refused the clipboard. Select the text instead.", type: "warning" });
+    }
+  };
+  const range = info.firstEventId === info.lastEventId ? `Event ${info.firstEventId}` : `Events ${info.firstEventId}–${info.lastEventId}`;
+  return (
+    <section aria-label="Selected item" className="flex shrink-0 items-center gap-inline-lg border-t border-border-subtle px-inset-lg py-stack-md">
+      <div className="flex min-w-0 flex-1 flex-col gap-stack-xs">
+        <p className="flex items-center gap-inline-sm text-body-1-strong text-fg">
+          {info.name} · {info.what}
+          <CopyButton value={info.name} what="name" />
+          <Badge variant={ITEM_BADGE[info.status]}>{info.state}</Badge>
+        </p>
+        <p className="truncate text-body-1 text-fg-muted">
+          {facts.join(" · ")}
+          {failure ? (
+            <>
+              {" · "}
+              {failure.type ? <span className="text-body-1-strong text-fg">{failure.type}: </span> : null}
+              {failure.message}
+              {failure.nonRetryable ? " (non-retryable)" : ""}
+            </>
+          ) : null}
+        </p>
+      </div>
+      <Button appearance="secondary" onClick={() => onOpenHistory(info.firstEventId)}>
+        <Icon icon={List} /> {range} in History
+      </Button>
+      {failure ? (
+        <Button appearance="secondary" onClick={() => void copyFailure()}>
+          <Icon icon={Copy} /> Copy failure
+        </Button>
+      ) : null}
+    </section>
   );
 }
 
