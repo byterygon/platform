@@ -3,8 +3,9 @@ a long-running one with a signal and a query, a completed one, a failed one, one
 that keeps retrying, a parent with a child, one with a Protobuf payload, a family for Relations
 (TSK-104: family-root starts family-order, which starts three children, one failing, and is
 signalled by family-support), and a schedule that runs every minute. Started once when the worker starts; ids are fixed, so a restart starts nothing
-twice. The samples carry the custom search attribute `OrderId` (TSK-94), their order id, except
-the ones the payload tests read event by event (completed-1, proto-1, big-payload-1). External Storage (TSK-103): payloads of 256 KiB or more go to the lab's S3 store through the
+twice. Four samples carry the custom search attribute `OrderId` (TSK-94), their order id:
+fulfilment-long-running, failed-1, retrying-1 and parent-1; the others' started events stay as
+the payload and relation tests read them. External Storage (TSK-103): payloads of 256 KiB or more go to the lab's S3 store through the
 SDK's S3 driver; `big-payload-1` has a 300 KiB input and result. A payload codec (TSK-92): a second
 worker on task queue `lab-encrypted` encrypts its payloads with the lab's AES-GCM codec;
 `encrypted-1` is stored encrypted."""
@@ -189,10 +190,12 @@ async def start_samples(client: Client) -> None:
         (ProtoOrder.run, protos.order(7), "proto-1"),
         (BigPayload.run, {"kind": "big", "text": big_text("input")}, "big-payload-1"),
     ]
+    # OrderId only where TSK-94 needs it; other tests read the other samples' events as they were.
+    tagged = {"fulfilment-long-running", "failed-1", "retrying-1", "parent-1"}
     for run, arg, workflow_id in samples:
-        order_id = arg if isinstance(arg, str) else workflow_id
+        tags = TypedSearchAttributes([SearchAttributePair(ORDER_ID, str(arg))]) if workflow_id in tagged else None
         try:
-            await client.start_workflow(run, arg, id=workflow_id, task_queue=TASK_QUEUE, search_attributes=TypedSearchAttributes([SearchAttributePair(ORDER_ID, order_id)]))
+            await client.start_workflow(run, arg, id=workflow_id, task_queue=TASK_QUEUE, search_attributes=tags)
         except Exception as e:  # noqa: BLE001 - already started on an earlier start
             if "already" not in str(e).lower():
                 raise
