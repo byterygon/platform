@@ -143,7 +143,7 @@ const grid: RoleDef[] = [
   // extra-small) and 8 px cell padding; compact density takes them down a step.
   ...(
     [
-      ["medium", 44, 36, "--spacing-table-row", "Fluent's medium (default) table row: 44 px, 36 px compact."],
+      ["medium", 40, 34, "--spacing-table-row", "The medium (default) table row of the TSK-91 mockup: 40 px, 34 px compact."],
       ["small", 34, 28, "--spacing-table-row-sm", "Fluent's small table row: 34 px, 28 px compact."],
       ["extra-small", 24, 20, "--spacing-table-row-xs", "Fluent's extra-small table row (12 px text): 24 px, 20 px compact."],
     ] as const
@@ -162,7 +162,7 @@ const grid: RoleDef[] = [
     path: "table.cell-padding-x",
     type: "dimension",
     tier: "component",
-    value: ref("space.inset.xs"),
+    value: ref("space.control.x"),
     tailwind: "--spacing-table-cell-x",
     use: "Horizontal padding inside a Table cell: Fluent's spacingHorizontalS (8 px), 4 px compact.",
     avoid: "Not for the result grid: use grid.cell-padding-x.",

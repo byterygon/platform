@@ -80,7 +80,7 @@ const classes = {
     focusRingInset,
   ],
   head: [
-    "sticky top-0 z-[var(--by-z-sticky)] h-control-md whitespace-nowrap border-b border-border-subtle px-table-cell-x text-start align-middle text-body-1-strong text-fg",
+    "sticky top-0 z-[var(--by-z-sticky)] h-table-row whitespace-nowrap border-b border-border-subtle px-table-cell-x text-start align-middle text-body-1-strong text-fg",
     // Rows scroll under the sticky header: it takes a fill only while the table is scrolled.
     "in-data-scrolled:bg-surface",
     "data-[align=center]:text-center data-[align=end]:text-end",

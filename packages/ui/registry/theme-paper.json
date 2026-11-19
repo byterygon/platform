@@ -975,6 +975,7 @@
       "--by-border-width-0": "0",
       "--by-border-width-1": "1px",
       "--by-border-width-2": "2px",
+      "--by-border-width-3": "3px",
       "--by-breakpoint-sm": "640px",
       "--by-breakpoint-md": "768px",
       "--by-breakpoint-lg": "1024px",
@@ -1558,10 +1559,10 @@
       "--by-space-gap-xl": "var(--by-space-6)",
       "--by-grid-row-height": "var(--by-size-control-md)",
       "--by-grid-cell-padding-x": "var(--by-space-control-x)",
-      "--by-table-row-height-medium": "44px",
+      "--by-table-row-height-medium": "40px",
       "--by-table-row-height-small": "34px",
       "--by-table-row-height-extra-small": "24px",
-      "--by-table-cell-padding-x": "var(--by-space-inset-xs)"
+      "--by-table-cell-padding-x": "var(--by-space-control-x)"
     },
     "[data-density=\"compact\"]": {
       "--by-size-scrollbar": "8px",
@@ -1592,10 +1593,10 @@
       "--by-space-gap-xl": "var(--by-space-4)",
       "--by-grid-row-height": "var(--by-size-control-sm)",
       "--by-grid-cell-padding-x": "var(--by-space-control-x)",
-      "--by-table-row-height-medium": "36px",
+      "--by-table-row-height-medium": "34px",
       "--by-table-row-height-small": "28px",
       "--by-table-row-height-extra-small": "20px",
-      "--by-table-cell-padding-x": "var(--by-space-inset-xs)"
+      "--by-table-cell-padding-x": "var(--by-space-control-x)"
     },
     ":root, [data-theme=\"light\"], .light, [data-theme=\"dark\"], .dark": {
       "--background": "var(--by-color-bg-canvas)",

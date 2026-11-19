@@ -24,6 +24,9 @@ body {
   background: var(--by-color-bg-canvas);
   color: var(--by-color-fg-default);
   font-family: var(--by-font-sans);
+  /* Text inherits body-1 (14 px), as in the mockup; nothing falls back to the browser's 16 px. */
+  font-size: var(--by-text-body-1-size);
+  line-height: var(--by-text-body-1-leading);
   /* Tabular figures everywhere, as the TSK-91 mockup sets them: times, counts and IDs line up. */
   font-variant-numeric: tabular-nums;
 }

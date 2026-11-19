@@ -218,12 +218,12 @@ const panelSize: RoleDef[] = PANELS.map(([name, value, fit]): RoleDef => ({
   avoid: "Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
 }));
 
-const borderWidth: RoleDef[] = [0, 1, 2].map((value): RoleDef => ({
+const borderWidth: RoleDef[] = [0, 1, 2, 3].map((value): RoleDef => ({
   path: `border.width.${value}`,
   type: "dimension",
   tier: "primitive",
   value: px(value),
-  use: `A ${value} px border. ${REFERENCE}`,
+  use: value === 3 ? `A 3 px stroke: Fluent's strokeWidthThicker, the selected tab's indicator. ${REFERENCE}` : `A ${value} px border. ${REFERENCE}`,
   avoid: "Not for the focus ring: use ring.width.",
 }));
 

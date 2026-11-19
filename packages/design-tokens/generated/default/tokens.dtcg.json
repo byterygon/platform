@@ -15568,6 +15568,19 @@
             "tier": "primitive"
           }
         }
+      },
+      "3": {
+        "$type": "dimension",
+        "$value": {
+          "value": 3,
+          "unit": "px"
+        },
+        "$description": "A 3 px stroke: Fluent's strokeWidthThicker, the selected tab's indicator. Primitive: reference it through a role, never from a component. Not for the focus ring: use ring.width.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "primitive"
+          }
+        }
       }
     }
   },
@@ -20291,21 +20304,21 @@
     "row-height-medium": {
       "$type": "dimension",
       "$value": {
-        "value": 44,
+        "value": 40,
         "unit": "px"
       },
-      "$description": "Height of a header and body row of a Table of size medium: Fluent's medium (default) table row: 44 px, 36 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+      "$description": "Height of a header and body row of a Table of size medium: The medium (default) table row of the TSK-91 mockup: 40 px, 34 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
       "$extensions": {
         "com.byterygon": {
           "tier": "component",
           "axis": "density",
           "modes": {
             "comfortable": {
-              "value": 44,
+              "value": 40,
               "unit": "px"
             },
             "compact": {
-              "value": 36,
+              "value": 34,
               "unit": "px"
             }
           },
@@ -20365,7 +20378,7 @@
     },
     "cell-padding-x": {
       "$type": "dimension",
-      "$value": "{space.inset.xs}",
+      "$value": "{space.control.x}",
       "$description": "Horizontal padding inside a Table cell: Fluent's spacingHorizontalS (8 px), 4 px compact. Not for the result grid: use grid.cell-padding-x.",
       "$extensions": {
         "com.byterygon": {

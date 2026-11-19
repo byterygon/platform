@@ -213,7 +213,7 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
     activeTab,
     layout: {
       sidebarOpen: layoutDoc?.sidebarOpen !== false,
-      shellSizes: Array.isArray(sizes) && sizes.length === 2 && sizes.every((n) => typeof n === "number") ? sizes : [22, 78],
+      shellSizes: Array.isArray(sizes) && sizes.length === 2 && sizes.every((n) => typeof n === "number") ? sizes : [24.45, 75.55],
       tool: typeof layoutDoc?.tool === "string" && tools.includes(layoutDoc.tool) ? layoutDoc.tool : (tools[0] ?? ""),
       navCollapsed: typeof layoutDoc?.navCollapsed === "boolean" ? layoutDoc.navCollapsed : null,
       pinnedTools: strings(layoutDoc?.pinnedTools).filter((id) => tools.includes(id)),

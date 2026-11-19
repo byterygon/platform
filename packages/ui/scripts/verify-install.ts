@@ -679,7 +679,7 @@ const EXPECT: [string, string, TokenPath, string][] = [
   ["data-highlighted:bg-hover", "background-color", "color.interactive.hover", "Byterygon menu item highlighted"],
   ["data-danger:text-danger-fg", "color", "color.status.danger.fg", "Byterygon menu item danger"],
   ["border-s-accent-solid-active", "border-inline-start-color", "color.accent.bg-active", "Byterygon SplitButton divider"],
-  ["data-active:border-accent-compound", "border-color", "color.accent.compound", "Byterygon Tabs line active"],
+  ["data-active:after:bg-accent-compound", "background-color", "color.accent.compound", "Byterygon Tabs indicator active"],
   ["data-active:bg-layer", "background-color", "color.bg.layer", "Byterygon Tabs enclosed active"],
   ["w-panel-sm", "width", "size.panel.sm", "Byterygon Toast region"],
   ["data-current:bg-selected", "background-color", "color.interactive.selected", "Byterygon Pagination current page"],
