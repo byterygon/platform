@@ -7,6 +7,7 @@
 //! `connId` use that handle's registry, local schemas and mappings, whatever the tool.
 
 pub mod arrow;
+pub mod record;
 pub mod tail;
 pub mod testing;
 

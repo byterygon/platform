@@ -247,6 +247,31 @@ fn the_procedures_of_the_spec() {
             Risk::Read,
             defaults,
         ),
+        // NATS, spec §6.5 (TSK-85).
+        ("nats.connect", Mutation, "nats.read", Risk::Read, defaults),
+        (
+            "nats.core.publish",
+            Mutation,
+            "nats.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "nats.core.request",
+            Mutation,
+            "nats.write",
+            Risk::Write,
+            defaults,
+        ),
+        ("nats.core.subscribe", Stream, "nats.read", Risk::Read, live),
+        (
+            "nats.disconnect",
+            Mutation,
+            "nats.read",
+            Risk::Read,
+            defaults,
+        ),
+        ("nats.server.info", Query, "nats.read", Risk::Read, defaults),
         (
             "temporal.connect",
             Mutation,
@@ -476,6 +501,16 @@ fn the_procedures_of_the_spec() {
     assert_eq!(
         redact("temporal.connect"),
         ["profile.clientKeyPem", "profile.apiKey"]
+    );
+    assert_eq!(
+        redact("nats.connect"),
+        [
+            "profile.password",
+            "profile.token",
+            "profile.nkeySeed",
+            "profile.creds",
+            "profile.tls.clientKeyPem"
+        ]
     );
     assert_eq!(
         redact("langgraph.connect"),

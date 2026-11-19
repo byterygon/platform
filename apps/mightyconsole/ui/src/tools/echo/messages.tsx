@@ -1,7 +1,6 @@
 // The messaging core on echo's test backend (TSK-80, Mightyconsole spec §5.8): a Messages tab (live
 // tail of the topic `echo` in the MessageViewer, with the codec selects and the filter bar) and a
 // Composer tab (echo.messages.produce). Every echo connection has its own topic with 3 partitions.
-import { isRpcError } from "@byterygon/ambidex";
 import { useCallback, useMemo, useState } from "react";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -15,26 +14,10 @@ import { Composer, type ComposerDraft, type ComposerTemplate, EMPTY_DRAFT, heade
 import { FilterBar } from "@/messaging/FilterBar";
 import { MessageViewer } from "@/messaging/MessageViewer";
 import { useLiveTail } from "@/messaging/useLiveTail";
-import type { ProfileRecord } from "@/profiles/record";
+import { describeError, schemaChoices } from "@/messaging/compose-helpers";
 import type { TabProps } from "../types";
 
 const TARGET: api.Target = { kind: "topic", name: "echo" };
-
-/** The profile's local schemas, as the Composer offers them. */
-export function schemaChoices(profile: ProfileRecord): SchemaChoice[] {
-  const schemas = profile.extras["schemas"];
-  if (!Array.isArray(schemas)) return [];
-  return schemas.filter((s): s is api.LocalSchema => typeof s === "object" && s !== null && "id" in s && "type" in s).map((s) => ({ id: s.id, name: s.name, type: s.type }));
-}
-
-/** An error's field and position (ToolError details), for the Composer and the filter bar. */
-export function describeError(e: unknown): { title: string; field?: string; line?: number; column?: number } {
-  if (isRpcError(e)) {
-    const d = (e.details ?? {}) as { message?: string; field?: string; position?: { line: number; column: number } };
-    return { title: d.message ?? e.message, ...(d.field ? { field: d.field } : {}), ...(d.position ? { line: d.position.line, column: d.position.column } : {}) };
-  }
-  return { title: e instanceof Error ? e.message : String(e) };
-}
 
 type StartKind = "earliest" | "latest" | "latestN";
 

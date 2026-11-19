@@ -23,6 +23,7 @@
 
 pub mod echo;
 pub mod langgraph;
+pub mod nats;
 pub mod temporal;
 
 use std::sync::Arc;
@@ -40,6 +41,10 @@ pub fn infos() -> Vec<ToolInfo> {
             version: env!("CARGO_PKG_VERSION").into(),
         },
         ToolInfo {
+            id: nats::TOOL.into(),
+            version: nats::LIBRARY.into(),
+        },
+        ToolInfo {
             id: langgraph::TOOL.into(),
             // The LangGraph Server API through hyper (spec §11.5).
             version: "hyper 1.12".into(),
@@ -55,6 +60,7 @@ pub fn infos() -> Vec<ToolInfo> {
 pub fn mount(router: &Router, hub: &Arc<Hub>) -> Result<(), RegistryError> {
     router.mount(echo::EchoApi(Arc::clone(hub)))?;
     router.mount(echo::EchoMessagesApi(Arc::clone(hub)))?;
+    nats::mount(router, hub)?;
     langgraph::mount(router, hub)?;
     router.mount(temporal::TemporalApi(Arc::clone(hub)))?;
     router.mount(temporal::TemporalNamespacesApi(Arc::clone(hub)))?;

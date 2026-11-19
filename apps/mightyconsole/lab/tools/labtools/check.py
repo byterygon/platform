@@ -45,6 +45,13 @@ async def check_nats():
     tls = ssl.create_default_context(cafile=f"/generated/{creds['caFile']}")
     nk = await nats.connect("tls://nats:4222", nkeys_seed_str=seed, tls=tls, tls_hostname="nats")
     await nk.close()
+    # No credentials (the server's no_auth_user), a token, and a creds file (operator mode).
+    anon = await nats.connect("nats://nats:4222")
+    await anon.close()
+    tok = await nats.connect("nats://nats-token:4223", token=creds["token"])
+    await tok.close()
+    jwt = await nats.connect("nats://nats-jwt:4224", user_credentials=f"/generated/{creds['credsFile']}")
+    await jwt.close()
     await nc.close()
 
 

@@ -76,8 +76,10 @@ jobs:
           # messaging core (TSK-80; the kafka profile's Confluent Schema Registry) and Temporal
           # (TSK-83, TSK-92: the dev server and the lab worker). temporal-more runs only the items
           # TSK-92 has wired so far (a not wired item fails the run); each batch adds its id here,
-          # and the --only goes when all seven are wired.
+          # and the --only goes when all seven are wired. NATS (TSK-85) runs the same way: each batch
+          # adds the ids it wired to nats_only.
           more=""
+          nats_only=""
           case " $LAB_TOOLS " in
             " all ") lists="foundation langgraph messaging temporal" ;;
             *)
@@ -88,32 +90,36 @@ jobs:
               ;;
           esac
           case " $lists " in *" temporal "*) more="namespaces,workers,start-workflow,schedule-edit" ;; esac
-          echo "checklists: ${lists:-none}${more:+, temporal-more ($more)}"
+          case " $LAB_TOOLS " in " all "|*" nats "*) nats_only="connect,core" ;; esac
+          echo "checklists: ${lists:-none}${more:+, temporal-more ($more)}${nats_only:+, nats ($nats_only)}"
           echo "lists=$lists" >> "$GITHUB_OUTPUT"
           echo "more=$more" >> "$GITHUB_OUTPUT"
+          echo "nats=$nats_only" >> "$GITHUB_OUTPUT"
       - name: Install toolchain from rust-toolchain.toml
-        if: ${{ steps.checklists.outputs.lists != '' }}
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: ${{ steps.checklists.outputs.lists != '' }}
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
         with:
           key: mightyconsole-acceptance
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'schedule' }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        if: ${{ steps.checklists.outputs.lists != '' }}
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
       - run: pnpm install --frozen-lockfile
-        if: ${{ steps.checklists.outputs.lists != '' }}
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
       # cargo-deny is not installed here (the CI job runs it), so that one check is skipped.
-      - name: Acceptance (foundation, LangGraph, the messaging core and Temporal, against the lab)
-        if: ${{ steps.checklists.outputs.lists != '' }}
+      - name: Acceptance (foundation, LangGraph, the messaging core, Temporal and NATS, against the lab)
+        if: ${{ steps.checklists.outputs.lists != '' || steps.checklists.outputs.nats != '' }}
         env:
           BYTERYGON_REQUIRE_BROWSER: "1"
           LISTS: ${{ steps.checklists.outputs.lists }}
           MORE: ${{ steps.checklists.outputs.more }}
+          NATS_ONLY: ${{ steps.checklists.outputs.nats }}
         run: |
           status=0
-          node apps/mightyconsole/acceptance/acceptance.mts $LISTS || status=$?
+          if [ -n "$LISTS" ]; then node apps/mightyconsole/acceptance/acceptance.mts $LISTS || status=$?; fi
           if [ -n "$MORE" ]; then node apps/mightyconsole/acceptance/acceptance.mts temporal-more --only "$MORE" || status=$?; fi
+          if [ -n "$NATS_ONLY" ]; then node apps/mightyconsole/acceptance/acceptance.mts nats --only "$NATS_ONLY" || status=$?; fi
           cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

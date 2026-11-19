@@ -7,7 +7,7 @@ export type MessageSystem = "kafka" | "nats" | "jetstream" | "kv";
 /** The grid's columns per system (names of the §5.1 schema). */
 export const COLUMNS: Record<MessageSystem, readonly string[]> = {
   kafka: ["partition", "offset", "timestamp", "keyText", "payloadText"],
-  nats: ["subject", "timestamp", "payloadText"],
+  nats: ["timestamp", "subject", "replyTo", "payloadSize", "payloadText"],
   jetstream: ["sequence", "subject", "timestamp", "payloadText"],
   kv: ["subject", "sequence", "operation", "payloadText"],
 };

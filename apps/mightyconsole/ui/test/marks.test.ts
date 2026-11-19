@@ -57,6 +57,6 @@ describe("ToolModule's additive fields", () => {
     const c = { ...bare, id: "c" } as ToolModule;
     const d = { ...bare, id: "d", order: 5 } as ToolModule;
     expect(orderedTools([a, b, c, d]).map((t) => t.id)).toEqual(["b", "d", "a", "c"]);
-    expect(orderedTools(TOOLS).map((t) => t.id)).toEqual(["temporal", "langgraph", "echo"]);
+    expect(orderedTools(TOOLS).map((t) => t.id)).toEqual(["nats", "temporal", "langgraph", "echo"]);
   });
 });
