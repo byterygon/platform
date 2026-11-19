@@ -3,7 +3,7 @@
 //   namespaces                                     the cluster's namespaces
 //   <namespace>/workflows?q=<query>                a namespace's workflows (a query up to 200 characters)
 //   <namespace>/workflows/<workflow id>/<view>?run=<run id>
-//                                                  a workflow at a section: timeline, history, input,
+//                                                  a workflow at a section: timeline, history, relations, input,
 //                                                  pending, queries, stack
 //   <namespace>/schedules                          schedules
 //   <namespace>/schedules/<schedule id>/overview   a schedule
@@ -40,6 +40,7 @@ export const temporalHrefs: Record<string, (params: Record<string, unknown>) => 
 const VIEW_LABELS: Record<(typeof WORKFLOW_VIEWS)[number], string> = {
   timeline: "Timeline",
   history: "History",
+  relations: "Relations",
   input: "Input and result",
   pending: "Pending",
   queries: "Queries",

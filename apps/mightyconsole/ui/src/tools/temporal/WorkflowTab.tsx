@@ -25,7 +25,8 @@ import { NoticeContext } from "@/app/page";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import type { DescribedError, TabProps } from "../types";
-import { formatDuration, formatTime } from "./format";
+import { STATUS_TONE, formatDuration, formatTime } from "./format";
+import { RelationsPanel } from "./RelationsPanel";
 import { formatDurationText } from "./schedule-preview";
 import { CATEGORIES, buildTimeline, clockText, eventMs, eventSummary, failureChain, inputAndResult, isClosed, itemEventId, spanText, type ItemInfo, type ItemStatus, type LaneKind } from "./history";
 import { CancelDialog, ResetDialog, SignalDialog, TerminateDialog, useAction } from "./ActionDialogs";
@@ -36,10 +37,10 @@ import { PendingPanel } from "./PendingPanel";
 import { statusLabel } from "./WorkflowsTab";
 import { useWorkflow } from "./useWorkflow";
 
-const STATUS_VARIANT = { Running: "info", Completed: "success", Failed: "danger", Canceled: "neutral", Terminated: "danger", ContinuedAsNew: "info", TimedOut: "warning", Paused: "neutral", Unspecified: "neutral" } as const;
+const STATUS_VARIANT = STATUS_TONE;
 
 /** The sections, and the view words ending a workflow's URL (DOC-21 §3.7). */
-export const WORKFLOW_VIEWS = ["timeline", "history", "input", "pending", "queries", "stack"] as const;
+export const WORKFLOW_VIEWS = ["timeline", "history", "relations", "input", "pending", "queries", "stack"] as const;
 type Section = (typeof WORKFLOW_VIEWS)[number];
 type Dialog = "signal" | "cancel" | "terminate" | "reset" | "startAnother" | null;
 
@@ -126,6 +127,8 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
 
   const w = detail?.workflow;
   const pending = detail ? detail.pendingActivities.length + detail.pendingChildren.length : 0;
+  // Parent and children, known from the history before the Relations view loads.
+  const related = useMemo(() => (w?.parentWorkflowId ? 1 : 0) + new Set(events.filter((e) => e.eventType === "StartChildWorkflowExecutionInitiated").map((e) => text(e.attributes["workflowId"]))).size, [w?.parentWorkflowId, events]);
   return (
     <Page>
       <PageHeader
@@ -221,6 +224,9 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <TabsTrigger value="history">
               History <span className="text-body-1 text-fg-muted">{formatCount(events.length)}</span>
             </TabsTrigger>
+            <TabsTrigger value="relations">
+              Relations {related > 0 ? <span className="text-body-1 text-fg-muted">{related}</span> : null}
+            </TabsTrigger>
             <TabsTrigger value="input">Input and result</TabsTrigger>
             <TabsTrigger value="pending">
               Pending {pending > 0 ? <span className="text-body-1 text-fg-muted">{pending}</span> : null}
@@ -261,6 +267,20 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
                   ? undefined
                   : async (eventId) => (await client.temporal.workflows.rawEvent({ connId, namespace, workflowId, runId: detail.workflow.runId, eventId })).attributes
               }
+            />
+          </TabsContent>
+          <TabsContent value="relations" className="flex min-h-0 flex-1 flex-col">
+            <RelationsPanel
+              client={client}
+              connId={connId}
+              namespace={namespace}
+              workflowId={workflowId}
+              runId={detail.workflow.runId}
+              active={section === "relations"}
+              now={now}
+              note={note}
+              onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, ...(runId2 ? { runId: runId2 } : {}) }, title: workflowId2 })}
+              onListWorkflows={(query) => openTab({ kind: "temporal.workflows", params: { namespace, query }, title: `Workflows · ${namespace}` })}
             />
           </TabsContent>
           <TabsContent value="input" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">

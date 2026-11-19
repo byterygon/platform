@@ -125,6 +125,15 @@ async def check_temporal():
         ids.add(wf.id)
     for wid in ["fulfilment-long-running", "completed-1", "failed-1", "retrying-1", "parent-1", "parent-1-child", "proto-1"]:
         expect(wid in ids, f"temporal: workflow {wid} is missing")
+    # The family for Relations (TSK-104) forms over a few seconds: wait for its last member.
+    family = ["family-root", "family-order", "family-order-fraud", "family-order-payment", "family-order-receipt", "family-support"]
+    for _ in range(60):
+        seen = {wf.id async for wf in client.list_workflows()}
+        if all(wid in seen for wid in family):
+            break
+        await asyncio.sleep(1)
+    for wid in family:
+        expect(wid in seen, f"temporal: workflow {wid} of the family is missing")
     status = await client.get_workflow_handle("fulfilment-long-running").query("status")
     expect(status == "waiting for approval", f"temporal: fulfilment says {status!r}")
     schedules = [s.id async for s in await client.list_schedules()]

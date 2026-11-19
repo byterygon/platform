@@ -57,7 +57,7 @@ export interface ItemResult {
 
 /** Every checklist in checklists/, in the order of the spec's section 18. */
 export async function loadChecklists(dir = join(ACCEPTANCE, "checklists")): Promise<Checklist[]> {
-  const order = ["foundation", "messaging", "nats", "kafka", "k8s", "temporal", "temporal-more", "docker", "langgraph", "packaging"];
+  const order = ["foundation", "messaging", "nats", "kafka", "k8s", "temporal", "temporal-more", "temporal-detail", "docker", "langgraph", "packaging"];
   const files = readdirSync(dir).filter((f) => f.endsWith(".mts"));
   const lists: Checklist[] = [];
   for (const file of files) lists.push(((await import(pathToFileURL(join(dir, file)).href)) as { default: Checklist }).default);

@@ -1,4 +1,8 @@
 // How the Workflows table writes times and durations.
+import type { WorkflowStatus } from "@/gen/api";
+
+/** A status's tone: a Badge variant and a GraphView dot. */
+export const STATUS_TONE = { Running: "info", Completed: "success", Failed: "danger", Canceled: "neutral", Terminated: "danger", ContinuedAsNew: "info", TimedOut: "warning", Paused: "neutral", Unspecified: "neutral" } as const satisfies Record<WorkflowStatus, "info" | "success" | "danger" | "neutral" | "warning">;
 
 /** "1d 4h", "3m 20s", "850 ms": the two largest units, so a row stays short. */
 export function formatDuration(ms: number): string {

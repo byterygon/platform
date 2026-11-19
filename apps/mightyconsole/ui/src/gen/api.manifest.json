@@ -5054,6 +5054,368 @@
       ],
       "description": "A schema in the registry, by id or by subject and version."
     },
+    "RelationChild": {
+      "description": "A child started by this run, from its history.",
+      "properties": {
+        "closeTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure": {
+          "description": "The failure's message, or why it could not start.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "initiatedEventId": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/WorkflowStatus",
+          "description": "`Running` once started; `Unspecified` while only initiated or when it could not start."
+        },
+        "workflowId": {
+          "type": "string"
+        },
+        "workflowType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowId",
+        "workflowType",
+        "status",
+        "initiatedEventId"
+      ],
+      "type": "object"
+    },
+    "RelationEdge": {
+      "description": "An arrow: parent to child, or the sender of a signal or cancel to its target.",
+      "properties": {
+        "eventId": {
+          "description": "The event of this run that records it.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "from": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RelationEdgeKind"
+        },
+        "label": {
+          "description": "The signal's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "RelationEdgeKind": {
+      "enum": [
+        "child",
+        "signal",
+        "cancel"
+      ],
+      "type": "string"
+    },
+    "RelationFamily": {
+      "description": "What the server can say about the family, and how much of it is drawn.",
+      "properties": {
+        "drawn": {
+          "description": "Boxes drawn in the tree (the other ends of signals not counted).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "levels": {
+          "description": "Levels drawn.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "notDrawn": {
+          "description": "Workflows of the family left out of the drawing.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "query": {
+          "description": "The Workflows query that lists the scope's workflows; absent when the server has no\nattribute for it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Why Whole family is not offered: the server's answer.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/RelationScope",
+          "description": "The scope the answer is for (`direct` when the server cannot list the family)."
+        },
+        "supported": {
+          "description": "The server's visibility knows `RootWorkflowId` (Temporal Server 1.24 and later).",
+          "type": "boolean"
+        },
+        "total": {
+          "description": "Workflows in the family (every run), as the server counts them; absent when unsupported.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "scope",
+        "supported",
+        "drawn",
+        "levels",
+        "notDrawn"
+      ],
+      "type": "object"
+    },
+    "RelationNode": {
+      "description": "One box of the graph: a workflow, by its ID (its latest run seen).",
+      "properties": {
+        "closeTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "current": {
+          "description": "The run the tab shows.",
+          "type": "boolean"
+        },
+        "durationMs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "failure": {
+          "description": "The failure's message, for a failed child (from this run's history).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "level": {
+          "description": "Depth below the top drawn level (0); absent for a workflow outside the tree (the other end\nof a signal or cancel).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "missing": {
+          "description": "Gone from the server (past retention, or never started).",
+          "type": "boolean"
+        },
+        "parentWorkflowId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "description": "Empty when only the workflow ID is known (a child that did not start).",
+          "type": "string"
+        },
+        "startTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/WorkflowStatus"
+        },
+        "workflowId": {
+          "type": "string"
+        },
+        "workflowType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowId",
+        "runId",
+        "workflowType",
+        "status",
+        "missing",
+        "current"
+      ],
+      "type": "object"
+    },
+    "RelationParent": {
+      "description": "The parent, with what happens to this child when it closes (while the child is pending in it).",
+      "properties": {
+        "parentClosePolicy": {
+          "description": "`Terminate`, `Abandon` or `RequestCancel`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowId",
+        "runId"
+      ],
+      "type": "object"
+    },
+    "RelationRuns": {
+      "description": "The run's place in its chain of runs.",
+      "properties": {
+        "continuedAs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunLink"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run that continued this one."
+        },
+        "continuedFrom": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunLink"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run this one continued from (continue-as-new, retry or cron)."
+        },
+        "firstRunId": {
+          "description": "The first run of the chain, when it is another run.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resetFrom": {
+          "description": "The run this one was reset from.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resetTo": {
+          "description": "The latest run made by resetting this one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RelationScope": {
+      "description": "Whole family (every workflow under the root) or Direct only (one level each way).",
+      "enum": [
+        "family",
+        "direct"
+      ],
+      "type": "string"
+    },
+    "RelationSignal": {
+      "description": "A signal or cancel between this run and another workflow, from this run's history.",
+      "properties": {
+        "direction": {
+          "$ref": "#/$defs/SignalDirection"
+        },
+        "eventId": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/RelationEdgeKind",
+          "description": "`signal` or `cancel`."
+        },
+        "outcome": {
+          "description": "For a sent one: `Delivered`, `Failed: <cause>`, or absent while in flight.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signalName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "kind",
+        "workflowId",
+        "eventId"
+      ],
+      "type": "object"
+    },
     "RemoteError": {
       "description": "The target's own error code, for Details.",
       "properties": {
@@ -5210,6 +5572,25 @@
       "required": [
         "connId",
         "threadId",
+        "runId"
+      ],
+      "type": "object"
+    },
+    "RunLink": {
+      "description": "Another run of the same workflow ID, and why it exists.",
+      "properties": {
+        "initiator": {
+          "description": "`Workflow` (continue-as-new), `Retry` or `CronSchedule`; absent for a reset.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        }
+      },
+      "required": [
         "runId"
       ],
       "type": "object"
@@ -6152,6 +6533,13 @@
         "source"
       ],
       "type": "object"
+    },
+    "SignalDirection": {
+      "enum": [
+        "received",
+        "sent"
+      ],
+      "type": "string"
     },
     "StateTask": {
       "description": "A task of the next step: the node to run, its error, its interrupts.",
@@ -7594,6 +7982,112 @@
             "string",
             "null"
           ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId"
+      ],
+      "type": "object"
+    },
+    "WorkflowRelations": {
+      "properties": {
+        "children": {
+          "items": {
+            "$ref": "#/$defs/RelationChild"
+          },
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/RelationEdge"
+          },
+          "type": "array"
+        },
+        "family": {
+          "$ref": "#/$defs/RelationFamily"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/RelationNode"
+          },
+          "type": "array"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RelationParent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rootWorkflowId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runs": {
+          "$ref": "#/$defs/RelationRuns"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/$defs/RelationSignal"
+          },
+          "type": "array"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowRow",
+          "description": "The run the tab shows."
+        }
+      },
+      "required": [
+        "workflow",
+        "nodes",
+        "edges",
+        "children",
+        "signals",
+        "runs",
+        "family"
+      ],
+      "type": "object"
+    },
+    "WorkflowRelationsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "description": "The latest run when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RelationScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`family` when absent; a server without `RootWorkflowId` answers as `direct`."
         },
         "workflowId": {
           "type": "string"
@@ -10024,6 +10518,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/WorkflowRelationsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workflows.relations",
+      "output": {
+        "$ref": "#/$defs/WorkflowRelations"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/WorkflowResetInput"
       },
       "kind": "mutation",
@@ -10168,5 +10683,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:ce34e68a83b5f85362526ccb61ffe21060ea46b142228b6fb12a72028c1f3f90"
+  "schema_hash": "sha256:527107b72c55610ca37743383b8569b97685a63c33731855a7cc8ccc784a923b"
 }

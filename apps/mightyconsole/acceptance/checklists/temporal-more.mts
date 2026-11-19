@@ -18,7 +18,7 @@ type Ctx = Parameters<Parameters<typeof browser>[1]>[0];
 // Tabs stay mounted when another is shown, so the walks look only at what is visible: a button
 // on the shown tab, a field in the open sheet's form, the list of the shown schedule.
 /** A visible button by its text or accessible name (an expression for `run` and `until`). */
-const shownButton = (label: string) => `[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && (b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)}))`;
+export const shownButton = (label: string) => `[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && (b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)}))`;
 /** The control of a label inside the form `formId` (the open sheet). */
 const sheetField = (formId: string, label: string) => `(() => { const f = document.getElementById(${JSON.stringify(formId)}); const l = f && [...f.querySelectorAll("label")].find((x) => x.textContent.replace("*", "").trim() === ${JSON.stringify(label)}); return l ? (l.control || document.getElementById(l.htmlFor)) : null; })()`;
 /** The `data-at` instants of the visible list labelled `label`. */
@@ -27,7 +27,7 @@ const sw = (label: string) => sheetField("start-workflow", label);
 const sc = (label: string) => sheetField("schedule-form", label);
 
 /** Opens the page and connects the lab's Temporal profile (made by the TSK-83 checklist or here). */
-async function connectLab({ page, origin, until, run }: Ctx): Promise<void> {
+export async function connectLab({ page, origin, until, run }: Ctx): Promise<void> {
   await page.navigate(`${origin}/`);
   await until(`__mc.button("Temporal")`, "the tool rail");
   await run(`__mc.click(__mc.button("Temporal"))`);
