@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:c82274475f66c31196e7df4fce06081cd37ce520c112e44af3dc3abb04e4bb3a";
+export const SCHEMA_HASH = "sha256:255b87e485adeae35a51c36985a69e9a12727832bee83e91d29895902ee0fd4e";
 
 // ---- Types
 
@@ -147,6 +147,17 @@ export type CodecInfo = { id: CodecId, label: string, needsSchema: boolean, canE
 export type CodecSelector = Auto | CodecId;
 
 /**
+ * The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at
+ * `/codec/<profileId>/decode` and `/encode` while the profile is connected.
+ */
+export type CodecServerOptions = { enabled?: boolean | null, 
+/**
+ * The browser origins allowed to call it (the Temporal Web UI's); callers without an Origin
+ * (the CLI) are accepted.
+ */
+allowedOrigins?: Array<string> | null, };
+
+/**
  * What the Composer sends for a key or a value (spec §5.7).
  */
 export type ComposePayload = { codec: CodecId, 
@@ -267,6 +278,14 @@ apiKey?: string | null,
  * External Storage (TSK-103).
  */
 externalStorage?: ExternalStorageOptions | null, 
+/**
+ * The profile's stable id in the browser: the codec endpoint's path names it.
+ */
+profileId?: string | null, 
+/**
+ * Serve the profile on the codec endpoint (TSK-103).
+ */
+codecServer?: CodecServerOptions | null, 
 /**
  * The S3 credentials of External Storage; never logged.
  */

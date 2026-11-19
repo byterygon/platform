@@ -58,6 +58,11 @@ pub struct TemporalClient {
     pub namespace: String,
     /// External Storage, when the profile sets it up (TSK-103).
     pub external: Option<std::sync::Arc<super::extstore::ExternalStore>>,
+    /// The channel without the profile's API key: the codec endpoint asks Temporal with the
+    /// caller's token on it.
+    pub channel: Channel,
+    /// The codec endpoint's settings, when the profile serves one.
+    pub codec: Option<super::codec::CodecProfile>,
 }
 
 impl TemporalClient {
@@ -166,8 +171,20 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
         .await
         .map_err(|e| connect_error(&address, tls.enabled, &e))?;
     let headers = CallHeaders { bearer };
+    let codec = profile
+        .codec_server
+        .as_ref()
+        .filter(|c| c.enabled.unwrap_or(false))
+        .map(|c| {
+            super::codec::CodecProfile::new(
+                profile.name.clone(),
+                c.allowed_origins.clone().unwrap_or_default(),
+            )
+        });
     Ok(TemporalClient {
         operator: OperatorServiceClient::with_interceptor(channel.clone(), headers.clone()),
+        codec,
+        channel: channel.clone(),
         service: WorkflowServiceClient::with_interceptor(channel, headers)
             // A history page of 1,000 events can be large; the default 4 MiB is too small.
             .max_decoding_message_size(64 * 1024 * 1024),

@@ -6,17 +6,23 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { CopyButton } from "@/app/page";
 import type { ConnectionFormProps } from "../types";
-import { DEFAULT_ADDRESS, DEFAULT_NAMESPACE, DEFAULT_PAGE_SIZE, DEFAULT_THRESHOLD_BYTES, externalStorageOf, tlsOf } from "./profile";
+import { DEFAULT_ADDRESS, DEFAULT_CODEC_ORIGINS, DEFAULT_NAMESPACE, DEFAULT_PAGE_SIZE, DEFAULT_THRESHOLD_BYTES, codecEndpointOf, codecServerOf, externalStorageOf, tlsOf } from "./profile";
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled }: ConnectionFormProps) {
+export function ConnectionForm({ fields, secrets, storedSecrets, errors, onFields, onSecrets, disabled, profileId }: ConnectionFormProps) {
   const tls = tlsOf(fields);
   const setTls = (patch: Partial<typeof tls>) => onFields({ tls: { ...tls, ...patch } });
   const pageSize = fields["pageSize"];
   const ext = externalStorageOf(fields);
   const setExt = (patch: Partial<typeof ext>) => onFields({ externalStorage: { ...ext, ...patch } });
+  const codec = codecServerOf(fields);
+  const setCodec = (patch: Partial<typeof codec>) => onFields({ codecServer: { ...codec, ...patch } });
+  const endpoint = profileId ? codecEndpointOf(window.location.origin, profileId) : null;
+  const loopbackEndpoint = profileId ? codecEndpointOf("http://127.0.0.1:7444", profileId) : null;
+  const namespace = str(fields["namespace"]).trim() || DEFAULT_NAMESPACE;
   return (
     <>
       <Field invalid={errors["address"] !== undefined}>
@@ -156,6 +162,38 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
             <FieldDescription>The size from which an input Mightyconsole sends is stored outside; the SDKs' default is 262144.</FieldDescription>
             {errors["externalStorage.thresholdBytes"] ? <FieldError match>{errors["externalStorage.thresholdBytes"]}</FieldError> : null}
           </Field>
+          <Field invalid={errors["codecServer"] !== undefined}>
+            <FieldLabel>
+              <Switch checked={codec.enabled} onCheckedChange={(enabled) => setCodec({ enabled })} disabled={disabled} /> Serve as a codec endpoint
+            </FieldLabel>
+            <FieldDescription>The Temporal Web UI and the temporal CLI read payloads stored outside through this server, while this profile is connected. Temporal decides who may: the caller's token must be allowed to read the namespace.</FieldDescription>
+            {errors["codecServer"] ? <FieldError match>{errors["codecServer"]}</FieldError> : null}
+          </Field>
+          {codec.enabled ? (
+            <>
+              <Field invalid={errors["codecServer.allowedOrigins"] !== undefined}>
+                <FieldLabel>Allowed origins</FieldLabel>
+                <Input value={codec.allowedOrigins} onValueChange={(v) => setCodec({ allowedOrigins: v })} placeholder={DEFAULT_CODEC_ORIGINS} disabled={disabled} autoComplete="off" spellCheck={false} />
+                <FieldDescription>The Web UI's address; other web pages are refused. The CLI sends no origin and is accepted.</FieldDescription>
+                {errors["codecServer.allowedOrigins"] ? <FieldError match>{errors["codecServer.allowedOrigins"]}</FieldError> : null}
+              </Field>
+              {endpoint && loopbackEndpoint ? (
+                <div aria-label="Codec endpoint" className="flex flex-col gap-stack-xs rounded-md bg-inset p-inset-sm text-caption-1 text-fg-muted">
+                  <span className="flex items-center gap-inline-xs">
+                    <span className="text-caption-1-strong text-fg">Web UI</span> Settings, Data encoder: <span className="min-w-0 truncate font-mono text-fg">{endpoint}</span>
+                    <CopyButton value={endpoint} what="the codec endpoint" />
+                  </span>
+                  <span className="flex items-center gap-inline-xs">
+                    <span className="text-caption-1-strong text-fg">CLI</span> <span className="min-w-0 truncate font-mono text-fg">temporal workflow show -n {namespace} -w ID --codec-endpoint {loopbackEndpoint}</span>
+                    <CopyButton value={`temporal workflow show -n ${namespace} -w ID --codec-endpoint ${loopbackEndpoint}`} what="the command" />
+                  </span>
+                  <span>The CLI does not trust this server's own certificate: start the server with --codec-listen 127.0.0.1:7444 for the plain loopback address above, or give it a certificate the system trusts (--tls-cert, --tls-key).</span>
+                </div>
+              ) : (
+                <p className="text-caption-1 text-fg-muted">The endpoint's address shows once the profile is saved.</p>
+              )}
+            </>
+          ) : null}
         </>
       ) : null}
     </>

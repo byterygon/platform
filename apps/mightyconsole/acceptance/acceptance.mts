@@ -301,14 +301,17 @@ async function openBrowser(run: Run): Promise<BrowserSession | { skipped: string
   const data = mkdtempSync(join(tmpdir(), "mightyconsole-acceptance-"));
   const port = await cdpModule.freePort();
   const origin = `https://localhost:${port}`;
+  // The Temporal codec endpoint on plain loopback HTTP, for the temporal CLI (TSK-103).
+  const codecPort = await cdpModule.freePort();
+  const codecOrigin = `http://127.0.0.1:${codecPort}`;
   // A release binary serves its built-in UI; otherwise build ui/dist and give it.
-  let child = spawn(run.serverPath, ["--listen", `127.0.0.1:${port}`, "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
+  let child = spawn(run.serverPath, ["--listen", `127.0.0.1:${port}`, "--codec-listen", `127.0.0.1:${codecPort}`, "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
   let [startup] = await cdpModule.waitForLine(child, /[\s\S]*open https:\/\/localhost:\d+\//, "mightyconsole-server");
   if (!/UI built in/.test(startup ?? "")) {
     child.kill();
     const build = execute(["pnpm", "--filter", "@byterygon/mightyconsole", "build"], { log: join(run.logs, "ui-build.log") });
     if (build.code !== 0) return { skipped: "the UI does not build (logs/ui-build.log)" };
-    child = spawn(run.serverPath, ["--listen", `127.0.0.1:${port}`, "--ui", join(UI, "dist"), "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
+    child = spawn(run.serverPath, ["--listen", `127.0.0.1:${port}`, "--codec-listen", `127.0.0.1:${codecPort}`, "--ui", join(UI, "dist"), "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
     [startup] = await cdpModule.waitForLine(child, /[\s\S]*open https:\/\/localhost:\d+\//, "mightyconsole-server");
   }
   writeFileSync(join(run.logs, "browser-server.log"), startup ?? "");
@@ -320,6 +323,7 @@ async function openBrowser(run: Run): Promise<BrowserSession | { skipped: string
       return {
         page,
         origin,
+        codecOrigin,
         lab: run.lab,
         run: <T,>(expression: string) => cdpModule.run(page, expression) as Promise<T>,
         async until(expression, what, timeoutMs) {
