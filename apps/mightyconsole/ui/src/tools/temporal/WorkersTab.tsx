@@ -5,6 +5,8 @@
 // forgets a poller after 5. Filters: task queue, what it polls for, text over identity and build.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { IconButton } from "@/components/ui/icon-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
@@ -148,6 +150,27 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
             </SelectItem>
           ))}
         </Select>
+        <Popover>
+          <PopoverTrigger render={<IconButton appearance="subtle" aria-label="Add a task queue" />}>
+            <Icon icon={Add} />
+          </PopoverTrigger>
+          <PopoverContent align="start" aria-label="Add a task queue">
+            <PopoverTitle>A task queue no workflow names yet</PopoverTitle>
+            <form
+              className="flex items-center gap-inline-sm"
+              aria-label="Add a task queue"
+              onSubmit={(e) => {
+                e.preventDefault();
+                add();
+              }}
+            >
+              <Input aria-label="Task queue to add" placeholder="Task queue" value={adding} onValueChange={setAdding} autoComplete="off" spellCheck={false} autoFocus />
+              <Button type="submit" appearance="secondary" disabled={adding.trim() === ""}>
+                Add
+              </Button>
+            </form>
+          </PopoverContent>
+        </Popover>
         <Select aria-label="Polls for" value={kind} onValueChange={(v) => setKind(v as Kind)} items={{ any: "Any type", workflow: "Workflow", activity: "Activity" }} className="w-panel-xs shrink-0">
           <SelectItem value="any">Any type</SelectItem>
           <SelectItem value="workflow">Workflow</SelectItem>
@@ -158,19 +181,7 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
           <Checkbox checked={grouped} onCheckedChange={(v) => setGrouped(v === true)} />
           <FieldLabel className="whitespace-nowrap">Group by task queue</FieldLabel>
         </Field>
-        <form
-          className="flex items-center gap-inline-sm"
-          aria-label="Add a task queue"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add();
-          }}
-        >
-          <Input aria-label="Task queue to add" placeholder="Task queue" value={adding} onValueChange={setAdding} autoComplete="off" spellCheck={false} className="w-panel-xs" />
-          <Button type="submit" appearance="secondary" disabled={adding.trim() === ""}>
-            <Icon icon={Add} /> Add
-          </Button>
-        </form>
+
       </PageBar>
       <PageRegion>
         {error ? <ErrorState error={error} onRetry={() => void load()} /> : null}

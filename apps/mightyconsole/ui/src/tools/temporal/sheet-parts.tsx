@@ -3,6 +3,7 @@
 // reads them, JSON object fields, the retry policy, a run ID toast, and the requests that open a
 // sheet from the palette.
 import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { MightyClient } from "@/app/client";
 import { CodeEditor } from "@/components/ui/code-editor";
@@ -274,3 +275,26 @@ export function useSheetRequest(profileId: string, kind: SheetRequest): { waitin
   };
 }
 
+
+/**
+ * A text field with suggestions, as the mockup draws the type and queue fields: a chevron opens
+ * the list, typing filters it, and any text is accepted (the value is the input's text).
+ */
+export function SuggestInput({ value, onValueChange, items, placeholder, mono = false, emptyMessage = "No suggestion; any name is accepted." }: { value: string; onValueChange(value: string): void; items: readonly string[]; placeholder?: string; mono?: boolean; emptyMessage?: string }) {
+  return (
+    <Combobox<string>
+      items={items as string[]}
+      inputValue={value}
+      onInputValueChange={(v) => onValueChange(v)}
+      {...(placeholder ? { placeholder } : {})}
+      emptyMessage={emptyMessage}
+      {...(mono ? { className: "font-mono text-code" } : {})}
+    >
+      {(item: string) => (
+        <ComboboxItem key={item} value={item}>
+          {item}
+        </ComboboxItem>
+      )}
+    </Combobox>
+  );
+}

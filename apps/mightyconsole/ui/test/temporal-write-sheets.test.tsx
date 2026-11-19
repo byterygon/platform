@@ -78,7 +78,11 @@ describe("Start workflow", () => {
     await click(byRole("button", "Start workflow"));
     await waitFor(() => sheetOf("start-workflow") !== null, "the sheet");
     const sheet = sheetOf("start-workflow")!;
-    expect([...sheet.querySelectorAll("datalist option")].map((o) => o.getAttribute("value"))).toEqual(["Order", "Payment", "lab-queue", "payments"]);
+    // The type field suggests the types seen; its chevron opens the list (any name is accepted).
+    await click(sheet.querySelector<HTMLElement>("[data-slot=combobox-trigger]"));
+    await waitFor(() => document.querySelectorAll("[role=option]").length > 0, "the suggestions");
+    expect([...document.querySelectorAll("[role=option]")].map((o) => o.textContent)).toEqual(["Order", "Payment"]);
+    await key("Escape");
 
     await type(input(sheet, "Workflow type"), "Order");
     await type(input(sheet, "Task queue"), "lab-queue");
@@ -197,11 +201,19 @@ describe("Create schedule", () => {
       const sheet = sheetOf("schedule-form")!;
       await type(input(sheet, "Time zone"), "UTC");
       await type(input(sheet, "Hour"), "7");
+      // Runs is written in words too: it sets the calendar fields.
+      await type(input(sheet, "Runs"), "Every hour at :15");
+      expect(input(sheet, "Hour").value).toBe("*");
+      expect(input(sheet, "Minute").value).toBe("15");
+      await type(input(sheet, "Runs"), "every so often");
+      expect(byText(/Write it as/)).not.toBeNull();
+      await type(input(sheet, "Runs"), "Mon to Fri at 07:00, 07:30");
+      expect(input(sheet, "Hour").value).toBe("7");
       await type(input(sheet, "Minute"), "*/30");
       await type(input(sheet, "Day of week"), "mon-fri");
       const runs = () => [...sheet.querySelectorAll('[aria-label="Next runs"] li')].map((li) => li.textContent?.replace(/ ·$/, ""));
       expect(runs()).toEqual(["Thu 19 Nov 2026, 07:00 UTC", "Thu 19 Nov, 07:30", "Fri 20 Nov, 07:00", "Fri 20 Nov, 07:30", "Mon 23 Nov, 07:00"]);
-      expect(byText("Mon to Fri at 07:00, 07:30")).not.toBeNull();
+      expect(input(sheet, "Runs").value).toBe("Mon to Fri at 07:00, 07:30");
       expect(byText(/Computed in the browser/)).not.toBeNull();
       await type(input(sheet, "Hour"), "26");
       expect(byText("The hour is 0 to 23.")).not.toBeNull();

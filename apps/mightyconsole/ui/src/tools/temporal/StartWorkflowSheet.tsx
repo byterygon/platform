@@ -23,7 +23,7 @@ import type { DescribedError } from "../types";
 import { ArgsField, parseArgs } from "./ActionDialogs";
 import { workflowStartCommand } from "./cli";
 import { addressOf, tlsOf } from "./profile";
-import { DurationField, Fold, ObjectField, QueueWorkers, Required, RetryFields, RunIdLine, WritesTo, durationError, parseObject, randomSuffix, retryErrors, retryPolicyOf, retrySummary, retryText, useQueueWorkers, type RetryText } from "./sheet-parts";
+import { DurationField, Fold, ObjectField, QueueWorkers, Required, RetryFields, RunIdLine, SuggestInput, WritesTo, durationError, parseObject, randomSuffix, retryErrors, retryPolicyOf, retrySummary, retryText, useQueueWorkers, type RetryText } from "./sheet-parts";
 
 /** What "Start another like this" fills in. */
 export interface StartPrefill {
@@ -224,8 +224,6 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
   const policies = `reuse: ${d.idReusePolicy === "default" ? "allow duplicate" : REUSE_SHORT[d.idReusePolicy]} · conflict: ${d.idConflictPolicy === "default" ? "fail" : CONFLICT_SHORT[d.idConflictPolicy]}`;
   const extras = [...keysOf(d.memo), ...keysOf(d.searchAttributes)];
   const extrasText = extras.length === 0 ? "none" : extras.length > 3 ? `${extras.slice(0, 3).join(", ")}…` : extras.join(", ");
-  const typeList = `start-types-${profile.id}`;
-  const queueList = `start-queues-${profile.id}`;
   const missing = (v: string) => tried && v.trim() === "";
 
   return (
@@ -253,7 +251,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
                   Workflow type
                   <Required />
                 </FieldLabel>
-                <Input value={d.workflowType} onValueChange={(workflowType) => set({ workflowType })} list={typeList} autoComplete="off" spellCheck={false} required />
+                <SuggestInput value={d.workflowType} onValueChange={(workflowType) => set({ workflowType })} items={suggestions?.types ?? []} />
                 <FieldDescription>Suggested from types seen in this namespace; any name is accepted.</FieldDescription>
                 {missing(d.workflowType) ? <FieldError match>Name the workflow type.</FieldError> : null}
               </Field>
@@ -262,7 +260,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
                   Task queue
                   <Required />
                 </FieldLabel>
-                <Input value={d.taskQueue} onValueChange={(taskQueue) => set({ taskQueue })} list={queueList} autoComplete="off" spellCheck={false} required />
+                <SuggestInput value={d.taskQueue} onValueChange={(taskQueue) => set({ taskQueue })} items={suggestions?.queues ?? []} />
                 {workers !== null ? (
                   <FieldDescription>
                     <QueueWorkers count={workers} />
@@ -285,16 +283,6 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
                 {missing(d.workflowId) ? <FieldError match>Give a workflow ID.</FieldError> : null}
               </Field>
             </div>
-            <datalist id={typeList}>
-              {(suggestions?.types ?? []).map((t) => (
-                <option key={t} value={t} />
-              ))}
-            </datalist>
-            <datalist id={queueList}>
-              {(suggestions?.queues ?? []).map((q) => (
-                <option key={q} value={q} />
-              ))}
-            </datalist>
             <Fold title="Input" value="JSON, one payload per argument" open>
               <ArgsField label="Input" hideLabel compact description={null} value={d.input} onChange={(input) => set({ input })} onSubmit={() => void start()} />
             </Fold>
