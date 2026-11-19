@@ -10,9 +10,10 @@
 use serde_json::json;
 
 use super::client::{self, TemporalClient};
-use super::detail::{describe, follow_step, history, query};
+use super::detail::{describe, follow_step, history, query, raw_event};
 use super::detail_types::{
-    EventCategory, HistoryEvent, WorkflowHistoryInput, WorkflowQueryInput, WorkflowRef,
+    EventCategory, HistoryEvent, WorkflowHistoryInput, WorkflowQueryInput, WorkflowRawEventInput,
+    WorkflowRef,
 };
 use super::proto::temporal::api::common::v1::WorkflowExecution;
 use super::types::{ConnectTemporalProfile, WorkflowStatus};
@@ -268,4 +269,30 @@ async fn unknown_workflows_are_not_found_and_blank_ids_invalid() {
         .await
         .unwrap_err();
     assert_eq!(error.field.as_deref(), Some("pageSize"));
+}
+
+#[tokio::test]
+async fn an_event_reads_as_stored_with_its_encodings() {
+    let client = lab().await;
+    let events = all_events(&client, "completed-1").await;
+    assert_eq!(
+        events[0].encodings.as_deref(),
+        Some(&["json/plain".to_owned()][..])
+    );
+    let raw = |event_id: i64| WorkflowRawEventInput {
+        conn_id: String::new(),
+        namespace: None,
+        workflow_id: "completed-1".into(),
+        run_id: None,
+        event_id,
+    };
+    let out = raw_event(&client, raw(1)).await.unwrap();
+    let payload = &out.attributes["input"]["payloads"][0];
+    assert!(
+        payload["data"].is_string(),
+        "the data stays base64: {payload}"
+    );
+    assert!(payload["metadata"]["encoding"].is_string());
+    let missing = raw_event(&client, raw(100_000)).await.unwrap_err();
+    assert_eq!(missing.kind, ToolErrorKind::NotFound);
 }

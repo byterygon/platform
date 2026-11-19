@@ -47,9 +47,11 @@ export interface HistoryPanelProps {
   hasMore: boolean;
   onLoadMore(): void;
   onOpenPending(): void;
+  /** An event's attributes as stored (`temporal.workflows.rawEvent`), for the Raw form. */
+  loadRaw?: ((eventId: number) => Promise<Record<string, unknown>>) | undefined;
 }
 
-export function HistoryPanel({ workflowId, runId, events, total, live, pending, selected, onSelect, hasMore, onLoadMore, onOpenPending }: HistoryPanelProps) {
+export function HistoryPanel({ workflowId, runId, events, total, live, pending, selected, onSelect, hasMore, onLoadMore, onOpenPending, loadRaw }: HistoryPanelProps) {
   const notify = useContext(NoticeContext);
   const [category, setCategory] = useState<EventCategory | "All">("All");
   const [query, setQuery] = useState("");
@@ -256,7 +258,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
             {rows.length > 200 ? <TableVirtualBody count={rows.length} renderRow={(i) => renderRow(rows[i]!, i)} /> : <TableBody>{rows.map(renderRow)}</TableBody>}
           </Table>
         )}
-        <EventDetail event={picked} start={start} ctx={ctx} onSelect={reveal} onOpenPending={onOpenPending} />
+        <EventDetail event={picked} start={start} ctx={ctx} onSelect={reveal} onOpenPending={onOpenPending} loadRaw={loadRaw} />
       </div>
       <footer className="flex shrink-0 items-center gap-inline-md border-t border-border-subtle px-inset-lg py-stack-xs text-caption-1 text-fg-muted">
         {live ? (
@@ -277,8 +279,30 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
 }
 
 /** The chosen event: its time, its activity's other events and pending attempt, its attributes as JSON, Copy input and Copy event. */
-function EventDetail({ event, start, ctx, onSelect, onOpenPending }: { event: HistoryEvent | undefined; start: number; ctx: ReturnType<typeof summaryContext>; onSelect(id: number): void; onOpenPending(): void }) {
+/** "json/plain · 1 payload", "binary/encrypted, json/plain · 3 payloads": the forms of an event's payloads as stored. */
+export function payloadLabel(encodings: readonly string[] | undefined): string {
+  if (!encodings || encodings.length === 0) return "no payloads";
+  const kinds = [...new Set(encodings)].join(", ");
+  return `${kinds} · ${encodings.length} payload${encodings.length === 1 ? "" : "s"}`;
+}
+
+function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw }: { event: HistoryEvent | undefined; start: number; ctx: ReturnType<typeof summaryContext>; onSelect(id: number): void; onOpenPending(): void; loadRaw?: ((eventId: number) => Promise<Record<string, unknown>>) | undefined }) {
   const notify = useContext(NoticeContext);
+  const [form, setForm] = useState<"decoded" | "raw">("decoded");
+  // Raw forms already read, by event id (an error is kept as its message).
+  const [raws, setRaws] = useState<ReadonlyMap<number, Record<string, unknown> | string>>(() => new Map());
+  const eventId = event?.eventId;
+  useEffect(() => {
+    if (form !== "raw" || eventId === undefined || !loadRaw || raws.has(eventId)) return;
+    let live = true;
+    loadRaw(eventId).then(
+      (attributes) => live && setRaws((m) => new Map(m).set(eventId, attributes)),
+      (e: unknown) => live && setRaws((m) => new Map(m).set(eventId, e instanceof Error ? e.message : String(e))),
+    );
+    return () => {
+      live = false;
+    };
+  }, [form, eventId, loadRaw, raws]);
   if (!event) {
     return (
       <aside aria-label="Event detail" className="flex w-1/3 min-w-0 flex-col border-s border-border-subtle">
@@ -336,10 +360,31 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending }: { event: Hi
         </div>
       ) : null}
       <div className="flex items-center justify-between gap-inline-sm">
-        <Badge variant="neutral">Decoded</Badge>
-        <span className="text-caption-1 text-fg-muted">{input !== undefined ? `input ${Array.isArray(input) ? input.length : 1} payload${Array.isArray(input) && input.length !== 1 ? "s" : ""}` : "payloads decoded on the server"}</span>
+        {loadRaw ? (
+          <ToggleGroup aria-label="Payload form" size="small" value={[form]} onValueChange={(v) => v[0] && setForm(v[0] as "decoded" | "raw")}>
+            <ToggleGroupItem value="decoded">Decoded</ToggleGroupItem>
+            <ToggleGroupItem value="raw">Raw</ToggleGroupItem>
+          </ToggleGroup>
+        ) : (
+          <Badge variant="neutral">Decoded</Badge>
+        )}
+        <span className="text-caption-1 text-fg-muted">{payloadLabel(event.encodings)}</span>
       </div>
-      <CodeBlock code={JSON.stringify(a, null, 2)} language="json" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
+      {form === "raw" ? (
+        typeof raws.get(event.eventId) === "string" ? (
+          <p role="alert" className="text-body-1 text-danger-fg">
+            Could not read the event as stored: {raws.get(event.eventId) as string}
+          </p>
+        ) : raws.get(event.eventId) ? (
+          <CodeBlock code={JSON.stringify(raws.get(event.eventId), null, 2)} language="json" aria-label={`Event ${event.eventId} as stored`} className="min-h-0" />
+        ) : (
+          <p role="status" className="text-body-1 text-fg-muted">
+            Reading the event as stored…
+          </p>
+        )
+      ) : (
+        <CodeBlock code={JSON.stringify(a, null, 2)} language="json" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
+      )}
       <div className="flex flex-wrap items-center gap-inline-sm">
         {input !== undefined ? (
           <Button size="small" appearance="subtle" onClick={() => void copy(JSON.stringify(input, null, 2), "the input")}>

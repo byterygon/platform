@@ -253,6 +253,11 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               hasMore={state.hasMore}
               onLoadMore={state.loadMore}
               onOpenPending={() => setSection("pending")}
+              loadRaw={
+                connId === null
+                  ? undefined
+                  : async (eventId) => (await client.temporal.workflows.rawEvent({ connId, namespace, workflowId, runId: detail.workflow.runId, eventId })).attributes
+              }
             />
           </TabsContent>
           <TabsContent value="io" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">

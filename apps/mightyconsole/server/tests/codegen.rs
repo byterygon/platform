@@ -262,6 +262,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.info",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.namespaces.describe",
             Query,
             "temporal.read",
@@ -396,6 +403,13 @@ fn the_procedures_of_the_spec() {
         ),
         (
             "temporal.workflows.query",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.workflows.rawEvent",
             Query,
             "temporal.read",
             Risk::Read,

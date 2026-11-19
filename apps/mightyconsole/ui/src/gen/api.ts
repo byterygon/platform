@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:fc1359806acae539f8a4b13276131c00da4106475ff58604ed90c28f4782b435";
+export const SCHEMA_HASH = "sha256:d30e09d2bee1d2609449bf6935e50fab32749cd6fd420d388d7d7ba28e11e967";
 
 // ---- Types
 
@@ -443,7 +443,12 @@ eventType: string, category: EventCategory,
 /**
  * The event's own attributes, as protobuf JSON, payloads decoded.
  */
-attributes: Record<string, unknown>, };
+attributes: Record<string, unknown>, 
+/**
+ * The encodings of the event's payloads as stored, in order (`json/plain`, `binary/encrypted`);
+ * absent when it has none.
+ */
+encodings?: Array<string>, };
 
 /**
  * What happens when a running workflow with the same ID exists (`WorkflowIdConflictPolicy`).
@@ -1045,6 +1050,11 @@ export type TemporalConnectOutput = { connId: string, serverVersion: string,
 clusterName?: string, capabilities: TemporalCapabilities, };
 
 /**
+ * What `temporal.info` says about the server.
+ */
+export type TemporalInfoOutput = { serverVersion: string, clusterName?: string, };
+
+/**
  * TLS settings of a profile (spec §4.2 `TemporalTlsOptions`); `secrets.clientKeyPem` comes beside it as
  * `clientKeyPem`. There is no "skip verification" (spec Open question 6).
  */
@@ -1337,6 +1347,16 @@ export type WorkflowQueryOutput = {
  */
 result: unknown, };
 
+/**
+ * One event of a run, to read as stored.
+ */
+export type WorkflowRawEventInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, eventId: number, };
+
+/**
+ * An event's attributes as stored: protobuf JSON with each payload's `metadata` and `data` in base64.
+ */
+export type WorkflowRawEventOutput = { attributes: Record<string, unknown>, };
+
 export type WorkflowReasonInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, 
 /**
  * Required to terminate; optional to ask for cancellation.
@@ -1529,6 +1549,7 @@ export interface Procedures {
   readonly "messaging.schemas.update": ProcedureDef<"mutation", SchemasUpdateInput, SchemasUpdateOutput, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
+  readonly "temporal.info": ProcedureDef<"query", TemporalConnIdInput, TemporalInfoOutput, ToolError>;
   readonly "temporal.namespaces.describe": ProcedureDef<"query", NamespaceDescribeInput, NamespaceDetail, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
   readonly "temporal.namespaces.searchAttributes": ProcedureDef<"query", SearchAttributesInput, SearchAttributesOutput, ToolError>;
@@ -1549,6 +1570,7 @@ export interface Procedures {
   readonly "temporal.workflows.history": ProcedureDef<"query", WorkflowHistoryInput, WorkflowHistoryOutput, ToolError>;
   readonly "temporal.workflows.list": ProcedureDef<"query", WorkflowsListInput, WorkflowsListOutput, ToolError>;
   readonly "temporal.workflows.query": ProcedureDef<"query", WorkflowQueryInput, WorkflowQueryOutput, ToolError>;
+  readonly "temporal.workflows.rawEvent": ProcedureDef<"query", WorkflowRawEventInput, WorkflowRawEventOutput, ToolError>;
   readonly "temporal.workflows.reset": ProcedureDef<"mutation", WorkflowResetInput, WorkflowResetOutput, ToolError>;
   readonly "temporal.workflows.signal": ProcedureDef<"mutation", WorkflowSignalInput, Empty, ToolError>;
   readonly "temporal.workflows.start": ProcedureDef<"mutation", WorkflowStartInput, WorkflowStartOutput, ToolError>;
@@ -1626,6 +1648,7 @@ export interface Api {
   readonly temporal: {
     readonly connect: Procedures["temporal.connect"];
     readonly disconnect: Procedures["temporal.disconnect"];
+    readonly info: Procedures["temporal.info"];
     readonly namespaces: {
       readonly describe: Procedures["temporal.namespaces.describe"];
       readonly list: Procedures["temporal.namespaces.list"];
@@ -1655,6 +1678,7 @@ export interface Api {
       readonly history: Procedures["temporal.workflows.history"];
       readonly list: Procedures["temporal.workflows.list"];
       readonly query: Procedures["temporal.workflows.query"];
+      readonly rawEvent: Procedures["temporal.workflows.rawEvent"];
       readonly reset: Procedures["temporal.workflows.reset"];
       readonly signal: Procedures["temporal.workflows.signal"];
       readonly start: Procedures["temporal.workflows.start"];
@@ -2105,6 +2129,16 @@ export const procedures: Api = {
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
     },
+    info: {
+      name: "temporal.info",
+      kind: "query",
+      perm: "temporal.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
     namespaces: {
       describe: {
         name: "temporal.namespaces.describe",
@@ -2306,6 +2340,16 @@ export const procedures: Api = {
       },
       query: {
         name: "temporal.workflows.query",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      rawEvent: {
+        name: "temporal.workflows.rawEvent",
         kind: "query",
         perm: "temporal.read",
         risk: "Read",

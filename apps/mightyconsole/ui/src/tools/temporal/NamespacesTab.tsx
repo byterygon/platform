@@ -42,6 +42,19 @@ export function NamespacesTab({ profile, connId, client, useTabActions, note, op
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<DescribedError | null>(null);
   const [selected, setSelected] = useState(namespaceOf(profile));
+  // The server version for the subtitle ("server 1.28.1"); nothing when the call fails.
+  const [server, setServer] = useState<string | null>(null);
+  useEffect(() => {
+    if (connId === null) return undefined;
+    let live = true;
+    client.temporal.info({ connId }).then(
+      (info) => live && setServer(info.serverVersion || null),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, connId]);
   const generation = useRef(0);
 
   const load = useCallback(async () => {
@@ -73,7 +86,7 @@ export function NamespacesTab({ profile, connId, client, useTabActions, note, op
     <Page>
       <PageHeader
         title="Namespaces"
-        subtitle={`${profile.name} · ${formatCount(rows.length)} ${rows.length === 1 ? "namespace" : "namespaces"}`}
+        subtitle={`${profile.name} · ${formatCount(rows.length)} ${rows.length === 1 ? "namespace" : "namespaces"}${server ? ` · server ${server}` : ""}`}
         actions={
           <Button appearance="subtle" onClick={() => void load()} loading={loading && rows.length > 0}>
             <Icon icon={ArrowClockwise} /> Refresh

@@ -82,6 +82,16 @@ pub struct TemporalConnectOutput {
     pub capabilities: TemporalCapabilities,
 }
 
+/// What `temporal.info` says about the server.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporalInfoOutput {
+    pub server_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub cluster_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TemporalConnIdInput {

@@ -109,6 +109,35 @@ pub struct HistoryEvent {
     #[ts(type = "Record<string, unknown>")]
     #[schemars(with = "Map<String, Value>")]
     pub attributes: Map<String, Value>,
+    /// The encodings of the event's payloads as stored, in order (`json/plain`, `binary/encrypted`);
+    /// absent when it has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub encodings: Option<Vec<String>>,
+}
+
+/// One event of a run, to read as stored.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRawEventInput {
+    pub conn_id: String,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub namespace: Option<String>,
+    pub workflow_id: String,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub run_id: Option<String>,
+    pub event_id: i64,
+}
+
+/// An event's attributes as stored: protobuf JSON with each payload's `metadata` and `data` in base64.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRawEventOutput {
+    #[ts(type = "Record<string, unknown>")]
+    #[schemars(with = "Map<String, Value>")]
+    pub attributes: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]

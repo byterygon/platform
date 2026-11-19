@@ -50,10 +50,10 @@ describe("Namespaces", () => {
     const list = vi.fn(async () => [ns("default"), ns("lab", { isDefault: true, retentionSecs: 129_600 })]);
     const describe = vi.fn(async ({ namespace }: { namespace: string }) => detail(namespace));
     const searchAttributes = vi.fn(async () => ({ attributes: [{ name: "CustomerTier", valueType: "Keyword", custom: true }, { name: "WorkflowType", valueType: "Keyword", custom: false }] }));
-    const p = props({ temporal: { namespaces: { list, describe, searchAttributes } } }, { kind: "temporal.namespaces", params: {} });
+    const p = props({ temporal: { info: async () => ({ serverVersion: "1.28.1" }), namespaces: { list, describe, searchAttributes } } }, { kind: "temporal.namespaces", params: {} });
     const { container } = render(<NamespacesTab {...p} />);
     await waitFor(() => byText("id-of-lab") !== null, "the pane of the profile's namespace");
-    expect(byText("lab · 2 namespaces")).not.toBeNull();
+    await waitFor(() => byText("lab · 2 namespaces · server 1.28.1") !== null, "the server version in the subtitle");
     const rows = Array.from(container.querySelectorAll("table[aria-label='Namespaces'] tbody tr")).map((r) => r.textContent ?? "");
     expect(rows[0]).toContain("1 day");
     expect(rows[1]).toContain("36 hours");
@@ -78,7 +78,7 @@ describe("Namespaces", () => {
   test("a namespace that cannot be described shows the error in the pane, the list stays", async () => {
     const list = async () => [ns("lab", { isDefault: true })];
     const describe = () => Promise.reject(new Error("boom"));
-    const p = props({ temporal: { namespaces: { list, describe, searchAttributes: async () => ({ attributes: [] }) } } }, { kind: "temporal.namespaces", params: {} });
+    const p = props({ temporal: { info: async () => Promise.reject(new Error("no")), namespaces: { list, describe, searchAttributes: async () => ({ attributes: [] }) } } }, { kind: "temporal.namespaces", params: {} });
     render(<NamespacesTab {...p} />);
     await waitFor(() => byRole("alert") !== null, "the error");
     expect(document.querySelector("table[aria-label='Namespaces'] tbody tr")?.textContent).toContain("lab");

@@ -7,9 +7,10 @@ use serde_json::{Map, Value};
 use super::client::{TemporalClient, status_error};
 use super::detail_types::{
     EventCategory, HistoryEvent, WorkflowDetail, WorkflowHistoryInput, WorkflowHistoryOutput,
-    WorkflowQueryInput, WorkflowQueryOutput, WorkflowRef,
+    WorkflowQueryInput, WorkflowQueryOutput, WorkflowRawEventInput, WorkflowRawEventOutput,
+    WorkflowRef,
 };
-use super::payloads::{encode_json, to_json};
+use super::payloads::{decode_payloads, encode_json, payload_encodings, to_json, to_json_raw};
 use super::proto::temporal::api::common::v1::{Payloads, WorkflowExecution};
 use super::proto::temporal::api::history::v1::HistoryEvent as ProtoEvent;
 use super::proto::temporal::api::query::v1::WorkflowQuery;
@@ -80,7 +81,11 @@ pub fn event_type_name(event_type: i32) -> (String, EventCategory) {
 
 /// One event as the UI reads it: the envelope typed, the attributes as decoded protobuf JSON.
 pub fn history_event(event: &ProtoEvent) -> Result<HistoryEvent, ToolError> {
-    let Value::Object(mut json) = to_json("temporal.api.history.v1.HistoryEvent", event)? else {
+    let raw = to_json_raw("temporal.api.history.v1.HistoryEvent", event)?;
+    let encodings = payload_encodings(&raw);
+    let mut decoded = raw;
+    decode_payloads(&mut decoded);
+    let Value::Object(mut json) = decoded else {
         return Err(ToolError::new(
             crate::core::ToolErrorKind::Remote,
             TOOL,
@@ -100,7 +105,64 @@ pub fn history_event(event: &ProtoEvent) -> Result<HistoryEvent, ToolError> {
         event_type,
         category,
         attributes,
+        encodings: (!encodings.is_empty()).then_some(encodings),
     })
+}
+
+/// One event of a run with its payloads as stored, found by paging the history up to it.
+pub async fn raw_event(
+    client: &TemporalClient,
+    input: WorkflowRawEventInput,
+) -> Result<WorkflowRawEventOutput, ToolError> {
+    if input.event_id < 1 {
+        return Err(ToolError::invalid(TOOL, "eventId", "1 or more"));
+    }
+    let namespace = client.namespace_or_default(input.namespace.as_deref());
+    let mut token = Vec::new();
+    loop {
+        let response = client
+            .service()
+            .get_workflow_execution_history(client.request(
+                &namespace,
+                ws::GetWorkflowExecutionHistoryRequest {
+                    namespace: namespace.clone(),
+                    execution: Some(execution(&input.workflow_id, input.run_id.as_deref())?),
+                    maximum_page_size: HISTORY_PAGE as i32,
+                    next_page_token: token,
+                    ..Default::default()
+                },
+            ))
+            .await
+            .map_err(|s| status_error(&client.address, &s))?
+            .into_inner();
+        let events = response.history.unwrap_or_default().events;
+        if let Some(event) = events.iter().find(|e| e.event_id == input.event_id) {
+            let Value::Object(mut json) =
+                to_json_raw("temporal.api.history.v1.HistoryEvent", event)?
+            else {
+                return Err(ToolError::new(
+                    crate::core::ToolErrorKind::Remote,
+                    TOOL,
+                    "a history event is not an object",
+                ));
+            };
+            let key = json.keys().find(|k| k.ends_with("Attributes")).cloned();
+            let attributes = match key.and_then(|k| json.remove(&k)) {
+                Some(Value::Object(attributes)) => attributes,
+                _ => Map::new(),
+            };
+            return Ok(WorkflowRawEventOutput { attributes });
+        }
+        let past = events.last().is_some_and(|e| e.event_id > input.event_id);
+        if past || response.next_page_token.is_empty() {
+            return Err(ToolError::not_found(
+                TOOL,
+                "event",
+                format!("no event {} in this run", input.event_id),
+            ));
+        }
+        token = response.next_page_token;
+    }
 }
 
 fn object(value: Value) -> Map<String, Value> {
