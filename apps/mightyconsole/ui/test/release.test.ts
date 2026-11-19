@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { RELEASE_DIR, TOOLS, readNotes, releaseNotes, versionFor } from "../../release/release.mts";
+import { RELEASE_DIR, TOOLS, readFix, readNotes, releaseNotes, versionFor } from "../../release/release.mts";
 
 const temp: string[] = [];
 afterEach(() => {
@@ -32,18 +32,46 @@ describe("release", () => {
   test("the committed notes are valid", () => {
     const notes = readNotes();
     expect(notes[0]!.id).toBe("foundation");
-    expect(versionFor(notes)).toMatch(/^0\.1\.0(-alpha\.\d)?$/);
+    expect(versionFor(notes)).toMatch(/^0\.1\.0(-alpha\.\d+(\.\d+)?)?$/);
   });
 
   test("one alpha per finished tool, 0.1.0 with all six", () => {
     const none = fixture(BASE, []);
-    expect(versionFor(readNotes(none.notes, none.tools))).toBe("0.1.0-alpha.0");
+    expect(versionFor(readNotes(none.notes, none.tools), 0)).toBe("0.1.0-alpha.0");
 
     const two = fixture({ ...BASE, "1-docker.md": "Docker notes", "2-k8s.md": "Kubernetes notes" }, ["docker", "k8s"]);
-    expect(versionFor(readNotes(two.notes, two.tools))).toBe("0.1.0-alpha.2");
+    expect(versionFor(readNotes(two.notes, two.tools), 0)).toBe("0.1.0-alpha.2");
 
     const all = fixture(Object.fromEntries([...Object.entries(BASE), ...TOOLS.map((t, i) => [`${i + 1}-${t.id}.md`, `${t.name} notes`])]), TOOLS.map((t) => t.id));
-    expect(versionFor(readNotes(all.notes, all.tools))).toBe("0.1.0");
+    expect(versionFor(readNotes(all.notes, all.tools), 0)).toBe("0.1.0");
+  });
+
+  test("a fix release of the same tools is 0.1.0-alpha.N.R and goes stale with the next tool", () => {
+    const two = fixture({ ...BASE, "1-docker.md": "Docker notes", "2-k8s.md": "Kubernetes notes" }, ["docker", "k8s"]);
+    const notes = readNotes(two.notes, two.tools);
+    expect(versionFor(notes, 1)).toBe("0.1.0-alpha.2.1");
+    expect(versionFor(notes, 12)).toBe("0.1.0-alpha.2.12");
+
+    const dir = fixture({}, []).notes;
+    const file = join(dir, "FIX");
+    expect(readFix(2, file)).toBe(0); // no file
+    writeFileSync(file, "2.1\n");
+    expect(readFix(2, file)).toBe(1);
+    expect(readFix(3, file)).toBe(0); // a third tool made it stale: back to 0.1.0-alpha.3
+    for (const bad of ["", "2", "2.0", "2.01", "x.1", "2.1.1", "-2.1"]) {
+      writeFileSync(file, bad);
+      expect(() => readFix(2, file), JSON.stringify(bad)).toThrow(/FIX/);
+    }
+
+    const all = fixture(Object.fromEntries([...Object.entries(BASE), ...TOOLS.map((t, i) => [`${i + 1}-${t.id}.md`, `${t.name} notes`])]), TOOLS.map((t) => t.id));
+    expect(() => versionFor(readNotes(all.notes, all.tools), 1)).toThrow(/0\.1\.1/);
+  });
+
+  test("the committed FIX is read and shown in the version and the release notes", () => {
+    const notes = readNotes();
+    const fix = readFix(notes.length - 1);
+    expect(versionFor(notes)).toBe(fix > 0 ? `0.1.0-alpha.${notes.length - 1}.${fix}` : `0.1.0-alpha.${notes.length - 1}`);
+    if (fix > 0) expect(releaseNotes(notes)).toContain(`Fix release ${fix} of alpha ${notes.length - 1}`);
   });
 
   test("gaps, duplicates, unknown tools and missing modules are refused", () => {
@@ -64,7 +92,7 @@ describe("release", () => {
 
   test("the notes put the newest tool first and list what is still missing", () => {
     const { notes, tools } = fixture({ ...BASE, "1-docker.md": "## Docker\n\n- containers", "2-k8s.md": "- pods and logs" }, ["docker", "k8s"]);
-    const text = releaseNotes(readNotes(notes, tools));
+    const text = releaseNotes(readNotes(notes, tools), 0);
     expect(text.startsWith("# Mightyconsole 0.1.0-alpha.2\n")).toBe(true);
     const at = (needle: string) => text.indexOf(needle);
     expect(at("## New in this release: Kubernetes")).toBeGreaterThan(0);

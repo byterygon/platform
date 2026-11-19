@@ -16,8 +16,9 @@
 // `notes/<N>-<tool>.md` (its "Release after this tool" notes), N counting from 1 in the order the
 // tools finish; the version is `0.1.0-alpha.<N>` for the highest N, and `0.1.0` once all six are
 // in. `notes/0-foundation.md` is the base every release starts from (`0.1.0-alpha.0` is a build
-// of the foundation alone). `check` refuses gaps, duplicates, unknown tools and a tool note
-// without the tool's server module.
+// of the foundation alone). A fix release of the same tools is `0.1.0-alpha.<N>.<R>`, set by the
+// one-line file `FIX` (`<N>.<R>`, e.g. `2.1`; Uy Son, 2026-11-19; stale once a tool is added).
+// `check` refuses gaps, duplicates, unknown tools and a tool note without the tool's server module.
 //
 // Nothing here tags or publishes: `package` and `image` write files, the workflow uploads them as
 // artifacts, and only a tag a person pushes leads to a draft release. The same trigger (or a
@@ -82,15 +83,36 @@ export function readNotes(dir = join(RELEASE_DIR, "notes"), toolsDir = join(APP_
   return notes;
 }
 
-/** `0.1.0-alpha.N` for N finished tools; `0.1.0` with all six. */
-export function versionFor(notes: readonly Note[]): string {
+/**
+ * The fix number of the release in `file` (`FIX`: `<tools>.<fix>`, e.g. `2.1`): a rebuild of the same
+ * finished tools with bug fixes (Uy Son, 2026-11-19). It counts only while `tools` is the number of
+ * finished tools: the next tool's note makes the file stale and the version goes back to
+ * `0.1.0-alpha.<tools>`, so nothing needs resetting by hand. No file means 0.
+ */
+export function readFix(tools: number, file = join(RELEASE_DIR, "FIX")): number {
+  if (!existsSync(file)) return 0;
+  const text = readFileSync(file, "utf8").trim();
+  const match = /^(\d+)\.([1-9]\d*)$/.exec(text);
+  if (!match) throw new Error(`FIX: "${text}" is not <tools>.<fix> with a fix of 1 or more (for example 2.1)`);
+  return Number(match[1]) === tools ? Number(match[2]) : 0;
+}
+
+/**
+ * `0.1.0-alpha.N` for N finished tools, `0.1.0-alpha.N.R` for the R-th fix release of the same N tools
+ * (`FIX`), `0.1.0` with all six. Fixes after `0.1.0` are `0.1.x` releases, not handled here.
+ */
+export function versionFor(notes: readonly Note[], fix = readFix(notes.length - 1)): string {
   const tools = notes.length - 1;
-  return tools >= TOOLS.length ? BASE_VERSION : `${BASE_VERSION}-alpha.${tools}`;
+  if (tools >= TOOLS.length) {
+    if (fix > 0) throw new Error("FIX: fix releases are for alpha versions; a fix to 0.1.0 is 0.1.1 (change BASE_VERSION)");
+    return BASE_VERSION;
+  }
+  return fix > 0 ? `${BASE_VERSION}-alpha.${tools}.${fix}` : `${BASE_VERSION}-alpha.${tools}`;
 }
 
 /** RELEASE-NOTES.md: the newest tool first, then the earlier ones, the base, and what is still to come. */
-export function releaseNotes(notes: readonly Note[]): string {
-  const version = versionFor(notes);
+export function releaseNotes(notes: readonly Note[], fix = readFix(notes.length - 1)): string {
+  const version = versionFor(notes, fix);
   const tools = notes.filter((n) => n.n > 0);
   const toolName = (id: string) => TOOLS.find((t) => t.id === id)!.name;
   const shipped = new Set(tools.map((t) => t.id));
@@ -98,6 +120,7 @@ export function releaseNotes(notes: readonly Note[]): string {
   const lines = [`# Mightyconsole ${version}`, ""];
   if (version === BASE_VERSION) lines.push("All six tools are in: the first complete web version.", "");
   else lines.push(`Alpha ${tools.length} of 6: ${tools.length === 0 ? "the base alone, no tool yet" : `tools in so far: ${tools.map((t) => toolName(t.id)).join(", ")}`}.`, "");
+  if (fix > 0) lines.push(`Fix release ${fix} of alpha ${tools.length}: the same tools, with bug fixes.`, "");
   lines.push(
     "Unsigned builds for Linux (x64, arm64; static), macOS (Apple silicon, Intel) and Windows (x64), and a",
     "container image per Linux architecture. They work offline. See README.md to start it; check the",
