@@ -30,6 +30,7 @@ import { CATEGORIES, buildTimeline, clockText, eventMs, eventSummary, failureCha
 import { CancelDialog, ResetDialog, SignalDialog, TerminateDialog, useAction } from "./ActionDialogs";
 import { QueriesPanel } from "./QueriesPanel";
 import { StartWorkflowSheet, type StartPrefill } from "./StartWorkflowSheet";
+import { HistoryPanel } from "./HistoryPanel";
 import { statusLabel } from "./WorkflowsTab";
 import { useWorkflow } from "./useWorkflow";
 
@@ -239,7 +240,19 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             />
           </TabsContent>
           <TabsContent value="history" className="flex min-h-0 flex-1 flex-col">
-            <HistoryPanel events={events} selected={selected} onSelect={setSelected} hasMore={state.hasMore} onLoadMore={state.loadMore} />
+            <HistoryPanel
+              workflowId={workflowId}
+              runId={detail.workflow.runId}
+              events={events}
+              total={detail.workflow.historyLength}
+              live={state.following}
+              pending={detail.pendingActivities}
+              selected={selected}
+              onSelect={setSelected}
+              hasMore={state.hasMore}
+              onLoadMore={state.loadMore}
+              onOpenPending={() => setSection("pending")}
+            />
           </TabsContent>
           <TabsContent value="io" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <InputResultPanel events={events} detail={detail} />
@@ -487,71 +500,6 @@ function SelectedStrip({ info, onOpenHistory }: { info: ItemInfo | undefined; on
         </Button>
       ) : null}
     </section>
-  );
-}
-
-function HistoryPanel({ events, selected, onSelect, hasMore, onLoadMore }: { events: HistoryEvent[]; selected: number | null; onSelect(id: number): void; hasMore: boolean; onLoadMore(): void }) {
-  const [category, setCategory] = useState<EventCategory | "All">("All");
-  const shown = useMemo(() => (category === "All" ? events : events.filter((e) => e.category === category)), [events, category]);
-  const picked = selected === null ? undefined : events.find((e) => e.eventId === selected);
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div role="group" aria-label="History filter" className="flex shrink-0 items-center gap-inline-md border-b border-border-subtle px-inset-lg py-stack-sm">
-          <Select aria-label="Category" items={Object.fromEntries((["All", ...CATEGORIES] as const).map((c) => [c, c === "All" ? "All events" : c.replace(/([a-z])([A-Z])/g, "$1 $2")]))} value={category} onValueChange={(v) => setCategory(v as EventCategory | "All")} size="small" className="w-panel-xs">
-            {(["All", ...CATEGORIES] as const).map((c) => (
-              <SelectItem key={c} value={c}>
-                {c === "All" ? "All events" : c.replace(/([a-z])([A-Z])/g, "$1 $2")}
-              </SelectItem>
-            ))}
-          </Select>
-        <Badge variant="neutral">
-          {formatCount(shown.length)} of {formatCount(events.length)}
-        </Badge>
-        {hasMore ? (
-          <Button size="small" onClick={onLoadMore}>
-            Load more events
-          </Button>
-        ) : null}
-      </div>
-      <div className="flex min-h-0 flex-1">
-        <Table aria-label="History events" className={cn("min-h-0 min-w-0 flex-1", gutterTable)}>
-          <TableHeader>
-            <TableRow>
-              <TableHead align="end">ID</TableHead>
-              <TableHead>Time</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Summary</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableVirtualBody
-            count={shown.length}
-            renderRow={(i) => {
-              const e = shown[i]!;
-              return (
-                <TableRow key={e.eventId} selected={e.eventId === selected} onClick={() => onSelect(e.eventId)} aria-selected={e.eventId === selected}>
-                  <TableCell align="end">{e.eventId}</TableCell>
-                  <TableCell>{formatTime(e.eventTime)}</TableCell>
-                  <TableCell>{e.eventType}</TableCell>
-                  <TableCell>{eventSummary(e)}</TableCell>
-                </TableRow>
-              );
-            }}
-          />
-        </Table>
-        <aside aria-label="Event attributes" className="flex min-h-0 w-1/3 min-w-0 flex-col border-s border-border-subtle">
-          {picked ? (
-            <>
-              <h3 className="px-inset-lg pt-inset-md pb-stack-sm text-body-1-strong text-fg">
-                #{picked.eventId} {picked.eventType}
-              </h3>
-              <JsonViewer value={picked.attributes} defaultExpandDepth={2} aria-label={`Attributes of event ${picked.eventId}`} className="min-h-0 flex-1" />
-            </>
-          ) : (
-            <EmptyLine>Select an event.</EmptyLine>
-          )}
-        </aside>
-      </div>
-    </div>
   );
 }
 
