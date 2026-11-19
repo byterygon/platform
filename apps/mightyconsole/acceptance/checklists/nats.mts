@@ -3,7 +3,7 @@
 // (password, nkey, no-auth default user, TLS, a token server and an operator-mode server for
 // .creds). The UI's: test/nats.test.tsx (jsdom), and a walk through the tool in a browser with
 // screenshots. Each TSK-85 batch wires its items; run
-// `pnpm --filter @byterygon/mightyconsole acceptance nats --lab-up --strict --only connect,core`
+// `pnpm --filter @byterygon/mightyconsole acceptance nats --lab-up --strict --only connect,core,streams,consumers`
 // until every item is wired.
 import { browser, type BrowserContext, cargo, type Checklist, vitest } from "../checklist.mts";
 
@@ -42,6 +42,21 @@ const send = `document.querySelector("[data-slot=composer] button[type=submit]")
 
 /** A tab of the tab strip by its title. */
 const tab = (title: string) => `[...document.querySelectorAll("[role=tab]")].find((t) => (t.textContent || "").includes(${JSON.stringify(title)}))`;
+
+/** Text of an element, as the helpers read it. */
+const TEXT = `((el) => (el.textContent || "").replace(/\\s+/g, " ").trim())`;
+/** A button shown on screen (tabs stay mounted, so a hidden one may come first). */
+const vbutton = (label: string) => `[...document.querySelectorAll("button")].find((b) => (${TEXT}(b) === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)}) && b.getClientRects().length > 0)`;
+/** A field shown on screen by its label. */
+const vfield = (label: string) => `(() => { const l = [...document.querySelectorAll("label")].find((x) => ${TEXT}(x) === ${JSON.stringify(label)} && x.getClientRects().length > 0); return l && (l.control || document.getElementById(l.htmlFor)); })()`;
+/** An input shown on screen by its aria-label. */
+const vinput = (label: string) => `[...document.querySelectorAll(${JSON.stringify(`[aria-label="${label}"]`)})].find((el) => el.getClientRects().length > 0)`;
+/** A radio of the open dialog by its label's text. */
+const radio = (label: string) => `[...document.querySelectorAll("[role=alertdialog] label")].find((l) => ${TEXT}(l).startsWith(${JSON.stringify(label)})).querySelector("[role=radio]")`;
+/** Presses an element as a pointer does (the data grid selects on pointerdown). */
+const press = (el: string) => `((el) => { for (const [T, type] of [[PointerEvent, "pointerdown"], [MouseEvent, "mousedown"], [PointerEvent, "pointerup"], [MouseEvent, "mouseup"], [MouseEvent, "click"]]) el.dispatchEvent(new T(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })(${el})`;
+/** A visible grid's first row's cell. */
+const firstCell = `[...document.querySelectorAll(".bdg-body > [role=row]:not([hidden]) [role=gridcell]")].find((c) => c.getClientRects().length > 0)`;
 
 export default {
   id: "nats",
@@ -116,13 +131,155 @@ export default {
       id: "streams",
       text: "Streams: list, info, create, edit, purge (all, by subject, keep), delete with the typed name; browse from first, last, a sequence and a time, with follow; the full payload of a large message.",
       lab: true,
-      checks: [],
+      checks: [
+        cargo("the_form_goes_onto_the_config_and_back"),
+        cargo("an_update_keeps_what_the_form_does_not_show"),
+        cargo("server_errors_name_their_field"),
+        lab("streams_list_info_create_update_purge_and_delete"),
+        lab("browse_from_first_last_a_sequence_and_a_time_and_follow"),
+        vitest("test/nats-jetstream.test.tsx", "a configuration goes to the form and back unchanged"),
+        vitest("test/nats-jetstream.test.tsx", "the list opens a stream; New stream creates one"),
+        vitest("test/nats-jetstream.test.tsx", "Info: counts, limits as bars"),
+        vitest("test/nats-jetstream.test.tsx", "Messages: browse from a sequence with a subject filter"),
+        vitest("test/nats-jetstream.test.tsx", "Purge: all needs the typed name"),
+        vitest("test/nats-jetstream.test.tsx", "Delete stream asks for the name"),
+        browser("create, edit, purge and delete a stream", async ({ page, origin, until, run, shot }) => {
+          const stamp = Date.now().toString(36).toUpperCase();
+          const name = `MC_WALK_${stamp}`;
+          const subject = `walk.${stamp.toLowerCase()}`;
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await run(`__mc.dblclick(__mc.item("Streams"))`);
+          await until(vbutton("ORDERS"), "the streams list");
+          await shot("streams list");
+          await run(`__mc.click(${vbutton("New stream")})`);
+          await until(vfield("Name*"), "the stream form");
+          await run(`__mc.type(${vfield("Name*")}, ${JSON.stringify(name)})`);
+          await run(`__mc.type(document.querySelector('[role=dialog] [aria-label="Subjects: add"]'), ${JSON.stringify(`${subject}.> `)})`);
+          await until(`__mc.button(${JSON.stringify(`Remove ${subject}.>`)})`, "the subject tag");
+          await run(`__mc.type(${vfield("Max messages")}, "1000")`);
+          await shot("new stream form");
+          await run(`__mc.click(${vbutton("Create stream")})`);
+          await until(`__mc.has(${JSON.stringify(`Created stream ${name}`)})`, "the created stream");
+          await run(`__mc.click(${vbutton("Open stream")})`);
+          await until(`${vbutton("Edit")} && !${vbutton("Edit")}.disabled`, "the stream's screen");
+          await run(`__mc.click(${vbutton("Edit")})`);
+          await until(`__mc.has(${JSON.stringify(`Edit stream ${name}`)})`, "the edit form");
+          await run(`__mc.type(${vfield("Max messages")}, "500")`);
+          await shot("edit stream with fields fixed after creation");
+          await run(`__mc.click(${vbutton("Update stream")})`);
+          await until(`__mc.has(${JSON.stringify(`Updated stream ${name}`)})`, "the updated stream");
+          // Three messages through Publish, then purge all but the newest, then the rest.
+          await run(`__mc.dblclick(__mc.item("Publish"))`);
+          await until(pubField("Subject"), "the Publish tab");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Mode"] button')].find((b) => (b.textContent || "").trim() === "Publish"))`);
+          for (const n of [1, 2, 3]) {
+            await run(`__mc.type(${pubField("Subject")}, ${JSON.stringify(`${subject}.m${n}`)})`);
+            await run(`__mc.click(${send})`);
+            await until(`__mc.has(${JSON.stringify(`on ${subject}.m${n}`)})`, `message ${n} published`);
+          }
+          await run(`__mc.click(${tab(name)})`);
+          await run(`__mc.click(${vbutton("Refresh")})`);
+          await until(`__mc.has("3 messages")`, "the three messages");
+          await run(`__mc.click(${vbutton("Purge…")})`);
+          await until(`document.querySelector("[role=alertdialog]")`, "the purge dialog");
+          await run(`__mc.click(${radio("Keep the newest n")})`);
+          await until(vfield("Keep"), "the keep field");
+          await run(`__mc.type(${vfield("Keep")}, "1")`);
+          await until(vbutton("Purge 2 messages"), "the count");
+          await shot("purge keeping the newest");
+          await run(`__mc.click(${vbutton("Purge 2 messages")})`);
+          await until(`__mc.has("Purged 2 messages")`, "the purge");
+          await until(`!document.querySelector("[role=alertdialog]") && ${vbutton("Purge…")} && !${vbutton("Purge…")}.disabled`, "the refreshed stream");
+          await run(`__mc.click(${vbutton("Purge…")})`);
+          await until(vfield(`Type ${name} to purge all`), "the typed name");
+          await run(`__mc.type(${vfield(`Type ${name} to purge all`)}, ${JSON.stringify(name)})`);
+          await shot("purge all with the typed name");
+          await run(`__mc.click(${vbutton("Purge 1 message")})`);
+          await until(`__mc.has("Purged 1 message")`, "the purge of all");
+          await until(`!document.querySelector("[role=alertdialog]")`, "the dialog closed");
+          await run(`__mc.click(${vbutton("More: Delete stream, Copy config as JSON")})`);
+          await until(`[...document.querySelectorAll("[role=menuitem]")].find((m) => (m.textContent || "").includes("Delete stream"))`, "the menu");
+          await run(`__mc.click([...document.querySelectorAll("[role=menuitem]")].find((m) => (m.textContent || "").includes("Delete stream")))`);
+          await until(vfield(`Type ${name} to confirm`), "the delete dialog");
+          await run(`__mc.type(${vfield(`Type ${name} to confirm`)}, ${JSON.stringify(name)})`);
+          await shot("delete stream with the typed name");
+          await run(`__mc.click(${vbutton("Delete stream")})`);
+          await until(`__mc.has(${JSON.stringify(`Deleted stream ${name}`)})`, "the deleted stream");
+        }),
+        browser("browse ORDERS and load a large message in full", async ({ page, origin, until, run, shot }) => {
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await until(`__mc.item("ORDERS")`, "ORDERS in the tree");
+          await run(`__mc.dblclick(__mc.item("ORDERS"))`);
+          await until(`__mc.has("1,051")`, "the stream's info");
+          await shot("stream info");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Stream views"] [role=tab]')].find((t) => (t.textContent || "").startsWith("Messages")))`);
+          await until(vbutton("Browse"), "the Messages view");
+          await run(`__mc.click(${vbutton("Browse")})`);
+          await until(`__mc.has("1,000 messages shown") || __mc.has("1000 messages shown")`, "the last 1,000");
+          await shot("browse the last 1,000");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Browse from"] button')].find((b) => (b.textContent || "").trim() === "Sequence"))`);
+          await run(`__mc.type(${vfield("Sequence")}, "10")`);
+          await run(`__mc.click(${vbutton("Browse")})`);
+          await until(`__mc.has("1,042 messages shown") || __mc.has("1042 messages shown")`, "from sequence 10");
+          await shot("browse from a sequence");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Browse from"] button')].find((b) => (b.textContent || "").trim() === "First"))`);
+          await run(`__mc.type(${vfield("Subject filter")}, "orders.large")`);
+          await run(`__mc.click(${vbutton("Browse")})`);
+          await until(`/(^|\\D)1 messages shown/.test(document.body.innerText) && __mc.has("Ended")`, "the large message");
+          await run(press(firstCell));
+          await until(`[...document.querySelectorAll("button")].find((b) => /Load full payload/.test(b.textContent || ""))`, "Load full payload");
+          await shot("a message over 1 MiB, cut");
+          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => /Load full payload/.test(b.textContent || "")))`);
+          await until(`![...document.querySelectorAll("button")].find((b) => /Load full payload/.test(b.textContent || ""))`, "the full payload");
+          await shot("the full payload");
+        }),
+      ],
     },
     {
       id: "consumers",
       text: "Consumers: list, info with pending and ack state, create, delete.",
       lab: true,
-      checks: [],
+      checks: [
+        cargo("a_consumer_from_the_form"),
+        lab("consumers_list_info_create_and_delete"),
+        vitest("test/nats-jetstream.test.tsx", "Consumers: the table opens a consumer"),
+        vitest("test/nats-jetstream.test.tsx", "pending, ack pending, redelivered and waiting"),
+        vitest("test/nats-jetstream.test.tsx", "the position: acknowledged"),
+        vitest("test/nats-jetstream.test.tsx", "the consumer form"),
+        browser("the billing consumer, then create and delete one", async ({ page, origin, until, run, shot }) => {
+          const name = `walk-${Date.now().toString(36)}`;
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await until(`__mc.item("ORDERS")`, "ORDERS in the tree");
+          await run(`__mc.dblclick(__mc.item("ORDERS"))`);
+          await until(`__mc.has("1,051")`, "the stream");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Stream views"] [role=tab]')].find((t) => (t.textContent || "").startsWith("Consumers")))`);
+          await until(vbutton("billing"), "the consumers table");
+          await shot("consumers of ORDERS");
+          await run(`__mc.click(${vbutton("billing")})`);
+          await until(`__mc.has("Where it is in the stream") && __mc.has("Ack pending")`, "the consumer");
+          await shot("consumer billing with its position");
+          await run(`__mc.click(${tab("ORDERS")})`);
+          await run(`__mc.click(${vbutton("New consumer…")})`);
+          await until(vfield("Name*"), "the consumer form");
+          await run(`__mc.type(${vfield("Name*")}, ${JSON.stringify(name)})`);
+          await run(`__mc.type(document.querySelector('[role=dialog] [aria-label="Filter subjects: add"]'), "orders.us.> ")`);
+          await until(`__mc.button("Remove orders.us.>")`, "the filter tag");
+          await shot("new consumer form");
+          await run(`__mc.click(${vbutton("Create consumer")})`);
+          await until(`__mc.has(${JSON.stringify(`Created consumer ${name}`)})`, "the created consumer");
+          await run(`__mc.click(${vbutton("Open consumer")})`);
+          await until(`__mc.has("Where it is in the stream") && ${vbutton("Delete…")}`, "the new consumer");
+          await until(`__mc.has("334") || __mc.has("333")`, "its pending messages");
+          await run(`__mc.click(${vbutton("Delete…")})`);
+          await until(`__mc.has(${JSON.stringify(`Delete consumer ${name} of ORDERS`)})`, "the confirmation");
+          await shot("delete consumer");
+          await run(`__mc.click(${vbutton("Delete consumer")})`);
+          await until(`__mc.has(${JSON.stringify(`${name} was deleted.`)})`, "the deleted consumer");
+        }),
+      ],
     },
     {
       id: "kv-objects",

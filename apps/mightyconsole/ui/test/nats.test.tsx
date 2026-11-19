@@ -94,7 +94,7 @@ describe("the module (spec §2.2, §6.2)", () => {
     expect(orderedTools(TOOLS)[0]).toBe(natsTool);
     expect(natsTool.mark).toBeDefined();
     const tree = natsTool.sidebarTree({ profile: record({ extras: { subjects: ["orders.>"] } }), connId: "c" });
-    expect(tree.map((n) => n.label)).toEqual(["Server", "Subjects", "Publish"]);
+    expect(tree.map((n) => n.label)).toEqual(["Server", "Subjects", "Streams", "Publish"]);
     const subjects = tree[1]!.children!;
     expect(subjects.map((n) => n.label)).toEqual(["Subscribe to…", "orders.>"]);
     expect(subjects[1]!.open).toEqual({ kind: "nats.subscribe", params: { subjects: ["orders.>"] }, title: "Subscribe orders.>" });

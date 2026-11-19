@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:9d12eb2462c0025ed80c5004b2c6bb01a9052a8cb1c71af78d28493fd359dfba";
+export const SCHEMA_HASH = "sha256:3a24a2e0e2713fb963147683e38b97ca5f0a07909649ea6f76e70b59c4a41a1a";
 
 // ---- Types
 
@@ -701,10 +701,54 @@ apiTotal: number, apiErrors: number, };
  */
 export type NatsAccountLimits = { maxMemory?: number, maxStorage?: number, maxStreams?: number, maxConsumers?: number, };
 
+export type NatsAckPolicy = "explicit" | "all" | "none";
+
 /**
  * How the profile authenticates (spec §6.1, `fields.auth`).
  */
 export type NatsAuth = "none" | "userPassword" | "token" | "nkey" | "creds";
+
+/**
+ * Where a browse stops (the last message read is the one at or before it).
+ */
+export type NatsBrowseEnd = { sequence?: number | null, timeUs?: number | null, };
+
+/**
+ * Where a browse starts.
+ */
+export type NatsBrowseFrom = "first" | "last" | "sequence" | "time";
+
+export type NatsBrowseInput = { connId: string, streamId: string, stream: string, start: NatsBrowseStart, end?: NatsBrowseEnd | null, 
+/**
+ * Only messages on this subject or pattern.
+ */
+subject?: string | null, 
+/**
+ * Keep reading new messages after the last one there was at the start.
+ */
+follow: boolean, decode?: DecodeOptions | null, filter?: Filter | null, maxScan?: number | null, limit?: number | null, };
+
+export type NatsBrowseStart = { from: NatsBrowseFrom, 
+/**
+ * `last`: how many sequences back (1 when absent).
+ */
+n?: number | null, 
+/**
+ * `sequence`: the first sequence read.
+ */
+sequence?: number | null, 
+/**
+ * `time`: the first message stored at or after it, microseconds since the epoch.
+ */
+timeUs?: number | null, };
+
+export type NatsClusterInfo = { name?: string, leader?: string, 
+/**
+ * The other peers (the leader is not one of them).
+ */
+replicas: Array<NatsPeer>, };
+
+export type NatsCompression = "none" | "s2";
 
 export type NatsConnIdInput = { connId: string, };
 
@@ -738,9 +782,96 @@ state: string, inMessages: number, outMessages: number, inBytes: number, outByte
 connects: number, };
 
 /**
+ * A consumer's configuration (spec §6.3, Consumer). A push consumer has a `deliverSubject`;
+ * without one it is a pull consumer.
+ */
+export type NatsConsumerConfig = { name: string, 
+/**
+ * Durable consumers stay; the others go after `inactiveThresholdMs` without a client.
+ */
+durable: boolean, description?: string, filterSubjects: Array<string>, deliver: NatsDeliverFrom, 
+/**
+ * `byStartSequence`.
+ */
+startSequence?: number, 
+/**
+ * `byStartTime`, microseconds since the epoch.
+ */
+startTimeUs?: number, ackPolicy: NatsAckPolicy, ackWaitMs: number, 
+/**
+ * Absent: no limit.
+ */
+maxDeliver?: number, maxAckPending?: number, 
+/**
+ * Pull: pull requests that may wait at once.
+ */
+maxWaiting?: number, replay: NatsReplayPolicy, 
+/**
+ * Push: where the server sends the messages.
+ */
+deliverSubject?: string, 
+/**
+ * Push: the queue group that shares them.
+ */
+deliverGroup?: string, inactiveThresholdMs?: number, headersOnly: boolean, 
+/**
+ * The stream's replica count when absent.
+ */
+replicas?: number, };
+
+export type NatsConsumerCreateInput = { connId: string, stream: string, config: NatsConsumerConfig, };
+
+/**
+ * A consumer's configuration and state (spec §6.5, `ConsumerInfo`).
+ */
+export type NatsConsumerInfo = { stream: string, name: string, createdUs: number, config: NatsConsumerConfig, 
+/**
+ * The last message delivered.
+ */
+delivered: NatsSequencePair, 
+/**
+ * Every message up to here is acknowledged.
+ */
+ackFloor: NatsSequencePair, 
+/**
+ * Messages not delivered yet.
+ */
+numPending: number, 
+/**
+ * Delivered and not acknowledged.
+ */
+numAckPending: number, numRedelivered: number, 
+/**
+ * Pull requests waiting.
+ */
+numWaiting: number, 
+/**
+ * Push: a client listens on the deliver subject.
+ */
+pushBound: boolean, paused: boolean, cluster?: NatsClusterInfo, };
+
+export type NatsConsumerInput = { connId: string, stream: string, consumer: string, };
+
+export type NatsDeliverFrom = "all" | "last" | "new" | "byStartSequence" | "byStartTime" | "lastPerSubject";
+
+export type NatsDiscard = "old" | "new";
+
+export type NatsGetMessageInput = { connId: string, stream: string, sequence: number, decode?: DecodeOptions | null, };
+
+/**
  * JetStream through a domain or an API prefix (leaf nodes, imported JetStream).
  */
 export type NatsJetStreamOptions = { domain?: string | null, apiPrefix?: string | null, };
+
+export type NatsPeer = { name: string, current: boolean, offline: boolean, 
+/**
+ * Operations behind the leader.
+ */
+lag?: number, 
+/**
+ * Since it was last heard from, in milliseconds.
+ */
+activeMs: number, };
 
 export type NatsPublishInput = { connId: string, subject: string, 
 /**
@@ -753,6 +884,8 @@ export type NatsPublishOutput = {
  * Payload bytes sent.
  */
 bytes: number, schemaRef?: string, };
+
+export type NatsReplayPolicy = "instant" | "original";
 
 export type NatsRequestInput = { connId: string, subject: string, headers?: Array<HeaderInput> | null, payload: ComposePayload, 
 /**
@@ -769,6 +902,13 @@ export type NatsRequestOutput = { reply: MessageRecord, elapsedMs: number,
  * Request payload bytes sent.
  */
 bytes: number, };
+
+export type NatsRetention = "limits" | "interest" | "workQueue";
+
+/**
+ * A consumer sequence and the stream sequence it stands for.
+ */
+export type NatsSequencePair = { consumer: number, stream: number, lastActiveUs?: number, };
 
 /**
  * What the server said about itself when the client connected (`INFO`).
@@ -792,6 +932,92 @@ rttMs: number, connection: NatsConnection,
  * `null` when JetStream is off on the server or for this account; `jetstreamError` says why.
  */
 jetstream: NatsAccountInfo | null, jetstreamError?: string, };
+
+export type NatsSourceState = { name: string, 
+/**
+ * Messages behind the origin.
+ */
+lag: number, activeMs?: number, filterSubject?: string, };
+
+export type NatsStorage = "file" | "memory";
+
+/**
+ * A stream's configuration as the form edits it (spec §6.3, Stream form). Limits are absent
+ * when there is none. `sealed`, `mirror` and `sources` are read only: `update` keeps the
+ * server's values.
+ */
+export type NatsStreamConfig = { name: string, description?: string, subjects: Array<string>, storage: NatsStorage, retention: NatsRetention, discard: NatsDiscard, 
+/**
+ * With `discard: new`: the per-subject limit refuses new messages too.
+ */
+discardNewPerSubject: boolean, maxMessages?: number, maxBytes?: number, maxAgeMs?: number, maxMessageSize?: number, maxMessagesPerSubject?: number, maxConsumers?: number, replicas: number, 
+/**
+ * The server's default (2 minutes) when absent.
+ */
+duplicateWindowMs?: number, allowDirect: boolean, allowRollup: boolean, denyDelete: boolean, denyPurge: boolean, compression: NatsCompression, sealed: boolean, mirror?: NatsStreamSource, sources: Array<NatsStreamSource>, };
+
+export type NatsStreamConfigInput = { connId: string, config: NatsStreamConfig, };
+
+/**
+ * A stream's configuration and state (spec §6.5, `StreamInfo`).
+ */
+export type NatsStreamInfo = { config: NatsStreamConfig, createdUs: number, state: NatsStreamState, cluster?: NatsClusterInfo, mirror?: NatsSourceState, sources: Array<NatsSourceState>, 
+/**
+ * The busiest subjects, at most 20, when `subjectCounts` was asked; empty otherwise.
+ */
+subjectCounts: Array<NatsSubjectCount>, };
+
+export type NatsStreamInfoInput = { connId: string, stream: string, 
+/**
+ * Also count the messages per subject (the busiest 20).
+ */
+subjectCounts?: boolean | null, };
+
+export type NatsStreamInput = { connId: string, stream: string, };
+
+/**
+ * What a purge removes: everything, one subject, all but the newest `keep`, or every message
+ * below `upToSequence` (that one stays). `subject` combines with either of the others.
+ */
+export type NatsStreamPurgeInput = { connId: string, stream: string, subject?: string | null, keep?: number | null, upToSequence?: number | null, };
+
+export type NatsStreamPurgeOutput = { purged: number, };
+
+/**
+ * A stream this one mirrors or sources from (read only here: spec §6.6, "later").
+ */
+export type NatsStreamSource = { name: string, filterSubject?: string, 
+/**
+ * The other side's JetStream API prefix, for a source in another account or domain.
+ */
+externalApi?: string, };
+
+export type NatsStreamState = { messages: number, bytes: number, firstSequence: number, 
+/**
+ * Microseconds since the epoch; absent for an empty stream.
+ */
+firstUs?: number, lastSequence: number, lastUs?: number, consumers: number, subjects: number, 
+/**
+ * Messages deleted inside the range (interior gaps).
+ */
+deleted: number, };
+
+/**
+ * One line of the stream list (spec §6.5, `StreamSummary`).
+ */
+export type NatsStreamSummary = { name: string, description?: string, subjects: Array<string>, messages: number, bytes: number, consumers: number, createdUs: number, storage: NatsStorage, retention: NatsRetention, sealed: boolean, 
+/**
+ * The stream it mirrors.
+ */
+mirror?: string, };
+
+export type NatsStreamsListInput = { connId: string, 
+/**
+ * Only streams that take this subject.
+ */
+subject?: string | null, };
+
+export type NatsSubjectCount = { subject: string, messages: number, };
 
 export type NatsSubscribeInput = { connId: string, streamId: string, 
 /**
@@ -1765,6 +1991,18 @@ export interface Procedures {
   readonly "nats.core.request": ProcedureDef<"mutation", NatsRequestInput, NatsRequestOutput, ToolError>;
   readonly "nats.core.subscribe": ProcedureDef<"stream", NatsSubscribeInput, TailSummary, ToolError>;
   readonly "nats.disconnect": ProcedureDef<"mutation", NatsConnIdInput, Empty, ToolError>;
+  readonly "nats.js.consumers.create": ProcedureDef<"mutation", NatsConsumerCreateInput, NatsConsumerInfo, ToolError>;
+  readonly "nats.js.consumers.delete": ProcedureDef<"mutation", NatsConsumerInput, Empty, ToolError>;
+  readonly "nats.js.consumers.info": ProcedureDef<"query", NatsConsumerInput, NatsConsumerInfo, ToolError>;
+  readonly "nats.js.consumers.list": ProcedureDef<"query", NatsStreamInput, Array<NatsConsumerInfo>, ToolError>;
+  readonly "nats.js.streams.browse": ProcedureDef<"stream", NatsBrowseInput, TailSummary, ToolError>;
+  readonly "nats.js.streams.create": ProcedureDef<"mutation", NatsStreamConfigInput, NatsStreamInfo, ToolError>;
+  readonly "nats.js.streams.delete": ProcedureDef<"mutation", NatsStreamInput, Empty, ToolError>;
+  readonly "nats.js.streams.getMessage": ProcedureDef<"query", NatsGetMessageInput, MessageRecord, ToolError>;
+  readonly "nats.js.streams.info": ProcedureDef<"query", NatsStreamInfoInput, NatsStreamInfo, ToolError>;
+  readonly "nats.js.streams.list": ProcedureDef<"query", NatsStreamsListInput, Array<NatsStreamSummary>, ToolError>;
+  readonly "nats.js.streams.purge": ProcedureDef<"mutation", NatsStreamPurgeInput, NatsStreamPurgeOutput, ToolError>;
+  readonly "nats.js.streams.update": ProcedureDef<"mutation", NatsStreamConfigInput, NatsStreamInfo, ToolError>;
   readonly "nats.server.info": ProcedureDef<"query", NatsConnIdInput, NatsServerInfoOutput, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
@@ -1872,6 +2110,24 @@ export interface Api {
       readonly subscribe: Procedures["nats.core.subscribe"];
     };
     readonly disconnect: Procedures["nats.disconnect"];
+    readonly js: {
+      readonly consumers: {
+        readonly create: Procedures["nats.js.consumers.create"];
+        readonly delete: Procedures["nats.js.consumers.delete"];
+        readonly info: Procedures["nats.js.consumers.info"];
+        readonly list: Procedures["nats.js.consumers.list"];
+      };
+      readonly streams: {
+        readonly browse: Procedures["nats.js.streams.browse"];
+        readonly create: Procedures["nats.js.streams.create"];
+        readonly delete: Procedures["nats.js.streams.delete"];
+        readonly getMessage: Procedures["nats.js.streams.getMessage"];
+        readonly info: Procedures["nats.js.streams.info"];
+        readonly list: Procedures["nats.js.streams.list"];
+        readonly purge: Procedures["nats.js.streams.purge"];
+        readonly update: Procedures["nats.js.streams.update"];
+      };
+    };
     readonly server: {
       readonly info: Procedures["nats.server.info"];
     };
@@ -2391,6 +2647,132 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
+    },
+    js: {
+      consumers: {
+        create: {
+          name: "nats.js.consumers.create",
+          kind: "mutation",
+          perm: "nats.write",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        delete: {
+          name: "nats.js.consumers.delete",
+          kind: "mutation",
+          perm: "nats.destroy",
+          risk: "Destructive",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        info: {
+          name: "nats.js.consumers.info",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        list: {
+          name: "nats.js.consumers.list",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+      },
+      streams: {
+        browse: {
+          name: "nats.js.streams.browse",
+          kind: "stream",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 43200000,
+        },
+        create: {
+          name: "nats.js.streams.create",
+          kind: "mutation",
+          perm: "nats.write",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        delete: {
+          name: "nats.js.streams.delete",
+          kind: "mutation",
+          perm: "nats.destroy",
+          risk: "Destructive",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        getMessage: {
+          name: "nats.js.streams.getMessage",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        info: {
+          name: "nats.js.streams.info",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        list: {
+          name: "nats.js.streams.list",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        purge: {
+          name: "nats.js.streams.purge",
+          kind: "mutation",
+          perm: "nats.destroy",
+          risk: "Destructive",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        update: {
+          name: "nats.js.streams.update",
+          kind: "mutation",
+          perm: "nats.write",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+      },
     },
     server: {
       info: {

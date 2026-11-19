@@ -2639,6 +2639,14 @@
       },
       "type": "object"
     },
+    "NatsAckPolicy": {
+      "enum": [
+        "explicit",
+        "all",
+        "none"
+      ],
+      "type": "string"
+    },
     "NatsAuth": {
       "description": "How the profile authenticates (spec §6.1, `fields.auth`).",
       "enum": [
@@ -2647,6 +2655,207 @@
         "token",
         "nkey",
         "creds"
+      ],
+      "type": "string"
+    },
+    "NatsBrowseEnd": {
+      "description": "Where a browse stops (the last message read is the one at or before it).",
+      "properties": {
+        "sequence": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "timeUs": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "NatsBrowseFrom": {
+      "description": "Where a browse starts.",
+      "oneOf": [
+        {
+          "enum": [
+            "first",
+            "sequence",
+            "time"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "last",
+          "description": "The last `n` sequences of the stream.",
+          "type": "string"
+        }
+      ]
+    },
+    "NatsBrowseInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "end": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsBrowseEnd"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Filter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "follow": {
+          "description": "Keep reading new messages after the last one there was at the start.",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxScan": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "start": {
+          "$ref": "#/$defs/NatsBrowseStart"
+        },
+        "stream": {
+          "type": "string"
+        },
+        "streamId": {
+          "type": "string"
+        },
+        "subject": {
+          "default": null,
+          "description": "Only messages on this subject or pattern.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "streamId",
+        "stream",
+        "start",
+        "follow"
+      ],
+      "type": "object"
+    },
+    "NatsBrowseStart": {
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/NatsBrowseFrom"
+        },
+        "n": {
+          "default": null,
+          "description": "`last`: how many sequences back (1 when absent).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sequence": {
+          "default": null,
+          "description": "`sequence`: the first sequence read.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "timeUs": {
+          "default": null,
+          "description": "`time`: the first message stored at or after it, microseconds since the epoch.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "from"
+      ],
+      "type": "object"
+    },
+    "NatsClusterInfo": {
+      "properties": {
+        "leader": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replicas": {
+          "description": "The other peers (the leader is not one of them).",
+          "items": {
+            "$ref": "#/$defs/NatsPeer"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "replicas"
+      ],
+      "type": "object"
+    },
+    "NatsCompression": {
+      "enum": [
+        "none",
+        "s2"
       ],
       "type": "string"
     },
@@ -2760,6 +2969,298 @@
       ],
       "type": "object"
     },
+    "NatsConsumerConfig": {
+      "description": "A consumer's configuration (spec §6.3, Consumer). A push consumer has a `deliverSubject`;\nwithout one it is a pull consumer.",
+      "properties": {
+        "ackPolicy": {
+          "$ref": "#/$defs/NatsAckPolicy"
+        },
+        "ackWaitMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "deliver": {
+          "$ref": "#/$defs/NatsDeliverFrom"
+        },
+        "deliverGroup": {
+          "description": "Push: the queue group that shares them.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deliverSubject": {
+          "description": "Push: where the server sends the messages.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "durable": {
+          "description": "Durable consumers stay; the others go after `inactiveThresholdMs` without a client.",
+          "type": "boolean"
+        },
+        "filterSubjects": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "headersOnly": {
+          "type": "boolean"
+        },
+        "inactiveThresholdMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxAckPending": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxDeliver": {
+          "description": "Absent: no limit.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxWaiting": {
+          "description": "Pull: pull requests that may wait at once.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "replay": {
+          "$ref": "#/$defs/NatsReplayPolicy"
+        },
+        "replicas": {
+          "description": "The stream's replica count when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "startSequence": {
+          "description": "`byStartSequence`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "startTimeUs": {
+          "description": "`byStartTime`, microseconds since the epoch.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "durable",
+        "filterSubjects",
+        "deliver",
+        "ackPolicy",
+        "ackWaitMs",
+        "replay",
+        "headersOnly"
+      ],
+      "type": "object"
+    },
+    "NatsConsumerCreateInput": {
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/NatsConsumerConfig"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "stream",
+        "config"
+      ],
+      "type": "object"
+    },
+    "NatsConsumerInfo": {
+      "description": "A consumer's configuration and state (spec §6.5, `ConsumerInfo`).",
+      "properties": {
+        "ackFloor": {
+          "$ref": "#/$defs/NatsSequencePair",
+          "description": "Every message up to here is acknowledged."
+        },
+        "cluster": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsClusterInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "config": {
+          "$ref": "#/$defs/NatsConsumerConfig"
+        },
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "delivered": {
+          "$ref": "#/$defs/NatsSequencePair",
+          "description": "The last message delivered."
+        },
+        "name": {
+          "type": "string"
+        },
+        "numAckPending": {
+          "description": "Delivered and not acknowledged.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "numPending": {
+          "description": "Messages not delivered yet.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "numRedelivered": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "numWaiting": {
+          "description": "Pull requests waiting.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "pushBound": {
+          "description": "Push: a client listens on the deliver subject.",
+          "type": "boolean"
+        },
+        "stream": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "stream",
+        "name",
+        "createdUs",
+        "config",
+        "delivered",
+        "ackFloor",
+        "numPending",
+        "numAckPending",
+        "numRedelivered",
+        "numWaiting",
+        "pushBound",
+        "paused"
+      ],
+      "type": "object"
+    },
+    "NatsConsumerInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "consumer": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "stream",
+        "consumer"
+      ],
+      "type": "object"
+    },
+    "NatsDeliverFrom": {
+      "enum": [
+        "all",
+        "last",
+        "new",
+        "byStartSequence",
+        "byStartTime",
+        "lastPerSubject"
+      ],
+      "type": "string"
+    },
+    "NatsDiscard": {
+      "enum": [
+        "old",
+        "new"
+      ],
+      "type": "string"
+    },
+    "NatsGetMessageInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stream": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "stream",
+        "sequence"
+      ],
+      "type": "object"
+    },
     "NatsJetStreamOptions": {
       "description": "JetStream through a domain or an API prefix (leaf nodes, imported JetStream).",
       "properties": {
@@ -2778,6 +3279,41 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "NatsPeer": {
+      "properties": {
+        "activeMs": {
+          "description": "Since it was last heard from, in milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "current": {
+          "type": "boolean"
+        },
+        "lag": {
+          "description": "Operations behind the leader.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "offline": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "current",
+        "offline",
+        "activeMs"
+      ],
       "type": "object"
     },
     "NatsPublishInput": {
@@ -2836,6 +3372,13 @@
         "bytes"
       ],
       "type": "object"
+    },
+    "NatsReplayPolicy": {
+      "enum": [
+        "instant",
+        "original"
+      ],
+      "type": "string"
     },
     "NatsRequestInput": {
       "properties": {
@@ -2908,6 +3451,41 @@
         "reply",
         "elapsedMs",
         "bytes"
+      ],
+      "type": "object"
+    },
+    "NatsRetention": {
+      "enum": [
+        "limits",
+        "interest",
+        "workQueue"
+      ],
+      "type": "string"
+    },
+    "NatsSequencePair": {
+      "description": "A consumer sequence and the stream sequence it stands for.",
+      "properties": {
+        "consumer": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lastActiveUs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "stream": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "consumer",
+        "stream"
       ],
       "type": "object"
     },
@@ -3044,6 +3622,542 @@
         "rttMs",
         "connection",
         "jetstream"
+      ],
+      "type": "object"
+    },
+    "NatsSourceState": {
+      "properties": {
+        "activeMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "filterSubject": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lag": {
+          "description": "Messages behind the origin.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "lag"
+      ],
+      "type": "object"
+    },
+    "NatsStorage": {
+      "enum": [
+        "file",
+        "memory"
+      ],
+      "type": "string"
+    },
+    "NatsStreamConfig": {
+      "description": "A stream's configuration as the form edits it (spec §6.3, Stream form). Limits are absent\nwhen there is none. `sealed`, `mirror` and `sources` are read only: `update` keeps the\nserver's values.",
+      "properties": {
+        "allowDirect": {
+          "type": "boolean"
+        },
+        "allowRollup": {
+          "type": "boolean"
+        },
+        "compression": {
+          "$ref": "#/$defs/NatsCompression"
+        },
+        "denyDelete": {
+          "type": "boolean"
+        },
+        "denyPurge": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "discard": {
+          "$ref": "#/$defs/NatsDiscard"
+        },
+        "discardNewPerSubject": {
+          "description": "With `discard: new`: the per-subject limit refuses new messages too.",
+          "type": "boolean"
+        },
+        "duplicateWindowMs": {
+          "description": "The server's default (2 minutes) when absent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxAgeMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxBytes": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxConsumers": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxMessageSize": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxMessages": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxMessagesPerSubject": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mirror": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsStreamSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retention": {
+          "$ref": "#/$defs/NatsRetention"
+        },
+        "sealed": {
+          "type": "boolean"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/NatsStreamSource"
+          },
+          "type": "array"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "subjects": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "subjects",
+        "storage",
+        "retention",
+        "discard",
+        "discardNewPerSubject",
+        "replicas",
+        "allowDirect",
+        "allowRollup",
+        "denyDelete",
+        "denyPurge",
+        "compression",
+        "sealed",
+        "sources"
+      ],
+      "type": "object"
+    },
+    "NatsStreamConfigInput": {
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/NatsStreamConfig"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "config"
+      ],
+      "type": "object"
+    },
+    "NatsStreamInfo": {
+      "description": "A stream's configuration and state (spec §6.5, `StreamInfo`).",
+      "properties": {
+        "cluster": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsClusterInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "config": {
+          "$ref": "#/$defs/NatsStreamConfig"
+        },
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "mirror": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsSourceState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/NatsSourceState"
+          },
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/NatsStreamState"
+        },
+        "subjectCounts": {
+          "description": "The busiest subjects, at most 20, when `subjectCounts` was asked; empty otherwise.",
+          "items": {
+            "$ref": "#/$defs/NatsSubjectCount"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "config",
+        "createdUs",
+        "state",
+        "sources",
+        "subjectCounts"
+      ],
+      "type": "object"
+    },
+    "NatsStreamInfoInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "string"
+        },
+        "subjectCounts": {
+          "default": null,
+          "description": "Also count the messages per subject (the busiest 20).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "stream"
+      ],
+      "type": "object"
+    },
+    "NatsStreamInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "stream"
+      ],
+      "type": "object"
+    },
+    "NatsStreamPurgeInput": {
+      "description": "What a purge removes: everything, one subject, all but the newest `keep`, or every message\nbelow `upToSequence` (that one stays). `subject` combines with either of the others.",
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "keep": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "stream": {
+          "type": "string"
+        },
+        "subject": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "upToSequence": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "stream"
+      ],
+      "type": "object"
+    },
+    "NatsStreamPurgeOutput": {
+      "properties": {
+        "purged": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "purged"
+      ],
+      "type": "object"
+    },
+    "NatsStreamSource": {
+      "description": "A stream this one mirrors or sources from (read only here: spec §6.6, \"later\").",
+      "properties": {
+        "externalApi": {
+          "description": "The other side's JetStream API prefix, for a source in another account or domain.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filterSubject": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "NatsStreamState": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "consumers": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "deleted": {
+          "description": "Messages deleted inside the range (interior gaps).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "firstSequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "firstUs": {
+          "description": "Microseconds since the epoch; absent for an empty stream.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "lastSequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lastUs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "messages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "subjects": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "messages",
+        "bytes",
+        "firstSequence",
+        "lastSequence",
+        "consumers",
+        "subjects",
+        "deleted"
+      ],
+      "type": "object"
+    },
+    "NatsStreamSummary": {
+      "description": "One line of the stream list (spec §6.5, `StreamSummary`).",
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "consumers": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "messages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mirror": {
+          "description": "The stream it mirrors.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "retention": {
+          "$ref": "#/$defs/NatsRetention"
+        },
+        "sealed": {
+          "type": "boolean"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "subjects": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "subjects",
+        "messages",
+        "bytes",
+        "consumers",
+        "createdUs",
+        "storage",
+        "retention",
+        "sealed"
+      ],
+      "type": "object"
+    },
+    "NatsStreamsListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "subject": {
+          "default": null,
+          "description": "Only streams that take this subject.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "NatsSubjectCount": {
+      "properties": {
+        "messages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject",
+        "messages"
       ],
       "type": "object"
     },
@@ -7187,6 +8301,264 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/NatsConsumerCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.js.consumers.create",
+      "output": {
+        "$ref": "#/$defs/NatsConsumerInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsConsumerInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.js.consumers.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsConsumerInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.js.consumers.info",
+      "output": {
+        "$ref": "#/$defs/NatsConsumerInfo"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsStreamInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.js.consumers.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsConsumerInfo"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsBrowseInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "nats.js.streams.browse",
+      "output": {
+        "$ref": "#/$defs/TailSummary"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsStreamConfigInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.js.streams.create",
+      "output": {
+        "$ref": "#/$defs/NatsStreamInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsStreamInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.js.streams.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsGetMessageInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.js.streams.getMessage",
+      "output": {
+        "$ref": "#/$defs/MessageRecord"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsStreamInfoInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.js.streams.info",
+      "output": {
+        "$ref": "#/$defs/NatsStreamInfo"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsStreamsListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.js.streams.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsStreamSummary"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsStreamPurgeInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.js.streams.purge",
+      "output": {
+        "$ref": "#/$defs/NatsStreamPurgeOutput"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsStreamConfigInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.js.streams.update",
+      "output": {
+        "$ref": "#/$defs/NatsStreamInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/NatsConnIdInput"
       },
       "kind": "query",
@@ -7865,5 +9237,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:9d12eb2462c0025ed80c5004b2c6bb01a9052a8cb1c71af78d28493fd359dfba"
+  "schema_hash": "sha256:3a24a2e0e2713fb963147683e38b97ca5f0a07909649ea6f76e70b59c4a41a1a"
 }

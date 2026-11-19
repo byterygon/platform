@@ -19,7 +19,7 @@ import { Composer, type ComposerDraft, type ComposerTemplate, EMPTY_DRAFT, heade
 import { describeError, schemaChoices } from "@/messaging/compose-helpers";
 import type { TabProps } from "../types";
 import { bookmarksOf, requestTimeoutOf, validateSubject } from "./profile";
-import { formatSize } from "./ServerTab";
+import { formatSize } from "./format";
 
 export type PublishMode = "publish" | "request";
 
