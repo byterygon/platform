@@ -54,6 +54,8 @@ export interface ComposerProps {
   target: ReactNode;
   /** Whether the system has a key apart from the target (Kafka). */
   withKey?: boolean;
+  /** Whether messages carry headers; KV entries do not. */
+  withHeaders?: boolean;
   keyLabel?: string;
   schemas: readonly SchemaChoice[];
   draft: ComposerDraft;
@@ -70,7 +72,7 @@ export interface ComposerProps {
   describe(error: unknown): { title: string; field?: string; line?: number; column?: number };
 }
 
-export function Composer({ target, withKey = false, keyLabel = "Key", schemas, draft, onDraftChange, encode, inspect, onSend, templates, onSaveTemplate, describe }: ComposerProps) {
+export function Composer({ target, withKey = false, withHeaders = true, keyLabel = "Key", schemas, draft, onDraftChange, encode, inspect, onSend, templates, onSaveTemplate, describe }: ComposerProps) {
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [diagnostics, setDiagnostics] = useState<CodeDiagnostic[]>([]);
   const [validated, setValidated] = useState<EncodeOutput | null>(null);
@@ -194,10 +196,12 @@ export function Composer({ target, withKey = false, keyLabel = "Key", schemas, d
           </Field>
         </div>
       ) : null}
-      <Field>
-        <FieldLabel>Headers</FieldLabel>
-        <KeyValueEditor aria-label="Headers" keyLabel="Name" value={draft.headers} onChange={(headers) => onDraftChange({ ...draft, headers })} valueEncodings={["text", "base64"]} addLabel="Add header" size="small" />
-      </Field>
+      {withHeaders ? (
+        <Field>
+          <FieldLabel>Headers</FieldLabel>
+          <KeyValueEditor aria-label="Headers" keyLabel="Name" value={draft.headers} onChange={(headers) => onDraftChange({ ...draft, headers })} valueEncodings={["text", "base64"]} addLabel="Add header" size="small" />
+        </Field>
+      ) : null}
       <div className="flex flex-wrap items-end gap-inline-sm">
         <Field className="w-auto">
           <FieldLabel>Codec</FieldLabel>

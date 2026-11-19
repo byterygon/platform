@@ -14,6 +14,7 @@
 
 pub mod client;
 pub mod jetstream;
+pub mod kv;
 
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -712,6 +713,7 @@ pub fn mount(router: &Router, hub: &Arc<Hub>) -> Result<(), RegistryError> {
     router.mount(NatsServerApi(Arc::clone(hub)))?;
     router.mount(NatsCoreApi(Arc::clone(hub)))?;
     jetstream::mount(router, hub)?;
+    kv::mount(router, hub)?;
     Ok(())
 }
 

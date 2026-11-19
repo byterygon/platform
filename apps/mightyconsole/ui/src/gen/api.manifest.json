@@ -3449,6 +3449,529 @@
       },
       "type": "object"
     },
+    "NatsKvBucketInfo": {
+      "description": "A bucket's configuration and state (spec §6.5, `KvBucketInfo`).",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "compression": {
+          "type": "boolean"
+        },
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "history": {
+          "description": "Revisions kept per key.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "maxBytes": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxValueSize": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mirror": {
+          "description": "The bucket it mirrors (a leaf node's copy).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "ttlMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "values": {
+          "description": "Entries stored, every revision and delete marker included.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bucket",
+        "values",
+        "bytes",
+        "history",
+        "storage",
+        "replicas",
+        "compression",
+        "createdUs"
+      ],
+      "type": "object"
+    },
+    "NatsKvBucketInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket"
+      ],
+      "type": "object"
+    },
+    "NatsKvBucketsListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "NatsKvConfig": {
+      "description": "A new bucket (spec §6.4: history, TTL, max value size, storage, replicas).",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "compression": {
+          "type": "boolean"
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "history": {
+          "description": "Revisions kept per key, 1 to 64.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "maxBytes": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxValueSize": {
+          "default": null,
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "ttlMs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bucket",
+        "history",
+        "storage",
+        "replicas",
+        "compression"
+      ],
+      "type": "object"
+    },
+    "NatsKvCreateInput": {
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/NatsKvConfig"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "config"
+      ],
+      "type": "object"
+    },
+    "NatsKvGetInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "key": {
+          "type": "string"
+        },
+        "revision": {
+          "default": null,
+          "description": "The latest when absent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "key"
+      ],
+      "type": "object"
+    },
+    "NatsKvHistoryInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "key"
+      ],
+      "type": "object"
+    },
+    "NatsKvKey": {
+      "description": "One key of the list: its last entry.",
+      "properties": {
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "key": {
+          "type": "string"
+        },
+        "operation": {
+          "description": "`put`, `delete` or `purge`.",
+          "type": "string"
+        },
+        "preview": {
+          "description": "The value's first characters when it is UTF-8.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "revision",
+        "operation",
+        "createdUs",
+        "size"
+      ],
+      "type": "object"
+    },
+    "NatsKvKeyInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "key"
+      ],
+      "type": "object"
+    },
+    "NatsKvKeysInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "filter": {
+          "default": null,
+          "description": "A key or pattern (`feature.>`, `limits.*`); every key when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "includeDeleted": {
+          "default": null,
+          "description": "Keys whose last entry is a delete or purge marker too.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "description": "At most 10,000 (the default).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "bucket"
+      ],
+      "type": "object"
+    },
+    "NatsKvKeysOutput": {
+      "properties": {
+        "keys": {
+          "items": {
+            "$ref": "#/$defs/NatsKvKey"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "description": "More keys match than were listed: narrow with a filter.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "keys",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "NatsKvPutInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "expectRevision": {
+          "default": null,
+          "description": "The key's current revision; 0 when it must not exist yet. A different one is `Conflict`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ComposePayload"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "key",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "NatsKvPutOutput": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schemaRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "revision",
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "NatsKvWatchInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Filter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fromRevision": {
+          "default": null,
+          "description": "Start at this revision (overrides `includeHistory`).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "includeHistory": {
+          "default": null,
+          "description": "Every revision kept first, then the changes (else the current value of each key first).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "keys": {
+          "default": null,
+          "description": "A key or pattern; `>` for the whole bucket.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxScan": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "streamId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "streamId",
+        "bucket"
+      ],
+      "type": "object"
+    },
     "NatsPeer": {
       "properties": {
         "activeMs": {
@@ -8727,6 +9250,243 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/NatsKvCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.buckets.create",
+      "output": {
+        "$ref": "#/$defs/NatsKvBucketInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvBucketInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.buckets.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvBucketInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.buckets.info",
+      "output": {
+        "$ref": "#/$defs/NatsKvBucketInfo"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvBucketsListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.buckets.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsKvBucketInfo"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvKeyInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvGetInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.get",
+      "output": {
+        "$ref": "#/$defs/MessageRecord"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvHistoryInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.history",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/MessageRecord"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvKeysInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.keys",
+      "output": {
+        "$ref": "#/$defs/NatsKvKeysOutput"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvKeyInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.purge",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvPutInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.put",
+      "output": {
+        "$ref": "#/$defs/NatsKvPutOutput"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvWatchInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "nats.kv.watch",
+      "output": {
+        "$ref": "#/$defs/TailSummary"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/NatsConnIdInput"
       },
       "kind": "query",
@@ -9408,5 +10168,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:255b87e485adeae35a51c36985a69e9a12727832bee83e91d29895902ee0fd4e"
+  "schema_hash": "sha256:ce34e68a83b5f85362526ccb61ffe21060ea46b142228b6fb12a72028c1f3f90"
 }

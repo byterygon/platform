@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:255b87e485adeae35a51c36985a69e9a12727832bee83e91d29895902ee0fd4e";
+export const SCHEMA_HASH = "sha256:ce34e68a83b5f85362526ccb61ffe21060ea46b142228b6fb12a72028c1f3f90";
 
 // ---- Types
 
@@ -932,6 +932,103 @@ export type NatsGetMessageInput = { connId: string, stream: string, sequence: nu
  * JetStream through a domain or an API prefix (leaf nodes, imported JetStream).
  */
 export type NatsJetStreamOptions = { domain?: string | null, apiPrefix?: string | null, };
+
+/**
+ * A bucket's configuration and state (spec §6.5, `KvBucketInfo`).
+ */
+export type NatsKvBucketInfo = { bucket: string, description?: string, 
+/**
+ * Entries stored, every revision and delete marker included.
+ */
+values: number, bytes: number, 
+/**
+ * Revisions kept per key.
+ */
+history: number, ttlMs?: number, maxValueSize?: number, maxBytes?: number, storage: NatsStorage, replicas: number, compression: boolean, createdUs: number, 
+/**
+ * The bucket it mirrors (a leaf node's copy).
+ */
+mirror?: string, };
+
+export type NatsKvBucketInput = { connId: string, bucket: string, };
+
+export type NatsKvBucketsListInput = { connId: string, };
+
+/**
+ * A new bucket (spec §6.4: history, TTL, max value size, storage, replicas).
+ */
+export type NatsKvConfig = { bucket: string, description?: string | null, 
+/**
+ * Revisions kept per key, 1 to 64.
+ */
+history: number, ttlMs?: number | null, maxValueSize?: number | null, maxBytes?: number | null, storage: NatsStorage, replicas: number, compression: boolean, };
+
+export type NatsKvCreateInput = { connId: string, config: NatsKvConfig, };
+
+export type NatsKvGetInput = { connId: string, bucket: string, key: string, 
+/**
+ * The latest when absent.
+ */
+revision?: number | null, decode?: DecodeOptions | null, };
+
+export type NatsKvHistoryInput = { connId: string, bucket: string, key: string, decode?: DecodeOptions | null, };
+
+/**
+ * One key of the list: its last entry.
+ */
+export type NatsKvKey = { key: string, revision: number, 
+/**
+ * `put`, `delete` or `purge`.
+ */
+operation: string, createdUs: number, size: number, 
+/**
+ * The value's first characters when it is UTF-8.
+ */
+preview?: string, };
+
+export type NatsKvKeyInput = { connId: string, bucket: string, key: string, };
+
+export type NatsKvKeysInput = { connId: string, bucket: string, 
+/**
+ * A key or pattern (`feature.>`, `limits.*`); every key when absent.
+ */
+filter?: string | null, 
+/**
+ * At most 10,000 (the default).
+ */
+limit?: number | null, 
+/**
+ * Keys whose last entry is a delete or purge marker too.
+ */
+includeDeleted?: boolean | null, };
+
+export type NatsKvKeysOutput = { keys: Array<NatsKvKey>, 
+/**
+ * More keys match than were listed: narrow with a filter.
+ */
+truncated: boolean, };
+
+export type NatsKvPutInput = { connId: string, bucket: string, key: string, payload: ComposePayload, 
+/**
+ * The key's current revision; 0 when it must not exist yet. A different one is `Conflict`.
+ */
+expectRevision?: number | null, };
+
+export type NatsKvPutOutput = { revision: number, bytes: number, schemaRef?: string, };
+
+export type NatsKvWatchInput = { connId: string, streamId: string, bucket: string, 
+/**
+ * A key or pattern; `>` for the whole bucket.
+ */
+keys?: string | null, 
+/**
+ * Every revision kept first, then the changes (else the current value of each key first).
+ */
+includeHistory?: boolean | null, 
+/**
+ * Start at this revision (overrides `includeHistory`).
+ */
+fromRevision?: number | null, decode?: DecodeOptions | null, filter?: Filter | null, maxScan?: number | null, limit?: number | null, };
 
 export type NatsPeer = { name: string, current: boolean, offline: boolean, 
 /**
@@ -2073,6 +2170,17 @@ export interface Procedures {
   readonly "nats.js.streams.list": ProcedureDef<"query", NatsStreamsListInput, Array<NatsStreamSummary>, ToolError>;
   readonly "nats.js.streams.purge": ProcedureDef<"mutation", NatsStreamPurgeInput, NatsStreamPurgeOutput, ToolError>;
   readonly "nats.js.streams.update": ProcedureDef<"mutation", NatsStreamConfigInput, NatsStreamInfo, ToolError>;
+  readonly "nats.kv.buckets.create": ProcedureDef<"mutation", NatsKvCreateInput, NatsKvBucketInfo, ToolError>;
+  readonly "nats.kv.buckets.delete": ProcedureDef<"mutation", NatsKvBucketInput, Empty, ToolError>;
+  readonly "nats.kv.buckets.info": ProcedureDef<"query", NatsKvBucketInput, NatsKvBucketInfo, ToolError>;
+  readonly "nats.kv.buckets.list": ProcedureDef<"query", NatsKvBucketsListInput, Array<NatsKvBucketInfo>, ToolError>;
+  readonly "nats.kv.delete": ProcedureDef<"mutation", NatsKvKeyInput, Empty, ToolError>;
+  readonly "nats.kv.get": ProcedureDef<"query", NatsKvGetInput, MessageRecord, ToolError>;
+  readonly "nats.kv.history": ProcedureDef<"query", NatsKvHistoryInput, Array<MessageRecord>, ToolError>;
+  readonly "nats.kv.keys": ProcedureDef<"query", NatsKvKeysInput, NatsKvKeysOutput, ToolError>;
+  readonly "nats.kv.purge": ProcedureDef<"mutation", NatsKvKeyInput, Empty, ToolError>;
+  readonly "nats.kv.put": ProcedureDef<"mutation", NatsKvPutInput, NatsKvPutOutput, ToolError>;
+  readonly "nats.kv.watch": ProcedureDef<"stream", NatsKvWatchInput, TailSummary, ToolError>;
   readonly "nats.server.info": ProcedureDef<"query", NatsConnIdInput, NatsServerInfoOutput, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
@@ -2197,6 +2305,21 @@ export interface Api {
         readonly purge: Procedures["nats.js.streams.purge"];
         readonly update: Procedures["nats.js.streams.update"];
       };
+    };
+    readonly kv: {
+      readonly buckets: {
+        readonly create: Procedures["nats.kv.buckets.create"];
+        readonly delete: Procedures["nats.kv.buckets.delete"];
+        readonly info: Procedures["nats.kv.buckets.info"];
+        readonly list: Procedures["nats.kv.buckets.list"];
+      };
+      readonly delete: Procedures["nats.kv.delete"];
+      readonly get: Procedures["nats.kv.get"];
+      readonly history: Procedures["nats.kv.history"];
+      readonly keys: Procedures["nats.kv.keys"];
+      readonly purge: Procedures["nats.kv.purge"];
+      readonly put: Procedures["nats.kv.put"];
+      readonly watch: Procedures["nats.kv.watch"];
     };
     readonly server: {
       readonly info: Procedures["nats.server.info"];
@@ -2842,6 +2965,120 @@ export const procedures: Api = {
           timeoutDefaultMs: 30000,
           timeoutMaxMs: 300000,
         },
+      },
+    },
+    kv: {
+      buckets: {
+        create: {
+          name: "nats.kv.buckets.create",
+          kind: "mutation",
+          perm: "nats.write",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        delete: {
+          name: "nats.kv.buckets.delete",
+          kind: "mutation",
+          perm: "nats.destroy",
+          risk: "Destructive",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        info: {
+          name: "nats.kv.buckets.info",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        list: {
+          name: "nats.kv.buckets.list",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+      },
+      delete: {
+        name: "nats.kv.delete",
+        kind: "mutation",
+        perm: "nats.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "nats.kv.get",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      history: {
+        name: "nats.kv.history",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      keys: {
+        name: "nats.kv.keys",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      purge: {
+        name: "nats.kv.purge",
+        kind: "mutation",
+        perm: "nats.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      put: {
+        name: "nats.kv.put",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      watch: {
+        name: "nats.kv.watch",
+        kind: "stream",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
       },
     },
     server: {

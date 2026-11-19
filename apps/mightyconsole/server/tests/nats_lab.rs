@@ -965,3 +965,297 @@ async fn consumers_list_info_create_and_delete() {
     let err = tab.error(8, Code::NotFound).await;
     assert_eq!(err.details.unwrap()["resource"], "consumer");
 }
+
+// ---- Key-Value (batch 3a) ----------------------------------------------------------------------
+
+#[tokio::test]
+async fn kv_buckets_keys_get_history_and_the_deleted_key() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let buckets = call(
+        &mut tab,
+        3,
+        "nats.kv.buckets.list",
+        json!({ "connId": conn }),
+    )
+    .await;
+    let config = buckets
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["bucket"] == "config")
+        .expect("the config bucket");
+    assert_eq!(config["history"], 5, "{config}");
+    let keys = call(
+        &mut tab,
+        4,
+        "nats.kv.keys",
+        json!({ "connId": conn, "bucket": "config" }),
+    )
+    .await;
+    let names: Vec<&str> = keys["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| s(&k["key"]))
+        .collect();
+    assert_eq!(names, ["feature.checkout", "limits.orders", "motd"]);
+    assert_eq!(keys["truncated"], false);
+    let motd = &keys["keys"][2];
+    assert_eq!(motd["preview"], "Welcome to the lab");
+    let all = call(
+        &mut tab,
+        5,
+        "nats.kv.keys",
+        json!({ "connId": conn, "bucket": "config", "includeDeleted": true }),
+    )
+    .await;
+    let legacy = all["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|k| k["key"] == "legacy.flag")
+        .expect("the deleted key");
+    assert_eq!(legacy["operation"], "delete");
+    let filtered = call(
+        &mut tab,
+        6,
+        "nats.kv.keys",
+        json!({ "connId": conn, "bucket": "config", "filter": "feature.>" }),
+    )
+    .await;
+    assert_eq!(filtered["keys"].as_array().unwrap().len(), 1);
+
+    let latest = call(
+        &mut tab,
+        7,
+        "nats.kv.get",
+        json!({ "connId": conn, "bucket": "config", "key": "feature.checkout" }),
+    )
+    .await;
+    assert_eq!(latest["source"], "config");
+    assert_eq!(latest["subject"], "feature.checkout");
+    assert_eq!(latest["operation"], "put");
+    assert_eq!(latest["payloadCodec"], "json");
+    let history = call(
+        &mut tab,
+        8,
+        "nats.kv.history",
+        json!({ "connId": conn, "bucket": "config", "key": "feature.checkout" }),
+    )
+    .await;
+    let revisions: Vec<u64> = history
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| s(&e["sequence"]).parse().unwrap())
+        .collect();
+    assert_eq!(revisions.len(), 3);
+    assert_eq!(
+        revisions.last().unwrap().to_string(),
+        s(&latest["sequence"])
+    );
+    let first = call(
+        &mut tab,
+        9,
+        "nats.kv.get",
+        json!({ "connId": conn, "bucket": "config", "key": "feature.checkout", "revision": revisions[0] }),
+    )
+    .await;
+    assert!(
+        s(&first["payloadText"]).contains("\"revision\": 0"),
+        "{first}"
+    );
+    tab.call(
+        10,
+        "nats.kv.get",
+        json!({ "connId": conn, "bucket": "config", "key": "no.such.key" }),
+    )
+    .await;
+    let err = tab.error(10, Code::NotFound).await;
+    assert_eq!(err.details.unwrap()["resource"], "key");
+    tab.call(
+        11,
+        "nats.kv.buckets.info",
+        json!({ "connId": conn, "bucket": "nope" }),
+    )
+    .await;
+    let err = tab.error(11, Code::NotFound).await;
+    assert_eq!(err.details.unwrap()["resource"], "bucket");
+
+    // Watch: by default each key's current entry first (the deleted key's marker too), then
+    // changes; with history, every revision kept.
+    tab.call(
+        12,
+        "nats.kv.watch",
+        json!({ "connId": conn, "streamId": "w-cur", "bucket": "config", "limit": 4 }),
+    )
+    .await;
+    let (batches, _) = read_stream(&mut tab, 12).await;
+    let mut keys = column(&batches, "subject");
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            Some("feature.checkout".into()),
+            Some("legacy.flag".into()),
+            Some("limits.orders".into()),
+            Some("motd".into())
+        ]
+    );
+    tab.call(
+        13,
+        "nats.kv.watch",
+        json!({ "connId": conn, "streamId": "w-all", "bucket": "config", "keys": "feature.>", "includeHistory": true, "limit": 3 }),
+    )
+    .await;
+    let (batches, _) = read_stream(&mut tab, 13).await;
+    assert_eq!(u64s(&batches, "sequence"), revisions);
+}
+
+#[tokio::test]
+async fn kv_create_put_with_revisions_delete_purge_watch_and_delete_the_bucket() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let bucket = format!("mc_labtest_{}", std::process::id());
+    let created = call(
+        &mut tab,
+        3,
+        "nats.kv.buckets.create",
+        json!({ "connId": conn, "config": { "bucket": bucket, "history": 4, "storage": "memory", "replicas": 1, "compression": false, "ttlMs": 3_600_000 } }),
+    )
+    .await;
+    assert_eq!(created["history"], 4);
+    assert_eq!(created["ttlMs"], 3_600_000);
+    tab.call(
+        4,
+        "nats.kv.buckets.create",
+        json!({ "connId": conn, "config": { "bucket": bucket, "history": 1, "storage": "memory", "replicas": 1, "compression": false } }),
+    )
+    .await;
+    let err = tab.error(4, Code::FailedPrecondition).await;
+    assert_eq!(err.details.unwrap()["field"], "bucket");
+
+    // A watch with history over the bucket, ending after four entries.
+    tab.call(
+        5,
+        "nats.kv.watch",
+        json!({ "connId": conn, "streamId": "w-1", "bucket": bucket, "includeHistory": true, "limit": 4 }),
+    )
+    .await;
+    let mut ipc = tab.chunk(5).await;
+    tab.client.credit(5, 1).await;
+
+    let put = |id: u32, value: &str, expect: Option<u64>| {
+        let mut input = json!({ "connId": conn, "bucket": bucket, "key": "feature.x", "payload": { "codec": "json", "text": value } });
+        if let Some(r) = expect {
+            input["expectRevision"] = json!(r);
+        }
+        (id, input)
+    };
+    let (id, input) = put(6, "{\"v\": 1}", Some(0));
+    let r1 = call(&mut tab, id, "nats.kv.put", input).await["revision"]
+        .as_u64()
+        .unwrap();
+    let (id, input) = put(7, "{\"v\": 2}", Some(0));
+    tab.call(id, "nats.kv.put", input).await;
+    let err = tab.error(7, Code::FailedPrecondition).await;
+    assert_eq!(err.details.unwrap()["field"], "expectRevision");
+    let (id, input) = put(8, "{\"v\": 2}", Some(r1));
+    let r2 = call(&mut tab, id, "nats.kv.put", input).await["revision"]
+        .as_u64()
+        .unwrap();
+    assert!(r2 > r1);
+    // "Put revision 1 back" with the revision seen before a concurrent change: Conflict.
+    let (id, input) = put(9, "{\"v\": 1}", Some(r1));
+    tab.call(id, "nats.kv.put", input).await;
+    let err = tab.error(9, Code::FailedPrecondition).await;
+    assert!(
+        err.message.contains("no longer at revision"),
+        "{}",
+        err.message
+    );
+    let (id, input) = put(10, "{\"v\": 1}", Some(r2));
+    call(&mut tab, id, "nats.kv.put", input).await;
+    call(
+        &mut tab,
+        11,
+        "nats.kv.delete",
+        json!({ "connId": conn, "bucket": bucket, "key": "feature.x" }),
+    )
+    .await;
+
+    let summary = loop {
+        let frame = tab.frame(5).await;
+        match frame.kind {
+            Kind::Chunk => {
+                ipc.extend_from_slice(&frame.payload);
+                tab.client.credit(5, 1).await;
+            }
+            Kind::StreamEnd => break serde_json::from_slice::<Value>(&frame.payload).unwrap(),
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    };
+    assert_eq!(summary["endReason"], "limit");
+    let batches = decode(&ipc);
+    assert_eq!(
+        column(&batches, "operation"),
+        [
+            Some("put".into()),
+            Some("put".into()),
+            Some("put".into()),
+            Some("delete".into())
+        ]
+    );
+    assert_eq!(column(&batches, "subject")[0].as_deref(), Some("feature.x"));
+
+    let keys = call(
+        &mut tab,
+        12,
+        "nats.kv.keys",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    assert_eq!(keys["keys"].as_array().unwrap().len(), 0);
+    let history = call(
+        &mut tab,
+        13,
+        "nats.kv.history",
+        json!({ "connId": conn, "bucket": bucket, "key": "feature.x" }),
+    )
+    .await;
+    assert_eq!(history.as_array().unwrap().len(), 4);
+    call(
+        &mut tab,
+        14,
+        "nats.kv.purge",
+        json!({ "connId": conn, "bucket": bucket, "key": "feature.x" }),
+    )
+    .await;
+    let history = call(
+        &mut tab,
+        15,
+        "nats.kv.history",
+        json!({ "connId": conn, "bucket": bucket, "key": "feature.x" }),
+    )
+    .await;
+    assert_eq!(history.as_array().unwrap().len(), 1);
+    assert_eq!(history[0]["operation"], "purge");
+
+    call(
+        &mut tab,
+        16,
+        "nats.kv.buckets.delete",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    tab.call(
+        17,
+        "nats.kv.buckets.info",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    tab.error(17, Code::NotFound).await;
+}
