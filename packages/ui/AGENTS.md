@@ -432,6 +432,36 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
   answers for its own model only; items name a kind, a detail and optionally a snippet or an offset
   range to replace. `jq` is a built-in Monarch grammar (`JQ_GRAMMAR`, `JQ_BUILTINS`); an app adds a
   language with `registerCodeLanguage(id, setup)` and passes the id as `language`.
+- Monaco on the tokens (TSK-94): no Monaco default colour is left in an editor or its widgets.
+  `MONACO_COLORS` covers the suggest widget (`editorSuggestWidget.*`: the flyout's fill and stroke,
+  the selected row on `editor.selection`, matched characters in `color.fg.link`), its list
+  (`list.*`), the hover's status bar, `textLink.*` and the completion icons by kind
+  (`symbolIcon.*`, in the syntax role of what they stand for); `MONACO_TOKENS` colours JSON
+  (keys `syntax.identifier`, values `syntax.string`, numbers, `true`/`false`/`null` as keywords,
+  brackets as text). Bracket pairs are not coloured (`bracketPairColorization` off). The scoped CSS
+  gives the widgets the mockup's flyout: `radius.md` (Monaco's `--vscode-cornerRadius-*`), the
+  flyout's depth, semibold matches, the item's note right-aligned in the UI font (caption, muted).
+- Monaco's widgets (suggest, details, hover, parameter hints) live in the editor's overflow layer
+  (`overflowWidgetsNode`, TSK-99: `z.popover` at the end of `<body>`). TSK-94 gives that layer the
+  editor's `data-monaco-scope`, so the token variables and the flyout rules above reach the widgets,
+  and `sync()` copies the region's `data-theme` and `data-density` again on every retheme. Monaco's
+  `.contents` element is kept a block: Tailwind's `contents` utility (display: contents) matches it
+  and collapsed the row. The browser check opens a field's suggestions over a sticky-header Table
+  and asserts `elementFromPoint` on every row is the widget, the notes are right-aligned, and no
+  computed colour in any editor is one of Monaco's defaults (`MONACO_DEFAULT_COLORS`).
+- CodeEditor fields (TSK-94): `rows` (and `maxRows`, twice `rows` by default) size a multi-line
+  editor by its text, in lines of `text.code` (before Monaco, `calc(<rows>lh + 2 * inset)`), with
+  long lines wrapped; every multi-line editor shows scrollbars and the overview ruler only while
+  its text overflows, has no glyph margin and a two-character line-number gutter, and folds only
+  as a pane (no `rows`). Focused by the pointer, the outline variant shows Fluent's underline
+  (`data-focused`), from the keyboard the double ring (`data-focus-visible`). A small one-line
+  editor reads `text.code-sm`. Completion kinds include value types (`keyword-value`, `list`,
+  `text`, `number`, `boolean`, `date`) and `saved`; `documentation` can be `{ markdown }`.
+- JSON completion names each property's type and whether it is required ("string · required",
+  `"email" | "chat"`, "integer 1–5"): `loadMonacoLanguage("json")` turns the language service's
+  own completion provider off and registers Monaco's `CompletionAdapter` (lspLanguageFeatures)
+  wrapped so property items get `describeJsonSchema` of the innermost object schema the worker
+  matched at the cursor (`getMatchingSchemas`, refs resolved). It works for every `jsonSchema`.
 - `loadMonaco` registers the suggest widget (`editor/contrib/suggest/browser/suggestController`,
   which no `features/*/register` module does) and the snippet controller, and the three services
   the JSON language's contributions need (code lens cache, outline model, tree-views drag and

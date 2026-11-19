@@ -164,6 +164,26 @@ class FakeEditor {
     this.blurListeners.add(listener);
     return { dispose: () => this.blurListeners.delete(listener) };
   }
+  /** Content height: 20 px a line plus the padding Monaco was given (metrics). */
+  getContentHeight() {
+    const padding = (this.options.padding as { top: number; bottom: number } | undefined) ?? { top: 0, bottom: 0 };
+    return this.model.getValue().split("\n").length * Number(this.options.lineHeight ?? 20) + padding.top + padding.bottom;
+  }
+  getLayoutInfo() {
+    return { height: this.layoutHeight, width: 400 };
+  }
+  /** The height the editor is laid out at; tests set it. */
+  layoutHeight = 240;
+  readonly sizeListeners = new Set<Listener>();
+  onDidContentSizeChange(listener: Listener) {
+    this.sizeListeners.add(listener);
+    this.model.onDidChangeContent(() => listener());
+    return { dispose: () => this.sizeListeners.delete(listener) };
+  }
+  onDidLayoutChange(listener: Listener) {
+    this.sizeListeners.add(listener);
+    return { dispose: () => this.sizeListeners.delete(listener) };
+  }
   dispose() {
     this.disposed = true;
     this.textarea.remove();
@@ -187,7 +207,8 @@ export const fake = {
   markerListeners: new Set<(uris: unknown[]) => void>(),
   /** Clears per-test state; themes stay, as Monaco's do for the page's lifetime. */
   reset() {
-    this.providers = [];
+    // The JSON language's own provider is registered once per page (lib/monaco), as Monaco's is.
+    this.providers = this.providers.filter((p) => !p.disposed && p.language === "json");
     this.markers = [];
     this.editors = [];
     this.diffEditors = [];
@@ -297,7 +318,7 @@ export const languages = {
     fake.providers.push(entry);
     return { dispose: () => (entry.disposed = true) };
   },
-  CompletionItemKind: { Function: 1, Field: 3, Variable: 4, Operator: 11, Value: 13, Constant: 14, Keyword: 17, Reference: 21, TypeParameter: 24, Snippet: 27 },
+  CompletionItemKind: { Method: 0, Function: 1, Constructor: 2, Field: 3, Variable: 4, Class: 5, Struct: 6, Interface: 7, Module: 8, Property: 9, Event: 10, Operator: 11, Unit: 12, Value: 13, Constant: 14, Enum: 15, EnumMember: 16, Keyword: 17, Text: 18, Color: 19, File: 20, Reference: 21, Customcolor: 22, Folder: 23, TypeParameter: 24, User: 25, Issue: 26, Snippet: 27 },
   CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
   CompletionTriggerKind: { Invoke: 0, TriggerCharacter: 1 },
 };
@@ -307,7 +328,36 @@ export const jsonDefaults = {
   setDiagnosticsOptions(options: Record<string, unknown>) {
     fake.jsonOptions = options;
   },
+  modeConfiguration: { completionItems: true, hovers: true } as Record<string, unknown>,
+  setModeConfiguration(configuration: Record<string, unknown>) {
+    this.modeConfiguration = configuration;
+  },
 };
+
+/** What the fake JSON worker answers: completion items (LSP-shaped) and the matching schemas. */
+export const jsonWorker = {
+  items: [] as { label: string; kind?: number }[],
+  matching: [] as { node: { type: string; offset: number; length: number }; schema: unknown }[],
+  async getMatchingSchemas() {
+    return this.matching;
+  },
+};
+
+/** `monaco-editor/languages/features/json/register`'s getWorker. */
+export const getWorker = async () => async () => jsonWorker;
+
+/** `monaco-editor/languages/features/common/lspLanguageFeatures`'s CompletionAdapter (LSP kind 10 is Property). */
+export class CompletionAdapter {
+  readonly worker: (...uris: unknown[]) => Promise<unknown>;
+  readonly triggerCharacters: string[];
+  constructor(worker: (...uris: unknown[]) => Promise<unknown>, triggerCharacters: string[]) {
+    this.worker = worker;
+    this.triggerCharacters = triggerCharacters;
+  }
+  async provideCompletionItems() {
+    return { suggestions: jsonWorker.items.map((i) => ({ label: i.label, kind: i.kind === 10 ? languages.CompletionItemKind.Property : languages.CompletionItemKind.Value, insertText: i.label })) };
+  }
+}
 
 export const Uri = {
   parse: (value: string) => ({ toString: () => value }),

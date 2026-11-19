@@ -6,10 +6,11 @@
 import { useState } from "react";
 import { EditorView } from "@codemirror/view";
 import { createRoot } from "react-dom/client";
-import { CodeEditor, type CodeDiagnostic } from "@/components/code-editor/code-editor";
+import { CodeEditor, type CodeCompletion, type CodeDiagnostic } from "@/components/code-editor/code-editor";
 import { CodeInput } from "@/components/code-input/code-input";
 import { Field, FieldLabel } from "@/components/field/field";
 import { SqlEditor, type SqlRun } from "@/components/sql-editor/sql-editor";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/table/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/tabs/tabs";
 import { cssColorToHex, tokenReader, type Monaco, type MonacoEditor } from "@/lib/monaco";
 import presetDefault from "@byterygon/design-tokens/presets/default/tokens.css?raw";
@@ -55,6 +56,9 @@ interface Check {
   setJson: (value: string) => void;
   jsonDiagnostics: CodeDiagnostic[] | null;
   jsonReady: boolean;
+  /** TSK-94: the query field above a table (its suggest widget must paint over the sticky header) and a JSON field. */
+  queryEditor?: MonacoEditor;
+  fieldEditor?: MonacoEditor;
 }
 
 let resolveReady: () => void = () => {};
@@ -79,9 +83,10 @@ const check: Check = {
     document.getElementById("region")!.setAttribute("data-theme", theme);
     document.getElementById("region-2")!.setAttribute("data-theme", theme === "light" ? "dark" : "light");
     document.getElementById("region-3")!.setAttribute("data-theme", theme);
+    document.getElementById("region-5")!.setAttribute("data-theme", theme);
   },
   setDensity: (density) => {
-    for (const id of ["region", "region-3"]) document.getElementById(id)!.setAttribute("data-density", density);
+    for (const id of ["region", "region-3", "region-5"]) document.getElementById(id)!.setAttribute("data-density", density);
   },
   setPreset: (preset) => {
     tokens.textContent = PRESETS[preset]!;
@@ -155,6 +160,64 @@ function sampleCode(index: number) {
 }
 (window as unknown as { __sampleCode: typeof sampleCode }).__sampleCode = sampleCode;
 
+/** TSK-94: the open suggest widget of region 5, whether it is on top of the table's sticky header, and its colours. */
+function sampleWidgets() {
+  const region = document.getElementById("region-5")!;
+  const widget = document.querySelector<HTMLElement>("[data-slot=code-editor-overflow] .suggest-widget.visible")!;
+  const rows = [...widget.querySelectorAll<HTMLElement>(".monaco-list-row")];
+  const header = region.querySelector("thead th")!.getBoundingClientRect();
+  const box = widget.getBoundingClientRect();
+  let onTop = 0;
+  for (const row of rows) {
+    const r = row.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + Math.min(40, r.width / 2), r.top + r.height / 2);
+    if (hit && widget.contains(hit)) onTop += 1;
+  }
+  const reader = tokenReader(region);
+  const rgb = (value: string) => cssColorToHex(value) ?? value;
+  const selected = widget.querySelector<HTMLElement>(".monaco-list-row.focused") ?? rows[0]!;
+  const highlight = widget.querySelector<HTMLElement>(".monaco-list-row .highlight");
+  const list = widget.querySelector<HTMLElement>(".monaco-list") ?? widget;
+  const result = {
+    rows: rows.length,
+    onTop,
+    overHeader: box.top < header.bottom && box.bottom > header.top,
+    zIndex: getComputedStyle(widget).zIndex,
+    background: rgb(getComputedStyle(widget).backgroundColor),
+    selected: rgb(getComputedStyle(selected).backgroundColor),
+    highlight: highlight ? rgb(getComputedStyle(highlight).color) : "",
+    radius: getComputedStyle(list).borderTopLeftRadius,
+    // The notes ("Int", "Keyword · custom", "recent") end at one right edge, as the mockup's do.
+    noteEdges: [...new Set(rows.map((r) => r.querySelector(".details-label")).filter((d): d is HTMLElement => d !== null && d.getClientRects().length > 0).map((d) => Math.round(d.getBoundingClientRect().right / 4)))].length,
+    expected: { background: reader.color("--by-elevation-flyout-bg"), selected: reader.color("--by-editor-selection"), highlight: reader.color("--by-color-fg-link") },
+  };
+  reader.dispose();
+  return result;
+}
+(window as unknown as { __sampleWidgets: typeof sampleWidgets }).__sampleWidgets = sampleWidgets;
+
+/**
+ * Every colour computed in the editors of the page and their widgets (text, fills, strokes,
+ * outlines, SVG fills) that is one of `defaults`, as "colour on selector" (TSK-94).
+ */
+function monacoDefaults(defaults: string[]) {
+  const banned = new Set(defaults.map((d) => d.toLowerCase()));
+  const found = new Set<string>();
+  const props = ["color", "background-color", "border-top-color", "border-bottom-color", "border-left-color", "border-right-color", "outline-color", "fill", "stroke", "text-decoration-color"] as const;
+  for (const root of document.querySelectorAll<HTMLElement>(".monaco-editor")) {
+    for (const el of [root, ...root.querySelectorAll<HTMLElement>("*")]) {
+      if (el.getClientRects().length === 0) continue;
+      const style = getComputedStyle(el);
+      for (const prop of props) {
+        const hex = cssColorToHex(style.getPropertyValue(prop));
+        if (hex && banned.has(hex.slice(0, 7))) found.add(`${hex} ${prop} on ${el.tagName.toLowerCase()}.${[...el.classList].slice(0, 3).join(".")}`);
+      }
+    }
+  }
+  return [...found];
+}
+(window as unknown as { __monacoDefaults: typeof monacoDefaults }).__monacoDefaults = monacoDefaults;
+
 const ORDER_SCHEMA = { type: "object", properties: { id: { type: "string" }, status: { enum: ["PLACED", "PAID"] } }, required: ["id"], additionalProperties: false };
 
 function Codes() {
@@ -179,6 +242,47 @@ function Codes() {
         onDiagnosticsChange={(d) => (check.jsonDiagnostics = d)}
         onEditorReady={() => (check.jsonReady = true)}
       />
+    </div>
+  );
+}
+
+// TSK-94: a one-line query field with the app's suggestions right above a table whose sticky header
+// (z.sticky) lies under the suggest widget, and a JSON field sized by rows with a schema.
+const QUERY_COMPLETION: CodeCompletion = {
+  provide: () => [
+    { label: "ExecutionStatus", kind: "keyword-value", detail: "Keyword", documentation: { markdown: "**ExecutionStatus** · Keyword · built-in\n\nExample: `ExecutionStatus = \"Running\"`" } },
+    { label: "ExecutionTime", kind: "date", detail: "Datetime" },
+    { label: "ExecutionDuration", kind: "number", detail: "Int" },
+    { label: "ExternalOrderId", kind: "keyword-value", detail: "Keyword · custom" },
+    { label: 'ExecutionStatus = "Failed"', kind: "history", detail: "recent" },
+    { label: "Slow orders", kind: "saved", detail: "saved", insertText: "ExecutionDuration > 60000" },
+  ],
+};
+const FIELD_SCHEMA = { type: "object", required: ["customer_id"], properties: { customer_id: { type: "string" }, channel: { enum: ["email", "chat"] }, priority: { type: "integer", minimum: 1, maximum: 5 }, open: { type: "boolean" } } };
+
+function Widgets() {
+  return (
+    <div id="region-5" data-theme="light" data-density="comfortable" className="flex flex-col gap-stack-md bg-surface p-inset-md">
+      <CodeEditor singleLine language="plaintext" aria-label="Widget query" defaultValue="Ex" completion={QUERY_COMPLETION} onEditorReady={(editor) => (check.queryEditor = editor)} />
+      <Table aria-label="Under the suggestions" className="h-panel-xs">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Start</TableHead>
+            <TableHead>Close</TableHead>
+            <TableHead>Duration</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: 12 }, (_, i) => (
+            <TableRow key={i}>
+              <TableCell>10:{String(i).padStart(2, "0")}</TableCell>
+              <TableCell>10:{String(i + 1).padStart(2, "0")}</TableCell>
+              <TableCell>{i + 1}m</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <CodeEditor aria-label="Widget input" rows={7} jsonSchema={FIELD_SCHEMA} defaultValue={'{\n  "customer_id": "c-1",\n  "messages": [{ "role": "human", "n": 1, "ok": true, "x": null }]\n}'} onEditorReady={(editor) => (check.fieldEditor = editor)} />
     </div>
   );
 }
@@ -237,6 +341,7 @@ function App() {
         <CodeInput aria-label="Second filter" language="sql" defaultValue="id > 10 and status = 'active'" className="mt-stack-md" />
       </div>
       <Codes />
+      <Widgets />
       <Strip />
     </main>
   );

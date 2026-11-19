@@ -355,6 +355,7 @@ export function SqlEditor({
           frame = 0;
           if (disposed) return;
           theme = monacoTheme(reader);
+          overflow.sync();
           applyTheme(monaco, theme, doc);
           instance.updateOptions(monacoMetrics(reader));
         };
