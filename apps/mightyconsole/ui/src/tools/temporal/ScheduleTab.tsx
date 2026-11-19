@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { JsonViewer } from "@/components/ui/json-viewer";
+import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CopyButton, LinkButton, NoticeContext, Page, PageFooter, PageHeader, Pager, gutterTable } from "@/app/page";
@@ -289,8 +290,8 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
             <TabsTrigger value="spec">Spec and action</TabsTrigger>
             <TabsTrigger value="json">JSON</TabsTrigger>
           </TabsList>
-          <div className="flex min-h-0 flex-1 border-t border-border-subtle">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <Resizable orientation="horizontal" className="min-h-0 flex-1 border-t border-border-subtle" aria-label="The schedule's views and its spec and action">
+            <ResizablePanel defaultSize={66} minSize={40} className="flex min-h-0 min-w-0 flex-col">
               <TabsContent value="runs" className="flex min-h-0 flex-1 flex-col">
                 <RunsTable runs={runs} nextAt={runs.page === 0 && !s.paused ? nextAt : null} now={now} onOpenWorkflow={openWorkflow} />
               </TabsContent>
@@ -324,8 +325,10 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
               <TabsContent value="json" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
                 <JsonViewer value={{ scheduleId, ...definition, info: detail.info }} defaultExpandDepth={1} aria-label="Schedule as JSON" />
               </TabsContent>
-            </div>
-            <aside aria-label="Spec and action" className="flex w-panel-pane max-w-1/2 min-w-0 shrink-0 flex-col gap-stack-md overflow-auto border-s border-border-subtle px-inset-lg py-inset-md">
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel defaultSize={34} minSize={22} className="flex min-h-0 min-w-0 flex-col">
+            <aside aria-label="Spec and action" className="flex min-h-0 min-w-0 flex-1 flex-col gap-stack-md overflow-y-auto px-inset-lg py-inset-md">
               <section className="flex flex-col gap-stack-sm">
                 <div className="flex flex-col gap-stack-xs">
                   <h3 className="text-body-1-strong text-fg">Upcoming</h3>
@@ -361,7 +364,8 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
                 <p className={cn("text-body-1", s.notes ? "text-fg" : "text-fg-muted")}>{s.notes || "None"}</p>
               </section>
             </aside>
-          </div>
+            </ResizablePanel>
+          </Resizable>
         </Tabs>
       ) : null}
       {detail ? (
@@ -451,7 +455,7 @@ function RunsTable({ runs, nextAt, now, onOpenWorkflow }: { runs: ReturnType<typ
         {rows.length === 0 && nextAt === null ? (
           <EmptyLine>It has not run yet.</EmptyLine>
         ) : (
-          <Table aria-label="Runs of the schedule" className={gutterTable}>
+          <Table aria-label="Runs of the schedule" className={cn(gutterTable, "[&_td]:whitespace-nowrap [&_th]:whitespace-nowrap")}>
             <TableHeader>
               <TableRow>
                 <TableHead>Scheduled for</TableHead>
@@ -478,13 +482,15 @@ function RunsTable({ runs, nextAt, now, onOpenWorkflow }: { runs: ReturnType<typ
                   <TableCell className="font-mono text-code text-fg-muted" title={formatTime(r.startTime)}>
                     {r.startTime ? clock(r.startTime) : "—"}
                   </TableCell>
-                  <TableCell className="max-w-panel-xs">
+                  <TableCell className="w-full max-w-0">
                     {r.workflowId ? (
-                      <LinkButton className="font-mono text-code" onClick={() => onOpenWorkflow(r.workflowId!, r.runId)}>
+                      <LinkButton className="block font-mono text-code" title={r.workflowId} onClick={() => onOpenWorkflow(r.workflowId!, r.runId)}>
                         {r.workflowId}
                       </LinkButton>
                     ) : (
-                      <span className="text-fg-muted">{r.skipped}</span>
+                      <span className="block truncate text-fg-muted" title={r.skipped}>
+                        {r.skipped}
+                      </span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -506,10 +512,12 @@ function RunsTable({ runs, nextAt, now, onOpenWorkflow }: { runs: ReturnType<typ
         )}
       </div>
       <PageFooter>
-        <span className="min-w-0 truncate">
+        <span className="min-w-0 flex-1 truncate" title={`From the schedule's recent actions and a Workflows query on ${out.query}`}>
           From the schedule&apos;s recent actions and a Workflows query on <span className="font-mono text-code">{out.query}</span>
         </span>
-        <Pager range={`${formatCount(rows.length)} on this page`} page={runs.page + 1} hasPrev={runs.hasPrev} hasNext={runs.hasNext} onPrev={runs.prev} onNext={runs.next} busy={runs.loading} />
+        <div className="flex shrink-0 items-center gap-inline-md whitespace-nowrap">
+          <Pager range={`${formatCount(rows.length)} ${rows.length === 1 ? "row" : "rows"}`} page={runs.page + 1} hasPrev={runs.hasPrev} hasNext={runs.hasNext} onPrev={runs.prev} onNext={runs.next} busy={runs.loading} />
+        </div>
       </PageFooter>
     </>
   );
