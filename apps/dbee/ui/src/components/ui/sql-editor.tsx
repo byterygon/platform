@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ComponentProps, type KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
-import { applyTheme, isEditorStylesheet, loadMonaco, MONACO_SCOPE_ATTRIBUTE, monacoMetrics, monacoTheme, tokenReader, type Monaco, type MonacoEditor, type MonacoThemeData } from "@/lib/monaco";
+import { applyTheme, isEditorStylesheet, loadMonaco, MONACO_SCOPE_ATTRIBUTE, monacoMetrics, monacoTheme, tokenReader, type Monaco, type MonacoEditor, type MonacoThemeData, overflowWidgetsNode } from "@/lib/monaco";
 
 // SqlEditor is Monaco (spec section 7; Uy Son, 2026-11-13), loaded lazily through @/lib/monaco.
 // Until Monaco has loaded, a plain textarea with the same value, colours and keys stands in, so
@@ -287,6 +287,8 @@ export function SqlEditor({
         const selection = fallback ? [fallback.selectionStart, fallback.selectionEnd] : [0, 0];
         const o = optionsRef.current;
         const doc = root.ownerDocument;
+        // The suggestions and hovers float above every layer of the page (a sticky table header among them).
+        const overflow = overflowWidgetsNode(root);
         let theme: MonacoThemeData = monacoTheme(reader);
         applyTheme(monaco, theme, doc);
         const model = monaco.editor.createModel(fallback?.value ?? textRef.current, o.language);
@@ -304,6 +306,7 @@ export function SqlEditor({
           scrollBeyondLastLine: false,
           renderLineHighlight: "line",
           fixedOverflowWidgets: true,
+          overflowWidgetsDomNode: overflow.node,
           contextmenu: true,
           fontLigatures: false,
           bracketPairColorization: { enabled: false },
@@ -320,6 +323,7 @@ export function SqlEditor({
         const end = model.getPositionAt(selection[1] ?? 0);
         instance.setSelection({ startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: end.lineNumber, endColumn: end.column });
         pendingFocus.current = hadFocus;
+        overflow.follow(instance.getDomNode());
         if (ariaLabelledBy) instance.getDomNode()?.querySelector("textarea, [role='textbox']")?.setAttribute("aria-labelledby", ariaLabelledBy);
 
         const run = () => {
@@ -387,6 +391,7 @@ export function SqlEditor({
           instance.dispose();
           model.dispose();
           reader.dispose();
+          overflow.dispose();
         };
       },
       () => {

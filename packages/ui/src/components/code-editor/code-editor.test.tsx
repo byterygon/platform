@@ -36,6 +36,19 @@ describe("CodeEditor", () => {
     expect(root.hasAttribute("data-loading")).toBe(false);
   });
 
+  test("the floating widgets live in a node of their own on the popover layer, gone with the editor", async () => {
+    const { container, unmount } = render(<CodeEditor defaultValue="{}" />);
+    await settle();
+    const node = fake.editors[0]!.options["overflowWidgetsDomNode"] as HTMLElement;
+    const layer = node.parentElement!;
+    expect(layer.parentElement).toBe(document.body);
+    expect(node.classList.contains("monaco-editor")).toBe(true);
+    expect(layer.style.zIndex).toBe("var(--by-z-popover)");
+    expect(layer.getAttribute("data-theme")).toBe(container.closest("[data-theme]")?.getAttribute("data-theme"));
+    unmount();
+    expect(node.isConnected).toBe(false);
+  });
+
   test("controlled: typing reports, a new value replaces the text", async () => {
     let latest = "";
     function Harness() {
