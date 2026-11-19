@@ -26,7 +26,7 @@ const ev = (eventId: number, eventType: string, atMs: number, category: EventCat
 });
 
 const events: HistoryEvent[] = [
-  ev(1, "WorkflowExecutionStarted", 0, "Workflow", { workflowType: { name: "Fulfilment" }, taskQueue: { name: "lab" }, input: ["ord-long"] }),
+  { ...ev(1, "WorkflowExecutionStarted", 0, "Workflow", { workflowType: { name: "Fulfilment" }, taskQueue: { name: "lab" }, input: ["ord-long"] }), encodings: ["json/plain"] },
   ev(2, "WorkflowTaskScheduled", 1, "WorkflowTask", { taskQueue: { name: "lab" } }),
   ev(3, "ActivityTaskScheduled", 500, "Activity", { activityType: { name: "charge" }, activityId: "1" }),
   ev(4, "WorkflowExecutionSignaled", 800, "Signal", { signalName: "approve", input: ["me"] }),
@@ -101,7 +101,8 @@ function setup(options: Options = {}) {
   const history = vi.fn(async (_input: unknown) => ({ events: options.events ?? events }));
   const followHistory = vi.fn((_input: unknown, _options?: unknown) => stream.call);
   const query = vi.fn((_input: unknown) => (options.query ?? (async () => ({ result: "goroutine 1 [running]:\nwait_condition" })))());
-  const client = { temporal: { workflows: { describe, history, followHistory, query } } } as unknown as MightyClient;
+  const rawEvent = vi.fn(async (_input: unknown) => ({ attributes: { input: { payloads: [{ metadata: { encoding: "anNvbi9wbGFpbg==" }, data: "Im9yZC1sb25nIg==" }] } } }));
+  const client = { temporal: { workflows: { describe, history, followHistory, query, rawEvent } } } as unknown as MightyClient;
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
   const tab: TabRecord = { id: "t2", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "fulfilment-long-running" }, title: "fulfilment-long-running", pinned: false };
   const lives: (LiveState | null)[] = [];
@@ -196,6 +197,14 @@ describe("Workflow tab (spec §9.3)", () => {
     await waitFor(() => container.textContent?.includes("Event 3 · ActivityTaskScheduled") === true, "the detail");
     expect(container.textContent).toContain("Activity charge:");
     expect(byRole("button", "Copy event")).not.toBeNull();
+    // Event 1 as stored: its encoding labelled, the Raw form read from the server.
+    await type(goTo, "1");
+    await act(async () => {
+      goTo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    await waitFor(() => container.textContent?.includes("json/plain · 1 payload") === true, "the payload label");
+    await click(byRole("button", "Raw"));
+    await waitFor(() => container.textContent?.includes("Im9yZC1sb25nIg==") === true, "the stored payload");
     expect(await axeViolations(container)).toEqual([]);
   });
 

@@ -149,6 +149,7 @@ export default {
           "following_a_closed_run_sends_everything_after_the_cursor_and_ends",
           "following_an_open_run_sees_new_events_until_it_closes",
           "unknown_workflows_are_not_found_and_blank_ids_invalid",
+          "an_event_reads_as_stored_with_its_encodings",
         ),
         ...unit(
           "each_encoding_decodes_as_the_spec_says",

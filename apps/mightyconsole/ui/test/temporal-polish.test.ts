@@ -3,6 +3,7 @@
 import { describe, expect, test } from "vitest";
 import { nextAttemptText, readPendingActivity } from "@/tools/temporal/PendingPanel";
 import { cronOfCalendar } from "@/tools/temporal/ScheduleSheet";
+import { payloadLabel } from "@/tools/temporal/HistoryPanel";
 import { versionText } from "@/tools/temporal/WorkersTab";
 
 describe("a pending activity", () => {
@@ -51,5 +52,13 @@ describe("a calendar as cron", () => {
     expect(cronOfCalendar({ second: "", minute: "", hour: "2", dayOfMonth: "", month: "", dayOfWeek: "" })).toBe("0 2 * * *");
     expect(cronOfCalendar({ second: "0", minute: "30", hour: "9", dayOfMonth: "", month: "", dayOfWeek: "mon-fri" })).toBe("30 9 * * mon-fri");
     expect(cronOfCalendar({ second: "15", minute: "", hour: "", dayOfMonth: "", month: "", dayOfWeek: "" })).toBeNull();
+  });
+});
+
+describe("a payload label", () => {
+  test("names the forms as stored and counts them", () => {
+    expect(payloadLabel(["json/plain"])).toBe("json/plain · 1 payload");
+    expect(payloadLabel(["binary/encrypted", "json/plain", "binary/encrypted"])).toBe("binary/encrypted, json/plain · 3 payloads");
+    expect(payloadLabel(undefined)).toBe("no payloads");
   });
 });

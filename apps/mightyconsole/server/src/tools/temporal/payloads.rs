@@ -41,6 +41,14 @@ fn pool() -> &'static DescriptorPool {
 /// numbers, default fields left out), payloads decoded. `full_name` is the message's protobuf
 /// name, such as `temporal.api.history.v1.HistoryEvent`.
 pub fn to_json<M: prost::Message>(full_name: &str, message: &M) -> Result<Value, ToolError> {
+    let mut value = to_json_raw(full_name, message)?;
+    decode_payloads(&mut value);
+    Ok(value)
+}
+
+/// `message` as protobuf-JSON with its payloads as stored (`metadata` and `data` in base64): the
+/// History view's Raw form.
+pub fn to_json_raw<M: prost::Message>(full_name: &str, message: &M) -> Result<Value, ToolError> {
     let internal =
         |what: String| ToolError::new(crate::core::ToolErrorKind::Remote, super::TOOL, what);
     let descriptor = pool()
@@ -51,11 +59,43 @@ pub fn to_json<M: prost::Message>(full_name: &str, message: &M) -> Result<Value,
     let options = SerializeOptions::new()
         .skip_default_fields(true)
         .stringify_64_bit_integers(false);
-    let mut value = dynamic
+    dynamic
         .serialize_with_options(serde_json::value::Serializer, &options)
-        .map_err(|e| internal(format!("cannot write {full_name} as JSON: {e}")))?;
-    decode_payloads(&mut value);
-    Ok(value)
+        .map_err(|e| internal(format!("cannot write {full_name} as JSON: {e}")))
+}
+
+/// The encodings of the payloads in `value` (as stored, before decoding), in document order:
+/// `["json/plain", "binary/encrypted"]`. The History view labels a payload's form with them.
+pub fn payload_encodings(value: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_encodings(value, &mut out);
+    out
+}
+
+fn collect_encodings(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::Object(object) => {
+            let encoding = object
+                .get("metadata")
+                .and_then(Value::as_object)
+                .and_then(|m| m.get("encoding"))
+                .and_then(Value::as_str)
+                .and_then(|b| BASE64.decode(b).ok())
+                .and_then(|b| String::from_utf8(b).ok());
+            match encoding {
+                Some(encoding)
+                    if object
+                        .keys()
+                        .all(|k| k == "metadata" || k == "data" || k == "externalPayloads") =>
+                {
+                    out.push(encoding)
+                }
+                _ => object.values().for_each(|v| collect_encodings(v, out)),
+            }
+        }
+        Value::Array(items) => items.iter().for_each(|v| collect_encodings(v, out)),
+        _ => {}
+    }
 }
 
 /// Replaces every payload in `value` by its decoded form, and `{ "payloads": [...] }` by the array.
@@ -232,5 +272,31 @@ mod tests {
         assert_eq!(attrs["workflowType"]["name"], "Fulfilment");
         assert_eq!(attrs["input"], json!([{ "orderId": "o-1" }]));
         let _ = Payload::default();
+    }
+
+    #[test]
+    fn the_raw_form_keeps_payloads_as_stored_and_names_their_encodings() {
+        use crate::tools::temporal::proto::temporal::api::common::v1::Payloads;
+        use crate::tools::temporal::proto::temporal::api::history::v1::{
+            HistoryEvent, WorkflowExecutionSignaledEventAttributes, history_event::Attributes,
+        };
+        let event = HistoryEvent {
+            event_id: 7,
+            attributes: Some(Attributes::WorkflowExecutionSignaledEventAttributes(
+                WorkflowExecutionSignaledEventAttributes {
+                    signal_name: "approve".into(),
+                    input: Some(Payloads {
+                        payloads: vec![encode_json(&json!("me")).unwrap()],
+                    }),
+                    ..Default::default()
+                },
+            )),
+            ..Default::default()
+        };
+        let raw = to_json_raw("temporal.api.history.v1.HistoryEvent", &event).unwrap();
+        assert_eq!(payload_encodings(&raw), vec!["json/plain".to_owned()]);
+        let input = &raw["workflowExecutionSignaledEventAttributes"]["input"]["payloads"][0];
+        assert_eq!(input["data"], BASE64.encode(b"\"me\""));
+        assert!(input["metadata"]["encoding"].is_string());
     }
 }

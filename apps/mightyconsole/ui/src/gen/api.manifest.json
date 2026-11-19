@@ -1726,6 +1726,16 @@
         "category": {
           "$ref": "#/$defs/EventCategory"
         },
+        "encodings": {
+          "description": "The encodings of the event's payloads as stored, in order (`json/plain`, `binary/encrypted`);\nabsent when it has none.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "eventId": {
           "format": "int64",
           "type": "integer"
@@ -3898,6 +3908,24 @@
       ],
       "type": "object"
     },
+    "TemporalInfoOutput": {
+      "description": "What `temporal.info` says about the server.",
+      "properties": {
+        "clusterName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serverVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "serverVersion"
+      ],
+      "type": "object"
+    },
     "TemporalTlsOptions": {
       "description": "TLS settings of a profile (spec §4.2 `TemporalTlsOptions`); `secrets.clientKeyPem` comes beside it as\n`clientKeyPem`. There is no \"skip verification\" (spec Open question 6).",
       "properties": {
@@ -4784,6 +4812,54 @@
       },
       "required": [
         "result"
+      ],
+      "type": "object"
+    },
+    "WorkflowRawEventInput": {
+      "description": "One event of a run, to read as stored.",
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "eventId": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId",
+        "eventId"
+      ],
+      "type": "object"
+    },
+    "WorkflowRawEventOutput": {
+      "description": "An event's attributes as stored: protobuf JSON with each payload's `metadata` and `data` in base64.",
+      "properties": {
+        "attributes": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "attributes"
       ],
       "type": "object"
     },
@@ -6175,6 +6251,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/TemporalConnIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.info",
+      "output": {
+        "$ref": "#/$defs/TemporalInfoOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/NamespaceDescribeInput"
       },
       "kind": "query",
@@ -6601,6 +6698,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/WorkflowRawEventInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workflows.rawEvent",
+      "output": {
+        "$ref": "#/$defs/WorkflowRawEventOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/WorkflowResetInput"
       },
       "kind": "mutation",
@@ -6745,5 +6863,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:fc1359806acae539f8a4b13276131c00da4106475ff58604ed90c28f4782b435"
+  "schema_hash": "sha256:d30e09d2bee1d2609449bf6935e50fab32749cd6fd420d388d7d7ba28e11e967"
 }

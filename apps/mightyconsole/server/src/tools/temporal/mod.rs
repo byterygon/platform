@@ -298,6 +298,18 @@ impl TemporalApi {
         })
     }
 
+    /// The server's version and cluster name, asked again for a connected profile (the Namespaces
+    /// view shows them).
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn info(&self, ctx: Ctx, input: TemporalConnIdInput) -> ToolResult<TemporalInfoOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        let info = server_info(&handle.value).await?;
+        Ok(TemporalInfoOutput {
+            server_version: info.server_version,
+            cluster_name: info.cluster_name,
+        })
+    }
+
     /// Releases the connection and ends its streams; idempotent.
     #[rpc::mutation(perm = "temporal.read", risk = Risk::Read)]
     async fn disconnect(&self, ctx: Ctx, input: TemporalConnIdInput) -> ToolResult<Empty> {
@@ -379,6 +391,17 @@ impl TemporalWorkflowsApi {
     ) -> ToolResult<WorkflowHistoryOutput> {
         let handle = client_of(&self.0, &ctx, &input.conn_id)?;
         Ok(detail::history(&handle.value, input).await?)
+    }
+
+    /// One event with its payloads as stored (the History view's Raw form).
+    #[rpc::query(name = "rawEvent", perm = "temporal.read", risk = Risk::Read)]
+    async fn raw_event(
+        &self,
+        ctx: Ctx,
+        input: WorkflowRawEventInput,
+    ) -> ToolResult<WorkflowRawEventOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(detail::raw_event(&handle.value, input).await?)
     }
 
     /// Runs a query on the workflow; `__stack_trace` is the stack trace.
