@@ -11,7 +11,7 @@ import { parseArgs, resetPoints } from "@/tools/temporal/ActionDialogs";
 import { queryNamesOf } from "@/tools/temporal/QueriesPanel";
 import { WorkflowTab } from "@/tools/temporal/WorkflowTab";
 import { profile as schema } from "@/tools/temporal/profile";
-import type { TabProps, TabRecord } from "@/tools/types";
+import type { TabProps, TabView } from "@/tools/types";
 import { byRole, byText, cleanup, click, dialogWith, editorArea, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
@@ -62,7 +62,7 @@ function setup(options: { status?: WorkflowDetail["workflow"]["status"]; fail?: 
   };
   const client = { temporal: { workflows: wf } } as unknown as MightyClient;
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
-  const tab: TabRecord = { id: "t2", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "fulfilment-long-running" }, title: "w", pinned: false };
+  const tab: TabView = { id: "t2", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "fulfilment-long-running" }, title: "w", pinned: false };
   const openTab = vi.fn();
   const props: TabProps = { tab, profile, connId: "conn-1", client, active: true, useTabActions: () => {}, onLive: () => {}, note: describeError, openTab };
   const view = render(<WorkflowTab {...props} />);

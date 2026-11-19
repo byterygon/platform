@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
 import { CopyButton, Page, PageHeader, chipClass, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { useTabView } from "@/app/tab-view";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { EventCategory, HistoryEvent, WorkflowDetail } from "@/gen/api";
@@ -37,7 +38,9 @@ import { useWorkflow } from "./useWorkflow";
 
 const STATUS_VARIANT = { Running: "info", Completed: "success", Failed: "danger", Canceled: "neutral", Terminated: "danger", ContinuedAsNew: "info", TimedOut: "warning", Paused: "neutral", Unspecified: "neutral" } as const;
 
-type Section = "timeline" | "history" | "io" | "pending" | "stack" | "queries";
+/** The sections, and the view words ending a workflow's URL (DOC-21 §3.7). */
+export const WORKFLOW_VIEWS = ["timeline", "history", "input", "pending", "queries", "stack"] as const;
+type Section = (typeof WORKFLOW_VIEWS)[number];
 type Dialog = "signal" | "cancel" | "terminate" | "reset" | "startAnother" | null;
 
 const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
@@ -85,12 +88,12 @@ function stateLabel(value: unknown): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
 
-export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab }: TabProps) {
+export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab, navigate }: TabProps) {
   const namespace = text(tab.params["namespace"]) || "default";
   const workflowId = text(tab.params["workflowId"]);
   const runId = text(tab.params["runId"]) || undefined;
   const state = useWorkflow({ client, connId, namespace, workflowId, runId, note, onLive });
-  const [section, setSection] = useState<Section>("timeline");
+  const [section, setSection] = useTabView({ tab, navigate }, WORKFLOW_VIEWS, "timeline");
   const [selected, setSelected] = useState<number | null>(null);
   useTabActions({ refresh: state.refresh });
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -218,7 +221,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <TabsTrigger value="history">
               History <span className="text-body-1 text-fg-muted">{formatCount(events.length)}</span>
             </TabsTrigger>
-            <TabsTrigger value="io">Input and result</TabsTrigger>
+            <TabsTrigger value="input">Input and result</TabsTrigger>
             <TabsTrigger value="pending">
               Pending {pending > 0 ? <span className="text-body-1 text-fg-muted">{pending}</span> : null}
             </TabsTrigger>
@@ -260,7 +263,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               }
             />
           </TabsContent>
-          <TabsContent value="io" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
+          <TabsContent value="input" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <InputResultPanel events={events} detail={detail} />
           </TabsContent>
           <TabsContent value="pending" className="flex min-h-0 flex-1 flex-col">

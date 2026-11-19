@@ -7,6 +7,9 @@
 //     the CSP all hold, because app.info answers over /rpc/ws and the status bar shows the origin;
 //   - a profile added through the UI connects (echo.connect), its Ticks tab streams with credits,
 //     and after a reload the tab comes back and connects again;
+//   - routing (DOC-21 §3.7): the URL follows the active tab, a deep link loads at its path and
+//     focuses its tab, Back and Forward and a reload keep each URL's place, a missing profile is
+//     named;
 //   - the page opened through 127.0.0.1 is redirected to the public origin;
 //   - every request goes to the server's origin (or data:/blob:), and no script or CSP error is
 //     logged;
@@ -205,6 +208,29 @@ async function main(): Promise<number> {
     await page.navigate(`${origin}/`);
     await until(page, `[...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ticks · smoke"))`, "the restored tab");
     await until(page, `__mc.button("Start") && !__mc.has("Connect to smoke")`, "the restored tab to connect");
+
+    // 3a. Routing (DOC-21 §3.7, browser mode): the URL follows the active tab; a deep link loads
+    // the page and its assets at a deep path and focuses its tab; Back and Forward across loads
+    // focus each URL's tab; a reload keeps the place.
+    const selected = (title: string) => `[...document.querySelectorAll("[role=tab][aria-selected=true]")].some((t) => t.textContent.includes(${JSON.stringify(title)}))`;
+    await until(page, `location.pathname === "/echo/smoke/messages"`, "the URL of the restored active tab");
+    await page.navigate(`${origin}/echo/smoke/ticks`);
+    await until(page, `${selected("Ticks · smoke")} && __mc.button("Start")`, "the deep link's tab");
+    await page.navigate(`${origin}/echo/smoke/compose`);
+    await until(page, selected("Composer"), "the second deep link's tab");
+    await run(page, `history.back()`);
+    await until(page, `location.pathname === "/echo/smoke/ticks" && ${selected("Ticks · smoke")}`, "Back to the Ticks tab");
+    await run(page, `history.forward()`);
+    await until(page, `location.pathname === "/echo/smoke/compose" && ${selected("Composer")}`, "Forward to the Composer tab");
+    await run(
+      page,
+      `(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.textContent.includes("Ticks · smoke")); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`,
+    );
+    await until(page, `location.pathname === "/echo/smoke/ticks"`, "the URL following a clicked tab");
+    await page.navigate(`${origin}/echo/smoke/ticks`);
+    await until(page, `${selected("Ticks · smoke")} && location.pathname === "/echo/smoke/ticks"`, "the place after a reload");
+    await page.navigate(`${origin}/echo/nobody/ticks`);
+    await until(page, `__mc.has("No Echo profile named nobody")`, "the missing profile's notice");
 
     // 3b. Monaco cold (TSK-93): the restored Messages tab's jq editor, three loads.
     const keystroke = await firstKeystroke(page, `${origin}/`);

@@ -2,7 +2,9 @@
 // backdrop; a title area with the sidebar toggle, the app mark, the tabs as a Fluent TabList, the
 // command search, Settings and Help; below it the tool rail, the sidebar layer (the selected
 // tool's connection list) and the tab layer (a command bar, then the screen); a status bar. The
-// command palette is the menu. Every action of spec §3.4 is here with its binding.
+// command palette is the menu. Every action of spec §3.4 is here with its binding. The whole shell
+// is the root route of the router (DOC-21 §3.7); `useRouteSync` keeps the URL on the active tab.
+import { type AnyRouter, type HistoryLocation, type RouterHistory, RouterProvider, createMemoryHistory, useRouter } from "@tanstack/react-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette, type CommandGroup } from "@/components/ui/command-palette";
@@ -25,7 +27,7 @@ import { loadProfiles } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
 import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } from "@/profiles/transfer";
 import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
-import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabProps, TabRecord, ToolModule } from "@/tools/types";
+import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
 import { CloseTabDialog, DeleteProfileDialog, ExportDialog, ImportDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
@@ -36,9 +38,11 @@ import { ACTIONS, type ActionId, actionFor, bindingOf, inTextControl } from "./s
 import { ToolNav, type ToolState, navOrder } from "./nav/ToolNav";
 import { type Notice, NoticeContext } from "./page";
 import { ConnectionList, parseNode, profileNodeId } from "./sidebar/ConnectionList";
+import { type EntryState, type RouterConfig, createAppRouter, placeHref, targetOf } from "./router";
 import { DisconnectedState, ErrorState, liveText } from "./states";
-import { type ConnState, tabIdOf, useStore } from "./store";
+import { type ConnState, type State, tabIdOf, useStore } from "./store";
 import { Supervisor } from "./supervisor";
+import { canGo, initialHistory } from "./tab-history";
 
 /** A resize handle in the gap between two layers (TSK-64). */
 const gapHandle =
@@ -67,19 +71,161 @@ function useWindowWidth(): number {
 
 export interface AppProps {
   tools?: readonly ToolModule[];
+  /** The router's history (DOC-21 §3.7); a memory history at `/` when none is given (tests). */
+  history?: RouterHistory;
+  /** The mode and base path the server gave the page; memory at `/` by default. */
+  routerConfig?: RouterConfig;
 }
 
-export function App({ tools = TOOLS }: AppProps) {
+const MEMORY: RouterConfig = { mode: "memory", basePath: "" };
+
+export function App({ tools = TOOLS, history, routerConfig = MEMORY }: AppProps) {
+  const [router] = useState(() =>
+    createAppRouter(tools, () => <Shell tools={tools} routerConfig={routerConfig} />, history ?? createMemoryHistory({ initialEntries: ["/"] }), routerConfig),
+  );
   return (
     <Toast placement="bottom-end">
-      <Shell tools={tools} />
+      <RouterProvider router={router} />
     </Toast>
   );
 }
 
+/** The browser entry a tab shows: its place's URL and its id and step in the history state. */
+interface Entry {
+  href: string;
+  tab: string | null;
+  step: number | null;
+}
+
+/**
+ * Keeps the URL on the active tab and opens what a URL names (DOC-21 §3.7). The tab model is the
+ * source of truth: activating, opening or closing a tab replaces the browser's entry, a step pushed
+ * with `navigate` pushes one. A URL that arrives (first load, a paste, an entry without a tab id)
+ * opens or focuses its tab; the browser's Back and Forward move the active tab when it has a step
+ * that way, else show the landed entry's own step (reopening its tab when it was closed).
+ */
+function useRouteSync(options: {
+  router: AnyRouter;
+  config: RouterConfig;
+  tools: readonly ToolModule[];
+  state: State;
+  stateRef: { readonly current: State };
+  dispatch: ReturnType<typeof useStore>["dispatch"];
+  missingProfile: (tool: ToolModule, name: string) => void;
+}): { pushNext: (tabId: string) => void } {
+  const { router, config, tools, state, stateRef, dispatch, missingProfile } = options;
+  const history: RouterHistory = router.history;
+  const ready = state.profiles !== null;
+  const arrived = useRef(false);
+  const pendingPush = useRef<string | null>(null);
+  const seeded = useRef(false);
+  const publicHref = (href: string) => (config.mode === "browser" ? config.basePath + href : href);
+
+  const entryOf = (s: State, tabId: string | null, step?: number): Entry => {
+    const tab = s.tabs.find((t) => t.id === tabId) ?? s.closedTabs.find((t) => t.id === tabId);
+    const tool = toolById(tools, tab?.tool ?? s.layout.tool) ?? tools[0]!;
+    if (!tab) return { href: `/${tool.id}`, tab: null, step: null };
+    const at = step ?? tab.history.index;
+    const place = tab.history.entries[at] ?? tab;
+    return { href: placeHref(tool, s.profiles?.find((p) => p.id === tab.profileId), place), tab: tab.id, step: at };
+  };
+
+  const write = (entry: Entry, push: boolean) => {
+    const target = publicHref(entry.href);
+    const state = entry.tab !== null ? { mcTab: entry.tab, mcStep: entry.step ?? 0 } : {};
+    if (push) history.push(target, state);
+    else history.replace(target, state);
+  };
+
+  /** A URL arrived: open or focus what it names. */
+  const arrive = (location: HistoryLocation) => {
+    const s = stateRef.current;
+    const target = targetOf(router, router.parseLocation(location), tools);
+    if (target.type === "start") return;
+    const tool = toolById(tools, target.tool)!;
+    dispatch({ type: "layout", layout: { tool: tool.id } });
+    if (!target.profileName) return;
+    const profile = s.profiles?.find((p) => p.tool === tool.id && p.name === target.profileName);
+    if (!profile) return missingProfile(tool, target.profileName);
+    if (target.type === "tool") return;
+    const kind = tool.tabKinds[target.place.kind]!;
+    const place: TabPlace = { ...target.place, title: kind.title(target.place.params) };
+    dispatch({ type: "openTab", tab: { id: tabIdOf(tool.id, profile.id, place.kind, place.params), tool: tool.id, profileId: profile.id, ...place, pinned: false, history: initialHistory(place) } });
+  };
+
+  /** The browser moved through its entries (Back, Forward, a step several away). */
+  const pop = (location: HistoryLocation, delta: number) => {
+    const s = stateRef.current;
+    const { mcTab, mcStep } = location.state as EntryState;
+    if (mcTab === undefined) return arrive(location);
+    const active = s.tabs.find((t) => t.id === s.activeTab);
+    if (active && canGo(active, delta)) return dispatch({ type: "tabGo", id: active.id, delta });
+    // The active tab has no step that way: show the entry's own, if it still holds that place.
+    const href = router.parseLocation(location).href;
+    const matches = (step: number) => entryOf(s, mcTab, step).href === href;
+    const step = mcStep ?? 0;
+    if (s.tabs.some((t) => t.id === mcTab) && matches(step)) return dispatch({ type: "tabStep", id: mcTab, step });
+    if (s.closedTabs.some((t) => t.id === mcTab) && matches(step)) return dispatch({ type: "reopenTab", id: mcTab, step });
+    arrive(location);
+  };
+
+  // URL → tabs: the first URL once profiles are known, then every move through the entries.
+  useEffect(() => {
+    if (!ready) return;
+    if (!arrived.current) {
+      arrived.current = true;
+      arrive(history.location);
+    }
+    return history.subscribe(({ location, action }) => {
+      if (action.type === "BACK") pop(location, -1);
+      else if (action.type === "FORWARD") pop(location, 1);
+      else if (action.type === "GO") pop(location, action.index);
+      // PUSH and REPLACE are the shell's own writes.
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, history]);
+
+  // Tabs → URL: the active tab's place, or `/<tool>` with no tab.
+  const active = state.tabs.find((t) => t.id === state.activeTab) ?? null;
+  const activeName = active ? state.profiles?.find((p) => p.id === active.profileId)?.name : undefined;
+  useEffect(() => {
+    if (!ready || !arrived.current) return;
+    const s = stateRef.current;
+    const entry = entryOf(s, s.activeTab);
+    const current = history.location;
+    const push = pendingPush.current !== null && pendingPush.current === entry.tab;
+    pendingPush.current = null;
+    // On load, the browser gets the active tab's step behind as its entry behind, so its Back works.
+    if (!seeded.current) {
+      seeded.current = true;
+      const tab = s.tabs.find((t) => t.id === entry.tab);
+      if (config.mode !== "memory" && tab && tab.history.index > 0 && (current.state as EntryState).__TSR_index === 0) {
+        write(entryOf(s, tab.id, tab.history.index - 1), false);
+        // The browser history queues one change per microtask: the replace must land first.
+        history.flush();
+        write(entry, true);
+        return;
+      }
+    }
+    const at = current.state as EntryState;
+    if (current.href === publicHref(entry.href) && (at.mcTab ?? null) === entry.tab && (at.mcStep ?? null) === entry.step) return;
+    write(entry, push);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, state.activeTab, active?.kind, active?.params, active?.history.index, activeName, state.layout.tool]);
+
+  const api = useRef({
+    pushNext: (tabId: string) => {
+      // Only the active tab's steps reach the URL; a tab in the background moves silently.
+      pendingPush.current = tabId === stateRef.current.activeTab ? tabId : null;
+    },
+  });
+  return api.current;
+}
+
 const DISCONNECTED: ConnState = { status: "disconnected", connId: null };
 
-function Shell({ tools }: { tools: readonly ToolModule[] }) {
+function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerConfig: RouterConfig }) {
+  const router = useRouter();
   const services = useServices();
   const { client, storage } = services;
   const { state, dispatch } = useStore();
@@ -276,8 +422,49 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
     const profile = profileById(profileId);
     if (!profile || !node.open) return;
     const id = tabIdOf(profile.tool, profileId, node.open.kind, node.open.params);
-    dispatch({ type: "openTab", tab: { id, tool: profile.tool, profileId, kind: node.open.kind, params: node.open.params, title: node.open.title, pinned: false } });
+    const place: TabPlace = { kind: node.open.kind, params: node.open.params, title: node.open.title };
+    dispatch({ type: "openTab", tab: { id, tool: profile.tool, profileId, ...place, pinned: false, history: initialHistory(place) } });
   };
+
+  // --- Routing (DOC-21 §3.7) --------------------------------------------------------------------
+
+  const routes = useRouteSync({
+    router,
+    config: routerConfig,
+    tools,
+    state,
+    stateRef,
+    dispatch,
+    missingProfile: (t, name) =>
+      toast.add({ title: `No ${t.label} profile named ${name}`, description: "Profiles live in each browser: create one with that name, or import it, and open the link again.", type: "warning", timeout: 10_000 }),
+  });
+
+  const navigateTab = useCallback(
+    (tabId: string, place: TabPlace, options?: { replace?: boolean }) => {
+      if (!options?.replace) routes.pushNext(tabId);
+      dispatch({ type: "navigateTab", id: tabId, place, ...(options?.replace ? { replace: true } : {}) });
+    },
+    [routes, dispatch],
+  );
+
+  /** Back (`-1`) or forward (`1`) in the active tab's own history. */
+  const goActive = (delta: number) => {
+    const tab = stateRef.current.tabs.find((t) => t.id === stateRef.current.activeTab);
+    if (tab && canGo(tab, delta)) dispatch({ type: "tabGo", id: tab.id, delta });
+  };
+
+  // In memory mode no browser history turns the mouse's back and forward buttons into steps.
+  useEffect(() => {
+    if (routerConfig.mode !== "memory") return;
+    const listener = (event: MouseEvent) => {
+      if (event.button !== 3 && event.button !== 4) return;
+      event.preventDefault();
+      goActive(event.button === 3 ? -1 : 1);
+    };
+    window.addEventListener("mouseup", listener);
+    return () => window.removeEventListener("mouseup", listener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routerConfig.mode]);
 
   const closeTab = (id: string, force = false) => {
     const live = stateRef.current.live[id];
@@ -387,6 +574,12 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
         dispatch({ type: "activateTab", id: next.id });
         break;
       }
+      case "back":
+        goActive(-1);
+        break;
+      case "forward":
+        goActive(1);
+        break;
       case "primary":
         handlers?.primary?.();
         break;
@@ -439,6 +632,8 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
       if (state.dialog.kind !== "none" || state.paletteOpen) return;
       const inText = inTextControl(event.target);
       if (action.id === "find" && (inText || !state.activeTab)) return;
+      // Alt+Left and Alt+Right move by words in a text control (macOS).
+      if ((action.id === "back" || action.id === "forward") && inText) return;
       if (action.id === "stop" && !(state.activeTab && state.live[state.activeTab]?.status !== "ended" && state.live[state.activeTab])) return;
       event.preventDefault();
       perform(action.id);
@@ -490,7 +685,10 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
         label,
         shortcut: bindingOf(a.id),
         ...(a.keywords ? { keywords: a.keywords } : {}),
-        disabled: (toolIndex >= 0 && !nav[toolIndex]) || ((a.group === "Live views" || a.id === "primary" || a.id === "closeTab") && !state.activeTab),
+        disabled:
+          (toolIndex >= 0 && !nav[toolIndex]) ||
+          ((a.group === "Live views" || a.id === "primary" || a.id === "closeTab") && !state.activeTab) ||
+          ((a.id === "back" || a.id === "forward") && !(activeTab && canGo(activeTab, a.id === "back" ? -1 : 1))),
         onSelect: () => perform(a.id),
       };
       if (a.group === "App") app.push(item);
@@ -759,6 +957,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
                             onLive: liveFor(t.id),
                             note,
                             openTab: (open) => openResource(t.profileId, { id: "", label: open.title, open }),
+                            navigate: (place, options) => navigateTab(t.id, place, options),
                             updateProfile: async (change) => {
                               const record = profileById(t.profileId);
                               if (record) await saveProfile({ ...change(record), updatedAt: new Date().toISOString() });
@@ -887,7 +1086,7 @@ interface TabBodyProps {
   connect: () => void;
   cancelConnect: () => void;
   editProfile: () => void;
-  tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab" | "updateProfile">;
+  tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab" | "navigate" | "updateProfile">;
 }
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */

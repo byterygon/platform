@@ -11,7 +11,7 @@ import type { ProfileRecord } from "@/profiles/record";
 import { WorkflowTab } from "@/tools/temporal/WorkflowTab";
 import { splitLines } from "@/tools/temporal/useWorkflow";
 import { profile as schema } from "@/tools/temporal/profile";
-import type { LiveState, TabProps, TabRecord } from "@/tools/types";
+import type { LiveState, TabProps, TabView } from "@/tools/types";
 import { axeViolations, byRole, byText, cleanup, click, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
@@ -104,7 +104,7 @@ function setup(options: Options = {}) {
   const rawEvent = vi.fn(async (_input: unknown) => ({ attributes: { input: { payloads: [{ metadata: { encoding: "anNvbi9wbGFpbg==" }, data: "Im9yZC1sb25nIg==" }] } } }));
   const client = { temporal: { workflows: { describe, history, followHistory, query, rawEvent } } } as unknown as MightyClient;
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
-  const tab: TabRecord = { id: "t2", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "fulfilment-long-running" }, title: "fulfilment-long-running", pinned: false };
+  const tab: TabView = { id: "t2", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "fulfilment-long-running" }, title: "fulfilment-long-running", pinned: false };
   const lives: (LiveState | null)[] = [];
   const props: TabProps = {
     tab,
@@ -279,7 +279,7 @@ describe("Workflow tab (spec §9.3)", () => {
     const stream = fakeStream();
     const client = { temporal: { workflows: { describe: () => Promise.reject(missing), history: vi.fn(), followHistory: () => stream.call, query: vi.fn() } } } as unknown as MightyClient;
     const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
-    const tab: TabRecord = { id: "t", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "gone" }, title: "gone", pinned: false };
+    const tab: TabView = { id: "t", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "gone" }, title: "gone", pinned: false };
     render(<WorkflowTab tab={tab} profile={profile} connId="c" client={client} active useTabActions={() => {}} onLive={() => {}} note={describeError} openTab={() => {}} />);
     await waitFor(() => byText("workflow not found") !== null, "the error");
     expect(byRole("button", "Retry") ?? byRole("button", "Refresh")).not.toBeNull();

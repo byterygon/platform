@@ -16,7 +16,7 @@ import { StartWorkflowSheet } from "@/tools/temporal/StartWorkflowSheet";
 import { WorkflowsTab } from "@/tools/temporal/WorkflowsTab";
 import { requestSheet } from "@/tools/temporal/sheet-parts";
 import { profile as schema } from "@/tools/temporal/profile";
-import type { TabProps, TabRecord } from "@/tools/types";
+import type { TabProps, TabView } from "@/tools/types";
 import { axeViolations, byRole, byText, cleanup, click, dialogWith, editorArea, key, render, settle, type, waitFor } from "./support/render";
 
 const clipboard = vi.fn(async (_text: string) => undefined);
@@ -28,7 +28,7 @@ afterEach(cleanup);
 
 const row = (patch: Partial<WorkflowRow> = {}): WorkflowRow => ({ workflowId: "ord-1", runId: "run-1", workflowType: "Order", status: "Completed", startTime: "2026-11-18T00:00:00Z", taskQueue: "lab-queue", historyLength: 11, ...patch });
 
-function props(client: unknown, tab: Partial<TabRecord> & { kind: string; params: Record<string, unknown> }): TabProps & { openTab: ReturnType<typeof vi.fn> } {
+function props(client: unknown, tab: Partial<TabView> & { kind: string; params: Record<string, unknown> }): TabProps & { openTab: ReturnType<typeof vi.fn> } {
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
   profile.fields["address"] = "127.0.0.1:7233";
   const openTab = vi.fn();

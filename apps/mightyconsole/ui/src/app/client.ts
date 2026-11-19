@@ -8,6 +8,7 @@ import { createContext, useContext } from "react";
 import * as api from "@/gen/api";
 import type { AppStorage } from "@/profiles/storage";
 import { ProgressBus } from "./progress";
+import { type RouterConfig, webSocketUrl } from "./router";
 
 export type MightyApi = typeof api.procedures;
 /** The typed client: `client.echo.connect(...)`, from the generated procedure table. */
@@ -39,9 +40,9 @@ export function useServices(): Services {
   return services;
 }
 
-/** The real services: one client over the WebSocket to this page's origin. */
-export function createServices(storage: AppStorage): Services {
-  const client = createClient(api, autoTransport({ force: "websocket", webSocket: { auth: () => ({ csrf: readCsrf() ?? "" }) } }));
+/** The real services: one client over the WebSocket to this page's origin, under its base path. */
+export function createServices(storage: AppStorage, routerConfig: RouterConfig): Services {
+  const client = createClient(api, autoTransport({ force: "websocket", webSocket: { url: webSocketUrl(routerConfig), auth: () => ({ csrf: readCsrf() ?? "" }) } }));
   const decoder = new Worker(new URL("./arrow-worker.ts", import.meta.url), { type: "module" });
   return {
     client,

@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CopyButton, PageHeader, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { useTabView } from "@/app/tab-view";
 import { cn } from "@/lib/cn";
 import type * as api from "@/gen/api";
 import { ArrowClockwise, History } from "@/lib/icons";
@@ -80,7 +81,11 @@ export function AssistantsTab({ tab, profile, connId, client, useTabActions, not
 }
 
 /** One assistant: its graph (xray for subgraphs), schemas and config. */
-export function AssistantTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+/** The assistant's sections, the view words of its URL (DOC-21 §3.7). */
+export const ASSISTANT_VIEWS = ["graph", "schemas", "config"] as const;
+
+export function AssistantTab({ tab, profile, connId, client, useTabActions, note, openTab, navigate }: TabProps) {
+  const [section, setSection] = useTabView({ tab, navigate }, ASSISTANT_VIEWS, "graph");
   const assistantId = text(tab.params["assistantId"]);
   const [xray, setXray] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
@@ -114,7 +119,7 @@ export function AssistantTab({ tab, profile, connId, client, useTabActions, note
         }
       />
       {assistant.error ? <ErrorState error={assistant.error} onRetry={reload} onRefresh={reload} /> : null}
-      <Tabs defaultValue="graph" className="mt-stack-md flex min-h-0 flex-1 flex-col">
+      <Tabs value={section} onValueChange={(v) => setSection(v as typeof section)} className="mt-stack-md flex min-h-0 flex-1 flex-col">
         <TabsList aria-label="Assistant views" className="px-inset-lg">
           <TabsTrigger value="graph">Graph</TabsTrigger>
           <TabsTrigger value="schemas">Schemas</TabsTrigger>

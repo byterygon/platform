@@ -28,8 +28,9 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    // One chunk carries the seven theme presets as text (Settings swaps them in) and the shell.
-    chunkSizeWarningLimit: 2048,
+    // One chunk carries the seven theme presets as text (Settings swaps them in), the shell and its
+    // router (TanStack Router, TSK-101).
+    chunkSizeWarningLimit: 2304,
     rolldownOptions: {
       // Base UI marks its modules "use client" for React Server Components; a client bundle drops it.
       onwarn(warning, warn) {

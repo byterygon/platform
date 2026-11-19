@@ -10,7 +10,7 @@ import type { ProfileRecord } from "@/profiles/record";
 import { ScheduleTab, SchedulesTab } from "@/tools/temporal/SchedulesTab";
 import { TaskQueueTab } from "@/tools/temporal/TaskQueueTab";
 import { profile as schema } from "@/tools/temporal/profile";
-import type { TabProps, TabRecord } from "@/tools/types";
+import type { TabProps, TabView } from "@/tools/types";
 import { axeViolations, byRole, byText, cleanup, click, dialogWith, render, settle, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
@@ -44,7 +44,7 @@ const detail = (patch: Partial<ScheduleSummary> = {}): ScheduleDetail => ({
 
 const isDisabled = (el: HTMLElement | null) => el !== null && (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true" || el.hasAttribute("data-disabled"));
 
-function props(client: unknown, tab: Partial<TabRecord> & { kind: string; params: Record<string, unknown> }): TabProps & { openTab: ReturnType<typeof vi.fn> } {
+function props(client: unknown, tab: Partial<TabView> & { kind: string; params: Record<string, unknown> }): TabProps & { openTab: ReturnType<typeof vi.fn> } {
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
   const openTab = vi.fn();
   return { tab: { id: "t", tool: "temporal", profileId: "01T", title: "t", pinned: false, ...tab }, profile, connId: "conn-1", client: client as MightyClient, active: true, useTabActions: () => {}, onLive: () => {}, note: describeError, openTab };
