@@ -243,10 +243,12 @@ async function main(): Promise<number> {
       `(() => { const t = ${el}; if (!t) throw new Error("nothing to press"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`;
     const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((el) => el.textContent.trim() === ${JSON.stringify(label)})`;
     await run(page, `__mc.click(__mc.button("Temporal"))`);
+    await until(page, `__mc.has("No Temporal connections yet")`, "the Temporal connection list");
     await run(page, `__mc.click(__mc.button("Add connection"))`);
     await until(page, `__mc.field("Name")`, "the Temporal profile sheet");
     await run(page, `__mc.type(__mc.field("Name"), "lab")`);
     // A port nothing listens on, so the profile never connects, with or without a lab running.
+    await until(page, `__mc.field("Address")`, "the Temporal form's Address");
     await run(page, `__mc.type(__mc.field("Address"), "127.0.0.1:9")`);
     await run(page, `__mc.click(__mc.button("Save"))`);
     await until(page, `__mc.item("lab")`, "the saved Temporal profile");
