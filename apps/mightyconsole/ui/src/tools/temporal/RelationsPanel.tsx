@@ -2,7 +2,7 @@
 // the signals and cancels between it and other workflows, and its runs, as a graph (GraphView, left
 // to right) and as lists. Whole family draws every workflow under the root (RootWorkflowId); Direct
 // only one level each way. Loaded when the view is first shown, again when the scope changes.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,12 +10,12 @@ import { DescriptionList, DescriptionListDetails, DescriptionListItem, Descripti
 import { Field, FieldLabel } from "@/components/ui/field";
 import { GraphView, type GraphViewEdge, type GraphViewNode } from "@/components/ui/graph-view";
 import { Icon } from "@/components/ui/icon";
-import { IconButton } from "@/components/ui/icon-button";
+import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CopyButton, LinkButton } from "@/app/page";
 import { ErrorState, LoadingRows } from "@/app/states";
-import { ArrowClockwise, List } from "@/lib/icons";
+import { List } from "@/lib/icons";
 import type { RelationNode, RelationScope, RelationSignal, WorkflowRelations, WorkflowStatus } from "@/gen/api";
 import type { MightyClient } from "@/app/client";
 import type { DescribedError } from "../types";
@@ -31,6 +31,8 @@ export interface RelationsPanelProps {
   runId: string;
   /** The view is shown: the first time loads it. */
   active: boolean;
+  /** Grows with the history (its event count): the relations are read again. */
+  version: number;
   now: number;
   note(error: unknown): DescribedError;
   onOpenWorkflow(workflowId: string, runId?: string): void;
@@ -92,7 +94,7 @@ function SideHead({ title, count }: { title: string; count?: number }) {
   );
 }
 
-export function RelationsPanel({ client, connId, namespace, workflowId, runId, active, now, note, onOpenWorkflow, onListWorkflows }: RelationsPanelProps) {
+export function RelationsPanel({ client, connId, namespace, workflowId, runId, active, version, now, note, onOpenWorkflow, onListWorkflows }: RelationsPanelProps) {
   const [scope, setScope] = useState<RelationScope>("family");
   const [signals, setSignals] = useState(true);
   const [data, setData] = useState<WorkflowRelations | null>(null);
@@ -119,9 +121,19 @@ export function RelationsPanel({ client, connId, namespace, workflowId, runId, a
     }
   }, [client, connId, namespace, workflowId, runId, scope, note]);
 
+  // Again when the scope changes, and a moment after the history grows (a child started or closed,
+  // a signal arrived).
+  const loaded = useRef(false);
   useEffect(() => {
-    if (wanted) void load();
-  }, [wanted, load]);
+    if (!wanted) return undefined;
+    if (!loaded.current) {
+      loaded.current = true;
+      void load();
+      return undefined;
+    }
+    const timer = setTimeout(() => void load(), 1000);
+    return () => clearTimeout(timer);
+  }, [wanted, load, version]);
 
   const graph = useMemo(() => (data ? graphOf(data, signals) : { nodes: [], edges: [] }), [data, signals]);
   const byId = useMemo(() => new Map((data?.nodes ?? []).map((n) => [n.workflowId, n])), [data]);
@@ -190,14 +202,11 @@ export function RelationsPanel({ client, connId, namespace, workflowId, runId, a
         <Button size="small" appearance="subtle" disabled={!family.query} onClick={() => family.query && onListWorkflows(family.query)}>
           <Icon icon={List} /> List them in Workflows
         </Button>
-        <IconButton size="small" appearance="subtle" aria-label="Refresh relations" disabled={loading} onClick={() => void load()}>
-          <Icon icon={ArrowClockwise} />
-        </IconButton>
       </div>
       {error ? <ErrorState error={error} onRetry={() => void load()} /> : null}
       {!family.supported && family.reason ? <p className="shrink-0 px-inset-lg pt-stack-sm text-caption-1 text-fg-muted">Direct only: the server cannot list the whole family ({family.reason}).</p> : null}
-      <div className="flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-stack-sm px-inset-lg py-inset-md">
+      <Resizable orientation="horizontal" className="min-h-0 flex-1" aria-label="The graph and the related workflows">
+        <ResizablePanel defaultSize={64} minSize={35} className="flex min-h-0 min-w-0 flex-col gap-stack-sm px-inset-lg py-inset-md">
           <GraphView
             nodes={graph.nodes}
             edges={graph.edges}
@@ -209,8 +218,10 @@ export function RelationsPanel({ client, connId, namespace, workflowId, runId, a
             className="min-h-panel-xs flex-1"
           />
           <p className="shrink-0 text-caption-1 text-fg-muted">Solid arrows: parent to child. Dashed: a signal or cancel between this workflow and another. Click a box to see it on the right; double-click opens it in a tab.</p>
-        </div>
-        <aside aria-label="Related workflows" className="flex w-panel-pane max-w-1/2 min-w-0 shrink-0 flex-col gap-stack-md overflow-auto border-s border-border-subtle px-inset-lg py-inset-md">
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel defaultSize={36} minSize={22} className="flex min-h-0 min-w-0 flex-col">
+        <aside aria-label="Related workflows" className="flex min-h-0 min-w-0 flex-1 flex-col gap-stack-md overflow-y-auto px-inset-lg py-inset-md">
           {picked && !picked.current ? (
             <section aria-label="Selected workflow" className="flex flex-col gap-stack-sm">
               <h3 className="flex items-center gap-inline-xs text-body-1-strong text-fg">
@@ -257,9 +268,9 @@ export function RelationsPanel({ client, connId, namespace, workflowId, runId, a
                 ) : (
                   <ul className="flex flex-col gap-stack-xs">
                     {received.map((s) => (
-                      <li key={s.eventId} className="flex min-w-0 items-center gap-inline-xs">
+                      <li key={s.eventId} className="flex min-w-0 flex-wrap items-center gap-x-inline-xs">
                         {workflowLink(s.workflowId, s.runId)}
-                        <span className="truncate text-fg-muted">· {signalText(s)}</span>
+                        <span className="text-fg-muted">· {signalText(s)}</span>
                       </li>
                     ))}
                   </ul>
@@ -271,9 +282,9 @@ export function RelationsPanel({ client, connId, namespace, workflowId, runId, a
                 ) : (
                   <ul className="flex flex-col gap-stack-xs">
                     {sent.map((s) => (
-                      <li key={s.eventId} className="flex min-w-0 items-center gap-inline-xs">
+                      <li key={s.eventId} className="flex min-w-0 flex-wrap items-center gap-x-inline-xs">
                         {workflowLink(s.workflowId, s.runId)}
-                        <span className="truncate text-fg-muted">· {signalText(s)}</span>
+                        <span className="text-fg-muted">· {signalText(s)}</span>
                       </li>
                     ))}
                   </ul>
@@ -310,7 +321,8 @@ export function RelationsPanel({ client, connId, namespace, workflowId, runId, a
             </DescriptionList>
           </section>
         </aside>
-      </div>
+        </ResizablePanel>
+      </Resizable>
     </div>
   );
 }
@@ -333,7 +345,7 @@ function RelRow({ link, status, missing, extra }: { link: React.ReactNode; statu
     <div className="flex min-w-0 flex-wrap items-center gap-inline-sm">
       {link}
       <StatusBadge status={status} missing={missing ?? false} />
-      {extra ? <span className="min-w-0 truncate text-body-1 text-fg-muted">{extra}</span> : null}
+      {extra ? <span className="min-w-0 text-body-1 text-fg-muted">{extra}</span> : null}
     </div>
   );
 }

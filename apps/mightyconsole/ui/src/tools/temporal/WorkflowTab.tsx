@@ -277,6 +277,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               workflowId={workflowId}
               runId={detail.workflow.runId}
               active={section === "relations"}
+              version={events.length}
               now={now}
               note={note}
               onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, ...(runId2 ? { runId: runId2 } : {}) }, title: workflowId2 })}

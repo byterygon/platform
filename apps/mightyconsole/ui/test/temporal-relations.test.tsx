@@ -59,7 +59,7 @@ function setup(answer: (scope: string) => WorkflowRelations = (s) => (s === "dir
   const onOpenWorkflow = vi.fn();
   const onListWorkflows = vi.fn();
   const view = render(
-    <RelationsPanel client={client} connId="conn-1" namespace="lab" workflowId="family-order" runId="run-family-order" active now={Date.parse("2026-11-19T10:12:00Z")} note={describeError} onOpenWorkflow={onOpenWorkflow} onListWorkflows={onListWorkflows} />,
+    <RelationsPanel client={client} connId="conn-1" namespace="lab" workflowId="family-order" runId="run-family-order" active version={30} now={Date.parse("2026-11-19T10:12:00Z")} note={describeError} onOpenWorkflow={onOpenWorkflow} onListWorkflows={onListWorkflows} />,
   );
   return { relations, onOpenWorkflow, onListWorkflows, ...view };
 }
