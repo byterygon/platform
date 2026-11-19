@@ -2,7 +2,8 @@
 // root with a status glyph (disconnected, connecting, connected, reconnecting, failed) and, under
 // a connected profile, the tool's resource tree. A filter box, a context menu (Connect,
 // Disconnect, Open, Edit, Duplicate, Export, Delete, Copy id) and the "No profile" state.
-import { useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ServicesContext } from "@/app/client";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { EmptyState, EmptyStateActions, EmptyStateDescription, EmptyStateIcon, EmptyStateTitle } from "@/components/ui/empty-state";
@@ -66,6 +67,14 @@ function resourceNodes(profileId: string, nodes: readonly ResourceNode[]): TreeN
   });
 }
 
+/** The tree ids of the resource nodes that open the first time they show. */
+function openedIds(profileId: string, nodes: readonly ResourceNode[]): string[] {
+  return nodes.flatMap((n) => [...(n.expanded ? [`p:${profileId}/${n.id}`] : []), ...(n.children ? openedIds(profileId, n.children) : [])]);
+}
+
+const NO_SUBSCRIBE = () => () => undefined;
+const NO_VERSION = () => 0;
+
 /** Finds the resource node a tree id names. */
 export function findResource(nodes: readonly ResourceNode[], id: string): ResourceNode | undefined {
   for (const n of nodes) {
@@ -98,6 +107,16 @@ export function ConnectionList(props: ConnectionListProps) {
   const { tool, profiles, conns, selected } = props;
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<string[]>([]);
+  // The tool's tree data (counts, namespaces), loaded for each connected profile; a change redraws the tree.
+  const services = useContext(ServicesContext);
+  const dataVersion = useSyncExternalStore(tool.sidebarData?.subscribe ?? NO_SUBSCRIBE, tool.sidebarData?.version ?? NO_VERSION);
+  useEffect(() => {
+    if (!tool.sidebarData || !services) return;
+    for (const p of profiles ?? []) {
+      const c = conns[p.id];
+      if (c?.status === "connected" && c.connId) tool.sidebarData.load({ profile: p, connId: c.connId, client: services.client });
+    }
+  }, [tool, profiles, conns, services]);
   const nodes = useMemo<TreeNode[]>(
     () =>
       (profiles ?? []).map((p) => {
@@ -124,8 +143,22 @@ export function ConnectionList(props: ConnectionListProps) {
         if (conn.status === "failed" && conn.error) node.error = conn.error.title;
         return node;
       }),
-    [profiles, conns, tool, props.recordStates],
+    // dataVersion: the tool's tree data changed.
+    [profiles, conns, tool, props.recordStates, dataVersion],
   );
+  // Nodes that open the first time they show (a Temporal profile's own namespace).
+  const opened = useRef(new Set<string>());
+  useEffect(() => {
+    const fresh: string[] = [];
+    for (const p of profiles ?? []) {
+      const c = conns[p.id];
+      if (c?.status !== "connected" || !c.connId) continue;
+      for (const id of openedIds(p.id, tool.sidebarTree({ profile: p, connId: c.connId }))) if (!opened.current.has(id)) fresh.push(id);
+    }
+    if (fresh.length === 0) return;
+    for (const id of fresh) opened.current.add(id);
+    setExpanded((e) => [...new Set([...e, ...fresh])]);
+  }, [nodes, profiles, conns, tool]);
   const selectedProfile = selected ? parseNode(selected) : null;
   const profile = selectedProfile ? profiles?.find((p) => p.id === selectedProfile.profileId) : undefined;
   const status = profile ? (conns[profile.id]?.status ?? "disconnected") : undefined;

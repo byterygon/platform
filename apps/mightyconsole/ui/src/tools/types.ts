@@ -44,6 +44,19 @@ export interface ResourceNode {
   /** The tab this node opens on Enter or double-click. */
   open?: { kind: string; params: Record<string, unknown>; title: string };
   children?: readonly ResourceNode[];
+  /** Opens the first time the node shows (the person can close it after). */
+  expanded?: boolean;
+}
+
+/**
+ * Data a tool's tree shows once a profile is connected (counts, the namespaces of a cluster): the
+ * shell calls `load` for each connected profile, and draws the tree again when `version` changes.
+ * `load` is called often; the tool loads once per connection.
+ */
+export interface SidebarData {
+  load(context: { profile: ProfileRecord; connId: string; client: MightyClient }): void;
+  subscribe(onChange: () => void): () => void;
+  version(): number;
 }
 
 /** What a tab's component gets from the shell. */
@@ -150,6 +163,8 @@ export interface ToolModule {
   readonly ConnectionForm: ComponentType<ConnectionFormProps>;
   /** The resource tree under a connected profile. */
   sidebarTree(context: { profile: ProfileRecord; connId: string }): readonly ResourceNode[];
+  /** What the tree loads after connecting; none when absent. */
+  readonly sidebarData?: SidebarData;
   readonly tabKinds: Readonly<Record<string, TabKind>>;
   readonly actions: readonly ToolAction[];
   /** Opens the live handle (`<tool>.connect { profile: toConnect(record) }`). */
