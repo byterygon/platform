@@ -4336,6 +4336,13 @@ export const tokens = {
     description: "A 2 px border. Primitive: reference it through a role, never from a component. Not for the focus ring: use ring.width.",
     values: { "base": "2px" },
   },
+  "border.width.3": {
+    cssVar: "--by-border-width-3",
+    type: "dimension",
+    tier: "primitive",
+    description: "A 3 px stroke: Fluent's strokeWidthThicker, the selected tab's indicator. Primitive: reference it through a role, never from a component. Not for the focus ring: use ring.width.",
+    values: { "base": "3px" },
+  },
   "breakpoint.sm": {
     cssVar: "--by-breakpoint-sm",
     type: "dimension",
@@ -6881,8 +6888,8 @@ export const tokens = {
     cssVar: "--by-table-row-height-medium",
     type: "dimension",
     tier: "component",
-    description: "Height of a header and body row of a Table of size medium: Fluent's medium (default) table row: 44 px, 36 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
-    values: { "comfortable": "44px", "compact": "36px" },
+    description: "Height of a header and body row of a Table of size medium: The medium (default) table row of the TSK-91 mockup: 40 px, 34 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+    values: { "comfortable": "40px", "compact": "34px" },
   },
   "table.row-height-small": {
     cssVar: "--by-table-row-height-small",
@@ -6903,7 +6910,7 @@ export const tokens = {
     type: "dimension",
     tier: "component",
     description: "Horizontal padding inside a Table cell: Fluent's spacingHorizontalS (8 px), 4 px compact. Not for the result grid: use grid.cell-padding-x.",
-    values: { "comfortable": "8px", "compact": "4px" },
+    values: { "comfortable": "12px", "compact": "8px" },
   },
   "chart.cat.1": {
     cssVar: "--by-chart-cat-1",

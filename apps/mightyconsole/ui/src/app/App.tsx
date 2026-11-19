@@ -603,17 +603,22 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
               {state.tabs.map((t) => {
                 const live = state.live[t.id];
                 const conn = state.conns[t.profileId];
-                const icon =
+                // The mockup's tab: the tool's mark first, then the title, then its state (live, connecting, failed).
+                const tabTool = toolById(tools, t.tool);
+                const tabState =
                   conn?.status === "connecting" ? (
                     <Spinner size="sm" label="Connecting" />
                   ) : conn?.status === "failed" ? (
-                    <span role="img" aria-label="error" className="size-icon-xs rounded-full bg-danger" />
+                    <span role="img" aria-label="error" className="size-inline-md shrink-0 rounded-full bg-danger" />
                   ) : live?.status === "live" ? (
-                    <span role="img" aria-label="live" className="size-icon-xs rounded-full bg-success" />
-                  ) : undefined;
+                    <span role="img" aria-label="live" className="size-inline-md shrink-0 rounded-full bg-success" />
+                  ) : null;
                 return (
-                  <TabsTrigger key={t.id} value={t.id} icon={icon} onClose={() => closeTab(t.id)} onAuxClick={(e) => e.button === 1 && closeTab(t.id)}>
-                    {t.title}
+                  <TabsTrigger key={t.id} value={t.id} icon={tabTool ? <Icon icon={toolIcon(tabTool)} /> : undefined} onClose={() => closeTab(t.id)} onAuxClick={(e) => e.button === 1 && closeTab(t.id)} className="ps-inline-md">
+                    <span className="flex min-w-0 items-center gap-inline-sm">
+                      <span className="truncate">{t.title}</span>
+                      {tabState}
+                    </span>
                   </TabsTrigger>
                 );
               })}
@@ -658,7 +663,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
             findId={FIND_TOOL_ID}
           />
           {navOverlay ? <div aria-hidden="true" className="absolute inset-0 z-[var(--by-z-sticky)] bg-scrim" onClick={() => dispatch({ type: "layout", layout: { navCollapsed: null } })} /> : null}
-          <Resizable orientation="horizontal" sizes={state.layout.sidebarOpen ? state.layout.shellSizes : [0, 100]} onSizesChange={(sizes) => state.layout.sidebarOpen && dispatch({ type: "layout", layout: { shellSizes: sizes } })} className="min-h-0 flex-1 pe-gap-sm" aria-label="Sidebar and workspace">
+          <Resizable orientation="horizontal" sizes={state.layout.sidebarOpen ? state.layout.shellSizes : [0, 100]} onSizesChange={(sizes) => state.layout.sidebarOpen && dispatch({ type: "layout", layout: { shellSizes: sizes } })} className="min-h-0 flex-1 ps-gap-sm pe-gap-sm" aria-label="Sidebar and workspace">
             <ResizablePanel minSize={state.layout.sidebarOpen ? 12 : 0} maxSize={state.layout.sidebarOpen ? 50 : 0}>
               <Sidebar aria-label={`${tool.label} connections`} collapsible="offcanvas" className="h-full w-full rounded-lg border shadow-layer" data-pane="sidebar">
                 <SidebarHeader className="flex-row items-start justify-between pt-inset-sm pb-stack-xs ps-inset-md pe-inset-xs">
@@ -768,7 +773,7 @@ function Shell({ tools }: { tools: readonly ToolModule[] }) {
             </ResizablePanel>
           </Resizable>
         </div>
-        <StatusBar aria-label="Status" className="h-auto gap-inline-md border-t-0 bg-transparent py-inset-xs ps-inset-sm pe-inset-xs">
+        <StatusBar aria-label="Status" className="h-auto gap-inline-md border-t-0 bg-transparent py-inline-xs ps-inset-sm pe-inset-xs">
           <StatusBarItem className="text-fg">
             <Icon icon={toolIcon(tool)} />
             <span>{activeProfile ? `${toolById(tools, activeProfile.tool)?.label ?? activeProfile.tool} · ${activeProfile.name}` : tool.label}</span>

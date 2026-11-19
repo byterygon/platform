@@ -19,8 +19,9 @@ export const tabsVariants = {
   /** Fluent's tab appearance: `transparent` (an accent underline under the selected tab), `subtle` (a wash behind it), or Byterygon's `enclosed` editor tabs. */
   appearance: {
     transparent: [
-      "border-b-2 border-transparent text-fg-muted hover:text-fg data-active:border-accent-compound data-active:text-fg",
-      "data-[orientation=vertical]:mb-0 data-[orientation=vertical]:-me-px data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e-2",
+      "relative text-fg-muted hover:text-fg data-active:text-fg",
+      "after:pointer-events-none after:absolute after:inset-x-inline-md after:bottom-0 after:h-[var(--by-border-width-3)] after:rounded-full after:bg-transparent data-active:after:bg-accent-compound",
+      "data-[orientation=vertical]:after:inset-x-auto data-[orientation=vertical]:after:inset-y-inline-sm data-[orientation=vertical]:after:right-0 data-[orientation=vertical]:after:h-auto data-[orientation=vertical]:after:w-[var(--by-border-width-3)]",
     ],
     subtle: "rounded-md text-fg-muted hover:bg-hover hover:text-fg active:bg-pressed data-active:bg-selected data-active:text-fg",
     enclosed: "border-e border-border-subtle bg-layer-alt text-fg-muted hover:bg-hover hover:text-fg data-active:bg-layer data-active:text-fg",
@@ -64,11 +65,11 @@ const classes = {
     "transition-colors duration-[var(--by-motion-duration-faster)] ease-easy-ease",
     focusRingInset,
     "data-disabled:pointer-events-none data-disabled:text-fg-disabled",
-    "data-closable:pe-control-sm [&_svg]:size-icon-sm [&_svg]:shrink-0",
+    "data-closable:pe-inline-sm [&_svg]:size-icon-md [&_svg]:shrink-0",
   ],
   label: "min-w-0 truncate",
   close: [
-    "absolute top-1/2 right-inset-xs flex size-control-xs -translate-y-1/2 items-center justify-center rounded-sm text-fg-muted",
+    "absolute top-1/2 right-inline-sm flex size-icon-md -translate-y-1/2 items-center justify-center rounded-sm text-fg-muted opacity-70 hover:opacity-100",
     "hover:bg-hover hover:text-fg active:bg-pressed [&_svg]:size-icon-xs",
   ],
   panel: ["min-h-0 flex-1", focusRing],
@@ -455,6 +456,8 @@ export function TabsTrigger({ value, icon, children, onClose, closeLabel = "Clos
       >
         {icon}
         <span className={classes.label}>{children}</span>
+        {/* The close mark's room: the button (outside the tab, for assistive technology) sits over it. */}
+        {onClose ? <span aria-hidden="true" data-slot="tabs-close-room" className="size-icon-md shrink-0" /> : null}
       </TabsPrimitive.Tab>
       {onClose ? (
         // Out of the tab order and hidden from assistive technology: keyboard and screen-reader

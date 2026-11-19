@@ -10774,6 +10774,19 @@
           }
         },
         {
+          "name": "border/width/3",
+          "type": "FLOAT",
+          "description": "A 3 px stroke: Fluent's strokeWidthThicker, the selected tab's indicator. Primitive: reference it through a role, never from a component. Not for the focus ring: use ring.width.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-border-width-3)"
+          },
+          "valuesByMode": {
+            "Value": 3
+          }
+        },
+        {
           "name": "breakpoint/sm",
           "type": "FLOAT",
           "description": "Viewport width 640 px at which layouts change (the sm breakpoint), for scripts and docs that need the number. Not for CSS media queries: Tailwind's own breakpoint utilities (sm:, md:) cannot read a CSS variable.",
@@ -18349,7 +18362,7 @@
         {
           "name": "table/row-height-medium",
           "type": "FLOAT",
-          "description": "Height of a header and body row of a Table of size medium: Fluent's medium (default) table row: 44 px, 36 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
+          "description": "Height of a header and body row of a Table of size medium: The medium (default) table row of the TSK-91 mockup: 40 px, 34 px compact. Not for DBee's result grid: use grid.row-height. Not for form controls: use size.control.*.",
           "scopes": [
             "ALL_SCOPES"
           ],
@@ -18358,8 +18371,8 @@
             "WEB": "var(--by-table-row-height-medium)"
           },
           "valuesByMode": {
-            "Comfortable": 44,
-            "Compact": 36
+            "Comfortable": 40,
+            "Compact": 34
           }
         },
         {
@@ -18409,12 +18422,12 @@
             "Comfortable": {
               "type": "VARIABLE_ALIAS",
               "collection": "Density",
-              "name": "space/inset/xs"
+              "name": "space/control/x"
             },
             "Compact": {
               "type": "VARIABLE_ALIAS",
               "collection": "Density",
-              "name": "space/inset/xs"
+              "name": "space/control/x"
             }
           }
         }

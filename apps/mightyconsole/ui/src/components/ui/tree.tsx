@@ -65,7 +65,7 @@ const classes = {
     focusRing,
   ],
   row: [
-    "absolute inset-x-0 flex cursor-default select-none items-center gap-inline-xs pe-inset-sm whitespace-nowrap",
+    "absolute inset-x-inset-xs flex cursor-default select-none items-center gap-inline-sm pe-inline-md whitespace-nowrap",
     "rounded-md hover:bg-hover active:bg-pressed data-selected:bg-selected data-selected:hover:bg-selected-hover",
     "data-active:outline-none in-focus-visible:data-active:outline-solid in-focus-visible:data-active:outline-[length:var(--by-ring-width)] in-focus-visible:data-active:-outline-offset-[var(--by-ring-width)] in-focus-visible:data-active:outline-ring in-focus-visible:data-active:ring-inset in-focus-visible:data-active:ring-[length:var(--by-ring-inner-width)] in-focus-visible:data-active:ring-ring-inner",
     "data-disabled:text-fg-disabled",
@@ -158,7 +158,7 @@ export function TreeItem({ id, node, level, setSize, posInSet, top, expanded, se
       data-active={active ? "" : undefined}
       data-selected={selected ? "" : undefined}
       data-disabled={node.disabled ? "" : undefined}
-      style={{ top, paddingInlineStart: `calc(${level - 1} * var(--by-size-icon-md) + var(--by-space-inset-xs))` }}
+      style={{ top, paddingInlineStart: `calc(var(--by-space-inline-sm) + ${level - 1} * var(--by-size-icon-md))` }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
@@ -433,7 +433,7 @@ export function Tree({
             "aria-setsize": row.setSize,
             "aria-posinset": row.posInSet,
             "data-active": row.key === active?.key ? "" : undefined,
-            style: { top: index * rowHeight, paddingInlineStart: `calc(${row.level - 1} * var(--by-size-icon-md) + var(--by-space-inset-xs))` },
+            style: { top: index * rowHeight, paddingInlineStart: `calc(var(--by-space-inline-sm) + ${row.level - 1} * var(--by-size-icon-md))` },
           } as const;
           if (row.kind === "loading") {
             return (

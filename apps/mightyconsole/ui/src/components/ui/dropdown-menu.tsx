@@ -20,10 +20,10 @@ export const dropdownMenuVariants = {} as const;
 /** The classes DropdownMenu, ContextMenu, Menubar and SplitButton share. */
 export const menuClasses = {
   positioner: "z-[var(--by-z-popover)] outline-none",
-  popup: ["flex flex-col overflow-y-auto overscroll-contain p-inline-xs", flyoutSurface, flyoutMotion],
+  popup: ["flex min-w-panel-xs flex-col overflow-y-auto overscroll-contain p-inline-xs", flyoutSurface, flyoutMotion],
   item: [
     flyoutItem,
-    "whitespace-nowrap data-popup-open:bg-hover",
+    "gap-inline-md whitespace-nowrap data-popup-open:bg-hover",
     "data-highlighted:[&_svg]:text-accent-subtle-fg",
     "data-danger:text-danger-fg data-danger:data-highlighted:bg-danger-subtle data-danger:data-highlighted:[&_svg]:text-danger-fg",
   ],
