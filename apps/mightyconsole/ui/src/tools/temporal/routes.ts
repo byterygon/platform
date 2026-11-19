@@ -11,10 +11,41 @@
 //   <namespace>/task-queues/<name>/overview        a task queue
 //   <namespace>/workers                            workers
 import type { AnyRoute } from "@tanstack/react-router";
-import { levelRoute, path, placeRoute, shortSearch, str, stringSearch } from "@/app/router";
+import { type SiblingContext, type SiblingList, levelRoute, path, placeRoute, shortSearch, str, stringSearch } from "@/app/router";
 import { viewOf } from "@/app/tab-view";
 import type { PlaceHref } from "../types";
+import { namespaceOf } from "./profile";
+import { orderNamespaces } from "./tree-data";
 import { WORKFLOW_VIEWS } from "./WorkflowTab";
+
+const NOT_CONNECTED = "Connect the profile to list them.";
+/** How many recent workflows a workflow segment lists beside it. */
+export const RECENT_WORKFLOWS = 20;
+
+/** The namespace segment's siblings: the cluster's namespaces (DOC-21 §3.7). */
+export async function namespaceSiblings({ profile, client, connId }: SiblingContext): Promise<SiblingList> {
+  if (!connId) throw new Error(NOT_CONNECTED);
+  const list = await client.temporal.namespaces.list({ connId });
+  return {
+    heading: `Namespaces of ${profile.name}`,
+    items: orderNamespaces(list.map((n) => n.name), namespaceOf(profile)).map((name) => ({ label: name, params: { namespace: name } })),
+    all: { label: "All namespaces…", place: { kind: "temporal.namespaces", params: {} } },
+  };
+}
+
+/** The workflow segment's siblings: the namespace's most recent workflows; the run is dropped. */
+export async function workflowSiblings({ params, client, connId }: SiblingContext): Promise<SiblingList> {
+  if (!connId) throw new Error(NOT_CONNECTED);
+  const namespace = params["namespace"] ?? "default";
+  const out = await client.temporal.workflows.list({ connId, namespace, query: null, pageSize: RECENT_WORKFLOWS, nextPageToken: null });
+  const seen = new Set<string>();
+  const items = out.executions.filter((w) => !seen.has(w.workflowId) && seen.add(w.workflowId));
+  return {
+    heading: `Recent workflows in ${namespace}`,
+    items: items.map((w) => ({ label: w.workflowId, description: w.status, params: { workflowId: w.workflowId }, search: { run: undefined } })),
+    all: { label: "All workflows…", place: { kind: "temporal.workflows", params: { namespace, query: "" } } },
+  };
+}
 
 const nsOf = (params: Record<string, unknown>) => str(params["namespace"]) || "default";
 
@@ -57,16 +88,21 @@ export function temporalRoutes(parent: AnyRoute): AnyRoute[] {
       placeRoute(namespace, "workflows", "Workflows", (p, search) => ({ kind: "temporal.workflows", params: { namespace: ns(p), query: str(search["q"]) } }), {
         validateSearch: stringSearch("q"),
         children: (workflows) => [
-          levelRoute(workflows, "$workflowId", (p) => p["workflowId"] ?? "", (workflow) =>
-            WORKFLOW_VIEWS.map((view) =>
-              placeRoute(
-                workflow,
-                view,
-                VIEW_LABELS[view],
-                (p, search) => ({ kind: "temporal.workflow", params: { namespace: ns(p), workflowId: p["workflowId"] ?? "", ...(search["run"] ? { runId: str(search["run"]) } : {}), view } }),
-                { validateSearch: stringSearch("run") },
+          levelRoute(
+            workflows,
+            "$workflowId",
+            (p) => p["workflowId"] ?? "",
+            (workflow) =>
+              WORKFLOW_VIEWS.map((view) =>
+                placeRoute(
+                  workflow,
+                  view,
+                  VIEW_LABELS[view],
+                  (p, search) => ({ kind: "temporal.workflow", params: { namespace: ns(p), workflowId: p["workflowId"] ?? "", ...(search["run"] ? { runId: str(search["run"]) } : {}), view } }),
+                  { validateSearch: stringSearch("run") },
+                ),
               ),
-            ),
+            workflowSiblings,
           ),
         ],
       }),
@@ -84,6 +120,6 @@ export function temporalRoutes(parent: AnyRoute): AnyRoute[] {
           ]),
         ],
       }),
-    ]),
+    ], namespaceSiblings),
   ];
 }

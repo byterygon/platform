@@ -21,6 +21,7 @@ export type ActionId =
   | "prevTab"
   | "back"
   | "forward"
+  | "parent"
   | "primary"
   | "stop"
   | "pause"
@@ -73,6 +74,7 @@ export const ACTIONS: readonly Action[] = [
   // DOC-21 §3.7: each tab's own history, as in a browser tab (the browser's buttons do the same).
   { id: "back", label: "Back in this tab", group: "Tabs", keys: ["Alt+Left"], keywords: ["history", "previous place"] },
   { id: "forward", label: "Forward in this tab", group: "Tabs", keys: ["Alt+Right"], keywords: ["history", "next place"] },
+  { id: "parent", label: "Go to parent", group: "Tabs", keys: [], keywords: ["up", "breadcrumb", "level above"] },
   { id: "primary", label: "Primary action of the tab (Send, Apply, Run, Consume)", group: "Tabs", keys: ["Mod+Enter"], keywords: ["run", "send", "start"] },
   { id: "stop", label: "Stop the tab's stream", group: "Live views", keys: ["Shift+Escape"], keywords: ["cancel"] },
   { id: "pause", label: "Pause or resume a live view", group: "Live views", keys: ["Alt+Shift+P"] },

@@ -38,9 +38,11 @@ import { ACTIONS, type ActionId, actionFor, bindingOf, inTextControl } from "./s
 import { ToolNav, type ToolState, navOrder } from "./nav/ToolNav";
 import { type Notice, NoticeContext } from "./page";
 import { ConnectionList, parseNode, profileNodeId } from "./sidebar/ConnectionList";
-import { type EntryState, type RouterConfig, createAppRouter, placeHref, targetOf } from "./router";
+import { MissingProfilePage } from "./missing-profile";
+import { type NavCrumb, NavRow, type NavRowProps, type SiblingMenu } from "./nav-row";
+import { type EntryState, type RouteCrumb, type RouterConfig, createAppRouter, crumbsOf, placeHref, segment, targetOf, targetOfHref, withParams } from "./router";
 import { DisconnectedState, ErrorState, liveText } from "./states";
-import { type ConnState, type State, tabIdOf, useStore } from "./store";
+import { type ConnState, type MissingLink, type State, tabIdOf, useStore } from "./store";
 import { Supervisor } from "./supervisor";
 import { canGo, initialHistory } from "./tab-history";
 
@@ -58,6 +60,8 @@ export const NAV_DRAWER_FROM = 1280;
 /** …and floats over the panes, when opened, below this one. */
 export const NAV_OVERLAY_BELOW = 1024;
 const FIND_TOOL_ID = "mc-find-tool";
+/** The tab strip's value of a link to a missing profile (DOC-21 §3.7). */
+const LINK_TAB = "mc-link";
 
 function useWindowWidth(): number {
   const [width, setWidth] = useState(() => window.innerWidth);
@@ -111,7 +115,7 @@ function useRouteSync(options: {
   state: State;
   stateRef: { readonly current: State };
   dispatch: ReturnType<typeof useStore>["dispatch"];
-  missingProfile: (tool: ToolModule, name: string) => void;
+  missingProfile: (tool: ToolModule, name: string, place: Omit<TabPlace, "title"> | null) => void;
 }): { pushNext: (tabId: string) => void } {
   const { router, config, tools, state, stateRef, dispatch, missingProfile } = options;
   const history: RouterHistory = router.history;
@@ -146,7 +150,7 @@ function useRouteSync(options: {
     dispatch({ type: "layout", layout: { tool: tool.id } });
     if (!target.profileName) return;
     const profile = s.profiles?.find((p) => p.tool === tool.id && p.name === target.profileName);
-    if (!profile) return missingProfile(tool, target.profileName);
+    if (!profile) return missingProfile(tool, target.profileName, target.type === "place" ? target.place : null);
     if (target.type === "tool") return;
     const kind = tool.tabKinds[target.place.kind]!;
     const place: TabPlace = { ...target.place, title: kind.title(target.place.params) };
@@ -157,6 +161,8 @@ function useRouteSync(options: {
   const pop = (location: HistoryLocation, delta: number) => {
     const s = stateRef.current;
     const { mcTab, mcStep } = location.state as EntryState;
+    // Leaving a link's missing-profile page through the browser drops it.
+    if (s.missingLink) dispatch({ type: "missingLink", link: null });
     if (mcTab === undefined) return arrive(location);
     const active = s.tabs.find((t) => t.id === s.activeTab);
     if (active && canGo(active, delta)) return dispatch({ type: "tabGo", id: active.id, delta });
@@ -191,6 +197,11 @@ function useRouteSync(options: {
   useEffect(() => {
     if (!ready || !arrived.current) return;
     const s = stateRef.current;
+    // A link to a missing profile keeps its URL while its page shows.
+    if (s.missingLink) {
+      if (history.location.href !== publicHref(s.missingLink.href)) history.replace(publicHref(s.missingLink.href), {});
+      return;
+    }
     const entry = entryOf(s, s.activeTab);
     const current = history.location;
     const push = pendingPush.current !== null && pendingPush.current === entry.tab;
@@ -211,7 +222,7 @@ function useRouteSync(options: {
     if (current.href === publicHref(entry.href) && (at.mcTab ?? null) === entry.tab && (at.mcStep ?? null) === entry.step) return;
     write(entry, push);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, state.activeTab, active?.kind, active?.params, active?.history.index, activeName, state.layout.tool]);
+  }, [ready, state.activeTab, active?.kind, active?.params, active?.history.index, activeName, state.layout.tool, state.missingLink]);
 
   const api = useRef({
     pushNext: (tabId: string) => {
@@ -435,9 +446,119 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     state,
     stateRef,
     dispatch,
-    missingProfile: (t, name) =>
-      toast.add({ title: `No ${t.label} profile named ${name}`, description: "Profiles live in each browser: create one with that name, or import it, and open the link again.", type: "warning", timeout: 10_000 }),
+    missingProfile: (t, name, place) => {
+      const kind = place ? t.tabKinds[place.kind] : undefined;
+      const href = place ? placeHref(t, { name }, place) : `/${t.id}/${segment(name)}`;
+      dispatch({ type: "missingLink", link: { tool: t.id, profileName: name, href, place, title: kind && place ? kind.title(place.params) : name } });
+    },
   });
+
+  /** The link's place opened with a profile (created, imported or picked): the page goes. */
+  const openLinkWith = (profileId: string) => {
+    const link = stateRef.current.missingLink;
+    const profile = profileById(profileId);
+    if (!link || !profile) return;
+    if (!link.place) {
+      dispatch({ type: "missingLink", link: null });
+      dispatch({ type: "select", nodeId: profileNodeId(profileId) });
+      return;
+    }
+    const place: TabPlace = { ...link.place, title: link.title };
+    dispatch({ type: "openTab", tab: { id: tabIdOf(profile.tool, profileId, place.kind, place.params), tool: profile.tool, profileId, ...place, pinned: false, history: initialHistory(place) } });
+  };
+
+  // Once a profile with the link's name exists (created or imported), the link opens where it points.
+  useEffect(() => {
+    const link = state.missingLink;
+    const found = link ? state.profiles?.find((p) => p.tool === link.tool && p.name === link.profileName) : undefined;
+    if (found) openLinkWith(found.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.missingLink, state.profiles]);
+
+  /** A router href as the page's address bar shows it: what Copy link copies. */
+  const absoluteLink = (href: string) =>
+    routerConfig.mode === "browser" ? `${location.origin}${routerConfig.basePath}${href}` : routerConfig.mode === "hash" ? `${location.origin}${routerConfig.basePath}/#${href}` : href;
+
+  /** A tab's step as the Back list names it: "History · order-48213". */
+  const stepLabel = (t: ToolModule, profile: ProfileRecord, place: TabPlace) => {
+    const href = placeHref(t, profile, place);
+    const leaf = href === `/${t.id}` ? undefined : crumbsOf(router, href).at(-1)?.label;
+    return leaf && leaf !== place.title && !place.title.includes(leaf) ? `${leaf} · ${place.title}` : place.title;
+  };
+
+  /** The navigation row's segments for a router href (DOC-21 §3.7), bound to a tab or a link. */
+  const navCrumbs = (
+    href: string | null,
+    profile: ProfileRecord | undefined,
+    profileName: string,
+    title: string,
+    go: ((place: Omit<TabPlace, "title">, newTab: boolean) => void) | null,
+  ): NavCrumb[] => {
+    const routed = href ? crumbsOf(router, href) : [];
+    if (routed.length === 0) return [{ key: "profile", label: profileName, icon: Server }, ...(title ? [{ key: "title", label: title }] : [])];
+    return routed.map((c: RouteCrumb, i): NavCrumb => {
+      const crumb: NavCrumb = { key: c.routeId, label: c.label, ...(c.profile ? { icon: Server } : {}) };
+      if (go && c.place && i < routed.length - 1) crumb.open = (newTab) => go(c.place!, newTab);
+      if (go && c.siblings && profile && href) {
+        const list = c.siblings;
+        crumb.siblings = async (): Promise<SiblingMenu> => {
+          const conn = connOf(profile.id);
+          const out = await list({ params: c.params, profile, client, connId: conn.status === "connected" ? conn.connId : null });
+          return {
+            heading: out.heading,
+            items: out.items.map((item) => ({
+              key: JSON.stringify(item.params),
+              label: item.label,
+              ...(item.description ? { description: item.description } : {}),
+              current: Object.entries(item.params).every(([k, v]) => c.params[k] === v),
+              select: () => {
+                const next = withParams(router, href, item.params, item.search);
+                const target = next ? targetOfHref(router, next, tools) : null;
+                if (target?.type === "place") go(target.place, false);
+              },
+            })),
+            ...(out.all ? { all: { label: out.all.label, select: () => go(out.all!.place, false) } } : {}),
+          };
+        };
+      }
+      return crumb;
+    });
+  };
+
+  /** The navigation row of a tab. */
+  const navOf = (t: TabRecord, profile: ProfileRecord | undefined): NavRowProps | null => {
+    const tabTool = toolById(tools, t.tool);
+    if (!tabTool || !profile) return null;
+    const href = placeHref(tabTool, profile, t);
+    const routed = href !== `/${tabTool.id}`;
+    const go = (place: Omit<TabPlace, "title">, newTab: boolean) => {
+      const kind = tabTool.tabKinds[place.kind];
+      if (!kind) return;
+      const full: TabPlace = { ...place, title: kind.title(place.params) };
+      if (newTab) openResource(t.profileId, { id: "", label: full.title, open: full });
+      else navigateTab(t.id, full);
+    };
+    return {
+      crumbs: navCrumbs(routed ? href : null, profile, profile.name, t.title, go),
+      link: routed ? href : null,
+      onCopyLink: () => copyLink(href),
+      canBack: canGo(t, -1),
+      canForward: canGo(t, 1),
+      onBack: () => dispatch({ type: "tabGo", id: t.id, delta: -1 }),
+      onForward: () => dispatch({ type: "tabGo", id: t.id, delta: 1 }),
+      stepCount: t.history.entries.length,
+      steps: () => t.history.entries.map((e, i) => ({ label: stepLabel(tabTool, profile, e), current: i === t.history.index })),
+      onStep: (index) => dispatch({ type: "tabStep", id: t.id, step: index }),
+    };
+  };
+
+  /** "Go to parent": the nearest segment above the current one that is a place, as a step. */
+  const goParent = () => {
+    const tab = stateRef.current.tabs.find((t) => t.id === stateRef.current.activeTab);
+    const nav = tab ? navOf(tab, profileById(tab.profileId)) : null;
+    const parent = nav?.crumbs.slice(0, -1).findLast((c) => c.open);
+    parent?.open?.(false);
+  };
 
   const navigateTab = useCallback(
     (tabId: string, place: TabPlace, options?: { replace?: boolean }) => {
@@ -580,6 +701,9 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       case "forward":
         goActive(1);
         break;
+      case "parent":
+        goParent();
+        break;
       case "primary":
         handlers?.primary?.();
         break;
@@ -688,7 +812,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         disabled:
           (toolIndex >= 0 && !nav[toolIndex]) ||
           ((a.group === "Live views" || a.id === "primary" || a.id === "closeTab") && !state.activeTab) ||
-          ((a.id === "back" || a.id === "forward") && !(activeTab && canGo(activeTab, a.id === "back" ? -1 : 1))),
+          ((a.id === "back" || a.id === "forward") && !(activeTab && canGo(activeTab, a.id === "back" ? -1 : 1))) ||
+          (a.id === "parent" && !(activeTab && navOf(activeTab, profileById(activeTab.profileId))?.crumbs.slice(0, -1).some((c) => c.open))),
         onSelect: () => perform(a.id),
       };
       if (a.group === "App") app.push(item);
@@ -781,7 +906,46 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       }),
     [toast],
   );
-  const toolState = (t: ToolModule): ToolState => {
+  const copyLink = async (href: string) => {
+    const link = absoluteLink(href);
+    try {
+      await navigator.clipboard.writeText(link);
+      notify({ title: "Copied link", description: link.length > 64 ? `${link.slice(0, 61)}…` : link, type: "success" });
+    } catch {
+      notify({ title: "Could not copy the link", description: "The browser refused the clipboard. Select the link text instead.", type: "warning" });
+    }
+  };
+  const missingLink = state.missingLink;
+  const linkTool = missingLink ? toolById(tools, missingLink.tool) : undefined;
+  const linkPage = (link: MissingLink) => {
+    const crumbs = navCrumbs(link.href, undefined, link.profileName, link.title, null);
+    return (
+      <MissingProfilePage
+        toolLabel={linkTool?.label ?? link.tool}
+        profileName={link.profileName}
+        where={crumbs.length > 1 ? crumbs.slice(1).map((c) => c.label).join(" › ") : ""}
+        others={profiles.filter((p) => p.tool === link.tool)}
+        onCreate={() => dispatch({ type: "dialog", dialog: { kind: "profile", tool: link.tool, name: link.profileName } })}
+        onImport={() => perform("importProfiles")}
+        onOpenWith={openLinkWith}
+        nav={
+          <NavRow
+            crumbs={crumbs}
+            link={link.href}
+            onCopyLink={() => void copyLink(link.href)}
+            canBack={false}
+            canForward={false}
+            onBack={() => {}}
+            onForward={() => {}}
+            stepCount={0}
+            steps={() => []}
+            onStep={() => {}}
+          />
+        }
+      />
+    );
+  };
+  const toolState =(t: ToolModule): ToolState => {
     const mine = profiles.filter((p) => p.tool === t.id);
     return { connected: mine.filter((p) => state.conns[p.id]?.status === "connected").length, failed: mine.some((p) => state.conns[p.id]?.status === "failed") };
   };
@@ -789,14 +953,14 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
   return (
     <NoticeContext value={notify}>
     <SidebarProvider open={state.layout.sidebarOpen} onOpenChange={(open) => dispatch({ type: "layout", layout: { sidebarOpen: open } })} className="h-full">
-      <Tabs value={state.activeTab ?? ""} onValueChange={(v) => dispatch({ type: "activateTab", id: String(v) })} size="medium" className="mc-root flex h-full min-h-0 w-full flex-col gap-0 text-fg">
+      <Tabs value={missingLink ? LINK_TAB : (state.activeTab ?? "")} onValueChange={(v) => v !== LINK_TAB && dispatch({ type: "activateTab", id: String(v) })} size="medium" className="mc-root flex h-full min-h-0 w-full flex-col gap-0 text-fg">
         <header className="flex shrink-0 items-center gap-inline-md py-inset-xs ps-inset-xs pe-inset-sm" aria-label="Title area">
           <SidebarTrigger />
           <span className="flex shrink-0 items-center gap-inline-md pe-inline-lg text-body-1-strong">
             <Icon icon={Server} filled size="lg" tone="accent" />
             Mightyconsole
           </span>
-          {state.tabs.length > 0 ? (
+          {state.tabs.length > 0 || missingLink ? (
             <TabsList aria-label="Tabs" onReorder={(value, index) => dispatch({ type: "reorderTab", id: String(value), index })} className="min-w-0 border-b-0">
               {state.tabs.map((t) => {
                 const live = state.live[t.id];
@@ -820,6 +984,11 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                   </TabsTrigger>
                 );
               })}
+              {missingLink ? (
+                <TabsTrigger value={LINK_TAB} icon={linkTool ? <Icon icon={toolIcon(linkTool)} /> : undefined} onClose={() => dispatch({ type: "missingLink", link: null })} className="ps-inline-md">
+                  <span className="truncate">{missingLink.title}</span>
+                </TabsTrigger>
+              ) : null}
             </TabsList>
           ) : null}
           <span className="flex-1" />
@@ -913,7 +1082,14 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
             <ResizableHandle aria-label="Resize sidebar" disabled={!state.layout.sidebarOpen} withGrip className={gapHandle} />
             <ResizablePanel minSize={40}>
               <SidebarInset className="flex h-full min-h-0 flex-col" data-pane="tab">
-                {state.tabs.length === 0 ? (
+                {missingLink ? (
+                  <TabsContent value={LINK_TAB} className="min-h-0 flex-1 p-0">
+                    <section aria-label={missingLink.title} className={cn(layerSurface, "flex h-full min-h-0 flex-col")}>
+                      {linkPage(missingLink)}
+                    </section>
+                  </TabsContent>
+                ) : null}
+                {state.tabs.length === 0 && !missingLink ? (
                   <section aria-label="Start" className={cn(layerSurface, "flex h-full min-h-0 flex-col")}>
                     <EmptyState className="m-auto">
                       <EmptyStateIcon className="size-auto bg-accent-subtle p-inset-md text-accent-subtle-fg [&_svg]:size-inset-xl!">
@@ -951,6 +1127,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                           connect={() => void connectProfile(t.profileId)}
                           cancelConnect={() => dispatch({ type: "conn", profileId: t.profileId, conn: DISCONNECTED })}
                           editProfile={() => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.tool, editId: t.profileId } })}
+                          nav={navOf(t, profiles.find((p) => p.id === t.profileId))}
                           tabProps={{
                             client,
                             useTabActions: hookFor(t.id),
@@ -1014,6 +1191,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         tool={sheetTool}
         {...(sheetBase ? { base: sheetBase } : {})}
         mode={sheetMode}
+        {...(profileDialog?.name && sheetMode === "add" ? { name: profileDialog.name } : {})}
         takenNames={takenNames}
         {...(sheetBase && state.recordStates[sheetBase.id] ? { recordState: state.recordStates[sheetBase.id]! } : {})}
         onSave={async (record) => {
@@ -1087,10 +1265,12 @@ interface TabBodyProps {
   cancelConnect: () => void;
   editProfile: () => void;
   tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab" | "navigate" | "updateProfile">;
+  /** The navigation row (DOC-21 §3.7); none when the tab's profile or tool is gone. */
+  nav: NavRowProps | null;
 }
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */
-function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, tabProps }: TabBodyProps) {
+function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, tabProps, nav }: TabBodyProps) {
   const t = toolById(tools, tab.tool);
   const kind = t?.tabKinds[tab.kind];
   let overlay: ReactNode = null;
@@ -1113,12 +1293,15 @@ function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, ed
   // The tool's screen stays mounted (its stream state survives a reconnect); while the profile is
   // not connected it is dimmed and inert, and the state is shown above it.
   return (
+    <>
+    {nav ? <NavRow {...nav} /> : null}
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className={cn("flex min-h-0 flex-1 flex-col", overlay ? "pointer-events-none opacity-40" : "")} inert={overlay ? true : undefined} aria-hidden={overlay ? true : undefined}>
         <Component tab={tab} profile={profile} connId={conn.status === "connected" ? conn.connId : null} active={active} {...tabProps} />
       </div>
       {overlay ? <div className="absolute inset-0 flex flex-col overflow-auto">{overlay}</div> : null}
     </div>
+    </>
   );
 }
 

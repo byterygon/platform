@@ -78,6 +78,14 @@
       { "path": "fluent/arrow-import-24-regular.svg", "size": 24, "style": "regular", "sha256": "06db64e16803755c7ba97cdf6edb7df090e7e29952b1523eda7149d37be345ca", "upstreamSha256": "7be1b327844d9cf51a324dcbc3715dbd3bb028a0da2eca40523ad1975fe6cfa6" },
       { "path": "fluent/arrow-import-24-filled.svg", "size": 24, "style": "filled", "sha256": "a46427f7287c2320aab4b61da77908c66ef74dd0af9c985f7094824e493f60ff", "upstreamSha256": "39d715a9e2c01e612237013f5599b76f814ce224601c5e82bd5a74b1b2a324e9" }
     ] },
+    { "name": "arrow-left", "files": [
+      { "path": "fluent/arrow-left-16-regular.svg", "size": 16, "style": "regular", "sha256": "299b497e0c13d330ee561513f7e0768a66be6be5b8f89be4216c307444ef7657", "upstreamSha256": "4839c7185a4a8217553b2c4a7d364ee65ff77b941ed7384478e3d81d9fedd12b" },
+      { "path": "fluent/arrow-left-16-filled.svg", "size": 16, "style": "filled", "sha256": "593bcceacc20dff03e416920866a10165e194e9b7cb4f41f774ba537a337b758", "upstreamSha256": "42085f6b358fff7a837ab0d70f6609196f2ecddcd8304810ca8dc0480ca86d30" },
+      { "path": "fluent/arrow-left-20-regular.svg", "size": 20, "style": "regular", "sha256": "36bf3e9612401c6ce0577ea23b8181cade417c949ed4b558d9d3f9eb9235e052", "upstreamSha256": "d94a8b83b6764b02c7e80a80d7854b37eaa2ce0b505f289ed2a0e3b2a1d2f82c" },
+      { "path": "fluent/arrow-left-20-filled.svg", "size": 20, "style": "filled", "sha256": "335d31ba13ce002faa903e6378caf97236f640f41f629ef34fd287634448ee16", "upstreamSha256": "19a80050dc58353e0072415a8c804534cc3540aff22ed1da2c0e5d3ac2dc28b8" },
+      { "path": "fluent/arrow-left-24-regular.svg", "size": 24, "style": "regular", "sha256": "3abb65fa4d612d5be73c21c97396b64fd8909608eef98dd307ffb1a98f8f1b38", "upstreamSha256": "af4fac96f008c5dd73830726077204210932524f5ed8c04bd3be99e4f578db31" },
+      { "path": "fluent/arrow-left-24-filled.svg", "size": 24, "style": "filled", "sha256": "b6085ec3ebfd772005fd31cd9e54cf7cda7c83020ba1a854d9d0534f016ee21f", "upstreamSha256": "5110084c76386fe461e6523b6e61552883f8cefc848ee1a5ba3a70eb44ffcb68" }
+    ] },
     { "name": "arrow-redo", "files": [
       { "path": "fluent/arrow-redo-16-regular.svg", "size": 16, "style": "regular", "sha256": "15c2f380126fa6ed5b0a1c0b2af837ebb60aa1ba6da61204c7149b678b761e39", "upstreamSha256": "5d17841a523fba76547fc721fa8cfc141f4ff8c1ab64ab0fcf778e35982a6c27" },
       { "path": "fluent/arrow-redo-16-filled.svg", "size": 16, "style": "filled", "sha256": "428f00ecf9297b3286d0a7c7fd1188160dfb90b67908cff6d04ddbca1e708912", "upstreamSha256": "222c2f9af965639c2d8f4573183264e8e8b7fae2dd75609a99930922f1f7a231" },
@@ -85,6 +93,14 @@
       { "path": "fluent/arrow-redo-20-filled.svg", "size": 20, "style": "filled", "sha256": "ef8dcf345b9c8962759f238d06e7f8b8b876c5935ac2511537df0118a69ae39b", "upstreamSha256": "5f9e532bdedaed8dc592125ef754d2140d952ca5b29aba73f816931beebfe8a9" },
       { "path": "fluent/arrow-redo-24-regular.svg", "size": 24, "style": "regular", "sha256": "2aa6c4374bed63c03bda4077ec04ed4a186e8e00ea69c418bfa4ef9d677114b6", "upstreamSha256": "ff3915082dd494c7952ca8571a01615e701698b1ca940f0889489a2514fff635" },
       { "path": "fluent/arrow-redo-24-filled.svg", "size": 24, "style": "filled", "sha256": "51d3a1abb4e06897cd425dd02e232104573e330e46f2ff1572abc3897be3a2dd", "upstreamSha256": "fcceb966b490fb1a6e590cc8cceeda87392ec07ef5f6ebf183c66921854b48ed" }
+    ] },
+    { "name": "arrow-right", "files": [
+      { "path": "fluent/arrow-right-16-regular.svg", "size": 16, "style": "regular", "sha256": "34a1e679b3156dd368b48ac51acd476a32db670f0f07af443fbde4eb26ceb081", "upstreamSha256": "a9686f723a5c81098dedaea7fc82d6f5b2e5e41aa43f4feb8614b93c3eea7a05" },
+      { "path": "fluent/arrow-right-16-filled.svg", "size": 16, "style": "filled", "sha256": "2f004693ef51bcf8a92c00b3f0390d3abcf89160133e174a688c45acac5e3282", "upstreamSha256": "6d451da4d7a4b10799ef72a976b5291c2e823c56563d7bfdd69ab78e50fa728d" },
+      { "path": "fluent/arrow-right-20-regular.svg", "size": 20, "style": "regular", "sha256": "d7a48b258d0e4eeb0ad254e67d72a332a842ca6f738b872246e6f11d8abdc343", "upstreamSha256": "be74746338292cc2bb120ab6fa119bf8d8065e4bdcd67baef406c3444368b08d" },
+      { "path": "fluent/arrow-right-20-filled.svg", "size": 20, "style": "filled", "sha256": "a0347a857ab18ac80b5391c99df707479f574e67b3fa9b13457e06bb7783900f", "upstreamSha256": "e57266d44b85943b91c95c0dc774f2af7efe12f20182de3c96e1a6c653cab013" },
+      { "path": "fluent/arrow-right-24-regular.svg", "size": 24, "style": "regular", "sha256": "7d70a36e63c679820920df5b7de2c7553b67a9414cd19674ce142ebc850f0bf1", "upstreamSha256": "127db653cba721d2d04ce9fd4ec5bb36b8b6b0a1a3dc53ff5a0cbfc103e44463" },
+      { "path": "fluent/arrow-right-24-filled.svg", "size": 24, "style": "filled", "sha256": "e02d595c20c1e77b47096cf32f5e161d874b29b09aea3ffb6f15e80df81e3de3", "upstreamSha256": "d21810e06787bf82a173a6e070b913ff2b02d0779c264feaac2a4ee453669400" }
     ] },
     { "name": "arrow-sort", "files": [
       { "path": "fluent/arrow-sort-16-regular.svg", "size": 16, "style": "regular", "sha256": "223dae436a0018d499a3b75d8b091a6bf741c8bded7e307e7fe79e086afc7f3d", "upstreamSha256": "1001af6efab95f45a7dadd27cc47d7a4cb900ff8708cfd07bb03746f8dfe4de5" },

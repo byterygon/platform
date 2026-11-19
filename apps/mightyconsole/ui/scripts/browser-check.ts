@@ -8,9 +8,12 @@
 //   - a profile added through the UI connects (echo.connect), its Ticks tab streams with credits,
 //     and after a reload the tab comes back and connects again;
 //   - routing (DOC-21 §3.7): the URL follows the active tab, a deep link loads at its path and
-//     focuses its tab, Back and Forward and a reload keep each URL's place, a missing profile is
-//     named; and again on a second server with --router hash --base-path /tools/mc (the page,
-//     assets and WebSocket under the prefix, the place in the hash, reload, an edited hash, Back);
+//     focuses its tab, Back and Forward and a reload keep each URL's place; and again on a
+//     second server with --router hash --base-path /tools/mc (the page, assets and WebSocket
+//     under the prefix, the place in the hash, reload, an edited hash, Back);
+//   - the navigation row (TSK-105): crumbs, a link up as a step, Back's list, Back and Forward,
+//     a segment's siblings menu, Copy link, the path folded into … when narrow; a link to a
+//     missing profile shows its page and opens with another profile;
 //   - the page opened through 127.0.0.1 is redirected to the public origin;
 //   - every request goes to the server's origin (or data:/blob:), and no script or CSP error is
 //     logged;
@@ -231,8 +234,65 @@ async function main(): Promise<number> {
     await until(page, `location.pathname === "/echo/smoke/ticks"`, "the URL following a clicked tab");
     await page.navigate(`${origin}/echo/smoke/ticks`);
     await until(page, `${selected("Ticks · smoke")} && location.pathname === "/echo/smoke/ticks"`, "the place after a reload");
+    // 3b. The navigation row (TSK-105) on a Temporal profile that never connects (no Temporal here):
+    // the row sits above the tab's states, so its crumbs, Back list, siblings and link all work.
+    const row = `document.querySelector("[role=tabpanel]:not([hidden]) [role=toolbar][aria-label=Location]")`;
+    const crumbs = `[...${row}.querySelectorAll("[data-slot=breadcrumb-item]")].map((el) => el.textContent.trim()).join(" / ")`;
+    const rowButton = (label: string) => `[...${row}.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
+    const press = (el: string) =>
+      `(() => { const t = ${el}; if (!t) throw new Error("nothing to press"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`;
+    const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((el) => el.textContent.trim() === ${JSON.stringify(label)})`;
+    await run(page, `__mc.click(__mc.button("Temporal"))`);
+    await run(page, `__mc.click(__mc.button("Add connection"))`);
+    await until(page, `__mc.field("Name")`, "the Temporal profile sheet");
+    await run(page, `__mc.type(__mc.field("Name"), "lab")`);
+    // A port nothing listens on, so the profile never connects, with or without a lab running.
+    await run(page, `__mc.type(__mc.field("Address"), "127.0.0.1:9")`);
+    await run(page, `__mc.click(__mc.button("Save"))`);
+    await until(page, `__mc.item("lab")`, "the saved Temporal profile");
+    await page.navigate(`${origin}/temporal/lab/orders/workflows/order-48213/history`);
+    await until(page, `${row} && ${crumbs} === "lab / orders / Workflows / order-48213 / History"`, "the navigation row's crumbs");
+    await until(page, `[...${row}.querySelectorAll("span")].some((s) => s.textContent === "/temporal/lab/orders/workflows/order-48213/history")`, "the link text");
+    check(await run(page, `${row}.querySelector("[aria-current=page]")?.textContent.trim() === "History"`) === true, "nav row: the current segment is not History");
+    // A link up is a step; Back's list names both; picking one moves the tab.
+    await run(page, press(rowButton("Workflows")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows" && ${crumbs} === "lab / orders / Workflows"`, "the Workflows crumb as a step");
+    await run(page, `${rowButton("Back")}.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }))`);
+    await until(page, `${menuItem("Workflows · orders")} && ${menuItem("History · order-48213")} && __mc.has("This tab")`, "Back's list of this tab");
+    await run(page, press(menuItem("History · order-48213")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows/order-48213/history"`, "the step picked from Back's list");
+    await run(page, press(rowButton("Forward")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows"`, "Forward in the row");
+    await run(page, press(rowButton("Back")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows/order-48213/history"`, "Back in the row");
+    // A level's siblings: the namespaces, which need the connection.
+    await run(page, press(rowButton("orders")));
+    await until(page, `__mc.has("Connect the profile to list them.")`, "the namespace segment's menu");
+    await run(page, `document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    // Copy link copies the address bar's URL.
+    await page.send("Browser.grantPermissions", { origin, permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"] });
+    await run(page, press(rowButton("Copy link")));
+    await until(page, `__mc.has("Copied link")`, "Copy link's toast");
+    const copied = await page.evaluate<string>(`navigator.clipboard.readText()`).catch(() => "");
+    check(copied === `${origin}/temporal/lab/orders/workflows/order-48213/history`, `Copy link copied ${JSON.stringify(copied)}`);
+    // Narrow: the link text goes first, then the first segments fold into "…".
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 640, height: 800, deviceScaleFactor: 1, mobile: false });
+    await until(page, `${rowButton("Show the hidden path")} && ![...${row}.querySelectorAll("span")].some((s) => s.textContent.startsWith("/temporal/"))`, "the folded path");
+    check(await run(page, `${crumbs}.endsWith("order-48213 / History")`) === true, "nav row: the last two segments fold");
+    await run(page, press(rowButton("Show the hidden path")));
+    await until(page, `${menuItem("lab")} && ${menuItem("Workflows")}`, "the hidden path's menu");
+    await run(page, press(menuItem("Workflows")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows"`, "a hidden segment picked");
+    await page.send("Emulation.clearDeviceMetricsOverride", {});
+
+    // 3c. A link to a missing profile: its page, its URL kept, nothing connected.
     await page.navigate(`${origin}/echo/nobody/ticks`);
-    await until(page, `__mc.has("No Echo profile named nobody")`, "the missing profile's notice");
+    await until(page, `__mc.has("This link needs an Echo profile named nobody") && __mc.button("Create profile nobody") && __mc.button("Import profiles…")`, "the missing-profile page");
+    check(await run(page, `location.pathname === "/echo/nobody/ticks"`) === true, "missing profile: the URL changed");
+    await run(page, press(`__mc.button("Open with another profile…")`));
+    await until(page, menuItem("smoke"), "another Echo profile to open the link with");
+    await run(page, press(menuItem("smoke")));
+    await until(page, `location.pathname === "/echo/smoke/ticks" && ${selected("Ticks · smoke")}`, "the link opened with smoke");
 
     // 3b. Monaco cold (TSK-93): the restored Messages tab's jq editor, three loads.
     const keystroke = await firstKeystroke(page, `${origin}/`);

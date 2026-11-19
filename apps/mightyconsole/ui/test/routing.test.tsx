@@ -308,8 +308,9 @@ describe("the shell on the router (DOC-21 §3.7)", () => {
     const fake2 = createFakeServices();
     await fake2.storage.putProfile(profile());
     await mount(fake2, "/walk/prod-eu/pages/1/view");
-    await waitFor(() => byText("No Walk profile named prod-eu") !== null, "the missing profile's notice");
-    expect(document.querySelectorAll("[role=tab]")).toHaveLength(0);
+    await waitFor(() => byText("This link needs a Walk profile named prod-eu") !== null, "the missing profile's page");
+    // Only the link tab, not saved with the workspace.
+    expect(document.querySelectorAll("[role=tab]")).toHaveLength(1);
   });
 
   test("the tabs' history survives a reload; version 1 tabs migrate", async () => {

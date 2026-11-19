@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type * as api from "@/gen/api";
 import { Braces, DatabaseMultiple, Flash, History } from "@/lib/icons";
 import type { ProfileRecord } from "@/profiles/record";
-import { levelRoute, path, placeRoute } from "@/app/router";
+import { type SiblingContext, type SiblingList, levelRoute, path, placeRoute } from "@/app/router";
 import { viewOf } from "@/app/tab-view";
 import type { ConnectionFormProps, ProfileSchema, ToolModule } from "../types";
 import { ASSISTANT_VIEWS, AssistantsTab, AssistantTab } from "./assistants";
@@ -21,6 +21,32 @@ import { ThreadsTab } from "./threads";
 import { LangGraphMark } from "../marks";
 
 export const DEFAULT_URL = "http://127.0.0.1:2024";
+
+const NOT_CONNECTED = "Connect the profile to list them.";
+/** How many recent threads a thread segment lists beside it. */
+export const RECENT_THREADS = 20;
+
+/** The assistant segment's siblings: the server's assistants (DOC-21 §3.7). */
+export async function assistantSiblings({ client, connId }: SiblingContext): Promise<SiblingList> {
+  if (!connId) throw new Error(NOT_CONNECTED);
+  const list = await client.langgraph.assistants.search({ connId, graphId: null, metadata: null, limit: 100, offset: null });
+  return {
+    heading: "Assistants",
+    items: list.map((a) => ({ label: a.name || a.assistantId, description: a.graphId, params: { assistantId: a.assistantId } })),
+    all: { label: "All assistants…", place: { kind: "langgraph.assistants", params: {} } },
+  };
+}
+
+/** The thread segment's siblings: the most recently updated threads. */
+export async function threadSiblings({ client, connId }: SiblingContext): Promise<SiblingList> {
+  if (!connId) throw new Error(NOT_CONNECTED);
+  const list = await client.langgraph.threads.search({ connId, metadata: null, status: null, limit: RECENT_THREADS, offset: null });
+  return {
+    heading: "Recent threads",
+    items: list.map((t) => ({ label: shortId(t.threadId), description: t.status, params: { threadId: t.threadId } })),
+    all: { label: "All threads…", place: { kind: "langgraph.threads", params: {} } },
+  };
+}
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 
@@ -168,17 +194,26 @@ export const langgraphTool: ToolModule = {
   routes: (parent) => [
     placeRoute(parent, "assistants", "Assistants", () => ({ kind: "langgraph.assistants", params: {} }), {
       children: (assistants) => [
-        levelRoute(assistants, "$assistantId", (p) => p["assistantId"] ?? "", (assistant) =>
-          ASSISTANT_VIEWS.map((view) =>
-            placeRoute(assistant, view, view === "config" ? "Config" : view.charAt(0).toUpperCase() + view.slice(1), (p) => ({ kind: "langgraph.assistant", params: { assistantId: p["assistantId"] ?? "", view } })),
-          ),
+        levelRoute(
+          assistants,
+          "$assistantId",
+          (p) => p["assistantId"] ?? "",
+          (assistant) =>
+            ASSISTANT_VIEWS.map((view) =>
+              placeRoute(assistant, view, view === "config" ? "Config" : view.charAt(0).toUpperCase() + view.slice(1), (p) => ({ kind: "langgraph.assistant", params: { assistantId: p["assistantId"] ?? "", view } })),
+            ),
+          assistantSiblings,
         ),
       ],
     }),
     placeRoute(parent, "threads", "Threads", () => ({ kind: "langgraph.threads", params: {} }), {
       children: (threads) => [
-        levelRoute(threads, "$threadId", (p) => shortId(p["threadId"] ?? ""), (thread) =>
-          THREAD_VIEWS.map((view) => placeRoute(thread, view, view.charAt(0).toUpperCase() + view.slice(1), (p) => ({ kind: "langgraph.thread", params: { threadId: p["threadId"] ?? "", view } }))),
+        levelRoute(
+          threads,
+          "$threadId",
+          (p) => shortId(p["threadId"] ?? ""),
+          (thread) => THREAD_VIEWS.map((view) => placeRoute(thread, view, view.charAt(0).toUpperCase() + view.slice(1), (p) => ({ kind: "langgraph.thread", params: { threadId: p["threadId"] ?? "", view } }))),
+          threadSiblings,
         ),
       ],
     }),
