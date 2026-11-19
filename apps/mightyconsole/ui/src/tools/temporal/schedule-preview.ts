@@ -437,3 +437,91 @@ export function formatRuns(runs: readonly Date[], timeZone: string | null | unde
     return `${weekday} ${w.day} ${MONTH_NAMES[w.month - 1]}${year}, ${time}${i === 0 ? ` ${zoneName(at)}` : ""}`;
   });
 }
+
+/** The calendar fields a written schedule sets (all six; "" for "*" where the field's default is "*"). */
+export interface RunsCalendar {
+  second: string;
+  minute: string;
+  hour: string;
+  dayOfMonth: string;
+  month: string;
+  dayOfWeek: string;
+}
+
+const DAY_INDEX = new Map(DAY_NAMES.map((d, i) => [d.toLowerCase(), i]));
+const MONTH_INDEX = new Map(MONTH_NAMES.map((m, i) => [m.toLowerCase(), i + 1]));
+const dayOf = (word: string) => DAY_INDEX.get(word.trim().toLowerCase().slice(0, 3));
+const monthOf = (word: string) => MONTH_INDEX.get(word.trim().toLowerCase().slice(0, 3));
+
+/**
+ * A schedule written in words, as "Runs" reads it back (the inverse of `describeCalendar`, and a
+ * few more): "Every day at 02:00", "Mon to Fri at 09:30", "Mon, Wed at 07:00, 07:30", "Weekdays at
+ * 9:00", "Every hour at :15", "Every 15 minutes", "Every minute", "Day 1 of the month at 03:00",
+ * "In Jan, Jul at 06:00". Null when it cannot be read.
+ */
+export function parseRunsText(text: string): RunsCalendar | null {
+  let rest = text.trim().toLowerCase().replace(/\s+/g, " ").replace(/^runs? /, "");
+  if (!rest) return null;
+  const out: RunsCalendar = { second: "", minute: "", hour: "", dayOfMonth: "", month: "", dayOfWeek: "" };
+  // The time, at the end.
+  let m: RegExpMatchArray | null;
+  if ((m = /^(.*?)\s*every (\d+) minutes?$/.exec(rest))) {
+    const n = Number(m[2]);
+    if (!(n >= 1 && n <= 59)) return null;
+    out.minute = n === 1 ? "*" : `*/${n}`;
+    out.hour = "*";
+    rest = m[1]!;
+  } else if ((m = /^(.*?)\s*every minute$/.exec(rest))) {
+    out.minute = "*";
+    out.hour = "*";
+    rest = m[1]!;
+  } else if ((m = /^(.*?)\s*every hour at :(\d{1,2})(?::(\d{1,2}))?$/.exec(rest))) {
+    const minute = Number(m[2]);
+    if (minute > 59) return null;
+    out.minute = String(minute);
+    out.hour = "*";
+    if (m[3]) out.second = String(Number(m[3]));
+    rest = m[1]!;
+  } else if ((m = /^(.*?)\s*at ((?:\d{1,2}:\d{2}(?::\d{2})?(?:\s*,\s*)?)+)$/.exec(rest))) {
+    const times = m[2]!.split(",").map((t) => t.trim()).filter(Boolean).map((t) => t.split(":").map(Number));
+    if (times.some((t) => t[0]! > 23 || t[1]! > 59 || (t[2] ?? 0) > 59)) return null;
+    const hours = [...new Set(times.map((t) => t[0]!))].sort((a, b) => a - b);
+    const minutes = [...new Set(times.map((t) => t[1]!))].sort((a, b) => a - b);
+    const seconds = [...new Set(times.map((t) => t[2] ?? 0))];
+    // A calendar is a product of its fields: the times must be every hour with every minute.
+    if (hours.length * minutes.length !== times.length || seconds.length !== 1) return null;
+    out.hour = hours.join(",");
+    out.minute = minutes.join(",");
+    if (seconds[0]) out.second = String(seconds[0]);
+    rest = m[1]!;
+  } else {
+    return null;
+  }
+  // The days, before it: "every day", weekdays, weekends, "Mon to Fri", "Mon, Wed", "day 1 of the month", "in Jan".
+  rest = rest.replace(/^every hour$/, "").trim().replace(/,$/, "").trim();
+  if (rest === "" || rest === "every day" || rest === "daily") return out;
+  for (const part of rest.split(/,\s*(?=day |in |every |weekdays|weekends|(?:mon|tue|wed|thu|fri|sat|sun)[a-z]* to )/)) {
+    const p = part.trim();
+    if (p === "weekdays") out.dayOfWeek = "1-5";
+    else if (p === "weekends") out.dayOfWeek = "0,6";
+    else if ((m = /^day ([\d, ]+) of the month$/.exec(p))) {
+      const days = m[1]!.split(",").map((d) => Number(d.trim()));
+      if (days.some((d) => !(d >= 1 && d <= 31))) return null;
+      out.dayOfMonth = days.join(",");
+    } else if ((m = /^in (.+)$/.exec(p))) {
+      const months = m[1]!.split(",").map(monthOf);
+      if (months.some((x) => x === undefined)) return null;
+      out.month = months.join(",");
+    } else if ((m = /^([a-z]+) to ([a-z]+)$/.exec(p))) {
+      const a = dayOf(m[1]!);
+      const b = dayOf(m[2]!);
+      if (a === undefined || b === undefined) return null;
+      out.dayOfWeek = `${a}-${b}`;
+    } else {
+      const days = p.split(",").map(dayOf);
+      if (days.length === 0 || days.some((x) => x === undefined)) return null;
+      out.dayOfWeek = days.join(",");
+    }
+  }
+  return out;
+}

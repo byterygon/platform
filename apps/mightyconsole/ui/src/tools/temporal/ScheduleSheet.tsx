@@ -28,8 +28,8 @@ import { ArgsField } from "./ActionDialogs";
 import { scheduleCommand } from "./cli";
 import { addressOf, tlsOf } from "./profile";
 import { CALENDAR_FIELDS, changesOf, draftErrors, draftOfForm, formOf, newDraft, restSummary, specOf, type Change, type ScheduleDraft, type ShownCalendarField, type WhenKind } from "./schedule-draft";
-import { describeCalendar, formatRuns, nextRuns, parseCron } from "./schedule-preview";
-import { DurationField, Fold, ObjectField, QueueWorkers, Required, RetryFields, WritesTo, retrySummary, useQueueWorkers } from "./sheet-parts";
+import { describeCalendar, formatRuns, nextRuns, parseCron, parseRunsText } from "./schedule-preview";
+import { DurationField, Fold, ObjectField, QueueWorkers, Required, RetryFields, SuggestInput, WritesTo, retrySummary, useQueueWorkers } from "./sheet-parts";
 
 export type ScheduleSheetMode = { kind: "create" } | { kind: "edit"; scheduleId: string; form: ScheduleForm; conflictToken: string };
 
@@ -42,7 +42,7 @@ export interface ScheduleSheetProps {
   namespace: string;
   mode: ScheduleSheetMode;
   /** Workflow types seen in the namespace's schedules, suggested for the type. */
-  suggestions?: { types: readonly string[] } | undefined;
+  suggestions?: { types: readonly string[]; queues?: readonly string[] } | undefined;
   note(e: unknown): DescribedError;
   /** After a create or an update. */
   onSaved(scheduleId: string): void;
@@ -112,6 +112,8 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
   const [stored, setStored] = useState<{ form: ScheduleForm; conflictToken: string } | null>(mode.kind === "edit" ? { form: mode.form, conflictToken: mode.conflictToken } : null);
   const [d, setD] = useState<ScheduleDraft>(() => (mode.kind === "edit" ? draftOfForm(mode.scheduleId, mode.form) : newDraft()));
   const [tried, setTried] = useState(false);
+  // "Runs" while it is typed (null: it shows the schedule in words).
+  const [runsDraft, setRunsDraft] = useState<string | null>(null);
   const [review, setReview] = useState<Change[] | null>(null);
   const [asJson, setAsJson] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -202,13 +204,17 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
     }
   };
 
-  const text = (key: keyof ScheduleDraft & string, label: string, opts: { placeholder?: string; description?: string; list?: string; required?: boolean; mono?: boolean } = {}) => (
+  const text = (key: keyof ScheduleDraft & string, label: string, opts: { placeholder?: string; description?: string; suggest?: readonly string[]; required?: boolean; mono?: boolean } = {}) => (
     <Field invalid={shown(key) !== undefined}>
       <FieldLabel>
         {label}
         {opts.required ? <Required /> : null}
       </FieldLabel>
-      <Input value={String(d[key])} onValueChange={(v) => set({ [key]: v } as Partial<ScheduleDraft>)} placeholder={opts.placeholder} list={opts.list} autoComplete="off" spellCheck={false} required={opts.required} {...(opts.mono ? { className: "font-mono text-code" } : {})} />
+      {opts.suggest ? (
+        <SuggestInput value={String(d[key])} onValueChange={(v) => set({ [key]: v } as Partial<ScheduleDraft>)} items={opts.suggest} {...(opts.placeholder ? { placeholder: opts.placeholder } : {})} />
+      ) : (
+        <Input value={String(d[key])} onValueChange={(v) => set({ [key]: v } as Partial<ScheduleDraft>)} placeholder={opts.placeholder} autoComplete="off" spellCheck={false} required={opts.required} {...(opts.mono ? { className: "font-mono text-code" } : {})} />
+      )}
       {opts.description ? <FieldDescription>{opts.description}</FieldDescription> : null}
       {shown(key) ? <FieldError match>{shown(key)}</FieldError> : null}
     </Field>
@@ -217,8 +223,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
   const rest = restSummary(d.rest);
   const words = whenInWords(d);
   const runs = formatRuns(preview.runs, d.timezone);
-  const zoneList = `schedule-zones-${profile.id}`;
-  const typeList = `schedule-types-${profile.id}`;
+  const zones = timeZones();
   const policies = [`overlap ${OVERLAP_SHORT[d.overlap]}`, `catch-up ${d.catchupWindow.trim() || "1 year"}`, `pause on failure ${d.pauseOnFailure ? "on" : "off"}`, `jitter ${d.jitter.trim() || "none"}`].join(" · ");
   const optionParts = [d.executionTimeout.trim() && `execution ${d.executionTimeout.trim()}`, d.runTimeout.trim() && `run ${d.runTimeout.trim()}`, d.taskTimeout.trim() && `task ${d.taskTimeout.trim()}`, retrySummary(d.retry) !== "Server default" && "retry policy", d.memo.trim() && "memo", d.searchAttributes.trim() && "search attributes"].filter(Boolean);
   const options = optionParts.length > 0 ? optionParts.join(", ") : "timeouts, retry policy, memo, search attributes";
@@ -246,13 +251,13 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
           >
             <div className="grid grid-cols-2 gap-x-inline-md gap-y-stack-md">
               {editing ? null : text("scheduleId", "Schedule ID", { placeholder: "nightly-report", required: true, description: "Unique in the namespace; cannot change later." })}
-              {text("workflowType", "Workflow type", { required: true, list: typeList, description: "Suggested from types seen in this namespace." })}
+              {text("workflowType", "Workflow type", { required: true, suggest: suggestions?.types ?? [], description: "Suggested from types seen in this namespace." })}
               <Field invalid={shown("taskQueue") !== undefined}>
                 <FieldLabel>
                   Task queue
                   <Required />
                 </FieldLabel>
-                <Input value={d.taskQueue} onValueChange={(taskQueue) => set({ taskQueue })} autoComplete="off" spellCheck={false} required />
+                <SuggestInput value={d.taskQueue} onValueChange={(taskQueue) => set({ taskQueue })} items={suggestions?.queues ?? []} />
                 {workers !== null ? (
                   <FieldDescription>
                     <QueueWorkers count={workers} />
@@ -262,11 +267,6 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
               </Field>
               {text("workflowId", "Workflow ID", { required: true, mono: true, description: "Temporal appends the scheduled time." })}
             </div>
-            <datalist id={typeList}>
-              {(suggestions?.types ?? []).map((t) => (
-                <option key={t} value={t} />
-              ))}
-            </datalist>
 
             <section aria-label="When" className="flex flex-col gap-stack-sm border-t border-border-subtle pt-stack-sm">
               <h3 className="flex items-center gap-inline-sm text-body-1-strong text-fg">
@@ -277,20 +277,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
                 <ToggleGroupItem value="interval">Interval</ToggleGroupItem>
                 <ToggleGroupItem value="cron">Cron</ToggleGroupItem>
               </ToggleGroup>
-              {d.when === "calendar" ? (
-                <>
-                  <div className="grid grid-cols-3 gap-inline-md">
-                    {CALENDAR_FIELDS.map((f) => (
-                      <Field key={f} invalid={errors[`calendar.${f}`] !== undefined}>
-                        <FieldLabel>{CALENDAR_LABELS[f].label}</FieldLabel>
-                        <Input value={d.calendar[f]} onValueChange={(v) => set({ calendar: { ...d.calendar, [f]: v } })} placeholder={CALENDAR_LABELS[f].hint} autoComplete="off" spellCheck={false} />
-                        {errors[`calendar.${f}`] ? <FieldError match>{errors[`calendar.${f}`]}</FieldError> : null}
-                      </Field>
-                    ))}
-                  </div>
-                  <p className="text-caption-1 text-fg-muted">Temporal's calendar strings: 5, 1-5, */15, 0,30, mon-fri, jan. Empty is the default shown.</p>
-                </>
-              ) : d.when === "interval" ? (
+              {d.when === "calendar" ? null : d.when === "interval" ? (
                 <div className="grid grid-cols-2 gap-inline-md">
                   {text("every", "Every", { placeholder: "1h", description: "Aligned on the Unix epoch." })}
                   {text("offset", "Offset", { placeholder: "0s", description: "Shifts the runs, e.g. 15m past each hour." })}
@@ -301,22 +288,50 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
               <div className="grid grid-cols-2 gap-inline-md">
                 <Field>
                   <FieldLabel>Runs</FieldLabel>
-                  <p className="flex h-control-md items-center rounded-md border border-border-subtle px-inset-sm text-body-1 text-fg" role="status">
-                    {words ?? "Correct the spec to read it."}
-                  </p>
+                  {d.when === "calendar" ? (
+                    <Input
+                      value={runsDraft ?? words ?? ""}
+                      onValueChange={(v) => {
+                        setRunsDraft(v);
+                        const c = parseRunsText(v);
+                        if (c) set({ calendar: { ...d.calendar, ...c } });
+                      }}
+                      onBlur={() => setRunsDraft(null)}
+                      placeholder="Every day at 02:00"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <p className="flex h-control-md items-center rounded-md border border-border-subtle px-inset-sm text-body-1 text-fg" role="status">
+                      {words ?? "Correct the spec to read it."}
+                    </p>
+                  )}
+                  {d.when === "calendar" && runsDraft !== null && parseRunsText(runsDraft) === null ? (
+                    <FieldError match>Write it as "Every day at 02:00", "Mon to Fri at 09:30", "Every hour at :15" or "Every 15 minutes", or set the calendar fields.</FieldError>
+                  ) : null}
                 </Field>
-                {text("timezone", "Time zone", { placeholder: "UTC", list: zoneList })}
+                {text("timezone", "Time zone", { placeholder: "UTC", suggest: zones })}
               </div>
               {d.when === "calendar" && cronOfCalendar(d.calendar) ? (
                 <p className="text-caption-1 text-fg-muted">
                   Or cron: <span className="font-mono text-code">{cronOfCalendar(d.calendar)}</span>
                 </p>
               ) : null}
-              <datalist id={zoneList}>
-                {timeZones().map((z) => (
-                  <option key={z} value={z} />
-                ))}
-              </datalist>
+              {d.when === "calendar" ? (
+                <Fold title="Calendar fields" value={CALENDAR_FIELDS.map((f) => d.calendar[f].trim() || (f === "second" || f === "minute" || f === "hour" ? "0" : "*")).join(" ")} open={CALENDAR_FIELDS.some((f) => errors[`calendar.${f}`] !== undefined)}>
+                    <div className="grid grid-cols-3 gap-inline-md">
+                      {CALENDAR_FIELDS.map((f) => (
+                        <Field key={f} invalid={errors[`calendar.${f}`] !== undefined}>
+                          <FieldLabel>{CALENDAR_LABELS[f].label}</FieldLabel>
+                          <Input value={d.calendar[f]} onValueChange={(v) => set({ calendar: { ...d.calendar, [f]: v } })} placeholder={CALENDAR_LABELS[f].hint} autoComplete="off" spellCheck={false} />
+                          {errors[`calendar.${f}`] ? <FieldError match>{errors[`calendar.${f}`]}</FieldError> : null}
+                        </Field>
+                      ))}
+                    </div>
+                    <p className="text-caption-1 text-fg-muted">Temporal's calendar strings: 5, 1-5, */15, 0,30, mon-fri, jan. Empty is the default shown.</p>
+                  <p className="text-caption-1 text-fg-muted">Temporal's calendar strings: 5, 1-5, */15, 0,30, mon-fri, jan. Empty is the default shown.</p>
+                </Fold>
+              ) : null}
               {rest.length > 0 ? (
                 <div className="text-body-1 text-fg-muted">
                   Also kept as stored:

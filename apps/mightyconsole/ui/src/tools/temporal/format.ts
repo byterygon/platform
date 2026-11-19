@@ -32,7 +32,7 @@ export function formatShortTime(iso: string | undefined, now: Date = new Date(),
 }
 
 /** A local date and time with seconds, from an RFC 3339 string; empty when absent or invalid. */
-export function formatTime(iso: string | undefined, locale?: string): string {
+export function formatTime(iso: string | undefined, locale = "en-GB"): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";

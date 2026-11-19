@@ -133,6 +133,8 @@ describe("Workers", () => {
     const p = props({ temporal: { workers: { list } } }, { kind: "temporal.workers", params: { namespace: "lab" } });
     render(<WorkersTab {...p} />);
     await waitFor(() => byText("w1@host-1") !== null, "the rows");
+    await click(byRole("button", "Add a task queue"));
+    await waitFor(() => byRole("textbox", "Task queue to add") !== null, "the popover");
     await type(byRole("textbox", "Task queue to add") as HTMLInputElement, "billing");
     await click(byRole("button", "Add"));
     await waitFor(() => list.mock.calls.some(([input]) => JSON.stringify(input).includes("billing")), "the typed queue");

@@ -27,6 +27,8 @@ export const ITEMS = [
   "graph-view",
   // TSK-80 (messaging core): the Composer's payload editor and headers, the raw bytes view.
   "code-editor", "hex-view", "key-value-editor",
+  // TSK-92 (Temporal): workflow types and task queues suggested, any name typed.
+  "combobox",
 ];
 
 interface Item {

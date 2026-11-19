@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import { nextAttemptText, readPendingActivity } from "@/tools/temporal/PendingPanel";
 import { cronOfCalendar } from "@/tools/temporal/ScheduleSheet";
 import { payloadLabel } from "@/tools/temporal/HistoryPanel";
+import { describeCalendar, parseRunsText } from "@/tools/temporal/schedule-preview";
 import { versionText } from "@/tools/temporal/WorkersTab";
 
 describe("a pending activity", () => {
@@ -60,5 +61,28 @@ describe("a payload label", () => {
     expect(payloadLabel(["json/plain"])).toBe("json/plain · 1 payload");
     expect(payloadLabel(["binary/encrypted", "json/plain", "binary/encrypted"])).toBe("binary/encrypted, json/plain · 3 payloads");
     expect(payloadLabel(undefined)).toBe("no payloads");
+  });
+});
+
+describe("a schedule written in words", () => {
+  test("reads back what describeCalendar writes, and a few more", () => {
+    const cases: [string, Record<string, string>][] = [
+      ["Every day at 02:00", { hour: "2", minute: "0", dayOfWeek: "" }],
+      ["Mon to Fri at 09:30", { hour: "9", minute: "30", dayOfWeek: "1-5" }],
+      ["Mon, Wed at 07:00, 07:30", { hour: "7", minute: "0,30", dayOfWeek: "1,3" }],
+      ["Every hour at :15", { hour: "*", minute: "15" }],
+      ["Every 15 minutes", { hour: "*", minute: "*/15" }],
+      ["Weekdays at 9:00", { hour: "9", dayOfWeek: "1-5" }],
+      ["Day 1 of the month, in Jan at 03:00", { hour: "3", dayOfMonth: "1", month: "1" }],
+    ];
+    for (const [text, expected] of cases) expect(parseRunsText(text), text).toMatchObject(expected);
+    // Round trip: what the sheet shows reads back as the same schedule.
+    for (const c of [{ hour: "2" }, { hour: "9", minute: "30", dayOfWeek: "1-5" }, { hour: "*", minute: "15" }]) {
+      const words = describeCalendar(c)!;
+      expect(describeCalendar(parseRunsText(words)!), words).toBe(words);
+    }
+    expect(parseRunsText("at 07:00, 08:30")).toBeNull();
+    expect(parseRunsText("someday")).toBeNull();
+    expect(parseRunsText("Every day at 25:00")).toBeNull();
   });
 });

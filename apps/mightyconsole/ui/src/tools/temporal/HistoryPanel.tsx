@@ -11,7 +11,6 @@ import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
-import { SearchInput } from "@/components/ui/search-input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -20,7 +19,7 @@ import { EmptyLine } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
 import type { EventCategory, HistoryEvent } from "@/gen/api";
-import { ArrowDownload, ArrowImport, ChevronDown, ChevronRight, Clock, Copy, ErrorCircle, CheckmarkCircle, Eye, EyeOff, Flash, Info, Link, NumberSymbol, Pin, Play, SplitVertical, type IconDefinition } from "@/lib/icons";
+import { ArrowDownload, ArrowImport, ChevronDown, ChevronRight, Clock, Copy, ErrorCircle, CheckmarkCircle, Eye, EyeOff, Flash, Info, Link, NumberSymbol, Pin, Play, Search, SplitVertical, type IconDefinition } from "@/lib/icons";
 import { clockText, eventMs } from "./history";
 import { HISTORY_CHIPS, categoryCounts, groupSummary, historyJson, historyRows, historySummary, isFailure, pairsOf, sinceStart, summaryContext, type HistoryRow } from "./history-view";
 
@@ -208,8 +207,15 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
           ))}
         </div>
         <div className="ms-auto flex items-center gap-inline-sm">
-          <SearchInput ref={findRef} size="small" aria-label="Find in events" placeholder="Find in events" value={query} onValueChange={setQuery} className="w-panel-xs" />
-          <Kbd>Ctrl+F</Kbd>
+          <InputGroup size="small" className="w-panel-xs">
+            <InputGroupAddon>
+              <Icon icon={Search} />
+            </InputGroupAddon>
+            <InputGroupInput ref={findRef} aria-label="Find in events" placeholder="Find in events" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
+            <InputGroupAddon>
+              <Kbd>Ctrl+F</Kbd>
+            </InputGroupAddon>
+          </InputGroup>
           <InputGroup size="small" className="w-[calc(var(--by-size-panel-xs)/2)]">
             <InputGroupAddon>
               <Icon icon={NumberSymbol} />
