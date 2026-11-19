@@ -5,9 +5,10 @@ import { RpcError } from "@byterygon/ambidex";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { describeError } from "@/app/messages";
 import type { MightyClient } from "@/app/client";
-import type { ScheduleDetail, ScheduleSummary, TaskQueueDescription } from "@/gen/api";
+import type { ScheduleDetail, ScheduleRunsOutput, ScheduleSummary, TaskQueueDescription } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
-import { ScheduleTab, SchedulesTab } from "@/tools/temporal/SchedulesTab";
+import { ScheduleTab } from "@/tools/temporal/ScheduleTab";
+import { SchedulesTab } from "@/tools/temporal/SchedulesTab";
 import { TaskQueueTab } from "@/tools/temporal/TaskQueueTab";
 import { profile as schema } from "@/tools/temporal/profile";
 import type { TabProps, TabView } from "@/tools/types";
@@ -32,7 +33,7 @@ const detail = (patch: Partial<ScheduleSummary> = {}): ScheduleDetail => ({
   action: { startWorkflow: { workflowType: { name: "Completed" }, input: ["ord-scheduled"] } },
   policies: { overlapPolicy: "SCHEDULE_OVERLAP_POLICY_SKIP" },
   state: {},
-  info: { actionCount: 12, createTime: "2026-11-17T18:00:00Z" },
+  info: { actionCount: "12", overlapSkipped: "3", missedCatchupWindow: "1", createTime: "2026-11-17T18:00:00Z" },
   form: {
     spec: { calendars: [], intervals: [{ every: "1m" }], cronStrings: [] },
     action: { workflowType: "Completed", taskQueue: "lab", workflowId: "scheduled", args: ["ord-scheduled"] },
@@ -81,7 +82,16 @@ describe("Schedules list", () => {
   });
 });
 
-describe("Schedule", () => {
+describe("Schedule (DOC-21 §9.3, TSK-104)", () => {
+  const RUNS: ScheduleRunsOutput = {
+    query: 'TemporalScheduledById = "every-minute"',
+    runs: [
+      { scheduledTime: "2026-11-18T01:02:00Z", startTime: "2026-11-18T01:02:00.412Z", workflowId: "scheduled-2026-11-18T01:02:00Z", runId: "run-2", status: "Running" },
+      { scheduledTime: "2026-11-18T01:01:00Z", skipped: "Skipped: the previous run was still running (overlap Skip)" },
+      { scheduledTime: "2026-11-18T01:00:00Z", startTime: "2026-11-18T01:00:00.388Z", closeTime: "2026-11-18T01:00:01Z", workflowId: "scheduled-2026-11-18T01:00:00Z", runId: "run-1", status: "Failed", durationMs: 612 },
+    ],
+    nextPageToken: "1794000000:dG9r",
+  };
   function setup(initial: Partial<ScheduleSummary> = {}, fail?: unknown) {
     let current = detail(initial);
     const write = (apply: (d: ScheduleDetail) => ScheduleDetail) =>
@@ -96,6 +106,9 @@ describe("Schedule", () => {
       unpause: write((d) => ({ ...d, summary: { ...d.summary, paused: false } })),
       trigger: write((d) => d),
       delete: write((d) => d),
+      backfill: write((d) => d),
+      runs: vi.fn(async (input: { nextPageToken?: string | null }) => (input.nextPageToken ? { ...RUNS, runs: RUNS.runs.slice(2), nextPageToken: undefined } : RUNS)),
+      matchingTimes: vi.fn(async (input: { endTime?: string | null }) => (input.endTime ? { times: ["2026-11-18T00:10:00Z", "2026-11-18T00:20:00Z", "2026-11-18T00:30:00Z"], truncated: false } : { times: ["2026-11-18T01:03:00Z", "2026-11-18T01:04:00Z", "2026-11-18T01:05:00Z", "2026-11-18T01:06:00Z", "2026-11-18T01:07:00Z", "2026-11-18T01:08:00Z"], truncated: true })),
     };
     const p = props({ temporal: { schedules } }, { kind: "temporal.schedule", params: { namespace: "lab", scheduleId: "every-minute" } });
     const view = render(<ScheduleTab {...p} />);
@@ -107,50 +120,93 @@ describe("Schedule", () => {
     throw new Error(`no field ${label}`);
   };
   const inDialog = (dialogText: string, name: string) => byRole("button", name, dialogWith(dialogText)!);
+  const menuItem = (name: string) => [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(name)) ?? null;
+  const ready = () => waitFor(() => document.querySelector("ul[aria-label='Upcoming runs']") !== null && byText("scheduled-2026-11-18T01:02:00Z") !== null, "the detail");
 
-  test("shows the spec, the upcoming and recent runs and the details", async () => {
-    const { container } = setup();
-    await waitFor(() => byText("Upcoming runs") !== null, "the detail");
+  test("the header, the facts, the runs with a skipped time, the server's next times and the action", async () => {
+    const { container, schedules } = setup();
+    await ready();
     expect(byText("Active")).not.toBeNull();
-    expect(container.querySelectorAll("ul[aria-label='Upcoming runs'] li")).toHaveLength(2);
-    expect(container.querySelector("table[aria-label='Recent runs']")!.textContent).toContain("Completed");
-    expect(container.textContent).toContain("12");
+    expect(container.textContent).toContain("starts Completed on task queue lab");
+    expect(container.textContent).toContain("Every 1 minute · UTC");
+    expect(container.textContent).toContain("12 · 3 skipped · 1 missed");
+    // The side: the next five times from ListScheduleMatchingTimes.
+    expect(schedules.matchingTimes.mock.calls[0]![0]).toMatchObject({ connId: "conn-1", namespace: "lab", scheduleId: "every-minute", endTime: null, limit: 20 });
+    const upcoming = [...container.querySelectorAll<HTMLElement>("ul[aria-label='Upcoming runs'] li")].map((li) => li.dataset.at);
+    expect(upcoming).toEqual(["2026-11-18T01:03:00Z", "2026-11-18T01:04:00Z", "2026-11-18T01:05:00Z", "2026-11-18T01:06:00Z", "2026-11-18T01:07:00Z"]);
+    const table = container.querySelector("table[aria-label='Runs of the schedule']")!;
+    expect(table.textContent).toContain("Next run, in");
+    expect(table.textContent).toContain("Skipped: the previous run was still running (overlap Skip)");
+    expect(table.textContent).toContain("612 ms");
+    expect(container.textContent).toContain('TemporalScheduledById = "every-minute"');
+    expect(byText('"ord-scheduled"')).not.toBeNull();
     expect(await axeViolations(container)).toEqual([]);
   });
 
-  test("Pause asks, sends the note, and then offers Resume", async () => {
+  test("runs page by token and open their workflow", async () => {
+    const { schedules, openTab } = setup();
+    await ready();
+    await click(byRole("button", "Next page"));
+    await waitFor(() => schedules.runs.mock.calls.length === 2, "page 2");
+    expect(schedules.runs.mock.calls[1]![0]).toMatchObject({ pageSize: 20, nextPageToken: "1794000000:dG9r" });
+    await waitFor(() => byText("Page 2") !== null, "page 2 shown");
+    await click(byRole("button", "scheduled-2026-11-18T01:00:00Z"));
+    expect(openTab).toHaveBeenCalledWith({ kind: "temporal.workflow", params: { namespace: "lab", workflowId: "scheduled-2026-11-18T01:00:00Z", runId: "run-1" }, title: "scheduled-2026-11-18T01:00:00Z" });
+    await click(byRole("button", "Previous page"));
+    await waitFor(() => byText("Page 1") !== null, "back to page 1");
+  });
+
+  test("Pause… asks, sends the note, and then offers Unpause…", async () => {
     const { schedules } = setup();
-    await waitFor(() => byText("Upcoming runs") !== null, "the detail");
-    await click(byRole("button", "Pause"));
+    await ready();
+    await click(byRole("button", "Pause…"));
     await waitFor(() => dialogWith("Pause every-minute?") !== null, "the dialog");
     await type(field("Pause every-minute?", "Note"), "pausing");
     await click(inDialog("Pause every-minute?", "Pause"));
     await waitFor(() => schedules.pause.mock.calls.length === 1, "the call");
     expect(schedules.pause.mock.calls[0]![0]).toEqual({ connId: "conn-1", namespace: "lab", scheduleId: "every-minute", note: "pausing", overlap: null });
-    await waitFor(() => byRole("button", "Resume") !== null, "Resume");
+    await waitFor(() => byRole("button", "Unpause…") !== null, "Unpause");
     expect(byText("Paused")).not.toBeNull();
-    await click(byRole("button", "Resume"));
-    await waitFor(() => dialogWith("Resume every-minute?") !== null, "the resume dialog");
-    await click(inDialog("Resume every-minute?", "Resume"));
+    await click(byRole("button", "Unpause…"));
+    await waitFor(() => dialogWith("Unpause every-minute?") !== null, "the unpause dialog");
+    await click(inDialog("Unpause every-minute?", "Unpause"));
     await waitFor(() => schedules.unpause.mock.calls.length === 1, "the unpause");
     expect(schedules.unpause.mock.calls[0]![0]).toMatchObject({ note: null });
   });
 
-  test("Run now sends the schedule's own overlap policy unless told otherwise", async () => {
+  test("Trigger now sends the schedule's own overlap policy unless told otherwise", async () => {
     const { schedules } = setup();
-    await waitFor(() => byText("Upcoming runs") !== null, "the detail");
-    await click(byRole("button", "Run now"));
-    await waitFor(() => dialogWith("Run every-minute now?") !== null, "the dialog");
-    expect(dialogWith("Run every-minute now?")!.textContent).toContain("The schedule's own policy");
-    await click(inDialog("Run every-minute now?", "Run now"));
+    await ready();
+    await click(byRole("button", "Trigger now"));
+    await waitFor(() => dialogWith("Trigger every-minute now?") !== null, "the dialog");
+    expect(dialogWith("Trigger every-minute now?")!.textContent).toContain("The schedule's own policy");
+    await click(inDialog("Trigger every-minute now?", "Trigger now"));
     await waitFor(() => schedules.trigger.mock.calls.length === 1, "the call");
     expect(schedules.trigger.mock.calls[0]![0]).toEqual({ connId: "conn-1", namespace: "lab", scheduleId: "every-minute", note: null, overlap: null });
   });
 
-  test("Delete needs the typed id, and the tab says it is gone afterwards", async () => {
+  test("Backfill… names the count the server matched, then sends the range", async () => {
     const { schedules } = setup();
-    await waitFor(() => byText("Upcoming runs") !== null, "the detail");
-    await click(byRole("button", "Delete"));
+    await ready();
+    await click(byRole("button", "More actions"));
+    await waitFor(() => menuItem("Backfill") !== null, "the menu");
+    await click(menuItem("Backfill"));
+    await waitFor(() => dialogWith("Backfill every-minute?") !== null, "the dialog");
+    await waitFor(() => dialogWith("Starts 3 runs, one for each time the spec matched.") !== null, "the count");
+    const counted = schedules.matchingTimes.mock.calls.find((c) => c[0].endTime)![0] as { startTime: string; endTime: string; limit: number };
+    expect(Date.parse(counted.endTime) - Date.parse(counted.startTime)).toBe(3_600_000);
+    expect(counted.limit).toBe(1000);
+    await click(inDialog("Backfill every-minute?", "Start 3 runs"));
+    await waitFor(() => schedules.backfill.mock.calls.length === 1, "the call");
+    expect(schedules.backfill.mock.calls[0]![0]).toMatchObject({ connId: "conn-1", namespace: "lab", scheduleId: "every-minute", startTime: counted.startTime, endTime: counted.endTime, overlap: null });
+  });
+
+  test("Delete… needs the typed id, and the tab says it is gone afterwards", async () => {
+    const { schedules } = setup();
+    await ready();
+    await click(byRole("button", "More actions"));
+    await waitFor(() => menuItem("Delete") !== null, "the menu");
+    await click(menuItem("Delete"));
     await waitFor(() => dialogWith("Delete every-minute?") !== null, "the dialog");
     expect(isDisabled(inDialog("Delete every-minute?", "Delete schedule"))).toBe(true);
     await type(field("Delete every-minute?", "Type every-minute"), "every-minut");
@@ -164,8 +220,8 @@ describe("Schedule", () => {
   test("a failure stays in the dialog", async () => {
     const denied = new RpcError("PermissionDenied", "not allowed to change schedules", { details: { kind: "Forbidden", system: "temporal", message: "not allowed to change schedules", retryable: false } });
     const { schedules } = setup({}, denied);
-    await waitFor(() => byText("Upcoming runs") !== null, "the detail");
-    await click(byRole("button", "Pause"));
+    await ready();
+    await click(byRole("button", "Pause…"));
     await waitFor(() => dialogWith("Pause every-minute?") !== null, "the dialog");
     await click(inDialog("Pause every-minute?", "Pause"));
     await waitFor(() => dialogWith("not allowed to change schedules") !== null, "the error");
@@ -174,7 +230,7 @@ describe("Schedule", () => {
 
   test("a schedule that does not exist is said so", async () => {
     const missing = new RpcError("NotFound", "schedule not found", { details: { kind: "NotFound", system: "temporal", message: "schedule not found", retryable: false } });
-    const p = props({ temporal: { schedules: { describe: () => Promise.reject(missing) } } }, { kind: "temporal.schedule", params: { namespace: "lab", scheduleId: "gone" } });
+    const p = props({ temporal: { schedules: { describe: () => Promise.reject(missing), runs: () => Promise.reject(missing), matchingTimes: () => Promise.reject(missing) } } }, { kind: "temporal.schedule", params: { namespace: "lab", scheduleId: "gone" } });
     render(<ScheduleTab {...p} />);
     await waitFor(() => byText("schedule not found") !== null, "the error");
   });

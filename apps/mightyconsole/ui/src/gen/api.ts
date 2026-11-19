@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:527107b72c55610ca37743383b8569b97685a63c33731855a7cc8ccc784a923b";
+export const SCHEMA_HASH = "sha256:5d9392f613adfde124d96b39ad44405d335e7e4cadec1186cef03a8aa430c140";
 
 // ---- Types
 
@@ -1524,6 +1524,20 @@ workflowId: string,
  */
 args: unknown[], executionTimeout?: string | null, runTimeout?: string | null, taskTimeout?: string | null, retryPolicy?: RetryPolicyForm | null, memo?: Record<string, unknown>, searchAttributes?: Record<string, unknown>, };
 
+export type ScheduleBackfillInput = { connId: string, namespace?: string | null, scheduleId: string, 
+/**
+ * RFC 3339, in the past.
+ */
+startTime: string, 
+/**
+ * RFC 3339, after the start and not in the future.
+ */
+endTime: string, 
+/**
+ * The schedule's own policy when absent.
+ */
+overlap?: ScheduleOverlap | null, };
+
 /**
  * Everything `DescribeSchedule` says; the parts are protobuf JSON, payloads decoded.
  */
@@ -1589,6 +1603,31 @@ catchupWindow?: string | null, pauseOnFailure: boolean, };
 
 export type ScheduleRef = { connId: string, namespace?: string | null, scheduleId: string, };
 
+/**
+ * One row of a schedule's Runs: a workflow it started, or a time it matched with no run.
+ */
+export type ScheduleRun = { 
+/**
+ * The time the spec called for (`TemporalScheduledStartTime`); for Trigger now, the trigger.
+ */
+scheduledTime?: string, startTime?: string, closeTime?: string, workflowId?: string, runId?: string, status?: WorkflowStatus, durationMs?: number, 
+/**
+ * A matched time with no run: why, as far as it can be told.
+ */
+skipped?: string, };
+
+export type ScheduleRunsInput = { connId: string, namespace?: string | null, scheduleId: string, 
+/**
+ * 1 to 100; 20 when absent.
+ */
+pageSize?: number | null, nextPageToken?: string | null, };
+
+export type ScheduleRunsOutput = { runs: Array<ScheduleRun>, 
+/**
+ * The Workflows query the runs come from.
+ */
+query: string, nextPageToken?: string, };
+
 export type ScheduleSpecForm = { calendars: Array<CalendarForm>, intervals: Array<IntervalForm>, cronStrings: Array<string>, 
 /**
  * An IANA time zone; UTC when absent.
@@ -1618,6 +1657,31 @@ notes: string,
  * The next runs, RFC 3339.
  */
 nextRuns: Array<string>, recentActions: Array<ScheduleAction>, };
+
+export type ScheduleTimesInput = { connId: string, namespace?: string | null, scheduleId: string, 
+/**
+ * RFC 3339.
+ */
+startTime: string, 
+/**
+ * RFC 3339; when absent, the range grows from `startTime` until `limit` times are found
+ * (at most five years ahead).
+ */
+endTime?: string | null, 
+/**
+ * At most this many times: 20 when absent, 1,000 at most.
+ */
+limit?: number | null, };
+
+export type ScheduleTimesOutput = { 
+/**
+ * RFC 3339, oldest first.
+ */
+times: Array<string>, 
+/**
+ * More times matched than were sent.
+ */
+truncated: boolean, };
 
 export type ScheduleWriteInput = { connId: string, namespace?: string | null, scheduleId: string, schedule: ScheduleForm, 
 /**
@@ -2359,11 +2423,14 @@ export interface Procedures {
   readonly "temporal.namespaces.describe": ProcedureDef<"query", NamespaceDescribeInput, NamespaceDetail, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
   readonly "temporal.namespaces.searchAttributes": ProcedureDef<"query", SearchAttributesInput, SearchAttributesOutput, ToolError>;
+  readonly "temporal.schedules.backfill": ProcedureDef<"mutation", ScheduleBackfillInput, Empty, ToolError>;
   readonly "temporal.schedules.create": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
   readonly "temporal.schedules.delete": ProcedureDef<"mutation", ScheduleRef, Empty, ToolError>;
   readonly "temporal.schedules.describe": ProcedureDef<"query", ScheduleRef, ScheduleDetail, ToolError>;
   readonly "temporal.schedules.list": ProcedureDef<"query", SchedulesListInput, Array<ScheduleSummary>, ToolError>;
+  readonly "temporal.schedules.matchingTimes": ProcedureDef<"query", ScheduleTimesInput, ScheduleTimesOutput, ToolError>;
   readonly "temporal.schedules.pause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
+  readonly "temporal.schedules.runs": ProcedureDef<"query", ScheduleRunsInput, ScheduleRunsOutput, ToolError>;
   readonly "temporal.schedules.trigger": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.unpause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.update": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
@@ -2507,11 +2574,14 @@ export interface Api {
       readonly searchAttributes: Procedures["temporal.namespaces.searchAttributes"];
     };
     readonly schedules: {
+      readonly backfill: Procedures["temporal.schedules.backfill"];
       readonly create: Procedures["temporal.schedules.create"];
       readonly delete: Procedures["temporal.schedules.delete"];
       readonly describe: Procedures["temporal.schedules.describe"];
       readonly list: Procedures["temporal.schedules.list"];
+      readonly matchingTimes: Procedures["temporal.schedules.matchingTimes"];
       readonly pause: Procedures["temporal.schedules.pause"];
+      readonly runs: Procedures["temporal.schedules.runs"];
       readonly trigger: Procedures["temporal.schedules.trigger"];
       readonly unpause: Procedures["temporal.schedules.unpause"];
       readonly update: Procedures["temporal.schedules.update"];
@@ -3331,6 +3401,16 @@ export const procedures: Api = {
       },
     },
     schedules: {
+      backfill: {
+        name: "temporal.schedules.backfill",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       create: {
         name: "temporal.schedules.create",
         kind: "mutation",
@@ -3371,11 +3451,31 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+      matchingTimes: {
+        name: "temporal.schedules.matchingTimes",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       pause: {
         name: "temporal.schedules.pause",
         kind: "mutation",
         perm: "temporal.write",
         risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      runs: {
+        name: "temporal.schedules.runs",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,

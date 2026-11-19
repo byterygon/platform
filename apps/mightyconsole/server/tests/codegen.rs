@@ -446,6 +446,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.schedules.backfill",
+            Mutation,
+            "temporal.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
             "temporal.schedules.create",
             Mutation,
             "temporal.write",
@@ -474,10 +481,24 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.schedules.matchingTimes",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.schedules.pause",
             Mutation,
             "temporal.write",
             Risk::Write,
+            defaults,
+        ),
+        (
+            "temporal.schedules.runs",
+            Query,
+            "temporal.read",
+            Risk::Read,
             defaults,
         ),
         (

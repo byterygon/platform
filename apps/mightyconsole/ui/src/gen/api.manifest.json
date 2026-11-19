@@ -5886,6 +5886,50 @@
       ],
       "type": "object"
     },
+    "ScheduleBackfillInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "endTime": {
+          "description": "RFC 3339, after the start and not in the future.",
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overlap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScheduleOverlap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The schedule's own policy when absent."
+        },
+        "scheduleId": {
+          "type": "string"
+        },
+        "startTime": {
+          "description": "RFC 3339, in the past.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId",
+        "startTime",
+        "endTime"
+      ],
+      "type": "object"
+    },
     "ScheduleDetail": {
       "description": "Everything `DescribeSchedule` says; the parts are protobuf JSON, payloads decoded.",
       "properties": {
@@ -6067,6 +6111,131 @@
       ],
       "type": "object"
     },
+    "ScheduleRun": {
+      "description": "One row of a schedule's Runs: a workflow it started, or a time it matched with no run.",
+      "properties": {
+        "closeTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "durationMs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scheduledTime": {
+          "description": "The time the spec called for (`TemporalScheduledStartTime`); for Trigger now, the trigger.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "skipped": {
+          "description": "A matched time with no run: why, as far as it can be told.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workflowId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ScheduleRunsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextPageToken": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pageSize": {
+          "default": null,
+          "description": "1 to 100; 20 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "scheduleId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId"
+      ],
+      "type": "object"
+    },
+    "ScheduleRunsOutput": {
+      "properties": {
+        "nextPageToken": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "description": "The Workflows query the runs come from.",
+          "type": "string"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/ScheduleRun"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "runs",
+        "query"
+      ],
+      "type": "object"
+    },
     "ScheduleSpecForm": {
       "properties": {
         "calendars": {
@@ -6185,6 +6354,71 @@
         "notes",
         "nextRuns",
         "recentActions"
+      ],
+      "type": "object"
+    },
+    "ScheduleTimesInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "endTime": {
+          "default": null,
+          "description": "RFC 3339; when absent, the range grows from `startTime` until `limit` times are found\n(at most five years ahead).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "description": "At most this many times: 20 when absent, 1,000 at most.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scheduleId": {
+          "type": "string"
+        },
+        "startTime": {
+          "description": "RFC 3339.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId",
+        "startTime"
+      ],
+      "type": "object"
+    },
+    "ScheduleTimesOutput": {
+      "properties": {
+        "times": {
+          "description": "RFC 3339, oldest first.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "description": "More times matched than were sent.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "times",
+        "truncated"
       ],
       "type": "object"
     },
@@ -10137,6 +10371,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ScheduleBackfillInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.schedules.backfill",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ScheduleWriteInput"
       },
       "kind": "mutation",
@@ -10224,6 +10479,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ScheduleTimesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.schedules.matchingTimes",
+      "output": {
+        "$ref": "#/$defs/ScheduleTimesOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/SchedulePatchInput"
       },
       "kind": "mutation",
@@ -10235,6 +10511,27 @@
       "perm": "temporal.write",
       "redact": [],
       "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ScheduleRunsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.schedules.runs",
+      "output": {
+        "$ref": "#/$defs/ScheduleRunsOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
     },
@@ -10683,5 +10980,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:527107b72c55610ca37743383b8569b97685a63c33731855a7cc8ccc784a923b"
+  "schema_hash": "sha256:5d9392f613adfde124d96b39ad44405d335e7e4cadec1186cef03a8aa430c140"
 }
