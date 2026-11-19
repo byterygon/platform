@@ -212,7 +212,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
       {state.loading && detail === null ? (
         <LoadingRows label="Loading the workflow" />
       ) : detail === null ? null : (
-        <Tabs value={section} onValueChange={(v) => setSection(v as Section)} className="mt-stack-md flex min-h-0 flex-1 flex-col">
+        <Tabs value={section} onValueChange={(v) => setSection(v as Section)} className="mt-stack-md flex min-h-0 flex-1 flex-col gap-0">
           <TabsList aria-label="Workflow views" className="gap-inline-xs px-inset-lg [&_[data-slot=tabs-trigger]]:h-control-lg [&_[data-slot=tabs-trigger]]:px-inline-md [&_[data-slot=tabs-item]:first-child]:-ms-inline-md">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="history">
@@ -225,7 +225,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <TabsTrigger value="queries">Queries</TabsTrigger>
             <TabsTrigger value="stack">Stack trace</TabsTrigger>
           </TabsList>
-          <TabsContent value="timeline" className="flex min-h-0 flex-1 flex-col pt-stack-sm">
+          <TabsContent value="timeline" className="flex min-h-0 flex-1 flex-col">
             <TimelinePanel
               events={events}
               pending={detail.pendingActivities}

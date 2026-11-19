@@ -266,7 +266,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
         )}
         <EventDetail event={picked} start={start} ctx={ctx} onSelect={reveal} onOpenPending={onOpenPending} loadRaw={loadRaw} />
       </div>
-      <footer className="flex shrink-0 items-center gap-inline-md border-t border-border-subtle px-inset-lg py-stack-xs text-caption-1 text-fg-muted">
+      <footer className="flex shrink-0 items-center gap-inline-md border-t border-border-subtle px-inset-lg py-stack-sm text-caption-1 text-fg-muted">
         {live ? (
           <span className="flex items-center gap-inline-xs">
             <span aria-hidden="true" className="size-icon-xs rounded-full bg-success" /> Following new events

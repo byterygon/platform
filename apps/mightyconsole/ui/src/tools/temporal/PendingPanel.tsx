@@ -208,7 +208,7 @@ export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detai
               {[picked.scheduled !== null ? `Scheduled ${clockText(picked.scheduled)}` : "", picked.lastStarted !== null ? `last started ${clockText(picked.lastStarted)}` : "", picked.taskQueue ? `task queue ${picked.taskQueue}` : ""].filter(Boolean).join(" · ")}
             </p>
           </div>
-          <DescriptionList layout="inline">
+          <DescriptionList layout="aligned">
             <DescriptionListItem>
               <DescriptionListTerm>Attempt</DescriptionListTerm>
               <DescriptionListDetails>
