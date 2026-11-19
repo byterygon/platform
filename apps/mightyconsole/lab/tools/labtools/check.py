@@ -24,7 +24,7 @@ async def check_nats():
     nc = await nats.connect("nats://nats:4222", user=creds["user"], password=creds["password"])
     js = nc.jetstream()
     info = await js.stream_info("ORDERS")
-    expect(info.state.messages == 1050, f"nats: ORDERS has {info.state.messages} messages, not 1050")
+    expect(info.state.messages == 1051, f"nats: ORDERS has {info.state.messages} messages, not 1051")
     consumer = await js.consumer_info("ORDERS", "billing")
     expect(consumer.num_pending > 0 and consumer.num_ack_pending > 0, f"nats: billing has pending {consumer.num_pending}, ack pending {consumer.num_ack_pending}")
     kv = await js.key_value("config")

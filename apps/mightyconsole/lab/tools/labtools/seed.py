@@ -44,6 +44,9 @@ async def seed_nats():
         await js.publish(f"orders.{regions[i % 3]}.created", json.dumps(body).encode(), headers=headers)
     for i in range(50):
         await js.publish(f"orders.proto.{regions[i % 3]}", protos.order(i).SerializeToString(), headers={"Content-Type": "application/x-protobuf", "Lab-Seq": str(i)})
+    # One message over 1 MiB, for "Load full payload" (spec §5.1): a JSON document of 1.5 MiB.
+    large = json.dumps({"id": "ord-large", "note": "x" * (1536 * 1024)}).encode()
+    await js.publish("orders.large", large, headers={"Content-Type": "application/json", "Lab-Seq": "large"})
     # A durable pull consumer with pending messages: 100 fetched and acked, the rest pending.
     await js.add_consumer("ORDERS", ConsumerConfig(durable_name="billing", filter_subject="orders.eu.>", ack_wait=30))
     sub = await js.pull_subscribe("orders.eu.>", durable="billing", stream="ORDERS")
@@ -77,7 +80,7 @@ async def seed_nats():
     await store.put("blob-5MiB.bin", blob)
     await store.put("readme.txt", b"Files of the Mightyconsole lab.\n")
     await nc.close()
-    log("nats: stream ORDERS (1,050 messages), consumer billing, KV config, object store files")
+    log("nats: stream ORDERS (1,051 messages, one of 1.5 MiB), consumer billing, KV config, object store files")
 
 
 # --------------------------------------------------------------------------------------------

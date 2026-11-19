@@ -5,51 +5,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
+import { DescriptionList } from "@/components/ui/description-list";
 import { Icon } from "@/components/ui/icon";
-import { Progress } from "@/components/ui/progress";
 import { CopyButton, Page, PageHeader, PageRegion } from "@/app/page";
 import { DisconnectedState, ErrorState, LoadingRows } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import type { NatsServerInfoOutput } from "@/gen/api";
 import { ArrowClockwise } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
+import { formatSize } from "./format";
+import { Fact, Usage } from "./parts";
 
-/** "1 MiB", "980 B", "1.9 GiB". */
-export function formatSize(bytes: number): string {
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  let n = bytes;
-  let unit = 0;
-  while (n >= 1024 && unit < units.length - 1) {
-    n /= 1024;
-    unit += 1;
-  }
-  return unit === 0 ? `${n} B` : `${+n.toFixed(n >= 100 ? 0 : 1)} ${units[unit]}`;
-}
-
-function Fact({ term, children }: { term: string; children: React.ReactNode }) {
-  return (
-    <DescriptionListItem>
-      <DescriptionListTerm>{term}</DescriptionListTerm>
-      <DescriptionListDetails>{children}</DescriptionListDetails>
-    </DescriptionListItem>
-  );
-}
-
-/** One usage bar: "Storage 1.9 GiB / 10 GiB"; unlimited shows the use alone. */
-function Usage({ label, used, limit, format }: { label: string; used: number; limit: number | undefined; format: (n: number) => string }) {
-  const limited = limit !== undefined && limit > 0;
-  const pct = limited ? Math.min(100, (used / limit) * 100) : 0;
-  return (
-    <div className="flex flex-col gap-stack-xs">
-      <div className="flex items-baseline justify-between gap-inline-md text-body-1">
-        <span className="text-fg">{label}</span>
-        <span className="tabular-nums text-fg-muted">{limited ? `${format(used)} / ${format(limit)}` : `${format(used)} · no limit`}</span>
-      </div>
-      <Progress aria-label={label} value={limited ? pct : 0} variant={pct >= 90 ? "danger" : pct >= 75 ? "warning" : "accent"} />
-    </div>
-  );
-}
+export { formatSize };
 
 export function ServerTab({ profile, connId, client, useTabActions, note }: TabProps) {
   const [info, setInfo] = useState<NatsServerInfoOutput | null>(null);

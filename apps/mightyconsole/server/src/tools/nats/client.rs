@@ -425,11 +425,13 @@ impl NatsClient {
         prepared: &Prepared,
     ) -> NatsClient {
         let js = profile.jetstream.clone().unwrap_or_default();
-        let jetstream = match (non_empty(&js.domain), non_empty(&js.api_prefix)) {
+        let mut jetstream = match (non_empty(&js.domain), non_empty(&js.api_prefix)) {
             (Some(domain), _) => async_nats::jetstream::with_domain(client.clone(), domain),
             (None, Some(prefix)) => async_nats::jetstream::with_prefix(client.clone(), prefix),
             (None, None) => async_nats::jetstream::new(client.clone()),
         };
+        // The profile's timeout covers JetStream API calls too (spec §6.1).
+        jetstream.set_timeout(prepared.request_timeout);
         NatsClient {
             client,
             jetstream,

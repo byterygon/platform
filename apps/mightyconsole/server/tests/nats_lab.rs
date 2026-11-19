@@ -428,3 +428,540 @@ async fn a_paused_subscription_drops_the_oldest_and_counts_them() {
         "dropped {dropped}: {summary}"
     );
 }
+
+// ---- JetStream (batch 2) -----------------------------------------------------------------------
+
+fn u64s(batches: &[RecordBatch], name: &str) -> Vec<u64> {
+    batches
+        .iter()
+        .flat_map(|b| {
+            let a: &arrow_array::UInt64Array = b
+                .column_by_name(name)
+                .unwrap()
+                .as_any()
+                .downcast_ref()
+                .unwrap();
+            a.values().to_vec()
+        })
+        .collect()
+}
+
+fn i64s(batches: &[RecordBatch], name: &str) -> Vec<i64> {
+    batches
+        .iter()
+        .flat_map(|b| {
+            let a: &arrow_array::Int64Array = b
+                .column_by_name(name)
+                .unwrap()
+                .as_any()
+                .downcast_ref()
+                .unwrap();
+            a.values().to_vec()
+        })
+        .collect()
+}
+
+/// Reads a finite message stream to its end: the batches and the summary.
+async fn read_stream(tab: &mut Tab, id: u32) -> (Vec<RecordBatch>, Value) {
+    let mut ipc = tab.chunk(id).await;
+    tab.client.credit(id, 1).await;
+    loop {
+        let frame = tab.frame(id).await;
+        match frame.kind {
+            Kind::Chunk => {
+                ipc.extend_from_slice(&frame.payload);
+                tab.client.credit(id, 1).await;
+            }
+            Kind::StreamEnd => {
+                let summary = serde_json::from_slice::<Value>(&frame.payload).unwrap();
+                return (decode(&ipc), summary);
+            }
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    }
+}
+
+/// A stream of this test run, gone when the test ends.
+fn scratch(tag: &str) -> (String, String) {
+    let id = format!("{}{}", std::process::id(), tag);
+    (format!("MC_LABTEST_{id}"), format!("mc.labtest.{id}"))
+}
+
+fn stream_form(name: &str, subjects: &[String]) -> Value {
+    json!({
+        "name": name, "subjects": subjects, "storage": "memory", "retention": "limits",
+        "discard": "old", "discardNewPerSubject": false, "maxMessages": 100, "replicas": 1,
+        "allowDirect": true, "allowRollup": false, "denyDelete": false, "denyPurge": false,
+        "compression": "none", "sealed": false, "sources": []
+    })
+}
+
+#[tokio::test]
+async fn streams_list_info_create_update_purge_and_delete() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+
+    let list = call(
+        &mut tab,
+        3,
+        "nats.js.streams.list",
+        json!({ "connId": conn }),
+    )
+    .await;
+    let orders = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "ORDERS")
+        .expect("ORDERS is listed");
+    assert_eq!(orders["messages"], 1051, "{orders}");
+    assert_eq!(orders["subjects"], json!(["orders.>"]));
+    let info = call(
+        &mut tab,
+        4,
+        "nats.js.streams.info",
+        json!({ "connId": conn, "stream": "ORDERS", "subjectCounts": true }),
+    )
+    .await;
+    assert_eq!(info["state"]["messages"], 1051);
+    assert_eq!(info["state"]["firstSequence"], 1);
+    assert!(info["state"]["lastUs"].as_i64().unwrap() > 0);
+    let counts = info["subjectCounts"].as_array().unwrap();
+    assert_eq!(counts[0]["subject"], "orders.eu.created", "{info}");
+    assert_eq!(counts[0]["messages"], 334);
+
+    let (name, prefix) = scratch("a");
+    let subjects = vec![format!("{prefix}.>")];
+    let created = call(
+        &mut tab,
+        5,
+        "nats.js.streams.create",
+        json!({ "connId": conn, "config": stream_form(&name, &subjects) }),
+    )
+    .await;
+    assert_eq!(created["config"]["name"], name.as_str());
+    assert_eq!(created["config"]["storage"], "memory");
+    assert_eq!(created["config"]["maxMessages"], 100);
+    assert!(created["config"].get("maxBytes").is_none());
+    // The same name again: Conflict on the name.
+    tab.call(
+        6,
+        "nats.js.streams.create",
+        json!({ "connId": conn, "config": stream_form(&name, &[format!("{prefix}.other")]) }),
+    )
+    .await;
+    let err = tab.error(6, Code::FailedPrecondition).await;
+    assert_eq!(err.details.unwrap()["field"], "name");
+    // Another stream on the same subjects: Invalid on the subjects.
+    let (other, _) = scratch("b");
+    tab.call(
+        7,
+        "nats.js.streams.create",
+        json!({ "connId": conn, "config": stream_form(&other, &subjects) }),
+    )
+    .await;
+    let err = tab.error(7, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "subjects");
+
+    // Update: the form's values on top of the server's; storage cannot change.
+    let mut form = stream_form(&name, &subjects);
+    form["maxMessages"] = json!(50);
+    form["description"] = json!("Mightyconsole lab test");
+    let updated = call(
+        &mut tab,
+        8,
+        "nats.js.streams.update",
+        json!({ "connId": conn, "config": form }),
+    )
+    .await;
+    assert_eq!(updated["config"]["maxMessages"], 50);
+    assert_eq!(updated["config"]["description"], "Mightyconsole lab test");
+    let mut form = stream_form(&name, &subjects);
+    form["storage"] = json!("file");
+    tab.call(
+        9,
+        "nats.js.streams.update",
+        json!({ "connId": conn, "config": form }),
+    )
+    .await;
+    let err = tab.error(9, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "storage", "{}", err.message);
+
+    // Ten messages, five on each subject; then purge a subject, keep 2, and all.
+    for i in 0..10u32 {
+        let subject = format!("{prefix}.{}", if i % 2 == 0 { "a" } else { "b" });
+        call(
+            &mut tab,
+            20 + i,
+            "nats.core.publish",
+            json!({ "connId": conn, "subject": subject, "payload": { "codec": "utf8", "text": format!("{i}") } }),
+        )
+        .await;
+    }
+    // Core publish is not acknowledged by JetStream: wait until all ten are stored.
+    let mut stored = 0;
+    for attempt in 0..50u32 {
+        let info = call(
+            &mut tab,
+            40 + attempt,
+            "nats.js.streams.info",
+            json!({ "connId": conn, "stream": name }),
+        )
+        .await;
+        stored = info["state"]["messages"].as_u64().unwrap();
+        if stored == 10 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(stored, 10);
+    let out = call(
+        &mut tab,
+        100,
+        "nats.js.streams.purge",
+        json!({ "connId": conn, "stream": name, "subject": format!("{prefix}.a") }),
+    )
+    .await;
+    assert_eq!(out["purged"], 5);
+    let out = call(
+        &mut tab,
+        101,
+        "nats.js.streams.purge",
+        json!({ "connId": conn, "stream": name, "keep": 2 }),
+    )
+    .await;
+    assert_eq!(out["purged"], 3);
+    tab.call(
+        102,
+        "nats.js.streams.purge",
+        json!({ "connId": conn, "stream": name, "keep": 1, "upToSequence": 3 }),
+    )
+    .await;
+    let err = tab.error(102, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "keep");
+    let out = call(
+        &mut tab,
+        103,
+        "nats.js.streams.purge",
+        json!({ "connId": conn, "stream": name }),
+    )
+    .await;
+    assert_eq!(out["purged"], 2);
+
+    call(
+        &mut tab,
+        104,
+        "nats.js.streams.delete",
+        json!({ "connId": conn, "stream": name }),
+    )
+    .await;
+    tab.call(
+        105,
+        "nats.js.streams.info",
+        json!({ "connId": conn, "stream": name }),
+    )
+    .await;
+    let err = tab.error(105, Code::NotFound).await;
+    assert_eq!(err.details.unwrap()["resource"], "stream");
+}
+
+#[tokio::test]
+async fn browse_from_first_last_a_sequence_and_a_time_and_follow() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let info = call(
+        &mut tab,
+        3,
+        "nats.js.streams.info",
+        json!({ "connId": conn, "stream": "ORDERS" }),
+    )
+    .await;
+    let last = info["state"]["lastSequence"].as_u64().unwrap();
+    let browse = |id: &str, start: Value, extra: Value| {
+        let mut input = json!({ "connId": conn, "streamId": id, "stream": "ORDERS", "start": start, "follow": false });
+        for (k, v) in extra.as_object().unwrap() {
+            input[k] = v.clone();
+        }
+        input
+    };
+
+    // The last 5 sequences, then the end.
+    tab.call(
+        4,
+        "nats.js.streams.browse",
+        browse("b-1", json!({ "from": "last", "n": 5 }), json!({})),
+    )
+    .await;
+    let (batches, summary) = read_stream(&mut tab, 4).await;
+    assert_eq!(summary["endReason"], "end", "{summary}");
+    assert_eq!(
+        u64s(&batches, "sequence"),
+        ((last - 4)..=last).collect::<Vec<_>>()
+    );
+    assert_eq!(column(&batches, "source")[0].as_deref(), Some("ORDERS"));
+    assert_eq!(
+        column(&batches, "timestampKind")[0].as_deref(),
+        Some("stored")
+    );
+
+    // From sequence 10 to 14.
+    tab.call(
+        5,
+        "nats.js.streams.browse",
+        browse(
+            "b-2",
+            json!({ "from": "sequence", "sequence": 10 }),
+            json!({ "end": { "sequence": 14 } }),
+        ),
+    )
+    .await;
+    let (batches, summary) = read_stream(&mut tab, 5).await;
+    assert_eq!(
+        u64s(&batches, "sequence"),
+        vec![10, 11, 12, 13, 14],
+        "{summary}"
+    );
+    let headers = column(&batches, "headers");
+    assert!(
+        headers[0].as_deref().unwrap().contains("Lab-Seq"),
+        "{headers:?}"
+    );
+
+    // From the first message, one subject pattern: the 50 Protobuf orders.
+    tab.call(
+        6,
+        "nats.js.streams.browse",
+        browse(
+            "b-3",
+            json!({ "from": "first" }),
+            json!({ "subject": "orders.proto.>" }),
+        ),
+    )
+    .await;
+    let (batches, summary) = read_stream(&mut tab, 6).await;
+    assert_eq!(summary["matched"], 50, "{summary}");
+    assert!(
+        column(&batches, "subject")
+            .iter()
+            .all(|s| s.as_deref().unwrap().starts_with("orders.proto."))
+    );
+
+    // From a time: the messages stored at or after the last one's time.
+    let last_us = info["state"]["lastUs"].as_i64().unwrap();
+    tab.call(
+        7,
+        "nats.js.streams.browse",
+        browse(
+            "b-4",
+            json!({ "from": "time", "timeUs": last_us }),
+            json!({}),
+        ),
+    )
+    .await;
+    let (batches, _) = read_stream(&mut tab, 7).await;
+    let seqs = u64s(&batches, "sequence");
+    assert_eq!(seqs.last(), Some(&last));
+    assert!(seqs.len() < 1051);
+
+    // The message over 1 MiB: its first MiB in the batch, the whole of it from getMessage.
+    tab.call(
+        8,
+        "nats.js.streams.browse",
+        browse(
+            "b-5",
+            json!({ "from": "first" }),
+            json!({ "subject": "orders.large" }),
+        ),
+    )
+    .await;
+    let (batches, _) = read_stream(&mut tab, 8).await;
+    let seq = u64s(&batches, "sequence")[0];
+    let size = i64s(&batches, "payloadSize")[0];
+    assert!(size > 1 << 20, "{size}");
+    let truncated: &arrow_array::BooleanArray = batches[0]
+        .column_by_name("payloadTruncated")
+        .unwrap()
+        .as_any()
+        .downcast_ref()
+        .unwrap();
+    assert!(truncated.value(0));
+    let full = call(
+        &mut tab,
+        9,
+        "nats.js.streams.getMessage",
+        json!({ "connId": conn, "stream": "ORDERS", "sequence": seq }),
+    )
+    .await;
+    assert_eq!(full["payloadSize"], size);
+    assert_eq!(full["payloadTruncated"], false);
+    assert_eq!(full["subject"], "orders.large");
+    assert_eq!(full["sequence"], seq.to_string());
+    use base64::Engine as _;
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(s(&full["payloadRaw"]))
+        .unwrap();
+    assert_eq!(raw.len() as i64, size);
+
+    // Follow: a scratch stream read from its start; new messages arrive until the limit.
+    let (name, prefix) = scratch("f");
+    call(
+        &mut tab,
+        10,
+        "nats.js.streams.create",
+        json!({ "connId": conn, "config": stream_form(&name, &[format!("{prefix}.>")]) }),
+    )
+    .await;
+    tab.call(
+        11,
+        "nats.js.streams.browse",
+        json!({ "connId": conn, "streamId": "b-6", "stream": name, "start": { "from": "first" }, "follow": true, "limit": 3 }),
+    )
+    .await;
+    let mut ipc = tab.chunk(11).await;
+    tab.client.credit(11, 1).await;
+    for i in 0..3u32 {
+        call(
+            &mut tab,
+            20 + i,
+            "nats.core.publish",
+            json!({ "connId": conn, "subject": format!("{prefix}.x"), "payload": { "codec": "utf8", "text": format!("{i}") } }),
+        )
+        .await;
+    }
+    let summary = loop {
+        let frame = tab.frame(11).await;
+        match frame.kind {
+            Kind::Chunk => {
+                ipc.extend_from_slice(&frame.payload);
+                tab.client.credit(11, 1).await;
+            }
+            Kind::StreamEnd => break serde_json::from_slice::<Value>(&frame.payload).unwrap(),
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    };
+    assert_eq!(summary["endReason"], "limit");
+    assert_eq!(u64s(&decode(&ipc), "sequence"), vec![1, 2, 3]);
+    // An empty stream without follow ends at once.
+    call(
+        &mut tab,
+        30,
+        "nats.js.streams.purge",
+        json!({ "connId": conn, "stream": name }),
+    )
+    .await;
+    tab.call(
+        31,
+        "nats.js.streams.browse",
+        json!({ "connId": conn, "streamId": "b-7", "stream": name, "start": { "from": "first" }, "follow": false }),
+    )
+    .await;
+    let (_, summary) = read_stream(&mut tab, 31).await;
+    assert_eq!(summary["scanned"], 0);
+    assert_eq!(summary["endReason"], "end");
+    call(
+        &mut tab,
+        32,
+        "nats.js.streams.delete",
+        json!({ "connId": conn, "stream": name }),
+    )
+    .await;
+    // Each browse deleted its ordered consumer when it ended: only durable ones remain.
+    let mut left = usize::MAX;
+    for attempt in 0..40u32 {
+        let list = call(
+            &mut tab,
+            50 + attempt,
+            "nats.js.consumers.list",
+            json!({ "connId": conn, "stream": "ORDERS" }),
+        )
+        .await;
+        left = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["config"]["durable"] == false)
+            .count();
+        if left == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(left, 0, "ephemeral consumers left on ORDERS");
+}
+
+#[tokio::test]
+async fn consumers_list_info_create_and_delete() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let list = call(
+        &mut tab,
+        3,
+        "nats.js.consumers.list",
+        json!({ "connId": conn, "stream": "ORDERS" }),
+    )
+    .await;
+    let billing = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "billing")
+        .expect("billing is listed");
+    assert!(billing["config"]["durable"].as_bool().unwrap());
+    assert_eq!(billing["config"]["filterSubjects"], json!(["orders.eu.>"]));
+    assert_eq!(billing["numAckPending"], 3, "{billing}");
+    assert!(billing["numPending"].as_u64().unwrap() > 0);
+    assert!(billing["ackFloor"]["stream"].as_u64().unwrap() > 0);
+    let info = call(
+        &mut tab,
+        4,
+        "nats.js.consumers.info",
+        json!({ "connId": conn, "stream": "ORDERS", "consumer": "billing" }),
+    )
+    .await;
+    assert_eq!(info["config"]["ackPolicy"], "explicit");
+    assert_eq!(info["config"]["ackWaitMs"], 30_000);
+
+    let name = format!("mc-labtest-{}", std::process::id());
+    let config = json!({
+        "name": name, "durable": true, "filterSubjects": ["orders.us.>"], "deliver": "all",
+        "ackPolicy": "explicit", "ackWaitMs": 30000, "maxDeliver": 5, "replay": "instant", "headersOnly": false
+    });
+    let created = call(
+        &mut tab,
+        5,
+        "nats.js.consumers.create",
+        json!({ "connId": conn, "stream": "ORDERS", "config": config }),
+    )
+    .await;
+    assert_eq!(created["name"], name.as_str());
+    assert_eq!(created["numPending"], 333);
+    assert_eq!(created["config"]["maxDeliver"], 5);
+    let mut other = config.clone();
+    other["filterSubjects"] = json!(["orders.apac.>"]);
+    tab.call(
+        6,
+        "nats.js.consumers.create",
+        json!({ "connId": conn, "stream": "ORDERS", "config": other }),
+    )
+    .await;
+    let err = tab.error(6, Code::FailedPrecondition).await;
+    assert_eq!(err.details.unwrap()["field"], "name");
+    call(
+        &mut tab,
+        7,
+        "nats.js.consumers.delete",
+        json!({ "connId": conn, "stream": "ORDERS", "consumer": name }),
+    )
+    .await;
+    tab.call(
+        8,
+        "nats.js.consumers.info",
+        json!({ "connId": conn, "stream": "ORDERS", "consumer": name }),
+    )
+    .await;
+    let err = tab.error(8, Code::NotFound).await;
+    assert_eq!(err.details.unwrap()["resource"], "consumer");
+}

@@ -8,7 +8,7 @@ export type MessageSystem = "kafka" | "nats" | "jetstream" | "kv";
 export const COLUMNS: Record<MessageSystem, readonly string[]> = {
   kafka: ["partition", "offset", "timestamp", "keyText", "payloadText"],
   nats: ["timestamp", "subject", "replyTo", "payloadSize", "payloadText"],
-  jetstream: ["sequence", "subject", "timestamp", "payloadText"],
+  jetstream: ["sequence", "subject", "timestamp", "payloadSize", "payloadText"],
   kv: ["subject", "sequence", "operation", "payloadText"],
 };
 
