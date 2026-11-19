@@ -122,7 +122,7 @@ describe("monaco theme from tokens", () => {
 
   test("text metrics come from text.code and space.inset.sm", () => {
     const values: Record<string, string> = { "--by-text-code-size": "13px", "--by-text-code-leading": "1.5", "--by-space-inset-sm": "6px", "--by-text-code-family": "\"JetBrains Mono\", monospace", "--by-text-code-tracking": "0" };
-    expect(monacoMetrics({ value: (v) => values[v] ?? "" })).toEqual({ fontFamily: "\"JetBrains Mono\", monospace", fontSize: 13, lineHeight: 20, letterSpacing: 0, padding: { top: 6, bottom: 6 } });
+    expect(monacoMetrics({ value: (v) => values[v] ?? "" })).toEqual({ fontFamily: "\"JetBrains Mono\", monospace", fontSize: 13, lineHeight: 20, letterSpacing: 0, padding: { top: 6, bottom: 6 }, suggestLineHeight: 22 });
   });
 });
 

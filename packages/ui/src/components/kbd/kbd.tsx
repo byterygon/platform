@@ -9,8 +9,8 @@ import { cn } from "@/lib/cn";
 export const kbdVariants = {} as const;
 
 const base = [
-  "inline-flex h-control-xs min-w-control-xs shrink-0 select-none items-center justify-center gap-inline-xs",
-  "rounded-md border border-border-subtle border-b-border-control-bottom bg-layer-alt px-inline-sm font-mono text-code text-fg-muted",
+  "inline-flex shrink-0 select-none items-center justify-center gap-inline-xs",
+  "rounded-sm border border-border-subtle bg-inset px-inline-xs font-sans text-caption-1 text-fg-muted",
   "[&_svg]:size-icon-xs [&_svg]:shrink-0",
 ];
 

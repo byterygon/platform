@@ -369,6 +369,8 @@ export interface MonacoMetrics {
   lineHeight: number;
   letterSpacing: number;
   padding: { top: number; bottom: number };
+  /** The suggestion rows' height: a line and 2 px. */
+  suggestLineHeight: number;
 }
 
 const px = (value: string, fontSize: number) => {
@@ -391,6 +393,7 @@ export function monacoMetrics(read: Pick<TokenReader, "value">): MonacoMetrics {
     lineHeight,
     letterSpacing: px(read.value("--by-text-code-tracking"), fontSize),
     padding: { top: inset, bottom: inset },
+    suggestLineHeight: lineHeight + 2,
   };
 }
 
@@ -435,7 +438,17 @@ export function scopedCss(theme: MonacoThemeData, monacoCss: string): string {
   }
   // A one-line editor sits in a field's frame and shows the field's fill (CodeEditor singleLine).
   const singleLine = `${SCOPE}[data-single-line] .monaco-editor { --vscode-editor-background: transparent; --vscode-editorGutter-background: transparent; }`;
-  return [`${SCOPE} .monaco-editor {`, ...variables, "}", singleLine, ...rules].join("\n");
+  const suggest = [
+    `${SCOPE} .monaco-editor .suggest-widget { border-radius: var(--by-radius-md); box-shadow: var(--by-depth-16); overflow: hidden; }`,
+    `${SCOPE} .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents { padding-inline: var(--by-space-2); }`,
+    `${SCOPE} .monaco-editor .suggest-widget .monaco-list .monaco-list-row .main > .left { gap: var(--by-space-1-5); }`,
+    // The type at the row's end, as the mockup puts it.
+    `${SCOPE} .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main { flex: 1 1 auto; }`,
+    `${SCOPE} .monaco-editor .suggest-widget .monaco-list .monaco-list-row .main > .right { margin-inline-start: auto; padding-inline-start: var(--by-space-4); }`,
+    `${SCOPE} .monaco-editor .suggest-widget .monaco-list .monaco-list-row .details-label { font-family: var(--by-font-sans); font-size: var(--by-text-caption-1-size); color: var(--by-color-fg-muted); }`,
+    `${SCOPE} .monaco-editor .suggest-widget .monaco-list .monaco-list-row .monaco-highlighted-label .highlight { font-weight: var(--by-font-weight-semibold); }`,
+  ];
+  return [`${SCOPE} .monaco-editor {`, ...variables, "}", singleLine, ...suggest, ...rules].join("\n");
 }
 
 /** Monaco's own stylesheets, and the scoped one, so an observer can ignore their updates. */
@@ -484,6 +497,7 @@ export function overflowWidgetsNode(anchor: Element): { node: HTMLElement; follo
   layer.setAttribute("data-slot", "code-editor-overflow");
   // Monaco draws its own DOM in it; the conventions suite skips foreign DOM.
   layer.setAttribute("data-foreign-dom", "");
+  layer.setAttribute(MONACO_SCOPE_ATTRIBUTE, "");
   const theme = anchor.closest("[data-theme], .dark, .light");
   if (theme) layer.setAttribute("data-theme", theme.getAttribute("data-theme") ?? (theme.classList.contains("dark") ? "dark" : "light"));
   const density = anchor.closest("[data-density]")?.getAttribute("data-density");

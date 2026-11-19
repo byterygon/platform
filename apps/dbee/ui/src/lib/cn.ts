@@ -41,7 +41,7 @@ export const roleNames = {
   /** `h-<role>`, `p-<role>`, `gap-<role>`, `size-<role>`: the density-aware size and space roles. */
   spacing: [
     "icon-xs", "icon-sm", "icon-md", "icon-lg", "icon-xl", "track", "scrollbar",
-    "panel-xs", "panel-sm", "panel-md", "panel-lg", "panel-xl",
+    "panel-xs", "panel-sm", "panel-md", "panel-lg", "panel-xl", "panel-pane", "panel-sheet",
     "control-xs", "control-sm", "control-md", "control-lg", "control-x",
     "inline-xs", "inline-sm", "inline-md", "inline-lg", "inline-xl",
     "stack-xs", "stack-sm", "stack-md", "stack-lg", "stack-xl",

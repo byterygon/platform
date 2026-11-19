@@ -228,7 +228,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange} size="lg">
-      <SheetContent onKeyDown={onKeyDown}>
+      <SheetContent onKeyDown={onKeyDown} className="max-w-panel-sheet">
         <SheetHeader>
           <SheetTitle>Start workflow</SheetTitle>
           <SheetDescription>
@@ -239,13 +239,13 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
           <form
             id="start-workflow"
             aria-label="Start workflow"
-            className="flex flex-col gap-stack-md"
+            className="flex flex-col gap-stack-lg"
             onSubmit={(e) => {
               e.preventDefault();
               void start();
             }}
           >
-            <div className="grid grid-cols-2 gap-x-inline-md gap-y-stack-md">
+            <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
               <Field invalid={missing(d.workflowType)}>
                 <FieldLabel>
                   Workflow type
@@ -287,7 +287,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
               <ArgsField label="Input" hideLabel compact description={null} value={d.input} onChange={(input) => set({ input })} onSubmit={() => void start()} />
             </Fold>
             <Fold title="Timeouts and retries" value={timeouts}>
-              <div className="grid grid-cols-3 gap-inline-md">
+              <div className="grid grid-cols-3 gap-x-inline-xl gap-y-stack-md">
                 <DurationField label="Execution" value={d.executionTimeout} onChange={(executionTimeout) => set({ executionTimeout })} placeholder="None" />
                 <DurationField label="Run" value={d.runTimeout} onChange={(runTimeout) => set({ runTimeout })} placeholder="None" />
                 <DurationField label="Task" value={d.taskTimeout} onChange={(taskTimeout) => set({ taskTimeout })} placeholder="10s" />

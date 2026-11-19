@@ -1,12 +1,8 @@
 import { useCallback, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { Button } from "@/components/button/button";
-import { IconButton } from "@/components/icon-button/icon-button";
-import { Icon } from "@/components/icon/icon";
 import { Kbd } from "@/components/kbd/kbd";
 import { ToggleGroup, ToggleGroupItem } from "@/components/toggle-group/toggle-group";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/control";
-import { Add, Subtract } from "@/lib/icons";
 
 /** How an item is drawn: its status colour. `running` is an item that has no end yet. */
 export type TimelineStatus = "running" | "success" | "danger" | "warning" | "info" | "neutral";
@@ -83,9 +79,13 @@ const HATCH: CSSProperties = {
 
 const classes = {
   root: ["flex min-h-0 flex-col font-sans text-body-1 text-fg", focusRing],
-  toolbar: "flex shrink-0 flex-wrap items-center gap-inline-md border-y border-border-subtle px-inset-sm py-stack-xs",
-  zoom: "flex items-center rounded-md border border-border-subtle",
-  zoomLabel: "min-w-control-lg px-inline-sm text-center text-caption-1-strong text-fg",
+  toolbar: "flex shrink-0 flex-wrap items-center gap-inline-md border-b border-border-subtle px-inset-lg py-stack-sm",
+  zoom: "flex items-center",
+  /** One part of the Fit and zoom track: the parts draw the track's edge, a divider before each. */
+  zoomPart: "inline-flex h-control-sm items-center justify-center gap-inline-xs border-y border-s border-border bg-layer bg-clip-padding px-inline-md text-caption-1 text-fg first:rounded-s-md last:rounded-e-md last:border-e focus-visible:relative",
+  zoomButton: "cursor-default select-none hover:bg-hover active:bg-pressed",
+  zoomLabel: "bg-pressed text-caption-1-strong",
+  divider: "my-inline-xs self-stretch border-s border-border-subtle",
   overview: "flex shrink-0 items-center py-stack-sm",
   overviewTrack: "relative h-control-xs min-w-0 flex-1 cursor-pointer touch-none",
   overviewBand: "absolute inset-x-0 top-1/2 h-inline-md -translate-y-1/2 rounded-sm bg-accent-subtle",
@@ -491,24 +491,25 @@ export function Timeline({
       </span>
       {controls ? (
         <div data-slot="timeline-toolbar" className={cn(classes.toolbar)}>
-          <Button size="small" appearance="secondary" onClick={() => setRange(null)}>
-            Fit <Kbd>Home</Kbd>
-          </Button>
           <div role="group" aria-label="Zoom" className={cn(classes.zoom)}>
-            <IconButton size="small" aria-label="Zoom out" onClick={() => zoom(2)}>
-              <Icon icon={Subtract} />
-            </IconButton>
-            <span aria-live="polite" className={cn(classes.zoomLabel)}>
+            <button type="button" className={cn(classes.zoomPart, classes.zoomButton, focusRing)} onClick={() => setRange(null)}>
+              Fit <Kbd>Home</Kbd>
+            </button>
+            <button type="button" aria-label="Zoom out" className={cn(classes.zoomPart, classes.zoomButton, focusRing)} onClick={() => zoom(2)}>
+              <span aria-hidden="true">−</span>
+            </button>
+            <span aria-live="polite" data-slot="timeline-zoom-label" className={cn(classes.zoomPart, classes.zoomLabel)}>
               {formatSpan(span)}
             </span>
-            <IconButton size="small" aria-label="Zoom in" onClick={() => zoom(0.5)}>
-              <Icon icon={Add} />
-            </IconButton>
+            <button type="button" aria-label="Zoom in" className={cn(classes.zoomPart, classes.zoomButton, focusRing)} onClick={() => zoom(0.5)}>
+              <span aria-hidden="true">+</span>
+            </button>
           </div>
           <ToggleGroup aria-label="Axis" size="small" value={[axis]} onValueChange={(v) => v[0] && setAxis(v[0] as TimelineAxis)}>
             <ToggleGroupItem value="clock">Clock</ToggleGroupItem>
             <ToggleGroupItem value="offset">Since start</ToggleGroupItem>
           </ToggleGroup>
+          {toolbar ? <span aria-hidden="true" className={cn(classes.divider)} /> : null}
           {toolbar}
         </div>
       ) : null}

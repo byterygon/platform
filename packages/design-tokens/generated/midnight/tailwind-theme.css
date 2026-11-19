@@ -24,6 +24,8 @@
   --spacing-panel-md: var(--by-size-panel-md);
   --spacing-panel-lg: var(--by-size-panel-lg);
   --spacing-panel-xl: var(--by-size-panel-xl);
+  --spacing-panel-pane: var(--by-size-panel-pane);
+  --spacing-panel-sheet: var(--by-size-panel-sheet);
 
   --ease-accelerate-max: var(--by-motion-easing-accelerate-max);
   --ease-accelerate-mid: var(--by-motion-easing-accelerate-mid);

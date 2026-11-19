@@ -198,7 +198,7 @@ export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detai
         {task ? <JsonViewer value={task} defaultExpandDepth={1} aria-label="Pending workflow task" className="max-h-panel-sm shrink-0 px-inset-lg" /> : null}
       </div>
       {picked ? (
-        <aside aria-label="Pending activity" className="flex w-1/3 min-w-0 flex-col gap-stack-md overflow-auto border-s border-border-subtle px-inset-lg py-inset-md">
+        <aside aria-label="Pending activity" className="flex w-panel-pane max-w-1/2 min-w-0 shrink-0 flex-col gap-stack-md overflow-auto border-s border-border-subtle px-inset-lg py-inset-md">
           <div className="flex flex-col gap-stack-xs">
             <h3 className="flex items-center gap-inline-xs text-body-1-strong text-fg">
               {picked.type} · activity {picked.activityId}

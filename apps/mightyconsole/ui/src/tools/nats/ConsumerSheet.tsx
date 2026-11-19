@@ -210,7 +210,7 @@ export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId,
   const deliveryLine = d.kind === "push" ? `push to ${d.deliverSubject || "…"}${d.deliverGroup ? ` (group ${d.deliverGroup})` : ""}` : `pull${d.maxWaiting ? `, ${d.maxWaiting} waiting pulls` : ""}`;
   return (
     <Sheet open={open} onOpenChange={onOpenChange} size="lg">
-      <SheetContent>
+      <SheetContent className="max-w-panel-sheet">
         <SheetHeader>
           <SheetTitle>New consumer of {stream}</SheetTitle>
           <SheetDescription>{profileName}</SheetDescription>
@@ -219,13 +219,13 @@ export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId,
           <form
             id="consumer-form"
             aria-label="New consumer"
-            className="flex flex-col gap-stack-md"
+            className="flex flex-col gap-stack-lg"
             onSubmit={(e) => {
               e.preventDefault();
               void save();
             }}
           >
-            <div className="grid grid-cols-2 gap-x-inline-md gap-y-stack-md">
+            <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
               <Field invalid={errorOf("name") !== null}>
                 <FieldLabel>
                   Name
@@ -263,7 +263,7 @@ export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId,
               ) : null}
             </div>
             <Fold title="Acknowledgements" value={ackLine} open>
-              <div className="grid grid-cols-2 gap-inline-md">
+              <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                 <Field>
                   <FieldLabel>Ack policy</FieldLabel>
                   <Select<NatsAckPolicy> items={(Object.keys(ACK) as NatsAckPolicy[]).map((v) => ({ value: v, label: ACK[v] }))} value={d.ackPolicy} onValueChange={(ackPolicy) => set({ ackPolicy: ackPolicy ?? "explicit" })}>
@@ -284,7 +284,7 @@ export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId,
                 <ToggleGroupItem value="pull">Pull</ToggleGroupItem>
                 <ToggleGroupItem value="push">Push</ToggleGroupItem>
               </ToggleGroup>
-              <div className="grid grid-cols-2 gap-inline-md">
+              <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                 {d.kind === "pull" ? text("maxWaiting", "Max waiting pulls", "Server default", undefined, { numeric: true }) : null}
                 {d.kind === "push" ? text("deliverSubject", "Deliver subject", "deliver.billing", "Where the server sends the messages.", { mono: true }) : null}
                 {d.kind === "push" ? text("deliverGroup", "Queue group", "None", "Clients of the group share the messages.", { mono: true }) : null}
@@ -292,7 +292,7 @@ export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId,
               </div>
             </Fold>
             <Fold title="Options" value={`replay ${d.replay}${d.headersOnly ? " · headers only" : ""}`}>
-              <div className="grid grid-cols-2 gap-inline-md">
+              <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
                 <Field>
                   <FieldLabel>Replay</FieldLabel>
                   <ToggleGroup aria-label="Replay" value={[d.replay]} onValueChange={(v) => v[0] && set({ replay: v[0] as NatsReplayPolicy })}>

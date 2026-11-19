@@ -69,6 +69,9 @@ export function PageFooter({ children }: { children: ReactNode }) {
 }
 
 /** A Table's classes that put its first and last cells on the page gutter. */
+/** A filter chip, as the mockup's .chip: 24 px, a pill, caption-1; checked, the accent's subtle wash and the strong weight. Put on a small outline ToggleButton. */
+export const chipClass = "gap-inline-xs rounded-full text-caption-1 data-pressed:border-transparent data-pressed:bg-accent-subtle data-pressed:text-accent-subtle-fg data-pressed:text-caption-1-strong data-pressed:hover:bg-accent-subtle";
+
 export const gutterTable = "[&_th:first-child]:ps-inset-lg [&_td:first-child]:ps-inset-lg [&_th:last-child]:pe-inset-lg [&_td:last-child]:pe-inset-lg";
 
 /** A short notice (the shell provides the toast; outside it, nothing is shown). */

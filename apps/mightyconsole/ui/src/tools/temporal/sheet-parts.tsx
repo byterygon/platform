@@ -160,7 +160,7 @@ export function RetryFields({ value, onChange }: { value: RetryText; onChange(va
   );
   return (
     <>
-      <div className="grid grid-cols-2 gap-inline-md">
+      <div className="grid grid-cols-2 gap-x-inline-xl gap-y-stack-md">
         {text("initialInterval", "Initial interval", "1s")}
         {text("backoffCoefficient", "Backoff coefficient", "2")}
         {text("maximumInterval", "Maximum interval", "100 × initial")}

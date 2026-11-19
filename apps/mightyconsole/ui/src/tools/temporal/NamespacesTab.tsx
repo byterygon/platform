@@ -101,7 +101,7 @@ export function NamespacesTab({ profile, connId, client, useTabActions, note, op
           <EmptyLine>The cluster lists no namespaces.</EmptyLine>
         ) : rows.length > 0 ? (
           <Resizable orientation="horizontal" className="min-h-0 flex-1" aria-label="Namespaces and the selected one">
-            <ResizablePanel defaultSize={58} minSize={30} className="flex min-h-0 flex-col">
+            <ResizablePanel defaultSize={52.7} minSize={30} className="flex min-h-0 flex-col">
               <Table aria-label="Namespaces" className={cn("min-h-0 flex-1", gutterTable)}>
                 <TableHeader>
                   <TableRow>
@@ -136,7 +136,7 @@ export function NamespacesTab({ profile, connId, client, useTabActions, note, op
               </Table>
             </ResizablePanel>
             <ResizableHandle />
-            <ResizablePanel defaultSize={42} minSize={25} className="flex min-h-0 flex-col">
+            <ResizablePanel defaultSize={47.3} minSize={25} className="flex min-h-0 flex-col">
               <NamespacePane key={selected} namespace={selected} connId={connId} client={client} note={note} openTab={openTab} />
             </ResizablePanel>
           </Resizable>
@@ -169,15 +169,18 @@ function NamespacePane({ namespace, connId, client, note, openTab }: { namespace
   const open = (kind: string, title: string, params: Record<string, unknown> = {}) => openTab({ kind, params: { namespace, ...params }, title: `${title} · ${namespace}` });
 
   return (
-    <aside aria-label={`Namespace ${namespace}`} className="flex min-h-0 flex-1 flex-col gap-stack-lg overflow-auto px-inset-lg py-inset-md">
+    <aside aria-label={`Namespace ${namespace}`} className="flex min-h-0 flex-1 flex-col gap-stack-md overflow-auto px-inset-lg py-inset-md">
       <div className="flex flex-col gap-stack-xs">
-        <h3 className="flex items-center gap-inline-sm text-subtitle-2 text-fg">
+        <h3 className="flex items-center gap-inline-md text-body-1-strong text-fg">
           {namespace}
           <CopyButton value={namespace} what="namespace" />
         </h3>
         {detail ? (
           <p className="flex items-center gap-inline-xs text-body-1 text-fg-muted">
-            ID <span className="font-mono text-code">{detail.id}</span>
+            ID{" "}
+            <span className="font-mono text-code" title={detail.id}>
+              {shortId(detail.id)}
+            </span>
             <CopyButton value={detail.id} what="namespace ID" />
           </p>
         ) : null}
@@ -185,7 +188,7 @@ function NamespacePane({ namespace, connId, client, note, openTab }: { namespace
       {error ? <ErrorState error={error} onRetry={() => void load()} /> : null}
       {!detail && !error ? <LoadingRows label={`Loading ${namespace}`} /> : null}
       {detail ? (
-        <DescriptionList divided aria-label="Settings">
+        <DescriptionList layout="aligned" aria-label="Settings">
           <Item term="State">{detail.state}</Item>
           <Item term="Retention">{formatRetention(detail.retentionSecs) || "—"}</Item>
           <Item term="History archival">{detail.historyArchival.enabled ? detail.historyArchival.uri || "Enabled" : "Disabled"}</Item>
@@ -198,24 +201,13 @@ function NamespacePane({ namespace, connId, client, note, openTab }: { namespace
           {detail.description ? <Item term="Description">{detail.description}</Item> : null}
         </DescriptionList>
       ) : null}
-      {detail ? (
-        <div className="flex flex-wrap gap-inline-md">
-          <Button appearance="secondary" onClick={() => open("temporal.workflows", "Workflows", { query: "" })}>
-            <Icon icon={Flash} /> Workflows
-          </Button>
-          <Button appearance="secondary" onClick={() => open("temporal.workers", "Workers")}>
-            <Icon icon={Server} /> Workers
-          </Button>
-          <Button appearance="secondary" onClick={() => open("temporal.schedules", "Schedules")}>
-            <Icon icon={CalendarClock} /> Schedules
-          </Button>
-        </div>
-      ) : null}
       {attributes ? (
-        <section className="flex flex-col gap-stack-xs" aria-label="Search attributes">
-          <h3 className="text-body-1-strong text-fg">Search attributes</h3>
-          <p className="text-caption-1 text-fg-muted">What the query bar suggests in this namespace{attributes.fallback ? `. The server did not list them (${attributes.fallback}); these are the built-in ones.` : "."}</p>
-          <Table aria-label="Search attributes" size="small">
+        <section className="flex flex-col gap-stack-md" aria-label="Search attributes">
+          <div className="flex flex-col gap-stack-xs">
+            <h3 className="text-body-1-strong text-fg">Search attributes</h3>
+            <p className="text-body-1 text-fg-muted">What the query bar suggests in this namespace{attributes.fallback ? `. The server did not list them (${attributes.fallback}); these are the built-in ones.` : ""}</p>
+          </div>
+          <Table aria-label="Search attributes" className={cn("-mx-inset-lg w-auto", gutterTable)}>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -237,8 +229,26 @@ function NamespacePane({ namespace, connId, client, note, openTab }: { namespace
           </Table>
         </section>
       ) : null}
+      {detail ? (
+        <div className="flex flex-wrap gap-inline-md">
+          <Button appearance="secondary" onClick={() => open("temporal.workflows", "Workflows", { query: "" })}>
+            <Icon icon={Flash} /> Workflows
+          </Button>
+          <Button appearance="secondary" onClick={() => open("temporal.workers", "Workers")}>
+            <Icon icon={Server} /> Workers
+          </Button>
+          <Button appearance="secondary" onClick={() => open("temporal.schedules", "Schedules")}>
+            <Icon icon={CalendarClock} /> Schedules
+          </Button>
+        </div>
+      ) : null}
     </aside>
   );
+}
+
+/** "6a1f0c3e-…-9b72": a long ID shortened as the mockup shows it; the whole one is its title and its copy. */
+function shortId(id: string): string {
+  return id.length > 16 ? `${id.slice(0, 8)}-…-${id.slice(-4)}` : id;
 }
 
 function Item({ term, children }: { term: string; children: React.ReactNode }) {

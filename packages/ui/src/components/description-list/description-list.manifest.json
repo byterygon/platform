@@ -13,9 +13,9 @@
   "props": [
     {
       "name": "layout",
-      "type": "\"inline\" | \"stacked\"",
+      "type": "\"inline\" | \"stacked\" | \"aligned\"",
       "default": "inline",
-      "description": "inline: the term (a third of the width) beside its value; stacked: above it."
+      "description": "inline: the term beside its value (a third of the width); stacked: above it (narrow places); aligned: the terms in one column as wide as the longest, the values beside them, rows close together."
     },
     {
       "name": "divided",
@@ -47,7 +47,8 @@
   "variants": {
     "layout": [
       "inline",
-      "stacked"
+      "stacked",
+      "aligned"
     ]
   },
   "slots": [
@@ -108,13 +109,10 @@
     "size.panel.md",
     "size.panel.xs",
     "space.inline.md",
+    "space.inline.xl",
     "space.inset.xs",
     "space.stack.sm",
     "space.stack.xs",
-    "text.body-1-strong.leading",
-    "text.body-1-strong.size",
-    "text.body-1-strong.tracking",
-    "text.body-1-strong.weight",
     "text.body-1.leading",
     "text.body-1.size",
     "text.body-1.tracking",

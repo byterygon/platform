@@ -12,6 +12,12 @@ export const descriptionListVariants = {
   layout: {
     inline: "[&_[data-slot=description-list-item]]:flex-row [&_[data-slot=description-list-term]]:w-1/3 [&_[data-slot=description-list-term]]:shrink-0",
     stacked: "[&_[data-slot=description-list-item]]:flex-col",
+    aligned: [
+      "table w-full border-collapse",
+      "[&_[data-slot=description-list-item]]:table-row [&_[data-slot=description-list-term]]:table-cell [&_[data-slot=description-list-details]]:table-cell",
+      "[&_[data-slot=description-list-term]]:w-px [&_[data-slot=description-list-term]]:whitespace-nowrap [&_[data-slot=description-list-term]]:pe-inline-xl",
+      "[&_[data-slot=description-list-item]:not(:last-child)>*]:pb-stack-xs",
+    ].join(" "),
   },
 } as const;
 
@@ -22,12 +28,12 @@ const base = [
 
 const parts = {
   item: "flex min-w-0 gap-x-inline-md gap-y-stack-xs",
-  term: "min-w-0 text-body-1-strong text-fg-muted wrap-break-word",
+  term: "min-w-0 text-body-1 text-fg-muted wrap-break-word",
   details: "min-w-0 flex-1 text-body-1 text-fg wrap-break-word",
 } as const;
 
 export interface DescriptionListProps extends Omit<useRender.ComponentProps<"dl">, "className"> {
-  /** inline: the term beside its value; stacked: above it (narrow places). */
+  /** inline: the term beside its value; stacked: above it (narrow places); aligned: the terms in one column as wide as the longest. */
   layout?: keyof typeof descriptionListVariants.layout;
   /** Rules between the items. */
   divided?: boolean;

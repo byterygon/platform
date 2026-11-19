@@ -14,7 +14,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { CopyButton, NoticeContext, gutterTable } from "@/app/page";
+import { CopyButton, LinkButton, NoticeContext, chipClass, gutterTable } from "@/app/page";
 import { EmptyLine } from "@/app/states";
 import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
@@ -138,7 +138,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
           return next;
         });
       return (
-        <TableRow key={`g${row.first}`} onClick={toggle} aria-expanded={row.open} className="text-caption-1 text-fg-muted">
+        <TableRow key={`g${row.first}`} onClick={toggle} aria-expanded={row.open} className="text-caption-1 text-fg-muted [&&>td]:h-control-md">
           <TableCell align="end">
             <Icon icon={row.open ? ChevronDown : ChevronRight} className="size-icon-md" />
           </TableCell>
@@ -199,10 +199,10 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
   return (
     <div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       <div role="toolbar" aria-label="History filter" className="flex shrink-0 flex-wrap items-center gap-inline-md border-b border-border-subtle px-inset-lg py-stack-sm">
-        <div role="group" aria-label="Category" className="flex flex-wrap items-center gap-inline-sm">
+        <div role="group" aria-label="Category" className="flex flex-wrap items-center gap-inline-xs">
           {HISTORY_CHIPS.map(({ category: c, label }) => (
-            <ToggleButton key={c} size="small" appearance="outline" pressed={category === c} disabled={c !== "All" && counts[c] === 0} onPressedChange={(p) => p && setCategory(c)} className="rounded-full data-pressed:text-accent-subtle-fg">
-              {label} {formatCount(counts[c])}
+            <ToggleButton key={c} size="small" appearance="outline" pressed={category === c} disabled={c !== "All" && counts[c] === 0} onPressedChange={(p) => p && setCategory(c)} className={chipClass}>
+              {label} <span className={category === c || (c !== "All" && counts[c] === 0) ? undefined : "text-fg-muted"}>{formatCount(counts[c])}</span>
             </ToggleButton>
           ))}
         </div>
@@ -276,7 +276,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
           {formatCount(events.length)} of {formatCount(Math.max(total, events.length))} events loaded{hasMore ? ", more load as you scroll" : ""}
         </span>
         <span className="ms-auto">{fold ? "Workflow tasks folded" : "Every event shown"}</span>
-        <Button size="small" appearance="subtle" onClick={() => setFold((f) => !f)}>
+        <Button size="small" appearance="subtle" className="text-caption-1" onClick={() => setFold((f) => !f)}>
           <Icon icon={fold ? Eye : EyeOff} /> {fold ? "Show all" : "Fold workflow tasks"}
         </Button>
       </footer>
@@ -311,7 +311,7 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw }: { 
   }, [form, eventId, loadRaw, raws]);
   if (!event) {
     return (
-      <aside aria-label="Event detail" className="flex w-1/3 min-w-0 flex-col border-s border-border-subtle">
+      <aside aria-label="Event detail" className="flex w-panel-pane max-w-1/2 min-w-0 shrink-0 flex-col border-s border-border-subtle">
         <EmptyLine>Select an event: its attributes, decoded, show here. J and K step through the events.</EmptyLine>
       </aside>
     );
@@ -330,11 +330,11 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw }: { 
       notify({ title: `Could not copy ${what}`, description: "The browser refused the clipboard. Select the text instead.", type: "warning" });
     }
   };
-  const date = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(t));
+  const date = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date(t));
   return (
-    <aside aria-label="Event detail" className="flex w-1/3 min-w-0 flex-col gap-stack-sm overflow-auto border-s border-border-subtle px-inset-lg py-inset-md">
+    <aside aria-label="Event detail" className="flex w-panel-pane max-w-1/2 min-w-0 shrink-0 flex-col gap-stack-md overflow-auto border-s border-border-subtle px-inset-lg py-inset-md">
       <div className="flex flex-col gap-stack-xs">
-        <h3 className="flex items-center gap-inline-xs text-body-1-strong text-fg">
+        <h3 className="flex items-center gap-inline-md text-body-1-strong text-fg">
           Event {event.eventId} · {event.eventType}
           <CopyButton value={String(event.eventId)} what="event ID" />
         </h3>
@@ -343,29 +343,30 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw }: { 
         </p>
       </div>
       {activity ? (
-        <div className="flex flex-col gap-stack-xs text-caption-1 text-fg">
-          <p className="flex flex-wrap items-center gap-inline-xs">
-            Activity {activity.name}:
-            {event.eventId !== scheduledId ? (
-              <Button size="small" appearance="transparent" onClick={() => onSelect(scheduledId!)}>
-                Scheduled {scheduledId} →
-              </Button>
-            ) : (
-              <span className="text-fg-muted">scheduled here</span>
-            )}
-          </p>
+        <div className="flex flex-wrap items-center gap-inline-sm text-caption-1 text-fg">
+          <span className="text-fg-muted">Activity {activity.name}:</span>
+          {event.eventId !== scheduledId ? (
+            <LinkButton className="text-caption-1" onClick={() => onSelect(scheduledId!)}>
+              Scheduled {scheduledId}
+            </LinkButton>
+          ) : (
+            <span className="text-fg-muted">scheduled here</span>
+          )}
           {pending ? (
-            <p className="flex flex-wrap items-center gap-inline-xs">
-              Pending, attempt {pending.attempt}
-              {pending.maximumAttempts > 0 ? ` of ${pending.maximumAttempts}` : ""}
-              <Button size="small" appearance="transparent" onClick={onOpenPending}>
+            <>
+              <span aria-hidden="true">→</span>
+              <span>
+                Pending, attempt {pending.attempt}
+                {pending.maximumAttempts > 0 ? ` of ${pending.maximumAttempts}` : ""}
+              </span>
+              <LinkButton className="text-caption-1" onClick={onOpenPending}>
                 Open Pending
-              </Button>
-            </p>
+              </LinkButton>
+            </>
           ) : null}
         </div>
       ) : null}
-      <div className="flex items-center justify-between gap-inline-sm">
+      <div className="flex items-center justify-between gap-inline-md">
         {loadRaw ? (
           <ToggleGroup aria-label="Payload form" size="small" value={[form]} onValueChange={(v) => v[0] && setForm(v[0] as "decoded" | "raw")}>
             <ToggleGroupItem value="decoded">Decoded</ToggleGroupItem>
@@ -382,16 +383,16 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw }: { 
             Could not read the event as stored: {raws.get(event.eventId) as string}
           </p>
         ) : raws.get(event.eventId) ? (
-          <CodeBlock code={JSON.stringify(raws.get(event.eventId), null, 2)} language="json" aria-label={`Event ${event.eventId} as stored`} className="min-h-0" />
+          <CodeBlock code={JSON.stringify(raws.get(event.eventId), null, 2)} language="json" appearance="inset" aria-label={`Event ${event.eventId} as stored`} className="min-h-0" />
         ) : (
           <p role="status" className="text-body-1 text-fg-muted">
             Reading the event as stored…
           </p>
         )
       ) : (
-        <CodeBlock code={JSON.stringify(a, null, 2)} language="json" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
+        <CodeBlock code={JSON.stringify(a, null, 2)} language="json" appearance="inset" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
       )}
-      <div className="flex flex-wrap items-center gap-inline-sm">
+      <div className="flex flex-wrap items-center gap-inline-md">
         {input !== undefined ? (
           <Button size="small" appearance="subtle" onClick={() => void copy(JSON.stringify(input, null, 2), "the input")}>
             <Icon icon={Copy} /> Copy input

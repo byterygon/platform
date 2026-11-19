@@ -10735,6 +10735,32 @@
           }
         },
         {
+          "name": "size/panel/pane",
+          "type": "FLOAT",
+          "description": "Width of a pane panel (420 px), for a detail pane beside a table: the chosen row's fields, payload and actions: the w-panel-pane and max-w-panel-pane utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-panel-pane)"
+          },
+          "valuesByMode": {
+            "Value": 420
+          }
+        },
+        {
+          "name": "size/panel/sheet",
+          "type": "FLOAT",
+          "description": "Width of a sheet panel (600 px), for a side sheet that holds a form in two columns: the w-panel-sheet and max-w-panel-sheet utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-panel-sheet)"
+          },
+          "valuesByMode": {
+            "Value": 600
+          }
+        },
+        {
           "name": "border/width/0",
           "type": "FLOAT",
           "description": "A 0 px border. Primitive: reference it through a role, never from a component. Not for the focus ring: use ring.width.",

@@ -626,6 +626,8 @@
   --by-size-panel-md: 448px;
   --by-size-panel-lg: 576px;
   --by-size-panel-xl: 768px;
+  --by-size-panel-pane: 420px;
+  --by-size-panel-sheet: 600px;
   --by-border-width-0: 0;
   --by-border-width-1: 1px;
   --by-border-width-2: 2px;

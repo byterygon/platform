@@ -182,7 +182,7 @@ describe("Timeline", () => {
       { id: "a1", laneId: "act", start: t0 + 10_000, end: t0 + 20_000, status: "success", label: "reserve" },
     ];
     const { container } = render(<Timeline aria-label="a" lanes={lanes} items={timed} now={t0 + 120_000} />);
-    const zoomLabel = () => container.querySelector('[aria-label="Zoom"] span')?.textContent;
+    const zoomLabel = () => container.querySelector('[data-slot="timeline-zoom-label"]')?.textContent;
     const before = zoomLabel();
     await act(async () => button(container, "Zoom in").click());
     expect(zoomLabel()).not.toBe(before);
