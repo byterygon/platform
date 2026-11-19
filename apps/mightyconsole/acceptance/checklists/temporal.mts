@@ -17,9 +17,12 @@ type Ctx = Parameters<Parameters<typeof browser>[1]>[0];
  * A button of the tab on screen. Tabs stay mounted when they are not shown (and an earlier check's
  * tabs come back after a reload), so `__mc.button` could find the same button of a hidden tab.
  */
+// A view's tab may carry a count after its name ("History 214", "Pending 1").
 const panelButton = (label: string) =>
-  `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
+  `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)} || (b.getAttribute("role") === "tab" && /^${label} \\d+$/.test(b.textContent.trim())))`;
 const click = (label: string) => `__mc.click(${panelButton(label)})`;
+/** An item of the open menu, by the start of its text ("Terminate…"). */
+const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.trim().startsWith(${JSON.stringify(label)}))`;
 
 /** Fires a pointer's events on an element, as a person's click does (Base UI opens on pointerdown). */
 const press = (selector: string) =>
@@ -159,7 +162,7 @@ export default {
           const { run, until, shot } = ctx;
           await runningWorkflows(ctx);
           await run(click("retrying-1"));
-          await until(`__mc.has("Input and result") && __mc.has("flaky") && __mc.has("Live")`, "the retrying workflow's Timeline, followed live");
+          await until(`__mc.has("Input and result") && __mc.has("flaky") && __mc.has("Following")`, "the retrying workflow's Timeline, followed live");
           await shot("timeline of retrying-1");
           await run(click("Pending"));
           await until(`__mc.has("the payment provider is down")`, "the retrying activity and its last failure");
@@ -196,15 +199,20 @@ export default {
           await runningWorkflows(ctx);
           await run(click("fulfilment-long-running"));
           // The list tab shows "Running" too, so wait for this tab's own views and an enabled button.
-          await until(`__mc.has("Input and result") && ${panelButton("Terminate")} && !${panelButton("Terminate")}.disabled`, "the running workflow's tab, loaded");
-          await run(click("Terminate"));
+          // Reset and Terminate are in the header's overflow menu (the mockup's place for them).
+          await until(`__mc.has("Input and result") && ${panelButton("Request cancellation")} && !${panelButton("Request cancellation")}.disabled`, "the running workflow's tab, loaded");
+          await run(click("More actions"));
+          await until(menuItem("Terminate"), "the overflow menu");
+          await run(`__mc.click(${menuItem("Terminate")})`);
           await until(`__mc.has("Terminate fulfilment-long-running?") && __mc.has("cannot be undone")`, "the terminate confirmation naming the workflow");
           const enabled = await run<boolean>(`Boolean([...document.querySelectorAll("[role=dialog] button")].find((b) => b.textContent.trim() === "Terminate" && !b.disabled))`);
           if (enabled) throw new Error("Terminate is enabled before a reason is typed");
           await shot("terminate confirmation, reason required");
           await run(inDialog("Cancel"));
           await until(`!__mc.has("cannot be undone")`, "the confirmation closes without acting");
-          await run(click("Reset"));
+          await run(click("More actions"));
+          await until(menuItem("Reset"), "the overflow menu");
+          await run(`__mc.click(${menuItem("Reset")})`);
           await until(`__mc.has("Reset fulfilment-long-running?") && __mc.has("Reset to")`, "the reset confirmation");
           await shot("reset confirmation");
           await run(inDialog("Cancel"));

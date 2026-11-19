@@ -414,7 +414,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
             <Icon icon={Braces} /> {asJson ? "Hide JSON" : "Show as JSON"}
           </Button>
           <span className="flex-1" />
-          {review ? <Button onClick={() => setReview(null)}>Back</Button> : <Button onClick={() => onOpenChange(false)}>Cancel</Button>}
+          {review ? <Button appearance="secondary" onClick={() => setReview(null)}>Back</Button> : <Button appearance="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>}
           <Button type="submit" form="schedule-form" appearance="primary" loading={busy} disabled={connId === null || (review !== null && review.length === 0)}>
             <Icon icon={CalendarClock} /> {!editing ? "Create schedule" : review ? "Update schedule" : "Review changes"}
           </Button>

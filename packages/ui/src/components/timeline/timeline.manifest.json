@@ -3,8 +3,8 @@
   "schemaVersion": 1,
   "name": "timeline",
   "title": "Timeline",
-  "description": "Spans over time in lanes: a workflow's history as bars (a workflow, its activities, timers, child workflows, signals) on a zoomable time axis, with running items that grow to now.",
-  "usage": "Use it to show when things happened and how they overlapped, for a history, a trace or a job run: one lane per thing, one bar per span, an instant when start equals end. Pass lanes and items with times in milliseconds on one clock and `now` for the running ones; the app decides which lane an event belongs to. Pair it with a table of the same events for exact values: the Timeline is for shape, not for reading numbers. It is plain DOM (no charting library), windows its lanes, and zooms with + and - (Ctrl+wheel), pans with the arrows (Shift+wheel) and fits with Home.",
+  "description": "Spans and instants over time in lanes: a workflow's history as bars, stripes, dashes, ticks, diamonds and pins (the workflow, its activities, timers, child workflows, signals, markers) on a zoomable clock or since-start axis, with a toolbar, an overview strip of the whole range and running items that grow to now.",
+  "usage": "Use it to show when things happened and how they overlapped, for a history, a trace or a job run: one lane per thing (with an icon and a short detail such as \"activity 5\"), one mark per span or instant. Pass lanes and items with times in milliseconds on one clock (epoch ms for the clock axis) and `now` for the running ones; the app decides lanes, shapes and captions. The built-in toolbar fits (Home), zooms and switches the axis between clock time and time since the start; pass filters or a follow switch as `toolbar`. The overview strip shows the whole range with the visible window, which drags to pan. With `follow`, a zoomed view slides with `now`; panning away calls `onFollowChange(false)`. Pair it with a table of the same events for exact values. It is plain DOM, windows its lanes, and zooms with + and - (Ctrl+wheel), pans with the arrows (Shift+wheel).",
   "status": "experimental",
   "dependencies": [],
   "variants": {},
@@ -17,14 +17,14 @@
     },
     {
       "name": "lanes",
-      "type": "{ id: string; label: string }[]",
-      "description": "The rows, top to bottom. Thousands are fine: only the lanes in view are drawn.",
+      "type": "{ id: string; label: string; detail?: string; icon?: ReactNode }[]",
+      "description": "The rows, top to bottom, each with an optional icon and a muted detail after its label (\"activity 5\"). Thousands are fine: only the lanes in view are drawn.",
       "default": "[]"
     },
     {
       "name": "items",
-      "type": "{ id: string; laneId: string; start: number; end: number | null; status: TimelineStatus; label: string }[]",
-      "description": "The spans, times in ms on any one clock. `end: null` is running and grows to `now`; `start === end` is an instant.",
+      "type": "{ id: string; laneId: string; start: number; end: number | null; status: TimelineStatus; label: string; shape?: TimelineShape; caption?: string }[]",
+      "description": "The spans and instants, times in ms on any one clock. `end: null` is running and grows to `now`. `shape`: bar (by status; running is a tinted outline), hatched (retrying), dashed (a timer), tick, diamond, pin. `caption` is drawn inside a bar when it fits, else after it; `label` names the item for screen readers.",
       "default": "[]"
     },
     {
@@ -46,7 +46,7 @@
     {
       "name": "origin",
       "type": "number",
-      "description": "Where the axis starts counting; the earliest start by default. Ticks read as offsets from it."
+      "description": "Where the since-start axis counts from; the earliest start by default."
     },
     {
       "name": "describeItem",
@@ -58,6 +58,45 @@
       "type": "string",
       "default": "Nothing to show",
       "description": "Shown when there are no lanes."
+    },
+    {
+      "name": "defaultAxis",
+      "type": "\"clock\" | \"offset\"",
+      "default": "\"offset\"",
+      "description": "What the axis reads first: clock times or the offset since the start. The toolbar switches it."
+    },
+    {
+      "name": "formatTime",
+      "type": "(t: number, step: number) => string",
+      "description": "Formats the clock axis and the overview's now; local HH:MM:SS (milliseconds under a one-second step) by default."
+    },
+    {
+      "name": "controls",
+      "type": "boolean",
+      "default": "true",
+      "description": "Shows the toolbar (Fit, zoom with the view's width, Clock / Since start) and the overview strip."
+    },
+    {
+      "name": "toolbar",
+      "type": "ReactNode",
+      "description": "More of the toolbar after the built-in controls: filter chips, a follow switch, Jump to now."
+    },
+    {
+      "name": "overviewLabel",
+      "type": "string",
+      "default": "\"Whole range\"",
+      "description": "The overview strip's name for the whole range, followed by its length: \"Whole run · 12m 4s\"."
+    },
+    {
+      "name": "follow",
+      "type": "boolean",
+      "default": "false",
+      "description": "Keeps `now` in a zoomed view: the window slides with the clock while items run."
+    },
+    {
+      "name": "onFollowChange",
+      "type": "(follow: boolean) => void",
+      "description": "Called with false when the person pans away from now (keys, Shift+wheel, the overview)."
     },
     {
       "name": "className",
@@ -72,9 +111,19 @@
       "description": "The focusable group; data-slot=\"timeline\". Holds the keyboard controls."
     },
     {
+      "name": "toolbar",
+      "element": "div",
+      "description": "Fit, the zoom group with the view's width, the axis switch and the `toolbar` content; data-slot=\"timeline-toolbar\"."
+    },
+    {
+      "name": "overview",
+      "element": "div",
+      "description": "The whole range with a mark per item and the visible window; data-slot=\"timeline-overview\", the window data-slot=\"timeline-window\"."
+    },
+    {
       "name": "axis",
       "element": "div",
-      "description": "The time axis with its round ticks; data-slot=\"timeline-axis\"."
+      "description": "The time axis with its round ticks, clock times or offsets; data-slot=\"timeline-axis\"."
     },
     {
       "name": "lanes",
@@ -84,12 +133,17 @@
     {
       "name": "lane",
       "element": "div",
-      "description": "One row with its label and track; data-slot=\"timeline-lane\"."
+      "description": "One row with its icon, label, detail and track; data-slot=\"timeline-lane\", data-selected when it holds the selected item."
     },
     {
       "name": "item",
       "element": "button",
-      "description": "One bar; data-slot=\"timeline-item\", data-status, data-selected and data-running name its state."
+      "description": "One mark; data-slot=\"timeline-item\", data-status, data-shape, data-selected and data-running name its state."
+    },
+    {
+      "name": "edge",
+      "element": "span",
+      "description": "The arrow after a mark that goes on past its end or the view; data-slot=\"timeline-edge\"."
     },
     {
       "name": "now",
@@ -177,11 +231,22 @@
   "tokens": [
     "color.accent.bg",
     "color.accent.compound",
-    "color.accent.fg",
+    "color.accent.subtle-bg",
+    "color.accent.subtle-fg",
+    "color.bg.disabled",
     "color.bg.layer",
+    "color.bg.layer-alt",
+    "color.border.control-bottom",
+    "color.border.control-bottom-subtle",
+    "color.border.disabled",
     "color.border.subtle",
     "color.fg.default",
+    "color.fg.disabled",
     "color.fg.muted",
+    "color.interactive.active",
+    "color.interactive.hover",
+    "color.interactive.selected",
+    "color.interactive.selected-hover",
     "color.neutral.bg",
     "color.neutral.fg",
     "color.ring",
@@ -194,36 +259,54 @@
     "color.status.success.solid-fg",
     "color.status.warning.solid",
     "color.status.warning.solid-fg",
+    "font.mono",
     "font.sans",
-    "grid.header-bg",
-    "radius.lg",
+    "motion.duration.faster",
+    "motion.easing.easy-ease",
+    "radius.md",
     "radius.sm",
     "ring.inner-width",
     "ring.width",
-    "size.control.md",
+    "size.control.lg",
     "size.control.sm",
+    "size.control.xs",
+    "size.icon.md",
+    "size.icon.xs",
     "size.panel.xs",
+    "space.inline.lg",
+    "space.inline.md",
     "space.inline.sm",
     "space.inline.xs",
     "space.inset.md",
     "space.inset.sm",
+    "space.inset.xs",
+    "space.stack.sm",
+    "space.stack.xs",
     "text.body-1.leading",
     "text.body-1.size",
     "text.body-1.tracking",
     "text.body-1.weight",
+    "text.caption-1-strong.leading",
+    "text.caption-1-strong.size",
+    "text.caption-1-strong.tracking",
+    "text.caption-1-strong.weight",
     "text.caption-1.leading",
     "text.caption-1.size",
     "text.caption-1.tracking",
-    "text.caption-1.weight"
+    "text.caption-1.weight",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight"
   ],
   "examples": {
     "minimal": "TimelineMinimal",
     "realistic": "TimelineRealistic"
   },
   "accessibility": [
-    "The timeline is a focusable role=group named by aria-label; its keys (+, -, arrows, Home) are announced by a visually hidden hint it is described by.",
-    "Each bar is a native button whose label is \"label, status, duration\" (or describeItem), with aria-pressed when a selection is controlled.",
-    "Status is never colour alone: the bar shows its label and the aria-label names the status. The axis is hidden from assistive technology; the bars carry the times.",
+    "The timeline is a focusable role=group named by aria-label; its keys (+, -, arrows, Home) are announced by a visually hidden hint it is described by. The toolbar's buttons do the same with a pointer and are named (Zoom in, Zoom out, Fit); the view's width is announced politely.",
+    "Each mark is a native button whose label is \"label, status, duration\" (or describeItem), with aria-pressed when a selection is controlled.",
+    "Status is never colour alone: shapes differ (stripes, dashes, ticks, diamonds, pins), captions name the state, and the aria-label names the status. The axis and the overview are hidden from assistive technology; the marks carry the times.",
     "Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner (3:1 on every surface)."
   ],
   "base": null

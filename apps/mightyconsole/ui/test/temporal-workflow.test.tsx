@@ -119,7 +119,8 @@ function setup(options: Options = {}) {
   return { describe, history, followHistory, query, stream, lives, openTab: props.openTab as ReturnType<typeof vi.fn>, ...view };
 }
 
-const tabButton = (name: string) => byRole("tab", name);
+/** A view's tab; History and Pending carry their counts ("History 4"). */
+const tabButton = (name: string) => byRole("tab", new RegExp(`^${name}( \\d+)?$`));
 
 describe("splitLines", () => {
   test("keeps a partial line for the next chunk and drops blanks", () => {
@@ -131,7 +132,7 @@ describe("splitLines", () => {
 describe("Workflow tab (spec §9.3)", () => {
   test("shows the header and the Timeline, and follows an open run from its last event", async () => {
     const { describe: d, history, followHistory, container } = setup();
-    await waitFor(() => byText("Fulfilment") !== null && container.querySelector('[data-slot="timeline"]') !== null, "the header and timeline");
+    await waitFor(() => byText("fulfilment-long-running") !== null && container.querySelector('[data-slot="timeline"]') !== null, "the header and timeline");
     expect(d).toHaveBeenCalledWith({ connId: "conn-1", namespace: "lab", workflowId: "fulfilment-long-running", runId: null });
     // The history is read for the run describe found, so the two cannot disagree.
     expect(history.mock.calls[0]![0]).toMatchObject({ runId: "0190aaaa-bbbb-cccc-dddd-000000000001", pageSize: 1000 });
@@ -139,9 +140,10 @@ describe("Workflow tab (spec §9.3)", () => {
     expect(byText("4 events")).not.toBeNull();
     await waitFor(() => followHistory.mock.calls.length === 1, "the follow");
     expect(followHistory.mock.calls[0]![0]).toMatchObject({ fromEventId: 4, workflowId: "fulfilment-long-running", runId: "0190aaaa-bbbb-cccc-dddd-000000000001" });
-    expect(byText("Live")).not.toBeNull();
+    // Followed live: the Timeline keeps now in view ("Following" in its toolbar).
+    expect(byText("Following")).not.toBeNull();
     const items = Array.from(container.querySelectorAll('[data-slot="timeline-item"]')).map((i) => i.getAttribute("aria-label"));
-    expect(items.some((l) => l?.startsWith("Fulfilment, running"))).toBe(true);
+    expect(items.some((l) => l?.startsWith("fulfilment-long-running, running"))).toBe(true);
     expect(items.some((l) => l?.startsWith("charge, running"))).toBe(true);
     expect(items.some((l) => l?.startsWith("Signal approve"))).toBe(true);
     expect(await axeViolations(container)).toEqual([]);
@@ -157,7 +159,7 @@ describe("Workflow tab (spec §9.3)", () => {
     stream.push(ev(6, "WorkflowExecutionCompleted", 1000, "Workflow", { result: ["done"] }));
     stream.end();
     await waitFor(() => byText("6 events") !== null && lives.some((l) => l?.status === "ended"), "the end");
-    expect(byText("Live")).toBeNull();
+    expect(byText("Following")).toBeNull();
     // The pending work and the status are asked again after the events.
     await waitFor(() => d.mock.calls.length > before, "a fresh describe");
   });
@@ -252,7 +254,7 @@ describe("Workflow tab (spec §9.3)", () => {
 
   test("closing the tab stops the stream", async () => {
     const { stream, unmount } = setup();
-    await waitFor(() => byText("Live") !== null, "the follow");
+    await waitFor(() => byText("Following") !== null, "the follow");
     unmount();
     await settle(2);
     expect(stream.cancelled).toBe(true);

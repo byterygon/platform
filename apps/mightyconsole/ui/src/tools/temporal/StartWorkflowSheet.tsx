@@ -350,7 +350,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
             <Icon icon={Code} /> Copy as CLI command
           </Button>
           <span className="flex-1" />
-          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button appearance="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button type="submit" form="start-workflow" appearance="primary" loading={busy} disabled={connId === null}>
             <Icon icon={Play} /> Start workflow <Kbd className="ms-inline-xs">Ctrl+Enter</Kbd>
           </Button>
