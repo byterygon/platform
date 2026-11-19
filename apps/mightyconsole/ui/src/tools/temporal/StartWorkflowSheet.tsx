@@ -345,7 +345,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
             {error ? <ErrorState error={error} /> : null}
           </form>
         </SheetBody>
-        <SheetFooter>
+        <SheetFooter className="flex-nowrap">
           <Button appearance="subtle" disabled={"error" in built} onClick={() => void copyCli()}>
             <Icon icon={Code} /> Copy as CLI command
           </Button>

@@ -3,7 +3,7 @@
 import { describe, expect, test } from "vitest";
 import type { ConnectTemporalProfile } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
-import { formatDuration, formatTime } from "@/tools/temporal/format";
+import { formatDuration, formatShortTime, formatTime } from "@/tools/temporal/format";
 import { namespaceOf, pageSizeOf, profile, savedQueriesOf, tlsOf, validateAddress } from "@/tools/temporal/profile";
 import { STATUS_CHIPS, statusOf, withStatus } from "@/tools/temporal/query";
 
@@ -99,5 +99,14 @@ describe("formats", () => {
     expect(formatTime(undefined)).toBe("");
     expect(formatTime("not a time")).toBe("");
     expect(formatTime("2026-11-18T01:02:03Z", "en-US")).toMatch(/2026/);
+  });
+
+  test("table times are short: the time today, the day this year, the year before", () => {
+    const now = new Date(2026, 10, 18, 12, 0, 0);
+    expect(formatShortTime(new Date(2026, 10, 18, 10, 39, 30).toISOString(), now)).toBe("10:39:30");
+    expect(formatShortTime(new Date(2026, 10, 17, 9, 5, 0).toISOString(), now)).toBe("17 Nov, 09:05");
+    expect(formatShortTime(new Date(2025, 0, 2, 9, 5, 0).toISOString(), now)).toBe("2 Jan 2025");
+    expect(formatShortTime(undefined, now)).toBe("");
+    expect(formatShortTime("nope", now)).toBe("");
   });
 });

@@ -6,6 +6,7 @@
 // layer (TSK-90's Table) with their first and last cells on the page gutter.
 import { type ReactNode, createContext, useContext } from "react";
 import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
@@ -111,6 +112,8 @@ export interface PagerProps {
   hasNext: boolean;
   onPrev(): void;
   onNext(): void;
+  /** Back to page 1; the button shows only when given. */
+  onFirst?: (() => void) | undefined;
   busy?: boolean;
 }
 
@@ -118,12 +121,17 @@ export interface PagerProps {
  * Previous and Next with the range (Open question 45 (i)): token APIs (Temporal) and offset APIs
  * alike; no jump to page n, which a token API cannot do.
  */
-export function Pager({ range, page, hasPrev, hasNext, onPrev, onNext, busy = false }: PagerProps) {
+export function Pager({ range, page, hasPrev, hasNext, onPrev, onNext, onFirst, busy = false }: PagerProps) {
   return (
     <>
       <span className="text-fg">{range}</span>
       <span className="flex-1" />
       <span>Page {page}</span>
+      {onFirst ? (
+        <Button size="small" appearance="subtle" disabled={!hasPrev || busy} onClick={onFirst}>
+          First
+        </Button>
+      ) : null}
       <IconButton size="small" appearance="subtle" aria-label="Previous page" disabled={!hasPrev || busy} onClick={onPrev}>
         <Icon icon={ChevronLeft} />
       </IconButton>
