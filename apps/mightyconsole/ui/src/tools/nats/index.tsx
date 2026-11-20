@@ -5,7 +5,8 @@
 // a key's entry and history with revisions compared, put through the Composer, watch), Object
 // Store (buckets, objects, upload in parts with progress, download, delete), Services
 // (discovered with $SRV.INFO, STATS and PING) and Schemas (the messaging core's schemas and
-// mappings of the profile, mappings tested on the last messages JetStream keeps).
+// mappings of the profile, mappings tested on the last messages JetStream keeps). Each tab kind
+// has a URL under /nats/<profile name>/ (routes.ts).
 import { Icon } from "@/components/ui/icon";
 import type { ConnectNatsProfile } from "@/gen/api";
 import { ArrowDownload, ArrowUp, Braces, Code, Database, Flash, Folder, NumberSymbol, PlugConnected, Server } from "@/lib/icons";
@@ -26,6 +27,7 @@ import { StreamTab, streamTitle } from "./StreamTab";
 import { StreamsTab } from "./StreamsTab";
 import { SubscribeTab, subscribeTitle } from "./SubscribeTab";
 import { bookmarksOf, profile } from "./profile";
+import { natsHrefs, natsRoutes } from "./routes";
 import { TREE_CONSUMER_STREAMS, natsTreeData, treeDataOf } from "./tree-data";
 
 const count = (n: number) => <span className="text-caption-1 text-fg-muted">{n}</span>;
@@ -147,19 +149,20 @@ export const natsTool: ToolModule = {
     ];
   },
   sidebarData: natsTreeData,
+  routes: natsRoutes,
   tabKinds: {
-    "nats.server": { title: () => "Server", Component: ServerTab },
-    "nats.subscribe": { title: subscribeTitle, Component: SubscribeTab },
-    "nats.publish": { title: (params) => (params["mode"] === "request" ? "Request" : "Publish"), Component: PublishTab },
-    "nats.streams": { title: () => "Streams", Component: StreamsTab },
-    "nats.stream": { title: streamTitle, Component: StreamTab },
-    "nats.consumer": { title: consumerTitle, Component: ConsumerTab },
-    "nats.kvs": { title: () => "Key-Value", Component: KvBucketsTab },
-    "nats.kv": { title: kvTitle, Component: KvTab },
-    "nats.objects": { title: () => "Object Store", Component: ObjectBucketsTab },
-    "nats.object": { title: objectTitle, Component: ObjectTab },
-    "nats.services": { title: () => "Services", Component: ServicesTab },
-    "nats.schemas": { title: () => "Schemas", Component: SchemasTab },
+    "nats.server": { title: () => "Server", Component: ServerTab, href: natsHrefs["nats.server"]! },
+    "nats.subscribe": { title: subscribeTitle, Component: SubscribeTab, href: natsHrefs["nats.subscribe"]! },
+    "nats.publish": { title: (params) => (params["mode"] === "request" ? "Request" : "Publish"), Component: PublishTab, href: natsHrefs["nats.publish"]! },
+    "nats.streams": { title: () => "Streams", Component: StreamsTab, href: natsHrefs["nats.streams"]! },
+    "nats.stream": { title: streamTitle, Component: StreamTab, href: natsHrefs["nats.stream"]! },
+    "nats.consumer": { title: consumerTitle, Component: ConsumerTab, href: natsHrefs["nats.consumer"]! },
+    "nats.kvs": { title: () => "Key-Value", Component: KvBucketsTab, href: natsHrefs["nats.kvs"]! },
+    "nats.kv": { title: kvTitle, Component: KvTab, href: natsHrefs["nats.kv"]! },
+    "nats.objects": { title: () => "Object Store", Component: ObjectBucketsTab, href: natsHrefs["nats.objects"]! },
+    "nats.object": { title: objectTitle, Component: ObjectTab, href: natsHrefs["nats.object"]! },
+    "nats.services": { title: () => "Services", Component: ServicesTab, href: natsHrefs["nats.services"]! },
+    "nats.schemas": { title: () => "Schemas", Component: SchemasTab, href: natsHrefs["nats.schemas"]! },
   },
   actions: [
     {

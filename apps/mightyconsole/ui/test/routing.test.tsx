@@ -81,6 +81,31 @@ describe("URLs (DOC-21 §3.7)", () => {
     { tool: "docker", place: { kind: "docker.containers", params: {} }, href: "/docker/prod.eu%2F1/containers" },
     { tool: "docker", place: { kind: "docker.container", params: { id: "shop-web-1", view: "logs" } }, href: "/docker/prod.eu%2F1/containers/shop-web-1/logs" },
     { tool: "docker", place: { kind: "docker.container", params: { id: "web.v2_a-b", view: "inspect" } }, href: "/docker/prod.eu%2F1/containers/web.v2_a-b/inspect" },
+    { tool: "nats", place: { kind: "nats.server", params: {} }, href: "/nats/prod.eu%2F1/server" },
+    { tool: "nats", place: { kind: "nats.subscribe", params: { subjects: [] } }, href: "/nats/prod.eu%2F1/subscribe" },
+    {
+      tool: "nats",
+      place: { kind: "nats.subscribe", params: { subjects: ["orders.>", "payments.*.created"], queueGroup: "billing" } },
+      href: "/nats/prod.eu%2F1/subscribe?subjects=orders.%3E+payments.*.created&queue=billing",
+    },
+    { tool: "nats", place: { kind: "nats.publish", params: {} }, href: "/nats/prod.eu%2F1/publish" },
+    { tool: "nats", place: { kind: "nats.publish", params: { mode: "request" } }, href: "/nats/prod.eu%2F1/request" },
+    { tool: "nats", place: { kind: "nats.streams", params: {} }, href: "/nats/prod.eu%2F1/streams" },
+    // A stream opened from the tree has no view yet: its URL shows Info.
+    { tool: "nats", place: { kind: "nats.stream", params: { stream: "ORDERS" } }, href: "/nats/prod.eu%2F1/streams/ORDERS/info", back: { stream: "ORDERS", view: "info" } },
+    { tool: "nats", place: { kind: "nats.stream", params: { stream: "ORDERS", view: "messages" } }, href: "/nats/prod.eu%2F1/streams/ORDERS/messages" },
+    // A tab saved before the routes kept its view as `section`.
+    { tool: "nats", place: { kind: "nats.stream", params: { stream: "ORDERS", section: "consumers" } }, href: "/nats/prod.eu%2F1/streams/ORDERS/consumers", back: { stream: "ORDERS", view: "consumers" } },
+    // A stream called like a view word still reaches its own routes.
+    { tool: "nats", place: { kind: "nats.stream", params: { stream: "info", view: "info" } }, href: "/nats/prod.eu%2F1/streams/info/info" },
+    { tool: "nats", place: { kind: "nats.consumer", params: { stream: "ORDERS", consumer: "billing.v2" } }, href: "/nats/prod.eu%2F1/streams/ORDERS/consumers/billing.v2/overview" },
+    { tool: "nats", place: { kind: "nats.kvs", params: {} }, href: "/nats/prod.eu%2F1/kv" },
+    { tool: "nats", place: { kind: "nats.kv", params: { bucket: "config" } }, href: "/nats/prod.eu%2F1/kv/config/keys", back: { bucket: "config", view: "keys" } },
+    { tool: "nats", place: { kind: "nats.kv", params: { bucket: "config", view: "watch" } }, href: "/nats/prod.eu%2F1/kv/config/watch" },
+    { tool: "nats", place: { kind: "nats.objects", params: {} }, href: "/nats/prod.eu%2F1/objects" },
+    { tool: "nats", place: { kind: "nats.object", params: { bucket: "media.files" } }, href: "/nats/prod.eu%2F1/objects/media.files/objects" },
+    { tool: "nats", place: { kind: "nats.services", params: {} }, href: "/nats/prod.eu%2F1/services" },
+    { tool: "nats", place: { kind: "nats.schemas", params: {} }, href: "/nats/prod.eu%2F1/schemas" },
   ];
 
   test.each(cases)("$place.kind → $href → the place", ({ tool: id, place, href, back }) => {
@@ -102,9 +127,13 @@ describe("URLs (DOC-21 §3.7)", () => {
     // No view word: not a place.
     expect(targetOf(router, parse(router, "/temporal/lab/orders/workflows/w1"), TOOLS)).toMatchObject({ type: "tool", tool: "temporal" });
     expect(targetOf(router, parse(router, "/temporal/lab/orders/workflows/w1/nonsense"), TOOLS)).toMatchObject({ type: "tool", tool: "temporal" });
-    // NATS has no routes yet: its tabs stay at /nats.
+    // A subject never ends a URL: a stream or consumer without its view word is not a place.
+    expect(targetOf(router, parse(router, "/nats/lab/streams/orders.created"), TOOLS)).toMatchObject({ type: "tool", tool: "nats" });
+    expect(targetOf(router, parse(router, "/nats/lab/streams/ORDERS/consumers/billing"), TOOLS)).toMatchObject({ type: "tool", tool: "nats" });
+    // A stream without a name has no URL; subjects too long for the URL stay in the tab.
     const nats = tool("nats");
-    expect(placeHref(nats, { name: "lab" }, { kind: Object.keys(nats.tabKinds)[0]!, params: {} })).toBe("/nats");
+    expect(placeHref(nats, { name: "lab" }, { kind: "nats.stream", params: {} })).toBe("/nats");
+    expect(placeHref(nats, { name: "lab" }, { kind: "nats.subscribe", params: { subjects: ["a".repeat(150), "b".repeat(60)], queueGroup: "q" } })).toBe("/nats/lab/subscribe");
   });
 
   test("routes carry breadcrumb labels", () => {
@@ -112,11 +141,11 @@ describe("URLs (DOC-21 §3.7)", () => {
     const crumbs: string[] = [];
     const walk = (route: { options: { staticData?: { crumb?: (p: Record<string, string>) => string } }; children?: unknown }) => {
       const crumb = route.options.staticData?.crumb;
-      if (crumb) crumbs.push(crumb({ profile: "lab", namespace: "orders", workflowId: "w1", threadId: "3f2a9c1e5b", assistantId: "a", scheduleId: "s", name: "q" }));
+      if (crumb) crumbs.push(crumb({ profile: "lab", namespace: "orders", workflowId: "w1", threadId: "3f2a9c1e5b", assistantId: "a", scheduleId: "s", name: "q", stream: "ORDERS", consumer: "billing", bucket: "config" }));
       for (const child of (route.children as (typeof route)[] | undefined) ?? []) walk(child);
     };
     walk(tree as never);
-    expect(crumbs).toEqual(expect.arrayContaining(["Mightyconsole", "Temporal", "lab", "orders", "Workflows", "w1", "History", "Input and result", "Threads", "3f2a9c1e5b"]));
+    expect(crumbs).toEqual(expect.arrayContaining(["Mightyconsole", "Temporal", "lab", "orders", "Workflows", "w1", "History", "Input and result", "Threads", "3f2a9c1e5b", "NATS", "ORDERS", "Messages", "billing", "Key-Value", "config", "Watch", "Object Store", "Objects"]));
   });
 
   test("the page's mode and base path come from the server's meta", () => {

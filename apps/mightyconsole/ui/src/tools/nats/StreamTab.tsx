@@ -5,7 +5,7 @@
 // columns, the cluster's peers, the mirror and sources, and the busiest subjects as bars that
 // open Messages filtered by them. Messages: StreamMessages. Consumers: a table, and New consumer.
 // Sealed and mirror streams disable Edit and Purge and say why.
-import { linkTo } from "@/app/tab-view";
+import { linkTo, useTabView, viewOf } from "@/app/tab-view";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { formatCount } from "@/app/messages";
 import type { NatsConsumerInfo, NatsStreamInfo } from "@/gen/api";
 import { Add, ArrowClockwise, Copy, Delete, Edit, MoreHorizontal } from "@/lib/icons";
 import { cn } from "@/lib/cn";
-import type { DescribedError, TabProps } from "../types";
+import type { DescribedError, LinkEvent, TabProps } from "../types";
 import { ConsumerSheet } from "./ConsumerSheet";
 import { DeleteStreamDialog, PurgeDialog, useAction } from "./JetStreamDialogs";
 import { StreamMessages } from "./StreamMessages";
@@ -33,7 +33,9 @@ import { Fact, Usage } from "./parts";
 import { readOnlyReason } from "./stream-form";
 import { reloadStreams } from "./tree-data";
 
-type Section = "info" | "messages" | "consumers";
+/** The stream's views, the last word of its URL (DOC-21 §3.7). */
+export const STREAM_VIEWS = ["info", "messages", "consumers"] as const;
+type Section = (typeof STREAM_VIEWS)[number];
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 
@@ -165,7 +167,7 @@ function InfoView({ info, onSubject }: { info: NatsStreamInfo; onSubject(subject
   );
 }
 
-function ConsumersView({ consumers, onOpen, onNew, disabled }: { consumers: NatsConsumerInfo[] | null; onOpen(name: string): void; onNew(): void; disabled: boolean }) {
+function ConsumersView({ consumers, onOpen, onNew, disabled }: { consumers: NatsConsumerInfo[] | null; onOpen(name: string, event?: LinkEvent): void; onNew(): void; disabled: boolean }) {
   if (consumers === null) return <LoadingRows label="Loading the consumers" />;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -196,7 +198,7 @@ function ConsumersView({ consumers, onOpen, onNew, disabled }: { consumers: Nats
             {consumers.map((c) => (
               <TableRow key={c.name}>
                 <TableCell>
-                  <LinkButton className="font-mono" onClick={() => onOpen(c.name)}>
+                  <LinkButton className="font-mono" onOpen={(e) => onOpen(c.name, e)}>
                     {c.name}
                   </LinkButton>
                 </TableCell>
@@ -223,7 +225,7 @@ function ConsumersView({ consumers, onOpen, onNew, disabled }: { consumers: Nats
 
 type Dialog = "edit" | "purge" | "delete" | "consumer" | null;
 
-export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, go: goProp, updateProfile }: TabProps) {
+export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, go: goProp, updateProfile }: TabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const name = text(tab.params["stream"]);
   const place = useCallback((m: Parameters<typeof subjectPlace>[0]) => subjectPlace(m, name), [name]);
@@ -233,7 +235,8 @@ export function StreamTab({ tab, profile, connId, client, useTabActions, onLive,
   const [consumers, setConsumers] = useState<NatsConsumerInfo[] | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
   const [loading, setLoading] = useState(false);
-  const [section, setSection] = useState<Section>(text(tab.params["section"]) === "messages" ? "messages" : text(tab.params["section"]) === "consumers" ? "consumers" : "info");
+  // Tabs saved before the routes kept the view as `section`.
+  const [section, setSection] = useTabView({ tab, navigate }, STREAM_VIEWS, viewOf({ view: tab.params["section"] }, STREAM_VIEWS, "info"));
   const [subject, setSubject] = useState<{ value: string; key: number }>({ value: "", key: 0 });
   const [dialog, setDialog] = useState<Dialog>(null);
   const action = useAction(note);
@@ -385,7 +388,7 @@ export function StreamTab({ tab, profile, connId, client, useTabActions, onLive,
               consumers={consumers}
               disabled={c?.sealed === true}
               onNew={() => setDialog("consumer")}
-              onOpen={(consumer) => go({ kind: "nats.consumer", params: { stream: name, consumer }, title: consumer })}
+              onOpen={(consumer, event) => go({ kind: "nats.consumer", params: { stream: name, consumer }, title: consumer }, event)}
             />
           </TabsContent>
         </Tabs>

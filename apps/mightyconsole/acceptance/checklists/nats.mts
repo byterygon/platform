@@ -268,6 +268,55 @@ export default {
           await until(`![...document.querySelectorAll("button")].find((b) => /Load full payload/.test(b.textContent || ""))`, "the full payload");
           await shot("the full payload");
         }),
+        // TSK-101's routes on NATS (DOC-21 §3.7): each place's URL ends with its view word.
+        vitest("test/routing.test.tsx", "nats."),
+        browser("ORDERS by its URL: the view in the URL and the crumbs, a consumer in the same tab, Back, the streams beside it, a link that arrives", async ({ page, origin, until, run, shot }) => {
+          const row = `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=toolbar][aria-label=Location]")].find((r) => r.offsetParent !== null)`;
+          const crumbs = `[...${row}.querySelectorAll("[data-slot=breadcrumb-item]")].map((el) => el.textContent.trim()).join(" / ")`;
+          const rowButton = (label: string) => `[...${row}.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
+          const view = (label: string) => `[...document.querySelectorAll('[role=tabpanel]:not([hidden]) [role=tab]')].find((t) => (t.textContent || "").startsWith(${JSON.stringify(label)}) && t.getClientRects().length > 0)`;
+          const at = (path: string, trail: string) => `location.pathname === ${JSON.stringify(path)} && ${row} && ${crumbs} === ${JSON.stringify(trail)}`;
+          const tabs = `document.querySelectorAll("[role=tablist][aria-label=Tabs] [role=tab]").length`;
+          // Waits for a place, and says where the page is when it does not get there.
+          const reach = async (path: string, trail: string, what: string, more = "true") => {
+            try {
+              await until(`${at(path, trail)} && ${more}`, what);
+            } catch (e) {
+              const where = await run<string>(`location.pathname + " · " + (${row} ? ${crumbs} : "no navigation row")`);
+              throw new Error(`${(e as Error).message} (at ${where})`);
+            }
+          };
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await until(`__mc.item("ORDERS")`, "ORDERS in the tree");
+          // The earlier walk may have left ORDERS open at another view: the tree focuses that tab.
+          await run(`__mc.dblclick(__mc.item("ORDERS"))`);
+          await until(view("Info"), "the stream's views");
+          await run(`__mc.click(${view("Info")})`);
+          await reach("/nats/lab/streams/ORDERS/info", "lab / Streams / ORDERS / Info", "the stream's URL at Info");
+          await run(`__mc.click(${view("Messages")})`);
+          await reach("/nats/lab/streams/ORDERS/messages", "lab / Streams / ORDERS / Messages", "the URL at Messages");
+          await run(`__mc.click(${view("Consumers")})`);
+          await reach("/nats/lab/streams/ORDERS/consumers", "lab / Streams / ORDERS / Consumers", "the consumers", vbutton("billing"));
+          const before = await run<number>(tabs);
+          await run(press(vbutton("billing")));
+          await reach("/nats/lab/streams/ORDERS/consumers/billing/overview", "lab / Streams / ORDERS / Consumers / billing / Overview", "the consumer in the same tab");
+          const after = await run<number>(tabs);
+          if (after !== before) throw new Error(`a link opened a tab (${before} → ${after})`);
+          await shot("a consumer's URL and crumbs");
+          await run(press(rowButton("Back")));
+          await reach("/nats/lab/streams/ORDERS/consumers", "lab / Streams / ORDERS / Consumers", "Back to the consumers");
+          await run(press(rowButton("ORDERS")));
+          await until(`__mc.has("Streams of lab") && [...document.querySelectorAll("[role=menuitem]")].some((m) => m.textContent.trim().startsWith("All streams"))`, "the streams beside ORDERS");
+          await shot("the streams beside ORDERS");
+          await run(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+          await page.navigate(`${origin}/nats/lab/kv/config/watch`);
+          await reach("/nats/lab/kv/config/watch", "lab / Key-Value / config / Watch", "a link to a bucket's Watch", `${view("Watch")}?.getAttribute("aria-selected") === "true"`);
+          await shot("a link to a KV bucket's Watch");
+          // Leave the bucket at Keys for the KV walk, which opens the same tab from the tree.
+          await run(`__mc.click(${view("Keys")})`);
+          await reach("/nats/lab/kv/config/keys", "lab / Key-Value / config / Keys", "the bucket back at Keys");
+        }),
       ],
     },
     {
@@ -339,6 +388,10 @@ export default {
           await labTree({ until, run, shot });
           await until(`__mc.item("config")`, "the config bucket in the tree");
           await run(`__mc.dblclick(__mc.item("config"))`);
+          // The tree focuses an open tab of the bucket, at whatever view it shows.
+          const keysView = `[...document.querySelectorAll('[role=tabpanel]:not([hidden]) [role=tab]')].find((t) => (t.textContent || "").startsWith("Keys") && t.getClientRects().length > 0)`;
+          await until(keysView, "the bucket's views");
+          await run(`__mc.click(${keysView})`);
           await until(vbutton("feature.checkout") + ` && __mc.has("revision")`, "the keys and the entry");
           await shot("config keys and an entry");
           await run(`__mc.click([...document.querySelectorAll('[aria-label="Key views"] [role=tab]')].find((t) => (t.textContent || "").startsWith("History")))`);
