@@ -28,6 +28,7 @@ import { formatCount } from "@/app/messages";
 import { CopyButton, NoticeContext, Page, PageBar, PageHeader, gutterTable } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { useStore } from "@/app/store";
+import { useTabView, viewOf } from "@/app/tab-view";
 import * as api from "@/gen/api";
 import { CodecMenu } from "@/messaging/schemas/CodecMenu";
 import { FilterBar } from "@/messaging/FilterBar";
@@ -46,6 +47,9 @@ import { reloadStreams } from "./tree-data";
 import { type ViewDecoding, bucketPlace, useViewDecoding } from "./SchemasTab";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
+
+/** The bucket's views, the last word of its URL (DOC-21 §3.7). */
+export const KV_VIEWS = ["keys", "watch"] as const;
 
 export function kvTitle(params: Record<string, unknown>): string {
   return text(params["bucket"]) || "Key-Value";
@@ -429,7 +433,7 @@ function WatchView({ bucket, connId, client, note, onLive, registerActions, deco
   return <MessageViewer system="kv" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} {...(decoding.decodeAs ? { decodeAs: decoding.decodeAs } : {})} />;
 }
 
-export function KvTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, updateProfile}: TabProps) {
+export function KvTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, updateProfile }: TabProps) {
   const bucket = text(tab.params["bucket"]);
   const place = useCallback(() => bucketPlace(bucket), [bucket]);
   const decoding = useViewDecoding({ client, connId, profile, updateProfile, openTab }, place);
@@ -437,7 +441,8 @@ export function KvTab({ tab, profile, connId, client, useTabActions, onLive, not
   const [info, setInfo] = useState<api.NatsKvBucketInfo | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
   const [loading, setLoading] = useState(false);
-  const [section, setSection] = useState<"keys" | "watch">(text(tab.params["section"]) === "watch" ? "watch" : "keys");
+  // Tabs saved before the routes kept the view as `section`.
+  const [section, setSection] = useTabView({ tab, navigate }, KV_VIEWS, viewOf({ view: tab.params["section"] }, KV_VIEWS, "keys"));
   const [refreshKey, setRefreshKey] = useState(0);
   const [put, setPut] = useState<{ key?: string; revision?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);

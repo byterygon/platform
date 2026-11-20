@@ -180,7 +180,7 @@ export function ConsumerTab({ tab, profile, connId, client, active, useTabAction
         }
       />
       <PageRegion className="gap-stack-lg overflow-auto px-inset-lg py-inset-md">
-        {error ? <ErrorState error={error} onRetry={() => void load()} onRefresh={() => openTab({ kind: "nats.stream", params: { stream, section: "consumers" }, title: stream })} /> : null}
+        {error ? <ErrorState error={error} onRetry={() => void load()} onRefresh={() => openTab({ kind: "nats.stream", params: { stream, view: "consumers" }, title: stream })} /> : null}
         {!info && !error ? <LoadingRows label="Loading the consumer" /> : null}
         {info && state && c ? (
           <>
