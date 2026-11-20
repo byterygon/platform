@@ -337,6 +337,7 @@ def main(argv):
             "passphrase": passphrase,
             "passwordUser": "labpw",
             "password": ssh_password,
+            "noForwardUser": "nofwd",
         },
         "langgraph": {"url": "http://127.0.0.1:2024", "graph": "agent"},
     }

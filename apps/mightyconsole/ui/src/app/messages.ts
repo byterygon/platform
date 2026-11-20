@@ -11,6 +11,7 @@ export function describeError(error: unknown): DescribedError {
     if (error.correlation_id) out.correlationId = error.correlation_id;
     if (details?.kind) out.kind = details.kind;
     if (details?.remote?.code) out.remoteCode = details.remote.code;
+    if (details?.hostKey) out.hostKey = details.hostKey;
     if (error.code === "Unavailable" && !details?.kind) out.description = "The server is not reachable.";
     return out;
   }

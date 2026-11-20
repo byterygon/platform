@@ -63,12 +63,15 @@ tonic = { version = "0.14.9", default-features = false, features = ["transport",
 tonic-prost = "0.14.9"
 ts-rs = { version = "12.0.1", default-features = false, features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
 url = "2.5.8"
+russh = { version = "0.65.2", default-features = false, features = ["ring", "rsa"] }
 
 [dev-dependencies]
 arrow-ipc = { version = "60.1.0", default-features = false }
 arrow-select = { version = "60.1.0", default-features = false }
 ambidex-conformance = { path = "../../../crates/ambidex-conformance", default-features = false }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink"] }
+# The stand-in Docker Engine of tests/docker.rs.
+hyper = { version = "1.12.0", default-features = false, features = ["http1", "server"] }
 tempfile = "3.27.0"
 tokio = { version = "1.54.1", features = ["io-util", "process", "test-util"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }

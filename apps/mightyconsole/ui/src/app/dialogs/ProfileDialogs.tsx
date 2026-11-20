@@ -19,7 +19,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { RecordState } from "@/profiles/migrate";
 import { type ProfileRecord, hasSecrets, ulid } from "@/profiles/record";
 import { type ImportChoice, type ImportPlan, ImportError } from "@/profiles/transfer";
-import type { FieldErrors, ToolModule } from "@/tools/types";
+import type { DescribedError, FieldErrors, ToolModule } from "@/tools/types";
+import { describeError } from "@/app/messages";
+import { ErrorState } from "@/app/states";
+import { Icon } from "@/components/ui/icon";
+import { PlugConnected } from "@/lib/icons";
+import { HostKeyDialog } from "./HostKeyDialog";
 
 /** Label colours: the eight categorical colour roles of the tokens (spec §4.2), so every theme has them. */
 export const PROFILE_COLORS = ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "chart-6", "chart-7", "chart-8"] as const;
@@ -52,8 +57,13 @@ export interface ProfileSheetProps {
   name?: string;
 }
 
+/** The result of "Test connection". */
+type TestState = { status: "idle" } | { status: "running" } | { status: "ok" } | { status: "failed"; error: DescribedError };
+
 export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave, name = "" }: ProfileSheetProps) {
   const services = useContext(ServicesContext);
+  // "Test connection" runs the tool's connect on the draft and disconnects.
+  const client = services?.client;
   const fresh = () => {
     const defaults = tool.profile.defaults();
     if (!base) return { name, color: "", fields: defaults.fields, secrets: {} as Record<string, unknown>, extras: defaults.extras };
@@ -64,11 +74,15 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
   const [clearSecrets, setClearSecrets] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
+  const [test, setTest] = useState<TestState>({ status: "idle" });
+  const [trusting, setTrusting] = useState(false);
   useEffect(() => {
     if (open) {
       setDraft(fresh());
       setErrors({});
       setClearSecrets(false);
+      setTest({ status: "idle" });
+      setTrusting(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, base?.id, mode, name]);
@@ -108,6 +122,25 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
       setSaving(false);
     }
   };
+
+  /** Checks the fields, then connects with the draft and disconnects at once. */
+  const runTest = async (record = build()) => {
+    if (!client) return;
+    const next: FieldErrors = { ...tool.profile.validate(record) };
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+    setTest({ status: "running" });
+    try {
+      const { connId } = await tool.connect(client, record);
+      await tool.disconnect(client, connId).catch(() => undefined);
+      setTest({ status: "ok" });
+    } catch (e) {
+      const error = describeError(e);
+      setTest({ status: "failed", error });
+      if (error.hostKey && tool.trustHostKey) setTrusting(true);
+    }
+  };
+  const failedKey = test.status === "failed" ? test.error.hostKey : undefined;
 
   const title = mode === "add" ? `Add ${tool.label} connection` : mode === "duplicate" ? `Duplicate ${base?.name ?? ""}` : `Edit ${base?.name ?? ""}`;
   return (
@@ -166,9 +199,36 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
                 <FieldLabel>Remove the stored secrets</FieldLabel>
               </Field>
             ) : null}
+            {test.status === "ok" ? (
+              <Alert intent="success">
+                <AlertTitle>The connection works</AlertTitle>
+                <AlertDescription>Connected to {draft.name.trim() || "the target"} and disconnected again.</AlertDescription>
+              </Alert>
+            ) : test.status === "failed" ? (
+              <ErrorState error={test.error} {...(failedKey && tool.trustHostKey ? { onTrust: () => setTrusting(true) } : {})} />
+            ) : null}
           </form>
         </SheetBody>
+        <HostKeyDialog
+          open={trusting && failedKey !== undefined}
+          name={draft.name.trim() || tool.label}
+          target={tool.targetOf?.(build()) ?? draft.name}
+          details={failedKey ?? null}
+          onCancel={() => setTrusting(false)}
+          onTrust={(key) => {
+            setTrusting(false);
+            if (!tool.trustHostKey) return;
+            const trusted = tool.trustHostKey(build(), key);
+            setDraft((d) => ({ ...d, fields: trusted.fields }));
+            void runTest(trusted);
+          }}
+        />
         <SheetFooter>
+          {client ? (
+            <Button className="me-auto" loading={test.status === "running"} disabled={readOnly} onClick={() => void runTest()}>
+              <Icon icon={PlugConnected} /> Test connection
+            </Button>
+          ) : null}
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button appearance="primary" loading={saving} disabled={readOnly} onClick={() => void save()}>
             Save

@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:9059d224e11ec422420bf6519229bcc5167c2fe538eca2d8bcd7d79d3f53d011";
+export const SCHEMA_HASH = "sha256:f7ddecc293bfca900eec847d12448b333cc34b74faad065168db648609df336d";
 
 // ---- Types
 
@@ -180,6 +180,43 @@ messageType?: string | null,
 wireFormat?: WireFormat | null, };
 
 /**
+ * The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).
+ */
+export type ConnectDockerProfile = { name: string, 
+/**
+ * Host name or IP address of the SSH server.
+ */
+host: string, 
+/**
+ * 22 when absent.
+ */
+port?: number | null, username: string, auth?: DockerAuth | null, 
+/**
+ * For `privateKey`: the key's text (a profile secret, never logged).
+ */
+privateKey?: string | null, 
+/**
+ * For an encrypted private key.
+ */
+passphrase?: string | null, 
+/**
+ * For `password`.
+ */
+password?: string | null, 
+/**
+ * The trusted host key; `null` until the person trusts it on first use (spec §10.2).
+ */
+hostKey?: HostKeyFingerprint | null, 
+/**
+ * `/var/run/docker.sock` when absent; rootless Docker: `/run/user/<uid>/docker.sock`.
+ */
+socketPath?: string | null, 
+/**
+ * SSH keepalive interval, 30 s when absent; 0 turns it off.
+ */
+keepaliveSec?: number | null, };
+
+/**
  * The echo tool's profile as `toConnect` builds it (spec §4.4).
  */
 export type ConnectEchoProfile = { name: string, 
@@ -325,6 +362,17 @@ export type DecodeOptions = { key?: CodecChoice, value?: CodecChoice,
 maxPayloadBytes?: number | null, };
 
 export type DecodeOutput = { codec: CodecId, text?: string, json?: JsonValue, schemaRef?: string, error?: string, };
+
+/**
+ * How the server logs in to the host (spec §10.1, `fields.auth`).
+ */
+export type DockerAuth = "privateKey" | "password" | "agent";
+
+export type DockerConnIdInput = { connId: string, };
+
+export type DockerConnectInput = { profile: ConnectDockerProfile, };
+
+export type DockerConnectOutput = { connId: string, host: HostInfo, };
 
 export type EchoConnIdInput = { connId: string, };
 
@@ -570,6 +618,60 @@ attributes: Record<string, unknown>,
  * absent when it has none.
  */
 encodings?: Array<string>, };
+
+/**
+ * `docker.host.info` (spec §10.4, Host): `/info` and `/version` of the Docker Engine, and the
+ * connection's facts.
+ */
+export type HostInfo = { ssh: SshFacts, 
+/**
+ * The API version the connection speaks (the host's, at least 1.41).
+ */
+apiVersion: string, 
+/**
+ * The host's own maximum and minimum API versions.
+ */
+serverApiVersion: string, minApiVersion?: string, 
+/**
+ * Round trip of `GET /_ping` over SSH and the socket, in milliseconds.
+ */
+pingMs: number, name: string, operatingSystem: string, osType: string, kernelVersion: string, architecture: string, cpus: number, memoryBytes: number, serverVersion: string, containerdVersion?: string, storageDriver: string, storageBackingFilesystem?: string, loggingDriver: string, cgroupVersion?: string, cgroupDriver?: string, 
+/**
+ * `apparmor`, `seccomp`, `rootless`, ... (the names of `SecurityOptions`).
+ */
+securityOptions: Array<string>, rootless: boolean, dockerRootDir: string, containers: number, containersRunning: number, containersPaused: number, containersStopped: number, images: number, 
+/**
+ * Problems the engine reports about itself (`Warnings` of `/info`).
+ */
+warnings: Array<string>, };
+
+/**
+ * For `HostKey`: the key the host presented, and the trusted one when it changed (spec §10.2).
+ * Nothing was sent to the host: the check runs in the handshake, before authentication.
+ */
+export type HostKeyDetails = { state: HostKeyState, algorithm: string, fingerprintSha256: string, 
+/**
+ * The trusted key, for `changed`.
+ */
+expected?: HostKeyFingerprint, };
+
+/**
+ * An SSH host key as the profile stores it and the trust dialog shows it.
+ */
+export type HostKeyFingerprint = { 
+/**
+ * The key's SSH algorithm name: `ssh-ed25519`, `ecdsa-sha2-nistp256`, `ssh-rsa`, ...
+ */
+algorithm: string, 
+/**
+ * OpenSSH's form, `SHA256:` and the unpadded base64 digest (as `ssh-keygen -lf` prints it).
+ */
+fingerprintSha256: string, };
+
+/**
+ * Whether an SSH host key is new or differs from the trusted one (spec §10.2).
+ */
+export type HostKeyState = "unknown" | "changed";
 
 /**
  * What happens when a running workflow with the same ID exists (`WorkflowIdConflictPolicy`).
@@ -2095,6 +2197,15 @@ error?: string, };
 export type SignalDirection = "received" | "sent";
 
 /**
+ * The connection's SSH side, for the Host page's subtitle.
+ */
+export type SshFacts = { 
+/**
+ * `user@host:port`.
+ */
+target: string, hostKey: HostKeyFingerprint, socketPath: string, auth: DockerAuth, };
+
+/**
  * A task of the next step: the node to run, its error, its interrupts.
  */
 export type StateTask = { id: string, name: string, error?: string, interrupts: Array<Interrupt>, 
@@ -2376,7 +2487,11 @@ field?: string,
 /**
  * For `Invalid`: where in the field's text, when known.
  */
-position?: ErrorPosition, };
+position?: ErrorPosition, 
+/**
+ * For `HostKey`: what the trust dialog shows.
+ */
+hostKey?: HostKeyDetails, };
 
 /**
  * What went wrong, as the UI needs to know it (spec §2.6).
@@ -2690,6 +2805,9 @@ export interface ProcedureDef<
 export interface Procedures {
   readonly "app.events": ProcedureDef<"subscription", Empty, AppEvent, never>;
   readonly "app.info": ProcedureDef<"query", Empty, AppInfo, never>;
+  readonly "docker.connect": ProcedureDef<"mutation", DockerConnectInput, DockerConnectOutput, ToolError>;
+  readonly "docker.disconnect": ProcedureDef<"mutation", DockerConnIdInput, Empty, ToolError>;
+  readonly "docker.host.info": ProcedureDef<"query", DockerConnIdInput, HostInfo, ToolError>;
   readonly "echo.connect": ProcedureDef<"mutation", EchoConnectInput, EchoConnectOutput, ToolError>;
   readonly "echo.disconnect": ProcedureDef<"mutation", EchoConnIdInput, Empty, ToolError>;
   readonly "echo.messages.get": ProcedureDef<"query", EchoGetInput, FullMessage, ToolError>;
@@ -2816,6 +2934,13 @@ export interface Api {
   readonly app: {
     readonly events: Procedures["app.events"];
     readonly info: Procedures["app.info"];
+  };
+  readonly docker: {
+    readonly connect: Procedures["docker.connect"];
+    readonly disconnect: Procedures["docker.disconnect"];
+    readonly host: {
+      readonly info: Procedures["docker.host.info"];
+    };
   };
   readonly echo: {
     readonly connect: Procedures["echo.connect"];
@@ -3020,6 +3145,40 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
+    },
+  },
+  docker: {
+    connect: {
+      name: "docker.connect",
+      kind: "mutation",
+      perm: "docker.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 60000,
+      timeoutMaxMs: 300000,
+    },
+    disconnect: {
+      name: "docker.disconnect",
+      kind: "mutation",
+      perm: "docker.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
+    },
+    host: {
+      info: {
+        name: "docker.host.info",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
     },
   },
   echo: {

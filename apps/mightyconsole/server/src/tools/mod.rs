@@ -21,6 +21,7 @@
 //! [`Hub::get`]: crate::core::Hub::get
 //! [`Hub::busy`]: crate::core::Hub::busy
 
+pub mod docker;
 pub mod echo;
 pub mod langgraph;
 pub mod nats;
@@ -45,6 +46,11 @@ pub fn infos() -> Vec<ToolInfo> {
             version: nats::LIBRARY.into(),
         },
         ToolInfo {
+            id: docker::TOOL.into(),
+            // Docker over SSH (spec §10.7).
+            version: "russh 0.65".into(),
+        },
+        ToolInfo {
             id: langgraph::TOOL.into(),
             // The LangGraph Server API through hyper (spec §11.5).
             version: "hyper 1.12".into(),
@@ -61,6 +67,7 @@ pub fn mount(router: &Router, hub: &Arc<Hub>) -> Result<(), RegistryError> {
     router.mount(echo::EchoApi(Arc::clone(hub)))?;
     router.mount(echo::EchoMessagesApi(Arc::clone(hub)))?;
     nats::mount(router, hub)?;
+    docker::mount(router, hub)?;
     langgraph::mount(router, hub)?;
     router.mount(temporal::TemporalApi(Arc::clone(hub)))?;
     router.mount(temporal::TemporalNamespacesApi(Arc::clone(hub)))?;

@@ -164,6 +164,19 @@ export function ConnectionList(props: ConnectionListProps) {
   const status = profile ? (conns[profile.id]?.status ?? "disconnected") : undefined;
 
   const expandProfile = (id: string) => setExpanded((e) => (e.includes(id) ? e : [...e, id]));
+  // Profiles the person opened while they were not connected: they open once connected, also when
+  // the connect that did it came later (after trusting a host key, a Retry).
+  const wanted = useRef(new Set<string>());
+  useEffect(() => {
+    for (const id of wanted.current) {
+      const parsed = parseNode(id);
+      const status = parsed ? conns[parsed.profileId]?.status : undefined;
+      if (status === "connected") {
+        wanted.current.delete(id);
+        expandProfile(id);
+      } else if (status === undefined || status === "disconnected") wanted.current.delete(id);
+    }
+  }, [conns]);
   const expand = (next: string[], node: TreeNode, isExpanded: boolean) => {
     setExpanded(next);
     const parsed = parseNode(node.id);
@@ -177,7 +190,10 @@ export function ConnectionList(props: ConnectionListProps) {
     if (!p) return;
     if (parsed.resource === null) {
       if ((conns[p.id]?.status ?? "disconnected") === "connected") expandProfile(node.id);
-      else void props.onConnect(p.id).then((ok) => ok && expandProfile(node.id));
+      else {
+        wanted.current.add(node.id);
+        void props.onConnect(p.id).then((ok) => ok && expandProfile(node.id));
+      }
       return;
     }
     const conn = conns[p.id];

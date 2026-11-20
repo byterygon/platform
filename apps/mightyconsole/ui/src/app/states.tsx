@@ -52,7 +52,7 @@ export function EmptyLine({ children, action }: { children: ReactNode; action?: 
 }
 
 /** The ToolError in place of the content, with its remote code, Details and remedy (spec §2.6). */
-export function ErrorState({ error, onRetry, onEditProfile, onRefresh }: { error: DescribedError; onRetry?: () => void; onEditProfile?: () => void; onRefresh?: () => void }) {
+export function ErrorState({ error, onRetry, onEditProfile, onRefresh, onTrust }: { error: DescribedError; onRetry?: () => void; onEditProfile?: () => void; onRefresh?: () => void; onTrust?: () => void }) {
   const remedy = remedyOf(error);
   return (
     <Alert intent="danger" className="m-inset-md">
@@ -81,6 +81,11 @@ export function ErrorState({ error, onRetry, onEditProfile, onRefresh }: { error
         {(remedy === "editProfile" || remedy === "retry") && onEditProfile ? (
           <Button size="small" appearance="secondary" onClick={onEditProfile}>
             Edit profile
+          </Button>
+        ) : null}
+        {remedy === "trust" && onTrust ? (
+          <Button size="small" onClick={onTrust}>
+            Review the host key
           </Button>
         ) : null}
         {remedy === "refresh" && onRefresh ? (

@@ -71,6 +71,7 @@ describe("URLs (DOC-21 §3.7)", () => {
     { tool: "langgraph", place: { kind: "langgraph.thread", params: { threadId: "3f2a9c1e", view: "state" } }, href: "/langgraph/prod.eu%2F1/threads/3f2a9c1e/state" },
     { tool: "langgraph", place: { kind: "langgraph.threads", params: {} }, href: "/langgraph/prod.eu%2F1/threads" },
     { tool: "langgraph", place: { kind: "langgraph.store", params: {} }, href: "/langgraph/prod.eu%2F1/store" },
+    { tool: "docker", place: { kind: "docker.host", params: {} }, href: "/docker/prod.eu%2F1/host" },
   ];
 
   test.each(cases)("$place.kind → $href → the place", ({ tool: id, place, href, back }) => {

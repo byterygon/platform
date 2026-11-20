@@ -625,6 +625,103 @@
       ],
       "type": "object"
     },
+    "ConnectDockerProfile": {
+      "description": "The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).",
+      "properties": {
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DockerAuth"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "host": {
+          "description": "Host name or IP address of the SSH server.",
+          "type": "string"
+        },
+        "hostKey": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostKeyFingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The trusted host key; `null` until the person trusts it on first use (spec §10.2)."
+        },
+        "keepaliveSec": {
+          "default": null,
+          "description": "SSH keepalive interval, 30 s when absent; 0 turns it off.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "passphrase": {
+          "default": null,
+          "description": "For an encrypted private key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "password": {
+          "default": null,
+          "description": "For `password`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "default": null,
+          "description": "22 when absent.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "privateKey": {
+          "default": null,
+          "description": "For `privateKey`: the key's text (a profile secret, never logged).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "socketPath": {
+          "default": null,
+          "description": "`/var/run/docker.sock` when absent; rootless Docker: `/run/user/<uid>/docker.sock`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "host",
+        "username"
+      ],
+      "type": "object"
+    },
     "ConnectEchoProfile": {
       "description": "The echo tool's profile as `toConnect` builds it (spec §4.4).",
       "properties": {
@@ -1099,6 +1196,63 @@
       },
       "required": [
         "codec"
+      ],
+      "type": "object"
+    },
+    "DockerAuth": {
+      "description": "How the server logs in to the host (spec §10.1, `fields.auth`).",
+      "oneOf": [
+        {
+          "const": "privateKey",
+          "description": "`privateKey` (OpenSSH or PEM text), with `passphrase` when it is encrypted.",
+          "type": "string"
+        },
+        {
+          "const": "password",
+          "description": "`password`.",
+          "type": "string"
+        },
+        {
+          "const": "agent",
+          "description": "The ssh-agent of the user running mightyconsole-server (`SSH_AUTH_SOCK`).",
+          "type": "string"
+        }
+      ]
+    },
+    "DockerConnIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "DockerConnectInput": {
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ConnectDockerProfile"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "DockerConnectOutput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "host": {
+          "$ref": "#/$defs/HostInfo"
+        }
+      },
+      "required": [
+        "connId",
+        "host"
       ],
       "type": "object"
     },
@@ -2101,6 +2255,227 @@
         "attributes"
       ],
       "type": "object"
+    },
+    "HostInfo": {
+      "description": "`docker.host.info` (spec §10.4, Host): `/info` and `/version` of the Docker Engine, and the\nconnection's facts.",
+      "properties": {
+        "apiVersion": {
+          "description": "The API version the connection speaks (the host's, at least 1.41).",
+          "type": "string"
+        },
+        "architecture": {
+          "type": "string"
+        },
+        "cgroupDriver": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cgroupVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "containerdVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "containers": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "containersPaused": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "containersRunning": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "containersStopped": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cpus": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dockerRootDir": {
+          "type": "string"
+        },
+        "images": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kernelVersion": {
+          "type": "string"
+        },
+        "loggingDriver": {
+          "type": "string"
+        },
+        "memoryBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minApiVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "operatingSystem": {
+          "type": "string"
+        },
+        "osType": {
+          "type": "string"
+        },
+        "pingMs": {
+          "description": "Round trip of `GET /_ping` over SSH and the socket, in milliseconds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rootless": {
+          "type": "boolean"
+        },
+        "securityOptions": {
+          "description": "`apparmor`, `seccomp`, `rootless`, ... (the names of `SecurityOptions`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "serverApiVersion": {
+          "description": "The host's own maximum and minimum API versions.",
+          "type": "string"
+        },
+        "serverVersion": {
+          "type": "string"
+        },
+        "ssh": {
+          "$ref": "#/$defs/SshFacts"
+        },
+        "storageBackingFilesystem": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "storageDriver": {
+          "type": "string"
+        },
+        "warnings": {
+          "description": "Problems the engine reports about itself (`Warnings` of `/info`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ssh",
+        "apiVersion",
+        "serverApiVersion",
+        "pingMs",
+        "name",
+        "operatingSystem",
+        "osType",
+        "kernelVersion",
+        "architecture",
+        "cpus",
+        "memoryBytes",
+        "serverVersion",
+        "storageDriver",
+        "loggingDriver",
+        "securityOptions",
+        "rootless",
+        "dockerRootDir",
+        "containers",
+        "containersRunning",
+        "containersPaused",
+        "containersStopped",
+        "images",
+        "warnings"
+      ],
+      "type": "object"
+    },
+    "HostKeyDetails": {
+      "description": "For `HostKey`: the key the host presented, and the trusted one when it changed (spec §10.2).\nNothing was sent to the host: the check runs in the handshake, before authentication.",
+      "properties": {
+        "algorithm": {
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostKeyFingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The trusted key, for `changed`."
+        },
+        "fingerprintSha256": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/HostKeyState"
+        }
+      },
+      "required": [
+        "state",
+        "algorithm",
+        "fingerprintSha256"
+      ],
+      "type": "object"
+    },
+    "HostKeyFingerprint": {
+      "description": "An SSH host key as the profile stores it and the trust dialog shows it.",
+      "properties": {
+        "algorithm": {
+          "description": "The key's SSH algorithm name: `ssh-ed25519`, `ecdsa-sha2-nistp256`, `ssh-rsa`, ...",
+          "type": "string"
+        },
+        "fingerprintSha256": {
+          "description": "OpenSSH's form, `SHA256:` and the unpadded base64 digest (as `ssh-keygen -lf` prints it).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "fingerprintSha256"
+      ],
+      "type": "object"
+    },
+    "HostKeyState": {
+      "description": "Whether an SSH host key is new or differs from the trusted one (spec §10.2).",
+      "oneOf": [
+        {
+          "const": "unknown",
+          "description": "The profile trusts no key yet: the first connection.",
+          "type": "string"
+        },
+        {
+          "const": "changed",
+          "description": "The host presented another key than the trusted one.",
+          "type": "string"
+        }
+      ]
     },
     "IdConflictPolicy": {
       "description": "What happens when a running workflow with the same ID exists (`WorkflowIdConflictPolicy`).",
@@ -7848,6 +8223,31 @@
       ],
       "type": "string"
     },
+    "SshFacts": {
+      "description": "The connection's SSH side, for the Host page's subtitle.",
+      "properties": {
+        "auth": {
+          "$ref": "#/$defs/DockerAuth"
+        },
+        "hostKey": {
+          "$ref": "#/$defs/HostKeyFingerprint"
+        },
+        "socketPath": {
+          "type": "string"
+        },
+        "target": {
+          "description": "`user@host:port`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "hostKey",
+        "socketPath",
+        "auth"
+      ],
+      "type": "object"
+    },
     "StateTask": {
       "description": "A task of the next step: the node to run, its error, its interrupts.",
       "properties": {
@@ -8808,6 +9208,17 @@
             "string",
             "null"
           ]
+        },
+        "hostKey": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostKeyDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For `HostKey`: what the trust dialog shows."
         },
         "kind": {
           "$ref": "#/$defs/ToolErrorKind"
@@ -9959,6 +10370,73 @@
         "$ref": "#/$defs/AppInfo"
       },
       "perm": "app.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/DockerConnectInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.connect",
+      "output": {
+        "$ref": "#/$defs/DockerConnectOutput"
+      },
+      "perm": "docker.read",
+      "redact": [
+        "profile.privateKey",
+        "profile.passphrase",
+        "profile.password"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 60000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/DockerConnIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.disconnect",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/DockerConnIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.host.info",
+      "output": {
+        "$ref": "#/$defs/HostInfo"
+      },
+      "perm": "docker.read",
       "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -12543,5 +13021,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:9059d224e11ec422420bf6519229bcc5167c2fe538eca2d8bcd7d79d3f53d011"
+  "schema_hash": "sha256:f7ddecc293bfca900eec847d12448b333cc34b74faad065168db648609df336d"
 }

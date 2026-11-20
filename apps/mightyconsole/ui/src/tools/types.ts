@@ -6,6 +6,7 @@ import type { ComponentType, ReactNode } from "react";
 import type { IconDefinition } from "@/lib/icons";
 import type { MightyClient } from "@/app/client";
 import type { ProfileRecord } from "@/profiles/record";
+import type { HostKeyDetails, HostKeyFingerprint } from "@/gen/api";
 
 /** Field errors by field name, as TanStack Form or a plain form shows them. */
 export type FieldErrors = Record<string, string>;
@@ -131,6 +132,8 @@ export interface DescribedError {
   correlationId?: string;
   kind?: string;
   remoteCode?: string;
+  /** For `HostKey`: the key the host presented (spec §10.2), for the trust dialog. */
+  hostKey?: HostKeyDetails;
 }
 
 /** Where a tab is: one of its tool's tab kinds with its params (DOC-21 §3.7). */
@@ -231,4 +234,11 @@ export interface ToolModule {
   connect(client: MightyClient, record: ProfileRecord): Promise<{ connId: string }>;
   /** Releases it (`<tool>.disconnect`). */
   disconnect(client: MightyClient, connId: string): Promise<void>;
+  /**
+   * For a tool that connects over SSH (spec §10.2): the record trusting `key`. The shell calls it
+   * when the person trusts the key a `HostKey` error named, saves the record and connects again.
+   */
+  trustHostKey?(record: ProfileRecord, key: HostKeyFingerprint): ProfileRecord;
+  /** `host:port` of the record, for the trust dialog. */
+  targetOf?(record: ProfileRecord): string;
 }
