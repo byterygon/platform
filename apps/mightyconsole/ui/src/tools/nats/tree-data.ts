@@ -1,5 +1,5 @@
 // What the NATS tree shows once a profile connects (§6.2, the mockup's tree): the account's streams,
-// each with its consumers, and the KV buckets (the `KV_*` streams). Loaded once per connection through the shell's `sidebarData` contract,
+// each with its consumers, the KV buckets (the `KV_*` streams) and the object stores (`OBJ_*`). Loaded once per connection through the shell's `sidebarData` contract,
 // and again when a screen creates or deletes a stream or consumer (`reloadStreams`). JetStream off
 // is kept as the reason, which the Streams group then shows.
 import type { MightyClient } from "@/app/client";
@@ -25,6 +25,8 @@ export interface TreeData {
   streams?: NatsStreamSummary[];
   /** The KV buckets by name, from the same listing. */
   buckets?: string[];
+  /** The object stores by name, from the same listing. */
+  objectStores?: string[];
   /** Consumer names per stream, for the first streams. */
   consumers: Record<string, string[]>;
   /** Why the streams could not be listed (JetStream off, no permission). */
@@ -49,16 +51,18 @@ export function treeDataOf(connId: string): TreeData {
 async function load(connId: string, client: MightyClient): Promise<void> {
   let streams: NatsStreamSummary[];
   let buckets: string[];
+  let objectStores: string[];
   try {
     const all = await client.nats.js.streams.list({ connId });
     streams = all.filter((s) => !isBackingStream(s));
     buckets = all.filter((s) => isBackingStream(s) && s.name.startsWith("KV_")).map((s) => s.name.slice(3));
+    objectStores = all.filter((s) => isBackingStream(s) && s.name.startsWith("OBJ_")).map((s) => s.name.slice(4));
   } catch (e) {
     data.set(connId, { consumers: {}, error: describeError(e).title });
     changed();
     return;
   }
-  data.set(connId, { streams, buckets, consumers: data.get(connId)?.consumers ?? {} });
+  data.set(connId, { streams, buckets, objectStores, consumers: data.get(connId)?.consumers ?? {} });
   changed();
   const lists = streams.slice(0, TREE_CONSUMER_STREAMS).map(async (s) => {
     if (s.consumers === 0) return [s.name, []] as const;
@@ -70,7 +74,7 @@ async function load(connId: string, client: MightyClient): Promise<void> {
     }
   });
   const consumers = Object.fromEntries(await Promise.all(lists));
-  data.set(connId, { streams, buckets, consumers });
+  data.set(connId, { streams, buckets, objectStores, consumers });
   changed();
 }
 
@@ -87,7 +91,7 @@ export const natsTreeData: SidebarData = {
   version: () => version,
 };
 
-/** Lists the streams, consumers and buckets again (after a create or a delete). */
+/** Lists the streams, consumers, buckets and object stores again (after a create or a delete). */
 export function reloadStreams(connId: string, client?: MightyClient): Promise<void> {
   const c = client ?? clients.get(connId);
   if (!c) return Promise.resolve();

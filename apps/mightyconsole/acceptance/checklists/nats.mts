@@ -3,7 +3,7 @@
 // (password, nkey, no-auth default user, TLS, a token server and an operator-mode server for
 // .creds). The UI's: test/nats.test.tsx (jsdom), and a walk through the tool in a browser with
 // screenshots. Each TSK-85 batch wires its items; run
-// `pnpm --filter @byterygon/mightyconsole acceptance nats --lab-up --strict --only connect,core,streams,consumers`
+// `pnpm --filter @byterygon/mightyconsole acceptance nats --lab-up --strict --only connect,core,streams,consumers,kv-objects,services`
 // until every item is wired.
 import { browser, type BrowserContext, cargo, type Checklist, vitest } from "../checklist.mts";
 
@@ -283,7 +283,7 @@ export default {
       id: "kv-objects",
       text: "KV: buckets, keys, get, history, put with an expected revision (and its conflict), delete, purge, watch; Object Store: buckets, list, upload of the 5 MiB file in parts with progress, download, info, delete.",
       lab: true,
-      // KV (batch 3a); Object Store comes with batch 3b, and then the lab workflow runs this item.
+      // KV (batch 3a) and Object Store (batch 3b).
       checks: [
         cargo("keys_and_buckets_are_checked"),
         lab("kv_buckets_keys_get_history_and_the_deleted_key"),
@@ -355,13 +355,97 @@ export default {
           await run(`__mc.click(${vbutton("Delete bucket")})`);
           await until(`__mc.has(${JSON.stringify(`Deleted bucket ${bucket}`)})`, "the deleted bucket");
         }),
+        cargo("object_names_are_checked"),
+        cargo("headers_are_checked"),
+        cargo("digests_match_in_both_forms"),
+        lab("object_store_buckets_list_info_and_download_the_lab_files"),
+        lab("object_store_create_upload_in_parts_replace_abort_and_delete"),
+        vitest("test/nats-objects.test.tsx", "bucket form, names, digests, file names and base64"),
+        vitest("test/nats-objects.test.tsx", "parts go in order"),
+        vitest("test/nats-objects.test.tsx", "a failed part or a cancel aborts the upload"),
+        vitest("test/nats-objects.test.tsx", "a download gathers the stream's chunks"),
+        vitest("test/nats-objects.test.tsx", "the list opens a bucket; New object store creates one"),
+        vitest("test/nats-objects.test.tsx", "objects with the selected one's info"),
+        vitest("test/nats-objects.test.tsx", "Upload: the file's name is the object's"),
+        vitest("test/nats-objects.test.tsx", "Delete an object; Delete the bucket"),
+        browser("the lab's files, an upload of 9 MiB in parts with progress, download, info, delete", async ({ page, origin, until, run, shot }) => {
+          const bucket = `mc_walk_obj_${Date.now().toString(36)}`;
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await until(`__mc.item("files")`, "the files object store in the tree");
+          await run(`__mc.dblclick(__mc.item("files"))`);
+          await until(vbutton("blob-5MiB.bin") + ` && __mc.has("SHA-256")`, "the objects and the info");
+          await shot("the lab's files with an object's info");
+          await run(`__mc.click(${vbutton("Download")})`);
+          await until(`__mc.has("Downloaded blob-5MiB.bin")`, "the 5 MiB download");
+          await shot("downloaded");
+          // An object store of the walk's own: create, upload 9 MiB (three parts), delete.
+          await run(`__mc.dblclick(__mc.item("Object Store"))`);
+          await until(vbutton("New object store"), "the object store list");
+          await shot("object stores");
+          await run(`__mc.click(${vbutton("New object store")})`);
+          await until(vfield("Bucket*"), "the object store form");
+          await run(`__mc.type(${vfield("Bucket*")}, ${JSON.stringify(bucket)})`);
+          await run(`__mc.click(${vbutton("Create object store")})`);
+          await until(`__mc.has(${JSON.stringify(`Created object store ${bucket}`)})`, "the created object store");
+          await run(`__mc.click(${vbutton("Open bucket")})`);
+          await until(`${vbutton("Upload")} && !${vbutton("Upload")}.disabled`, "the bucket");
+          await run(`__mc.click(${vbutton("Upload")})`);
+          await until(`document.querySelector("form[aria-label='Upload an object'] input[type=file]")`, "the upload sheet");
+          await run(`(() => {
+            const input = document.querySelector("form[aria-label='Upload an object'] input[type=file]");
+            const bytes = new Uint8Array(9 * 1024 * 1024);
+            for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 7) % 251;
+            const dt = new DataTransfer();
+            dt.items.add(new File([bytes], "walk-9MiB.bin", { type: "application/octet-stream" }));
+            input.files = dt.files;
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+            return true;
+          })()`);
+          await until(`${vfield("Object name")}?.value === "walk-9MiB.bin"`, "the object name from the file");
+          await shot("an upload chosen");
+          await run(`__mc.click(document.querySelector("button[form='upload-form']"))`);
+          await until(`__mc.has("of 3") || __mc.has("Uploaded walk-9MiB.bin")`, "the upload in parts");
+          await shot("an upload in parts with progress");
+          await until(`__mc.has("Uploaded walk-9MiB.bin")`, "the upload");
+          await until(vbutton("walk-9MiB.bin") + ` && __mc.has("72 of up to 128 KiB")`, "the uploaded object's info");
+          await shot("the uploaded object");
+          await run(`__mc.click(${vbutton("Delete…")})`);
+          await until(`__mc.has("Delete walk-9MiB.bin from")`, "the delete confirmation");
+          await shot("delete an object");
+          await run(`__mc.click(${vbutton("Delete object")})`);
+          await until(`__mc.has("No objects in this bucket.")`, "the object deleted");
+          await run(`__mc.click(${vbutton("More: Delete bucket")})`);
+          await until(`[...document.querySelectorAll("[role=menuitem]")].find((m) => (m.textContent || "").includes("Delete bucket"))`, "the menu");
+          await run(`__mc.click([...document.querySelectorAll("[role=menuitem]")].find((m) => (m.textContent || "").includes("Delete bucket")))`);
+          await until(vfield(`Type ${bucket} to confirm`), "the delete dialog");
+          await run(`__mc.type(${vfield(`Type ${bucket} to confirm`)}, ${JSON.stringify(bucket)})`);
+          await run(`__mc.click(${vbutton("Delete bucket")})`);
+          await until(`__mc.has(${JSON.stringify(`Deleted object store ${bucket}`)})`, "the deleted object store");
+        }),
       ],
     },
     {
       id: "services",
       text: "Services: the lab's echo is discovered with INFO, STATS and PING.",
       lab: true,
-      checks: [],
+      checks: [
+        cargo("subjects_name_the_service_and_instance"),
+        cargo("info_replies_are_read"),
+        cargo("stats_replies_are_read_from_every_client"),
+        cargo("only_service_replies_count"),
+        lab("services_discover_stats_and_ping_the_lab_echo"),
+        vitest("test/nats-objects.test.tsx", "the services with PING"),
+        vitest("test/nats-objects.test.tsx", "nobody answers; STATS failing leaves the list"),
+        browser("the lab's echo with its endpoints, STATS and PING", async ({ page, origin, until, run, shot }) => {
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await until(`__mc.item("Services")`, "Services in the tree");
+          await run(`__mc.dblclick(__mc.item("Services"))`);
+          await until(vbutton("echo") + ` && __mc.has("lab.echo.upper") && __mc.has("answered within 2 s")`, "the echo service");
+          await shot("services with endpoints, STATS and PING");
+        }),
+      ],
     },
     {
       id: "schemas",
