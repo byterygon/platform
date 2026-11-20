@@ -248,7 +248,7 @@ const diff: RoleDef[] = DIFFS.flatMap(([name, rampName, what]): RoleDef[] => [
 ]);
 
 // ---------------------------------------------------------------------------------------------
-// Terminal (Mightyconsole spec §15, TSK-81): the Terminal (xterm.js) and the LogViewer's ANSI
+// Terminal (Mightyconsole spec §12, TSK-81): the Terminal (xterm.js) and the LogViewer's ANSI
 // colours. The sixteen ANSI colours are text, so each is a step that reads on terminal.bg: the
 // normal colours step 11, the bright ones a step apart (light 10, a solid; dark 12). Black and
 // white are the neutral ramp's text steps, so a program that prints black on the default

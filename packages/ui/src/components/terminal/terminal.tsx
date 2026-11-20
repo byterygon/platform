@@ -3,7 +3,7 @@ import { cn } from "@/lib/cn";
 import { tokenReader } from "@/lib/token-reader";
 import { loadXterm, xtermMetrics, xtermTheme } from "@/lib/xterm";
 
-// A terminal (Mightyconsole spec §15, TSK-81): xterm.js loaded lazily from the app's own bundle
+// A terminal (Mightyconsole spec §12, TSK-81): xterm.js loaded lazily from the app's own bundle
 // (@/lib/xterm), themed from the terminal.* roles of its region and rethemed when the region's
 // data-theme or data-density or a stylesheet changes. It knows no transport: keystrokes leave as
 // bytes through `onData`, size changes through `onResize`, and the app writes the process's output

@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/control";
 import { tokenPx } from "@/lib/theme-scope";
 
-// Log lines as they arrive (Mightyconsole spec §15, TSK-81): container and pod logs, a Compose
+// Log lines as they arrive (Mightyconsole spec §12, TSK-81): container and pod logs, a Compose
 // project's merged logs. Lines go in through `ref.append` and live in a plain array, not in React
 // state, so 50,000 lines cost one render per animation frame and the rows in view only. The oldest
 // lines are dropped beyond `maxLines`. ANSI SGR colours and bold, italic, underline map to the

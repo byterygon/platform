@@ -3,7 +3,7 @@ import type { SearchAddon } from "@xterm/addon-search";
 import type { ITheme, Terminal } from "@xterm/xterm";
 import type { TokenReader } from "@/lib/token-reader";
 
-// xterm.js for Byterygon UI (Mightyconsole spec §15, TSK-81): loaded lazily from the app's own
+// xterm.js for Byterygon UI (Mightyconsole spec §12, TSK-81): loaded lazily from the app's own
 // bundle, never from a CDN, with its stylesheet, the fit addon (the terminal follows its element's
 // size) and the search addon; its theme comes from the terminal.* roles in scope at the terminal's
 // element. The Terminal component imports it.
