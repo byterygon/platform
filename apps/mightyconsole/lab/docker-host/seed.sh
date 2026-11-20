@@ -11,5 +11,8 @@ if ! docker inspect stopped >/dev/null 2>&1; then
 fi
 if ! docker inspect tty >/dev/null 2>&1; then
   docker run -d -t --name tty --network lab-net $BUSYBOX sh -c 'while true; do printf "\033[32mgreen\033[0m tty line\n"; sleep 3; done' >/dev/null
+else
+  # Kept from an earlier run of the lab (its volume): running again, as the checks expect.
+  docker start tty >/dev/null
 fi
 echo "docker-host: project shop, containers stopped and tty, volume lab-cache, network lab-net"
