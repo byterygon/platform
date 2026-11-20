@@ -616,8 +616,16 @@ const WIDGET_RULES = [
   // The note stays muted on the chosen row too (Monaco gives it the row's colour).
   `${ROW}.focused > .contents > .main > .right > .details-label { color: var(--by-color-fg-muted); opacity: 1; }`,
   `${ROW} > .contents > .main > .right > .details-label { opacity: 1; }`,
-  // The details pane and hovers in the UI font, code in the editor's.
-  `${W} .suggest-details, ${W} .monaco-hover { font-family: var(--by-font-sans); font-size: var(--by-text-caption-1-size); line-height: var(--by-text-caption-1-leading); }`,
+  // The details pane and hovers in the UI font, code in the editor's. Monaco sets the editor's
+  // font size inline on the details pane itself, so the text takes it on the pane's body.
+  `${W} .suggest-details .body, ${W} .monaco-hover { font-family: var(--by-font-sans); font-size: var(--by-text-caption-1-size); line-height: var(--by-text-caption-1-leading); }`,
+  `${W} .suggest-details .docs p { margin-block: 0 var(--by-space-1-5); }`,
+  // Monaco sizes the details pane once, before its Markdown has its final width, and leaves room
+  // under short text; the pane takes its text's height, at most the room Monaco gave it.
+  `${W} .suggest-details-container > .suggest-details { height: auto !important; max-height: 100%; }`,
+  // (Its scrollable wrapper is selected as `> *`: the class name Monaco gives it marks Monaco's own
+  // chunks for the bundle checks, and this file is in the page's first chunk.)
+  `${W} .suggest-details-container > .suggest-details > *, ${W} .suggest-details-container > .suggest-details .body { height: auto !important; max-height: 100%; }`,
   `${W} .suggest-details code, ${W} .monaco-hover code, ${W} .suggest-details .header .type { font-family: var(--by-font-mono); }`,
 ];
 

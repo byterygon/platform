@@ -14,7 +14,8 @@ import type { ProfileRecord } from "@/profiles/record";
 import { AssistantTab } from "@/tools/langgraph/assistants";
 import { DEFAULT_URL, parseHeaderLines, profile } from "@/tools/langgraph/index";
 import { EMPTY_RUN, eventName, parseChunk, reduceRun, type RunEvent } from "@/tools/langgraph/run-events";
-import { toGraphView } from "@/tools/langgraph/shared";
+import { JsonField, schemaProblems, toGraphView } from "@/tools/langgraph/shared";
+import { fake as monacoFake } from "../../../../packages/ui/test/fakes/monaco.ts";
 import { StoreTab } from "@/tools/langgraph/store";
 import { ThreadTab, defaultInput } from "@/tools/langgraph/thread";
 import { ThreadsTab } from "@/tools/langgraph/threads";
@@ -413,5 +414,48 @@ describe("screens", () => {
     await click(buttonNamed("Put item"));
     expect(document.body.textContent).toContain("Put an item");
     expect(await axeViolations()).toEqual([]);
+  });
+});
+
+describe("JsonField (TSK-94)", () => {
+  const schema = { type: "object", required: ["customer_id"], properties: { customer_id: { type: "string" } } };
+
+  test("the schema's problems as one line, or a count and a list", () => {
+    expect(schemaProblems([], "x")).toBeNull();
+    expect(schemaProblems([{ line: 6, column: 3, message: 'Missing property "customer_id".', severity: "error" }], "support-agent's input schema")).toEqual({
+      summary: '1 problem: missing property "customer_id" (required by support-agent\'s input schema)',
+      items: [],
+    });
+    expect(
+      schemaProblems(
+        [
+          { line: 2, column: 3, message: "Incorrect type. Expected \"string\".", severity: "error" },
+          { line: 4, column: 3, message: "Property extra is not allowed.", severity: "warning" },
+        ],
+        "the config schema",
+      ),
+    ).toEqual({ summary: "2 problems with the config schema:", items: ['line 2: incorrect type. Expected "string"', "line 4: property extra is not allowed"] });
+  });
+
+  test("sized by its rows; the parse error alone while the text does not parse, else the schema's problems", async () => {
+    function Harness({ initial }: { initial: string }) {
+      const [v, setV] = useState(initial);
+      return <JsonField label="Input" value={v} onChange={setV} rows={7} schema={schema} schemaLabel="support-agent's input schema" />;
+    }
+    render(<Harness initial="{" />);
+    await settle(3);
+    const editor = monacoFake.editors.at(-1)!;
+    expect(editor.options).toMatchObject({ lineNumbersMinChars: 2, folding: false });
+    await act(async () => monacoFake.report([{ startLineNumber: 1, startColumn: 1, message: "Expected a JSON object.", severity: 8, owner: "json" }]));
+    expect(document.body.textContent).toContain("Not valid JSON");
+    expect(document.querySelector("[data-schema-problems]")).toBeNull();
+    cleanup();
+    monacoFake.reset();
+    render(<Harness initial={'{ "messages": [] }'} />);
+    await settle(3);
+    await act(async () => monacoFake.report([{ startLineNumber: 1, startColumn: 1, message: 'Missing property "customer_id".', severity: 8, owner: "json" }]));
+    expect(document.querySelector("[data-schema-problems]")!.textContent).toContain('1 problem: missing property "customer_id" (required by support-agent\'s input schema)');
+    expect(document.querySelector('[data-slot="code-editor"]')!.hasAttribute("data-invalid")).toBe(false);
+    monacoFake.reset();
   });
 });

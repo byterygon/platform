@@ -117,6 +117,7 @@ def check_kafka_listeners():
 
 
 async def check_temporal():
+    from temporalio.api.operatorservice.v1 import ListSearchAttributesRequest
     from temporalio.client import Client
 
     client = await Client.connect("temporal:7233", namespace="lab")
@@ -134,6 +135,11 @@ async def check_temporal():
         await asyncio.sleep(1)
     for wid in family:
         expect(wid in seen, f"temporal: workflow {wid} of the family is missing")
+    # The custom search attribute (TSK-94): registered, and on the samples.
+    listed = await client.operator_service.list_search_attributes(ListSearchAttributesRequest(namespace="lab"))
+    expect("OrderId" in listed.custom_attributes, "temporal: the custom search attribute OrderId is not registered in namespace lab")
+    tagged = [wf.id async for wf in client.list_workflows('OrderId = "ord-long"')]
+    expect(tagged == ["fulfilment-long-running"], f"temporal: OrderId = \"ord-long\" finds {tagged}")
     status = await client.get_workflow_handle("fulfilment-long-running").query("status")
     expect(status == "waiting for approval", f"temporal: fulfilment says {status!r}")
     schedules = [s.id async for s in await client.list_schedules()]
@@ -164,6 +170,10 @@ def check_langgraph():
         expect(len(history) >= 4, f"langgraph: the history thread has {len(history)} checkpoints")
     graph = requests.get(f"{base}/assistants/{assistants[0]['assistant_id']}/graph", params={"xray": "true"}, timeout=10).json()
     expect(len(graph.get("nodes", [])) >= 5, "langgraph: the graph has fewer than 5 nodes")
+    # The context schema (TSK-94), for the Run form's Context field.
+    schemas = requests.get(f"{base}/assistants/{assistants[0]['assistant_id']}/schemas", timeout=10).json()
+    context = schemas.get("context_schema") or {}
+    expect("user_id" in context.get("properties", {}), f"langgraph: the context schema has no user_id ({context})")
 
 
 CHECKS = {"nats": lambda: asyncio.run(check_nats()), "kafka": check_kafka, "kafka-listeners": check_kafka_listeners, "temporal": lambda: asyncio.run(check_temporal()), "langgraph": check_langgraph}

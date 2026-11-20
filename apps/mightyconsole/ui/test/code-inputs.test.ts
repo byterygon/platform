@@ -52,16 +52,48 @@ describe("temporal-visibility", () => {
     expect(tokenize('WorkflowType = "Ord').at(-1)).toMatchObject({ kind: "string", closed: false });
   });
 
-  test("at the start: saved and recent queries replacing the text, then the attributes, custom first", async () => {
+  test("at the start: recent and saved queries replacing the text, then the attributes, built-in first", async () => {
     const items = await ask(source, "");
-    const queries = items.filter((i) => i.kind === "history").sort((a, b) => a.sortText!.localeCompare(b.sortText!));
-    expect(queries.map((i) => [i.label, i.detail])).toEqual([['ExecutionStatus = "Failed"', "saved: Failed today"], ['WorkflowType = "OrderWorkflow"', "recent"]]);
+    const queries = items.filter((i) => i.kind === "history" || i.kind === "saved").sort((a, b) => a.sortText!.localeCompare(b.sortText!));
+    expect(queries.map((i) => [i.label, i.detail, i.insertText])).toEqual([
+      ['WorkflowType = "OrderWorkflow"', "recent", 'WorkflowType = "OrderWorkflow"'],
+      ["Failed today", "saved", 'ExecutionStatus = "Failed"'],
+    ]);
     expect(queries[0]!.replace).toEqual({ start: 0, end: 0 });
-    expect(queries.every((q) => q.sortText! < "1")).toBe(true);
-    const fields = items.filter((i) => i.kind === "field").sort((a, b) => a.sortText!.localeCompare(b.sortText!));
-    expect(fields.map((f) => f.label)).toEqual(["Amount", "Customer Tier", "Paused", "ExecutionStatus", "StartTime", "WorkflowType"]);
+    const fields = items.filter((i) => attributes.some((a) => a.name === i.label)).sort((a, b) => a.sortText!.localeCompare(b.sortText!));
+    expect(queries.every((q) => q.sortText! < fields[0]!.sortText!)).toBe(true);
+    // Built-in before custom (TSK-94, DOC-21 Open question 45).
+    expect(fields.map((f) => f.label)).toEqual(["ExecutionStatus", "StartTime", "WorkflowType", "Amount", "Customer Tier", "Paused"]);
     expect(fields.find((f) => f.label === "Customer Tier")).toMatchObject({ insertText: "`Customer Tier`", detail: "Keyword · custom" });
     expect(await labels("Wor")).toContain("WorkflowType");
+  });
+
+  test("while typing: recent and saved queries after the attributes, as one more clause later in the query", async () => {
+    const items = await ask(source, "Ex");
+    const fields = items.filter((i) => attributes.some((a) => a.name === i.label));
+    const queries = items.filter((i) => i.kind === "history" || i.kind === "saved");
+    expect(queries.map((q) => q.detail)).toEqual(["recent", "saved"]);
+    expect(queries.every((q) => fields.every((f) => q.sortText! > f.sortText!))).toBe(true);
+    expect(queries[0]!.replace).toEqual({ start: 0, end: 2 });
+    const later = await ask(source, 'WorkflowType = "OrderWorkflow" AND Ex');
+    const saved = later.find((i) => i.kind === "saved")!;
+    expect(saved).toMatchObject({ insertText: '(ExecutionStatus = "Failed")', filterText: 'Failed today ExecutionStatus = "Failed"' });
+    expect(saved.replace).toBeUndefined();
+  });
+
+  test("attributes: an icon per type and a details pane with what they hold, their values and an example", async () => {
+    const items = await ask(source, "");
+    const kind = (label: string) => items.find((i) => i.label === label)!.kind;
+    expect([kind("ExecutionStatus"), kind("StartTime"), kind("Amount"), kind("Paused")]).toEqual(["keyword-value", "date", "number", "boolean"]);
+    const doc = (label: string) => (items.find((i) => i.label === label)!.documentation as { markdown: string }).markdown;
+    expect(doc("ExecutionStatus")).toContain("**ExecutionStatus** · Keyword · built-in");
+    expect(doc("ExecutionStatus")).toContain("Values: `Running`, `Completed`, `Failed`");
+    expect(doc("ExecutionStatus")).toContain('Example: `ExecutionStatus = "Running"`');
+    expect(doc("WorkflowType")).toContain("Seen in the list: `OrderWorkflow`, `ShipWorkflow`.");
+    expect(doc("Customer Tier")).toContain("· custom");
+    expect(doc("Customer Tier")).toContain('Example: `` `Customer Tier` = "…" ``');
+    expect(doc("StartTime")).toContain('Example: `StartTime > "2026-11-18T00:00:00Z"`');
+    expect(doc("Paused")).toContain("Example: `Paused = true`");
   });
 
   test("after an attribute, the operators of its type", async () => {

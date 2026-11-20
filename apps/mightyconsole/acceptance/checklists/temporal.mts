@@ -4,6 +4,7 @@
 // destructive actions are proved by the cargo tests on workflows they start themselves; the browser
 // opens their confirmations but never confirms one, so the lab's seeded workflows stay as they are.
 import { browser, cargo, type Checklist, command, manual, vitest } from "../checklist.mts";
+import { APPEARANCES, appearance, openSuggestions, suggestionRows, suggestionsOnTop, typeInEditor } from "../editors.mts";
 
 /** One cargo check per test function (the filter names the function), against the lab. */
 const lab = (...names: string[]) => names.map((name) => cargo(name, { features: ["lab-tests"] }));
@@ -128,6 +129,28 @@ export default {
           await pickStatus(ctx, "Running");
           await until(`__mc.has("fulfilment-long-running") && __mc.has("retrying-1") && !__mc.has("failed-1")`, "the Running status");
           await shot("filtered by Running");
+        }),
+        // TSK-94: the query's suggestions, as the mockup's temporal-workflows frame: built-in
+        // attributes before the namespace's custom one (the lab registers OrderId), each with its
+        // type, over the table's sticky header, in every appearance.
+        browser("the query's suggestions: built-in then custom attributes, over the table (TSK-94)", async (ctx) => {
+          const { until, run, shot } = ctx;
+          await connectLab(ctx);
+          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await until(`__mc.has(" workflows") && __mc.has("fulfilment-long-running")`, "the workflow list");
+          await typeInEditor(ctx, "Visibility query", "Or");
+          await openSuggestions(ctx);
+          await until(`[...document.querySelectorAll("[data-slot=code-editor-overflow] .suggest-widget.visible .monaco-list-row")].some((r) => r.textContent.includes("OrderId") && r.textContent.includes("Keyword · custom"))`, "OrderId offered as a custom Keyword");
+          await typeInEditor(ctx, "Visibility query", 'WorkflowType = "Fulfilment" AND Ex');
+          for (const [theme, density] of APPEARANCES) {
+            await appearance(ctx, theme, density);
+            await openSuggestions(ctx, theme === "light" && density === "comfortable");
+            const rows = await suggestionRows(ctx);
+            if (!rows.some((r) => r.includes("ExecutionStatus") && r.includes("Keyword"))) throw new Error(`no ExecutionStatus suggestion: ${JSON.stringify(rows)}`);
+            if (!(await suggestionsOnTop(ctx))) throw new Error(`${theme}/${density}: a suggestion row is covered`);
+            await shot(`query suggestions, ${theme}, ${density}`);
+          }
+          await appearance(ctx, "light", "comfortable");
         }),
       ],
     },
