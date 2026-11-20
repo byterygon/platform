@@ -2,8 +2,8 @@
 // server's checks: tests/docker.rs against a stand-in SSH server, tests/docker_lab.rs (feature
 // lab-tests) against the lab's sshd and Docker. The UI's: test/docker.test.tsx and
 // test/docker-containers.test.tsx (jsdom), and a walk in the browser against the lab. Batch 1
-// wired host-key and errors, batch 2b the containers and the logs; stats, exec and the resources
-// come with their batches. Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
+// wired host-key and errors, batch 2b the containers and the logs, batch 2c stats and exec; the
+// resources come with their batch. Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -131,7 +131,47 @@ export default {
           await until(`!__mc.has("worker tick") && __mc.has("warning")`, "stderr only");
           await shot("logs, stderr only");
         }),
-        manual("Stats and the exec terminal: TSK-81 batch 2c"),
+        cargo("an_exec_terminal_takes_input_resizes_and_ends_with_the_exit_code"),
+        cargo("stats_come_as_samples_and_a_stopped_container_has_none"),
+        lab("lab_an_exec_shell_and_live_stats"),
+        vitest("test/docker-containers.test.tsx", "stats and the terminal"),
+        browser("the worker's stats, then a shell in it to its exit code", async ({ page, origin, lab: credentials, until, run, shot }) => {
+          const tab = (label: string) => `__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === ${JSON.stringify(label)} && t.offsetParent !== null))`;
+          const rows = `([...document.querySelectorAll("[role=tabpanel]:not([hidden]) .xterm-rows")].map((r) => r.textContent).join("\\n"))`;
+          /** Types a line into xterm.js as a keyboard does (its hidden text area, then Enter). */
+          const typeLine = async (text: string) => {
+            await run(`document.querySelector("[role=tabpanel]:not([hidden]) .xterm-helper-textarea").focus()`);
+            await page.send("Input.insertText", { text });
+            for (const type of ["keyDown", "keyUp"]) await page.send("Input.dispatchKeyEvent", { type, key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, ...(type === "keyDown" ? { text: "\r" } : {}) });
+          };
+          await page.navigate(`${origin}/`);
+          await labTree({ lab: credentials, until, run, shot });
+          await run(`__mc.dblclick(__mc.item("Containers"))`);
+          await until(`${visible("shop-worker-1")}`, "the containers");
+          await run(`__mc.click(${visible("shop-worker-1")})`);
+          await until(`__mc.has("Environment")`, "the worker's overview");
+          await run(tab("Stats"));
+          await until(`location.pathname.endsWith("/shop-worker-1/stats") && __mc.has("PIDs") && /of \\d+ CPUs?/.test(document.body.textContent)`, "the stat tiles");
+          // A few samples, so the charts have lines.
+          await until(`document.querySelectorAll("[role=tabpanel]:not([hidden]) [aria-label='Samples, newest first'] tbody tr").length > 0 || (${visible("Table")} && (__mc.click(${visible("Table")}), false))`, "the samples table", 10_000);
+          await until(`document.querySelectorAll("[role=tabpanel]:not([hidden]) [aria-label='Samples, newest first'] tbody tr").length >= 3`, "three samples", 10_000);
+          await shot("stats, samples");
+          await run(`__mc.click(${visible("Table")})`);
+          await until(`document.querySelector("[aria-label='CPU, last 5 minutes']")`, "the charts");
+          await shot("stats, charts");
+          await run(tab("Terminal"));
+          await until(`location.pathname.endsWith("/shop-worker-1/terminal") && ${visible("Connect")}`, "the terminal's Connect");
+          await run(`__mc.click(${visible("Connect")})`);
+          await until(`${visible("Disconnect")} && ${rows}.includes("#")`, "sh's prompt (busybox has no bash)");
+          await typeLine("echo hi-$((1+2))");
+          await until(`${rows}.includes("hi-3")`, "the command's output");
+          await typeLine("stty size");
+          await until(`/\\d+ \\d+/.test(${rows}.split("stty size")[1] ?? "")`, "the TTY's size");
+          await shot("terminal");
+          await typeLine("exit 3");
+          await until(`__mc.has("Exited with code 3") && ${rows}.includes("[exited with code 3]")`, "the exit code");
+          await shot("terminal, exited");
+        }),
       ],
     },
     {

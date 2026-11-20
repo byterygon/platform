@@ -7,7 +7,7 @@
 //!   socket per request, the API version negotiated from `/_ping` (at least 1.41).
 //! - `docker.connect`, `docker.disconnect`, `docker.host.info` (batch 1).
 //! - [`containers`]: `docker.containers.*`, the list, inspect, start, stop, restart, remove and
-//!   the logs stream (batch 2b); stats and exec follow in batch 2c.
+//!   the logs stream (batch 2b); [`stats`] and [`exec`] (batch 2c).
 //! - [`events`]: `docker.events`, the host's events that keep the lists live, and
 //!   `docker.compose.projects` from the containers' labels.
 //! - [`stream`]: the `jsonl` forwarding the logs and the events share.
@@ -19,7 +19,9 @@
 pub mod containers;
 pub mod engine;
 pub mod events;
+pub mod exec;
 pub mod ssh;
+pub mod stats;
 pub mod stream;
 pub mod types;
 

@@ -33,7 +33,7 @@ pub fn ended() -> RpcError<ToolError> {
     RpcError::new(Code::Cancelled, "the connection was closed")
 }
 
-fn read_error(e: hyper::Error) -> ToolError {
+pub fn read_error(e: hyper::Error) -> ToolError {
     ToolError::new(
         ToolErrorKind::Remote,
         TOOL,

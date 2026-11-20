@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
-use hyper::header::{CONTENT_TYPE, HOST, USER_AGENT};
+use hyper::header::{CONNECTION, CONTENT_TYPE, HOST, UPGRADE, USER_AGENT};
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use serde::de::DeserializeOwned;
@@ -100,7 +100,62 @@ impl Engine {
         path: &str,
         body: Option<&Value>,
     ) -> Result<Response<Incoming>, ToolError> {
-        send(&self.ssh, &self.socket_path, method, &self.path(path), body).await
+        send(
+            &self.ssh,
+            &self.socket_path,
+            method,
+            &self.path(path),
+            body,
+            false,
+        )
+        .await
+    }
+
+    /// `POST` with the connection upgraded (`Upgrade: tcp`, as `docker exec -it` does): the
+    /// answer is `101 Switching Protocols` and the channel then carries the process's TTY both
+    /// ways. Any other answer is read as the error.
+    pub async fn upgrade(
+        &self,
+        path: &str,
+        body: &Value,
+        resource: &str,
+    ) -> Result<hyper::upgrade::Upgraded, ToolError> {
+        let call = async {
+            let response = send(
+                &self.ssh,
+                &self.socket_path,
+                Method::POST,
+                &self.path(path),
+                Some(body),
+                true,
+            )
+            .await?;
+            let status = response.status();
+            if status != StatusCode::SWITCHING_PROTOCOLS {
+                let bytes = read_body(response, 64 * 1024).await?;
+                return Err(if status.is_success() {
+                    ToolError::new(
+                        ToolErrorKind::Remote,
+                        TOOL,
+                        format!(
+                            "Docker answered {path} with {status} instead of switching to the TTY"
+                        ),
+                    )
+                } else {
+                    http_error(status, &bytes, resource)
+                });
+            }
+            hyper::upgrade::on(response).await.map_err(|e| {
+                ToolError::new(
+                    ToolErrorKind::Remote,
+                    TOOL,
+                    format!("switching {path} to the TTY failed: {e}"),
+                )
+            })
+        };
+        tokio::time::timeout(CALL_TIMEOUT, call)
+            .await
+            .unwrap_or_else(|_| Err(no_answer(path, CALL_TIMEOUT)))
     }
 
     /// A JSON call; `resource` names what a 404 means (`container`, `image`, ...).
@@ -204,7 +259,7 @@ async fn ping(ssh: &SshSession, socket_path: &str) -> Result<(ApiVersion, Ping),
     let started = Instant::now();
     let response = tokio::time::timeout(
         CALL_TIMEOUT,
-        send(ssh, socket_path, Method::GET, "/_ping", None),
+        send(ssh, socket_path, Method::GET, "/_ping", None, false),
     )
     .await
     .unwrap_or_else(|_| Err(no_answer("/_ping", CALL_TIMEOUT)))?;
@@ -258,6 +313,7 @@ async fn send(
     method: Method,
     path: &str,
     body: Option<&Value>,
+    upgrade: bool,
 ) -> Result<Response<Incoming>, ToolError> {
     let stream = ssh.open_socket(socket_path).await?;
     let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
@@ -283,6 +339,9 @@ async fn send(
             USER_AGENT,
             concat!("mightyconsole/", env!("CARGO_PKG_VERSION")),
         );
+    if upgrade {
+        request = request.header(CONNECTION, "Upgrade").header(UPGRADE, "tcp");
+    }
     let body = match body {
         Some(value) => {
             request = request.header(CONTENT_TYPE, "application/json");

@@ -65,6 +65,13 @@ fn the_procedures_of_the_spec() {
         ),
         // Containers and events (TSK-81 batch 2b): stop and restart wait out the grace period.
         (
+            "docker.containers.exec",
+            Stream,
+            "docker.write",
+            Risk::Write,
+            live,
+        ),
+        (
             "docker.containers.inspect",
             Query,
             "docker.read",
@@ -114,6 +121,13 @@ fn the_procedures_of_the_spec() {
                 Some(Duration::from_secs(120)),
                 Some(Duration::from_secs(300)),
             ),
+        ),
+        (
+            "docker.containers.stats",
+            Stream,
+            "docker.read",
+            Risk::Read,
+            live,
         ),
         (
             "docker.containers.stop",

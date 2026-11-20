@@ -168,7 +168,7 @@ impl server::Handler for Host {
         reply.accept().await;
         let paths = Arc::clone(&self.seen.paths);
         tokio::spawn(async move {
-            let service = hyper::service::service_fn(move |request: Request<_>| {
+            let service = hyper::service::service_fn(move |mut request: Request<_>| {
                 let paths = Arc::clone(&paths);
                 async move {
                     let path = request.uri().path().to_owned();
@@ -177,11 +177,24 @@ impl server::Handler for Host {
                         .path_and_query()
                         .map_or(path.clone(), |p| p.to_string());
                     paths.lock().unwrap().push(full);
+                    if path == "/v1.47/exec/e1/start" {
+                        let upgrade = hyper::upgrade::on(&mut request);
+                        tokio::spawn(fake_process(upgrade));
+                        return Ok::<_, Infallible>(
+                            Response::builder()
+                                .status(101)
+                                .header("connection", "Upgrade")
+                                .header("upgrade", "tcp")
+                                .body(Full::default())
+                                .unwrap(),
+                        );
+                    }
                     Ok::<_, Infallible>(engine(api, request.method(), &path))
                 }
             });
             let _ = hyper::server::conn::http1::Builder::new()
                 .serve_connection(TokioIo::new(channel.into_stream()), service)
+                .with_upgrades()
                 .await;
         });
         Ok(())
@@ -193,6 +206,42 @@ fn json_response(body: Value) -> Response<Full<Bytes>> {
         .header("content-type", "application/json")
         .body(Full::new(Bytes::from(body.to_string())))
         .unwrap()
+}
+
+/// The exec's process on the upgraded connection: a prompt, each line typed echoed back in
+/// capitals, `exit` ends it (exit code 3, from `/exec/e1/json`).
+async fn fake_process(upgrade: hyper::upgrade::OnUpgrade) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Ok(io) = upgrade.await else { return };
+    let mut io = TokioIo::new(io);
+    let _ = io.write_all(b"$ ").await;
+    let mut line = Vec::new();
+    let mut buf = [0u8; 256];
+    while let Ok(n) = io.read(&mut buf).await {
+        if n == 0 {
+            return;
+        }
+        for &b in &buf[..n] {
+            if b == b'\r' {
+                if line == b"exit" {
+                    let _ = io.write_all(b"\r\nbye\r\n").await;
+                    let _ = io.shutdown().await;
+                    return;
+                }
+                let reply = format!(
+                    "\r\n{}\r\n$ ",
+                    String::from_utf8_lossy(&line).to_uppercase()
+                );
+                let _ = io.write_all(reply.as_bytes()).await;
+                line.clear();
+            } else if b == 0x03 {
+                let _ = io.write_all(b"^C\r\n$ ").await;
+                line.clear();
+            } else {
+                line.push(b);
+            }
+        }
+    }
 }
 
 /// A log frame: stream byte, three zero bytes, big-endian length, payload.
@@ -263,6 +312,30 @@ fn engine(api: &str, method: &hyper::Method, path: &str) -> Response<Full<Bytes>
                 json!({ "message": "cannot remove container \"/shop-web-1\": container is running: stop the container before removing or force remove" }).to_string(),
             )))
             .unwrap(),
+        (&Method::POST, "/v1.47/containers/web/exec") => json_response(json!({ "Id": "e1" })),
+        (&Method::POST, "/v1.47/exec/e1/resize") => no_content(201),
+        (&Method::GET, "/v1.47/exec/e1/json") => {
+            json_response(json!({ "Running": false, "ExitCode": 3 }))
+        }
+        (&Method::GET, "/v1.47/containers/web/stats") => bytes_response(
+            [
+                json!({ "read": "2026-11-20T07:00:01Z",
+                        "cpu_stats": { "cpu_usage": { "total_usage": 100 }, "system_cpu_usage": 1000, "online_cpus": 2 },
+                        "precpu_stats": { "cpu_usage": { "total_usage": 0 } },
+                        "memory_stats": { "usage": 2048, "limit": 4096, "stats": { "inactive_file": 1024 } },
+                        "pids_stats": { "current": 3 } }),
+                json!({ "read": "2026-11-20T07:00:02Z",
+                        "cpu_stats": { "cpu_usage": { "total_usage": 600 }, "system_cpu_usage": 2000, "online_cpus": 2 },
+                        "precpu_stats": { "cpu_usage": { "total_usage": 100 }, "system_cpu_usage": 1000 },
+                        "memory_stats": { "usage": 3072, "limit": 4096, "stats": { "inactive_file": 1024 } },
+                        "networks": { "eth0": { "rx_bytes": 10, "tx_bytes": 5 } },
+                        "pids_stats": { "current": 4 } }),
+            ]
+            .iter()
+            .map(|e| format!("{e}\n"))
+            .collect::<String>()
+            .into_bytes(),
+        ),
         (&Method::GET, "/v1.47/events") => bytes_response(
             [
                 json!({ "Type": "container", "Action": "start", "Actor": { "ID": "aaa1", "Attributes": { "name": "shop-web-1" } }, "timeNano": 1_795_161_601_000_000_000u64 }),
@@ -767,4 +840,161 @@ async fn containers_are_listed_acted_on_and_their_logs_split_by_stream() {
     ), "{paths:?}");
     assert!(paths.contains(&"/v1.47/containers/stopped?force=0&v=1".to_owned()));
     assert!(!paths.iter().any(|p| p.contains("images")));
+}
+
+/// The terminal's output until it shows `needle` (channel byte 1 first in every chunk).
+async fn output_until(tab: &mut Tab, id: u32, needle: &str) -> String {
+    let mut text = String::new();
+    while !text.contains(needle) {
+        let chunk = tab.chunk(id).await;
+        assert_eq!(chunk[0], 1, "the stdout channel");
+        text.push_str(&String::from_utf8_lossy(&chunk[1..]));
+        tab.client.credit(id, 1).await;
+    }
+    text
+}
+
+fn b64(text: &str) -> String {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.encode(text)
+}
+
+#[tokio::test]
+async fn an_exec_terminal_takes_input_resizes_and_ends_with_the_exit_code() {
+    let (_t, lab, mut tab) = setup().await;
+    tab.call(
+        2,
+        "docker.connect",
+        json!({ "profile": lab.profile(json!({})) }),
+    )
+    .await;
+    let conn_id = tab.result(2).await["connId"].as_str().unwrap().to_owned();
+
+    tab.call(
+        3,
+        "docker.containers.exec",
+        json!({ "connId": conn_id, "id": "web", "cols": 100, "rows": 30, "terminalId": "term-1" }),
+    )
+    .await;
+    output_until(&mut tab, 3, "$ ").await;
+    tab.call(
+        4,
+        "term.write",
+        json!({ "terminalId": "term-1", "data": b64("hello\r") }),
+    )
+    .await;
+    tab.result(4).await;
+    output_until(&mut tab, 3, "HELLO").await;
+    tab.call(
+        5,
+        "term.signal",
+        json!({ "terminalId": "term-1", "signal": "interrupt" }),
+    )
+    .await;
+    tab.result(5).await;
+    output_until(&mut tab, 3, "^C").await;
+    tab.call(
+        6,
+        "term.resize",
+        json!({ "terminalId": "term-1", "cols": 120, "rows": 40 }),
+    )
+    .await;
+    tab.result(6).await;
+    tab.call(
+        7,
+        "term.write",
+        json!({ "terminalId": "term-1", "data": b64("exit\r") }),
+    )
+    .await;
+    tab.result(7).await;
+    let mut text = String::new();
+    let summary = loop {
+        let frame = tab.frame(3).await;
+        match frame.kind {
+            ambidex::Kind::Chunk => {
+                text.push_str(&String::from_utf8_lossy(&frame.payload[1..]));
+                tab.client.credit(3, 1).await;
+            }
+            ambidex::Kind::StreamEnd => {
+                break serde_json::from_slice::<Value>(&frame.payload).unwrap();
+            }
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    };
+    assert!(text.contains("bye"), "{text}");
+    assert_eq!(summary, json!({ "exitCode": 3 }));
+    let exit = tab
+        .event(1, |e| {
+            e["kind"] == "TerminalExit" && e["terminalId"] == "term-1"
+        })
+        .await;
+    assert_eq!(exit["exitCode"], 3);
+    assert_eq!(exit["reason"], "exited with code 3");
+    // The terminal is gone: more input is NotFound.
+    tab.call(
+        8,
+        "term.write",
+        json!({ "terminalId": "term-1", "data": b64("x") }),
+    )
+    .await;
+    tab.error(8, Code::NotFound).await;
+
+    let paths = lab.seen.paths.lock().unwrap().clone();
+    assert!(
+        paths.contains(&"/v1.47/exec/e1/resize?h=30&w=100".to_owned()),
+        "{paths:?}"
+    );
+    assert!(
+        paths.contains(&"/v1.47/exec/e1/resize?h=40&w=120".to_owned()),
+        "{paths:?}"
+    );
+
+    // A bad size is refused before anything is created.
+    tab.call(
+        9,
+        "docker.containers.exec",
+        json!({ "connId": conn_id, "id": "web", "cols": 0, "rows": 30, "terminalId": "term-2" }),
+    )
+    .await;
+    assert_eq!(
+        details(&tab.error(9, Code::InvalidArgument).await)["field"],
+        "cols"
+    );
+}
+
+#[tokio::test]
+async fn stats_come_as_samples_and_a_stopped_container_has_none() {
+    let (_t, lab, mut tab) = setup().await;
+    tab.call(
+        2,
+        "docker.connect",
+        json!({ "profile": lab.profile(json!({})) }),
+    )
+    .await;
+    let conn_id = tab.result(2).await["connId"].as_str().unwrap().to_owned();
+    tab.call(
+        3,
+        "docker.containers.stats",
+        json!({ "connId": conn_id, "id": "web", "streamId": "stats-1" }),
+    )
+    .await;
+    let (samples, summary) = drain(&mut tab, 3).await;
+    let last = samples.last().unwrap();
+    assert_eq!(last["cpuPercent"], 100.0);
+    assert_eq!(last["memoryUsed"], 2048);
+    assert_eq!(last["rxBytes"], 10);
+    assert_eq!(last["pids"], 4);
+    assert_eq!(
+        summary["samples"].as_u64().unwrap() + summary["dropped"].as_u64().unwrap(),
+        2,
+        "{summary}"
+    );
+    tab.call(
+        4,
+        "docker.containers.stats",
+        json!({ "connId": conn_id, "id": "tty", "streamId": "stats-2" }),
+    )
+    .await;
+    let err = tab.error(4, Code::FailedPrecondition).await;
+    assert_eq!(details(&err)["kind"], "Conflict");
 }

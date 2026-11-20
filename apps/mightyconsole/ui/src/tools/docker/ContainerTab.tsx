@@ -3,9 +3,9 @@
 // id, the project and service, the image and how long it has run; Start or Stop, Restart, and
 // Remove behind More. Views: Overview (facts, command, networks, ports, mounts, the environment
 // with values hidden until shown in the browser, labels folded; beside it the health check's last
-// results and the container's recent events), Logs (LogsPanel) and Inspect (the JsonViewer of
-// `docker inspect`). Stats and Terminal join in TSK-81 batch 2c. The header follows the container's
-// events, so a restart or a health change shows without a refresh.
+// results and the container's recent events), Logs (LogsPanel), Stats (StatsPanel), Terminal
+// (TerminalPanel, an exec) and Inspect (the JsonViewer of `docker inspect`). The header follows
+// the container's events, so a restart or a health change shows without a refresh.
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogBody, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -22,16 +22,18 @@ import { CopyButton, NoticeContext, Page, PageHeader } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { useTabView } from "@/app/tab-view";
 import type { ContainerInspectOutput, ContainerOverview } from "@/gen/api";
-import { ArrowClockwise, CheckmarkCircle, ChevronDown, ChevronRight, Delete, ErrorCircle, Eye, EyeOff, MoreHorizontal, Play, Stop } from "@/lib/icons";
+import { ArrowClockwise, CheckmarkCircle, ChevronDown, ChevronRight, Delete, ErrorCircle, Eye, EyeOff, MoreHorizontal, Play, Stop, WindowConsole } from "@/lib/icons";
 import { cn } from "@/lib/cn";
 import type { DescribedError, TabProps } from "../types";
 import { StateBadge } from "./ContainersTab";
 import { type DockerEvent, changesRows, commandLine, imageLabel, shortId, spanWords } from "./format";
 import { useDockerEvents } from "./live";
 import { LogsPanel } from "./LogsPanel";
+import { StatsPanel } from "./StatsPanel";
+import { TerminalPanel } from "./TerminalPanel";
 
 /** The container's views, the last word of its URL (DOC-21 §3.7). */
-export const CONTAINER_VIEWS = ["overview", "logs", "inspect"] as const;
+export const CONTAINER_VIEWS = ["overview", "logs", "stats", "terminal", "inspect"] as const;
 export type ContainerView = (typeof CONTAINER_VIEWS)[number];
 
 /** Events kept for the Overview's "Recent events". */
@@ -122,7 +124,12 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
     void load();
   }, [load]);
   useEffect(() => () => void (reloadTimer.current && clearTimeout(reloadTimer.current)), []);
-  useTabActions(view === "logs" ? {} : { refresh: () => void load() });
+  useTabActions(view === "logs" || view === "stats" ? {} : { refresh: () => void load() });
+  // The terminal stays mounted once shown: its exec lives while the tab does.
+  const [terminalSeen, setTerminalSeen] = useState(view === "terminal");
+  useEffect(() => {
+    if (view === "terminal") setTerminalSeen(true);
+  }, [view]);
 
   useDockerEvents({
     client,
@@ -217,6 +224,9 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
               <Button appearance="secondary" loading={busy === "restart"} disabled={busy !== null} onClick={() => void act("restart")}>
                 <Icon icon={ArrowClockwise} /> Restart
               </Button>
+              <Button appearance="subtle" disabled={!o.running} onClick={() => setView("terminal")}>
+                <Icon icon={WindowConsole} /> Terminal
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger render={<IconButton appearance="subtle" aria-label="More actions" />}>
                   <Icon icon={MoreHorizontal} />
@@ -252,6 +262,8 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
           <TabsList aria-label="Container views" className="gap-inline-xs px-inset-lg [&_[data-slot=tabs-trigger]]:h-control-lg [&_[data-slot=tabs-trigger]]:px-inline-md [&_[data-slot=tabs-item]:first-child]:-ms-inline-md">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="logs">Logs</TabsTrigger>
+            <TabsTrigger value="stats">Stats</TabsTrigger>
+            <TabsTrigger value="terminal">Terminal</TabsTrigger>
             <TabsTrigger value="inspect">Inspect</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="flex min-h-0 flex-1 flex-col border-t border-border-subtle">
@@ -259,6 +271,13 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
           </TabsContent>
           <TabsContent value="logs" className="flex min-h-0 flex-1 flex-col">
             {view === "logs" ? <LogsPanel client={client} connId={connId} note={note} onLive={onLive} useTabActions={useTabActions} container={o.name || o.id} running={o.running || o.restarting} /> : null}
+          </TabsContent>
+          <TabsContent value="stats" className="flex min-h-0 flex-1 flex-col">
+            {view === "stats" ? <StatsPanel client={client} connId={connId} note={note} onLive={onLive} useTabActions={useTabActions} container={o.name || o.id} overview={o} /> : null}
+          </TabsContent>
+          {/* Kept mounted once opened, so switching views does not end the exec. */}
+          <TabsContent value="terminal" keepMounted={terminalSeen} className="flex min-h-0 flex-1 flex-col">
+            {terminalSeen ? <TerminalPanel client={client} connId={connId} note={note} container={o.name || o.id} running={o.running} defaultUser={o.user} defaultWorkdir={o.workingDir} /> : null}
           </TabsContent>
           <TabsContent value="inspect" className="flex min-h-0 flex-1 flex-col border-t border-border-subtle">
             <div className="flex items-center gap-inline-sm px-inset-lg py-stack-sm text-body-1 text-fg-muted">

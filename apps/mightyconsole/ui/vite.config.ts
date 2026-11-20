@@ -40,8 +40,12 @@ export default defineConfig({
   },
   test: {
     root: ".",
-    // jsdom cannot run Monaco: CodeEditor's tests use Byterygon UI's stand-in.
-    alias: [{ find: /^monaco-editor\/.*$/, replacement: fileURLToPath(new URL("../../../packages/ui/test/fakes/monaco.ts", import.meta.url)) }],
+    // jsdom cannot run Monaco or xterm.js (no canvas, no layout): CodeEditor's and the Terminal's
+    // tests use Byterygon UI's stand-ins.
+    alias: [
+      { find: /^monaco-editor\/.*$/, replacement: fileURLToPath(new URL("../../../packages/ui/test/fakes/monaco.ts", import.meta.url)) },
+      { find: /^@xterm\/.*$/, replacement: fileURLToPath(new URL("../../../packages/ui/test/fakes/xterm.ts", import.meta.url)) },
+    ],
     environment: "jsdom",
     include: ["test/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
     testTimeout: 30_000,

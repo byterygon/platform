@@ -13,9 +13,14 @@ import type { ContainerRow } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import { ContainerTab, limitsText, runningFor } from "@/tools/docker/ContainerTab";
 import { ContainersTab } from "@/tools/docker/ContainersTab";
-import { type DockerLogLine, changesRows, commandLine, formatPort, formatPorts, groupByProject, imageLabel, isProblem, matchesFilter, matchesSearch, parseLines, stateTone } from "@/tools/docker/format";
+import { type DockerLogLine, changesRows, commandLine, formatBytes, formatMiB, formatPort, formatPorts, formatRate, toBase64, withRates, groupByProject, imageLabel, isProblem, matchesFilter, matchesSearch, parseLines, stateTone } from "@/tools/docker/format";
 import { containersTree, dockerTool } from "@/tools/docker";
 import { newerThan, pickStream } from "@/tools/docker/LogsPanel";
+import { cpuBase, formatPercent } from "@/tools/docker/StatsPanel";
+import { splitCommand } from "@/tools/docker/TerminalPanel";
+// The stand-in every `@xterm/*` import resolves to in tests (vite.config.ts): the same module, so
+// it records each Terminal the component makes.
+import * as xterm from "../../../../packages/ui/test/fakes/xterm";
 import { profile as schema } from "@/tools/docker/profile";
 import { treeContainersOf } from "@/tools/docker/tree-data";
 import type { TabProps, TabView } from "@/tools/types";
@@ -268,6 +273,115 @@ describe("a container", () => {
     render(<ContainerTab {...stopped.p} />);
     await waitFor(() => calls(fake, "docker.containers.logs").length === 2, "the stopped container's log");
     expect(calls(fake, "docker.containers.logs")[1]).toMatchObject({ id: "stopped", follow: false });
+  });
+});
+
+describe("stats and the terminal", () => {
+  const sample = (t: number, patch: Record<string, unknown> = {}) => ({
+    timeMs: Date.parse("2026-11-20T08:00:00Z") + t * 1000,
+    cpuPercent: 38.24,
+    onlineCpus: 4,
+    memoryUsed: 418 * 1024 ** 2,
+    memoryLimit: 1024 ** 3,
+    rxBytes: 1_000_000 + t * 1_200_000,
+    txBytes: 10_000 + t * 340_000,
+    blockRead: 12_000_000,
+    blockWrite: 3_000_000,
+    pids: 23,
+    ...patch,
+  });
+
+  test("helpers: rates from totals, units, the command line, base64", () => {
+    const a = sample(0);
+    const b = withRates(a, sample(2));
+    expect(b.rxRate).toBe(1_200_000);
+    expect(withRates(sample(2), sample(3, { rxBytes: 5 })).rxRate).toBe(0);
+    expect(withRates(undefined, a).txRate).toBe(0);
+    expect(formatRate(1_200_000)).toBe("1.2 MB/s");
+    expect(formatBytes(340_000)).toBe("340 kB");
+    expect(formatBytes(12)).toBe("12 B");
+    expect(formatMiB(418 * 1024 ** 2)).toBe("418 MiB");
+    expect(formatMiB(1.5 * 1024 ** 3)).toBe("1.5 GiB");
+    expect(cpuBase({ cpus: 2 }, { onlineCpus: 8 })).toEqual({ cpus: 2, limit: true });
+    expect(cpuBase({}, { onlineCpus: 8 })).toEqual({ cpus: 8, limit: false });
+    expect(splitCommand("sh -c 'echo hi; ls'")).toEqual(["sh", "-c", "echo hi; ls"]);
+    expect(splitCommand(' python  "my script.py" ')).toEqual(["python", "my script.py"]);
+    expect(splitCommand("sh -c ''")).toEqual(["sh", "-c", ""]);
+    expect(splitCommand("   ")).toBeNull();
+    expect(atob(toBase64(new TextEncoder().encode("ls\r")))).toBe("ls\r");
+  });
+
+  test("Stats: tiles, a pushed sample, the table; a stopped container is not running; no axe violations", async () => {
+    const { fake, connId } = await connected();
+    fake.server.dockerStats = [sample(0), sample(1)];
+    const { p } = props(fake, connId, { kind: "docker.container", params: { id: "shop-web-1", view: "stats" }, title: "shop-web-1" });
+    const { container } = render(<ContainerTab {...p} />);
+    await waitFor(() => byText("38.2 %") !== null, "the CPU tile");
+    expect(calls(fake, "docker.containers.stats")[0]).toMatchObject({ connId, id: "shop-web-1" });
+    expect(byText("of 4 CPUs")).not.toBeNull();
+    expect(byText("418 MiB")).not.toBeNull();
+    expect(byText("no limit · host 1.0 GiB")).not.toBeNull();
+    expect(formatPercent(38.24)).toBe("38.2 %");
+    expect(formatPercent(0.042)).toBe("0.042 %");
+    expect(formatPercent(0.5)).toBe("0.50 %");
+    expect(formatPercent(0)).toBe("0 %");
+    expect(byText("1.2 MB/s")).not.toBeNull();
+    expect(byText("out 340 kB/s")).not.toBeNull();
+    expect(byText("limit none")).not.toBeNull();
+    expect(byRole("img", "CPU, last 5 minutes") ?? container.querySelector("[aria-label='CPU, last 5 minutes']")).not.toBeNull();
+    await act(async () => fake.pushStats([sample(2, { cpuPercent: 71.4, pids: 30 })]));
+    await waitFor(() => byText("71.4 %") !== null, "the pushed sample");
+    await click(byRole("button", "Table"));
+    await waitFor(() => container.querySelector("table[aria-label='Samples, newest first']") !== null, "the table view");
+    expect(container.querySelectorAll("table[aria-label='Samples, newest first'] tbody tr").length).toBe(3);
+    expect(await axeViolations(container)).toEqual([]);
+
+    cleanup();
+    const stopped = props(fake, connId, { kind: "docker.container", params: { id: "stopped", view: "stats" }, title: "stopped" });
+    render(<ContainerTab {...stopped.p} />);
+    await waitFor(() => byText(/Not running: stopped is exited/) !== null, "not running");
+    expect(calls(fake, "docker.containers.stats")).toHaveLength(1);
+  });
+
+  test("Terminal: Connect runs the exec; keys go out batched; the exit code shows; Disconnect ends it", async () => {
+    const { fake, connId } = await connected();
+    const { p } = props(fake, connId, { kind: "docker.container", params: { id: "shop-web-1", view: "terminal" }, title: "shop-web-1" });
+    const { container } = render(<ContainerTab {...p} />);
+    await waitFor(() => byRole("button", "Connect") !== null, "the terminal's bar");
+    expect(await axeViolations(container)).toEqual([]);
+    await click(byRole("button", "Connect"));
+    await waitFor(() => fake.server.dockerExec !== null, "the exec");
+    expect(calls(fake, "docker.containers.exec")[0]).toMatchObject({ id: "shop-web-1", cmd: null, user: null, workdir: null });
+    await waitFor(() => xterm.terminals.at(-1)?.output().includes("$ ") === true, "the prompt");
+    await waitFor(() => byRole("button", "Disconnect") !== null, "connected");
+    const term = xterm.terminals.at(-1)!;
+    await act(async () => {
+      term.type("l");
+      term.type("s\r");
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    await waitFor(() => fake.server.dockerExec?.input === "ls\r", "the keys on the server");
+    expect(calls(fake, "term.write")).toHaveLength(1);
+    await act(async () => fake.server.dockerExec!.output("bin  etc\r\n$ "));
+    await waitFor(() => term.output().includes("bin  etc"), "the output");
+    await act(async () => fake.server.dockerExec!.exit(3));
+    await waitFor(() => term.output().includes("[exited with code 3]"), "the exit code in the scrollback");
+    await waitFor(() => byText("Exited with code 3") !== null, "the exit code in the footer");
+
+    await click(byRole("button", "New session"));
+    await waitFor(() => byRole("button", "Disconnect") !== null, "the second session");
+    await click(byRole("button", "Disconnect"));
+    await waitFor(() => byText("Disconnected") !== null, "disconnected");
+    expect(fake.server.dockerExec).toBeNull();
+    expect(calls(fake, "docker.containers.exec")).toHaveLength(2);
+  });
+
+  test("Terminal: a stopped container has none", async () => {
+    const { fake, connId } = await connected();
+    const { p } = props(fake, connId, { kind: "docker.container", params: { id: "stopped", view: "terminal" }, title: "stopped" });
+    render(<ContainerTab {...p} />);
+    await waitFor(() => byText(/Not running: start stopped/) !== null, "not running");
+    expect(byRole("button", "Terminal")?.hasAttribute("disabled") || byRole("button", "Terminal")?.getAttribute("aria-disabled") === "true").toBe(true);
   });
 });
 

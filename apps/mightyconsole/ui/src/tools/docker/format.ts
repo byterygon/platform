@@ -197,3 +197,72 @@ export function agoText(ms: number, now = Date.now()): string {
 export function commandLine(parts: readonly string[]): string {
   return parts.map((p) => (p === "" || /[\s"'$`\\]/.test(p) ? `'${p.replace(/'/g, `'\\''`)}'` : p)).join(" ");
 }
+
+/** One line of `docker.containers.stats` (the server's `StatsSample`). */
+export interface StatsSample {
+  timeMs: number;
+  /** 100 is one whole CPU; absent on the first sample. */
+  cpuPercent?: number;
+  onlineCpus: number;
+  memoryUsed: number;
+  memoryLimit: number;
+  /** Totals since the container started. */
+  rxBytes: number;
+  txBytes: number;
+  blockRead: number;
+  blockWrite: number;
+  pids: number;
+  pidsLimit?: number;
+}
+
+/** A sample with the rates since the one before it (bytes per second). */
+export interface StatsPoint extends StatsSample {
+  rxRate: number;
+  txRate: number;
+  readRate: number;
+  writeRate: number;
+}
+
+/** Rates from consecutive totals; a counter that went back (a restart) counts as 0. */
+export function withRates(previous: StatsSample | undefined, sample: StatsSample): StatsPoint {
+  const seconds = previous ? (sample.timeMs - previous.timeMs) / 1000 : 0;
+  const rate = (now: number, before: number | undefined) => (seconds > 0 && before !== undefined && now >= before ? (now - before) / seconds : 0);
+  return {
+    ...sample,
+    rxRate: rate(sample.rxBytes, previous?.rxBytes),
+    txRate: rate(sample.txBytes, previous?.txBytes),
+    readRate: rate(sample.blockRead, previous?.blockRead),
+    writeRate: rate(sample.blockWrite, previous?.blockWrite),
+  };
+}
+
+/** `12 MB`, `340 kB` (decimal units, as `docker stats` prints network and block I/O). */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return `${unit === 0 || value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+/** `1.2 MB/s`. */
+export function formatRate(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
+/** `418 MiB` (binary units, as `docker stats` prints memory). */
+export function formatMiB(bytes: number): string {
+  const mib = bytes / 1024 ** 2;
+  if (mib >= 1024) return `${(mib / 1024).toFixed(1)} GiB`;
+  return `${mib >= 100 ? Math.round(mib) : mib.toFixed(1)} MiB`;
+}
+
+/** Bytes as base64 for `term.write`, in pieces so a long paste does not overflow the call stack. */
+export function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}

@@ -314,6 +314,15 @@ importers:
       '@tanstack/react-router':
         specifier: 1.170.46
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@xterm/addon-fit':
+        specifier: 0.11.0
+        version: 0.11.0
+      '@xterm/addon-search':
+        specifier: 0.16.0
+        version: 0.16.0
+      '@xterm/xterm':
+        specifier: 6.0.0
+        version: 6.0.0
       apache-arrow:
         specifier: 21.2.0
         version: 21.2.0

@@ -2070,6 +2070,79 @@
       ],
       "type": "object"
     },
+    "ContainersExecInput": {
+      "properties": {
+        "cmd": {
+          "default": null,
+          "description": "The command and its arguments; bash if the image has it, else sh, when absent.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "cols": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "rows": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "terminalId": {
+          "type": "string"
+        },
+        "user": {
+          "default": null,
+          "description": "`user`, `uid`, `user:group`; the container's user when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workdir": {
+          "default": null,
+          "description": "The working directory; the container's when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "id",
+        "cols",
+        "rows",
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "ContainersExecSummary": {
+      "properties": {
+        "exitCode": {
+          "description": "The process's exit code, when Docker reports one.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ContainersListInput": {
       "properties": {
         "all": {
@@ -2179,6 +2252,45 @@
         "ids",
         "force",
         "volumes"
+      ],
+      "type": "object"
+    },
+    "ContainersStatsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "streamId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "id",
+        "streamId"
+      ],
+      "type": "object"
+    },
+    "ContainersStatsSummary": {
+      "properties": {
+        "dropped": {
+          "description": "Samples replaced by a newer one before the client asked for them.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "samples": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "samples",
+        "dropped"
       ],
       "type": "object"
     },
@@ -11853,6 +11965,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ContainersExecInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "docker.containers.exec",
+      "output": {
+        "$ref": "#/$defs/ContainersExecSummary"
+      },
+      "perm": "docker.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ContainerIdInput"
       },
       "kind": "query",
@@ -11983,6 +12116,27 @@
       "risk": "Write",
       "timeout_default_ms": 120000,
       "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ContainersStatsInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "docker.containers.stats",
+      "output": {
+        "$ref": "#/$defs/ContainersStatsSummary"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
     },
     {
       "agent": "hidden",
@@ -14879,5 +15033,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:022957b96e3b0e275768f5206a0854cb8ade18fd3ce13e67770a5b4a3c757d93"
+  "schema_hash": "sha256:1db06d27c7e30e859d833c7b8ceab4f2ee892b5957f9997a4046622918745d74"
 }
