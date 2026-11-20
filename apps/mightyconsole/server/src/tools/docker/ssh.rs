@@ -2,7 +2,7 @@
 //! handle, the host key checked in the handshake against the one the profile trusts, then one
 //! `direct-streamlocal@openssh.com` channel to the Docker socket per API request.
 //!
-//! **Nothing reaches an untrusted host.** russh calls [`Client::check_server_key`] during the key
+//! **Nothing reaches an untrusted host.** russh calls `Client::check_server_key` during the key
 //! exchange, before any authentication message. A profile that trusts no key, or trusts another
 //! one, gets `false` there, so the handshake stops and no password, key signature or agent
 //! request is sent; the connect fails with `HostKey` and the key the host presented, which the UI
@@ -583,7 +583,7 @@ async fn agent_login(
 }
 
 /// What a failed socket channel found when it looked at the socket (see
-/// [`SshSession::check_socket`]).
+/// `SshSession::check_socket`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SocketCheck {
     /// The socket is there and the user can read and write it: sshd refused to forward it.
