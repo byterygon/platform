@@ -2,6 +2,7 @@
 // client: the namespace table and the selected one's pane with its search attributes and the
 // buttons to its tabs; the workers from the pollers, their filters, the idle mark, a typed task
 // queue and the refresh while the tab is shown.
+import { RpcError } from "@byterygon/ambidex";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { resetTreeData } from "@/tools/temporal/tree-data";
 import { describeError } from "@/app/messages";
@@ -174,29 +175,57 @@ describe("the tree", () => {
     const before = temporalTool.sidebarTree({ profile, connId: "c" });
     expect(before.map((n) => n.label)).toEqual(["Namespaces", "default"]);
     expect(before[1]?.expanded).toBe(true);
-    expect(before[1]?.children?.map((n) => n.label)).toEqual(["Workflows", "Schedules", "Task queues", "Workers"]);
-    expect(before[1]?.children?.[3]?.open).toEqual({ kind: "temporal.workers", params: { namespace: "default" }, title: "Workers · default" });
+    expect(before[1]?.children?.map((n) => n.label)).toEqual(["Workflows", "Activities", "Schedules", "Task queues", "Workers"]);
+    expect(before[1]?.children?.[1]?.open).toEqual({ kind: "temporal.activities", params: { namespace: "default", query: "" }, title: "Activities · default" });
+    expect(before[1]?.children?.[4]?.open).toEqual({ kind: "temporal.workers", params: { namespace: "default" }, title: "Workers · default" });
     // Loaded: the cluster's namespaces (the profile's first, temporal-system left out) and the counts.
     const client = {
       temporal: {
         namespaces: { list: async () => [{ name: "payments" }, { name: "temporal-system" }, { name: "default" }, { name: "orders" }] },
         schedules: { list: async () => [{}, {}, {}] },
         workers: { list: async () => ({ workers: [{ identity: "a" }, { identity: "a" }, { identity: "b" }], taskQueues: [] }) },
+        activities: { count: async () => ({ count: 7 }) },
       },
     };
     let changes = 0;
     const stop = temporalTool.sidebarData!.subscribe(() => (changes += 1));
     temporalTool.sidebarData!.load({ profile, connId: "c", client: client as never });
-    await waitFor(() => changes >= 3, "the tree data");
+    await waitFor(() => changes >= 4, "the tree data");
     stop();
     const after = temporalTool.sidebarTree({ profile, connId: "c" });
     expect(after.map((n) => n.label)).toEqual(["Namespaces", "default", "orders", "payments"]);
     const text = (node: { meta?: unknown } | undefined) => (node?.meta as { props: { children: number } } | undefined)?.props.children;
     expect(text(after[0])).toBe(3);
-    expect(text(after[1]?.children?.[1])).toBe(3);
-    expect(text(after[1]?.children?.[3])).toBe(2);
+    expect(text(after[1]?.children?.[1])).toBe(7);
+    expect(text(after[1]?.children?.[2])).toBe(3);
+    expect(text(after[1]?.children?.[4])).toBe(2);
     expect(after[2]?.expanded).toBe(false);
     expect(after[2]?.children?.[0]?.open).toEqual({ kind: "temporal.workflows", params: { namespace: "orders", query: "" }, title: "Workflows · orders" });
     expect(temporalTool.tabKinds["temporal.workers"]?.title({ namespace: "lab" })).toBe("Workers · lab");
+  });
+
+  test("a server without standalone activities marks the node with its reason", async () => {
+    resetTreeData();
+    const profile: ProfileRecord = { id: "01U", tool: "temporal", version: 1, name: "old", createdAt: "x", updatedAt: "x", ...schema.defaults() };
+    const reason = "This server does not run standalone activities: Standalone activity is disabled.";
+    const refused = new RpcError("Internal", reason, { details: { kind: "Remote", system: "temporal", message: reason, retryable: false, remote: { code: "FailedPrecondition", name: "StandaloneActivitiesUnsupported" } } });
+    const client = {
+      temporal: {
+        namespaces: { list: async () => [{ name: "default" }] },
+        schedules: { list: async () => [] },
+        workers: { list: async () => ({ workers: [], taskQueues: [] }) },
+        activities: { count: async () => Promise.reject(refused) },
+      },
+    };
+    let changes = 0;
+    const stop = temporalTool.sidebarData!.subscribe(() => (changes += 1));
+    temporalTool.sidebarData!.load({ profile, connId: "u", client: client as never });
+    await waitFor(() => changes >= 4, "the tree data");
+    stop();
+    const node = temporalTool.sidebarTree({ profile, connId: "u" })[1]?.children?.[1];
+    const meta = node?.meta as { props: { title: string; children: string } };
+    expect(node?.label).toBe("Activities");
+    expect(meta.props.children).toBe("not supported");
+    expect(meta.props.title).toBe(reason);
   });
 });

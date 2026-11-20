@@ -144,6 +144,12 @@ async def check_temporal():
     expect(status == "waiting for approval", f"temporal: fulfilment says {status!r}")
     schedules = [s.id async for s in await client.list_schedules()]
     expect("every-minute" in schedules, "temporal: schedule every-minute is missing")
+    # Standalone activities (TSK-92): sa-charge-1 ran without a workflow.
+    try:
+        described = await client.get_activity_handle("sa-charge-1").describe()
+        expect(described.activity_type == "charge", "temporal: standalone activity sa-charge-1 has the wrong type")
+    except Exception as e:  # noqa: BLE001 - reported as a failed check
+        expect(False, f"temporal: standalone activity sa-charge-1 is missing: {e}")
     # The payload codec (TSK-92): encrypted-1's input is stored encrypted.
     expect("encrypted-1" in ids, "temporal: workflow encrypted-1 is missing")
     if "encrypted-1" in ids:

@@ -10,9 +10,110 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:f7ddecc293bfca900eec847d12448b333cc34b74faad065168db648609df336d";
+export const SCHEMA_HASH = "sha256:10219dac86e6ca88df1d6e1f062d9c7d8e274d60e27d637ca600d5da93a2dfd0";
 
 // ---- Types
+
+export type ActivitiesCountInput = { connId: string, namespace?: string | null, query?: string | null, };
+
+export type ActivitiesCountOutput = { count: number, };
+
+export type ActivitiesListInput = { connId: string, namespace?: string | null, 
+/**
+ * A visibility query (`ActivityType = "charge" AND ExecutionStatus = "Running"`); every
+ * standalone activity when empty.
+ */
+query?: string | null, 
+/**
+ * 1 to 1,000; 50 when absent.
+ */
+pageSize?: number | null, nextPageToken?: string | null, };
+
+export type ActivitiesListOutput = { executions: Array<ActivityRow>, nextPageToken?: string, };
+
+/**
+ * A standalone activity in full, its payloads decoded.
+ */
+export type ActivityDetail = { activity: ActivityRow, 
+/**
+ * Where a running one is: Scheduled, Started, CancelRequested, Paused, PauseRequested.
+ */
+runState?: string, 
+/**
+ * The current or last attempt, from 1.
+ */
+attempt: number, 
+/**
+ * `ActivityExecutionInfo` as protobuf JSON, payloads decoded (timeouts, retry policy,
+ * heartbeat, last failure, last worker...), the fields of `activity` left out.
+ */
+info: Record<string, unknown>, 
+/**
+ * One decoded value per argument.
+ */
+input: unknown[], 
+/**
+ * One decoded value per result payload, when it completed.
+ */
+result?: unknown[], 
+/**
+ * The failure as protobuf JSON, when it failed, timed out, was canceled or terminated.
+ */
+failure?: Record<string, unknown>, 
+/**
+ * Why it stopped retrying, when it closed.
+ */
+retryState?: string, };
+
+/**
+ * What happens when a running activity with the same ID exists (`ActivityIdConflictPolicy`).
+ */
+export type ActivityIdConflictPolicy = "fail" | "useExisting";
+
+export type ActivityReasonInput = { connId: string, namespace?: string | null, activityId: string, runId?: string | null, 
+/**
+ * Required to terminate; optional to ask for cancellation.
+ */
+reason?: string | null, };
+
+/**
+ * One standalone activity; the latest run of the ID when `runId` is absent.
+ */
+export type ActivityRef = { connId: string, namespace?: string | null, activityId: string, runId?: string | null, };
+
+/**
+ * One row of the Activities table.
+ */
+export type ActivityRow = { activityId: string, runId: string, activityType: string, status: ActivityStatus, 
+/**
+ * When it was scheduled, RFC 3339.
+ */
+startTime?: string, closeTime?: string, durationMs?: number, taskQueue: string, };
+
+export type ActivityStartInput = { connId: string, namespace?: string | null, activityType: string, taskQueue: string, activityId: string, 
+/**
+ * One `json/plain` payload per argument.
+ */
+args?: unknown[], 
+/**
+ * One attempt; this or `scheduleToCloseTimeout` is required.
+ */
+startToCloseTimeout?: string | null, 
+/**
+ * All attempts.
+ */
+scheduleToCloseTimeout?: string | null, scheduleToStartTimeout?: string | null, heartbeatTimeout?: string | null, retryPolicy?: RetryPolicyForm | null, idReusePolicy?: IdReusePolicy | null, idConflictPolicy?: ActivityIdConflictPolicy | null, };
+
+export type ActivityStartOutput = { runId: string, 
+/**
+ * False when the conflict policy UseExisting returned the running activity instead.
+ */
+started: boolean, };
+
+/**
+ * The status of a standalone activity (`ActivityExecutionStatus`).
+ */
+export type ActivityStatus = "Running" | "Completed" | "Failed" | "Canceled" | "Terminated" | "TimedOut" | "Paused" | "Unspecified";
 
 /**
  * Pushed on `app.events` (spec §2.7). One subscription per page.
@@ -2206,6 +2307,16 @@ export type SshFacts = {
 target: string, hostKey: HostKeyFingerprint, socketPath: string, auth: DockerAuth, };
 
 /**
+ * Whether the server runs standalone activities on the profile's namespace (`temporal.connect`'s
+ * capabilities, from a `CountActivityExecutions` at connect).
+ */
+export type StandaloneActivitiesSupport = { supported: boolean, 
+/**
+ * Why not, when not.
+ */
+reason?: string, };
+
+/**
  * A task of the next step: the node to run, its error, its interrupts.
  */
 export type StateTask = { id: string, name: string, error?: string, interrupts: Array<Interrupt>, 
@@ -2281,7 +2392,11 @@ signalAndQueryHeader: boolean,
  * `elasticsearch`, ...); empty when the cluster did not say. Cassandra has basic visibility
  * only, so the list's query bar is limited (spec §9.3).
  */
-visibilityStore: string, };
+visibilityStore: string, 
+/**
+ * Whether the profile's namespace runs standalone activities (TSK-92), and why not.
+ */
+standaloneActivities: StandaloneActivitiesSupport, };
 
 export type TemporalConnIdInput = { connId: string, };
 
@@ -2891,6 +3006,12 @@ export interface Procedures {
   readonly "nats.services.discover": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceInfo>, ToolError>;
   readonly "nats.services.ping": ProcedureDef<"query", NatsServicesInput, Array<NatsServicePing>, ToolError>;
   readonly "nats.services.stats": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceStats>, ToolError>;
+  readonly "temporal.activities.cancel": ProcedureDef<"mutation", ActivityReasonInput, Empty, ToolError>;
+  readonly "temporal.activities.count": ProcedureDef<"query", ActivitiesCountInput, ActivitiesCountOutput, ToolError>;
+  readonly "temporal.activities.describe": ProcedureDef<"query", ActivityRef, ActivityDetail, ToolError>;
+  readonly "temporal.activities.list": ProcedureDef<"query", ActivitiesListInput, ActivitiesListOutput, ToolError>;
+  readonly "temporal.activities.start": ProcedureDef<"mutation", ActivityStartInput, ActivityStartOutput, ToolError>;
+  readonly "temporal.activities.terminate": ProcedureDef<"mutation", ActivityReasonInput, Empty, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
   readonly "temporal.info": ProcedureDef<"query", TemporalConnIdInput, TemporalInfoOutput, ToolError>;
@@ -3072,6 +3193,14 @@ export interface Api {
     };
   };
   readonly temporal: {
+    readonly activities: {
+      readonly cancel: Procedures["temporal.activities.cancel"];
+      readonly count: Procedures["temporal.activities.count"];
+      readonly describe: Procedures["temporal.activities.describe"];
+      readonly list: Procedures["temporal.activities.list"];
+      readonly start: Procedures["temporal.activities.start"];
+      readonly terminate: Procedures["temporal.activities.terminate"];
+    };
     readonly connect: Procedures["temporal.connect"];
     readonly disconnect: Procedures["temporal.disconnect"];
     readonly info: Procedures["temporal.info"];
@@ -4058,6 +4187,68 @@ export const procedures: Api = {
     },
   },
   temporal: {
+    activities: {
+      cancel: {
+        name: "temporal.activities.cancel",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      count: {
+        name: "temporal.activities.count",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      describe: {
+        name: "temporal.activities.describe",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "temporal.activities.list",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      start: {
+        name: "temporal.activities.start",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      terminate: {
+        name: "temporal.activities.terminate",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
     connect: {
       name: "temporal.connect",
       kind: "mutation",

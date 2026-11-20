@@ -1,5 +1,420 @@
 {
   "$defs": {
+    "ActivitiesCountInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "ActivitiesCountOutput": {
+      "properties": {
+        "count": {
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "type": "object"
+    },
+    "ActivitiesListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextPageToken": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pageSize": {
+          "default": null,
+          "description": "1 to 1,000; 50 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "default": null,
+          "description": "A visibility query (`ActivityType = \"charge\" AND ExecutionStatus = \"Running\"`); every\nstandalone activity when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "ActivitiesListOutput": {
+      "properties": {
+        "executions": {
+          "items": {
+            "$ref": "#/$defs/ActivityRow"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "executions"
+      ],
+      "type": "object"
+    },
+    "ActivityDetail": {
+      "description": "A standalone activity in full, its payloads decoded.",
+      "properties": {
+        "activity": {
+          "$ref": "#/$defs/ActivityRow"
+        },
+        "attempt": {
+          "description": "The current or last attempt, from 1.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "failure": {
+          "additionalProperties": true,
+          "description": "The failure as protobuf JSON, when it failed, timed out, was canceled or terminated.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "info": {
+          "additionalProperties": true,
+          "description": "`ActivityExecutionInfo` as protobuf JSON, payloads decoded (timeouts, retry policy,\nheartbeat, last failure, last worker...), the fields of `activity` left out.",
+          "type": "object"
+        },
+        "input": {
+          "description": "One decoded value per argument.",
+          "items": true,
+          "type": "array"
+        },
+        "result": {
+          "description": "One decoded value per result payload, when it completed.",
+          "items": true,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "retryState": {
+          "description": "Why it stopped retrying, when it closed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runState": {
+          "description": "Where a running one is: Scheduled, Started, CancelRequested, Paused, PauseRequested.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "activity",
+        "attempt",
+        "info",
+        "input"
+      ],
+      "type": "object"
+    },
+    "ActivityIdConflictPolicy": {
+      "description": "What happens when a running activity with the same ID exists (`ActivityIdConflictPolicy`).",
+      "enum": [
+        "fail",
+        "useExisting"
+      ],
+      "type": "string"
+    },
+    "ActivityReasonInput": {
+      "properties": {
+        "activityId": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "default": null,
+          "description": "Required to terminate; optional to ask for cancellation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "activityId"
+      ],
+      "type": "object"
+    },
+    "ActivityRef": {
+      "description": "One standalone activity; the latest run of the ID when `runId` is absent.",
+      "properties": {
+        "activityId": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "activityId"
+      ],
+      "type": "object"
+    },
+    "ActivityRow": {
+      "description": "One row of the Activities table.",
+      "properties": {
+        "activityId": {
+          "type": "string"
+        },
+        "activityType": {
+          "type": "string"
+        },
+        "closeTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "durationMs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        },
+        "startTime": {
+          "description": "When it was scheduled, RFC 3339.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/ActivityStatus"
+        },
+        "taskQueue": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "activityId",
+        "runId",
+        "activityType",
+        "status",
+        "taskQueue"
+      ],
+      "type": "object"
+    },
+    "ActivityStartInput": {
+      "properties": {
+        "activityId": {
+          "type": "string"
+        },
+        "activityType": {
+          "type": "string"
+        },
+        "args": {
+          "default": null,
+          "description": "One `json/plain` payload per argument.",
+          "items": true,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "heartbeatTimeout": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "idConflictPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActivityIdConflictPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "idReusePolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdReusePolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retryPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RetryPolicyForm"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "scheduleToCloseTimeout": {
+          "default": null,
+          "description": "All attempts.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scheduleToStartTimeout": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startToCloseTimeout": {
+          "default": null,
+          "description": "One attempt; this or `scheduleToCloseTimeout` is required.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "taskQueue": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "activityType",
+        "taskQueue",
+        "activityId"
+      ],
+      "type": "object"
+    },
+    "ActivityStartOutput": {
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "started": {
+          "description": "False when the conflict policy UseExisting returned the running activity instead.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "runId",
+        "started"
+      ],
+      "type": "object"
+    },
+    "ActivityStatus": {
+      "description": "The status of a standalone activity (`ActivityExecutionStatus`).",
+      "enum": [
+        "Running",
+        "Completed",
+        "Failed",
+        "Canceled",
+        "Terminated",
+        "TimedOut",
+        "Paused",
+        "Unspecified"
+      ],
+      "type": "string"
+    },
     "AppEvent": {
       "description": "Pushed on `app.events` (spec §2.7). One subscription per page.",
       "oneOf": [
@@ -8248,6 +8663,25 @@
       ],
       "type": "object"
     },
+    "StandaloneActivitiesSupport": {
+      "description": "Whether the server runs standalone activities on the profile's namespace (`temporal.connect`'s\ncapabilities, from a `CountActivityExecutions` at connect).",
+      "properties": {
+        "reason": {
+          "description": "Why not, when not.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "supported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "supported"
+      ],
+      "type": "object"
+    },
     "StateTask": {
       "description": "A task of the next step: the node to run, its error, its interrupts.",
       "properties": {
@@ -8626,6 +9060,10 @@
           "description": "Signals and queries carry headers.",
           "type": "boolean"
         },
+        "standaloneActivities": {
+          "$ref": "#/$defs/StandaloneActivitiesSupport",
+          "description": "Whether the profile's namespace runs standalone activities (TSK-92), and why not."
+        },
         "visibilityStore": {
           "description": "Which store holds visibility (`cassandra`, `mysql8`, `postgres12`, `sqlite`,\n`elasticsearch`, ...); empty when the cluster did not say. Cassandra has basic visibility\nonly, so the list's query bar is limited (spec §9.3).",
           "type": "string"
@@ -8633,7 +9071,8 @@
       },
       "required": [
         "signalAndQueryHeader",
-        "visibilityStore"
+        "visibilityStore",
+        "standaloneActivities"
       ],
       "type": "object"
     },
@@ -12248,6 +12687,132 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ActivityReasonInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.activities.cancel",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ActivitiesCountInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.activities.count",
+      "output": {
+        "$ref": "#/$defs/ActivitiesCountOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ActivityRef"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.activities.describe",
+      "output": {
+        "$ref": "#/$defs/ActivityDetail"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ActivitiesListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.activities.list",
+      "output": {
+        "$ref": "#/$defs/ActivitiesListOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ActivityStartInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.activities.start",
+      "output": {
+        "$ref": "#/$defs/ActivityStartOutput"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ActivityReasonInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.activities.terminate",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/TemporalConnectInput"
       },
       "kind": "mutation",
@@ -13021,5 +13586,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:f7ddecc293bfca900eec847d12448b333cc34b74faad065168db648609df336d"
+  "schema_hash": "sha256:10219dac86e6ca88df1d6e1f062d9c7d8e274d60e27d637ca600d5da93a2dfd0"
 }

@@ -57,6 +57,12 @@ describe("URLs (DOC-21 §3.7)", () => {
       href: "/temporal/prod.eu%2F1/orders/workflows/w1/timeline",
       back: { namespace: "orders", workflowId: "w1", view: "timeline" },
     },
+    { tool: "temporal", place: { kind: "temporal.activities", params: { namespace: "orders", query: "" } }, href: "/temporal/prod.eu%2F1/orders/activities" },
+    {
+      tool: "temporal",
+      place: { kind: "temporal.activity", params: { namespace: "orders", activityId: "reindex:a/1", runId: "01a1" } },
+      href: "/temporal/prod.eu%2F1/orders/activities/reindex%3Aa%2F1/overview?run=01a1",
+    },
     { tool: "temporal", place: { kind: "temporal.schedules", params: { namespace: "orders" } }, href: "/temporal/prod.eu%2F1/orders/schedules" },
     { tool: "temporal", place: { kind: "temporal.schedule", params: { namespace: "orders", scheduleId: "nightly" } }, href: "/temporal/prod.eu%2F1/orders/schedules/nightly/overview" },
     { tool: "temporal", place: { kind: "temporal.taskQueue", params: { namespace: "orders", name: "" } }, href: "/temporal/prod.eu%2F1/orders/task-queues" },

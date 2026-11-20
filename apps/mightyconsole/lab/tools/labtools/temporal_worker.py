@@ -8,7 +8,8 @@ fulfilment-long-running, failed-1, retrying-1 and parent-1; the others' started 
 the payload and relation tests read them. External Storage (TSK-103): payloads of 256 KiB or more go to the lab's S3 store through the
 SDK's S3 driver; `big-payload-1` has a 300 KiB input and result. A payload codec (TSK-92): a second
 worker on task queue `lab-encrypted` encrypts its payloads with the lab's AES-GCM codec;
-`encrypted-1` is stored encrypted."""
+`encrypted-1` is stored encrypted. Standalone activities (TSK-92): `sa-charge-1`, a `charge` run without a
+workflow; `hold` heartbeats until it is cancelled, for the cancel test."""
 
 import asyncio
 import dataclasses
@@ -16,7 +17,7 @@ from datetime import timedelta
 
 from temporalio import activity, workflow
 from temporalio.client import Client, Schedule, ScheduleActionStartWorkflow, ScheduleIntervalSpec, ScheduleSpec
-from temporalio.common import RetryPolicy, SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
+from temporalio.common import ActivityIDReusePolicy, RetryPolicy, SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
 from temporalio.contrib.aws.s3driver import S3StorageDriver
 from temporalio.converter import DataConverter, ExternalStorage
 from temporalio.exceptions import ApplicationError, ChildWorkflowError, TemporalError
@@ -42,6 +43,15 @@ async def charge(order_id: str) -> str:
 @activity.defn
 async def flaky(order_id: str) -> str:
     raise ApplicationError(f"the payment provider is down for {order_id}")
+
+
+@activity.defn
+async def hold(seconds: int) -> str:
+    """Heartbeats every half second for `seconds`; a cancel arrives through the heartbeat."""
+    for _ in range(int(seconds) * 2):
+        activity.heartbeat()
+        await asyncio.sleep(0.5)
+    return f"held {seconds}s"
 
 
 @workflow.defn
@@ -230,7 +240,7 @@ async def main() -> None:
         except (OSError, RuntimeError):
             await asyncio.sleep(1)
     assert client is not None, "Temporal did not answer"
-    worker = Worker(client, task_queue=TASK_QUEUE, workflows=[Fulfilment, Completed, Failed, Retrying, Parent, ProtoOrder, BigPayload, FamilyRoot, FamilyOrder, FamilySupport], activities=[charge, flaky])
+    worker = Worker(client, task_queue=TASK_QUEUE, workflows=[Fulfilment, Completed, Failed, Retrying, Parent, ProtoOrder, BigPayload, FamilyRoot, FamilyOrder, FamilySupport], activities=[charge, flaky, hold])
     # The encrypted side: the same converter with the lab's codec, its own task queue.
     import base64
 
@@ -244,6 +254,11 @@ async def main() -> None:
             if "already" not in str(e).lower():
                 raise
         await start_samples(client)
+        try:
+            await client.start_activity(charge, "ord-sa-1", id="sa-charge-1", task_queue=TASK_QUEUE, start_to_close_timeout=timedelta(seconds=30), id_reuse_policy=ActivityIDReusePolicy.REJECT_DUPLICATE)
+        except Exception as e:  # noqa: BLE001 - already run on an earlier start
+            if "already" not in str(e).lower():
+                raise
         log("temporal-worker: samples started in namespace lab, schedule every-minute")
         await asyncio.Event().wait()
 

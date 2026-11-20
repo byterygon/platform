@@ -18,7 +18,7 @@ import { DurationField, Fold, Required, durationError } from "@/app/form-parts";
 export { DurationField, Fold, Required, durationError };
 
 /** How many workers poll a task queue for workflow tasks, while it is typed (null: not known yet). */
-export function useQueueWorkers(client: MightyClient, connId: string | null, namespace: string, queue: string, open: boolean): number | null {
+export function useQueueWorkers(client: MightyClient, connId: string | null, namespace: string, queue: string, open: boolean, pollers: "workflow" | "activity" = "workflow"): number | null {
   const [count, setCount] = useState<number | null>(null);
   useEffect(() => {
     setCount(null);
@@ -27,7 +27,7 @@ export function useQueueWorkers(client: MightyClient, connId: string | null, nam
     let live = true;
     const timer = setTimeout(() => {
       client.temporal.taskQueues.describe({ connId, namespace, taskQueue: name }).then(
-        (d) => live && setCount(new Set(d.workflowPollers.map((p) => p.identity)).size),
+        (d) => live && setCount(new Set((pollers === "activity" ? d.activityPollers : d.workflowPollers).map((p) => p.identity)).size),
         () => live && setCount(null),
       );
     }, 300);
@@ -35,17 +35,18 @@ export function useQueueWorkers(client: MightyClient, connId: string | null, nam
       live = false;
       clearTimeout(timer);
     };
-  }, [client, connId, namespace, queue, open]);
+  }, [client, connId, namespace, queue, open, pollers]);
   return count;
 }
 
 /** "2 workers polling" with a green dot, or the warning that nothing polls the queue. */
-export function QueueWorkers({ count }: { count: number | null }) {
+export function QueueWorkers({ count, activities = false }: { count: number | null; activities?: boolean }) {
   if (count === null) return null;
+  const what = activities ? " for activities" : "";
   return (
     <span className="flex items-center gap-inline-xs">
       <Icon icon={Circle} filled size="xs" tone={count === 0 ? "warning" : "success"} />
-      {count === 0 ? "No worker is polling this task queue." : `${count} ${count === 1 ? "worker" : "workers"} polling`}
+      {count === 0 ? `No worker is polling this task queue${what}.` : activities ? `${count} ${count === 1 ? "worker polls" : "workers poll"} for activities` : `${count} ${count === 1 ? "worker" : "workers"} polling`}
     </span>
   );
 }
@@ -206,7 +207,7 @@ export function randomSuffix(): string {
 // --- Requests from the palette ----------------------------------------------------------------
 
 /** A sheet the palette asked a tab to open. */
-export type SheetRequest = "startWorkflow" | "createSchedule";
+export type SheetRequest = "startWorkflow" | "createSchedule" | "runActivity";
 
 const pending = new Map<string, number>();
 const listeners = new Set<() => void>();

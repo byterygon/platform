@@ -236,6 +236,8 @@ pub struct TemporalCapabilities {
     /// `elasticsearch`, ...); empty when the cluster did not say. Cassandra has basic visibility
     /// only, so the list's query bar is limited (spec §9.3).
     pub visibility_store: String,
+    /// Whether the profile's namespace runs standalone activities (TSK-92), and why not.
+    pub standalone_activities: super::activities::StandaloneActivitiesSupport,
 }
 
 #[derive(Debug, Clone, Serialize, TS, JsonSchema)]

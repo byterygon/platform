@@ -1,10 +1,12 @@
 // `temporal`: the Temporal Web UI's replacement (Mightyconsole spec §9, TSK-83). This batch: the
 // profile and its form, namespaces, the workflow list and detail, the actions with their
-// confirmations, schedules, task queues and workers (TSK-92).
+// confirmations, schedules, task queues, workers and standalone activities (TSK-92).
 import { Icon } from "@/components/ui/icon";
 import type { ConnectTemporalProfile } from "@/gen/api";
 import { CalendarClock, Clock, Flash, Folder, List, Search, Server } from "@/lib/icons";
 import type { ResourceNode, ToolModule } from "../types";
+import { ActivitiesTab } from "./ActivitiesTab";
+import { ActivityTab } from "./ActivityTab";
 import { ConnectionForm } from "./ConnectionForm";
 import { NamespacesTab } from "./NamespacesTab";
 import { ScheduleTab } from "./ScheduleTab";
@@ -44,6 +46,15 @@ export const temporalTool: ToolModule = {
       const counts = tree.counts[ns] ?? {};
       const workers = count(counts.workers);
       const schedules = count(counts.schedules);
+      // Standalone activities: their count, or "not supported" with the server's reason.
+      const activities =
+        counts.activitiesUnsupported !== undefined ? (
+          <span className="text-caption-1 text-fg-muted" title={counts.activitiesUnsupported}>
+            not supported
+          </span>
+        ) : (
+          count(counts.activities)
+        );
       return {
         id: `${p.id}/ns/${ns}`,
         label: ns,
@@ -66,6 +77,13 @@ export const temporalTool: ToolModule = {
                   expanded: true,
                 }
               : {}),
+          },
+          {
+            id: id("activities"),
+            label: "Activities",
+            icon: <Icon icon={Flash} />,
+            ...(activities ? { meta: activities } : {}),
+            open: { kind: "temporal.activities", params: { namespace: ns, query: "" }, title: `Activities · ${ns}` },
           },
           {
             id: id("schedules"),
@@ -120,6 +138,16 @@ export const temporalTool: ToolModule = {
       Component: WorkflowsTab,
       href: temporalHrefs["temporal.workflows"]!,
     },
+    "temporal.activities": {
+      title: (params) => `Activities · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
+      Component: ActivitiesTab,
+      href: temporalHrefs["temporal.activities"]!,
+    },
+    "temporal.activity": {
+      title: (params) => (typeof params["activityId"] === "string" ? params["activityId"] : "Activity"),
+      Component: ActivityTab,
+      href: temporalHrefs["temporal.activity"]!,
+    },
     "temporal.schedules": {
       title: (params) => `Schedules · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,
       Component: SchedulesTab,
@@ -151,6 +179,16 @@ export const temporalTool: ToolModule = {
         const namespace = namespaceOf(p);
         requestSheet(p.id, "startWorkflow");
         openTab({ kind: "temporal.workflows", params: { namespace, query: "" }, title: `Workflows · ${namespace}` });
+      },
+    },
+    {
+      id: "runActivity",
+      label: "Run activity",
+      keywords: ["temporal", "standalone", "activity", "execute"],
+      run({ profile: p, openTab }) {
+        const namespace = namespaceOf(p);
+        requestSheet(p.id, "runActivity");
+        openTab({ kind: "temporal.activities", params: { namespace, query: "" }, title: `Activities · ${namespace}` });
       },
     },
     {
