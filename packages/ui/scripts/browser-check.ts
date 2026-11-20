@@ -156,6 +156,8 @@ function bundleReport(files: OutputFile[], outDir: string) {
     })(),
     // A class only Monaco's own scrollbar code uses: present in a chunk means Monaco is in it.
     monacoInInitial: files.some((f) => initial.has(f.fileName) && f.type === "chunk" && f.code!.includes("monaco-scrollable-element")),
+    // TSK-81: xterm.js too (its helper textarea's class is in its core).
+    xtermInInitial: files.some((f) => initial.has(f.fileName) && f.type === "chunk" && f.code!.includes("xterm-helper-textarea")),
     cdn,
   };
 }
@@ -416,6 +418,12 @@ async function internalNetwork(cdp: Cdp, out: string) {
         setTimeout(() => { w.terminate(); resolve(true); }, 500);
       })`);
       check(worker, `internal network (${name}): the editor worker did not start under worker-src 'self'`);
+      // TSK-81: xterm.js loads from the sub-path under the same CSP, with its stylesheet applied.
+      await page.evaluate("(window.__check.showTerminals(), true)");
+      const terminal = await waitFor(page, "window.__check.terminalReady", 20_000);
+      check(terminal, `internal network (${name}): xterm.js did not load from ${prefix}/ under the CSP`);
+      const xtermStyled = terminal && (await page.evaluate<boolean>(`(() => { const t = document.querySelector("[data-slot=terminal] .xterm-helper-textarea"); return !!t && getComputedStyle(t).position === "absolute"; })()`));
+      check(xtermStyled, `internal network (${name}): xterm.js's stylesheet was not applied`);
       const violations = await page.evaluate<string[]>("window.__violations.slice()");
       if (knownIssue && violations.length > 0) {
         process.stderr.write(`warning: internal network (${name}): known issue, ${knownIssue}: ${violations.length} CSP violations, first: ${violations[0]}\n`);
@@ -844,6 +852,47 @@ const step = (name: string) => {
 const within = <T>(ms: number, name: string, work: Promise<T>): Promise<T> =>
   Promise.race([work, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${name}: timed out after ${ms / 1000} s`)), ms).unref())]);
 
+interface TerminalSample {
+  background: string;
+  expectedBackground: string;
+  red: string | null;
+  expectedRed: string;
+  logRed: string | null;
+  rows: number;
+  text: string;
+}
+
+/**
+ * TSK-81: xterm.js loads on demand and paints the terminal.* roles of its region (the background
+ * and ANSI red, Light and Dark, as the LogViewer does); keystrokes reach onData as bytes.
+ */
+async function terminal(page: Page) {
+  await page.evaluate("(window.__check.showTerminals(), true)");
+  check(await waitFor(page, "window.__check.terminalReady", 20_000), "Terminal: xterm.js did not load");
+  await page.evaluate(`document.getElementById("region-6").scrollIntoView(), ${frames()}`);
+  const checked: string[] = [];
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate(`window.__check.setPreset("default"), window.__check.setTheme("${theme}"), ${frames(6)}`);
+    let t = await page.evaluate<TerminalSample>("window.__sampleTerminal()");
+    for (let tries = 0; tries < 40 && (!sameColor(t.background, t.expectedBackground) || t.red === null || !sameColor(t.red, t.expectedRed)); tries += 1) {
+      await new Promise((r) => setTimeout(r, 50));
+      t = await page.evaluate<TerminalSample>("window.__sampleTerminal()");
+    }
+    check(sameColor(t.background, t.expectedBackground), `Terminal ${theme}: background ${t.background}, expected terminal.bg ${t.expectedBackground}`);
+    check(t.red !== null && sameColor(t.red, t.expectedRed), `Terminal ${theme}: ANSI red ${t.red}, expected terminal.ansi.red ${t.expectedRed}`);
+    check(t.logRed !== null && sameColor(t.logRed, t.expectedRed), `LogViewer ${theme}: ANSI red ${t.logRed}, expected terminal.ansi.red ${t.expectedRed}`);
+    checked.push(theme);
+  }
+  check((await page.evaluate<number>("window.__sampleTerminal().rows")) > 1, "Terminal: the fit addon gave it no rows");
+  await page.evaluate(`document.querySelector("[data-slot=terminal] .xterm-helper-textarea").focus(), true`);
+  await page.insertText("ls -la");
+  await page.key("Enter");
+  check(await waitFor(page, `window.__check.terminalInput.join("").includes("ls -la\\r")`, 5000), `Terminal: typed keys did not reach onData (${JSON.stringify(await page.evaluate("window.__check.terminalInput"))})`);
+  check(await waitFor(page, `window.__sampleTerminal().text.includes("$ ls -la")`, 5000), "Terminal: the echoed keys were not written to the screen");
+  await page.evaluate(`window.__check.setTheme("light"), true`);
+  return { checked, input: await page.evaluate<string[]>("window.__check.terminalInput") };
+}
+
 async function main(argv: string[]): Promise<number> {
   const json = argv.includes("--json");
   const valueOf = (flag: string) => (argv.indexOf(flag) >= 0 ? (argv[argv.indexOf(flag) + 1] ?? "") : undefined);
@@ -875,6 +924,7 @@ async function main(argv: string[]): Promise<number> {
     const bundle = bundleReport(files, out);
     report.bundle = bundle;
     check(!bundle.monacoInInitial, "bundle: Monaco is in the page's initial chunks; it must load on demand");
+    check(!bundle.xtermInInitial, "bundle: xterm.js is in the page's initial chunks; it must load on demand");
     check(bundle.worker.files > 0, "bundle: no editor worker file was emitted");
     check(bundle.cdn.length === 0, `bundle: names a CDN: ${bundle.cdn.join(", ")}`);
 
@@ -905,6 +955,8 @@ async function main(argv: string[]): Promise<number> {
     report.jsonSchema = await within(60_000, "CodeEditor JSON Schema", jsonSchema(page, base));
     step("Monaco widgets on the tokens (TSK-94)");
     report.widgets = await within(90_000, "Monaco widgets", widgets(page));
+    step("Terminal and LogViewer (TSK-81)");
+    report.terminal = await within(60_000, "Terminal", terminal(page));
     step("tab strip and scrollbars");
     report.tabStrip = await within(30_000, "tab strip", tabStrip(page));
     step("internal network: sub-path and DBee CSPs");

@@ -27,7 +27,11 @@ export default defineConfig({
     root: ".",
     // jsdom cannot run Monaco; the component tests drive a small fake of the API it uses. The real
     // editor is tested in Chromium by scripts/browser-check.ts.
-    alias: [{ find: /^monaco-editor\/.*$/, replacement: fileURLToPath(new URL("./test/fakes/monaco.ts", import.meta.url)) }],
+    alias: [
+      { find: /^monaco-editor\/.*$/, replacement: fileURLToPath(new URL("./test/fakes/monaco.ts", import.meta.url)) },
+      // Nor xterm.js (no canvas, no layout): the Terminal tests drive test/fakes/xterm.ts.
+      { find: /^@xterm\/.*$/, replacement: fileURLToPath(new URL("./test/fakes/xterm.ts", import.meta.url)) },
+    ],
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
     testTimeout: 30_000,

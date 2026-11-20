@@ -1010,6 +1010,26 @@
   --by-diff-remove-fg: var(--by-color-red-11);
   --by-diff-change-bg: var(--by-color-amber-a4);
   --by-diff-change-fg: var(--by-color-amber-11);
+  --by-terminal-bg: var(--by-editor-bg);
+  --by-terminal-fg: var(--by-editor-fg);
+  --by-terminal-cursor: var(--by-editor-cursor);
+  --by-terminal-selection: var(--by-editor-selection);
+  --by-terminal-ansi-black: var(--by-color-neutral-12);
+  --by-terminal-ansi-red: var(--by-color-red-11);
+  --by-terminal-ansi-green: var(--by-color-green-11);
+  --by-terminal-ansi-yellow: var(--by-color-amber-11);
+  --by-terminal-ansi-blue: var(--by-color-blue-11);
+  --by-terminal-ansi-magenta: var(--by-color-pink-11);
+  --by-terminal-ansi-cyan: var(--by-color-teal-11);
+  --by-terminal-ansi-white: var(--by-color-neutral-10);
+  --by-terminal-ansi-bright-black: var(--by-color-neutral-11);
+  --by-terminal-ansi-bright-red: var(--by-color-red-10);
+  --by-terminal-ansi-bright-green: var(--by-color-green-10);
+  --by-terminal-ansi-bright-yellow: var(--by-color-amber-12);
+  --by-terminal-ansi-bright-blue: var(--by-color-blue-10);
+  --by-terminal-ansi-bright-magenta: var(--by-color-pink-10);
+  --by-terminal-ansi-bright-cyan: var(--by-color-teal-10);
+  --by-terminal-ansi-bright-white: var(--by-color-neutral-10);
 }
 
 /* Roles, theme: dark. */
@@ -1196,6 +1216,26 @@
   --by-diff-remove-fg: var(--by-color-red-dark-11);
   --by-diff-change-bg: var(--by-color-amber-dark-a5);
   --by-diff-change-fg: var(--by-color-amber-dark-11);
+  --by-terminal-bg: var(--by-editor-bg);
+  --by-terminal-fg: var(--by-editor-fg);
+  --by-terminal-cursor: var(--by-editor-cursor);
+  --by-terminal-selection: var(--by-editor-selection);
+  --by-terminal-ansi-black: var(--by-color-neutral-dark-10);
+  --by-terminal-ansi-red: var(--by-color-red-dark-11);
+  --by-terminal-ansi-green: var(--by-color-green-dark-11);
+  --by-terminal-ansi-yellow: var(--by-color-amber-dark-11);
+  --by-terminal-ansi-blue: var(--by-color-blue-dark-11);
+  --by-terminal-ansi-magenta: var(--by-color-pink-dark-11);
+  --by-terminal-ansi-cyan: var(--by-color-teal-dark-11);
+  --by-terminal-ansi-white: var(--by-color-neutral-dark-12);
+  --by-terminal-ansi-bright-black: var(--by-color-neutral-dark-11);
+  --by-terminal-ansi-bright-red: var(--by-color-red-dark-12);
+  --by-terminal-ansi-bright-green: var(--by-color-green-dark-12);
+  --by-terminal-ansi-bright-yellow: var(--by-color-amber-dark-12);
+  --by-terminal-ansi-bright-blue: var(--by-color-blue-dark-12);
+  --by-terminal-ansi-bright-magenta: var(--by-color-pink-dark-12);
+  --by-terminal-ansi-bright-cyan: var(--by-color-teal-dark-12);
+  --by-terminal-ansi-bright-white: var(--by-color-base-white);
 }
 
 /* Roles, density: comfortable (default). */

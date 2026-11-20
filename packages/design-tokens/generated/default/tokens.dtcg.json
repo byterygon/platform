@@ -20943,5 +20943,309 @@
         }
       }
     }
+  },
+  "terminal": {
+    "bg": {
+      "$type": "color",
+      "$value": "{editor.bg}",
+      "$description": "Background of a Terminal and of a LogViewer. Not for the app background: use color.bg.canvas.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "tailwind": "--color-terminal"
+        }
+      }
+    },
+    "fg": {
+      "$type": "color",
+      "$value": "{editor.fg}",
+      "$description": "Default text of a Terminal and a LogViewer: output with no ANSI colour. Not for coloured output: use terminal.ansi.*.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "tailwind": "--color-terminal-fg"
+        }
+      }
+    },
+    "cursor": {
+      "$type": "color",
+      "$value": "{editor.cursor}",
+      "$description": "The cursor of a Terminal. Not for the focus ring: use color.ring.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "tailwind": "--color-terminal-cursor"
+        }
+      }
+    },
+    "selection": {
+      "$type": "color",
+      "$value": "{editor.selection}",
+      "$description": "Background of selected text in a Terminal and of a LogViewer's search match under the cursor (translucent). Not for a selected row or item: use color.interactive.selected.",
+      "$extensions": {
+        "com.byterygon": {
+          "tier": "semantic",
+          "tailwind": "--color-terminal-selection"
+        }
+      }
+    },
+    "ansi": {
+      "black": {
+        "$type": "color",
+        "$value": "{color.neutral.12}",
+        "$description": "Text colour of ANSI black (SGR 30, 40) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.neutral.12}",
+              "dark": "{color.neutral-dark.10}"
+            },
+            "tailwind": "--color-terminal-ansi-black"
+          }
+        }
+      },
+      "red": {
+        "$type": "color",
+        "$value": "{color.red.11}",
+        "$description": "Text colour of ANSI red (SGR 31, 41) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.red.11}",
+              "dark": "{color.red-dark.11}"
+            },
+            "tailwind": "--color-terminal-ansi-red"
+          }
+        }
+      },
+      "green": {
+        "$type": "color",
+        "$value": "{color.green.11}",
+        "$description": "Text colour of ANSI green (SGR 32, 42) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.green.11}",
+              "dark": "{color.green-dark.11}"
+            },
+            "tailwind": "--color-terminal-ansi-green"
+          }
+        }
+      },
+      "yellow": {
+        "$type": "color",
+        "$value": "{color.amber.11}",
+        "$description": "Text colour of ANSI yellow (SGR 33, 43) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.amber.11}",
+              "dark": "{color.amber-dark.11}"
+            },
+            "tailwind": "--color-terminal-ansi-yellow"
+          }
+        }
+      },
+      "blue": {
+        "$type": "color",
+        "$value": "{color.blue.11}",
+        "$description": "Text colour of ANSI blue (SGR 34, 44) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.blue.11}",
+              "dark": "{color.blue-dark.11}"
+            },
+            "tailwind": "--color-terminal-ansi-blue"
+          }
+        }
+      },
+      "magenta": {
+        "$type": "color",
+        "$value": "{color.pink.11}",
+        "$description": "Text colour of ANSI magenta (SGR 35, 45) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.pink.11}",
+              "dark": "{color.pink-dark.11}"
+            },
+            "tailwind": "--color-terminal-ansi-magenta"
+          }
+        }
+      },
+      "cyan": {
+        "$type": "color",
+        "$value": "{color.teal.11}",
+        "$description": "Text colour of ANSI cyan (SGR 36, 46) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.teal.11}",
+              "dark": "{color.teal-dark.11}"
+            },
+            "tailwind": "--color-terminal-ansi-cyan"
+          }
+        }
+      },
+      "white": {
+        "$type": "color",
+        "$value": "{color.neutral.10}",
+        "$description": "Text colour of ANSI white (SGR 37, 47) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.neutral.10}",
+              "dark": "{color.neutral-dark.12}"
+            },
+            "tailwind": "--color-terminal-ansi-white"
+          }
+        }
+      },
+      "bright-black": {
+        "$type": "color",
+        "$value": "{color.neutral.11}",
+        "$description": "Text colour of ANSI bright black, the grey of dim output (SGR 90, 100) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.neutral.11}",
+              "dark": "{color.neutral-dark.11}"
+            },
+            "tailwind": "--color-terminal-ansi-bright-black"
+          }
+        }
+      },
+      "bright-red": {
+        "$type": "color",
+        "$value": "{color.red.10}",
+        "$description": "Text colour of ANSI bright red (SGR 91, 101) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.red.10}",
+              "dark": "{color.red-dark.12}"
+            },
+            "tailwind": "--color-terminal-ansi-bright-red"
+          }
+        }
+      },
+      "bright-green": {
+        "$type": "color",
+        "$value": "{color.green.10}",
+        "$description": "Text colour of ANSI bright green (SGR 92, 102) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.green.10}",
+              "dark": "{color.green-dark.12}"
+            },
+            "tailwind": "--color-terminal-ansi-bright-green"
+          }
+        }
+      },
+      "bright-yellow": {
+        "$type": "color",
+        "$value": "{color.amber.12}",
+        "$description": "Text colour of ANSI bright yellow (SGR 93, 103) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.amber.12}",
+              "dark": "{color.amber-dark.12}"
+            },
+            "tailwind": "--color-terminal-ansi-bright-yellow"
+          }
+        }
+      },
+      "bright-blue": {
+        "$type": "color",
+        "$value": "{color.blue.10}",
+        "$description": "Text colour of ANSI bright blue (SGR 94, 104) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.blue.10}",
+              "dark": "{color.blue-dark.12}"
+            },
+            "tailwind": "--color-terminal-ansi-bright-blue"
+          }
+        }
+      },
+      "bright-magenta": {
+        "$type": "color",
+        "$value": "{color.pink.10}",
+        "$description": "Text colour of ANSI bright magenta (SGR 95, 105) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.pink.10}",
+              "dark": "{color.pink-dark.12}"
+            },
+            "tailwind": "--color-terminal-ansi-bright-magenta"
+          }
+        }
+      },
+      "bright-cyan": {
+        "$type": "color",
+        "$value": "{color.teal.10}",
+        "$description": "Text colour of ANSI bright cyan (SGR 96, 106) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.teal.10}",
+              "dark": "{color.teal-dark.12}"
+            },
+            "tailwind": "--color-terminal-ansi-bright-cyan"
+          }
+        }
+      },
+      "bright-white": {
+        "$type": "color",
+        "$value": "{color.neutral.10}",
+        "$description": "Text colour of ANSI bright white (SGR 97, 107) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+        "$extensions": {
+          "com.byterygon": {
+            "tier": "semantic",
+            "axis": "theme",
+            "modes": {
+              "light": "{color.neutral.10}",
+              "dark": "{color.base.white}"
+            },
+            "tailwind": "--color-terminal-ansi-bright-white"
+          }
+        }
+      }
+    }
   }
 }

@@ -502,6 +502,37 @@ Byterygon UI follows Fluent 2's anatomy and prop names on Base UI (DOC-17 open q
 - `test/licenses.test.ts` checks every npm package a registry item installs, transitively, against
   the `allow` list of `deny.toml`.
 
+## Terminal and LogViewer (TSK-81)
+
+- Terminal is xterm.js 6 (`@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-search`, MIT), loaded
+  only through `@/lib/xterm` (`loadXterm`: dynamic imports, its stylesheet included, so a screen
+  without a terminal never downloads it; no worker, no network). Its theme is `xtermTheme(reader)`:
+  `XTERM_COLORS` maps every xterm.js colour to a `terminal.*` role (the sixteen ANSI colours,
+  `terminal.bg`, `fg`, `cursor`, `selection`, the scrollbar roles), read at the terminal's element
+  through `@/lib/token-reader` and rethemed by a MutationObserver as CodeEditor is; the font is
+  `font.mono` at `text.code`'s size and leading (`xtermMetrics`). It knows no transport: `onData`
+  gives bytes, `onResize` cells, `ref.write` takes bytes; writes before the load are queued.
+  Mod+Shift+C and Mod+Shift+V copy and paste (Ctrl+C goes to the process). xterm.js's DOM is in a
+  `data-foreign-dom` element. It creates `<style>` elements, so a CSP needs `style-src 'unsafe-inline'`.
+- `@/lib/token-reader` (`tokenReader`, `cssColorToHex`) was `@/lib/monaco`'s; monaco re-exports it,
+  so imports from `@/lib/monaco` keep working. A lib item must start with code, not a comment: the
+  shadcn CLI drops a file's leading comment and the installed file would differ from the item.
+- LogViewer never takes lines as props: `ref.append(lines)` adds `{ ts?, stream?, text }` to a plain
+  array, renders at most once per frame (the first batch after a quiet frame at once), keeps
+  `maxLines` (dropping the oldest tenth at a time) and renders only the rows in view; with `wrap`
+  each rendered row is measured. `parseAnsi` is its own SGR parser (colours 30-37, 90-97, their
+  backgrounds, 256-colour indexes under 16; the cube, greys and true colour keep the text colour so
+  no raw colour reaches the page; bold, dim, italic, underline, inverse, strike; every other escape
+  and control stripped; a carriage return keeps what was drawn last); `ansiClasses` maps a run to
+  written-out `text-terminal-ansi-*` / `bg-terminal-ansi-*` classes, a coloured background taking
+  `terminal.bg` as text. Search (Mod+F, F3) runs over the plain text of the loaded lines.
+- jsdom runs neither for real: `@xterm/*` resolves to `test/fakes/xterm.ts` in tests, and the
+  conventions suite never sees a LogViewer's rows (its examples are read only for components with
+  parts), so `log-viewer.test.tsx` checks the ANSI classes with `checkClasses` itself.
+  `check:browser` mounts both after the Monaco steps (xterm.js's renderer would compete with them),
+  compares xterm.js's painted background and ANSI red, and the LogViewer's red, with the tokens in
+  Light and Dark, types into the terminal, and loads it under the internal-network CSPs.
+
 ## Fluent 2 surfaces (TSK-55)
 
 Card, Sidebar, Tabs, StatusBar and Toolbar are translucent layers over the backdrop (Table too

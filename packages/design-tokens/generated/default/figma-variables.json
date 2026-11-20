@@ -17750,6 +17750,486 @@
               "name": "color/amber-dark/11"
             }
           }
+        },
+        {
+          "name": "terminal/bg",
+          "type": "COLOR",
+          "description": "Background of a Terminal and of a LogViewer. Not for the app background: use color.bg.canvas.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-bg)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "editor/bg"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "editor/bg"
+            }
+          }
+        },
+        {
+          "name": "terminal/fg",
+          "type": "COLOR",
+          "description": "Default text of a Terminal and a LogViewer: output with no ANSI colour. Not for coloured output: use terminal.ansi.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-fg)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "editor/fg"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "editor/fg"
+            }
+          }
+        },
+        {
+          "name": "terminal/cursor",
+          "type": "COLOR",
+          "description": "The cursor of a Terminal. Not for the focus ring: use color.ring.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-cursor)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "editor/cursor"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "editor/cursor"
+            }
+          }
+        },
+        {
+          "name": "terminal/selection",
+          "type": "COLOR",
+          "description": "Background of selected text in a Terminal and of a LogViewer's search match under the cursor (translucent). Not for a selected row or item: use color.interactive.selected.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-selection)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "editor/selection"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Theme",
+              "name": "editor/selection"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/black",
+          "type": "COLOR",
+          "description": "Text colour of ANSI black (SGR 30, 40) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-black)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral/12"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral-dark/10"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/red",
+          "type": "COLOR",
+          "description": "Text colour of ANSI red (SGR 31, 41) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-red)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/red/11"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/red-dark/11"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/green",
+          "type": "COLOR",
+          "description": "Text colour of ANSI green (SGR 32, 42) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-green)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/green/11"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/green-dark/11"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/yellow",
+          "type": "COLOR",
+          "description": "Text colour of ANSI yellow (SGR 33, 43) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-yellow)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/amber/11"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/amber-dark/11"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/blue",
+          "type": "COLOR",
+          "description": "Text colour of ANSI blue (SGR 34, 44) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-blue)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/blue/11"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/blue-dark/11"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/magenta",
+          "type": "COLOR",
+          "description": "Text colour of ANSI magenta (SGR 35, 45) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-magenta)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/pink/11"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/pink-dark/11"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/cyan",
+          "type": "COLOR",
+          "description": "Text colour of ANSI cyan (SGR 36, 46) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-cyan)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/teal/11"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/teal-dark/11"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/white",
+          "type": "COLOR",
+          "description": "Text colour of ANSI white (SGR 37, 47) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-white)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral/10"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral-dark/12"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/bright-black",
+          "type": "COLOR",
+          "description": "Text colour of ANSI bright black, the grey of dim output (SGR 90, 100) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-bright-black)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral/11"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral-dark/11"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/bright-red",
+          "type": "COLOR",
+          "description": "Text colour of ANSI bright red (SGR 91, 101) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-bright-red)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/red/10"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/red-dark/12"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/bright-green",
+          "type": "COLOR",
+          "description": "Text colour of ANSI bright green (SGR 92, 102) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-bright-green)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/green/10"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/green-dark/12"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/bright-yellow",
+          "type": "COLOR",
+          "description": "Text colour of ANSI bright yellow (SGR 93, 103) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-bright-yellow)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/amber/12"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/amber-dark/12"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/bright-blue",
+          "type": "COLOR",
+          "description": "Text colour of ANSI bright blue (SGR 94, 104) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-bright-blue)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/blue/10"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/blue-dark/12"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/bright-magenta",
+          "type": "COLOR",
+          "description": "Text colour of ANSI bright magenta (SGR 95, 105) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-bright-magenta)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/pink/10"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/pink-dark/12"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/bright-cyan",
+          "type": "COLOR",
+          "description": "Text colour of ANSI bright cyan (SGR 96, 106) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-bright-cyan)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/teal/10"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/teal-dark/12"
+            }
+          }
+        },
+        {
+          "name": "terminal/ansi/bright-white",
+          "type": "COLOR",
+          "description": "Text colour of ANSI bright white (SGR 97, 107) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.",
+          "scopes": [
+            "ALL_SCOPES"
+          ],
+          "hiddenFromPublishing": false,
+          "codeSyntax": {
+            "WEB": "var(--by-terminal-ansi-bright-white)"
+          },
+          "valuesByMode": {
+            "Light": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/neutral/10"
+            },
+            "Dark": {
+              "type": "VARIABLE_ALIAS",
+              "collection": "Primitives",
+              "name": "color/base/white"
+            }
+          }
         }
       ]
     },

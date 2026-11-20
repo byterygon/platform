@@ -1,0 +1,146 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "terminal",
+  "type": "registry:ui",
+  "title": "Terminal",
+  "description": "An interactive terminal on xterm.js 6, loaded lazily from the app's own bundle (no CDN), themed from the terminal.* roles of its region and rethemed when they change; keystrokes leave as bytes through onData, size changes through onResize, output goes in through ref.write.",
+  "dependencies": [],
+  "registryDependencies": [
+    "@byterygon/cn",
+    "@byterygon/token-reader",
+    "@byterygon/xterm"
+  ],
+  "files": [
+    {
+      "path": "ui/terminal.tsx",
+      "type": "registry:ui",
+      "content": "import { useEffect, useImperativeHandle, useRef, useState, type Ref } from \"react\";\nimport { cn } from \"@/lib/cn\";\nimport { tokenReader } from \"@/lib/token-reader\";\nimport { loadXterm, xtermMetrics, xtermTheme } from \"@/lib/xterm\";\n\n// A terminal (Mightyconsole spec §12, TSK-81): xterm.js loaded lazily from the app's own bundle\n// (@/lib/xterm), themed from the terminal.* roles of its region and rethemed when the region's\n// data-theme or data-density or a stylesheet changes. It knows no transport: keystrokes leave as\n// bytes through `onData`, size changes through `onResize`, and the app writes the process's output\n// with `ref.write`. Mod+Shift+C copies the selection and Mod+Shift+V pastes (Ctrl+C goes to the\n// process). xterm.js's own DOM sits in a `data-foreign-dom` element, like CodeInput's CodeMirror.\n// Base UI has no part for it, so it is plain elements.\n\n/** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */\nexport const terminalVariants = {} as const;\n\nconst classes = {\n  root: [\n    \"relative flex w-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-terminal p-inset-sm text-terminal-fg\",\n    \"focus-within:outline-solid focus-within:outline-[length:var(--by-ring-width)] focus-within:outline-offset-[var(--by-ring-inner-width)] focus-within:outline-ring\",\n    \"data-loading:cursor-progress\",\n  ],\n  fallback: \"absolute inset-0 p-inset-sm font-mono text-code text-fg-muted\",\n  surface: \"min-h-0 min-w-0 flex-1\",\n} as const;\n\n/** What `ref` gives: write output, focus, clear, search. */\nexport interface TerminalHandle {\n  /** Writes the process's output (UTF-8 bytes, or text); queued until xterm.js has loaded. */\n  write: (data: Uint8Array | string) => void;\n  /** Moves the keyboard focus into the terminal. */\n  focus: () => void;\n  /** Clears the scrollback, keeping the prompt line. */\n  clear: () => void;\n  /** Clears the screen and the scrollback and resets the modes (a new session in the same terminal). */\n  reset: () => void;\n  /** Selects the next match of `query` after the selection; false when there is none. */\n  findNext: (query: string) => boolean;\n  /** Selects the previous match of `query`; false when there is none. */\n  findPrevious: (query: string) => boolean;\n  /** The size in character cells, null before xterm.js has loaded. */\n  size: () => { cols: number; rows: number } | null;\n}\n\nexport interface TerminalProps {\n  /** Keystrokes, pastes and terminal replies as bytes (UTF-8), for the process's stdin. */\n  onData?: ((data: Uint8Array) => void) | undefined;\n  /** The size in cells, once loaded and whenever the element's size changes. */\n  onResize?: ((cols: number, rows: number) => void) | undefined;\n  /** Called once xterm.js has loaded and the terminal is open. */\n  onReady?: (() => void) | undefined;\n  /** The font size in px; text.code's size of the region by default. */\n  fontSize?: number | undefined;\n  /** Lines kept above the screen. */\n  scrollback?: number | undefined;\n  /** Output only: keystrokes are ignored and no cursor blinks (a finished session). */\n  readOnly?: boolean | undefined;\n  /** xterm.js's screen reader mode: an accessible buffer of the output (costs some speed). */\n  screenReaderMode?: boolean | undefined;\n  /** Accessible name of the terminal. */\n  \"aria-label\"?: string | undefined;\n  /** Extra classes, merged after the component's own so they win; set the height here. */\n  className?: string | undefined;\n  ref?: Ref<TerminalHandle> | undefined;\n}\n\ntype XtermTerminal = InstanceType<Awaited<ReturnType<typeof loadXterm>>[\"Terminal\"]>;\ntype XtermSearch = InstanceType<Awaited<ReturnType<typeof loadXterm>>[\"SearchAddon\"]>;\n\nconst encoder = new TextEncoder();\n\n/** Bytes of xterm.js's binary strings (one char per byte, mouse reports in X10 mode). */\nfunction binaryBytes(text: string): Uint8Array {\n  const out = new Uint8Array(text.length);\n  for (let i = 0; i < text.length; i += 1) out[i] = text.charCodeAt(i) & 0xff;\n  return out;\n}\n\n/** True for Mod+Shift+<key>: Ctrl on Windows and Linux, Cmd on macOS. */\nconst modShift = (event: KeyboardEvent, code: string) => event.type === \"keydown\" && event.shiftKey && (event.ctrlKey || event.metaKey) && event.code === code;\n\n/** An interactive terminal on xterm.js, themed from the terminal.* tokens; the app wires its bytes to a process. */\nexport function Terminal({ onData, onResize, onReady, fontSize, scrollback = 5000, readOnly = false, screenReaderMode = false, \"aria-label\": label = \"Terminal\", className, ref }: TerminalProps) {\n  const rootRef = useRef<HTMLDivElement | null>(null);\n  const surfaceRef = useRef<HTMLDivElement | null>(null);\n  const termRef = useRef<XtermTerminal | null>(null);\n  const searchRef = useRef<XtermSearch | null>(null);\n  const pending = useRef<(Uint8Array | string)[]>([]);\n  const callbacks = useRef({ onData, onResize, onReady });\n  callbacks.current = { onData, onResize, onReady };\n  const options = useRef({ fontSize, readOnly });\n  options.current = { fontSize, readOnly };\n  const [loaded, setLoaded] = useState(false);\n  const [failed, setFailed] = useState<string | null>(null);\n\n  useImperativeHandle(\n    ref,\n    () => ({\n      write(data) {\n        const term = termRef.current;\n        if (term) term.write(data);\n        else pending.current.push(data);\n      },\n      focus() {\n        termRef.current?.focus();\n      },\n      clear() {\n        termRef.current?.clear();\n      },\n      reset() {\n        pending.current = [];\n        termRef.current?.reset();\n      },\n      findNext: (query) => searchRef.current?.findNext(query) ?? false,\n      findPrevious: (query) => searchRef.current?.findPrevious(query) ?? false,\n      size: () => (termRef.current ? { cols: termRef.current.cols, rows: termRef.current.rows } : null),\n    }),\n    [],\n  );\n\n  // Created once per mount; the options below follow their props.\n  useEffect(() => {\n    const root = rootRef.current;\n    const surface = surfaceRef.current;\n    if (!root || !surface) return undefined;\n    let disposed = false;\n    let cleanup: (() => void) | undefined;\n    loadXterm().then(\n      (xterm) => {\n        if (disposed) return;\n        const reader = tokenReader(root);\n        const term = new xterm.Terminal({\n          ...xtermMetrics(reader, options.current.fontSize),\n          theme: xtermTheme(reader),\n          scrollback,\n          screenReaderMode,\n          disableStdin: options.current.readOnly,\n          cursorBlink: !options.current.readOnly,\n          allowProposedApi: false,\n        });\n        const fit = new xterm.FitAddon();\n        const search = new xterm.SearchAddon();\n        term.loadAddon(fit);\n        term.loadAddon(search);\n        term.attachCustomKeyEventHandler((event) => {\n          if (modShift(event, \"KeyC\")) {\n            const text = term.getSelection();\n            if (text) void navigator.clipboard?.writeText(text);\n            return false;\n          }\n          if (modShift(event, \"KeyV\")) {\n            void navigator.clipboard?.readText().then((text) => {\n              if (text && !options.current.readOnly) term.paste(text);\n            });\n            return false;\n          }\n          return true;\n        });\n        term.open(surface);\n        term.textarea?.setAttribute(\"aria-label\", label);\n        let reported = \"\";\n        const report = (cols: number, rows: number) => {\n          if (`${cols}x${rows}` === reported) return;\n          reported = `${cols}x${rows}`;\n          callbacks.current.onResize?.(cols, rows);\n        };\n        const subscriptions = [\n          term.onData((text) => {\n            if (!options.current.readOnly) callbacks.current.onData?.(encoder.encode(text));\n          }),\n          term.onBinary((text) => {\n            if (!options.current.readOnly) callbacks.current.onData?.(binaryBytes(text));\n          }),\n          term.onResize(({ cols, rows }) => report(cols, rows)),\n        ];\n        termRef.current = term;\n        searchRef.current = search;\n        for (const data of pending.current) term.write(data);\n        pending.current = [];\n\n        let frame = 0;\n        const refit = () => {\n          frame = 0;\n          if (disposed || surface.clientWidth === 0 || surface.clientHeight === 0) return;\n          fit.fit();\n        };\n        const scheduleFit = () => {\n          if (!frame) frame = requestAnimationFrame(refit);\n        };\n        const resizeObserver = typeof ResizeObserver === \"undefined\" ? undefined : new ResizeObserver(scheduleFit);\n        resizeObserver?.observe(surface);\n        refit();\n        report(term.cols, term.rows);\n\n        // Retheme when the region's theme or density, or a stylesheet, changes.\n        const doc = root.ownerDocument;\n        let themeFrame = 0;\n        const retheme = () => {\n          themeFrame = 0;\n          if (disposed) return;\n          term.options.theme = xtermTheme(reader);\n          const metrics = xtermMetrics(reader, options.current.fontSize);\n          term.options.fontFamily = metrics.fontFamily;\n          term.options.fontSize = metrics.fontSize;\n          term.options.lineHeight = metrics.lineHeight;\n          scheduleFit();\n        };\n        const mutations = new MutationObserver((records) => {\n          for (const r of records) {\n            const target = r.target as Node;\n            if (surface.contains(target)) continue;\n            const sheet = (n: Node) => n.nodeName === \"STYLE\" || n.nodeName === \"LINK\";\n            if ((r.type === \"attributes\" && target.contains(root)) || doc.head.contains(target) || [...r.addedNodes, ...r.removedNodes].some(sheet)) {\n              if (!themeFrame) themeFrame = requestAnimationFrame(retheme);\n              return;\n            }\n          }\n        });\n        mutations.observe(doc.documentElement, { attributes: true, attributeFilter: [\"class\", \"style\", \"data-theme\", \"data-density\"], subtree: true, childList: true });\n\n        cleanup = () => {\n          if (frame) cancelAnimationFrame(frame);\n          if (themeFrame) cancelAnimationFrame(themeFrame);\n          resizeObserver?.disconnect();\n          mutations.disconnect();\n          for (const s of subscriptions) s.dispose();\n          reader.dispose();\n          term.dispose();\n          termRef.current = null;\n          searchRef.current = null;\n        };\n        setLoaded(true);\n        callbacks.current.onReady?.();\n      },\n      (error: unknown) => {\n        if (!disposed) setFailed(error instanceof Error ? error.message : String(error));\n      },\n    );\n    return () => {\n      disposed = true;\n      cleanup?.();\n    };\n    // xterm.js takes scrollback and screenReaderMode at creation; the others follow below.\n    // eslint-disable-next-line react-hooks/exhaustive-deps -- created once per mount, see above\n  }, []);\n\n  useEffect(() => {\n    const term = termRef.current;\n    if (!term) return;\n    term.options.disableStdin = readOnly;\n    term.options.cursorBlink = !readOnly;\n  }, [readOnly, loaded]);\n\n  useEffect(() => {\n    const term = termRef.current;\n    const root = rootRef.current;\n    if (!term || !root) return;\n    const reader = tokenReader(root);\n    term.options.fontSize = xtermMetrics(reader, fontSize).fontSize;\n    reader.dispose();\n  }, [fontSize, loaded]);\n\n  return (\n    <div\n      ref={rootRef}\n      data-slot=\"terminal\"\n      data-loading={loaded ? undefined : \"\"}\n      data-readonly={readOnly ? \"\" : undefined}\n      role=\"group\"\n      aria-label={label}\n      aria-busy={loaded ? undefined : true}\n      className={cn(classes.root, className)}\n    >\n      <div data-slot=\"terminal-fallback\" hidden={loaded} className={classes.fallback}>\n        {failed ? `The terminal could not load: ${failed}` : \"Loading the terminal…\"}\n      </div>\n      <div ref={surfaceRef} data-slot=\"terminal-surface\" data-foreign-dom=\"\" className={classes.surface} />\n    </div>\n  );\n}\n"
+    }
+  ],
+  "meta": {
+    "manifest": {
+      "schemaVersion": 1,
+      "name": "terminal",
+      "title": "Terminal",
+      "description": "An interactive terminal on xterm.js 6, loaded lazily from the app's own bundle (no CDN), themed from the terminal.* roles of its region and rethemed when they change; keystrokes leave as bytes through onData, size changes through onResize, output goes in through ref.write.",
+      "usage": "Use Terminal for an exec session or a shell: pass onData to the process's stdin (bytes, UTF-8), onResize to the process's terminal size, and write its stdout and stderr with ref.write(bytes) as they arrive (writes before xterm.js has loaded are queued). onReady fires once it is open. Set readOnly when the session ends (keystrokes are ignored, the cursor stops blinking) and ref.reset() before a new one. Mod+Shift+C copies the selection and Mod+Shift+V pastes; Ctrl+C goes to the process. ref.findNext and findPrevious search the scrollback. The height comes from className; the terminal fits its columns and rows to the element. Use LogViewer for output alone, CodeBlock for a fixed snippet.",
+      "status": "experimental",
+      "base": null,
+      "dependencies": [],
+      "props": [
+        {
+          "name": "ref",
+          "type": "Ref<TerminalHandle>",
+          "description": "write(bytes | text), focus(), clear(), reset(), findNext(query), findPrevious(query), size()."
+        },
+        {
+          "name": "onData",
+          "type": "(data: Uint8Array) => void",
+          "description": "Keystrokes, pastes and terminal replies as bytes, for the process's stdin."
+        },
+        {
+          "name": "onResize",
+          "type": "(cols: number, rows: number) => void",
+          "description": "The size in cells once loaded and whenever the element's size changes."
+        },
+        {
+          "name": "onReady",
+          "type": "() => void",
+          "description": "Called once xterm.js has loaded and the terminal is open."
+        },
+        {
+          "name": "fontSize",
+          "type": "number",
+          "description": "The font size in px; text.code's size of the region by default."
+        },
+        {
+          "name": "scrollback",
+          "type": "number",
+          "description": "Lines kept above the screen (read at mount).",
+          "default": 5000
+        },
+        {
+          "name": "readOnly",
+          "type": "boolean",
+          "description": "Output only: keystrokes are ignored and the cursor does not blink (a finished session).",
+          "default": false
+        },
+        {
+          "name": "screenReaderMode",
+          "type": "boolean",
+          "description": "xterm.js's screen reader mode: an accessible buffer of the output (read at mount).",
+          "default": false
+        },
+        {
+          "name": "aria-label",
+          "type": "string",
+          "description": "Accessible name of the terminal and of its input.",
+          "default": "Terminal"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "description": "Extra classes, merged after the component's own; set the height here."
+        }
+      ],
+      "variants": {},
+      "slots": [
+        {
+          "name": "root",
+          "element": "div",
+          "description": "role=\"group\", the frame in terminal.bg; data-slot=\"terminal\", data-loading until xterm.js has loaded, data-readonly."
+        },
+        {
+          "name": "fallback",
+          "element": "div",
+          "description": "\"Loading the terminal…\" (or why it could not load) until xterm.js is ready; data-slot=\"terminal-fallback\"."
+        },
+        {
+          "name": "surface",
+          "element": "div",
+          "description": "Where xterm.js renders, a data-foreign-dom element; data-slot=\"terminal-surface\"."
+        }
+      ],
+      "states": [
+        {
+          "name": "focus-within",
+          "variant": "focus-within",
+          "description": "The keyboard is in the terminal: the ring around the frame (ring.width in color.ring)."
+        },
+        {
+          "name": "loading",
+          "variant": "data-loading",
+          "description": "xterm.js is loading: aria-busy, the progress cursor and the fallback text."
+        }
+      ],
+      "tokens": [
+        "color.border.subtle",
+        "color.fg.muted",
+        "color.ring",
+        "font.mono",
+        "radius.lg",
+        "ring.inner-width",
+        "ring.width",
+        "space.inset.sm",
+        "terminal.bg",
+        "terminal.fg",
+        "text.code.leading",
+        "text.code.size",
+        "text.code.tracking",
+        "text.code.weight"
+      ],
+      "examples": {
+        "minimal": "TerminalMinimal",
+        "realistic": "TerminalRealistic"
+      },
+      "accessibility": [
+        "The frame is role=\"group\" with the accessible name, which xterm.js's input (a textarea) also takes; it is the tab stop, and every key, Tab and Escape included, goes to the process. Mod+Shift+C and Mod+Shift+V copy and paste.",
+        "screenReaderMode gives xterm.js's accessible buffer of the output (off by default: it costs speed); the app should also say when a session starts and ends outside the terminal.",
+        "Every ANSI colour reads at 4.5:1 on terminal.bg and the cursor at 3:1 (the token build checks each pair).",
+        "The frame shows the ring while the keyboard is inside: ring.width in color.ring."
+      ]
+    },
+    "example": "import { useRef, useState } from \"react\";\nimport { Button } from \"@/components/button/button\";\nimport { Terminal, type TerminalHandle } from \"@/components/terminal/terminal\";\n\n/** The smallest useful Terminal: output written once it is ready. */\nexport function TerminalMinimal() {\n  const ref = useRef<TerminalHandle>(null);\n  return <Terminal ref={ref} aria-label=\"Output\" readOnly onReady={() => ref.current?.write(\"build finished in 4.2 s\\r\\n\")} className=\"h-panel-xs\" />;\n}\n\nconst ESC = \"\\u001b\";\n\n/**\n * An exec session, with a local echo standing in for the process: what is typed comes back, Enter\n * gives a new prompt, the size is shown. An app sends `onData` to the process's stdin instead and\n * writes its stdout with `ref.write`.\n */\nexport function TerminalRealistic() {\n  const ref = useRef<TerminalHandle>(null);\n  const [size, setSize] = useState<string>(\"\");\n  const [ended, setEnded] = useState(false);\n  const prompt = `${ESC}[32mroot@orders-api${ESC}[0m:${ESC}[34m/app${ESC}[0m# `;\n  const decoder = new TextDecoder();\n  return (\n    <div className=\"flex flex-col gap-stack-sm\">\n      <div className=\"flex items-center gap-inline-sm\">\n        <span className=\"min-w-0 flex-1 text-caption-1 text-fg-muted\">{ended ? \"Exited with code 0\" : size ? `Connected · ${size}` : \"Connecting…\"}</span>\n        <Button\n          appearance=\"secondary\"\n          size=\"small\"\n          onClick={() => {\n            ref.current?.reset();\n            ref.current?.write(prompt);\n            setEnded(false);\n            ref.current?.focus();\n          }}\n        >\n          Reconnect\n        </Button>\n      </div>\n      <Terminal\n        ref={ref}\n        aria-label=\"orders-api shell\"\n        readOnly={ended}\n        onReady={() => ref.current?.write(`${ESC}[1mbash${ESC}[0m 5.2 · /bin/sh fallback\\r\\n${prompt}`)}\n        onResize={(cols, rows) => setSize(`${cols} × ${rows}`)}\n        onData={(bytes) => {\n          const text = decoder.decode(bytes);\n          if (text === \"\\u0004\") {\n            ref.current?.write(\"exit\\r\\n\");\n            setEnded(true);\n          } else if (text === \"\\r\") ref.current?.write(`\\r\\n${prompt}`);\n          else ref.current?.write(bytes);\n        }}\n        className=\"h-panel-sm\"\n      />\n    </div>\n  );\n}\n",
+    "dependencyVersions": {}
+  }
+}

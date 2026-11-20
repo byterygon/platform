@@ -1,0 +1,29 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "xterm",
+  "type": "registry:lib",
+  "title": "xterm",
+  "description": "Loads xterm.js lazily from the app's own bundle (its stylesheet, the fit and search addons; no CDN) and builds an xterm.js theme and font from the terminal.* roles and text.code in scope at the terminal. The Terminal component imports it from @/lib/xterm.",
+  "dependencies": [
+    "@xterm/xterm",
+    "@xterm/addon-fit",
+    "@xterm/addon-search"
+  ],
+  "registryDependencies": [
+    "@byterygon/token-reader"
+  ],
+  "files": [
+    {
+      "path": "lib/xterm.ts",
+      "type": "registry:lib",
+      "content": "import type { FitAddon } from \"@xterm/addon-fit\";\nimport type { SearchAddon } from \"@xterm/addon-search\";\nimport type { ITheme, Terminal } from \"@xterm/xterm\";\nimport type { TokenReader } from \"@/lib/token-reader\";\n\n// xterm.js for Byterygon UI (Mightyconsole spec §12, TSK-81): loaded lazily from the app's own\n// bundle, never from a CDN, with its stylesheet, the fit addon (the terminal follows its element's\n// size) and the search addon; its theme comes from the terminal.* roles in scope at the terminal's\n// element. The Terminal component imports it.\n//\n// Bundling: `loadXterm()` is the only way in. Its dynamic imports put xterm.js and its CSS in a\n// chunk of their own that a screen without a terminal never downloads. xterm.js needs no worker\n// and no network; it creates `<style>` elements at run time, so a CSP needs\n// `style-src 'self' 'unsafe-inline'` (as Monaco does).\n\n/** What `loadXterm` gives: the classes the Terminal component constructs. */\nexport interface Xterm {\n  Terminal: typeof Terminal;\n  FitAddon: typeof FitAddon;\n  SearchAddon: typeof SearchAddon;\n}\n\nlet loading: Promise<Xterm> | undefined;\n\n/** Loads xterm.js, its addons and its stylesheet once. A failed load is tried again next time. */\nexport function loadXterm(): Promise<Xterm> {\n  loading ??= Promise.all([import(\"@xterm/xterm\"), import(\"@xterm/addon-fit\"), import(\"@xterm/addon-search\"), import(\"@xterm/xterm/css/xterm.css\")]).then(\n    ([xterm, fit, search]) => ({ Terminal: xterm.Terminal, FitAddon: fit.FitAddon, SearchAddon: search.SearchAddon }),\n    (error: unknown) => {\n      loading = undefined;\n      throw error;\n    },\n  );\n  return loading;\n}\n\n/** The xterm.js theme keys and the token variable each one reads. */\nexport const XTERM_COLORS: Readonly<Partial<Record<Exclude<keyof ITheme, \"extendedAnsi\">, string>>> = {\n  foreground: \"--by-terminal-fg\",\n  background: \"--by-terminal-bg\",\n  cursor: \"--by-terminal-cursor\",\n  cursorAccent: \"--by-terminal-bg\",\n  selectionBackground: \"--by-terminal-selection\",\n  black: \"--by-terminal-ansi-black\",\n  red: \"--by-terminal-ansi-red\",\n  green: \"--by-terminal-ansi-green\",\n  yellow: \"--by-terminal-ansi-yellow\",\n  blue: \"--by-terminal-ansi-blue\",\n  magenta: \"--by-terminal-ansi-magenta\",\n  cyan: \"--by-terminal-ansi-cyan\",\n  white: \"--by-terminal-ansi-white\",\n  brightBlack: \"--by-terminal-ansi-bright-black\",\n  brightRed: \"--by-terminal-ansi-bright-red\",\n  brightGreen: \"--by-terminal-ansi-bright-green\",\n  brightYellow: \"--by-terminal-ansi-bright-yellow\",\n  brightBlue: \"--by-terminal-ansi-bright-blue\",\n  brightMagenta: \"--by-terminal-ansi-bright-magenta\",\n  brightCyan: \"--by-terminal-ansi-bright-cyan\",\n  brightWhite: \"--by-terminal-ansi-bright-white\",\n  scrollbarSliderBackground: \"--by-color-scrollbar-thumb\",\n  scrollbarSliderHoverBackground: \"--by-color-scrollbar-thumb-hover\",\n  scrollbarSliderActiveBackground: \"--by-color-scrollbar-thumb-hover\",\n};\n\n/** The xterm.js theme for the tokens a reader resolves. Pure: the same tokens give the same theme. */\nexport function xtermTheme(read: Pick<TokenReader, \"color\">): ITheme {\n  const theme: Record<string, string> = {};\n  for (const [key, cssVar] of Object.entries(XTERM_COLORS)) if (cssVar) theme[key] = read.color(cssVar);\n  return theme as ITheme;\n}\n\n/** xterm.js's font options from `font.mono` and the density-aware `text.code` role. */\nexport interface XtermMetrics {\n  fontFamily: string;\n  fontSize: number;\n  lineHeight: number;\n}\n\n/** The font of `text.code` at the element; `fontSize` overrides the size (the line keeps its ratio). */\nexport function xtermMetrics(read: Pick<TokenReader, \"value\">, fontSize?: number): XtermMetrics {\n  const size = Number.parseFloat(read.value(\"--by-text-code-size\")) || 13;\n  const leading = read.value(\"--by-text-code-leading\");\n  const leadingNumber = Number.parseFloat(leading);\n  // A unitless leading is a ratio; a length is divided by the size (xterm.js takes a ratio).\n  const ratio = /[a-z%]$/.test(leading) ? leadingNumber / size : leadingNumber;\n  const family = read.value(\"--by-font-mono\") || \"ui-monospace, monospace\";\n  return { fontFamily: family, fontSize: fontSize ?? size, lineHeight: Number.isFinite(ratio) && ratio >= 1 ? ratio : 1.2 };\n}\n"
+    }
+  ],
+  "meta": {
+    "dependencyVersions": {
+      "@xterm/xterm": "6.0.0",
+      "@xterm/addon-fit": "0.11.0",
+      "@xterm/addon-search": "0.16.0"
+    }
+  }
+}

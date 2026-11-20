@@ -3,15 +3,17 @@
 // mode, and CodeInputs (a one-line filter in a Field, a pretty JSON viewer) in a third region, all
 // under a preset stylesheet the check swaps. `window.__check` is the check's handle; the measurements use performance.now(), which
 // starts at navigation.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorView } from "@codemirror/view";
 import { createRoot } from "react-dom/client";
 import { CodeEditor, type CodeCompletion, type CodeDiagnostic } from "@/components/code-editor/code-editor";
 import { CodeInput } from "@/components/code-input/code-input";
 import { Field, FieldLabel } from "@/components/field/field";
+import { LogViewer, type LogViewerHandle } from "@/components/log-viewer/log-viewer";
 import { SqlEditor, type SqlRun } from "@/components/sql-editor/sql-editor";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/table/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/tabs/tabs";
+import { Terminal, type TerminalHandle } from "@/components/terminal/terminal";
 import { cssColorToHex, tokenReader, type Monaco, type MonacoEditor } from "@/lib/monaco";
 import presetDefault from "@byterygon/design-tokens/presets/default/tokens.css?raw";
 import presetHighContrast from "@byterygon/design-tokens/presets/high-contrast/tokens.css?raw";
@@ -59,6 +61,12 @@ interface Check {
   /** TSK-94: the query field above a table (its suggest widget must paint over the sticky header) and a JSON field. */
   queryEditor?: MonacoEditor;
   fieldEditor?: MonacoEditor;
+  /** TSK-81: the Terminal's input as text, whether it is open, and its handle. */
+  terminalInput: string[];
+  terminalReady: boolean;
+  terminal?: TerminalHandle;
+  /** Mounts the Terminal region: its xterm.js would otherwise share the main thread with the Monaco steps. */
+  showTerminals: () => void;
 }
 
 let resolveReady: () => void = () => {};
@@ -84,6 +92,7 @@ const check: Check = {
     document.getElementById("region-2")!.setAttribute("data-theme", theme === "light" ? "dark" : "light");
     document.getElementById("region-3")!.setAttribute("data-theme", theme);
     document.getElementById("region-5")!.setAttribute("data-theme", theme);
+    document.getElementById("region-6")?.setAttribute("data-theme", theme);
   },
   setDensity: (density) => {
     for (const id of ["region", "region-3", "region-5"]) document.getElementById(id)!.setAttribute("data-density", density);
@@ -98,6 +107,9 @@ const check: Check = {
   setJson: () => {},
   jsonDiagnostics: null,
   jsonReady: false,
+  terminalInput: [],
+  terminalReady: false,
+  showTerminals: () => {},
 };
 check.bothReady = Promise.all([check.ready, second]).then(() => {});
 (window as unknown as { __check: Check }).__check = check;
@@ -218,6 +230,62 @@ function monacoDefaults(defaults: string[]) {
 }
 (window as unknown as { __monacoDefaults: typeof monacoDefaults }).__monacoDefaults = monacoDefaults;
 
+/** TSK-81: the Terminal's background and ANSI red as xterm.js paints them, and the LogViewer's red, next to the tokens. */
+function sampleTerminal() {
+  const region = document.getElementById("region-6")!;
+  const reader = tokenReader(region);
+  const rgb = (value: string) => cssColorToHex(value) ?? value;
+  const terminal = region.querySelector<HTMLElement>("[data-slot=terminal]")!;
+  // What is painted at an empty spot near the bottom right: the first opaque background up from it.
+  const surface = terminal.querySelector<HTMLElement>("[data-slot=terminal-surface]")!.getBoundingClientRect();
+  let screen: HTMLElement | null = document.elementFromPoint(surface.right - 4, surface.bottom - 4) as HTMLElement | null;
+  while (screen && screen !== terminal && /^(transparent|rgba\(0, 0, 0, 0\))$/.test(getComputedStyle(screen).backgroundColor)) screen = screen.parentElement;
+  screen ??= terminal;
+  const red = [...terminal.querySelectorAll<HTMLElement>(".xterm-rows span")].find((s) => s.textContent?.includes("FAILED"));
+  const logRed = region.querySelector<HTMLElement>("[data-slot=log-viewer] .text-terminal-ansi-red");
+  const result = {
+    background: rgb(getComputedStyle(screen).backgroundColor),
+    expectedBackground: reader.color("--by-terminal-bg"),
+    red: red ? rgb(getComputedStyle(red).color) : null,
+    expectedRed: reader.color("--by-terminal-ansi-red"),
+    logRed: logRed ? rgb(getComputedStyle(logRed).color) : null,
+    rows: terminal.querySelectorAll(".xterm-rows > div").length,
+    text: [...terminal.querySelectorAll(".xterm-rows > div")].map((d) => d.textContent?.trimEnd()).join("\n"),
+  };
+  reader.dispose();
+  return result;
+}
+(window as unknown as { __sampleTerminal: typeof sampleTerminal }).__sampleTerminal = sampleTerminal;
+
+/** TSK-81: a Terminal that echoes what is typed, and a LogViewer with an ANSI red line. */
+function Terminals() {
+  const terminal = useRef<TerminalHandle>(null);
+  const logs = useRef<LogViewerHandle>(null);
+  useEffect(() => {
+    logs.current?.append([{ ts: "2026-11-20T08:00:00Z", stream: "stderr", text: "\u001b[31mERROR\u001b[0m payment timed out" }]);
+  }, []);
+  return (
+    <div id="region-6" data-theme="light" data-density="comfortable" className="flex flex-col gap-stack-md bg-surface p-inset-md">
+      <Terminal
+        ref={terminal}
+        aria-label="Shell"
+        className="h-panel-xs"
+        onReady={() => {
+          check.terminal = terminal.current!;
+          terminal.current!.write("\u001b[31mFAILED\u001b[0m 3 tests\r\n$ ");
+          check.terminalReady = true;
+        }}
+        onData={(bytes) => {
+          const text = new TextDecoder().decode(bytes);
+          check.terminalInput.push(text);
+          terminal.current?.write(bytes);
+        }}
+      />
+      <LogViewer ref={logs} aria-label="Logs" className="h-panel-xs" />
+    </div>
+  );
+}
+
 const ORDER_SCHEMA = { type: "object", properties: { id: { type: "string" }, status: { enum: ["PLACED", "PAID"] } }, required: ["id"], additionalProperties: false };
 
 function Codes() {
@@ -314,6 +382,8 @@ function Strip() {
 function App() {
   const [value, setValue] = useState(INITIAL);
   check.setValue = setValue;
+  const [terminals, setTerminals] = useState(false);
+  check.showTerminals = () => setTerminals(true);
   return (
     <main className="flex flex-col gap-stack-md p-inset-lg">
       <button id="before" type="button">Before</button>
@@ -343,6 +413,7 @@ function App() {
       <Codes />
       <Widgets />
       <Strip />
+      {terminals ? <Terminals /> : null}
     </main>
   );
 }

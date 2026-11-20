@@ -474,6 +474,13 @@ package is a reference, never a dependency. `test/catalog.test.ts` pins every va
   picks a density.
 - `shadow.0` to `shadow.5` are semantic, not primitive, because a shadow layer aliases the black and
   white overlays. `shadow.raised` predates them and is kept as it was.
+- Terminal (TSK-81, `domain.ts`): `terminal.bg`, `fg`, `cursor`, `selection` alias the `editor.*`
+  roles, and `terminal.ansi.<name>` (black, red, green, yellow, blue, magenta, cyan, white and
+  their `bright-` forms; kebab case like every other path) are text steps: the normal colours step
+  11, the bright ones light 10 and dark 12, black and white the neutral text steps (bright white is
+  `color.base.white` in dark). Each is a text pair on `terminal.bg` in every preset; a coloured
+  background (SGR 4x) takes `terminal.bg` as its text. Yellow is amber (bright yellow amber 12),
+  magenta pink, cyan teal.
 - Status colours: `color.status.<name>.{bg,border,fg,solid,solid-hover,solid-fg}`. Put `solid-fg` on
   `solid`, never `color.fg.on-accent`: the red solid takes white text where a yellow one takes ink.
   Warning is the `orange` ramp (hue 55; before TSK-52 it was `amber`), apart from danger's red and
