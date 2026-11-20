@@ -1040,6 +1040,58 @@
       ],
       "type": "object"
     },
+    "ComposeProject": {
+      "description": "A Compose project as its containers' labels describe it.",
+      "properties": {
+        "configFiles": {
+          "description": "The compose files, comma-separated as Compose writes them.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project": {
+          "type": "string"
+        },
+        "services": {
+          "items": {
+            "$ref": "#/$defs/ComposeService"
+          },
+          "type": "array"
+        },
+        "workingDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "project",
+        "services"
+      ],
+      "type": "object"
+    },
+    "ComposeService": {
+      "description": "A Compose service and its containers.",
+      "properties": {
+        "containers": {
+          "description": "The containers' names.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "service": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "service",
+        "containers"
+      ],
+      "type": "object"
+    },
     "ConnectDockerProfile": {
       "description": "The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).",
       "properties": {
@@ -1518,6 +1570,618 @@
       ],
       "type": "string"
     },
+    "ContainerActionResult": {
+      "description": "What an action did to one container.",
+      "properties": {
+        "error": {
+          "description": "Docker's reason when it refused; absent on success.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "ContainerHealth": {
+      "description": "The container's health check and its last results.",
+      "properties": {
+        "failingStreak": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "intervalSec": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "log": {
+          "description": "Oldest first, as Docker keeps them (the last five).",
+          "items": {
+            "$ref": "#/$defs/HealthResult"
+          },
+          "type": "array"
+        },
+        "status": {
+          "description": "`healthy`, `unhealthy`, `starting` or `none`.",
+          "type": "string"
+        },
+        "test": {
+          "description": "The check's command (`Config.Healthcheck.Test`), e.g. `[\"CMD-SHELL\", \"curl -f ...\"]`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "failingStreak",
+        "test",
+        "log"
+      ],
+      "type": "object"
+    },
+    "ContainerIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "description": "The container's id, short id or name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "id"
+      ],
+      "type": "object"
+    },
+    "ContainerInspectOutput": {
+      "description": "`docker.containers.inspect`: the Overview's facts and the raw answer for Inspect.",
+      "properties": {
+        "inspect": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "overview": {
+          "$ref": "#/$defs/ContainerOverview"
+        }
+      },
+      "required": [
+        "overview",
+        "inspect"
+      ],
+      "type": "object"
+    },
+    "ContainerMount": {
+      "description": "A mount: a volume, a bind or a tmpfs.",
+      "properties": {
+        "destination": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "`volume`, `bind`, `tmpfs`, ...",
+          "type": "string"
+        },
+        "name": {
+          "description": "The volume's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "readWrite": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source",
+        "destination",
+        "readWrite"
+      ],
+      "type": "object"
+    },
+    "ContainerNetwork": {
+      "description": "A network the container is attached to.",
+      "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "gateway": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ipAddress": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ipv6Address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "aliases"
+      ],
+      "type": "object"
+    },
+    "ContainerOverview": {
+      "description": "What the Overview shows, read from `docker inspect` (spec §10.4).",
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cpus": {
+          "description": "The CPU limit in CPUs (`HostConfig.NanoCpus`), when one is set.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "created": {
+          "description": "RFC 3339.",
+          "type": "string"
+        },
+        "entrypoint": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "env": {
+          "items": {
+            "$ref": "#/$defs/EnvVar"
+          },
+          "type": "array"
+        },
+        "error": {
+          "description": "Why the container failed to start, as Docker says it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exitCode": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "finishedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "health": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContainerHealth"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "imageId": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "memoryLimit": {
+          "description": "The memory limit in bytes, when one is set.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mounts": {
+          "items": {
+            "$ref": "#/$defs/ContainerMount"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "networks": {
+          "items": {
+            "$ref": "#/$defs/ContainerNetwork"
+          },
+          "type": "array"
+        },
+        "oomKilled": {
+          "type": "boolean"
+        },
+        "paused": {
+          "type": "boolean"
+        },
+        "ports": {
+          "items": {
+            "$ref": "#/$defs/PortBinding"
+          },
+          "type": "array"
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "restartCount": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "restartPolicy": {
+          "description": "`no`, `always`, `unless-stopped`, `on-failure:3`.",
+          "type": "string"
+        },
+        "restarting": {
+          "type": "boolean"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "service": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "tty": {
+          "type": "boolean"
+        },
+        "user": {
+          "type": "string"
+        },
+        "workingDir": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "image",
+        "imageId",
+        "created",
+        "state",
+        "running",
+        "paused",
+        "restarting",
+        "oomKilled",
+        "restartCount",
+        "restartPolicy",
+        "command",
+        "entrypoint",
+        "workingDir",
+        "user",
+        "tty",
+        "env",
+        "labels",
+        "mounts",
+        "networks",
+        "ports"
+      ],
+      "type": "object"
+    },
+    "ContainerPort": {
+      "description": "A published or exposed port of a container.",
+      "properties": {
+        "ip": {
+          "description": "The host address of a published port (`0.0.0.0`, `::`, `127.0.0.1`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "privatePort": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "protocol": {
+          "description": "`tcp`, `udp` or `sctp`.",
+          "type": "string"
+        },
+        "publicPort": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "privatePort",
+        "protocol"
+      ],
+      "type": "object"
+    },
+    "ContainerRow": {
+      "description": "One row of the Containers table (`GET /containers/json`).",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "created": {
+          "description": "Unix time in seconds.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "exitCode": {
+          "description": "The exit code of an exited container, from the status.",
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "health": {
+          "description": "`healthy`, `unhealthy` or `starting`, from the status.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "The full 64-character id.",
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "imageId": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "description": "The first name, without Docker's leading `/`.",
+          "type": "string"
+        },
+        "ports": {
+          "items": {
+            "$ref": "#/$defs/ContainerPort"
+          },
+          "type": "array"
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "service": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "description": "`created`, `running`, `paused`, `restarting`, `removing`, `exited` or `dead`.",
+          "type": "string"
+        },
+        "status": {
+          "description": "Docker's sentence: `Up 3 hours (healthy)`, `Exited (137) 2 days ago`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "image",
+        "imageId",
+        "command",
+        "created",
+        "state",
+        "status",
+        "ports",
+        "labels"
+      ],
+      "type": "object"
+    },
+    "ContainersActionInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "timeoutSec": {
+          "default": null,
+          "description": "Seconds to wait for a stop before killing; Docker's default (10) when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "ids"
+      ],
+      "type": "object"
+    },
+    "ContainersListInput": {
+      "properties": {
+        "all": {
+          "default": null,
+          "description": "Stopped containers too; `true` when absent.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "ContainersLogsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "follow": {
+          "description": "Keep the stream open for new lines.",
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "since": {
+          "default": null,
+          "description": "Lines from this time on: RFC 3339 (a line's `ts`) or Unix seconds (`1732093201.5`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "streamId": {
+          "type": "string"
+        },
+        "tail": {
+          "default": null,
+          "description": "The last lines only; the whole log when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "id",
+        "follow",
+        "streamId"
+      ],
+      "type": "object"
+    },
+    "ContainersLogsSummary": {
+      "properties": {
+        "endReason": {
+          "description": "`end`: the log ended (not following, or the container stopped).",
+          "type": "string"
+        },
+        "lines": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tty": {
+          "description": "The container has a TTY: one stream, everything on stdout.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "lines",
+        "tty",
+        "endReason"
+      ],
+      "type": "object"
+    },
+    "ContainersRemoveInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "force": {
+          "description": "Kill a running container first.",
+          "type": "boolean"
+        },
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "volumes": {
+          "description": "Remove its anonymous volumes too (named volumes stay).",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "connId",
+        "ids",
+        "force",
+        "volumes"
+      ],
+      "type": "object"
+    },
     "DecodeInput": {
       "properties": {
         "bytes": {
@@ -1679,6 +2343,48 @@
       "required": [
         "connId",
         "host"
+      ],
+      "type": "object"
+    },
+    "DockerEventsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "container": {
+          "default": null,
+          "description": "Only this container's events (its id or name).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "since": {
+          "default": null,
+          "description": "Events from this time on (RFC 3339 or Unix seconds), to resume after a reconnect; only\nnew ones when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "streamId": {
+          "type": "string"
+        },
+        "types": {
+          "default": null,
+          "description": "Some of `container`, `image`, `volume`, `network`; all four when absent.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "streamId"
       ],
       "type": "object"
     },
@@ -2162,6 +2868,22 @@
         }
       ]
     },
+    "EnvVar": {
+      "description": "An environment variable of the container's configuration.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
     "ErrorPosition": {
       "description": "Where in an input text an error is, 1-based (a codec's JSON, a schema, a jq program).",
       "properties": {
@@ -2634,6 +3356,31 @@
       "required": [
         "name",
         "value"
+      ],
+      "type": "object"
+    },
+    "HealthResult": {
+      "description": "One run of the health check.",
+      "properties": {
+        "end": {
+          "type": "string"
+        },
+        "exitCode": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "output": {
+          "type": "string"
+        },
+        "start": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "exitCode",
+        "output"
       ],
       "type": "object"
     },
@@ -6753,6 +7500,27 @@
       "required": [
         "identity",
         "ratePerSecond"
+      ],
+      "type": "object"
+    },
+    "PortBinding": {
+      "description": "A port of the container and where it is published.",
+      "properties": {
+        "port": {
+          "description": "`8000/tcp`.",
+          "type": "string"
+        },
+        "published": {
+          "description": "`127.0.0.1:8080`, `[::]:8080`; empty when the port is only exposed.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "port",
+        "published"
       ],
       "type": "object"
     },
@@ -11036,6 +11804,30 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/DockerConnIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.compose.projects",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ComposeProject"
+        },
+        "type": "array"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/DockerConnectInput"
       },
       "kind": "mutation",
@@ -11061,6 +11853,168 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ContainerIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.containers.inspect",
+      "output": {
+        "$ref": "#/$defs/ContainerInspectOutput"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ContainersListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.containers.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ContainerRow"
+        },
+        "type": "array"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ContainersLogsInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "docker.containers.logs",
+      "output": {
+        "$ref": "#/$defs/ContainersLogsSummary"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ContainersRemoveInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.containers.remove",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ContainerActionResult"
+        },
+        "type": "array"
+      },
+      "perm": "docker.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 120000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ContainersActionInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.containers.restart",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ContainerActionResult"
+        },
+        "type": "array"
+      },
+      "perm": "docker.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 120000,
+      "timeout_max_ms": 720000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ContainersActionInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.containers.start",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ContainerActionResult"
+        },
+        "type": "array"
+      },
+      "perm": "docker.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 120000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ContainersActionInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.containers.stop",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ContainerActionResult"
+        },
+        "type": "array"
+      },
+      "perm": "docker.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 120000,
+      "timeout_max_ms": 720000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/DockerConnIdInput"
       },
       "kind": "mutation",
@@ -11074,6 +12028,27 @@
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/DockerEventsInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "docker.events",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
     },
     {
       "agent": "hidden",
@@ -13904,5 +14879,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:51412292a0934a3509a820e239af773d5b0af47300617c2ec2878b75c4d75070"
+  "schema_hash": "sha256:022957b96e3b0e275768f5206a0854cb8ade18fd3ce13e67770a5b4a3c757d93"
 }

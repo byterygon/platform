@@ -227,3 +227,167 @@ async fn lab_a_user_without_socket_forwarding_gets_the_explained_error() {
         err.message
     );
 }
+
+/// The `jsonl` lines of a chunk.
+fn lines(chunk: &[u8]) -> Vec<Value> {
+    chunk
+        .split(|b| *b == b'\n')
+        .filter(|l| !l.is_empty())
+        .map(|l| serde_json::from_slice(l).unwrap())
+        .collect()
+}
+
+/// A stream's lines until it ends, and its summary.
+async fn drain(tab: &mut Tab, id: u32) -> (Vec<Value>, Value) {
+    let mut all = Vec::new();
+    loop {
+        let frame = tab.frame(id).await;
+        match frame.kind {
+            ambidex::Kind::Chunk => {
+                all.extend(lines(&frame.payload));
+                tab.client.credit(id, 1).await;
+            }
+            ambidex::Kind::StreamEnd => {
+                return (all, serde_json::from_slice(&frame.payload).unwrap());
+            }
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    }
+}
+
+#[tokio::test]
+async fn lab_containers_their_logs_and_the_events() {
+    let (_t, mut tab) = setup().await;
+    let trusted = presented_key(&mut tab, 2).await;
+    tab.call(
+        3,
+        "docker.connect",
+        json!({ "profile": profile(json!({ "hostKey": trusted })) }),
+    )
+    .await;
+    let conn_id = tab.result(3).await["connId"].as_str().unwrap().to_owned();
+
+    // The seed: the project shop, a stopped container (exit 3), a TTY container.
+    tab.call(4, "docker.containers.list", json!({ "connId": conn_id }))
+        .await;
+    let rows = tab.result(4).await;
+    let row = |name: &str| {
+        rows.as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["name"] == name)
+            .unwrap_or_else(|| panic!("no {name} in {rows}"))
+            .clone()
+    };
+    assert_eq!(row("shop-web-1")["project"], "shop");
+    assert_eq!(row("shop-web-1")["service"], "web");
+    assert_eq!(row("shop-worker-1")["state"], "running");
+    assert_eq!(row("stopped")["state"], "exited");
+    assert_eq!(row("stopped")["exitCode"], 3);
+    tab.call(5, "docker.compose.projects", json!({ "connId": conn_id }))
+        .await;
+    let projects = tab.result(5).await;
+    let shop = projects
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["project"] == "shop")
+        .unwrap();
+    assert_eq!(shop["services"].as_array().unwrap().len(), 2, "{shop}");
+
+    tab.call(
+        6,
+        "docker.containers.inspect",
+        json!({ "connId": conn_id, "id": "tty" }),
+    )
+    .await;
+    let inspect = tab.result(6).await;
+    assert_eq!(inspect["overview"]["tty"], true);
+    assert_eq!(inspect["overview"]["networks"][0]["name"], "lab-net");
+
+    // The worker writes to stdout and stderr: both come, apart, with Docker's timestamps.
+    tab.call(
+        7,
+        "docker.containers.logs",
+        json!({ "connId": conn_id, "id": "shop-worker-1", "follow": false, "tail": 6, "streamId": "w-1" }),
+    )
+    .await;
+    let (log, summary) = drain(&mut tab, 7).await;
+    assert_eq!(summary["tty"], false);
+    assert!(
+        log.iter()
+            .any(|l| l["stream"] == "stdout"
+                && l["text"].as_str().unwrap().starts_with("worker tick"))
+    );
+    assert!(
+        log.iter()
+            .any(|l| l["stream"] == "stderr" && l["text"].as_str().unwrap().starts_with("warning"))
+    );
+    assert!(
+        log.iter()
+            .all(|l| l["ts"].as_str().unwrap().starts_with("20")),
+        "{log:?}"
+    );
+
+    // A TTY container: one stream, the ANSI kept.
+    tab.call(
+        8,
+        "docker.containers.logs",
+        json!({ "connId": conn_id, "id": "tty", "follow": false, "tail": 2, "streamId": "t-1" }),
+    )
+    .await;
+    let (log, summary) = drain(&mut tab, 8).await;
+    assert_eq!(summary["tty"], true);
+    assert!(!log.is_empty());
+    assert!(
+        log.iter()
+            .all(|l| l["stream"] == "stdout" && l["text"] == "\u{1b}[32mgreen\u{1b}[0m tty line")
+    );
+
+    // Following: new lines arrive (the worker writes every 2 s) until the stream is stopped.
+    tab.call(
+        9,
+        "docker.containers.logs",
+        json!({ "connId": conn_id, "id": "shop-worker-1", "follow": true, "tail": 0, "streamId": "w-2" }),
+    )
+    .await;
+    let first = lines(&tab.chunk(9).await);
+    assert!(!first.is_empty());
+    tab.client.cancel(9).await;
+    tab.error(9, Code::Cancelled).await;
+
+    // Events: starting the stopped container gives start and die (it exits at once).
+    tab.call(
+        10,
+        "docker.events",
+        json!({ "connId": conn_id, "streamId": "e-1", "types": ["container"], "container": "stopped" }),
+    )
+    .await;
+    // Let the events request reach the host before the start.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tab.call(
+        11,
+        "docker.containers.start",
+        json!({ "connId": conn_id, "ids": ["stopped", "no-such-container"] }),
+    )
+    .await;
+    let results = tab.result(11).await;
+    assert_eq!(results[0], json!({ "id": "stopped" }));
+    assert!(
+        results[1]["error"]
+            .as_str()
+            .unwrap()
+            .contains("no-such-container")
+    );
+    let mut actions = Vec::new();
+    while !actions.iter().any(|a| a == "die") {
+        for event in lines(&tab.chunk(10).await) {
+            assert_eq!(event["name"], "stopped");
+            actions.push(event["action"].as_str().unwrap().to_owned());
+        }
+        tab.client.credit(10, 1).await;
+    }
+    assert!(actions.contains(&"start".to_owned()), "{actions:?}");
+    tab.client.cancel(10).await;
+    tab.error(10, Code::Cancelled).await;
+}
