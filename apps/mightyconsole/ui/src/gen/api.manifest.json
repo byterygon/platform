@@ -3432,6 +3432,66 @@
       ],
       "type": "string"
     },
+    "NatsEndpointStats": {
+      "description": "One endpoint's counters.",
+      "properties": {
+        "averageProcessingTimeNs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "data": {
+          "description": "The service's own `data`, as JSON text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lastError": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "processingTimeNs": {
+          "description": "Total time spent in the handler, in nanoseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queueGroup": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "subject",
+        "requests",
+        "errors",
+        "processingTimeNs",
+        "averageProcessingTimeNs"
+      ],
+      "type": "object"
+    },
     "NatsGetMessageInput": {
       "properties": {
         "connId": {
@@ -4007,6 +4067,472 @@
       ],
       "type": "object"
     },
+    "NatsObjBucketInfo": {
+      "description": "An object store's configuration and state.",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "bytes": {
+          "description": "Bytes stored: the objects' chunks and their metadata.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "compression": {
+          "type": "boolean"
+        },
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxBytes": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sealed": {
+          "description": "A sealed bucket takes no more changes.",
+          "type": "boolean"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "ttlMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bucket",
+        "bytes",
+        "storage",
+        "replicas",
+        "compression",
+        "sealed",
+        "createdUs"
+      ],
+      "type": "object"
+    },
+    "NatsObjBucketInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket"
+      ],
+      "type": "object"
+    },
+    "NatsObjBucketsListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "NatsObjConfig": {
+      "description": "A new object store (spec §6.4).",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "compression": {
+          "type": "boolean"
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxBytes": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "ttlMs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bucket",
+        "storage",
+        "replicas",
+        "compression"
+      ],
+      "type": "object"
+    },
+    "NatsObjCreateInput": {
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/NatsObjConfig"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "config"
+      ],
+      "type": "object"
+    },
+    "NatsObjGetSummary": {
+      "description": "The end of a download.",
+      "properties": {
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "size"
+      ],
+      "type": "object"
+    },
+    "NatsObjListOutput": {
+      "properties": {
+        "objects": {
+          "description": "In name order.",
+          "items": {
+            "$ref": "#/$defs/NatsObjectInfo"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "description": "More than 10,000 objects: the first ones read are listed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "objects",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadFinishInput": {
+      "properties": {
+        "sha256": {
+          "default": null,
+          "description": "The file's SHA-256 as the browser computed it (hex, or `SHA-256=<base64url>`); checked\nwhen given.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uploadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uploadId"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadIdInput": {
+      "properties": {
+        "uploadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uploadId"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadPartInput": {
+      "properties": {
+        "data": {
+          "description": "The part's bytes in base64.",
+          "type": "string"
+        },
+        "index": {
+          "description": "0, 1, 2… in order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "uploadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uploadId",
+        "index",
+        "data"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadPartOutput": {
+      "properties": {
+        "received": {
+          "description": "Bytes stored so far.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "received"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadStartInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headers": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/NatsObjectHeader"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "description": "The file's size: the parts must add up to it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "name",
+        "size"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadStartOutput": {
+      "properties": {
+        "partBytes": {
+          "description": "Every part but the last is this long.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "uploadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uploadId",
+        "partBytes"
+      ],
+      "type": "object"
+    },
+    "NatsObjectHeader": {
+      "description": "One header of an object.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "NatsObjectInfo": {
+      "description": "An object's metadata (spec §6.3: name, size, modified, chunks, digest, description, headers).",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "chunkSize": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "description": "`SHA-256=<base64url>`, as the clients write it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headers": {
+          "items": {
+            "$ref": "#/$defs/NatsObjectHeader"
+          },
+          "type": "array"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsObjectLink"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "modifiedUs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "nuid": {
+          "description": "This version's id; its chunks are on `$O.<bucket>.C.<nuid>`.",
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bucket",
+        "name",
+        "size",
+        "chunks",
+        "headers",
+        "metadata",
+        "nuid"
+      ],
+      "type": "object"
+    },
+    "NatsObjectInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "name"
+      ],
+      "type": "object"
+    },
+    "NatsObjectLink": {
+      "description": "The object or bucket an object links to.",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "name": {
+          "description": "The object; absent for a link to the whole bucket.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bucket"
+      ],
+      "type": "object"
+    },
     "NatsPeer": {
       "properties": {
         "activeMs": {
@@ -4348,6 +4874,177 @@
         "rttMs",
         "connection",
         "jetstream"
+      ],
+      "type": "object"
+    },
+    "NatsServiceEndpoint": {
+      "description": "One endpoint of a service.",
+      "properties": {
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "queueGroup": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "subject",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "NatsServiceInfo": {
+      "description": "A service instance as `$SRV.INFO` describes it.",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/NatsServiceEndpoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "rttMs": {
+          "description": "From the request to this reply.",
+          "format": "double",
+          "type": "number"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "id",
+        "version",
+        "metadata",
+        "endpoints",
+        "rttMs"
+      ],
+      "type": "object"
+    },
+    "NatsServicePing": {
+      "description": "A `$SRV.PING` reply.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "rttMs": {
+          "format": "double",
+          "type": "number"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "id",
+        "version",
+        "rttMs"
+      ],
+      "type": "object"
+    },
+    "NatsServiceStats": {
+      "description": "A service instance as `$SRV.STATS` reports it.",
+      "properties": {
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/NatsEndpointStats"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "started": {
+          "description": "When the instance started (RFC 3339, as the service wrote it).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "id",
+        "version",
+        "endpoints"
+      ],
+      "type": "object"
+    },
+    "NatsServicesInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "default": null,
+          "description": "Only this instance of `name`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "default": null,
+          "description": "Only this service.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeoutMs": {
+          "default": null,
+          "description": "How long replies are gathered; 2,000 by default.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
       ],
       "type": "object"
     },
@@ -10400,6 +11097,261 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/NatsObjCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.buckets.create",
+      "output": {
+        "$ref": "#/$defs/NatsObjBucketInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjBucketInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.buckets.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjBucketInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.obj.buckets.info",
+      "output": {
+        "$ref": "#/$defs/NatsObjBucketInfo"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjBucketsListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.obj.buckets.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsObjBucketInfo"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjectInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjectInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "nats.obj.get",
+      "output": {
+        "$ref": "#/$defs/NatsObjGetSummary"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 3600000,
+      "timeout_max_ms": 3600000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjectInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.obj.info",
+      "output": {
+        "$ref": "#/$defs/NatsObjectInfo"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjBucketInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.obj.list",
+      "output": {
+        "$ref": "#/$defs/NatsObjListOutput"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjUploadIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.uploadAbort",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjUploadFinishInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.uploadFinish",
+      "output": {
+        "$ref": "#/$defs/NatsObjectInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjUploadPartInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.uploadPart",
+      "output": {
+        "$ref": "#/$defs/NatsObjUploadPartOutput"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjUploadStartInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.uploadStart",
+      "output": {
+        "$ref": "#/$defs/NatsObjUploadStartOutput"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/NatsConnIdInput"
       },
       "kind": "query",
@@ -10407,6 +11359,78 @@
       "name": "nats.server.info",
       "output": {
         "$ref": "#/$defs/NatsServerInfoOutput"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsServicesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.services.discover",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsServiceInfo"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsServicesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.services.ping",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsServicePing"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsServicesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.services.stats",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsServiceStats"
+        },
+        "type": "array"
       },
       "perm": "nats.read",
       "redact": [],
@@ -11194,5 +12218,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:7f8c60aebcc8020f54a03ce445569421edf73556b06a0e9cc6005373a23d1e75"
+  "schema_hash": "sha256:317ab3a2806e24d9f3378f8be085cfcca5d5583cfefe76ce592a5f6d797050f9"
 }
