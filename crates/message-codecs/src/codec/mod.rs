@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
 use crate::registry::{RegistryClient, RegistrySchema};
-use crate::schema::{CompiledSchema, LocalSchemas, find_mapping};
+use crate::schema::{CompiledSchema, LocalSchemas, find_mapping, subject_matches};
 use crate::types::{
     CodecChoice, CodecId, CodecSelector, ComposePayload, LocalSchema, NamingConfig, NamingStrategy,
     Part, RegistryRef, SchemaIssue, SchemaMapping, SchemaRef, SchemaVersion, Target, WireFormat,
@@ -129,6 +129,10 @@ pub struct CodecsConfig {
     pub naming: NamingConfig,
     /// The mappings' counts; pass the current codecs' to keep them across a change.
     pub stats: MappingStats,
+    /// Where auto-detect looks for the Confluent wire format: everywhere when `None` (Kafka,
+    /// where every record may carry it), else only on the subjects these patterns match
+    /// (NATS: a payload that starts with a zero byte is not a registry id elsewhere).
+    pub wire_format_on: Option<Vec<String>>,
 }
 
 /// How many messages a mapping decoded, and how many of them failed (this session).
@@ -187,6 +191,7 @@ struct CodecsInner {
     naming: NamingConfig,
     issues: Vec<SchemaIssue>,
     stats: MappingStats,
+    wire_format_on: Option<Vec<String>>,
 }
 
 impl Default for Codecs {
@@ -207,6 +212,28 @@ impl Codecs {
                 naming: config.naming,
                 issues,
                 stats: config.stats,
+                wire_format_on: config.wire_format_on,
+            }),
+        }
+    }
+
+    /// These codecs with another registry (or none) and wire-format scope; the compiled local
+    /// schemas, mappings, naming and counts stay.
+    pub fn with_registry(
+        &self,
+        registry: Option<RegistryClient>,
+        wire_format_on: Option<Vec<String>>,
+    ) -> Self {
+        let i = &self.inner;
+        Self {
+            inner: Arc::new(CodecsInner {
+                registry,
+                local: i.local.clone(),
+                mappings: i.mappings.clone(),
+                naming: i.naming.clone(),
+                issues: i.issues.clone(),
+                stats: i.stats.clone(),
+                wire_format_on,
             }),
         }
     }
@@ -233,6 +260,10 @@ impl Codecs {
 
     pub fn stats(&self) -> &MappingStats {
         &self.inner.stats
+    }
+
+    pub fn wire_format_on(&self) -> Option<&[String]> {
+        self.inner.wire_format_on.as_deref()
     }
 
     /// Finds a schema by reference.
@@ -284,13 +315,24 @@ impl Codecs {
     }
 
     /// The schema of the mapping for a target, when that mapping names one.
-    fn mapped(&self, target: Option<&Target>, part: Part) -> Option<Result<ResolvedSchema>> {
+    async fn mapped(&self, target: Option<&Target>, part: Part) -> Option<Result<ResolvedSchema>> {
         let m = find_mapping(&self.inner.mappings, target?, part)?;
-        m.schema_id.as_ref()?;
-        Some(self.mapping_schema(m))
+        if m.schema_id.is_none() && m.registry.is_none() {
+            return None;
+        }
+        Some(self.mapping_schema(m).await)
     }
 
-    fn mapping_schema(&self, m: &SchemaMapping) -> Result<ResolvedSchema> {
+    /// The schema a mapping names: a local one, or one from the registry.
+    async fn mapping_schema(&self, m: &SchemaMapping) -> Result<ResolvedSchema> {
+        if let Some(r) = &m.registry {
+            let mut resolved = self
+                .resolve(&SchemaRef::Registry(r.clone()))
+                .await
+                .map_err(|e| CodecError::new(e.kind, format!("mapping {}: {}", m.id, e.message)))?;
+            resolved.message_type = m.message_type.clone();
+            return Ok(resolved);
+        }
         let Some(id) = m.schema_id.as_deref() else {
             return Err(CodecError::invalid(format!(
                 "mapping {} names no schema",
@@ -311,10 +353,22 @@ impl Codecs {
         }
     }
 
+    /// Whether step (1) of auto-detect, the Confluent wire format, applies to a target: always
+    /// without [`CodecsConfig::wire_format_on`] (Kafka), else on the subjects it lists (NATS).
+    pub fn wire_format_applies(&self, target: Option<&Target>) -> bool {
+        match (&self.inner.wire_format_on, target) {
+            (None, _) => true,
+            (Some(patterns), Some(Target::Subject { subject, .. })) => {
+                patterns.iter().any(|p| subject_matches(p, subject))
+            }
+            (Some(_), _) => false,
+        }
+    }
+
     /// Decodes bytes with one mapping, whether or not it matches them (the mapping test, and
     /// step 2 of auto-detect). A failure keeps the bytes as hex and says why.
-    pub fn decode_mapping(&self, m: &SchemaMapping, bytes: &[u8]) -> Decoded {
-        let d = self.decode_mapping_as(m, bytes);
+    pub async fn decode_mapping(&self, m: &SchemaMapping, bytes: &[u8]) -> Decoded {
+        let d = self.decode_mapping_as(m, bytes).await;
         if d.text.is_some() {
             return d;
         }
@@ -326,15 +380,48 @@ impl Codecs {
         }
     }
 
-    fn decode_mapping_as(&self, m: &SchemaMapping, bytes: &[u8]) -> Decoded {
-        let resolved = match m.schema_id {
-            Some(_) => match self.mapping_schema(m) {
+    async fn decode_mapping_as(&self, m: &SchemaMapping, bytes: &[u8]) -> Decoded {
+        let confluent = m.wire_format == Some(WireFormat::Confluent);
+        let header = if confluent {
+            match wire::split(bytes) {
+                Some(split) => Some(split),
+                None => {
+                    return Decoded::failed(
+                        m.codec.unwrap_or(CodecId::Hex),
+                        "not in the Confluent wire format (magic byte 0 and a schema id)",
+                    );
+                }
+            }
+        } else {
+            None
+        };
+        let resolved = if m.schema_id.is_some() || m.registry.is_some() {
+            match self.mapping_schema(m).await {
                 Ok(r) => Some(r),
                 Err(e) => {
                     return Decoded::failed(m.codec.unwrap_or(CodecId::Hex), e.message);
                 }
-            },
-            None => None,
+            }
+        } else {
+            // A `confluent` mapping without a schema: the id in the message, from the registry.
+            match (header, m.codec.map(CodecId::needs_schema), self.registry()) {
+                (Some((h, _)), Some(true), Some(registry)) => {
+                    match registry.schema_by_id(h.schema_id).await {
+                        Ok(s) => {
+                            let mut r = registry_resolved(&s, format!("registry:{}", h.schema_id));
+                            r.message_type = m.message_type.clone();
+                            Some(r)
+                        }
+                        Err(e) => {
+                            return Decoded::failed(
+                                m.codec.unwrap_or(CodecId::Hex),
+                                format!("registry schema {}: {}", h.schema_id, e.message),
+                            );
+                        }
+                    }
+                }
+                _ => None,
+            }
         };
         let schema_type = resolved.as_ref().map(|r| r.compiled.schema_type());
         let Some(codec) = m.codec_with(schema_type) else {
@@ -343,20 +430,7 @@ impl Codecs {
                 format!("mapping {} names neither a codec nor a schema", m.id),
             );
         };
-        let confluent = m.wire_format == Some(WireFormat::Confluent);
-        let payload = if confluent {
-            match wire::split(bytes) {
-                Some((_, rest)) => rest,
-                None => {
-                    return Decoded::failed(
-                        codec,
-                        "not in the Confluent wire format (magic byte 0 and a schema id)",
-                    );
-                }
-            }
-        } else {
-            bytes
-        };
+        let payload = header.map_or(bytes, |(_, rest)| rest);
         match resolved {
             None if codec.needs_schema() => Decoded::failed(
                 codec,
@@ -367,34 +441,35 @@ impl Codecs {
                 ),
             ),
             None => decode_plain(codec, payload),
+            Some(r) if r.compiled.schema_type().codec() != codec => Decoded::failed(
+                codec,
+                format!(
+                    "the schema is {:?}, not {}",
+                    r.compiled.schema_type(),
+                    codec.label()
+                ),
+            )
+            .with_ref(Some(r.reference.clone())),
+            // A registry schema in the wire format: Protobuf's message indexes name the type.
+            Some(r) if r.registry_id.is_some() => {
+                decode_schema(&r, payload, confluent, m.message_type.as_deref())
+            }
             Some(r) => {
-                if r.compiled.schema_type().codec() != codec {
-                    Decoded::failed(
-                        codec,
-                        format!(
-                            "the schema is {:?}, not {}",
-                            r.compiled.schema_type(),
-                            codec.label()
-                        ),
-                    )
-                    .with_ref(Some(r.reference.clone()))
-                } else {
-                    // Confluent Protobuf: the message indexes follow the id; the mapping's type
-                    // names the message.
-                    let body = match (confluent, r.compiled.as_ref()) {
-                        (true, CompiledSchema::Protobuf(_)) => {
-                            match wire::split_message_indexes(payload) {
-                                Ok((_, rest)) => rest,
-                                Err(e) => {
-                                    return Decoded::failed(codec, e.message)
-                                        .with_ref(Some(r.reference.clone()));
-                                }
+                // A local Protobuf schema in the wire format: skip the message indexes; the
+                // mapping's type names the message.
+                let body = match (confluent, r.compiled.as_ref()) {
+                    (true, CompiledSchema::Protobuf(_)) => {
+                        match wire::split_message_indexes(payload) {
+                            Ok((_, rest)) => rest,
+                            Err(e) => {
+                                return Decoded::failed(codec, e.message)
+                                    .with_ref(Some(r.reference.clone()));
                             }
                         }
-                        _ => payload,
-                    };
-                    decode_schema(&r, body, false, m.message_type.as_deref())
-                }
+                    }
+                    _ => payload,
+                };
+                decode_schema(&r, body, false, m.message_type.as_deref())
             }
         }
     }
@@ -422,10 +497,12 @@ impl Codecs {
         part: Part,
     ) -> Decoded {
         let mut note = None;
-        // (1) Confluent wire format with a registry id that resolves.
-        if let (Some(registry), Some((header, rest))) =
-            (self.inner.registry.as_ref(), wire::split(bytes))
-        {
+        // (1) Confluent wire format with a registry id that resolves, where it applies.
+        if let (Some(registry), Some((header, rest)), true) = (
+            self.inner.registry.as_ref(),
+            wire::split(bytes),
+            self.wire_format_applies(target),
+        ) {
             match registry.schema_by_id(header.schema_id).await {
                 Ok(s) => {
                     let resolved = registry_resolved(&s, format!("registry:{}", header.schema_id));
@@ -442,7 +519,7 @@ impl Codecs {
         }
         // (2) A mapping: a codec, with a local schema when it needs one.
         if let Some(m) = target.and_then(|t| find_mapping(&self.inner.mappings, t, part)) {
-            let d = self.decode_mapping(m, bytes);
+            let d = self.decode_mapping(m, bytes).await;
             self.inner.stats.record(&m.id, d.error.is_some());
             return d;
         }
@@ -477,7 +554,7 @@ impl Codecs {
                         .map(|s| registry_resolved(&s, format!("registry:{}", h.schema_id))),
                     true,
                 ),
-                _ => match self.mapped(target, part) {
+                _ => match self.mapped(target, part).await {
                     Some(r) => (r, false),
                     None => {
                         return Decoded::failed(
@@ -556,10 +633,17 @@ impl Codecs {
             CodecId::Cbor => return plain(cbor::encode(&payload.text)),
             CodecId::Avro | CodecId::Protobuf | CodecId::Jsonschema => {}
         }
+        // A mapping's wire format is the default when its schema is used.
+        let mut mapping_wire = None;
         let resolved = match &payload.schema {
             Some(s) => self.resolve(s).await,
-            None => match self.mapped(target, part) {
-                Some(r) => r,
+            None => match self.mapped(target, part).await {
+                Some(r) => {
+                    mapping_wire = target
+                        .and_then(|t| find_mapping(&self.inner.mappings, t, part))
+                        .map(|m| m.wire_format.unwrap_or(WireFormat::None));
+                    r
+                }
                 None => match (self.inner.registry.as_ref(), target) {
                     (Some(_), Some(Target::Topic { name }))
                         if self.inner.naming.strategy_for(name)
@@ -627,13 +711,15 @@ impl Codecs {
             }
             _ => resolved.reference.clone(),
         });
-        let wire_format = payload
-            .wire_format
-            .unwrap_or(if resolved.registry_id.is_some() {
-                WireFormat::Confluent
-            } else {
-                WireFormat::None
-            });
+        let wire_format =
+            payload
+                .wire_format
+                .or(mapping_wire)
+                .unwrap_or(if resolved.registry_id.is_some() {
+                    WireFormat::Confluent
+                } else {
+                    WireFormat::None
+                });
         match (wire_format, resolved.registry_id) {
             (WireFormat::Confluent, Some(id)) => Ok(Encoded {
                 bytes: wire::write(id, indexes.as_deref(), &body),

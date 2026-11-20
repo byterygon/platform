@@ -7,12 +7,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { MightyClient } from "@/app/client";
 import { describeError } from "@/app/messages";
 import { NoticeContext } from "@/app/page";
-import type { Inspection, LocalSchema, MappingTestOutput, SchemaMapping, SchemasStatusOutput } from "@/gen/api";
+import type { Inspection, LocalSchema, MappingTestOutput, RegistryProfile, SchemaMapping, SchemasStatusOutput } from "@/gen/api";
 import type { MessageRow } from "@/messaging/arrow";
 import { LABELS } from "@/messaging/columns";
 import { MessageDetail } from "@/messaging/MessageDetail";
 import type { DecodeAs } from "@/messaging/schemas/DecodeAs";
-import { choiceText, decodeChoices, firstMapping, insertAbove, mappingFromChoice, mappingMatches, moveItem, newId, subjectMatches, targetProblem } from "@/messaging/schemas/model";
+import { choiceText, decodeChoices, firstMapping, insertAbove, mappingFromChoice, mappingMatches, mappingSchemaText, moveItem, newId, subjectMatches, targetProblem } from "@/messaging/schemas/model";
+import { registryOf, registryProblems, registryToConnect, splitPatterns, withRegistry } from "@/messaging/schemas/registry";
 import { importPath, issueText } from "@/messaging/schemas/SchemaSheet";
 import { schemaChoices } from "@/messaging/schemas/use-decoding";
 import type { ProfileRecord } from "@/profiles/record";
@@ -50,7 +51,7 @@ describe("the decoding model", () => {
     expect(firstMapping(list, { kind: "subject", subject: "orders.legacy" }, "value")).toBe(1);
     // "Decode as…" on orders.legacy: the new mapping goes right above orders.> so it wins.
     const kept = mappingFromChoice("m4", { kind: "subject", pattern: "orders.legacy" }, "value", { codec: "protobuf", schema: { local: "s1" }, messageType: "lab.orders.Legacy" });
-    expect(kept).toEqual({ id: "m4", target: { kind: "subject", pattern: "orders.legacy" }, part: "value", codec: "protobuf", schemaId: "s1", messageType: "lab.orders.Legacy", wireFormat: null });
+    expect(kept).toEqual({ id: "m4", target: { kind: "subject", pattern: "orders.legacy" }, part: "value", codec: "protobuf", schemaId: "s1", registry: null, messageType: "lab.orders.Legacy", wireFormat: null });
     expect(insertAbove(list, kept, { kind: "subject", subject: "orders.legacy" }).map((m) => m.id)).toEqual(["m2", "m4", "m1", "m3"]);
     expect(insertAbove(list, kept, { kind: "subject", subject: "other" }).map((m) => m.id)).toEqual(["m2", "m1", "m3", "m4"]);
     expect(newId("m", ["m1", "m2", "m4"])).toBe("m3");
@@ -112,6 +113,12 @@ function stubClient(overrides: { status?: SchemasStatusOutput; test?: MappingTes
         inspect: vi.fn(async (input: unknown) => overrides.inspect?.(input) ?? inspection(["lab.orders.Order", "lab.orders.Refund"])),
       },
       decode: vi.fn(async () => ({ codec: "protobuf", text: '{"id":"o-1"}', json: { id: "o-1" } })),
+      registry: {
+        test: vi.fn(async () => ({ url: "http://127.0.0.1:8081", subjects: 3, mode: "READWRITE", compatibility: "BACKWARD" })),
+        set: vi.fn(async () => ({})),
+        subjects: vi.fn(async () => ["orders-avro-value", "orders-proto-value", "payments-value"]),
+        versions: vi.fn(async () => [1, 2]),
+      },
     },
     nats: { schemas: { test: vi.fn(async () => overrides.test ?? { source: "stream ORDERS", rows: [], decoded: 0, failed: 0, issues: [] }) } },
   };
@@ -206,7 +213,7 @@ describe("the Schemas tab on a NATS connection", () => {
     expect(sheet.textContent).toContain("The failures are on legacy");
     await click(byRole("button", "Save mapping", sheet));
     await waitFor(() => client.messaging.schemas.update.mock.calls.length === 1, "saved");
-    expect(s.get().extras["mappings"]).toEqual([{ id: "m1", target: { kind: "kvBucket", bucket: "sessions" }, part: "value", codec: "cbor", schemaId: null, messageType: null, wireFormat: null }]);
+    expect(s.get().extras["mappings"]).toEqual([{ id: "m1", target: { kind: "kvBucket", bucket: "sessions" }, part: "value", codec: "cbor", schemaId: null, registry: null, messageType: null, wireFormat: null }]);
   });
 
   test("Add a Protobuf schema: compile errors at file and line, then the message types to offer", async () => {
@@ -300,5 +307,120 @@ describe("Decode as… in the detail pane", () => {
     render(<MessageDetail message={{ ...failedMessage(), payloadTruncated: true }} labels={LABELS.kv} decodeAs={decodeAs} />);
     expect(byRole("button", "Decode as…")).toBeNull();
     expect(bucketPlace("sessions")).toEqual({ target: { kind: "kvBucket", bucket: "sessions" }, where: { kind: "kvBucket", bucket: "sessions" }, label: "bucket sessions" });
+  });
+});
+
+describe("a schema registry on a NATS profile (batch 4b)", () => {
+  const REGISTRY = { url: "http://127.0.0.1:8081", auth: "basic", username: "mc", tls: {}, wireFormatSubjects: ["orders.wire.>"] };
+
+  test("the model: fields, secrets by auth, the connect input, problems", () => {
+    expect(registryOf(record())).toBeNull();
+    const r = withRegistry(record(), { url: " http://127.0.0.1:8081 ", auth: "basic", username: "mc", tls: {}, wireFormatSubjects: ["orders.wire.>"] }, { password: "pw" });
+    expect(r.secrets["registryPassword"]).toBe("pw");
+    expect(registryOf(r)).toEqual({ url: "http://127.0.0.1:8081", auth: "basic", username: "mc", tls: {}, wireFormatSubjects: ["orders.wire.>"] });
+    // A later save without the secret keeps it; a change of auth drops it.
+    expect(withRegistry(r, registryOf(r), {}).secrets["registryPassword"]).toBe("pw");
+    const bearer = withRegistry(r, { ...registryOf(r)!, auth: "bearer" }, { token: "t" });
+    expect(bearer.secrets["registryPassword"]).toBeUndefined();
+    expect(bearer.secrets["registryToken"]).toBe("t");
+    expect(withRegistry(bearer, null).secrets["registryToken"]).toBeUndefined();
+    // What nats.connect takes: the secret of the chosen auth only, the subjects to look at.
+    const connect = schema.toConnect(r) as { schemaRegistry: RegistryProfile | null };
+    expect(connect.schemaRegistry).toMatchObject({ url: "http://127.0.0.1:8081", auth: "basic", username: "mc", password: "pw", token: null, wireFormatSubjects: ["orders.wire.>"] });
+    expect((schema.toConnect(record()) as { schemaRegistry: unknown }).schemaRegistry).toBeNull();
+    // Kafka sends no subject list: every record is looked at.
+    expect(registryToConnect(registryOf(r)!, r.secrets, false).wireFormatSubjects).toBeNull();
+    expect(splitPatterns(" orders.>, payments.>\naudit ")).toEqual(["orders.>", "payments.>", "audit"]);
+    expect(Object.keys(registryProblems({ url: "https://r:8081", auth: "bearer", tls: {}, wireFormatSubjects: ["a..b"] }, false)).sort()).toEqual(["caPem", "secret", "wireFormatSubjects"]);
+    expect(registryProblems({ url: "r:8081", auth: "none", tls: {} }, false)["url"]).toMatch(/http:\/\//);
+    expect(mappingSchemaText({ id: "m", target: { kind: "subject", pattern: "x" }, part: "value", codec: "avro", registry: { subject: "orders-avro-value", version: 2 } }, [])).toBe("orders-avro-value · v2");
+    expect(mappingSchemaText({ id: "m", target: { kind: "subject", pattern: "x" }, part: "value", codec: "protobuf", wireFormat: "confluent" }, [])).toBe("registry id in each message");
+  });
+
+  test("Add registry…: tested before saving, saved with its secret, given to the connection", async () => {
+    const client = stubClient();
+    const s = store(record({ schemas: [], mappings: [] }));
+    const { container } = render(<SchemasTab {...tabProps(client, s.get(), s.updateProfile)} />);
+    expect(container.textContent).toContain("no registry");
+    await click(byRole("button", "Add registry…"));
+    const sheet = byRole("dialog", /Add a schema registry/)!;
+    expect(sheet.textContent).toContain("For NATS messages");
+    await type(sheet.querySelector<HTMLInputElement>('input[placeholder="https://registry.internal:8081"]')!, "http://127.0.0.1:8081");
+    await click(byRole("combobox", /Authentication|None/, sheet));
+    await click(byRole("option", "Basic: user and password"));
+    // Test before the user and password are in: the problems show, nothing is called.
+    await click(byRole("button", "Test", sheet));
+    expect(sheet.textContent).toContain("A user name is required.");
+    expect(client.messaging.registry.test).not.toHaveBeenCalled();
+    const inputs = () => Array.from(sheet.querySelectorAll<HTMLInputElement>("input"));
+    await type(inputs().find((i) => i.closest("[data-slot=field]")?.textContent?.startsWith("User"))!, "mc");
+    await type(sheet.querySelector<HTMLInputElement>('input[placeholder="Not set"]')!, "pw-1");
+    await type(sheet.querySelector<HTMLInputElement>('input[placeholder="orders.>, payments.>"]')!, "orders.wire.>, audit.>");
+    await click(byRole("button", "Test", sheet));
+    await waitFor(() => byText(/Registry answered/, sheet) !== null, "the answer");
+    expect(sheet.textContent).toContain("3 subjects · mode READWRITE · compatibility BACKWARD");
+    const tested = ((client.messaging.registry.test.mock.calls[0] as unknown[])[0] as { registry: RegistryProfile }).registry;
+    expect(tested).toMatchObject({ url: "http://127.0.0.1:8081", auth: "basic", username: "mc", password: "pw-1", wireFormatSubjects: ["orders.wire.>", "audit.>"] });
+    expect(await axeViolations(sheet)).toEqual([]);
+    await click(byRole("button", "Save registry", sheet));
+    await waitFor(() => client.messaging.registry.set.mock.calls.length === 1, "given to the connection");
+    expect(s.get().fields["schemaRegistry"]).toEqual({ url: "http://127.0.0.1:8081", auth: "basic", username: "mc", tls: {}, wireFormatSubjects: ["orders.wire.>", "audit.>"] });
+    expect(s.get().secrets["registryPassword"]).toBe("pw-1");
+    const set = (client.messaging.registry.set.mock.calls[0] as unknown[])[0] as { connId: string; registry: RegistryProfile };
+    expect(set.connId).toBe("conn-1");
+    expect(set.registry).toMatchObject({ password: "pw-1", wireFormatSubjects: ["orders.wire.>", "audit.>"] });
+  });
+
+  test("a mapping to a registry subject and version; the registry cannot go while a mapping uses it", async () => {
+    const client = stubClient();
+    const s = store(withRegistry(record({ schemas: [], mappings: [] }), { ...REGISTRY, auth: "none" } as never));
+    const notices: { title: string }[] = [];
+    const { container } = render(
+      <NoticeContext.Provider value={(n) => notices.push(n)}>
+        <SchemasTab {...tabProps(client, s.get(), s.updateProfile, { create: "mapping" })} />
+      </NoticeContext.Provider>,
+    );
+    expect(container.textContent).toContain("registry 127.0.0.1:8081");
+    const sheet = byRole("dialog", /Map messages to a codec/)!;
+    await type(sheet.querySelector<HTMLInputElement>('input[placeholder="orders.>"]')!, "orders.avro.>");
+    await click(byRole("combobox", /Codec|JSON/, sheet));
+    await click(byRole("option", "Avro"));
+    // No local Avro schema: the registry's subjects are offered.
+    await waitFor(() => client.messaging.registry.subjects.mock.calls.length === 1, "the subjects");
+    const subject = sheet.querySelector<HTMLInputElement>('input[placeholder="orders-value"]')!;
+    await type(subject, "orders-avro-value");
+    await waitFor(() => client.messaging.registry.versions.mock.calls.length > 0, "the versions");
+    await click(byRole("combobox", /Version|Latest/, sheet));
+    await click(byRole("option", "Version 1"));
+    await click(byRole("button", "Run the test", sheet));
+    await waitFor(() => client.nats.schemas.test.mock.calls.length === 1, "the test");
+    const tested = ((client.nats.schemas.test.mock.calls[0] as unknown[])[0] as { mapping: SchemaMapping }).mapping;
+    expect(tested).toMatchObject({ codec: "avro", schemaId: null, registry: { subject: "orders-avro-value", version: 1 }, wireFormat: null });
+    await click(byRole("button", "Save mapping", sheet));
+    await waitFor(() => (s.get().extras["mappings"] as SchemaMapping[]).length === 1, "saved");
+    cleanup();
+
+    // The id in each message: the wire format follows.
+    render(<SchemasTab {...tabProps(client, s.get(), s.updateProfile, { create: "mapping" })} />);
+    const again = byRole("dialog", /Map messages to a codec/)!;
+    await type(again.querySelector<HTMLInputElement>('input[placeholder="orders.>"]')!, "orders.wire.>");
+    await click(byRole("combobox", /Codec|JSON/, again));
+    await click(byRole("option", "Protobuf"));
+    await click(byRole("radio", "The id in each message", again) ?? byRole("button", "The id in each message", again));
+    await click(byRole("button", "Save mapping", again));
+    await waitFor(() => (s.get().extras["mappings"] as SchemaMapping[]).length === 2, "saved");
+    expect((s.get().extras["mappings"] as SchemaMapping[])[1]).toMatchObject({ codec: "protobuf", schemaId: null, registry: null, wireFormat: "confluent" });
+    cleanup();
+
+    // Removing the registry is refused while mappings use it.
+    render(
+      <NoticeContext.Provider value={(n) => notices.push(n)}>
+        <SchemasTab {...tabProps(client, s.get(), s.updateProfile, { create: "registry" })} />
+      </NoticeContext.Provider>,
+    );
+    const reg = byRole("dialog", /The schema registry/)!;
+    await click(byRole("button", "Remove registry", reg));
+    await waitFor(() => byText(/used by 2 mappings/, reg) !== null, "the refusal");
+    expect(registryOf(s.get())).not.toBeNull();
   });
 });

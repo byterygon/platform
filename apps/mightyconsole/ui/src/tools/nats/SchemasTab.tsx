@@ -1,6 +1,7 @@
 // `nats.schemas {}`: the messaging core's Schemas tab on a NATS connection (TSK-85 batch 4):
 // mappings by subject pattern, stream or KV bucket (values only), tested through
-// `nats.schemas.test` on the last messages JetStream keeps. Also the "Decode as…" of the NATS
+// `nats.schemas.test` on the last messages JetStream keeps, and a Schema Registry whose wire
+// format is looked for on the subjects the profile lists (`create: "registry"` opens its sheet). Also the "Decode as…" of the NATS
 // message tabs, which keeps a choice as a mapping for the message's subject or bucket.
 import { useCallback, useContext, useMemo } from "react";
 import type { MightyClient } from "@/app/client";
@@ -26,8 +27,9 @@ export function SchemasTab({ tab, profile, connId, client, useTabActions, update
     },
     [client, connId],
   );
-  const start = tab.params["create"] === "mapping" ? "mapping" : tab.params["create"] === "schema" ? "schema" : null;
-  return <SchemasLibrary profile={profile} connId={connId} client={client} updateProfile={updateProfile} useTabActions={useTabActions} targets={NATS_TARGETS} parts={false} test={test} start={start} />;
+  const create = tab.params["create"];
+  const start = create === "mapping" || create === "schema" || create === "registry" ? create : null;
+  return <SchemasLibrary profile={profile} connId={connId} client={client} updateProfile={updateProfile} useTabActions={useTabActions} targets={NATS_TARGETS} parts={false} test={test} wireFormatSubjects start={start} />;
 }
 
 /**

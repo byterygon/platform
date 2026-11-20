@@ -3,6 +3,7 @@
 // it, the codec choices of the viewer's menu and of "Decode as…". Pure: NATS and Kafka share it.
 import type { CodecChoice, CodecId, LocalSchema, MappingTarget, Part, SchemaMapping, SchemaType, Target } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
+import { registryRefText } from "./registry";
 
 export const CODEC_LABELS: Record<CodecId, string> = {
   utf8: "UTF-8 text",
@@ -129,6 +130,11 @@ export function schemaSource(s: LocalSchema): string {
   return `${s.files.length} files`;
 }
 
+/** Whether a mapping reads its schema from the registry: by subject or id, or the id in each message. */
+export function usesRegistry(m: SchemaMapping): boolean {
+  return Boolean(m.registry) || (!m.schemaId && m.wireFormat === "confluent" && m.codec !== undefined && m.codec !== null && needsSchema(m.codec));
+}
+
 /** The codec a mapping decodes with: its own, else its schema's. */
 export function mappingCodec(m: SchemaMapping, schemas: readonly LocalSchema[]): CodecId | null {
   if (m.codec) return m.codec;
@@ -137,7 +143,8 @@ export function mappingCodec(m: SchemaMapping, schemas: readonly LocalSchema[]):
 }
 
 export function mappingSchemaText(m: SchemaMapping, schemas: readonly LocalSchema[]): string {
-  if (!m.schemaId) return "—";
+  if (m.registry) return m.messageType ? `${registryRefText(m.registry)} · ${m.messageType}` : registryRefText(m.registry);
+  if (!m.schemaId) return m.wireFormat === "confluent" && m.codec && needsSchema(m.codec) ? "registry id in each message" : "—";
   const name = schemas.find((x) => x.id === m.schemaId)?.name ?? `${m.schemaId} (missing)`;
   return m.messageType ? `${name} · ${m.messageType}` : name;
 }
@@ -197,7 +204,7 @@ export function choiceText(c: CodecChoice, schemas: readonly SchemaChoice[]): st
 export function mappingFromChoice(id: string, target: MappingTarget, part: Part, c: CodecChoice): SchemaMapping {
   const codec = c.codec && c.codec !== "auto" ? c.codec : "utf8";
   const schemaId = c.schema && "local" in c.schema ? c.schema.local : null;
-  return { id, target, part, codec, schemaId, messageType: c.messageType ?? null, wireFormat: null };
+  return { id, target, part, codec, schemaId, registry: null, messageType: c.messageType ?? null, wireFormat: null };
 }
 
 /** Why a mapping's subject pattern, stream, bucket or topic cannot be saved, or null. */

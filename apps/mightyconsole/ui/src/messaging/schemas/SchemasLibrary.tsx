@@ -17,14 +17,16 @@ import type { MightyClient } from "@/app/client";
 import { NoticeContext, Page, PageFooter, PageHeader, PageRegion, gutterTable } from "@/app/page";
 import { EmptyLine } from "@/app/states";
 import type { LocalSchema, MappingTarget, SchemaMapping } from "@/gen/api";
-import { Add, ArrowClockwise, ArrowDown, ArrowUp, ChevronDown, Delete, Edit } from "@/lib/icons";
+import { Add, ArrowClockwise, ArrowDown, ArrowUp, ChevronDown, Delete, Edit, PlugConnected } from "@/lib/icons";
 import { cn } from "@/lib/cn";
 import type { ProfileRecord } from "@/profiles/record";
 import type { TabProps } from "@/tools/types";
 import { MappingSheet, type MappingTest } from "./MappingSheet";
-import { CODEC_LABELS, SCHEMA_TYPE_LABELS, TARGET_LABELS, mappingCodec, mappingSchemaText, moveItem, newId, schemaSource, targetText, withTargetText } from "./model";
+import { CODEC_LABELS, SCHEMA_TYPE_LABELS, TARGET_LABELS, mappingCodec, mappingSchemaText, moveItem, newId, schemaSource, targetText, usesRegistry, withTargetText } from "./model";
+import { RegistrySheet } from "./RegistrySheet";
+import { REGISTRY_SECRETS, type RegistryFields, registryHost, registryOf } from "./registry";
 import { SCHEMA_KIND_LABELS, SchemaSheet, type SchemaKind, issueText, kindOf } from "./SchemaSheet";
-import { saveDecoding, useDecoding } from "./use-decoding";
+import { saveDecoding, saveRegistry, useDecoding } from "./use-decoding";
 
 const KIND_VARIANT = { protobuf: "info", avro: "warning", jsonschema: "neutral" } as const;
 
@@ -40,20 +42,24 @@ export interface SchemasLibraryProps {
   parts: boolean;
   /** The tool's mapping test, on the connection. */
   test: MappingTest;
+  /** NATS: the registry sheet lists the subjects whose messages carry the wire format. */
+  wireFormatSubjects: boolean;
   /** What the tab opens with: a sheet from the palette or the tree. */
-  start?: "schema" | "mapping" | null;
+  start?: "schema" | "mapping" | "registry" | null;
 }
 
 type SchemaEdit = { kind: SchemaKind; schema: LocalSchema | null };
 type MappingEdit = { mapping: SchemaMapping; isNew: boolean };
 
-export function SchemasLibrary({ profile, connId, client, updateProfile, useTabActions, targets, parts, test, start = null }: SchemasLibraryProps) {
+export function SchemasLibrary({ profile, connId, client, updateProfile, useTabActions, targets, parts, test, wireFormatSubjects, start = null }: SchemasLibraryProps) {
   const notify = useContext(NoticeContext);
   const { schemas, mappings, status, reload } = useDecoding(client, connId, profile);
   const [schemaEdit, setSchemaEdit] = useState<SchemaEdit | null>(start === "schema" ? { kind: "protobuf", schema: null } : null);
-  const blankMapping = (): SchemaMapping => ({ id: newId("m", mappings.map((m) => m.id)), target: withTargetText(targets[0] ?? "subject", ""), part: "value", codec: "json", schemaId: null, messageType: null, wireFormat: null });
+  const blankMapping = (): SchemaMapping => ({ id: newId("m", mappings.map((m) => m.id)), target: withTargetText(targets[0] ?? "subject", ""), part: "value", codec: "json", schemaId: null, registry: null, messageType: null, wireFormat: null });
   const [mappingEdit, setMappingEdit] = useState<MappingEdit | null>(start === "mapping" ? { mapping: blankMapping(), isNew: true } : null);
   const [issues, setIssues] = useState<string[]>([]);
+  const [registryOpen, setRegistryOpen] = useState(start === "registry");
+  const registry = registryOf(profile);
   useTabActions({ refresh: reload, primary: () => setSchemaEdit({ kind: "protobuf", schema: null }) });
 
   const save = async (nextSchemas: readonly LocalSchema[], nextMappings: readonly SchemaMapping[]) => {
@@ -99,6 +105,22 @@ export function SchemasLibrary({ profile, connId, client, updateProfile, useTabA
     if (s.type !== "protobuf" || t.length === 0) return "—";
     return t.length > 1 ? `${t[0]} +${t.length - 1}` : t[0];
   };
+  const saveTheRegistry = async (next: RegistryFields | null, secrets: { password?: string; token?: string }) => {
+    if (next === null) {
+      const users = mappings.filter(usesRegistry);
+      if (users.length > 0) throw new Error(`The registry is used by ${users.length === 1 ? "a mapping" : `${users.length} mappings`}: delete or change them first.`);
+    }
+    const before = registry;
+    // Undo puts the secrets back too: removing the registry drops them from the profile.
+    const keptSecrets: { password?: string; token?: string } = {};
+    const stored = (key: string) => (typeof profile.secrets[key] === "string" ? (profile.secrets[key] as string) : "");
+    if (stored(REGISTRY_SECRETS.password) !== "") keptSecrets.password = stored(REGISTRY_SECRETS.password);
+    if (stored(REGISTRY_SECRETS.token) !== "") keptSecrets.token = stored(REGISTRY_SECRETS.token);
+    await saveRegistry(updateProfile, client, connId, profile, next, secrets, wireFormatSubjects);
+    reload();
+    if (next) notify({ title: `Saved the registry ${registryHost(next.url)}`, type: "success" });
+    else if (before) notify({ title: "Removed the registry", type: "success", action: { label: "Undo", onClick: () => void saveRegistry(updateProfile, client, connId, profile, before, keptSecrets, wireFormatSubjects).then(reload) } });
+  };
   const countOf = (m: SchemaMapping) => status?.mappings.find((x) => x.id === m.id)?.count ?? null;
   const taken = new Set(schemas.map((s) => s.id));
 
@@ -106,11 +128,14 @@ export function SchemasLibrary({ profile, connId, client, updateProfile, useTabA
     <Page>
       <PageHeader
         title="Schemas and codecs"
-        subtitle={[profile.name, `${schemas.length} ${schemas.length === 1 ? "schema" : "schemas"}`, `${mappings.length} ${mappings.length === 1 ? "mapping" : "mappings"}`, "kept in the profile (exported with it)"].join(" · ")}
+        subtitle={[profile.name, `${schemas.length} ${schemas.length === 1 ? "schema" : "schemas"}`, `${mappings.length} ${mappings.length === 1 ? "mapping" : "mappings"}`, registry ? `registry ${registryHost(registry.url)}` : "no registry", "kept in the profile (exported with it)"].join(" · ")}
         actions={
           <>
             <Button appearance="subtle" onClick={reload} disabled={connId === null}>
               <Icon icon={ArrowClockwise} /> Refresh
+            </Button>
+            <Button onClick={() => setRegistryOpen(true)}>
+              <Icon icon={PlugConnected} /> {registry ? "Registry…" : "Add registry…"}
             </Button>
             <Button onClick={() => setMappingEdit({ mapping: blankMapping(), isNew: true })}>
               <Icon icon={Add} /> Add mapping
@@ -288,6 +313,8 @@ export function SchemasLibrary({ profile, connId, client, updateProfile, useTabA
           targets={targets}
           parts={parts}
           client={client}
+          connId={connId}
+          hasRegistry={registry !== null}
           profileName={profile.name}
           test={connId === null ? null : test}
           onSave={async (m) => {
@@ -298,6 +325,7 @@ export function SchemasLibrary({ profile, connId, client, updateProfile, useTabA
           }}
         />
       ) : null}
+      {registryOpen ? <RegistrySheet open onOpenChange={setRegistryOpen} profile={profile} client={client} wireFormatSubjects={wireFormatSubjects} onSave={saveTheRegistry} /> : null}
     </Page>
   );
 }

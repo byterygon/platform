@@ -2033,3 +2033,336 @@ async fn mapping_tests_on_streams_buckets_and_a_cbor_stream_and_the_counts() {
     )
     .await;
 }
+
+/// A Confluent-compatible registry on loopback with one Avro subject (the lab has no registry on
+/// its NATS profile; the codec crate's `registry_lab` covers Confluent's own). Records the paths.
+async fn fake_registry() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    const SCHEMA: &str = r#"{"type":"record","name":"Order","namespace":"lab","fields":[{"name":"id","type":"string"},{"name":"amount","type":"long"}]}"#;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = seen.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                return;
+            };
+            let log = log.clone();
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        match sock.read(&mut chunk).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                        }
+                        continue;
+                    };
+                    let head = String::from_utf8_lossy(&buf[..end]).into_owned();
+                    buf.drain(..end + 4);
+                    let path = head
+                        .split(' ')
+                        .nth(1)
+                        .unwrap_or("")
+                        .split('?')
+                        .next()
+                        .unwrap_or("")
+                        .to_owned();
+                    log.lock().unwrap().push(path.clone());
+                    let version = json!({ "subject": "lab-orders-value", "version": 1, "id": 1, "schema": SCHEMA });
+                    let (status, body) = match path.as_str() {
+                        "/subjects" => (200, json!(["lab-orders-value"])),
+                        "/schemas/ids/1" => (200, json!({ "schema": SCHEMA })),
+                        "/subjects/lab-orders-value/versions" => (200, json!([1])),
+                        "/subjects/lab-orders-value/versions/1"
+                        | "/subjects/lab-orders-value/versions/latest" => (200, version),
+                        "/mode" => (200, json!({ "mode": "READWRITE" })),
+                        "/config" => (200, json!({ "compatibilityLevel": "BACKWARD" })),
+                        p if p.starts_with("/schemas/ids/") => (
+                            404,
+                            json!({ "error_code": 40403, "message": "Schema not found" }),
+                        ),
+                        _ => (
+                            404,
+                            json!({ "error_code": 40401, "message": "Subject not found" }),
+                        ),
+                    };
+                    let body = body.to_string();
+                    let reply = format!(
+                        "HTTP/1.1 {status} X\r\ncontent-type: application/vnd.schemaregistry.v1+json\r\ncontent-length: {}\r\n\r\n{body}",
+                        body.len()
+                    );
+                    if sock.write_all(reply.as_bytes()).await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    (url, seen)
+}
+
+#[tokio::test]
+async fn a_registry_on_the_profile_decodes_the_wire_format_on_listed_subjects_and_through_mappings()
+{
+    let (url, seen) = fake_registry().await;
+    let (_t, mut tab) = setup().await;
+    let (name, prefix) = scratch("registry");
+
+    // Test before saving: the subjects, the mode, the compatibility; a wrong draft names its field.
+    let registry =
+        json!({ "url": url, "auth": "none", "wireFormatSubjects": [format!("{prefix}.wire.>")] });
+    let out = call(
+        &mut tab,
+        2,
+        "messaging.registry.test",
+        json!({ "registry": registry }),
+    )
+    .await;
+    assert_eq!(
+        (
+            out["subjects"].as_u64(),
+            out["mode"].as_str(),
+            out["compatibility"].as_str()
+        ),
+        (Some(1), Some("READWRITE"), Some("BACKWARD")),
+        "{out}"
+    );
+    tab.call(
+        3,
+        "messaging.registry.test",
+        json!({ "registry": { "url": "https://127.0.0.1:1", "auth": "none" } }),
+    )
+    .await;
+    assert_eq!(
+        tab.error(3, Code::InvalidArgument).await.details.unwrap()["field"],
+        "schemaRegistry.tls.caPem"
+    );
+    tab.call(4, "messaging.registry.test", json!({ "registry": { "url": "http://127.0.0.1:1", "auth": "basic", "username": "u", "password": "secret-pw" } })).await;
+    let refused = tab.error(4, Code::Unavailable).await;
+    assert!(!format!("{refused:?}").contains("secret-pw"));
+
+    // Connect with the registry: the wire format is looked for on <prefix>.wire.> only.
+    let mut profile = lab_profile();
+    profile["schemaRegistry"] = registry.clone();
+    let out = connect(&mut tab, 5, profile).await;
+    let conn = s(&out["connId"]).to_owned();
+    let status = call(
+        &mut tab,
+        6,
+        "messaging.schemas.status",
+        json!({ "connId": conn }),
+    )
+    .await;
+    assert_eq!(
+        status["registryUrl"].as_str(),
+        Some(url.as_str()),
+        "{status}"
+    );
+    assert_eq!(
+        call(
+            &mut tab,
+            7,
+            "messaging.registry.subjects",
+            json!({ "connId": conn })
+        )
+        .await,
+        json!(["lab-orders-value"])
+    );
+    assert_eq!(
+        call(
+            &mut tab,
+            8,
+            "messaging.registry.versions",
+            json!({ "connId": conn, "subject": "lab-orders-value" })
+        )
+        .await,
+        json!([1])
+    );
+    call(
+        &mut tab,
+        9,
+        "nats.js.streams.create",
+        json!({ "connId": conn, "config": stream_form(&name, &[format!("{prefix}.>")]) }),
+    )
+    .await;
+
+    // The same wire-format bytes on a listed subject and elsewhere, and raw Avro bytes.
+    let order = r#"{"id":"o-1","amount":1990}"#;
+    let avro = |wire: &str| json!({ "codec": "avro", "text": order, "schema": { "registry": { "id": 1 } }, "wireFormat": wire });
+    for (id, subject, payload) in [
+        (10, format!("{prefix}.wire.a"), avro("confluent")),
+        (11, format!("{prefix}.other"), avro("confluent")),
+        (12, format!("{prefix}.raw"), avro("none")),
+    ] {
+        call(
+            &mut tab,
+            id,
+            "nats.core.publish",
+            json!({ "connId": conn, "subject": subject, "payload": payload }),
+        )
+        .await;
+    }
+    let ids_before = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|p| p.starts_with("/schemas/ids/"))
+        .count();
+    // The stream may take a moment to store the core publishes.
+    let mut batches = Vec::new();
+    for attempt in 0..20u32 {
+        let id = 13 + attempt;
+        tab.call(id, "nats.js.streams.browse", json!({ "connId": conn, "streamId": format!("reg-1-{attempt}"), "stream": name, "start": { "from": "first" }, "follow": false })).await;
+        batches = read_stream(&mut tab, id).await.0;
+        if column(&batches, "payloadCodec").len() == 3 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let codecs = column(&batches, "payloadCodec");
+    assert_eq!(
+        codecs[0].as_deref(),
+        Some("avro"),
+        "a listed subject: {codecs:?}"
+    );
+    assert_eq!(column(&batches, "payloadText")[0].as_deref(), Some(order));
+    assert_ne!(
+        codecs[1].as_deref(),
+        Some("avro"),
+        "elsewhere a zero byte is not a schema id: {codecs:?}"
+    );
+    assert_ne!(codecs[2].as_deref(), Some("avro"));
+    // The id was fetched once (at publish) and cached: browsing asked for nothing more.
+    assert_eq!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|p| p.starts_with("/schemas/ids/"))
+            .count(),
+        ids_before
+    );
+
+    // A mapping to the registry subject decodes the raw bytes; tested before saving.
+    let raw = json!({ "id": "r1", "target": { "kind": "subject", "pattern": format!("{prefix}.raw") }, "part": "value",
+                      "codec": "avro", "registry": { "subject": "lab-orders-value", "version": "latest" } });
+    let out = call(
+        &mut tab,
+        40,
+        "nats.schemas.test",
+        json!({ "connId": conn, "mapping": raw }),
+    )
+    .await;
+    assert_eq!(
+        (out["decoded"].as_u64(), out["failed"].as_u64()),
+        (Some(1), Some(0)),
+        "{out}"
+    );
+    assert_eq!(out["rows"][0]["text"], order);
+    // The id in each message: a `confluent` mapping without a schema on the other subject.
+    let by_id = json!({ "id": "w1", "target": { "kind": "subject", "pattern": format!("{prefix}.other") }, "part": "value", "codec": "avro", "wireFormat": "confluent" });
+    let out = call(
+        &mut tab,
+        41,
+        "nats.schemas.test",
+        json!({ "connId": conn, "mapping": by_id }),
+    )
+    .await;
+    assert_eq!(out["rows"][0]["text"], order, "{out}");
+    // A subject the registry does not know: the reason, per row.
+    let missing = json!({ "id": "x", "target": { "kind": "subject", "pattern": format!("{prefix}.raw") }, "part": "value", "codec": "avro", "registry": { "subject": "nope-value", "version": 1 } });
+    let out = call(
+        &mut tab,
+        42,
+        "nats.schemas.test",
+        json!({ "connId": conn, "mapping": missing }),
+    )
+    .await;
+    assert!(
+        s(&out["rows"][0]["error"]).contains("Subject not found"),
+        "{out}"
+    );
+
+    // Saved, both mappings decode the browse and count.
+    let mut mappings = lab_profile()["mappings"].clone();
+    mappings
+        .as_array_mut()
+        .unwrap()
+        .splice(0..0, [raw.clone(), by_id.clone()]);
+    call(
+        &mut tab,
+        43,
+        "messaging.schemas.update",
+        json!({ "connId": conn, "schemas": lab_profile()["schemas"], "mappings": mappings }),
+    )
+    .await;
+    tab.call(44, "nats.js.streams.browse", json!({ "connId": conn, "streamId": "reg-2", "stream": name, "start": { "from": "first" }, "follow": false })).await;
+    let (batches, _) = read_stream(&mut tab, 44).await;
+    assert_eq!(
+        column(&batches, "payloadCodec"),
+        vec![Some("avro".to_owned()); 3]
+    );
+    let status = call(
+        &mut tab,
+        45,
+        "messaging.schemas.status",
+        json!({ "connId": conn }),
+    )
+    .await;
+    assert_eq!(
+        status["mappings"][0],
+        json!({ "id": "r1", "count": { "decoded": 1, "failed": 0 } }),
+        "{status}"
+    );
+    assert_eq!(
+        status["mappings"][1],
+        json!({ "id": "w1", "count": { "decoded": 1, "failed": 0 } }),
+        "{status}"
+    );
+    assert_eq!(
+        status["registryUrl"].as_str(),
+        Some(url.as_str()),
+        "the update keeps the registry"
+    );
+
+    // Removed from the connection: the mappings that need it say so; the counts stay.
+    call(
+        &mut tab,
+        46,
+        "messaging.registry.set",
+        json!({ "connId": conn, "registry": null }),
+    )
+    .await;
+    let status = call(
+        &mut tab,
+        47,
+        "messaging.schemas.status",
+        json!({ "connId": conn }),
+    )
+    .await;
+    assert!(status.get("registryUrl").is_none(), "{status}");
+    assert_eq!(status["mappings"][0]["count"]["decoded"], 1);
+    let out = call(
+        &mut tab,
+        48,
+        "nats.schemas.test",
+        json!({ "connId": conn, "mapping": raw }),
+    )
+    .await;
+    assert!(
+        s(&out["rows"][0]["error"]).contains("no Schema Registry"),
+        "{out}"
+    );
+    tab.call(49, "messaging.registry.subjects", json!({ "connId": conn }))
+        .await;
+    tab.error(49, Code::InvalidArgument).await;
+    call(
+        &mut tab,
+        50,
+        "nats.js.streams.delete",
+        json!({ "connId": conn, "stream": name }),
+    )
+    .await;
+}

@@ -422,11 +422,16 @@ impl NatsApi {
     #[rpc::mutation(
         perm = "nats.read",
         risk = Risk::Read,
-        redact = ["profile.password", "profile.token", "profile.nkeySeed", "profile.creds", "profile.tls.clientKeyPem"]
+        redact = ["profile.password", "profile.token", "profile.nkeySeed", "profile.creds", "profile.tls.clientKeyPem", "profile.schemaRegistry.password", "profile.schemaRegistry.token", "profile.schemaRegistry.tls.clientKeyPem"]
     )]
     async fn connect(&self, ctx: Ctx, input: NatsConnectInput) -> ToolResult<NatsConnectOutput> {
         let profile = input.profile;
         let prepared = options(&profile)?;
+        // Checked before connecting: a registry the profile cannot use fails the connect.
+        let registry = match &profile.schema_registry {
+            Some(r) => Some((r.client()?, r.wire_format_on().unwrap_or_default())),
+            None => None,
+        };
         let slot: Slot = Slot::default();
         let opts = status_callback(
             prepared.options.clone(),
@@ -442,7 +447,14 @@ impl NatsApi {
         let client = NatsClient::new(nats, &profile, &prepared);
         let handle = self.0.insert(&session, TOOL, Arc::new(client));
         let _ = slot.set((session.clone(), handle.conn_id.clone()));
+        let (registry, wire_format_on) = match registry {
+            // NATS looks for the wire format only on the subjects the profile lists.
+            Some((client, subjects)) => (Some(client), Some(subjects)),
+            None => (None, None),
+        };
         let codecs = Codecs::new(CodecsConfig {
+            registry,
+            wire_format_on,
             local_schemas: profile.schemas.unwrap_or_default(),
             mappings: profile.mappings.unwrap_or_default(),
             ..CodecsConfig::default()

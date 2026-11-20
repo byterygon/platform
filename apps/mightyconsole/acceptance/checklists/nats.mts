@@ -5,6 +5,8 @@
 // screenshots. Each TSK-85 batch wires its items; run
 // `pnpm --filter @byterygon/mightyconsole acceptance nats --lab-up --strict`.
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { browser, type BrowserContext, cargo, type Checklist, vitest } from "../checklist.mts";
 
 const lab = (filter: string) => cargo(filter, { features: ["lab-tests"] });
@@ -61,6 +63,30 @@ const option = (text: string) => `[...document.querySelectorAll("[role=option], 
 const dialogSelect = (text: string) => `[...document.querySelectorAll("[role=dialog] [role=combobox]")].find((c) => ${TEXT}(c).startsWith(${JSON.stringify(text)}))`;
 /** Whether a visible grid row has `text`. */
 const rowHas = (text: string) => `[...document.querySelectorAll(".bdg-body > [role=row]:not([hidden])")].some((r) => r.getClientRects().length > 0 && (r.textContent || "").includes(${JSON.stringify(text)}))`;
+
+/**
+ * A Confluent-compatible registry on loopback for the walk (the lab's registry is on its Kafka
+ * profile): one Avro subject, the mode and the compatibility. Only mightyconsole-server calls it.
+ */
+async function fakeRegistry(): Promise<{ url: string; close(): void }> {
+  const schema = JSON.stringify({ type: "record", name: "Order", namespace: "lab", fields: [{ name: "id", type: "string" }] });
+  const routes: Record<string, unknown> = {
+    "/subjects": ["lab-orders-value"],
+    "/subjects/lab-orders-value/versions": [1],
+    "/subjects/lab-orders-value/versions/1": { subject: "lab-orders-value", version: 1, id: 1, schema },
+    "/subjects/lab-orders-value/versions/latest": { subject: "lab-orders-value", version: 1, id: 1, schema },
+    "/schemas/ids/1": { schema },
+    "/mode": { mode: "READWRITE" },
+    "/config": { compatibilityLevel: "BACKWARD" },
+  };
+  const server = createServer((req, res) => {
+    const body = routes[(req.url ?? "").split("?")[0]!];
+    res.writeHead(body === undefined ? 404 : 200, { "content-type": "application/vnd.schemaregistry.v1+json" });
+    res.end(JSON.stringify(body ?? { error_code: 40401, message: "Subject not found" }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, close: () => server.close() };
+}
 
 /** A visible grid's first row's cell. */
 const firstCell = `[...document.querySelectorAll(".bdg-body > [role=row]:not([hidden]) [role=gridcell]")].find((c) => c.getClientRects().length > 0)`;
@@ -465,7 +491,7 @@ export default {
       text: "A local Protobuf schema mapped to orders.proto.> decodes those payloads; every destructive action is confirmed as in the pattern; CI green.",
       lab: true,
       // Batch 4 (decoding): the Schemas tab, the mapping test on the last 20 messages, the viewer's
-      // codec menu and Codec column, "Decode as…", CBOR.
+      // codec menu and Codec column, "Decode as…", CBOR; 4b: a Schema Registry on the profile.
       checks: [
         lab("mapping_tests_on_streams_buckets_and_a_cbor_stream_and_the_counts"),
         lab("subscribe_with_wildcards_and_a_queue_group_publish_and_request"),
@@ -474,6 +500,11 @@ export default {
         vitest("test/messaging-schemas.test.tsx", "Add mapping: a CBOR mapping for a KV bucket"),
         vitest("test/messaging-schemas.test.tsx", "Add a Protobuf schema: compile errors at file and line"),
         vitest("test/messaging-schemas.test.tsx", "tries a choice on the failed message's bytes"),
+        // Batch 4b: a Schema Registry on the profile.
+        lab("a_registry_on_the_profile_decodes_the_wire_format_on_listed_subjects_and_through_mappings"),
+        vitest("test/messaging-schemas.test.tsx", "the model: fields, secrets by auth, the connect input, problems"),
+        vitest("test/messaging-schemas.test.tsx", "Add registry…: tested before saving"),
+        vitest("test/messaging-schemas.test.tsx", "a mapping to a registry subject and version"),
         browser("a Protobuf schema compiled, mapped to orders.proto.> and tested; Decode as… keeps a mapping", async ({ page, origin, until, run, shot }) => {
           const name = `walk-orders-${Date.now().toString(36)}`;
           const files = [
@@ -568,6 +599,53 @@ export default {
           }
           await run(`__mc.click(__mc.button(${JSON.stringify(`Delete ${name}`)}))`);
           await until(`!__mc.button(${JSON.stringify(`Delete ${name}`)})`, "the schema deleted");
+        }),
+        browser("a schema registry added and tested, a mapping to its subject, then removed", async ({ page, origin, until, run, shot }) => {
+          const registry = await fakeRegistry();
+          const host = registry.url.replace("http://", "");
+          try {
+            await page.navigate(`${origin}/`);
+            await labTree({ until, run, shot });
+            await until(`__mc.item("Schemas")`, "Schemas in the tree");
+            await run(`__mc.dblclick(__mc.item("Schemas"))`);
+            await until(vbutton("Add registry…") + ` && __mc.has("no registry")`, "the Schemas tab without a registry");
+            await run(`__mc.click(${vbutton("Add registry…")})`);
+            await until(vfield("URL*"), "the registry sheet");
+            await run(`__mc.type(${vfield("URL*")}, ${JSON.stringify(registry.url)})`);
+            await run(`__mc.type(${vfield("Detect the wire format on")}, "orders.wire.>")`);
+            await run(`__mc.click(${vbutton("Test")})`);
+            await until(`__mc.has("Registry answered.") && __mc.has("1 subject · mode READWRITE · compatibility BACKWARD")`, "the registry's answer");
+            await shot("a schema registry tested before saving");
+            await run(`__mc.click(${vbutton("Save registry")})`);
+            await until(`__mc.has(${JSON.stringify(`registry ${host}`)})`, "the saved registry");
+            // A mapping to the registry's subject: no local Avro schema, so the registry's subjects.
+            await run(`__mc.click(${vbutton("Add mapping")})`);
+            await until(vfield("Pattern*"), "the mapping sheet");
+            await run(`__mc.type(${vfield("Pattern*")}, "orders.avro.>")`);
+            await run(`__mc.click(${dialogSelect("JSON")})`);
+            await until(option("Avro"), "the codecs");
+            await run(`__mc.click(${option("Avro")})`);
+            await until(`document.querySelector('[role=dialog] input[placeholder="orders-value"]')`, "the registry subject field");
+            await run(`__mc.type(document.querySelector('[role=dialog] input[placeholder="orders-value"]'), "lab-orders-value")`);
+            await shot("a mapping to a registry subject and version");
+            await run(`__mc.click(${vbutton("Save mapping")})`);
+            await until(`__mc.has("lab-orders-value · latest")`, "the mapping with its registry subject");
+            await shot("the mappings with a registry subject");
+            // The registry cannot go while a mapping uses it; then it can.
+            await run(`__mc.click(${vbutton("Registry…")})`);
+            await until(vbutton("Remove registry"), "the registry sheet");
+            await run(`__mc.click(${vbutton("Remove registry")})`);
+            await until(`__mc.has("The registry is used by a mapping")`, "the refusal");
+            await run(`__mc.click(${vbutton("Cancel")})`);
+            await run(`__mc.click(__mc.button("Delete the mapping for orders.avro.>"))`);
+            await until(`!__mc.button("Delete the mapping for orders.avro.>")`, "the mapping deleted");
+            await run(`__mc.click(${vbutton("Registry…")})`);
+            await until(vbutton("Remove registry"), "the registry sheet");
+            await run(`__mc.click(${vbutton("Remove registry")})`);
+            await until(`__mc.has("Removed the registry") && __mc.has("no registry")`, "the registry removed");
+          } finally {
+            registry.close();
+          }
         }),
       ],
     },

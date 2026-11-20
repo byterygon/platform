@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Combobox, ComboboxItem } from "@/components/ui/combobox";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { MightyClient } from "@/app/client";
 import { Required } from "@/app/form-parts";
 import { useSheetGuard } from "@/app/leave-guard";
-import type { CodecId, LocalSchema, MappingTarget, MappingTestOutput, Part, SchemaMapping, WireFormat } from "@/gen/api";
+import type { CodecId, LocalSchema, MappingTarget, MappingTestOutput, Part, SchemaMapping, SchemaVersion, WireFormat } from "@/gen/api";
 import { CheckmarkCircle, ErrorCircle, Play, Save } from "@/lib/icons";
 import { CODEC_LABELS, PLAIN_CODECS, SCHEMA_CODECS, TARGET_LABELS, codecOfType, mappingCodec, needsSchema, targetProblem, targetText, withTargetText } from "./model";
 import { issueText } from "./SchemaSheet";
@@ -46,13 +47,30 @@ export interface MappingSheetProps {
   /** Whether a mapping chooses key or value (Kafka); NATS maps values only. */
   parts: boolean;
   client: MightyClient;
+  /** The connection, for the registry's subjects and versions. */
+  connId: string | null;
+  /** Whether the profile has a registry: schemas can then come from it. */
+  hasRegistry: boolean;
   profileName: string;
   /** `null` without a connection: the test needs one. */
   test: MappingTest | null;
   onSave(mapping: SchemaMapping): Promise<void>;
 }
 
-export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targets, parts, client, profileName, test, onSave }: MappingSheetProps) {
+/** Where a mapping's schema comes from. */
+type SchemaSource = "local" | "subject" | "message";
+
+const SOURCE_LABELS: Record<SchemaSource, string> = { local: "A local schema", subject: "A registry subject", message: "The id in each message" };
+
+function sourceOf(m: SchemaMapping): SchemaSource {
+  if (m.registry) return "subject";
+  if (!m.schemaId && m.wireFormat === "confluent" && m.codec && needsSchema(m.codec)) return "message";
+  return "local";
+}
+
+const versionOf = (m: SchemaMapping): string => (m.registry && "subject" in m.registry ? String(m.registry.version) : "latest");
+
+export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targets, parts, client, connId, hasRegistry, profileName, test, onSave }: MappingSheetProps) {
   const [kind, setKind] = useState<MappingTarget["kind"]>(mapping.target.kind);
   const [text, setText] = useState(targetText(mapping.target));
   const [part, setPart] = useState<Part>(mapping.part);
@@ -60,6 +78,11 @@ export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targ
   const [schemaId, setSchemaId] = useState<string | null>(mapping.schemaId ?? null);
   const [messageType, setMessageType] = useState<string | null>(mapping.messageType ?? null);
   const [wire, setWire] = useState<WireFormat>(mapping.wireFormat ?? "none");
+  const [source, setSource] = useState<SchemaSource>(sourceOf(mapping));
+  const [subject, setSubject] = useState(mapping.registry && "subject" in mapping.registry ? mapping.registry.subject : "");
+  const [version, setVersion] = useState(versionOf(mapping));
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [versions, setVersions] = useState<number[]>([]);
   const [types, setTypes] = useState<string[]>([]);
   const [tried, setTried] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -69,7 +92,7 @@ export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targ
   const [testError, setTestError] = useState<string | null>(null);
   const generation = useRef(0);
   // A changed draft guards the tab (DOC-21 §3.7).
-  const releaseGuard = useSheetGuard(open, { kind, text, part, codec, schemaId, messageType, wire });
+  const releaseGuard = useSheetGuard(open, { kind, text, part, codec, schemaId, messageType, wire, source, subject, version });
   useEffect(() => {
     if (!open) return;
     setKind(mapping.target.kind);
@@ -79,6 +102,9 @@ export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targ
     setSchemaId(mapping.schemaId ?? null);
     setMessageType(mapping.messageType ?? null);
     setWire(mapping.wireFormat ?? "none");
+    setSource(sourceOf(mapping));
+    setSubject(mapping.registry && "subject" in mapping.registry ? mapping.registry.subject : "");
+    setVersion(versionOf(mapping));
     setTried(false);
     setFailure(null);
     setResult(null);
@@ -103,18 +129,67 @@ export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targ
     };
   }, [open, schema, client]);
 
+  // The registry's subjects, and the chosen subject's versions (a connection is needed).
+  const fromRegistry = needsSchema(codec) && source === "subject";
+  useEffect(() => {
+    if (!open || !fromRegistry || connId === null) return;
+    let live = true;
+    client.messaging.registry.subjects({ connId }).then(
+      (list) => {
+        if (live) setSubjects(list);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [open, fromRegistry, connId, client]);
+  const chosenSubject = subject.trim();
+  useEffect(() => {
+    setVersions([]);
+    if (!open || !fromRegistry || connId === null || chosenSubject === "") return;
+    let live = true;
+    client.messaging.registry.versions({ connId, subject: chosenSubject }).then(
+      (list) => {
+        if (live) setVersions(list);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [open, fromRegistry, connId, chosenSubject, client]);
+  const sources: SchemaSource[] = hasRegistry || source !== "local" ? ["local", "subject", "message"] : ["local"];
+
   const target = withTargetText(kind, text.trim());
-  const draft = (): SchemaMapping => ({
-    id: mapping.id,
-    target,
-    part: parts ? part : "value",
-    codec,
-    schemaId: needsSchema(codec) ? schemaId : null,
-    messageType: needsSchema(codec) && codec === "protobuf" ? messageType : null,
-    wireFormat: wire === "confluent" ? "confluent" : null,
-  });
+  const registryVersion: SchemaVersion = version === "latest" ? "latest" : Number(version);
+  const draft = (): SchemaMapping => {
+    const withSchema = needsSchema(codec);
+    return {
+      id: mapping.id,
+      target,
+      part: parts ? part : "value",
+      codec,
+      schemaId: withSchema && source === "local" ? schemaId : null,
+      registry: withSchema && source === "subject" ? { subject: chosenSubject, version: registryVersion } : null,
+      messageType: withSchema && codec === "protobuf" ? messageType : null,
+      wireFormat: wire === "confluent" || (withSchema && source === "message") ? "confluent" : null,
+    };
+  };
   const whereError = targetProblem(target);
-  const schemaError = needsSchema(codec) && !schema ? (offered.length === 0 ? `No ${CODEC_LABELS[codec]} schema yet: add one first.` : "Choose a schema.") : null;
+  const schemaError = !needsSchema(codec)
+    ? null
+    : source === "subject"
+      ? chosenSubject === ""
+        ? "Choose a registry subject."
+        : null
+      : source === "message"
+        ? null
+        : !schema
+          ? offered.length === 0
+            ? `No ${CODEC_LABELS[codec]} schema yet: add one first${hasRegistry ? ", or take it from the registry" : ""}.`
+            : "Choose a schema."
+          : null;
   const invalid = whereError !== null || schemaError !== null;
   const changed = () => {
     setResult(null);
@@ -225,6 +300,7 @@ export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targ
                   setCodec(c);
                   const first = schemas.find((s) => codecOfType(s.type) === c);
                   setSchemaId(first?.id ?? null);
+                  if (source === "local" && !first && hasRegistry) setSource("subject");
                   setMessageType(null);
                   changed();
                 }}
@@ -236,7 +312,30 @@ export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targ
                 ))}
               </Select>
             </Field>
-            {needsSchema(codec) ? (
+            {needsSchema(codec) && sources.length > 1 ? (
+              <Field className="col-span-2">
+                <FieldLabel>Schema from</FieldLabel>
+                <ToggleGroup
+                  aria-label="Schema from"
+                  value={[source]}
+                  onValueChange={(v) => {
+                    const next = v[0] as SchemaSource | undefined;
+                    if (!next) return;
+                    setSource(next);
+                    if (next === "message") setWire("confluent");
+                    changed();
+                  }}
+                >
+                  {sources.map((x) => (
+                    <ToggleGroupItem key={x} value={x}>
+                      {SOURCE_LABELS[x]}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                {source === "message" ? <FieldDescription>The Confluent wire format: the registry's schema for the id each message starts with; for Protobuf, its message indexes name the type.</FieldDescription> : null}
+              </Field>
+            ) : null}
+            {needsSchema(codec) && source === "local" ? (
               <Field invalid={tried && schemaError !== null}>
                 <FieldLabel>
                   Schema
@@ -261,7 +360,56 @@ export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targ
                 {tried && schemaError ? <FieldError match>{schemaError}</FieldError> : null}
               </Field>
             ) : null}
-            {codec === "protobuf" && schema ? (
+            {needsSchema(codec) && source === "subject" ? (
+              <>
+                <Field invalid={tried && schemaError !== null}>
+                  <FieldLabel>
+                    Registry subject
+                    <Required />
+                  </FieldLabel>
+                  <Combobox<string>
+                    items={subjects}
+                    inputValue={subject}
+                    onInputValueChange={(v) => {
+                      setSubject(v);
+                      setVersion("latest");
+                      changed();
+                    }}
+                    placeholder="orders-value"
+                    emptyMessage={connId === null ? "Connect to list the subjects; any name is accepted." : "No such subject; any name is accepted."}
+                    className="font-mono"
+                  >
+                    {(item: string) => (
+                      <ComboboxItem key={item} value={item}>
+                        {item}
+                      </ComboboxItem>
+                    )}
+                  </Combobox>
+                  {tried && schemaError ? <FieldError match>{schemaError}</FieldError> : null}
+                </Field>
+                <Field>
+                  <FieldLabel>Version</FieldLabel>
+                  <Select<string>
+                    items={[{ value: "latest", label: "Latest" }, ...versions.map((v) => ({ value: String(v), label: `Version ${v}` }))]}
+                    value={version}
+                    onValueChange={(v) => {
+                      if (!v) return;
+                      setVersion(v);
+                      changed();
+                    }}
+                  >
+                    <SelectItem value="latest">Latest</SelectItem>
+                    {(versions.includes(Number(version)) || version === "latest" ? versions : [...versions, Number(version)]).map((v) => (
+                      <SelectItem key={v} value={String(v)}>
+                        Version {v}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                  <FieldDescription>Latest follows new versions as they are registered.</FieldDescription>
+                </Field>
+              </>
+            ) : null}
+            {codec === "protobuf" && source === "local" && schema ? (
               <Field className="col-span-2">
                 <FieldLabel>Message type</FieldLabel>
                 <Select<string>
@@ -281,9 +429,26 @@ export function MappingSheet({ open, onOpenChange, mapping, isNew, schemas, targ
                 </Select>
               </Field>
             ) : null}
+            {codec === "protobuf" && source === "subject" && wire !== "confluent" ? (
+              <Field className="col-span-2">
+                <FieldLabel>Message type</FieldLabel>
+                <Input
+                  value={messageType ?? ""}
+                  onValueChange={(v) => {
+                    setMessageType(v.trim() === "" ? null : v.trim());
+                    changed();
+                  }}
+                  placeholder="The schema's first message"
+                  className="font-mono"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <FieldDescription>Raw bytes name no type: give its full name when it is not the first.</FieldDescription>
+              </Field>
+            ) : null}
             <Field className="col-span-2">
               <FieldLabel>Wire format</FieldLabel>
-              <ToggleGroup aria-label="Wire format" value={[wire]} onValueChange={(v) => v[0] && (setWire(v[0] as WireFormat), changed())}>
+              <ToggleGroup aria-label="Wire format" value={[wire]} disabled={needsSchema(codec) && source === "message"} onValueChange={(v) => v[0] && (setWire(v[0] as WireFormat), changed())}>
                 <ToggleGroupItem value="none">None (raw bytes)</ToggleGroupItem>
                 <ToggleGroupItem value="confluent">Confluent (magic byte + id)</ToggleGroupItem>
               </ToggleGroup>

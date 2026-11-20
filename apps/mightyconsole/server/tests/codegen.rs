@@ -259,6 +259,34 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "messaging.registry.set",
+            Mutation,
+            "messaging.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "messaging.registry.subjects",
+            Query,
+            "messaging.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "messaging.registry.test",
+            Query,
+            "messaging.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "messaging.registry.versions",
+            Query,
+            "messaging.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "messaging.schemas.inspect",
             Query,
             "messaging.read",
@@ -870,9 +898,20 @@ fn the_procedures_of_the_spec() {
             "profile.token",
             "profile.nkeySeed",
             "profile.creds",
-            "profile.tls.clientKeyPem"
+            "profile.tls.clientKeyPem",
+            "profile.schemaRegistry.password",
+            "profile.schemaRegistry.token",
+            "profile.schemaRegistry.tls.clientKeyPem"
         ]
     );
+    // The registry's secrets, wherever a registry is sent (TSK-85 batch 4b).
+    let registry = [
+        "registry.password",
+        "registry.token",
+        "registry.tls.clientKeyPem",
+    ];
+    assert_eq!(redact("messaging.registry.test"), registry);
+    assert_eq!(redact("messaging.registry.set"), registry);
     assert_eq!(
         redact("langgraph.connect"),
         [

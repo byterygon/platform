@@ -16,6 +16,7 @@ use serde::Deserialize;
 use ts_rs::TS;
 
 use super::TOOL;
+use crate::core::messaging::registry::RegistryProfile;
 use crate::core::tls::{TlsOptions, TlsOptionsError, client_config};
 use crate::core::{ConnectionState, Hub, RemoteError, ToolError, ToolErrorKind};
 
@@ -122,6 +123,10 @@ pub struct ConnectNatsProfile {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub mappings: Option<Vec<SchemaMapping>>,
+    /// The profile's Schema Registry (`fields.schemaRegistry` and its secrets).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub schema_registry: Option<RegistryProfile>,
 }
 
 impl fmt::Debug for ConnectNatsProfile {
@@ -137,6 +142,7 @@ impl fmt::Debug for ConnectNatsProfile {
             .field("nkey_seed", &set(&self.nkey_seed))
             .field("creds", &set(&self.creds))
             .field("tls", &self.tls)
+            .field("schema_registry", &self.schema_registry)
             .finish_non_exhaustive()
     }
 }
