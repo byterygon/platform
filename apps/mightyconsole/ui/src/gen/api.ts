@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:022957b96e3b0e275768f5206a0854cb8ade18fd3ce13e67770a5b4a3c757d93";
+export const SCHEMA_HASH = "sha256:1db06d27c7e30e859d833c7b8ceab4f2ee892b5957f9997a4046622918745d74";
 
 // ---- Types
 
@@ -601,6 +601,26 @@ export type ContainersActionInput = { connId: string, ids: Array<string>,
  */
 timeoutSec?: number | null, };
 
+export type ContainersExecInput = { connId: string, id: string, 
+/**
+ * The command and its arguments; bash if the image has it, else sh, when absent.
+ */
+cmd?: Array<string> | null, 
+/**
+ * `user`, `uid`, `user:group`; the container's user when absent.
+ */
+user?: string | null, 
+/**
+ * The working directory; the container's when absent.
+ */
+workdir?: string | null, cols: number, rows: number, terminalId: string, };
+
+export type ContainersExecSummary = { 
+/**
+ * The process's exit code, when Docker reports one.
+ */
+exitCode?: number, };
+
 export type ContainersListInput = { connId: string, 
 /**
  * Stopped containers too; `true` when absent.
@@ -640,6 +660,14 @@ force: boolean,
  * Remove its anonymous volumes too (named volumes stay).
  */
 volumes: boolean, };
+
+export type ContainersStatsInput = { connId: string, id: string, streamId: string, };
+
+export type ContainersStatsSummary = { samples: number, 
+/**
+ * Samples replaced by a newer one before the client asked for them.
+ */
+dropped: number, };
 
 export type DecodeInput = { connId?: string | null, 
 /**
@@ -3229,12 +3257,14 @@ export interface Procedures {
   readonly "app.info": ProcedureDef<"query", Empty, AppInfo, never>;
   readonly "docker.compose.projects": ProcedureDef<"query", DockerConnIdInput, Array<ComposeProject>, ToolError>;
   readonly "docker.connect": ProcedureDef<"mutation", DockerConnectInput, DockerConnectOutput, ToolError>;
+  readonly "docker.containers.exec": ProcedureDef<"stream", ContainersExecInput, ContainersExecSummary, ToolError>;
   readonly "docker.containers.inspect": ProcedureDef<"query", ContainerIdInput, ContainerInspectOutput, ToolError>;
   readonly "docker.containers.list": ProcedureDef<"query", ContainersListInput, Array<ContainerRow>, ToolError>;
   readonly "docker.containers.logs": ProcedureDef<"stream", ContainersLogsInput, ContainersLogsSummary, ToolError>;
   readonly "docker.containers.remove": ProcedureDef<"mutation", ContainersRemoveInput, Array<ContainerActionResult>, ToolError>;
   readonly "docker.containers.restart": ProcedureDef<"mutation", ContainersActionInput, Array<ContainerActionResult>, ToolError>;
   readonly "docker.containers.start": ProcedureDef<"mutation", ContainersActionInput, Array<ContainerActionResult>, ToolError>;
+  readonly "docker.containers.stats": ProcedureDef<"stream", ContainersStatsInput, ContainersStatsSummary, ToolError>;
   readonly "docker.containers.stop": ProcedureDef<"mutation", ContainersActionInput, Array<ContainerActionResult>, ToolError>;
   readonly "docker.disconnect": ProcedureDef<"mutation", DockerConnIdInput, Empty, ToolError>;
   readonly "docker.events": ProcedureDef<"stream", DockerEventsInput, Empty, ToolError>;
@@ -3382,12 +3412,14 @@ export interface Api {
     };
     readonly connect: Procedures["docker.connect"];
     readonly containers: {
+      readonly exec: Procedures["docker.containers.exec"];
       readonly inspect: Procedures["docker.containers.inspect"];
       readonly list: Procedures["docker.containers.list"];
       readonly logs: Procedures["docker.containers.logs"];
       readonly remove: Procedures["docker.containers.remove"];
       readonly restart: Procedures["docker.containers.restart"];
       readonly start: Procedures["docker.containers.start"];
+      readonly stats: Procedures["docker.containers.stats"];
       readonly stop: Procedures["docker.containers.stop"];
     };
     readonly disconnect: Procedures["docker.disconnect"];
@@ -3639,6 +3671,16 @@ export const procedures: Api = {
       timeoutMaxMs: 300000,
     },
     containers: {
+      exec: {
+        name: "docker.containers.exec",
+        kind: "stream",
+        perm: "docker.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
+      },
       inspect: {
         name: "docker.containers.inspect",
         kind: "query",
@@ -3698,6 +3740,16 @@ export const procedures: Api = {
         deprecated: false,
         timeoutDefaultMs: 120000,
         timeoutMaxMs: 300000,
+      },
+      stats: {
+        name: "docker.containers.stats",
+        kind: "stream",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
       },
       stop: {
         name: "docker.containers.stop",

@@ -391,3 +391,118 @@ async fn lab_containers_their_logs_and_the_events() {
     tab.client.cancel(10).await;
     tab.error(10, Code::Cancelled).await;
 }
+
+/// The terminal's output until it shows `needle`.
+async fn output_until(tab: &mut Tab, id: u32, needle: &str) -> String {
+    let mut text = String::new();
+    while !text.contains(needle) {
+        let chunk = tab.chunk(id).await;
+        text.push_str(&String::from_utf8_lossy(&chunk[1..]));
+        tab.client.credit(id, 1).await;
+    }
+    text
+}
+
+fn b64(text: &str) -> String {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.encode(text)
+}
+
+#[tokio::test]
+async fn lab_an_exec_shell_and_live_stats() {
+    let (_t, mut tab) = setup().await;
+    let trusted = presented_key(&mut tab, 2).await;
+    tab.call(
+        3,
+        "docker.connect",
+        json!({ "profile": profile(json!({ "hostKey": trusted })) }),
+    )
+    .await;
+    let conn_id = tab.result(3).await["connId"].as_str().unwrap().to_owned();
+
+    // The default command: busybox has no bash, so sh.
+    tab.call(
+        4,
+        "docker.containers.exec",
+        json!({ "connId": conn_id, "id": "shop-worker-1", "cols": 100, "rows": 30, "terminalId": "lab-term" }),
+    )
+    .await;
+    tab.call(
+        5,
+        "term.write",
+        json!({ "terminalId": "lab-term", "data": b64("echo hi-$((1+2))\r") }),
+    )
+    .await;
+    tab.result(5).await;
+    output_until(&mut tab, 4, "hi-3").await;
+    tab.call(
+        6,
+        "term.resize",
+        json!({ "terminalId": "lab-term", "cols": 120, "rows": 40 }),
+    )
+    .await;
+    tab.result(6).await;
+    tab.call(
+        7,
+        "term.write",
+        json!({ "terminalId": "lab-term", "data": b64("stty size\r") }),
+    )
+    .await;
+    tab.result(7).await;
+    output_until(&mut tab, 4, "40 120").await;
+    tab.call(
+        8,
+        "term.write",
+        json!({ "terminalId": "lab-term", "data": b64("exit 3\r") }),
+    )
+    .await;
+    tab.result(8).await;
+    let (_, summary) = drain_bytes(&mut tab, 4).await;
+    assert_eq!(summary, json!({ "exitCode": 3 }));
+
+    // Live stats of a running container; the stopped one has none.
+    tab.call(
+        9,
+        "docker.containers.stats",
+        json!({ "connId": conn_id, "id": "shop-web-1", "streamId": "lab-stats" }),
+    )
+    .await;
+    let mut samples = Vec::new();
+    while samples.len() < 2 {
+        samples.extend(lines(&tab.chunk(9).await));
+        tab.client.credit(9, 1).await;
+    }
+    assert!(
+        samples[1]["memoryUsed"].as_u64().unwrap() > 0,
+        "{samples:?}"
+    );
+    assert!(samples[1]["timeMs"].as_u64() > samples[0]["timeMs"].as_u64());
+    assert!(samples[1].get("cpuPercent").is_some(), "{samples:?}");
+    tab.client.cancel(9).await;
+    tab.error(9, Code::Cancelled).await;
+    tab.call(
+        10,
+        "docker.containers.stats",
+        json!({ "connId": conn_id, "id": "stopped", "streamId": "lab-stats-2" }),
+    )
+    .await;
+    tab.error(10, Code::FailedPrecondition).await;
+}
+
+/// A `bytes` stream's output until it ends, and its summary.
+async fn drain_bytes(tab: &mut Tab, id: u32) -> (String, Value) {
+    let mut text = String::new();
+    loop {
+        let frame = tab.frame(id).await;
+        match frame.kind {
+            ambidex::Kind::Chunk => {
+                text.push_str(&String::from_utf8_lossy(&frame.payload[1..]));
+                tab.client.credit(id, 1).await;
+            }
+            ambidex::Kind::StreamEnd => {
+                return (text, serde_json::from_slice(&frame.payload).unwrap());
+            }
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    }
+}

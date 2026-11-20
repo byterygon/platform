@@ -1010,6 +1010,30 @@ impl DockerContainersApi {
             end_reason: "end".to_owned(),
         })
     }
+
+    /// A running container's samples, one a second, as `jsonl` lines ([`super::stats::StatsSample`]);
+    /// push-only: the latest sample replaces one not sent yet. `Conflict` when it is not running.
+    #[rpc::stream(perm = "docker.read", risk = Risk::Read, timeout_max = "12h")]
+    async fn stats(
+        &self,
+        ctx: Ctx,
+        input: super::stats::ContainersStatsInput,
+        sink: BinarySink,
+    ) -> ToolResult<super::stats::ContainersStatsSummary> {
+        super::stats::run(&self.0, &ctx, input, &sink).await
+    }
+
+    /// A process in the container on a TTY (`bytes`: channel 1, then the output); its input
+    /// through `term.*` on `terminalId`. Ends with the exit code.
+    #[rpc::stream(perm = "docker.write", risk = Risk::Write, timeout_max = "12h")]
+    async fn exec(
+        &self,
+        ctx: Ctx,
+        input: super::exec::ContainersExecInput,
+        sink: BinarySink,
+    ) -> ToolResult<super::exec::ContainersExecSummary> {
+        super::exec::run(&self.0, &ctx, input, &sink).await
+    }
 }
 
 #[cfg(test)]
