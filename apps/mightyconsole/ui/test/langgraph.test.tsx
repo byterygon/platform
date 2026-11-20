@@ -17,8 +17,8 @@ import { EMPTY_RUN, eventName, parseChunk, reduceRun, type RunEvent } from "@/to
 import { JsonField, schemaProblems, toGraphView } from "@/tools/langgraph/shared";
 import { fake as monacoFake } from "../../../../packages/ui/test/fakes/monaco.ts";
 import { StoreTab } from "@/tools/langgraph/store";
-import { ThreadTab, defaultInput } from "@/tools/langgraph/thread";
-import { ThreadsTab } from "@/tools/langgraph/threads";
+import { ThreadTab, advancedSummary, defaultInput, interruptQuestion } from "@/tools/langgraph/thread";
+import { DEFAULT_ORDER, ThreadsTab, orderSummary } from "@/tools/langgraph/threads";
 import type { LiveState, TabProps, TabView } from "@/tools/types";
 import { axeViolations, cleanup, render, settle } from "./support/render";
 
@@ -255,8 +255,9 @@ function tabProps(client: MightyClient, kind: string, params: Record<string, unk
 
 const $ = (sel: string) => document.querySelector<HTMLElement>(sel);
 const buttonNamed = (name: string | RegExp) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => (typeof name === "string" ? b.textContent?.trim() === name || b.getAttribute("aria-label") === name : name.test(b.textContent ?? "")));
-/** A button of the Run toolbar (the Run sub-tab is a button too). */
-const runBar = (name: string) => [...document.querySelectorAll<HTMLButtonElement>("[aria-label=\"Run actions\"] button")].find((b) => b.textContent?.trim() === name);
+/** A button of the thread's header: Stop, More actions, Run (the Run sub-tab is a button too). */
+const runBar = (name: string) => [...document.querySelectorAll<HTMLButtonElement>("header button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name);
+const menuItem = (name: string) => [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.trim() === name);
 const click = async (el: Element | null | undefined) => {
   if (!el) throw new Error("no element to click");
   await act(async () => void (el as HTMLElement).click());
@@ -328,8 +329,11 @@ describe("screens", () => {
     await act(async () => fake.script.release!());
     await settle();
     expect(live.at(-1)).toMatchObject({ status: "ended", reason: "success" });
-    expect(document.body.textContent).toContain("The run is waiting at an interrupt");
-    expect(document.body.textContent).toContain('"question": "Send?"');
+    // The callout names the node and the question (TSK-95); Resume… opens the form in a dialog.
+    expect(document.body.textContent).toContain("Waiting at approve. The graph asks: Send?");
+    await click(buttonNamed("Resume…"));
+    await settle();
+    expect(document.querySelector("[role=dialog]")?.textContent).toContain('"question": "Send?"');
     await click(buttonNamed("Resume"));
     expect(fake.last("runs.stream")).toMatchObject({ command: { resume: "approved", update: null, goto: null }, input: null });
 
@@ -342,8 +346,10 @@ describe("screens", () => {
     expect(fake.last("runs.cancel")).toMatchObject({ threadId: THREAD, runId: "r1" });
     expect(live.at(-1)).toMatchObject({ status: "ended", reason: "stopped" });
 
-    // Rollback asks first.
-    await click(runBar("Rollback"));
+    // Roll back, from the header's "…" menu, asks first.
+    await click(runBar("More actions"));
+    await settle();
+    await click(menuItem("Roll back the run…"));
     expect(document.body.textContent).toContain("Roll back run r1?");
     await click(buttonNamed("Roll back"));
     expect(fake.last("runs.rollback")).toMatchObject({ runId: "r1" });
@@ -383,7 +389,11 @@ describe("screens", () => {
       </Toast>,
     );
     await settle();
-    await click([...document.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.textContent === "History"));
+    // The History tab carries the count of checkpoints (TSK-95), as the header does.
+    const historyTab = [...document.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.textContent?.startsWith("History"));
+    expect(historyTab?.textContent).toMatch(/^History \d+$/);
+    expect(document.querySelector("header")?.textContent).toMatch(/checkpoint c2.*\d+ checkpoints?/);
+    await click(historyTab);
     expect(fake.last("threads.history")).toMatchObject({ threadId: THREAD, limit: 50 });
     await click(buttonNamed("Fork from here"));
     expect(document.body.textContent).toContain("Fork from checkpoint c2");
@@ -457,5 +467,83 @@ describe("JsonField (TSK-94)", () => {
     expect(document.querySelector("[data-schema-problems]")!.textContent).toContain('1 problem: missing property "customer_id" (required by support-agent\'s input schema)');
     expect(document.querySelector('[data-slot="code-editor"]')!.hasAttribute("data-invalid")).toBe(false);
     monacoFake.reset();
+  });
+});
+
+// TSK-95: the mockup's langgraph-thread and langgraph-threads frames.
+describe("thread and threads on the mockup", () => {
+  test("the Advanced row sums up the folded options and names a folded problem", () => {
+    const base = { modes: ["values", "updates", "messages"], subgraphs: false, before: "", after: "", config: "", context: "" };
+    expect(advancedSummary(base)).toEqual({ text: "values, updates, messages · subgraphs off · no interrupts", problem: null });
+    expect(advancedSummary({ ...base, modes: [], subgraphs: true, before: "review, send", after: "*", config: '{"a": 1}' }).text).toBe("no stream modes · subgraphs on · interrupt before review, send, after * · config set");
+    expect(advancedSummary({ ...base, config: "{", context: "[" }).problem).toBe("Config and Context are not valid JSON");
+    expect(advancedSummary({ ...base, context: "{" }).problem).toBe("Context is not valid JSON");
+  });
+
+  test("an interrupt's question: a string, an object's question, else a preview", () => {
+    expect(interruptQuestion("Refund 129.90 EUR?")).toBe("Refund 129.90 EUR?");
+    expect(interruptQuestion({ question: "Send?", amount: 3 })).toBe("Send?");
+    expect(interruptQuestion({ amount: 3 })).toContain("amount");
+  });
+
+  test("the input column folds Config, stream modes, subgraphs and interrupts under Advanced", async () => {
+    const fake = fakeClient();
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD })} />
+      </Toast>,
+    );
+    await settle();
+    const row = buttonNamed(/^Advanced · /)!;
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(row.textContent).toBe("Advanced · values, updates, messages · subgraphs on · no interrupts");
+    expect(document.body.textContent).not.toContain("Stream modes");
+    expect(document.body.textContent).not.toContain("Interrupt before");
+    await click(row);
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    expect(document.body.textContent).toContain("Stream modes");
+    expect(document.body.textContent).toContain("Interrupt before");
+    expect([...document.querySelectorAll("label")].some((l) => l.textContent === "Config")).toBe(true);
+    // The header: the thread's short ID, the assistant, Stop, More actions and Run.
+    const header = document.querySelector("header")!;
+    expect(header.textContent).toMatch(/Assistant agent · checkpoint c2.* · \d+ checkpoints?/);
+    expect(runBar("Stop")!.disabled).toBe(true);
+    expect(runBar("Run")!.getAttribute("aria-keyshortcuts")).toBe("Control+Enter");
+    expect(await axeViolations()).toEqual([]);
+  });
+
+  test("Delete thread from the header's menu asks first, then goes back to the threads", async () => {
+    const fake = fakeClient();
+    const navigate = vi.fn();
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD }, { navigate })} />
+      </Toast>,
+    );
+    await settle();
+    await click(runBar("More actions"));
+    expect(menuItem("Roll back the run…")!.hasAttribute("data-disabled")).toBe(true);
+    await click(menuItem("Delete thread…"));
+    expect(document.body.textContent).toContain("Delete thread 11111111…1111 on lab?");
+    expect(fake.last("threads.delete")).toBeUndefined();
+    await click(buttonNamed("Delete thread"));
+    expect(fake.last("threads.delete")).toMatchObject({ threadId: THREAD });
+    expect(navigate).toHaveBeenCalledWith(expect.objectContaining({ kind: "langgraph.threads" }), { replace: true });
+  });
+
+  test("Threads: sort, order and rows per page behind Advanced reach the search", async () => {
+    expect(orderSummary(DEFAULT_ORDER)).toBe("Advanced");
+    expect(orderSummary({ sortBy: "created_at", sortOrder: "asc", limit: 100 })).toBe("Advanced: Created, oldest first · 100 rows");
+    expect(orderSummary({ ...DEFAULT_ORDER, sortBy: "status" })).toBe("Advanced: Status, descending");
+    const fake = fakeClient();
+    render(
+      <Toast>
+        <ThreadsTab {...tabProps(fake.client, "langgraph.threads", {})} />
+      </Toast>,
+    );
+    await settle();
+    expect(fake.last("threads.search")).toMatchObject({ limit: 50, sortBy: "updated_at", sortOrder: "desc" });
+    expect(buttonNamed("Advanced")).toBeDefined();
+    expect(document.querySelector('[aria-label="Status"]')!.textContent).toContain("Status: Any");
   });
 });

@@ -173,13 +173,21 @@ pub struct ThreadsSearchInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub status: Option<String>,
-    /// 1 to 1000; 50 when absent. Newest first.
+    /// 1 to 1000; 50 when absent.
     #[serde(default)]
     #[ts(optional = nullable)]
     pub limit: Option<u32>,
     #[serde(default)]
     #[ts(optional = nullable)]
     pub offset: Option<u32>,
+    /// `updated_at` (when absent), `created_at`, `thread_id` or `status`.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub sort_by: Option<String>,
+    /// `desc` (when absent, newest first) or `asc`.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub sort_order: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
@@ -456,6 +464,32 @@ fn limit(field: &str, value: Option<u32>, default: u32) -> Result<u32, ToolError
     }
 }
 
+/// The threads search's order: `updated_at` newest first when absent (TSK-95, the Advanced menu).
+fn thread_sort(
+    by: Option<String>,
+    order: Option<String>,
+) -> Result<(&'static str, &'static str), ToolError> {
+    let by = match by.as_deref().filter(|s| !s.is_empty()) {
+        None | Some("updated_at") => "updated_at",
+        Some("created_at") => "created_at",
+        Some("thread_id") => "thread_id",
+        Some("status") => "status",
+        Some(_) => {
+            return Err(ToolError::invalid(
+                TOOL,
+                "sortBy",
+                "updated_at, created_at, thread_id or status",
+            ));
+        }
+    };
+    let order = match order.as_deref().filter(|s| !s.is_empty()) {
+        None | Some("desc") => "desc",
+        Some("asc") => "asc",
+        Some(_) => return Err(ToolError::invalid(TOOL, "sortOrder", "asc or desc")),
+    };
+    Ok((by, order))
+}
+
 fn object(field: &str, value: Option<Value>) -> Result<Option<Value>, ToolError> {
     match value {
         None | Some(Value::Null) => Ok(None),
@@ -726,15 +760,16 @@ pub struct ThreadsApi(pub Arc<Hub>);
 
 #[rpc::router(namespace = "langgraph.threads")]
 impl ThreadsApi {
-    /// Threads, most recently updated first (`POST /threads/search`).
+    /// Threads, most recently updated first unless `sortBy`/`sortOrder` say otherwise (`POST /threads/search`).
     #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
     async fn search(&self, ctx: Ctx, input: ThreadsSearchInput) -> ToolResult<Vec<Thread>> {
         let handle = client(&self.0, &ctx, &input.conn_id)?;
         let mut body = Map::new();
         body.insert("limit".into(), limit("limit", input.limit, 50)?.into());
         body.insert("offset".into(), input.offset.unwrap_or(0).into());
-        body.insert("sort_by".into(), "updated_at".into());
-        body.insert("sort_order".into(), "desc".into());
+        let (sort_by, sort_order) = thread_sort(input.sort_by, input.sort_order)?;
+        body.insert("sort_by".into(), sort_by.into());
+        body.insert("sort_order".into(), sort_order.into());
         if let Some(status) = input.status.filter(|s| !s.is_empty()) {
             if !matches!(status.as_str(), "idle" | "busy" | "interrupted" | "error") {
                 return Err(

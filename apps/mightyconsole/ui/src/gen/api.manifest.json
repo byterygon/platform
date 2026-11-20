@@ -9538,7 +9538,7 @@
         },
         "limit": {
           "default": null,
-          "description": "1 to 1000; 50 when absent. Newest first.",
+          "description": "1 to 1000; 50 when absent.",
           "format": "uint32",
           "minimum": 0,
           "type": [
@@ -9555,6 +9555,22 @@
           "minimum": 0,
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "sortBy": {
+          "default": null,
+          "description": "`updated_at` (when absent), `created_at`, `thread_id` or `status`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sortOrder": {
+          "default": null,
+          "description": "`desc` (when absent, newest first) or `asc`.",
+          "type": [
+            "string",
             "null"
           ]
         },
@@ -13586,5 +13602,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:10219dac86e6ca88df1d6e1f062d9c7d8e274d60e27d637ca600d5da93a2dfd0"
+  "schema_hash": "sha256:e00d78b3643530578b0163346ff433d6f14e93ec2d5dceb55ebaed3b19858bfa"
 }
