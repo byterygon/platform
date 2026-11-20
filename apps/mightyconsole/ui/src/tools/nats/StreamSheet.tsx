@@ -41,7 +41,7 @@ function Locked({ on }: { on: boolean }) {
 export function StreamSheet({ open, onOpenChange, stream, profileName, connId, client, onSaved }: StreamSheetProps) {
   const editing = stream !== undefined;
   const [d, setD] = useState<StreamDraft>(EMPTY_STREAM);
-  useSheetGuard(open, d);
+  const releaseGuard = useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState<{ title: string; field: StreamField | null } | null>(null);
@@ -69,6 +69,7 @@ export function StreamSheet({ open, onOpenChange, stream, profileName, connId, c
     setServer(null);
     try {
       const info = editing ? await client.nats.js.streams.update({ connId, config }) : await client.nats.js.streams.create({ connId, config });
+      releaseGuard();
       onSaved(info);
       onOpenChange(false);
     } catch (e) {

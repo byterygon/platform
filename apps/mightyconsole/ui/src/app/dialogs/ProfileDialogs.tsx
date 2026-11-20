@@ -60,7 +60,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
     return { name: mode === "duplicate" ? `${base.name} copy` : base.name, color: base.color ?? "", fields: structuredClone(base.fields), secrets: {} as Record<string, unknown>, extras: structuredClone(base.extras) };
   };
   const [draft, setDraft] = useState(fresh);
-  useSheetGuard(open, draft);
+  const releaseGuard = useSheetGuard(open, draft);
   const [clearSecrets, setClearSecrets] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
@@ -103,6 +103,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
     setSaving(true);
     try {
       await onSave(record);
+      releaseGuard();
     } finally {
       setSaving(false);
     }

@@ -83,7 +83,7 @@ export function bucketConfigOf(d: BucketDraft): NatsKvConfig {
 
 export function BucketSheet({ open, onOpenChange, profileName, connId, client, onCreated }: { open: boolean; onOpenChange(open: boolean): void; profileName: string; connId: string; client: MightyClient; onCreated(info: NatsKvBucketInfo): void }) {
   const [d, setD] = useState<BucketDraft>(EMPTY_BUCKET);
-  useSheetGuard(open, d);
+  const releaseGuard = useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState<{ title: string; field: string | null } | null>(null);
@@ -106,6 +106,7 @@ export function BucketSheet({ open, onOpenChange, profileName, connId, client, o
     setBusy(true);
     try {
       const info = await client.nats.kv.buckets.create({ connId, config: bucketConfigOf(d) });
+      releaseGuard();
       onCreated(info);
       onOpenChange(false);
     } catch (e) {

@@ -159,7 +159,7 @@ function keysOf(text: string): string[] {
 export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile, namespace, prefill, suggestions, note, onOpenWorkflow, onStarted }: StartWorkflowSheetProps) {
   const notify = useContext(NoticeContext);
   const [d, setD] = useState<Draft>(() => draftOf(prefill));
-  useSheetGuard(open, d);
+  const releaseGuard = useSheetGuard(open, d);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<DescribedError | null>(null);
   const [tried, setTried] = useState(false);
@@ -183,6 +183,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
     try {
       const out = await client.temporal.workflows.start({ connId, namespace, ...built.input });
       const workflowId = built.input.workflowId;
+      releaseGuard();
       onOpenChange(false);
       onStarted?.();
       notify({

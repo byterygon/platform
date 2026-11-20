@@ -8,7 +8,8 @@ import { browser, type BrowserContext, cargo, type Checklist, command, manual, v
 const lab = (filter: string) => cargo(filter, { features: ["lab-tests"] });
 
 /** The run toolbar's button (the Run sub-tab is a button too). */
-const runBar = (label: string) => `[...document.querySelectorAll('[aria-label="Run actions"] button')].find((b) => b.textContent.trim() === ${JSON.stringify(label)})`;
+/** A button of the Run bar on screen (other thread tabs stay mounted, hidden; their own view panels are not marked hidden). */
+const runBar = (label: string) => `[...document.querySelectorAll('[aria-label="Run actions"] button')].find((b) => b.checkVisibility() && b.textContent.trim() === ${JSON.stringify(label)})`;
 
 /** Opens the LangGraph tool and the lab profile's resource tree, adding the profile first when
  * this browser has none (its defaults point at the lab). A reloaded page reconnects the profile
@@ -128,10 +129,10 @@ export default {
           await until(`__mc.has("The run is waiting at an interrupt")`, "the run stopped at approve's interrupt");
           await until(`document.querySelector('[data-graph-node="plan"][data-visited]')`, "the nodes that ran, lit in the graph");
           await shot("run at the interrupt");
-          await run(`__mc.click(__mc.button("Resume"))`);
+          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "Resume"))`);
           await until(`__mc.has("Final: Here is what I found")`, "the resumed run's final message");
           await shot("resumed to the end");
-          await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === "History"))`);
+          await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && t.textContent.trim() === "History"))`);
           await until(`__mc.button("Fork from here")`, "the checkpoint history");
           await shot("history");
         }),

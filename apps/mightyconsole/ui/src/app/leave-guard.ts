@@ -10,8 +10,12 @@ export type LeaveGuardSetter = (key: object, dirty: boolean) => void;
 
 export const LeaveGuardContext = createContext<LeaveGuardSetter | null>(null);
 
-/** Guards the tab while `dirty` holds; released when it stops or the component goes. */
-export function useLeaveGuard(dirty: boolean): void {
+/**
+ * Guards the tab while `dirty` holds; released when it stops or the component goes. The returned
+ * `release` drops the guard at once: a sheet that saved calls it before it reports, since the
+ * report may move the tab before the sheet has closed.
+ */
+export function useLeaveGuard(dirty: boolean): () => void {
   const set = useContext(LeaveGuardContext);
   const key = useRef({});
   useEffect(() => {
@@ -19,6 +23,7 @@ export function useLeaveGuard(dirty: boolean): void {
     set(key.current, dirty);
     return () => set(key.current, false);
   }, [set, dirty]);
+  return () => set?.(key.current, false);
 }
 
 /**
@@ -41,9 +46,7 @@ export function useDraftChanged(open: boolean, value: unknown): boolean {
   return open && base !== null && base !== json;
 }
 
-/** A sheet's guard in one line: `useSheetGuard(open, draft)`. */
-export function useSheetGuard(open: boolean, draft: unknown): boolean {
-  const changed = useDraftChanged(open, draft);
-  useLeaveGuard(changed);
-  return changed;
+/** A sheet's guard in one line: `const release = useSheetGuard(open, draft)`; call `release()` once saved. */
+export function useSheetGuard(open: boolean, draft: unknown): () => void {
+  return useLeaveGuard(useDraftChanged(open, draft));
 }

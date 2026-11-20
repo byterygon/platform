@@ -259,7 +259,11 @@ export default {
           await run(`__mc.click(${vbutton("billing")})`);
           await until(`__mc.has("Where it is in the stream") && __mc.has("Ack pending")`, "the consumer");
           await shot("consumer billing with its position");
-          await run(`__mc.click(${tab("ORDERS")})`);
+          // The consumer opened in the same tab (TSK-105): Back returns to the stream.
+          await run(`__mc.click([...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=toolbar][aria-label=Location] button")].find((b) => b.getAttribute("aria-label") === "Back"))`);
+          await until(`__mc.has("1,051")`, "back to the stream");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Stream views"] [role=tab]')].find((t) => (t.textContent || "").startsWith("Consumers")))`);
+          await until(vbutton("New consumer…"), "the stream's consumers again");
           await run(`__mc.click(${vbutton("New consumer…")})`);
           await until(vfield("Name*"), "the consumer form");
           await run(`__mc.type(${vfield("Name*")}, ${JSON.stringify(name)})`);

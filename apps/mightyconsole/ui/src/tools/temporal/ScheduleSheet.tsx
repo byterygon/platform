@@ -112,7 +112,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
   const editing = mode.kind === "edit";
   const [stored, setStored] = useState<{ form: ScheduleForm; conflictToken: string } | null>(mode.kind === "edit" ? { form: mode.form, conflictToken: mode.conflictToken } : null);
   const [d, setD] = useState<ScheduleDraft>(() => (mode.kind === "edit" ? draftOfForm(mode.scheduleId, mode.form) : newDraft()));
-  useSheetGuard(open, d);
+  const releaseGuard = useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   // "Runs" while it is typed (null: it shows the schedule in words).
   const [runsDraft, setRunsDraft] = useState<string | null>(null);
@@ -159,6 +159,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
     try {
       if (editing) await client.temporal.schedules.update({ connId, namespace, scheduleId, schedule: form, conflictToken: stored?.conflictToken ?? null });
       else await client.temporal.schedules.create({ connId, namespace, scheduleId, schedule: form });
+      releaseGuard();
       onOpenChange(false);
       notify({ title: editing ? `Updated ${scheduleId}` : `Created ${scheduleId}`, type: "success" });
       onSaved(scheduleId);

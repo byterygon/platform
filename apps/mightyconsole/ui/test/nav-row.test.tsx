@@ -8,7 +8,7 @@ import { type RouterHistory, createMemoryHistory } from "@tanstack/react-router"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useState } from "react";
 import { App } from "@/app/App";
-import { useSheetGuard } from "@/app/leave-guard";
+import { useDraftChanged, useLeaveGuard } from "@/app/leave-guard";
 import { LinkButton } from "@/app/page";
 import { linkTo } from "@/app/tab-view";
 import { ServicesContext } from "@/app/client";
@@ -72,14 +72,26 @@ function ListTab(props: TabProps) {
 }
 
 /** A sheet-like editor: open, a draft; a changed draft guards the tab. */
-function Editor() {
+function Editor({ onSaved }: { onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const changed = useSheetGuard(open, text);
+  const changed = useDraftChanged(open, text);
+  const release = useLeaveGuard(changed);
   return open ? (
     <div>
       <input aria-label="Draft" value={text} onChange={(e) => setText(e.target.value)} />
       <span>{changed ? "Changed" : "Unchanged"}</span>
+      <button
+        type="button"
+        onClick={() => {
+          // As the sheets do: saved, the guard goes before the report that moves the tab.
+          release();
+          onSaved();
+          setOpen(false);
+        }}
+      >
+        Save and go
+      </button>
     </div>
   ) : (
     <button type="button" onClick={() => setOpen(true)}>
@@ -96,7 +108,7 @@ function PageTab({ tab, navigate }: TabProps) {
       <button type="button" onClick={() => navigate?.({ kind: "walk.page", params: { n: String(n + 1) }, title: `Page ${n + 1}` })}>
         Next page
       </button>
-      <Editor key={n} />
+      <Editor key={n} onSaved={() => navigate?.({ kind: "walk.page", params: { n: String(n + 10) }, title: `Page ${n + 10}` })} />
     </div>
   );
 }
@@ -309,6 +321,15 @@ describe("links and unsaved changes (DOC-21 §3.7)", () => {
     await click(discard());
     await waitFor(() => shown("On page 1"), "left after discarding");
     expect(history.location.href).toBe("/walk/lab/pages/1/view");
+
+    // A saved sheet whose report moves the tab does not ask.
+    await click(byRole("button", "Edit"));
+    await waitFor(() => byText("Unchanged") !== null, "the editor on page 1");
+    await type(document.querySelector<HTMLInputElement>("input[aria-label=Draft]")!, "done");
+    await waitFor(() => byText("Changed") !== null, "the change on page 1");
+    await click(byRole("button", "Save and go"));
+    await waitFor(() => shown("On page 11"), "moved after saving");
+    expect(discard()).toBeNull();
   });
 });
 

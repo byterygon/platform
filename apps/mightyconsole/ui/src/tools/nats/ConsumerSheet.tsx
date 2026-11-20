@@ -155,7 +155,7 @@ export interface ConsumerSheetProps {
 
 export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId, client, onCreated }: ConsumerSheetProps) {
   const [d, setD] = useState<ConsumerDraft>(EMPTY_CONSUMER);
-  useSheetGuard(open, d);
+  const releaseGuard = useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState<{ title: string; field: string | null } | null>(null);
@@ -183,6 +183,7 @@ export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId,
     setServer(null);
     try {
       const info = await client.nats.js.consumers.create({ connId, stream, config: consumerConfigOf(d) });
+      releaseGuard();
       onCreated(info);
       onOpenChange(false);
     } catch (e) {
