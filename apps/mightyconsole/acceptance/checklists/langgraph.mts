@@ -4,6 +4,7 @@
 // tool in a browser with screenshots. Run
 // `pnpm --filter @byterygon/mightyconsole acceptance langgraph --lab-up --strict`.
 import { browser, type BrowserContext, cargo, type Checklist, command, manual, vitest } from "../checklist.mts";
+import { APPEARANCES, appearance, openSuggestions, suggestionRows, suggestionsOnTop, typeInEditor } from "../editors.mts";
 
 const lab = (filter: string) => cargo(filter, { features: ["lab-tests"] });
 
@@ -135,6 +136,43 @@ export default {
           await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && t.textContent.trim() === "History"))`);
           await until(`__mc.button("Fork from here")`, "the checkpoint history");
           await shot("history");
+        }),
+        // TSK-94: the Run form as the mockup's langgraph-thread frame. The lab's graph has a
+        // context schema, so the Context field shows; the schema's problems are listed under a
+        // field, and JSON completion names each property's type.
+        browser("the Run form: Input and Context checked against the assistant's schemas (TSK-94)", async (ctx) => {
+          const { page, origin, until, run, shot } = ctx;
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await run(`__mc.dblclick(__mc.item("Threads"))`);
+          await until(`__mc.button("New thread")`, "the Threads tab");
+          // The metadata filter's suggestions (the keys seen) paint over the threads table's header.
+          await until(`document.querySelector('[aria-label="Threads"] thead')`, "the threads table");
+          await typeInEditor(ctx, "Metadata (JSON)", '{ "');
+          await openSuggestions(ctx);
+          if (!(await suggestionsOnTop(ctx))) throw new Error("a metadata suggestion row is covered by the threads table");
+          await shot("metadata suggestions over the threads table");
+          await typeInEditor(ctx, "Metadata (JSON)", "");
+          await run(`__mc.click(__mc.button("New thread"))`);
+          await until(`${runBar("Run")} && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
+          await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) label")].some((l) => l.textContent.trim() === "Context")`, "the Context field (the graph's context schema)");
+          await typeInEditor(ctx, "Context", "{}");
+          await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [data-schema-problems]")].some((p) => /1 problem: missing property "user_id" \\(required by [^)]+'s context schema\\)/.test(p.textContent))`, "the context schema's problem listed under the field");
+          await typeInEditor(ctx, "Input", '{\n  "messages": [{ "role": "human", "content": "Charged twice" }],\n  ""\n}');
+          // The cursor between the quotes of line 3, where a property name goes.
+          for (const press of ["ArrowUp", "End", "ArrowLeft"]) {
+            const code = { ArrowUp: 38, End: 35, ArrowLeft: 37 }[press]!;
+            for (const type of ["rawKeyDown", "keyUp"]) await page.send("Input.dispatchKeyEvent", { type, key: press, code: press, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code });
+          }
+          for (const [theme, density] of APPEARANCES) {
+            await appearance(ctx, theme, density);
+            await openSuggestions(ctx);
+            const rows = await suggestionRows(ctx);
+            if (!rows.some((r) => r.includes("approved") && r.includes("boolean"))) throw new Error(`JSON completion does not name the type: ${JSON.stringify(rows)}`);
+            if (!(await suggestionsOnTop(ctx))) throw new Error(`${theme}/${density}: a suggestion row is covered`);
+            await shot(`input suggestions, ${theme}, ${density}`);
+          }
+          await appearance(ctx, "light", "comfortable");
         }),
       ],
     },

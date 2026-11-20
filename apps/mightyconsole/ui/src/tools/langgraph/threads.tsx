@@ -37,11 +37,15 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
   const [page, setPage] = useState(1);
   const toast = useToast();
   const metadata = parseJson(metadataText);
+  // The parse error shows only once Search is asked for with text that does not parse, so the
+  // table does not move while typing (TSK-94); the field's danger edge shows at once.
+  const [tried, setTried] = useState(false);
   const { data, error, loading, reload } = useLoad(connId ? () => client.langgraph.threads.search({ connId, metadata: applied.metadata, status: applied.status, limit: PAGE, offset: page === 1 ? null : (page - 1) * PAGE }) : null, [connId, applied, page], note);
   // The metadata keys and values of the threads listed, as suggestions for the filter (TSK-93).
   const metadataSchema = useMemo(() => seenKeysSchema((data ?? []).map((t) => t.metadata)), [data]);
 
   const search = () => {
+    setTried(!metadata.ok);
     if (!metadata.ok) return;
     setApplied({ status: status === "any" ? null : status, metadata: (metadata.value ?? null) as api.JsonValue | null });
     setPage(1);
@@ -113,16 +117,19 @@ export function ThreadsTab({ tab, profile, connId, client, useTabActions, note, 
             invalid={!metadata.ok}
             placeholder='Metadata, e.g. {"user": "ana"}'
             value={metadataText}
-            onValueChange={setMetadataText}
+            onValueChange={(text) => {
+              setMetadataText(text);
+              if (parseJson(text).ok) setTried(false);
+            }}
             onSubmit={search}
             jsonSchema={metadataSchema}
             className="min-w-0 flex-1"
           />
-          <Button type="submit" appearance="secondary" disabled={!metadata.ok}>
+          <Button type="submit" appearance="secondary">
             Search
           </Button>
         </div>
-        {!metadata.ok ? <p className="text-caption-1 text-danger-fg">Metadata is not valid JSON: {metadata.message}</p> : null}
+        {tried && !metadata.ok ? <p className="text-caption-1 text-danger-fg">Metadata is not valid JSON: {metadata.message}</p> : null}
       </form>
       <PageRegion>
         {actionError ? <ErrorState error={actionError} onRetry={() => setActionError(null)} /> : null}

@@ -283,7 +283,7 @@ interface Page {
   navigate: (url: string) => Promise<void>;
   key: (key: string, options?: { modifiers?: number; text?: string }) => Promise<void>;
   insertText: (text: string) => Promise<void>;
-  screenshot: (path: string) => Promise<void>;
+  screenshot: (path: string, clip?: { x: number; y: number; width: number; height: number }) => Promise<void>;
   click: (x: number, y: number) => Promise<void>;
   close: () => Promise<void>;
   requests: string[];
@@ -348,8 +348,8 @@ async function openPage(cdp: Cdp): Promise<Page> {
     async click(x, y) {
       for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
     },
-    async screenshot(path) {
-      const { data } = (await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true })) as { data: string };
+    async screenshot(path, clip) {
+      const { data } = (await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true, ...(clip ? { clip: { ...clip, scale: 1 } } : {}) })) as { data: string };
       writeFileSync(path, Buffer.from(data, "base64"));
     },
     async close() {
@@ -777,6 +777,64 @@ async function jsonSchema(page: Page, base: string) {
   return { violations: found?.length ?? 0, cleared };
 }
 
+/** Monaco's own default colours (vs and vs-dark) that the tokens replace (TSK-94): JSON keys and values, brackets, the suggest list's selection. */
+export const MONACO_DEFAULT_COLORS = ["#a31515", "#0451a5", "#0060c0", "#04395e", "#0431fa", "#319331", "#7b3814", "#9cdcfe", "#ce9178", "#ffd700", "#da70d6", "#179fff", "#007acc", "#0090f1"];
+
+/**
+ * TSK-94: in Light and Dark, the suggest widget of a one-line field paints over the sticky header
+ * of the table under it (elementFromPoint on each row returns the widget), it looks like the
+ * mockup's flyout (fill, selected row, matched characters, radius from the tokens), JSON
+ * completion names a property's type and "required", a field with `rows` is sized by its lines
+ * with no scrollbar, and no colour computed anywhere in an editor or its widgets is one of
+ * Monaco's defaults.
+ */
+async function widgets(page: Page) {
+  if (!check(await waitFor(page, "Boolean(window.__check.queryEditor && window.__check.fieldEditor)", 30_000), "widgets: the TSK-94 editors did not mount")) return {};
+  const result: Record<string, unknown> = {};
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate(`window.__check.setPreset("default"), window.__check.setTheme("${theme}"), ${frames()}`);
+    // The region at the top of the viewport, so the list opens below the field, over the table.
+    await page.evaluate(`(document.getElementById("region-5").scrollIntoView({ block: "start" }), true)`);
+    await page.evaluate(`(() => { const e = window.__check.queryEditor; e.focus(); e.setPosition({ lineNumber: 1, column: 3 }); e.trigger("check", "editor.action.triggerSuggest", {}); return true; })()`);
+    const open = await waitFor(page, `document.querySelectorAll("[data-slot=code-editor-overflow] .suggest-widget.visible .monaco-list-row").length >= 4`, 10_000);
+    if (!check(open, `widgets ${theme}: the suggest widget did not open`)) continue;
+    await page.evaluate(frames());
+    const sampled = await page.evaluate<{ rows: number; onTop: number; overHeader: boolean; zIndex: string; background: string; selected: string; highlight: string; radius: string; noteEdges: number; expected: { background: string; selected: string; highlight: string } }>("window.__sampleWidgets()");
+    check(sampled.noteEdges === 1, `widgets ${theme}: the items' notes end at ${sampled.noteEdges} different right edges; they should be right-aligned`);
+    check(sampled.overHeader, `widgets ${theme}: the suggest widget does not overlap the table's sticky header, so the check proves nothing (move the table)`);
+    check(sampled.rows > 0 && sampled.onTop === sampled.rows, `widgets ${theme}: ${sampled.rows - sampled.onTop} of ${sampled.rows} suggest rows are covered (elementFromPoint is not the widget); z-index ${sampled.zIndex}`);
+    check(sameColor(sampled.background, sampled.expected.background), `widgets ${theme}: suggest background ${sampled.background}, expected elevation.flyout.bg ${sampled.expected.background}`);
+    check(sameColor(sampled.selected, sampled.expected.selected), `widgets ${theme}: selected row ${sampled.selected}, expected editor.selection ${sampled.expected.selected}`);
+    check(sameColor(sampled.highlight, sampled.expected.highlight), `widgets ${theme}: matched characters ${sampled.highlight}, expected color.fg.link ${sampled.expected.highlight}`);
+    const defaults = await page.evaluate<string[]>(`window.__monacoDefaults(${JSON.stringify(MONACO_DEFAULT_COLORS)})`);
+    check(defaults.length === 0, `widgets ${theme}: Monaco default colours computed: ${defaults.slice(0, 8).join("; ")}`);
+    await page.evaluate(`(window.__check.queryEditor.trigger("check", "hideSuggestWidget", {}), true)`);
+
+    // JSON completion: the property's type and "required" from the schema.
+    // (The field starts valid: under the desktop's CSP, without img-src data:, squiggles are blocked.)
+    await page.evaluate(`(() => { const e = window.__check.fieldEditor; e.setValue('{\\n  "messages": [],\\n  ""\\n}'); e.focus(); e.setPosition({ lineNumber: 3, column: 4 }); e.trigger("check", "editor.action.triggerSuggest", {}); return true; })()`);
+    const json = await waitFor(page, `[...document.querySelectorAll("[data-slot=code-editor-overflow] .suggest-widget.visible .monaco-list-row")].some((r) => r.textContent.includes("customer_id") && r.textContent.includes("string · required"))`, 15_000);
+    const rowsText = await page.evaluate<string[]>(`[...document.querySelectorAll("[data-slot=code-editor-overflow] .suggest-widget.visible .monaco-list-row")].map((r) => r.textContent)`);
+    check(json, `widgets ${theme}: JSON completion does not show "string · required" for customer_id (rows: ${JSON.stringify(rowsText)})`);
+    const jsonDefaults = await page.evaluate<string[]>(`window.__monacoDefaults(${JSON.stringify(MONACO_DEFAULT_COLORS)})`);
+    check(jsonDefaults.length === 0, `widgets ${theme}: Monaco default colours computed with the JSON suggestions open: ${jsonDefaults.slice(0, 8).join("; ")}`);
+    await page.evaluate(`(window.__check.fieldEditor.trigger("check", "hideSuggestWidget", {}), window.__check.fieldEditor.setValue('{\\n  "customer_id": "c-1",\\n  "messages": [{ "role": "human", "n": 1, "ok": true, "x": null }]\\n}'), true)`);
+    result[theme] = { rows: sampled.rows, onTop: sampled.onTop, zIndex: sampled.zIndex, jsonRows: rowsText.length };
+  }
+  // A field with rows=7 and four lines: seven lines tall, no vertical scrollbar, a narrow gutter.
+  const field = await page.evaluate<{ height: number; lineHeight: number; lines: number; scrollbar: boolean; gutter: number }>(`(() => {
+    const e = window.__check.fieldEditor; const o = window.__check.monaco.editor.EditorOption;
+    const root = e.getContainerDomNode().closest("[data-slot=code-editor]");
+    const bar = root.querySelector(".scrollbar.vertical");
+    return { height: e.getLayoutInfo().height, lineHeight: e.getOption(o.lineHeight), lines: 7, scrollbar: Boolean(bar && bar.offsetWidth > 0 && getComputedStyle(bar).visibility !== "hidden" && bar.querySelector(".slider")), gutter: e.getLayoutInfo().contentLeft };
+  })()`);
+  const pad = 2 * (await page.evaluate<number>(`Math.round(parseFloat(getComputedStyle(document.querySelector("#region-5")).getPropertyValue("--by-space-inset-sm")))`));
+  check(Math.abs(field.height - (field.lines * field.lineHeight + pad)) <= 2, `widgets: a rows=7 field is ${field.height} px tall, expected 7 lines of ${field.lineHeight} px plus ${pad} px padding`);
+  check(!field.scrollbar, "widgets: a field whose text fits shows a vertical scrollbar");
+  result.field = field;
+  return result;
+}
+
 const verbose = process.argv.includes("--verbose");
 const step = (name: string) => {
   if (verbose) process.stderr.write(`browser-check: ${name}\n`);
@@ -845,6 +903,8 @@ async function main(argv: string[]): Promise<number> {
     report.codeLargeDocument = await within(90_000, "CodeInput 1 MB", codeLargeDocument(page));
     step("CodeEditor JSON Schema");
     report.jsonSchema = await within(60_000, "CodeEditor JSON Schema", jsonSchema(page, base));
+    step("Monaco widgets on the tokens (TSK-94)");
+    report.widgets = await within(90_000, "Monaco widgets", widgets(page));
     step("tab strip and scrollbars");
     report.tabStrip = await within(30_000, "tab strip", tabStrip(page));
     step("internal network: sub-path and DBee CSPs");
@@ -852,6 +912,22 @@ async function main(argv: string[]): Promise<number> {
     if (screenshotPath) {
       await page.evaluate(`window.__check.setPreset("default"), window.__check.setTheme("light"), window.__check.setValue("select id, email from users where id = 1;\\nselect count(*) from orders;\\n"), ${frames()}`);
       await page.screenshot(screenshotPath);
+      // TSK-94: the query field's suggestions over the table and the JSON field's, Light and Dark.
+      for (const theme of ["light", "dark"] as const) {
+        await page.evaluate(`window.__check.setTheme("${theme}"), document.getElementById("region-5").scrollIntoView({ block: "start" }), ${frames()}`);
+        for (const [name, editor, line, column, text] of [
+          ["query", "queryEditor", 1, 3, null],
+          ["json", "fieldEditor", 3, 4, '{\\n  "messages": [],\\n  ""\\n}'],
+        ] as const) {
+          await page.evaluate(`(() => { const e = window.__check.${editor}; ${text ? `e.setValue('${text}');` : ""} e.focus(); e.setPosition({ lineNumber: ${line}, column: ${column} }); e.trigger("check", "editor.action.triggerSuggest", {}); return true; })()`);
+          await waitFor(page, `document.querySelectorAll("[data-slot=code-editor-overflow] .suggest-widget.visible .monaco-list-row").length >= 3`, 10_000);
+          await page.evaluate(frames());
+          await new Promise((r) => setTimeout(r, 300));
+          const box = await page.evaluate<{ x: number; y: number; width: number; height: number }>(`(() => { const r = document.getElementById("region-5").getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height }; })()`);
+          await page.screenshot(screenshotPath.replace(/(\.png)?$/, `-${name}-${theme}.png`), box);
+          await page.evaluate(`(window.__check.${editor}.trigger("check", "hideSuggestWidget", {}), true)`);
+        }
+      }
     }
 
     const outside = page.requests.filter((u) => !u.startsWith(`${base}/`) && !u.startsWith("data:") && !u.startsWith("blob:") && u !== "about:blank");

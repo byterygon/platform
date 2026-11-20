@@ -208,7 +208,9 @@ export function WorkflowsTab(props: TabProps) {
 
   const chip = statusOf(draft);
   // The server's error belongs to the query that ran; it is marked while the text is still that query.
-  const marker = invalid !== null && draft.trim() === query ? queryErrorMarker(invalid, draft) : null;
+  // The edges and the marker go once the text is no longer the query that failed (TSK-94).
+  const stillInvalid = invalid !== null && draft.trim() === query;
+  const marker = stillInvalid ? queryErrorMarker(invalid, draft) : null;
   const markers = marker ? [marker] : undefined;
   const names = namespaces.length > 0 ? namespaces.map((n) => n.name) : [namespace];
   if (!names.includes(namespace)) names.push(namespace);
@@ -354,7 +356,8 @@ export function WorkflowsTab(props: TabProps) {
           run();
         }}
       >
-        <Field invalid={invalid !== null}>
+        {/* Only the query is invalid: the Field is not, or the Selects would take danger edges too (TSK-94). */}
+        <Field>
           <div className="flex items-center gap-inline-md">
             <Select aria-label="Namespace" value={namespace} onValueChange={(v) => setNamespace(String(v))} className="w-panel-xs shrink-0">
               {names.map((n) => (
@@ -385,7 +388,7 @@ export function WorkflowsTab(props: TabProps) {
               onValueChange={setDraft}
               onSubmit={run}
               completion={completion}
-              invalid={invalid !== null}
+              invalid={stillInvalid}
               markers={markers}
               placeholder='WorkflowType = "Order" AND StartTime > "2026-01-01T00:00:00Z"'
               className="min-w-0 flex-1"

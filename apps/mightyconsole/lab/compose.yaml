@@ -111,7 +111,9 @@ services:
 
   temporal:
     image: temporalio/temporal:1.10.1@sha256:b228dadf9cdb6c7c02a1394b89dd76f827aac9760e458fce42f0899a10141225
-    command: ["server", "start-dev", "--ip", "0.0.0.0", "--headless", "--namespace", "lab"]
+    # OrderId: a custom search attribute (TSK-94), so the query's suggestions show built-in and
+    # custom attributes; the worker's samples carry it.
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--headless", "--namespace", "lab", "--search-attribute", "OrderId=Keyword"]
     ports: ["127.0.0.1:7233:7233"]
     healthcheck:
       test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"]

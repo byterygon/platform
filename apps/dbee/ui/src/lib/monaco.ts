@@ -113,6 +113,8 @@ const languageLoads = new Map<string, Promise<void>>();
 
 interface JsonDefaults {
   setDiagnosticsOptions: (options: Record<string, unknown>) => void;
+  readonly modeConfiguration?: Record<string, unknown>;
+  setModeConfiguration?: (configuration: Record<string, unknown>) => void;
 }
 let jsonDefaults: JsonDefaults | undefined;
 /** The JSON Schema of each model (by its URI), all given to the language service together. */
@@ -139,9 +141,17 @@ export function loadMonacoLanguage(language: CodeLanguage | (string & {})): Prom
         monaco.languages.setMonarchTokensProvider("jq", JQ_GRAMMAR);
         monaco.languages.setLanguageConfiguration("jq", JQ_CONFIGURATION);
       } else if (language === "json") {
-        const [json, worker] = await Promise.all([import("monaco-editor/languages/features/json/register"), import("monaco-editor/languages/features/json/json.worker?worker")]);
+        const [monaco, json, worker, lsp] = await Promise.all([
+          loadMonaco(),
+          import("monaco-editor/languages/features/json/register"),
+          import("monaco-editor/languages/features/json/json.worker?worker"),
+          // @ts-expect-error -- no declaration file; Monaco's own LSP adapters (CompletionAdapter).
+          import("monaco-editor/languages/features/common/lspLanguageFeatures"),
+        ]);
         languageWorkers.set("json", worker.default as WorkerConstructor);
-        jsonDefaults = (json as unknown as { jsonDefaults: JsonDefaults }).jsonDefaults;
+        const module = json as unknown as { jsonDefaults: JsonDefaults; getWorker: () => Promise<(...uris: unknown[]) => Promise<JsonWorker>> };
+        jsonDefaults = module.jsonDefaults;
+        registerJsonCompletion(monaco, module, (lsp as unknown as { CompletionAdapter: CompletionAdapterConstructor }).CompletionAdapter);
         applyJsonSchemas();
       } else if (language === "yaml") {
         await import("monaco-editor/languages/definitions/yaml/register");
@@ -233,6 +243,134 @@ export function setJsonSchema(modelUri: string, schema: unknown): void {
   if (schema === undefined) jsonSchemas.delete(modelUri);
   else jsonSchemas.set(modelUri, schema);
   applyJsonSchemas();
+}
+
+// JSON completion with the schema's types (TSK-94): the language service's own items name a
+// property and nothing else, so its completion provider is replaced by the same adapter Monaco
+// uses (lspLanguageFeatures' CompletionAdapter), and each property item gets the property's type
+// and "required" from the schema the worker matched at the cursor (`getMatchingSchemas`, which
+// has resolved $ref, allOf and the rest): "string · required", `"email" | "chat"`, "integer 1–5".
+
+/** A JSON Schema, as far as completion reads it. */
+export interface JsonSchemaLike {
+  type?: string | string[];
+  enum?: readonly unknown[];
+  const?: unknown;
+  format?: string;
+  minimum?: number;
+  maximum?: number;
+  exclusiveMinimum?: number | boolean;
+  exclusiveMaximum?: number | boolean;
+  minLength?: number;
+  maxLength?: number;
+  items?: JsonSchemaLike | boolean;
+  anyOf?: readonly (JsonSchemaLike | boolean)[];
+  oneOf?: readonly (JsonSchemaLike | boolean)[];
+  properties?: Record<string, JsonSchemaLike | boolean>;
+  required?: readonly string[];
+}
+
+const typesOf = (schema: JsonSchemaLike): string[] => {
+  if (schema.type !== undefined) return Array.isArray(schema.type) ? [...schema.type] : [schema.type as string];
+  if (schema.properties) return ["object"];
+  if (schema.items) return ["array"];
+  return [];
+};
+
+/** What a property's schema allows, in a few words: `"email" | "chat"`, `integer 1–5`, `string[]`, `object`. */
+export function describeJsonSchema(schema: JsonSchemaLike | boolean | undefined): string {
+  if (schema === undefined || typeof schema === "boolean") return "";
+  if (schema.const !== undefined) return JSON.stringify(schema.const);
+  if (schema.enum && schema.enum.length > 0) {
+    const values = schema.enum.slice(0, 4).map((v) => JSON.stringify(v));
+    return schema.enum.length > 4 ? `${values.join(" | ")} | …` : values.join(" | ");
+  }
+  const alternatives = schema.anyOf ?? schema.oneOf;
+  if (alternatives && typesOf(schema).length === 0) {
+    const parts = [...new Set(alternatives.map((s) => describeJsonSchema(s)).filter(Boolean))];
+    return parts.slice(0, 3).join(" | ");
+  }
+  const types = typesOf(schema).filter((t) => !(t === "null" && typesOf(schema).length > 1));
+  const nullable = typesOf(schema).includes("null") && types.length > 0;
+  let text = types.join(" | ");
+  if (types.length === 1 && types[0] === "array" && schema.items && typeof schema.items !== "boolean") {
+    const inner = describeJsonSchema(schema.items);
+    text = inner && !inner.includes(" ") ? `${inner}[]` : "array";
+  }
+  const low = typeof schema.exclusiveMinimum === "number" ? schema.exclusiveMinimum : schema.minimum;
+  const high = typeof schema.exclusiveMaximum === "number" ? schema.exclusiveMaximum : schema.maximum;
+  if (low !== undefined && high !== undefined) text += ` ${low}–${high}`;
+  else if (low !== undefined) text += ` ≥ ${low}`;
+  else if (high !== undefined) text += ` ≤ ${high}`;
+  if (schema.format) text += ` (${schema.format})`;
+  if (nullable) text += " | null";
+  return text.trim();
+}
+
+/** The note beside a property in the list: its type and whether the object requires it. */
+export function jsonPropertyDetail(objectSchema: JsonSchemaLike, key: string): string | undefined {
+  const property = objectSchema.properties?.[key];
+  if (property === undefined) return undefined;
+  const parts = [describeJsonSchema(property), objectSchema.required?.includes(key) ? "required" : ""].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+interface JsonAstNode {
+  type: string;
+  offset: number;
+  length: number;
+}
+interface JsonWorker {
+  getMatchingSchemas: (uri: string) => Promise<{ node: JsonAstNode; schema: JsonSchemaLike }[]>;
+}
+type CompletionAdapterConstructor = new (
+  worker: (...uris: unknown[]) => Promise<unknown>,
+  triggerCharacters: string[],
+) => MonacoNamespace.languages.CompletionItemProvider;
+
+/**
+ * The object schemas that apply where the cursor is: of the object nodes around `offset`, the
+ * innermost one's. A schema with properties wins over one without (a `oneOf` branch that failed).
+ */
+export function objectSchemasAt(matching: readonly { node: JsonAstNode; schema: JsonSchemaLike }[], offset: number): JsonSchemaLike[] {
+  const around = matching.filter((m) => m.node.type === "object" && m.node.offset < offset && offset <= m.node.offset + m.node.length && m.schema.properties);
+  if (around.length === 0) return [];
+  const innermost = Math.max(...around.map((m) => m.node.offset));
+  return around.filter((m) => m.node.offset === innermost).map((m) => m.schema);
+}
+
+let jsonCompletion: MonacoNamespace.IDisposable | undefined;
+
+function registerJsonCompletion(monaco: Monaco, json: { jsonDefaults: JsonDefaults; getWorker: () => Promise<(...uris: unknown[]) => Promise<JsonWorker>> }, Adapter: CompletionAdapterConstructor) {
+  if (jsonCompletion || !json.jsonDefaults.setModeConfiguration) return;
+  json.jsonDefaults.setModeConfiguration({ ...json.jsonDefaults.modeConfiguration, completionItems: false });
+  const worker = (...uris: unknown[]) => json.getWorker().then((get) => get(...uris));
+  const adapter = new Adapter(worker, [" ", ":", '"']);
+  const propertyKind = monaco.languages.CompletionItemKind.Property;
+  jsonCompletion = monaco.languages.registerCompletionItemProvider("json", {
+    triggerCharacters: [" ", ":", '"'],
+    async provideCompletionItems(model, position, context, token) {
+      const list = await adapter.provideCompletionItems(model, position, context, token);
+      if (!list || !jsonSchemas.has(model.uri.toString())) return list;
+      const properties = list.suggestions.filter((s) => s.kind === propertyKind);
+      if (properties.length === 0) return list;
+      let schemas: JsonSchemaLike[] = [];
+      try {
+        const service = (await worker(model.uri)) as JsonWorker;
+        schemas = objectSchemasAt(await service.getMatchingSchemas(model.uri.toString()), model.getOffsetAt(position));
+      } catch {
+        return list;
+      }
+      for (const item of properties) {
+        const key = typeof item.label === "string" ? item.label : item.label.label;
+        const detail = schemas.map((s) => jsonPropertyDetail(s, key)).find(Boolean);
+        if (!detail) continue;
+        item.label = { label: key, description: detail };
+        item.detail ??= detail;
+      }
+      return list;
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -380,18 +518,22 @@ const px = (value: string, fontSize: number) => {
   return n;
 };
 
-/** Monaco's font and spacing options from `text.code.*` and `space.inset.sm` at the element. */
-export function monacoMetrics(read: Pick<TokenReader, "value">): MonacoMetrics {
-  const fontSize = px(read.value("--by-text-code-size"), 16) || 13;
-  const leading = read.value("--by-text-code-leading");
+/**
+ * Monaco's font and spacing options from `text.code.*` (or `text.code-sm.*`, a small field's:
+ * TSK-94) and `space.inset.sm` at the element.
+ */
+export function monacoMetrics(read: Pick<TokenReader, "value">, role: "code" | "code-sm" = "code"): MonacoMetrics {
+  const text = `--by-text-${role}`;
+  const fontSize = px(read.value(`${text}-size`), 16) || 13;
+  const leading = read.value(`${text}-leading`);
   const leadingNumber = Number.parseFloat(leading);
   const lineHeight = Math.round(/[a-z%]$/.test(leading) ? px(leading, fontSize) : (leadingNumber || 1.5) * fontSize);
   const inset = Math.round(px(read.value("--by-space-inset-sm"), fontSize));
   return {
-    fontFamily: read.value("--by-text-code-family") || "monospace",
+    fontFamily: read.value(`${text}-family`) || "monospace",
     fontSize,
     lineHeight,
-    letterSpacing: px(read.value("--by-text-code-tracking"), fontSize),
+    letterSpacing: px(read.value(`${text}-tracking`), fontSize),
     padding: { top: inset, bottom: inset },
     suggestLineHeight: lineHeight + 2,
   };
@@ -448,8 +590,44 @@ export function scopedCss(theme: MonacoThemeData, monacoCss: string): string {
     `${SCOPE} .monaco-editor .suggest-widget .monaco-list .monaco-list-row .details-label { font-family: var(--by-font-sans); font-size: var(--by-text-caption-1-size); color: var(--by-color-fg-muted); }`,
     `${SCOPE} .monaco-editor .suggest-widget .monaco-list .monaco-list-row .monaco-highlighted-label .highlight { font-weight: var(--by-font-weight-semibold); }`,
   ];
-  return [`${SCOPE} .monaco-editor {`, ...variables, "}", singleLine, ...suggest, ...rules].join("\n");
+  return [`${SCOPE} .monaco-editor {`, ...variables, ...WIDGET_VARIABLES, "}", singleLine, ...suggest, ...WIDGET_RULES, ...rules].join("\n");
 }
+
+const W = `${SCOPE} .monaco-editor`;
+const ROW = `${W} .suggest-widget .monaco-list .monaco-list-row`;
+
+/** Monaco's non-colour widget variables, as tokens: the corner radius of its flyouts. */
+const WIDGET_VARIABLES = ["  --vscode-cornerRadius-large: var(--by-radius-md);", "  --vscode-cornerRadius-medium: var(--by-radius-md);"];
+
+/**
+ * The widgets Monaco draws by the text (TSK-94): suggestions, their details, hovers and parameter
+ * hints are a Fluent flyout (the mockup's `.msug`: flyout fill and stroke from MONACO_COLORS,
+ * radius.md, the flyout's depth). They live in the editor's overflow layer (`overflowWidgetsNode`,
+ * TSK-99: z.popover at the end of `<body>`), which carries the editor's scope attribute, so these
+ * rules and the token variables above reach them there.
+ */
+const WIDGET_RULES = [
+  // Tailwind's `contents` utility (display: contents) also matches Monaco's `.contents` element
+  // and collapses the row's layout (its padding above did nothing); it is a block, as Monaco means it.
+  `${ROW} > .contents { display: block; }`,
+  // The details pane, hovers and parameter hints as the same flyout.
+  `${W} .suggest-details, ${W} .monaco-hover, ${W} .parameter-hints-widget { border-radius: var(--by-radius-md); box-shadow: var(--by-elevation-flyout-shadow); }`,
+  `${W} .suggest-widget .monaco-list { border-radius: var(--by-radius-md); }`,
+  // The note stays muted on the chosen row too (Monaco gives it the row's colour).
+  `${ROW}.focused > .contents > .main > .right > .details-label { color: var(--by-color-fg-muted); opacity: 1; }`,
+  `${ROW} > .contents > .main > .right > .details-label { opacity: 1; }`,
+  // The details pane and hovers in the UI font, code in the editor's. Monaco sets the editor's
+  // font size inline on the details pane itself, so the text takes it on the pane's body.
+  `${W} .suggest-details .body, ${W} .monaco-hover { font-family: var(--by-font-sans); font-size: var(--by-text-caption-1-size); line-height: var(--by-text-caption-1-leading); }`,
+  `${W} .suggest-details .docs p { margin-block: 0 var(--by-space-1-5); }`,
+  // Monaco sizes the details pane once, before its Markdown has its final width, and leaves room
+  // under short text; the pane takes its text's height, at most the room Monaco gave it.
+  `${W} .suggest-details-container > .suggest-details { height: auto !important; max-height: 100%; }`,
+  // (Its scrollable wrapper is selected as `> *`: the class name Monaco gives it marks Monaco's own
+  // chunks for the bundle checks, and this file is in the page's first chunk.)
+  `${W} .suggest-details-container > .suggest-details > *, ${W} .suggest-details-container > .suggest-details .body { height: auto !important; max-height: 100%; }`,
+  `${W} .suggest-details code, ${W} .monaco-hover code, ${W} .suggest-details .header .type { font-family: var(--by-font-mono); }`,
+];
 
 /** Monaco's own stylesheets, and the scoped one, so an observer can ignore their updates. */
 export const isEditorStylesheet = (node: Node) => node instanceof Element && (node.classList.contains("monaco-colors") || node.hasAttribute(STYLE_ATTRIBUTE));
@@ -490,18 +668,25 @@ export function applyTheme(monaco: Monaco, theme: MonacoThemeData, doc: Document
  * widgets, and it carries the editor's theme scope and Monaco's `monaco-editor` class, so they keep
  * their colours and styles. Remove it with `dispose` when the editor goes.
  */
-export function overflowWidgetsNode(anchor: Element): { node: HTMLElement; follow: (editorNode: HTMLElement | null) => void; dispose: () => void } {
+export function overflowWidgetsNode(anchor: Element): { node: HTMLElement; follow: (editorNode: HTMLElement | null) => void; sync: () => void; dispose: () => void } {
   const doc = anchor.ownerDocument;
   // The layer: fixed at the origin with no size, on the popover layer, in the editor's theme scope.
   const layer = doc.createElement("div");
   layer.setAttribute("data-slot", "code-editor-overflow");
   // Monaco draws its own DOM in it; the conventions suite skips foreign DOM.
   layer.setAttribute("data-foreign-dom", "");
+  // The editor's scope (TSK-94): the scoped CSS (token variables, the flyout's look) reaches the
+  // widgets here too. `sync` copies the region's theme and density again after they change.
   layer.setAttribute(MONACO_SCOPE_ATTRIBUTE, "");
-  const theme = anchor.closest("[data-theme], .dark, .light");
-  if (theme) layer.setAttribute("data-theme", theme.getAttribute("data-theme") ?? (theme.classList.contains("dark") ? "dark" : "light"));
-  const density = anchor.closest("[data-density]")?.getAttribute("data-density");
-  if (density) layer.setAttribute("data-density", density);
+  const sync = () => {
+    const theme = anchor.closest("[data-theme], .dark, .light");
+    if (theme) layer.setAttribute("data-theme", theme.getAttribute("data-theme") ?? (theme.classList.contains("dark") ? "dark" : "light"));
+    else layer.removeAttribute("data-theme");
+    const density = anchor.closest("[data-density]")?.getAttribute("data-density");
+    if (density) layer.setAttribute("data-density", density);
+    else layer.removeAttribute("data-density");
+  };
+  sync();
   layer.style.cssText = "position: fixed; top: 0; left: 0; width: 0; height: 0; z-index: var(--by-z-popover);";
   // Monaco's styles select its widgets under a `monaco-editor` element.
   const node = doc.createElement("div");
@@ -525,6 +710,7 @@ export function overflowWidgetsNode(anchor: Element): { node: HTMLElement; follo
   return {
     node,
     follow,
+    sync,
     dispose: () => {
       observer?.disconnect();
       layer.remove();

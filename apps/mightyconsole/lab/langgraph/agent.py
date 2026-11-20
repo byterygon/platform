@@ -1,9 +1,10 @@
 """The lab's sample graph `agent` (TSK-84): a fake chat model (no network), a tool node, a
-conditional edge, a subgraph, an `interrupt()` for approval and store writes."""
+conditional edge, a subgraph, an `interrupt()` for approval and store writes. Its runtime context
+(TSK-94) has a schema, so Mightyconsole's Run form shows the Context field."""
 
 import operator
 import re
-from typing import Annotated, TypedDict
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
@@ -17,6 +18,14 @@ class State(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     approved: bool
     steps: Annotated[list[str], operator.add]
+
+
+class Context(TypedDict):
+    """Who the run is for, and how to answer (the graph's runtime context)."""
+
+    user_id: str
+    tone: NotRequired[Literal["friendly", "formal"]]
+    max_steps: NotRequired[int]
 
 
 def plan(state: State) -> dict:
@@ -63,7 +72,7 @@ summary.add_edge(START, "remember")
 summary.add_edge("remember", "format")
 summary.add_edge("format", END)
 
-builder = StateGraph(State)
+builder = StateGraph(State, context_schema=Context)
 builder.add_node("plan", plan)
 builder.add_node("tools", tools)
 builder.add_node("approve", approve)
