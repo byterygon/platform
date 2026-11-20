@@ -22,7 +22,7 @@ import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/sta
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { NamespaceSummary, SearchAttribute, WorkflowRow, WorkflowStatus } from "@/gen/api";
-import { Add, ArrowClockwise, Copy, Play, Window } from "@/lib/icons";
+import { Add, ArrowClockwise, Copy, Filter, Folder, Play, Window } from "@/lib/icons";
 import type { DescribedError, LinkEvent, TabProps } from "../types";
 import { linkTo } from "@/app/tab-view";
 import { formatDuration, formatShortTime, formatTime } from "./format";
@@ -52,6 +52,16 @@ const STATUS_VARIANT: Record<WorkflowStatus, "neutral" | "accent" | "danger" | "
 const ANY = "any";
 
 export const statusLabel = (s: WorkflowStatus): string => s.replace(/([a-z])([A-Z])/g, "$1 $2");
+
+/** The namespace Select's value: the mockup's folder, then the name. */
+function FolderLabel({ name }: { name: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-inline-sm">
+      <Icon icon={Folder} className="text-fg-muted" />
+      <span className="truncate">{name}</span>
+    </span>
+  );
+}
 
 /** The footer's choices of rows per page (the mockup's). */
 const PAGE_SIZES = [25, 50, 100, 200] as const;
@@ -358,8 +368,15 @@ export function WorkflowsTab(props: TabProps) {
       >
         {/* Only the query is invalid: the Field is not, or the Selects would take danger edges too (TSK-94). */}
         <Field>
+          {/* The Selects take their content's width (no size role is near the mockup's 168 and 176 px; Open question 45), so the query keeps the rest. */}
           <div className="flex items-center gap-inline-md">
-            <Select aria-label="Namespace" value={namespace} onValueChange={(v) => setNamespace(String(v))} className="w-panel-xs shrink-0">
+            <Select
+              aria-label="Namespace"
+              value={namespace}
+              onValueChange={(v) => setNamespace(String(v))}
+              items={Object.fromEntries(names.map((n) => [n, <FolderLabel key={n} name={n} />]))}
+              className="w-auto max-w-panel-xs shrink-0"
+            >
               {names.map((n) => (
                 <SelectItem key={n} value={n}>
                   {n}
@@ -370,8 +387,8 @@ export function WorkflowsTab(props: TabProps) {
               aria-label="Status"
               value={chip ?? ANY}
               onValueChange={(v) => pickStatus(v === ANY ? null : (v as WorkflowStatus))}
-              items={{ [ANY]: "Any status", ...Object.fromEntries(STATUS_CHIPS.map((s) => [s, statusLabel(s)])) }}
-              className="w-panel-xs shrink-0"
+              items={{ [ANY]: "Status: Any", ...Object.fromEntries(STATUS_CHIPS.map((s) => [s, `Status: ${statusLabel(s)}`])) }}
+              className="w-auto max-w-panel-xs shrink-0"
             >
               <SelectItem value={ANY}>Any status</SelectItem>
               {STATUS_CHIPS.map((s) => (
@@ -380,19 +397,24 @@ export function WorkflowsTab(props: TabProps) {
                 </SelectItem>
               ))}
             </Select>
-            <CodeEditor
-              singleLine
-              language={VISIBILITY_LANGUAGE}
-              aria-label="Visibility query"
-              value={draft}
-              onValueChange={setDraft}
-              onSubmit={run}
-              completion={completion}
-              invalid={stillInvalid}
-              markers={markers}
-              placeholder='WorkflowType = "Order" AND StartTime > "2026-01-01T00:00:00Z"'
-              className="min-w-0 flex-1"
-            />
+            <div className="relative flex min-w-0 flex-1">
+              <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 start-0 z-1 flex items-center ps-inset-xs text-fg-muted">
+                <Icon icon={Filter} className="size-icon-md" />
+              </span>
+              <CodeEditor
+                singleLine
+                language={VISIBILITY_LANGUAGE}
+                aria-label="Visibility query"
+                value={draft}
+                onValueChange={setDraft}
+                onSubmit={run}
+                completion={completion}
+                invalid={stillInvalid}
+                markers={markers}
+                placeholder='WorkflowType = "Order" AND StartTime > "2026-01-01T00:00:00Z"'
+                className="min-w-0 flex-1 ps-inset-xl"
+              />
+            </div>
             <ColumnsButton choice={choice} onChange={setChoice} />
             <Button type="submit" appearance="primary" loading={loading}>
               <Icon icon={Play} /> Run

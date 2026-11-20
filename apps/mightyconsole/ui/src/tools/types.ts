@@ -54,6 +54,22 @@ export interface ResourceNode {
   children?: readonly ResourceNode[];
   /** Opens the first time the node shows (the person can close it after). */
   expanded?: boolean;
+  /** Items of the tree's context menu for this node (a saved query's Rename and Delete). */
+  actions?: readonly ResourceAction[];
+}
+
+/**
+ * A context-menu item of a resource node. The shell asks first when the item says so (a name in a
+ * dialog, or a confirmation), then calls `run` with the answer and a way to change the profile.
+ */
+export interface ResourceAction {
+  label: string;
+  danger?: boolean;
+  /** A dialog with one text field before `run` (Rename): `validate` returns the field's error. */
+  prompt?: { title: string; label: string; value: string; submit: string; validate?: (value: string) => string | null };
+  /** A confirmation before `run` (Delete). */
+  confirm?: { title: string; description: string; submit: string };
+  run(context: { value: string; updateProfile(change: (record: ProfileRecord) => ProfileRecord): Promise<void> }): Promise<void> | void;
 }
 
 /**
