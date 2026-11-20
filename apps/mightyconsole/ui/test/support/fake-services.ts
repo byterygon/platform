@@ -29,10 +29,14 @@ export interface FakeServer {
   dockerLogs: Map<string, { ts: string; stream: "stdout" | "stderr"; text: string }[]>;
   /** Containers whose logs stay open for pushed lines (as `follow` on a running one). */
   dockerFollow: Set<string>;
-  /** Pushes `jsonl` lines to the open `docker.events` and followed logs streams. */
+  /** Pushes `jsonl` lines to the open `docker.events` and followed logs streams (stats: `pushStats`). */
   dockerPush: { events: ((lines: object[]) => void)[]; logs: Map<string, ((lines: object[]) => void)[]> };
   /** Containers the next action refuses, with Docker's reason. */
   dockerRefuse: Map<string, string>;
+  /** The samples `docker.containers.stats` sends first; more pushed through `dockerPush.stats`. */
+  dockerStats: object[];
+  /** The open exec: what was typed (decoded), its resizes; `exit(code)` ends it. */
+  dockerExec: { input: string; resizes: { cols: number; rows: number }[]; output(text: string): void; exit(code: number): void } | null;
 }
 
 /** A container row as the fake host lists it. */
@@ -206,7 +210,10 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
     dockerFollow: new Set(),
     dockerPush: { events: [], logs: new Map() },
     dockerRefuse: new Map(),
+    dockerStats: [],
+    dockerExec: null,
   };
+  const statsPushers: ((lines: object[]) => void)[] = [];
   const dockerGone = () => new RpcError("NotFound", "this connection is closed; connect again", { details: { kind: "NotFound", system: "docker", message: "gone", retryable: false, resource: "connection" } });
   const dockerHandle = (connId: string) => {
     if (!server.dockerProfiles.has(connId)) throw dockerGone();
@@ -389,6 +396,24 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
         },
       },
     },
+    term: {
+      write: async (input: api.TermWriteInput) => {
+        record("term.write", input);
+        const exec = server.dockerExec;
+        if (!exec) throw new RpcError("NotFound", "this terminal has ended", { details: { kind: "NotFound", system: "term", message: "ended", retryable: false, resource: "terminal" } });
+        exec.input += new TextDecoder().decode(Uint8Array.from(atob(input.data), (c) => c.charCodeAt(0)));
+        return {};
+      },
+      resize: async (input: api.TermResizeInput) => {
+        record("term.resize", input);
+        server.dockerExec?.resizes.push({ cols: input.cols, rows: input.rows });
+        return {};
+      },
+      signal: async (input: api.TermSignalInput) => {
+        record("term.signal", input);
+        return {};
+      },
+    },
     docker: {
       connect: async (input: api.DockerConnectInput) => {
         record("docker.connect", input);
@@ -453,6 +478,62 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
           server.dockerContainers = server.dockerContainers.filter((r) => !removed.includes(r.id));
           return out;
         },
+        stats: (input: api.ContainersStatsInput) => {
+          record("docker.containers.stats", input);
+          return jsonlCall(server.dockerStats, { samples: server.dockerStats.length, dropped: 0 }, statsPushers);
+        },
+        exec: (input: api.ContainersExecInput) => {
+          record("docker.containers.exec", input);
+          const encoder = new TextEncoder();
+          const queue: Uint8Array[] = [];
+          let wake: (() => void) | null = null;
+          let resolve!: (v: api.ContainersExecSummary) => void;
+          let reject!: (e: unknown) => void;
+          const result = new Promise<api.ContainersExecSummary>((res, rej) => {
+            resolve = res;
+            reject = rej;
+          });
+          result.catch(() => {});
+          let done = false;
+          const out = (text: string) => {
+            queue.push(Uint8Array.of(1, ...encoder.encode(text)));
+            wake?.();
+          };
+          const exec = {
+            input: "",
+            resizes: [] as { cols: number; rows: number }[],
+            output: out,
+            exit(code: number) {
+              done = true;
+              server.dockerExec = null;
+              wake?.();
+              setTimeout(() => resolve({ exitCode: code }), 0);
+            },
+          };
+          server.dockerExec = exec;
+          out("$ ");
+          return {
+            result,
+            cancel() {
+              done = true;
+              server.dockerExec = null;
+              reject(new RpcError("Cancelled", "cancelled", { local: true }));
+              wake?.();
+            },
+            async *chunks() {
+              for (;;) {
+                const next = queue.shift();
+                if (next) {
+                  yield next;
+                  continue;
+                }
+                if (done) return;
+                await new Promise<void>((r) => (wake = r));
+                wake = null;
+              }
+            },
+          } as unknown as StreamCall<api.ContainersExecSummary, Uint8Array>;
+        },
         logs: (input: api.ContainersLogsInput) => {
           record("docker.containers.logs", input);
           const row = server.dockerContainers.find((r) => r.name === input.id || r.id === input.id);
@@ -504,6 +585,10 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
     services,
     server,
     storage,
+    /** Pushes samples to the open `docker.containers.stats` streams. */
+    pushStats(samples: object[]) {
+      for (const push of [...statsPushers]) push(samples);
+    },
     /** Pushes an event to the page's subscription. */
     emit(event: api.AppEvent) {
       subscriber?.push(event);

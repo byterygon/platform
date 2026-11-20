@@ -3,7 +3,7 @@
 // form, trust on first use of the host key (the shell's HostKeyDialog through `trustHostKey`), and
 // the Host page. Batch 2b: the Containers list, live through `docker.events`, and a container's
 // Overview, Logs and Inspect; the tree groups the containers by Compose project (spec §10.4).
-// Stats and Terminal (2c), images, volumes and networks (3) follow.
+// Batch 2c: the container's Stats and Terminal (exec). Images, volumes and networks (3) follow.
 import type { AnyRoute } from "@tanstack/react-router";
 import { Icon } from "@/components/ui/icon";
 import { type SiblingContext, type SiblingList, levelRoute, path, placeRoute, str } from "@/app/router";
@@ -19,7 +19,7 @@ import { HostTab } from "./HostTab";
 import { profile, targetOf, trustHostKey } from "./profile";
 import { dockerTreeData, treeContainersOf } from "./tree-data";
 
-const VIEW_LABELS: Record<(typeof CONTAINER_VIEWS)[number], string> = { overview: "Overview", logs: "Logs", inspect: "Inspect" };
+const VIEW_LABELS: Record<(typeof CONTAINER_VIEWS)[number], string> = { overview: "Overview", logs: "Logs", stats: "Stats", terminal: "Terminal", inspect: "Inspect" };
 
 /** A container's tree node: it opens the container's Overview. */
 function containerNode(profileId: string, row: ContainerRow, label = row.name): ResourceNode {

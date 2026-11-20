@@ -106,6 +106,7 @@ describe("URLs (DOC-21 §3.7)", () => {
     { tool: "nats", place: { kind: "nats.object", params: { bucket: "media.files" } }, href: "/nats/prod.eu%2F1/objects/media.files/objects" },
     { tool: "nats", place: { kind: "nats.services", params: {} }, href: "/nats/prod.eu%2F1/services" },
     { tool: "nats", place: { kind: "nats.schemas", params: {} }, href: "/nats/prod.eu%2F1/schemas" },
+    { tool: "docker", place: { kind: "docker.container", params: { id: "shop-web-1", view: "terminal" } }, href: "/docker/prod.eu%2F1/containers/shop-web-1/terminal" },
   ];
 
   test.each(cases)("$place.kind → $href → the place", ({ tool: id, place, href, back }) => {
