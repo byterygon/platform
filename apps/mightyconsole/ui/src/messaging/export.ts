@@ -11,7 +11,7 @@ const toBase64 = (bytes: Uint8Array) => {
 
 /** A decoded JSON value when the codec gave JSON, else the text, else `{ base64 }` of the bytes. */
 function part(text: string | null, codec: string | null, raw: Uint8Array | null): unknown {
-  if (text !== null && codec !== null && ["json", "msgpack", "avro", "protobuf", "jsonschema"].includes(codec)) {
+  if (text !== null && codec !== null && ["json", "cbor", "msgpack", "avro", "protobuf", "jsonschema"].includes(codec)) {
     try {
       return JSON.parse(text);
     } catch {

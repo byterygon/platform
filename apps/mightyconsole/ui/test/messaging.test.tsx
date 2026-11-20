@@ -58,7 +58,7 @@ describe("MessageViewer (spec §5.6)", () => {
     await waitFor(() => byText(/Ended \(end of data\)/) !== null, "the end");
     expect(byText("4 records shown")).not.toBeNull();
     const headers = [...container.querySelectorAll("[role=columnheader] .bdg-name")].map((h) => h.textContent);
-    expect(headers).toEqual(["partition", "offset", "timestamp", "keyText", "payloadText"]);
+    expect(headers).toEqual(["partition", "offset", "timestamp", "keyText", "payloadCodec", "payloadText"]);
     // Select the first row (the grid's cell) and read the detail pane.
     const firstCell = gridRows(container)[0]!.querySelector<HTMLElement>("[role=gridcell]")!;
     await click(firstCell);

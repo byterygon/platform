@@ -3,7 +3,7 @@
 //!
 //! - [`message`]: one record for a Kafka record, a NATS message, a JetStream message or a KV
 //!   entry, raw bytes always kept.
-//! - [`codec`]: the codec registry: UTF-8, JSON, hex, base64, MessagePack, Avro, Protobuf
+//! - [`codec`]: the codec registry: UTF-8, JSON, hex, base64, MessagePack, CBOR, Avro, Protobuf
 //!   (dynamic, from descriptors or `.proto` text compiled at run time) and JSON Schema; the
 //!   auto-detect order; [`Codecs`], the codecs of one connected profile.
 //! - [`schema`]: compiled schemas, local schemas from a profile, mappings to subjects, topics
@@ -26,7 +26,10 @@ pub mod schema;
 pub mod types;
 pub mod wire;
 
-pub use codec::{CodecInfo, Codecs, CodecsConfig, Decoded, Encoded, ResolvedSchema, codec_list};
+pub use codec::{
+    CodecInfo, Codecs, CodecsConfig, Decoded, Encoded, MappingCount, MappingStats, ResolvedSchema,
+    codec_list,
+};
 pub use error::{CodecError, ErrorKind, Position, Result};
 pub use message::{Header, Message, Operation, TimestampKind};
 pub use registry::{RegistryAuth, RegistryClient, RegistryConfig};

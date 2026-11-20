@@ -241,6 +241,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "messaging.schemas.status",
+            Query,
+            "messaging.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "messaging.schemas.update",
             Mutation,
             "messaging.read",
@@ -475,6 +482,13 @@ fn the_procedures_of_the_spec() {
             Mutation,
             "nats.write",
             Risk::Write,
+            defaults,
+        ),
+        (
+            "nats.schemas.test",
+            Query,
+            "nats.read",
+            Risk::Read,
             defaults,
         ),
         ("nats.server.info", Query, "nats.read", Risk::Read, defaults),

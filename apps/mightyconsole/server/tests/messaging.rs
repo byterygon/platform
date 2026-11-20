@@ -118,13 +118,14 @@ async fn the_messaging_procedures() {
             "hex",
             "base64",
             "msgpack",
+            "cbor",
             "avro",
             "protobuf",
             "jsonschema"
         ]
     );
     tab.call(2, "app.info", json!({})).await;
-    assert_eq!(tab.result(2).await["codecs"].as_array().unwrap().len(), 8);
+    assert_eq!(tab.result(2).await["codecs"].as_array().unwrap().len(), 9);
 
     // Decode without a connection: auto-detect.
     tab.call(

@@ -168,6 +168,11 @@ impl LocalSchemas {
         self.by_id.get(id).cloned()
     }
 
+    /// The ids of the schemas that compiled.
+    pub fn ids(&self) -> impl Iterator<Item = &str> {
+        self.by_id.keys().map(String::as_str)
+    }
+
     pub fn name(&self, id: &str) -> Option<&str> {
         self.names.get(id).map(String::as_str)
     }
@@ -187,17 +192,25 @@ pub fn find_mapping<'a>(
     target: &Target,
     part: Part,
 ) -> Option<&'a SchemaMapping> {
-    mappings.iter().find(|m| {
-        m.part == part
-            && match (&m.target, target) {
-                (MappingTarget::Topic { name }, Target::Topic { name: t }) => name == t,
-                (MappingTarget::KvBucket { bucket }, Target::KvBucket { bucket: b }) => bucket == b,
-                (MappingTarget::Subject { pattern }, Target::Subject { subject }) => {
-                    subject_matches(pattern, subject)
-                }
-                _ => false,
-            }
-    })
+    mappings
+        .iter()
+        .find(|m| m.part == part && mapping_matches(&m.target, target))
+}
+
+/// Whether a mapping's target covers where a message lives: a subject pattern matches core NATS
+/// and JetStream subjects, a stream every subject read from it.
+pub fn mapping_matches(mapping: &MappingTarget, target: &Target) -> bool {
+    match (mapping, target) {
+        (MappingTarget::Topic { name }, Target::Topic { name: t }) => name == t,
+        (MappingTarget::KvBucket { bucket }, Target::KvBucket { bucket: b }) => bucket == b,
+        (MappingTarget::Subject { pattern }, Target::Subject { subject, .. }) => {
+            subject_matches(pattern, subject)
+        }
+        (MappingTarget::Stream { name }, Target::Subject { stream, .. }) => {
+            stream.as_deref() == Some(name.as_str())
+        }
+        _ => false,
+    }
 }
 
 /// NATS subject matching: tokens split on `.`, `*` matches one token, `>` (last) one or more.
@@ -236,8 +249,10 @@ mod tests {
             id: id.into(),
             target,
             part,
-            schema_id: id.into(),
+            schema_id: Some(id.into()),
             message_type: None,
+            codec: None,
+            wire_format: None,
         };
         let maps = vec![
             m(
@@ -261,17 +276,32 @@ mod tests {
                 },
                 Part::Value,
             ),
+            m(
+                "d",
+                MappingTarget::Stream {
+                    name: "PAYMENTS".into(),
+                },
+                Part::Value,
+            ),
         ];
         let find = |t: Target, p| find_mapping(&maps, &t, p).map(|m| m.id.as_str());
         assert_eq!(
+            find(Target::subject("orders.proto.eu"), Part::Value),
+            Some("a")
+        );
+        // A subject pattern covers JetStream too; the stream mapping comes after it.
+        assert_eq!(
             find(
-                Target::Subject {
-                    subject: "orders.proto.eu".into()
-                },
+                Target::stream_subject("PAYMENTS", "orders.proto.eu"),
                 Part::Value
             ),
             Some("a")
         );
+        assert_eq!(
+            find(Target::stream_subject("PAYMENTS", "pay.eu"), Part::Value),
+            Some("d")
+        );
+        assert_eq!(find(Target::subject("pay.eu"), Part::Value), None);
         assert_eq!(
             find(
                 Target::Topic {

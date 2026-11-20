@@ -385,7 +385,7 @@ fn preview(value: &[u8]) -> Option<String> {
     Some(out)
 }
 
-fn kv_operation(headers: Option<&async_nats::HeaderMap>) -> &'static str {
+pub(super) fn kv_operation(headers: Option<&async_nats::HeaderMap>) -> &'static str {
     match headers
         .and_then(|h| h.get("KV-Operation"))
         .map(|v| v.as_str())

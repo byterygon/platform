@@ -14,7 +14,7 @@ import { liveTimeout, useServices, type MightyClient } from "@/app/client";
 import { PageFooter } from "@/app/page";
 import { useStore } from "@/app/store";
 import * as api from "@/gen/api";
-import { CodecSelect } from "@/messaging/CodecSelect";
+import { CodecMenu } from "@/messaging/schemas/CodecMenu";
 import { FilterBar } from "@/messaging/FilterBar";
 import { MessageViewer } from "@/messaging/MessageViewer";
 import { useLiveTail } from "@/messaging/useLiveTail";
@@ -23,6 +23,7 @@ import type { DescribedError, LiveState } from "../types";
 import { formatCount } from "@/app/messages";
 import { validatePattern } from "./profile";
 import { parseCount } from "./stream-form";
+import type { ViewDecoding } from "./SchemasTab";
 
 /** A browse without Follow ends by itself; 5 minutes is its default limit (§6.5). */
 export const BROWSE_TIMEOUT_MS = 5 * 60_000;
@@ -74,9 +75,11 @@ export interface StreamMessagesProps {
   /** The subject filter to start with (from Info's busiest subjects). */
   subject?: string;
   registerActions(actions: { primary: () => void; stop: () => void; pause: () => void }): void;
+  /** The codec menu's schemas and "Decode as…" (the tab's profile). */
+  decoding?: ViewDecoding;
 }
 
-export function StreamMessages({ stream, lastSequence, connId, client, note, onLive, subject: initialSubject, registerActions }: StreamMessagesProps) {
+export function StreamMessages({ stream, lastSequence, connId, client, note, onLive, subject: initialSubject, registerActions, decoding }: StreamMessagesProps) {
   const services = useServices();
   const { state } = useStore();
   const [draft, setDraft] = useState<BrowseDraft>({ ...DEFAULT_BROWSE, subject: initialSubject ?? "" });
@@ -170,7 +173,7 @@ export function StreamMessages({ stream, lastSequence, connId, client, note, onL
             <Switch checked={draft.follow} onCheckedChange={(follow) => set({ follow })} disabled={running} /> Follow
           </FieldLabel>
         </Field>
-        <CodecSelect label="Value codec" value={decode.value ?? { codec: "auto" }} onChange={(value) => setDecode((d) => ({ ...d, value }))} />
+        <CodecMenu label="Value codec" value={decode.value ?? { codec: "auto" }} onChange={(value) => setDecode((d) => ({ ...d, value }))} schemas={decoding?.choices ?? []} onManage={decoding?.onManage} />
         <span className="flex-1" />
         <Button size="small" appearance="primary" disabled={problem !== null || running} onClick={() => tail.start()}>
           <Icon icon={Play} /> Browse
@@ -186,7 +189,7 @@ export function StreamMessages({ stream, lastSequence, connId, client, note, onL
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <MessageViewer system="jetstream" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={loadFull} loadSchema={loadSchema} />
+      <MessageViewer system="jetstream" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={loadFull} loadSchema={loadSchema} {...(decoding?.decodeAs ? { decodeAs: decoding.decodeAs } : {})} />
       <PageFooter>
         <span>Ordered consumer, no acks; {stopsAt}.</span>
       </PageFooter>

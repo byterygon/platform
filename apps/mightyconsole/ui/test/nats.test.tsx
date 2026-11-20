@@ -94,7 +94,7 @@ describe("the module (spec §2.2, §6.2)", () => {
     expect(orderedTools(TOOLS)[0]).toBe(natsTool);
     expect(natsTool.mark).toBeDefined();
     const tree = natsTool.sidebarTree({ profile: record({ extras: { subjects: ["orders.>"] } }), connId: "c" });
-    expect(tree.map((n) => n.label)).toEqual(["Server", "Subjects", "Streams", "Key-Value", "Object Store", "Services", "Publish"]);
+    expect(tree.map((n) => n.label)).toEqual(["Server", "Subjects", "Streams", "Key-Value", "Object Store", "Services", "Schemas", "Publish"]);
     const subjects = tree[1]!.children!;
     expect(subjects.map((n) => n.label)).toEqual(["Subscribe to…", "orders.>"]);
     expect(subjects[1]!.open).toEqual({ kind: "nats.subscribe", params: { subjects: ["orders.>"] }, title: "Subscribe orders.>" });
@@ -182,7 +182,7 @@ describe("Subscribe (spec §6.3)", () => {
     expect(subscribe).toHaveBeenCalledTimes(1);
     const [input] = subscribe.mock.calls[0]! as unknown as [Record<string, unknown>];
     expect(input).toMatchObject({ connId: "conn-1", subjects: ["orders.>", "payments.*"], queueGroup: "workers" });
-    expect(COLUMNS.nats).toEqual(["timestamp", "subject", "replyTo", "payloadSize", "payloadText"]);
+    expect(COLUMNS.nats).toEqual(["timestamp", "subject", "replyTo", "payloadSize", "payloadCodec", "payloadText"]);
     // Bookmarking saves the subjects not saved yet.
     await click(byRole("button", "Bookmark subject"));
     const change = p.updateProfile.mock.calls[0]![0] as (r: ProfileRecord) => ProfileRecord;

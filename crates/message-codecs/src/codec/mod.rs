@@ -2,17 +2,19 @@
 //! chosen codec, or detect one.
 //!
 //! **Auto-detect order** (key and value separately): (1) the Confluent wire format when the
-//! profile has a registry and the id resolves; (2) a mapping to a local schema for the topic,
-//! subject or bucket; (3) `json`; (4) `msgpack`; (5) `utf8`; (6) `hex`. `base64` is never
+//! profile has a registry and the id resolves; (2) a mapping for the topic, subject, stream or
+//! bucket; (3) `json`; (4) `cbor`; (5) `msgpack`; (6) `utf8`; (7) `hex`. `base64` is never
 //! detected. Raw bytes are never replaced: a failed decode keeps them and says why.
 
 pub mod avro;
+pub mod cbor;
 pub mod jsonschema;
 pub mod msgpack;
 pub mod plain;
 pub mod protobuf;
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -125,6 +127,37 @@ pub struct CodecsConfig {
     pub local_schemas: Vec<LocalSchema>,
     pub mappings: Vec<SchemaMapping>,
     pub naming: NamingConfig,
+    /// The mappings' counts; pass the current codecs' to keep them across a change.
+    pub stats: MappingStats,
+}
+
+/// How many messages a mapping decoded, and how many of them failed (this session).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "codegen", derive(ts_rs::TS, schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub struct MappingCount {
+    pub decoded: u64,
+    pub failed: u64,
+}
+
+/// The counts of a connection's mappings, by mapping id; shared by its codecs and their clones.
+#[derive(Debug, Clone, Default)]
+pub struct MappingStats(Arc<Mutex<HashMap<String, MappingCount>>>);
+
+impl MappingStats {
+    fn record(&self, id: &str, failed: bool) {
+        let mut counts = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let c = counts.entry(id.to_owned()).or_default();
+        c.decoded += 1;
+        if failed {
+            c.failed += 1;
+        }
+    }
+
+    pub fn get(&self, id: &str) -> MappingCount {
+        let counts = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        counts.get(id).copied().unwrap_or_default()
+    }
 }
 
 /// A schema found for a decode or an encode.
@@ -153,6 +186,7 @@ struct CodecsInner {
     mappings: Vec<SchemaMapping>,
     naming: NamingConfig,
     issues: Vec<SchemaIssue>,
+    stats: MappingStats,
 }
 
 impl Default for Codecs {
@@ -172,6 +206,7 @@ impl Codecs {
                 mappings: config.mappings,
                 naming: config.naming,
                 issues,
+                stats: config.stats,
             }),
         }
     }
@@ -190,6 +225,14 @@ impl Codecs {
 
     pub fn naming(&self) -> &NamingConfig {
         &self.inner.naming
+    }
+
+    pub fn mappings(&self) -> &[SchemaMapping] {
+        &self.inner.mappings
+    }
+
+    pub fn stats(&self) -> &MappingStats {
+        &self.inner.stats
     }
 
     /// Finds a schema by reference.
@@ -240,20 +283,120 @@ impl Codecs {
         })
     }
 
+    /// The schema of the mapping for a target, when that mapping names one.
     fn mapped(&self, target: Option<&Target>, part: Part) -> Option<Result<ResolvedSchema>> {
         let m = find_mapping(&self.inner.mappings, target?, part)?;
-        Some(match self.inner.local.get(&m.schema_id) {
+        m.schema_id.as_ref()?;
+        Some(self.mapping_schema(m))
+    }
+
+    fn mapping_schema(&self, m: &SchemaMapping) -> Result<ResolvedSchema> {
+        let Some(id) = m.schema_id.as_deref() else {
+            return Err(CodecError::invalid(format!(
+                "mapping {} names no schema",
+                m.id
+            )));
+        };
+        match self.inner.local.get(id) {
             Some(compiled) => Ok(ResolvedSchema {
                 compiled,
-                reference: local_ref(&m.schema_id, m.message_type.as_deref()),
+                reference: local_ref(id, m.message_type.as_deref()),
                 registry_id: None,
                 message_type: m.message_type.clone(),
             }),
             None => Err(CodecError::invalid(format!(
-                "mapping {} names local schema {}, which is missing or does not compile",
-                m.id, m.schema_id
+                "mapping {} names local schema {id}, which is missing or does not compile",
+                m.id
             ))),
-        })
+        }
+    }
+
+    /// Decodes bytes with one mapping, whether or not it matches them (the mapping test, and
+    /// step 2 of auto-detect). A failure keeps the bytes as hex and says why.
+    pub fn decode_mapping(&self, m: &SchemaMapping, bytes: &[u8]) -> Decoded {
+        let d = self.decode_mapping_as(m, bytes);
+        if d.text.is_some() {
+            return d;
+        }
+        // Keep the bytes readable as hex next to the reason.
+        Decoded {
+            codec: CodecId::Hex,
+            text: Some(plain::decode_hex(bytes)),
+            ..d
+        }
+    }
+
+    fn decode_mapping_as(&self, m: &SchemaMapping, bytes: &[u8]) -> Decoded {
+        let resolved = match m.schema_id {
+            Some(_) => match self.mapping_schema(m) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    return Decoded::failed(m.codec.unwrap_or(CodecId::Hex), e.message);
+                }
+            },
+            None => None,
+        };
+        let schema_type = resolved.as_ref().map(|r| r.compiled.schema_type());
+        let Some(codec) = m.codec_with(schema_type) else {
+            return Decoded::failed(
+                CodecId::Hex,
+                format!("mapping {} names neither a codec nor a schema", m.id),
+            );
+        };
+        let confluent = m.wire_format == Some(WireFormat::Confluent);
+        let payload = if confluent {
+            match wire::split(bytes) {
+                Some((_, rest)) => rest,
+                None => {
+                    return Decoded::failed(
+                        codec,
+                        "not in the Confluent wire format (magic byte 0 and a schema id)",
+                    );
+                }
+            }
+        } else {
+            bytes
+        };
+        match resolved {
+            None if codec.needs_schema() => Decoded::failed(
+                codec,
+                format!(
+                    "{} needs a schema; mapping {} names none",
+                    codec.label(),
+                    m.id
+                ),
+            ),
+            None => decode_plain(codec, payload),
+            Some(r) => {
+                if r.compiled.schema_type().codec() != codec {
+                    Decoded::failed(
+                        codec,
+                        format!(
+                            "the schema is {:?}, not {}",
+                            r.compiled.schema_type(),
+                            codec.label()
+                        ),
+                    )
+                    .with_ref(Some(r.reference.clone()))
+                } else {
+                    // Confluent Protobuf: the message indexes follow the id; the mapping's type
+                    // names the message.
+                    let body = match (confluent, r.compiled.as_ref()) {
+                        (true, CompiledSchema::Protobuf(_)) => {
+                            match wire::split_message_indexes(payload) {
+                                Ok((_, rest)) => rest,
+                                Err(e) => {
+                                    return Decoded::failed(codec, e.message)
+                                        .with_ref(Some(r.reference.clone()));
+                                }
+                            }
+                        }
+                        _ => payload,
+                    };
+                    decode_schema(&r, body, false, m.message_type.as_deref())
+                }
+            }
+        }
     }
 
     /// Decodes one key or value (spec §5.2). Never fails: a failure is in [`Decoded::error`].
@@ -297,17 +440,11 @@ impl Codecs {
                 }
             }
         }
-        // (2) A mapping to a local schema.
-        if let Some(resolved) = self.mapped(target, part) {
-            return match resolved {
-                Ok(r) => {
-                    let message_type = r.message_type.clone();
-                    decode_schema(&r, bytes, false, message_type.as_deref())
-                }
-                Err(e) => {
-                    Decoded::failed(CodecId::Hex, e.message).with_text(plain::decode_hex(bytes))
-                }
-            };
+        // (2) A mapping: a codec, with a local schema when it needs one.
+        if let Some(m) = target.and_then(|t| find_mapping(&self.inner.mappings, t, part)) {
+            let d = self.decode_mapping(m, bytes);
+            self.inner.stats.record(&m.id, d.error.is_some());
+            return d;
         }
         // (3)-(6)
         let mut d = decode_plain_detected(bytes);
@@ -416,6 +553,7 @@ impl Codecs {
             CodecId::Hex => return plain(plain::encode_hex(&payload.text)),
             CodecId::Base64 => return plain(plain::encode_base64(&payload.text)),
             CodecId::Msgpack => return plain(msgpack::encode(&payload.text)),
+            CodecId::Cbor => return plain(cbor::encode(&payload.text)),
             CodecId::Avro | CodecId::Protobuf | CodecId::Jsonschema => {}
         }
         let resolved = match &payload.schema {
@@ -512,13 +650,6 @@ impl Codecs {
                 schema_ref,
             }),
         }
-    }
-}
-
-impl Decoded {
-    fn with_text(mut self, text: String) -> Self {
-        self.text = Some(text);
-        self
     }
 }
 
@@ -620,6 +751,10 @@ fn decode_plain(codec: CodecId, bytes: &[u8]) -> Decoded {
             Ok(j) => Decoded::json(codec, j.to_text(), j.to_value()),
             Err(e) => Decoded::failed(codec, e.message),
         },
+        CodecId::Cbor => match cbor::decode(bytes) {
+            Ok(j) => Decoded::json(codec, j.to_text(), j.to_value()),
+            Err(e) => Decoded::failed(codec, e.message),
+        },
         CodecId::Avro | CodecId::Protobuf | CodecId::Jsonschema => {
             Decoded::failed(codec, "needs a schema")
         }
@@ -631,7 +766,12 @@ fn decode_plain_detected(bytes: &[u8]) -> Decoded {
     if plain::looks_like_json(bytes) {
         return decode_plain(CodecId::Json, bytes);
     }
-    if msgpack::detect(bytes) {
+    // MessagePack wins over CBOR only where both read the whole value (see `cbor`).
+    let is_msgpack = msgpack::detect(bytes);
+    if !is_msgpack && cbor::detect(bytes) {
+        return decode_plain(CodecId::Cbor, bytes);
+    }
+    if is_msgpack {
         return decode_plain(CodecId::Msgpack, bytes);
     }
     if plain::looks_like_text(bytes) {

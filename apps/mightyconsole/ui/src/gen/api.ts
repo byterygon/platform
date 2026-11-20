@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:317ab3a2806e24d9f3378f8be085cfcca5d5583cfefe76ce592a5f6d797050f9";
+export const SCHEMA_HASH = "sha256:9059d224e11ec422420bf6519229bcc5167c2fe538eca2d8bcd7d79d3f53d011";
 
 // ---- Types
 
@@ -134,7 +134,7 @@ messageType?: string | null, };
 /**
  * A codec id (spec §5.2).
  */
-export type CodecId = "utf8" | "json" | "hex" | "base64" | "msgpack" | "avro" | "protobuf" | "jsonschema";
+export type CodecId = "utf8" | "json" | "hex" | "base64" | "msgpack" | "cbor" | "avro" | "protobuf" | "jsonschema";
 
 /**
  * One entry of `messaging.codecs.list`.
@@ -597,6 +597,10 @@ export type Inspection = { type: SchemaType,
  */
 messageTypes: Array<string>, 
 /**
+ * Protobuf: every message type of the files, nested ones too; empty for the other types.
+ */
+allMessageTypes: Array<string>, 
+/**
  * The JSON Schema (draft 2020-12) of the codec's JSON.
  */
 jsonSchema: unknown, 
@@ -670,9 +674,67 @@ messageTypes?: Array<string> | null, };
 export type LocalSchemaFiles = Array<SchemaFile> | { descriptorSetBase64: string, };
 
 /**
+ * How many messages a mapping decoded, and how many of them failed (this session).
+ */
+export type MappingCount = { decoded: number, failed: number, };
+
+/**
+ * A mapping's counts this session.
+ */
+export type MappingStatus = { id: string, count: MappingCount, };
+
+/**
  * What a mapping applies to (spec §4.2).
  */
-export type MappingTarget = { "kind": "subject", pattern: string, } | { "kind": "topic", name: string, } | { "kind": "kvBucket", bucket: string, };
+export type MappingTarget = { "kind": "subject", pattern: string, } | { "kind": "stream", name: string, } | { "kind": "topic", name: string, } | { "kind": "kvBucket", bucket: string, };
+
+/**
+ * A tool's `<tool>.schemas.test` input: a mapping, maybe not saved, tried on the last messages
+ * it matches.
+ */
+export type MappingTestInput = { connId: string, mapping: SchemaMapping, 
+/**
+ * The profile's schemas as edited (the saved ones when absent).
+ */
+schemas?: Array<LocalSchema> | null, 
+/**
+ * How many messages, 20 by default, 100 at most.
+ */
+limit?: number | null, };
+
+/**
+ * What a mapping test found.
+ */
+export type MappingTestOutput = { 
+/**
+ * What was read, in the tool's words ("streams ORDERS, AUDIT").
+ */
+source: string, 
+/**
+ * The oldest first.
+ */
+rows: Array<MappingTestRow>, decoded: number, failed: number, 
+/**
+ * Problems of the mapping's schema as edited.
+ */
+issues: Array<SchemaIssue>, 
+/**
+ * Why there are no messages, when there are none.
+ */
+note?: string, };
+
+/**
+ * One message of a mapping test.
+ */
+export type MappingTestRow = { 
+/**
+ * Where the message lives: its subject, or its KV key.
+ */
+subject: string, sequence?: number, codec: CodecId, 
+/**
+ * The decoded value, cut at 400 characters; hex when it failed.
+ */
+text?: string, error?: string, };
 
 /**
  * How a text is matched.
@@ -1926,14 +1988,37 @@ line?: number,
 column?: number, message: string, };
 
 /**
- * A local schema mapped to messages (spec §4.2, `extras.mappings`).
+ * A codec, with a local schema when it needs one, mapped to messages (spec §4.2,
+ * `extras.mappings`); the first mapping that matches a message wins.
  */
-export type SchemaMapping = { id: string, target: MappingTarget, part: Part, schemaId: string, messageType?: string | null, };
+export type SchemaMapping = { id: string, target: MappingTarget, part: Part, 
+/**
+ * The local schema, for Avro, Protobuf and JSON Schema; none for the codecs without one.
+ */
+schemaId?: string | null, messageType?: string | null, 
+/**
+ * The codec; the schema's when absent (mappings saved before CBOR name a schema only).
+ */
+codec?: CodecId | null, 
+/**
+ * `confluent`: the bytes start with the wire format's magic byte and schema id (and, for
+ * Protobuf, the message indexes), which are skipped. Raw bytes when absent.
+ */
+wireFormat?: WireFormat | null, };
 
 /**
  * Where a schema comes from (spec §5.7): `{ registry: … }` or `{ local: schemaId }`.
  */
 export type SchemaRef = { "registry": RegistryRef } | { "local": string };
+
+/**
+ * A local schema in use on a connection.
+ */
+export type SchemaStatus = { id: string, 
+/**
+ * Protobuf: the message types offered; empty for the other types.
+ */
+messageTypes: Array<string>, };
 
 /**
  * The type of a schema.
@@ -1944,6 +2029,25 @@ export type SchemaType = "avro" | "protobuf" | "jsonschema";
  * A registry schema version: a number or `"latest"`.
  */
 export type SchemaVersion = number | Latest;
+
+export type SchemasStatusInput = { connId: string, };
+
+/**
+ * What a connection's codecs hold now (the Schemas tab).
+ */
+export type SchemasStatusOutput = { 
+/**
+ * The schemas that compiled, in id order.
+ */
+schemas: Array<SchemaStatus>, 
+/**
+ * Schemas that do not compile, with file and line.
+ */
+issues: Array<SchemaIssue>, 
+/**
+ * Every mapping, in order, with what it decoded.
+ */
+mappings: Array<MappingStatus>, };
 
 export type SchemasUpdateInput = { connId: string, schemas?: Array<LocalSchema> | null, mappings?: Array<SchemaMapping> | null, };
 
@@ -2038,7 +2142,7 @@ export type TailSummary = { scanned: number, matched: number, dropped: number, d
  * Where a message lives, for mappings and subject naming: a Kafka topic, a NATS subject (core
  * or JetStream) or a KV bucket.
  */
-export type Target = { "kind": "topic", name: string, } | { "kind": "subject", subject: string, } | { "kind": "kvBucket", bucket: string, };
+export type Target = { "kind": "topic", name: string, } | { "kind": "subject", subject: string, stream?: string | null, } | { "kind": "kvBucket", bucket: string, };
 
 export type TaskQueueDescribeInput = { connId: string, namespace?: string | null, taskQueue: string, };
 
@@ -2622,6 +2726,7 @@ export interface Procedures {
   readonly "messaging.encode": ProcedureDef<"query", EncodeInput, EncodeOutput, ToolError>;
   readonly "messaging.filter.check": ProcedureDef<"query", FilterCheckInput, FilterCheckOutput, never>;
   readonly "messaging.schemas.inspect": ProcedureDef<"query", InspectInput, Inspection, ToolError>;
+  readonly "messaging.schemas.status": ProcedureDef<"query", SchemasStatusInput, SchemasStatusOutput, ToolError>;
   readonly "messaging.schemas.update": ProcedureDef<"mutation", SchemasUpdateInput, SchemasUpdateOutput, ToolError>;
   readonly "nats.connect": ProcedureDef<"mutation", NatsConnectInput, NatsConnectOutput, ToolError>;
   readonly "nats.core.publish": ProcedureDef<"mutation", NatsPublishInput, NatsPublishOutput, ToolError>;
@@ -2663,6 +2768,7 @@ export interface Procedures {
   readonly "nats.obj.uploadFinish": ProcedureDef<"mutation", NatsObjUploadFinishInput, NatsObjectInfo, ToolError>;
   readonly "nats.obj.uploadPart": ProcedureDef<"mutation", NatsObjUploadPartInput, NatsObjUploadPartOutput, ToolError>;
   readonly "nats.obj.uploadStart": ProcedureDef<"mutation", NatsObjUploadStartInput, NatsObjUploadStartOutput, ToolError>;
+  readonly "nats.schemas.test": ProcedureDef<"query", MappingTestInput, MappingTestOutput, ToolError>;
   readonly "nats.server.info": ProcedureDef<"query", NatsConnIdInput, NatsServerInfoOutput, ToolError>;
   readonly "nats.services.discover": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceInfo>, ToolError>;
   readonly "nats.services.ping": ProcedureDef<"query", NatsServicesInput, Array<NatsServicePing>, ToolError>;
@@ -2767,6 +2873,7 @@ export interface Api {
     };
     readonly schemas: {
       readonly inspect: Procedures["messaging.schemas.inspect"];
+      readonly status: Procedures["messaging.schemas.status"];
       readonly update: Procedures["messaging.schemas.update"];
     };
   };
@@ -2826,6 +2933,9 @@ export interface Api {
       readonly uploadFinish: Procedures["nats.obj.uploadFinish"];
       readonly uploadPart: Procedures["nats.obj.uploadPart"];
       readonly uploadStart: Procedures["nats.obj.uploadStart"];
+    };
+    readonly schemas: {
+      readonly test: Procedures["nats.schemas.test"];
     };
     readonly server: {
       readonly info: Procedures["nats.server.info"];
@@ -3292,6 +3402,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+      status: {
+        name: "messaging.schemas.status",
+        kind: "query",
+        perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       update: {
         name: "messaging.schemas.update",
         kind: "mutation",
@@ -3715,6 +3835,18 @@ export const procedures: Api = {
         kind: "mutation",
         perm: "nats.write",
         risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    schemas: {
+      test: {
+        name: "nats.schemas.test",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,

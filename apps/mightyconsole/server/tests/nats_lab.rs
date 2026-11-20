@@ -1793,3 +1793,243 @@ async fn services_discover_stats_and_ping_the_lab_echo() {
     let err = tab.error(8, Code::InvalidArgument).await;
     assert_eq!(err.details.unwrap()["field"], "id");
 }
+
+fn subjects_of(out: &Value) -> Vec<String> {
+    out["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| s(&r["subject"]).to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn mapping_tests_on_streams_buckets_and_a_cbor_stream_and_the_counts() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let test = |mapping: Value, extra: Value| {
+        let mut input = json!({ "connId": conn, "mapping": mapping });
+        for (k, v) in extra.as_object().unwrap() {
+            input[k] = v.clone();
+        }
+        input
+    };
+    let proto = |pattern: &str| {
+        json!({ "id": "t", "target": { "kind": "subject", "pattern": pattern }, "part": "value",
+                "codec": "protobuf", "schemaId": "orders", "messageType": "lab.orders.Order" })
+    };
+
+    // The lab's Protobuf messages: the last 20 of orders.proto.>, all decoded, oldest first.
+    let out = call(
+        &mut tab,
+        3,
+        "nats.schemas.test",
+        test(proto("orders.proto.>"), json!({})),
+    )
+    .await;
+    assert_eq!(out["source"], "stream ORDERS", "{out}");
+    assert_eq!(
+        (out["decoded"].as_u64(), out["failed"].as_u64()),
+        (Some(20), Some(0)),
+        "{out}"
+    );
+    assert!(
+        subjects_of(&out)
+            .iter()
+            .all(|s| s.starts_with("orders.proto."))
+    );
+    let seqs: Vec<u64> = out["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["sequence"].as_u64().unwrap())
+        .collect();
+    assert!(seqs.windows(2).all(|w| w[0] < w[1]), "{seqs:?}");
+    assert!(s(&out["rows"][0]["text"]).contains("\"customer\""), "{out}");
+
+    // orders.>: the newest is the 1.5 MiB JSON message, which is not Protobuf: it fails, shown
+    // as hex cut at 400 characters, and names its subject.
+    let out = call(
+        &mut tab,
+        4,
+        "nats.schemas.test",
+        test(proto("orders.>"), json!({ "limit": 5 })),
+    )
+    .await;
+    assert_eq!(out["rows"].as_array().unwrap().len(), 5, "{out}");
+    let last = &out["rows"][4];
+    assert_eq!(last["subject"], "orders.large", "{out}");
+    assert_eq!(last["codec"], "hex");
+    assert!(last["error"].is_string());
+    assert!(s(&last["text"]).chars().count() <= 401);
+
+    // A stream, whatever the subject, as JSON: the Protobuf ones fail, the large one decodes.
+    let out = call(
+        &mut tab,
+        5,
+        "nats.schemas.test",
+        test(json!({ "id": "t", "target": { "kind": "stream", "name": "ORDERS" }, "part": "value", "codec": "json" }), json!({ "limit": 3 })),
+    )
+    .await;
+    assert_eq!(out["source"], "stream ORDERS");
+    assert_eq!(
+        (out["decoded"].as_u64(), out["failed"].as_u64()),
+        (Some(1), Some(2)),
+        "{out}"
+    );
+
+    // A KV bucket: its puts by key (the deleted key's put is history, the delete marker is not).
+    let out = call(
+        &mut tab,
+        6,
+        "nats.schemas.test",
+        test(json!({ "id": "t", "target": { "kind": "kvBucket", "bucket": "config" }, "part": "value", "codec": "json" }), json!({})),
+    )
+    .await;
+    assert_eq!(out["source"], "bucket config");
+    let keys = subjects_of(&out);
+    assert_eq!(
+        keys.iter().filter(|k| *k == "feature.checkout").count(),
+        3,
+        "{out}"
+    );
+    assert!(
+        keys.contains(&"limits.orders".to_owned()) && keys.contains(&"motd".to_owned()),
+        "{out}"
+    );
+    let motd = out["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["subject"] == "motd")
+        .unwrap();
+    assert!(
+        motd["error"].is_string(),
+        "\"Welcome to the lab\" is not JSON: {motd}"
+    );
+
+    // A pattern no stream stores: nothing to test on, and why.
+    let out = call(
+        &mut tab,
+        7,
+        "nats.schemas.test",
+        test(proto("lab.core.only.>"), json!({})),
+    )
+    .await;
+    assert_eq!(out["rows"], json!([]));
+    assert!(
+        s(&out["note"]).contains("No stream stores lab.core.only.>"),
+        "{out}"
+    );
+
+    // A schema as edited, not saved: its compile errors come back with the failing rows.
+    let broken = json!([{ "id": "orders", "name": "orders", "type": "protobuf", "files": [{ "path": "o.proto", "text": "syntax = \"proto3\";\nmessage {" }] }]);
+    let out = call(
+        &mut tab,
+        8,
+        "nats.schemas.test",
+        test(
+            proto("orders.proto.>"),
+            json!({ "schemas": broken, "limit": 2 }),
+        ),
+    )
+    .await;
+    assert_eq!(out["issues"][0]["file"], "o.proto", "{out}");
+    assert_eq!(out["failed"], 2);
+
+    // Keys: NATS has none. Topics: Kafka's.
+    tab.call(9, "nats.schemas.test", test(json!({ "id": "t", "target": { "kind": "subject", "pattern": "orders.>" }, "part": "key", "codec": "json" }), json!({}))).await;
+    assert_eq!(
+        tab.error(9, Code::InvalidArgument).await.details.unwrap()["field"],
+        "mapping.part"
+    );
+    tab.call(10, "nats.schemas.test", test(json!({ "id": "t", "target": { "kind": "topic", "name": "orders" }, "part": "value", "codec": "json" }), json!({}))).await;
+    tab.error(10, Code::InvalidArgument).await;
+
+    // CBOR end to end: published through the Composer's codec into a stream of this test, found by
+    // the test, then decoded by a saved mapping in a browse, which counts it.
+    let (name, prefix) = scratch("cbor");
+    let subjects = vec![format!("{prefix}.>")];
+    call(
+        &mut tab,
+        11,
+        "nats.js.streams.create",
+        json!({ "connId": conn, "config": stream_form(&name, &subjects) }),
+    )
+    .await;
+    let body = r#"{"user":"c-2207","cart":[1009,1010],"exp":1795060000}"#;
+    let published = call(
+        &mut tab,
+        12,
+        "nats.core.publish",
+        json!({ "connId": conn, "subject": format!("{prefix}.sessions"), "payload": { "codec": "cbor", "text": body } }),
+    )
+    .await;
+    assert!(published["bytes"].as_u64().unwrap() < body.len() as u64);
+    let cbor = json!({ "id": "c1", "target": { "kind": "subject", "pattern": format!("{prefix}.>") }, "part": "value", "codec": "cbor" });
+    // The stream may take a moment to store the core publish.
+    let mut out = Value::Null;
+    for attempt in 0..20 {
+        out = call(
+            &mut tab,
+            13 + attempt,
+            "nats.schemas.test",
+            test(cbor.clone(), json!({})),
+        )
+        .await;
+        if out["decoded"] == 1 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert_eq!(out["rows"][0]["text"], body, "{out}");
+    assert_eq!(out["source"], format!("stream {name}"));
+    // Auto-detect finds CBOR without a mapping as well.
+    tab.call(40, "nats.js.streams.browse", json!({ "connId": conn, "streamId": "cbor-1", "stream": name, "start": { "from": "first" }, "follow": false })).await;
+    let (batches, _) = read_stream(&mut tab, 40).await;
+    assert_eq!(
+        column(&batches, "payloadCodec"),
+        vec![Some("cbor".to_owned())]
+    );
+    assert_eq!(column(&batches, "payloadText")[0].as_deref(), Some(body));
+    // Saved, the mapping decodes the browse and counts it; the other mapping keeps its place.
+    let mut mappings = lab_profile()["mappings"].clone();
+    mappings.as_array_mut().unwrap().insert(0, cbor.clone());
+    let updated = call(
+        &mut tab,
+        41,
+        "messaging.schemas.update",
+        json!({ "connId": conn, "schemas": lab_profile()["schemas"], "mappings": mappings }),
+    )
+    .await;
+    assert_eq!(updated["issues"], json!([]));
+    tab.call(42, "nats.js.streams.browse", json!({ "connId": conn, "streamId": "cbor-2", "stream": name, "start": { "from": "first" }, "follow": false })).await;
+    let (batches, _) = read_stream(&mut tab, 42).await;
+    assert_eq!(
+        column(&batches, "payloadCodec"),
+        vec![Some("cbor".to_owned())]
+    );
+    let status = call(
+        &mut tab,
+        43,
+        "messaging.schemas.status",
+        json!({ "connId": conn }),
+    )
+    .await;
+    assert_eq!(status["schemas"][0]["id"], "orders", "{status}");
+    assert_eq!(status["schemas"][0]["messageTypes"][0], "lab.orders.Order");
+    assert_eq!(
+        status["mappings"][0],
+        json!({ "id": "c1", "count": { "decoded": 1, "failed": 0 } }),
+        "{status}"
+    );
+    assert_eq!(status["mappings"][1]["id"], "m1");
+    call(
+        &mut tab,
+        44,
+        "nats.js.streams.delete",
+        json!({ "connId": conn, "stream": name }),
+    )
+    .await;
+}

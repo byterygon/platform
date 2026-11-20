@@ -495,6 +495,7 @@
         "hex",
         "base64",
         "msgpack",
+        "cbor",
         "avro",
         "protobuf",
         "jsonschema"
@@ -2158,6 +2159,13 @@
     "Inspection": {
       "description": "What `messaging.schemas.inspect` answers.",
       "properties": {
+        "allMessageTypes": {
+          "description": "Protobuf: every message type of the files, nested ones too; empty for the other types.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "errors": {
           "items": {
             "$ref": "#/$defs/SchemaIssue"
@@ -2189,6 +2197,7 @@
       "required": [
         "type",
         "messageTypes",
+        "allMessageTypes",
         "jsonSchema",
         "example",
         "text",
@@ -2387,11 +2396,47 @@
       ],
       "description": "The sources of a local schema: files, or a compiled Protobuf `FileDescriptorSet`."
     },
+    "MappingCount": {
+      "description": "How many messages a mapping decoded, and how many of them failed (this session).",
+      "properties": {
+        "decoded": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "decoded",
+        "failed"
+      ],
+      "type": "object"
+    },
+    "MappingStatus": {
+      "description": "A mapping's counts this session.",
+      "properties": {
+        "count": {
+          "$ref": "#/$defs/MappingCount"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "count"
+      ],
+      "type": "object"
+    },
     "MappingTarget": {
       "description": "What a mapping applies to (spec §4.2).",
       "oneOf": [
         {
-          "description": "A NATS subject pattern with `*` and `>`.",
+          "description": "A NATS subject pattern with `*` and `>`, in core NATS and in JetStream.",
           "properties": {
             "kind": {
               "const": "subject",
@@ -2404,6 +2449,23 @@
           "required": [
             "kind",
             "pattern"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "The messages of a JetStream stream, whatever their subject.",
+          "properties": {
+            "kind": {
+              "const": "stream",
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
           ],
           "type": "object"
         },
@@ -2440,6 +2502,129 @@
           "type": "object"
         }
       ]
+    },
+    "MappingTestInput": {
+      "description": "A tool's `<tool>.schemas.test` input: a mapping, maybe not saved, tried on the last messages\nit matches.",
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "limit": {
+          "default": null,
+          "description": "How many messages, 20 by default, 100 at most.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mapping": {
+          "$ref": "#/$defs/SchemaMapping"
+        },
+        "schemas": {
+          "default": null,
+          "description": "The profile's schemas as edited (the saved ones when absent).",
+          "items": {
+            "$ref": "#/$defs/LocalSchema"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "mapping"
+      ],
+      "type": "object"
+    },
+    "MappingTestOutput": {
+      "description": "What a mapping test found.",
+      "properties": {
+        "decoded": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "failed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "issues": {
+          "description": "Problems of the mapping's schema as edited.",
+          "items": {
+            "$ref": "#/$defs/SchemaIssue"
+          },
+          "type": "array"
+        },
+        "note": {
+          "description": "Why there are no messages, when there are none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rows": {
+          "description": "The oldest first.",
+          "items": {
+            "$ref": "#/$defs/MappingTestRow"
+          },
+          "type": "array"
+        },
+        "source": {
+          "description": "What was read, in the tool's words (\"streams ORDERS, AUDIT\").",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "rows",
+        "decoded",
+        "failed",
+        "issues"
+      ],
+      "type": "object"
+    },
+    "MappingTestRow": {
+      "description": "One message of a mapping test.",
+      "properties": {
+        "codec": {
+          "$ref": "#/$defs/CodecId"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "subject": {
+          "description": "Where the message lives: its subject, or its KV key.",
+          "type": "string"
+        },
+        "text": {
+          "description": "The decoded value, cut at 400 characters; hex when it failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "subject",
+        "codec"
+      ],
+      "type": "object"
     },
     "MatchOp": {
       "description": "How a text is matched.",
@@ -7340,8 +7525,20 @@
       "type": "object"
     },
     "SchemaMapping": {
-      "description": "A local schema mapped to messages (spec §4.2, `extras.mappings`).",
+      "description": "A codec, with a local schema when it needs one, mapped to messages (spec §4.2,\n`extras.mappings`); the first mapping that matches a message wins.",
       "properties": {
+        "codec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodecId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The codec; the schema's when absent (mappings saved before CBOR name a schema only)."
+        },
         "id": {
           "type": "string"
         },
@@ -7356,17 +7553,33 @@
           "$ref": "#/$defs/Part"
         },
         "schemaId": {
-          "type": "string"
+          "default": null,
+          "description": "The local schema, for Avro, Protobuf and JSON Schema; none for the codecs without one.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "target": {
           "$ref": "#/$defs/MappingTarget"
+        },
+        "wireFormat": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WireFormat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`confluent`: the bytes start with the wire format's magic byte and schema id (and, for\nProtobuf, the message indexes), which are skipped. Raw bytes when absent."
         }
       },
       "required": [
         "id",
         "target",
-        "part",
-        "schemaId"
+        "part"
       ],
       "type": "object"
     },
@@ -7399,6 +7612,26 @@
         }
       ]
     },
+    "SchemaStatus": {
+      "description": "A local schema in use on a connection.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "messageTypes": {
+          "description": "Protobuf: the message types offered; empty for the other types.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "messageTypes"
+      ],
+      "type": "object"
+    },
     "SchemaType": {
       "description": "The type of a schema.",
       "enum": [
@@ -7420,6 +7653,49 @@
         }
       ],
       "description": "A registry schema version: a number or `\"latest\"`."
+    },
+    "SchemasStatusInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "SchemasStatusOutput": {
+      "description": "What a connection's codecs hold now (the Schemas tab).",
+      "properties": {
+        "issues": {
+          "description": "Schemas that do not compile, with file and line.",
+          "items": {
+            "$ref": "#/$defs/SchemaIssue"
+          },
+          "type": "array"
+        },
+        "mappings": {
+          "description": "Every mapping, in order, with what it decoded.",
+          "items": {
+            "$ref": "#/$defs/MappingStatus"
+          },
+          "type": "array"
+        },
+        "schemas": {
+          "description": "The schemas that compiled, in id order.",
+          "items": {
+            "$ref": "#/$defs/SchemaStatus"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemas",
+        "issues",
+        "mappings"
+      ],
+      "type": "object"
     },
     "SchemasUpdateInput": {
       "properties": {
@@ -7835,10 +8111,17 @@
           "type": "object"
         },
         {
+          "description": "A NATS subject; `stream` when the message was read from a JetStream stream.",
           "properties": {
             "kind": {
               "const": "subject",
               "type": "string"
+            },
+            "stream": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "subject": {
               "type": "string"
@@ -10470,6 +10753,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/SchemasStatusInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.schemas.status",
+      "output": {
+        "$ref": "#/$defs/SchemasStatusOutput"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/SchemasUpdateInput"
       },
       "kind": "mutation",
@@ -11352,6 +11656,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/MappingTestInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.schemas.test",
+      "output": {
+        "$ref": "#/$defs/MappingTestOutput"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/NatsConnIdInput"
       },
       "kind": "query",
@@ -12218,5 +12543,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:317ab3a2806e24d9f3378f8be085cfcca5d5583cfefe76ce592a5f6d797050f9"
+  "schema_hash": "sha256:9059d224e11ec422420bf6519229bcc5167c2fe538eca2d8bcd7d79d3f53d011"
 }

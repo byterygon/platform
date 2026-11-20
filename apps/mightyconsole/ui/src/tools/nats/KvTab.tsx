@@ -29,7 +29,7 @@ import { CopyButton, NoticeContext, Page, PageBar, PageHeader, gutterTable } fro
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { useStore } from "@/app/store";
 import * as api from "@/gen/api";
-import { CodecSelect } from "@/messaging/CodecSelect";
+import { CodecMenu } from "@/messaging/schemas/CodecMenu";
 import { FilterBar } from "@/messaging/FilterBar";
 import { MessageViewer } from "@/messaging/MessageViewer";
 import { useLiveTail } from "@/messaging/useLiveTail";
@@ -43,6 +43,7 @@ import { diffLines } from "./diff";
 import { formatAgo, formatDuration, formatSize } from "./format";
 import { validatePattern } from "./profile";
 import { reloadStreams } from "./tree-data";
+import { type ViewDecoding, bucketPlace, useViewDecoding } from "./SchemasTab";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 
@@ -374,7 +375,7 @@ function KeysView({ bucket, profile, connId, client, note, refreshKey, onPut }: 
   );
 }
 
-function WatchView({ bucket, connId, client, note, onLive, registerActions }: { bucket: string; connId: string; client: MightyClient; note(e: unknown): DescribedError; onLive(live: LiveState | null): void; registerActions(a: { primary: () => void; stop: () => void; pause: () => void }): void }) {
+function WatchView({ bucket, connId, client, note, onLive, registerActions, decoding }: { bucket: string; connId: string; client: MightyClient; note(e: unknown): DescribedError; onLive(live: LiveState | null): void; registerActions(a: { primary: () => void; stop: () => void; pause: () => void }): void; decoding: ViewDecoding }) {
   const services = useServices();
   const { state } = useStore();
   const [keys, setKeys] = useState(">");
@@ -411,7 +412,7 @@ function WatchView({ bucket, connId, client, note, onLive, registerActions }: { 
             <Switch checked={history} onCheckedChange={setHistory} disabled={running} /> History first
           </FieldLabel>
         </Field>
-        <CodecSelect label="Value codec" value={decode.value ?? { codec: "auto" }} onChange={(value) => setDecode((d) => ({ ...d, value }))} />
+        <CodecMenu label="Value codec" value={decode.value ?? { codec: "auto" }} onChange={(value) => setDecode((d) => ({ ...d, value }))} schemas={decoding.choices} onManage={decoding.onManage} />
         <span className="flex-1" />
         <Button size="small" appearance="primary" disabled={problem !== null || running} onClick={() => tail.start()}>
           <Icon icon={Play} /> Watch
@@ -425,11 +426,13 @@ function WatchView({ bucket, connId, client, note, onLive, registerActions }: { 
       <FilterBar system="kv" applied={filter} onApply={setFilter} check={check} />
     </>
   );
-  return <MessageViewer system="kv" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} />;
+  return <MessageViewer system="kv" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} {...(decoding.decodeAs ? { decodeAs: decoding.decodeAs } : {})} />;
 }
 
-export function KvTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab }: TabProps) {
+export function KvTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, updateProfile}: TabProps) {
   const bucket = text(tab.params["bucket"]);
+  const place = useCallback(() => bucketPlace(bucket), [bucket]);
+  const decoding = useViewDecoding({ client, connId, profile, updateProfile, openTab }, place);
   const notify = useContext(NoticeContext);
   const [info, setInfo] = useState<api.NatsKvBucketInfo | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -529,6 +532,7 @@ export function KvTab({ tab, profile, connId, client, useTabActions, onLive, not
           <TabsContent value="watch" keepMounted className="flex min-h-0 flex-1 flex-col border-t border-border-subtle">
             <WatchView
               bucket={bucket}
+              decoding={decoding}
               connId={connId}
               client={client}
               note={note}

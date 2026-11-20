@@ -13,6 +13,7 @@
 //!   headers; a request answers with the reply as one `MessageRecord`.
 
 pub mod client;
+pub mod decoding;
 pub mod jetstream;
 pub mod kv;
 pub mod objects;
@@ -403,9 +404,7 @@ async fn encode(
     payload: &ComposePayload,
 ) -> Result<message_codecs::Encoded, ToolError> {
     let codecs = hub.codecs(session, conn_id)?;
-    let target = Target::Subject {
-        subject: subject.to_owned(),
-    };
+    let target = Target::subject(subject);
     codecs
         .encode(Some(&target), Part::Value, payload)
         .await
@@ -609,11 +608,7 @@ impl NatsCoreApi {
             });
         }
         let decode = input.decode.unwrap_or_default();
-        let target = |m: &Message| {
-            m.subject
-                .as_ref()
-                .map(|s| Target::Subject { subject: s.clone() })
-        };
+        let target = |m: &Message| m.subject.as_ref().map(|s| Target::subject(s.clone()));
         let req = TailRequest {
             codecs: &codecs,
             decode: &decode,
@@ -696,9 +691,7 @@ impl NatsCoreApi {
         let elapsed = start.elapsed();
         let codecs = self.0.codecs(&session, &input.conn_id)?;
         let message = core_message(reply, now_us());
-        let target = Target::Subject {
-            subject: message.source.clone(),
-        };
+        let target = Target::subject(message.source.clone());
         let decode = input.decode.unwrap_or_default();
         let row = decode_row(&codecs, message, &decode, Some(&target), 0).await;
         Ok(NatsRequestOutput {
@@ -718,6 +711,7 @@ pub fn mount(router: &Router, hub: &Arc<Hub>) -> Result<(), RegistryError> {
     kv::mount(router, hub)?;
     objects::mount(router, hub)?;
     services::mount(router, hub)?;
+    decoding::mount(router, hub)?;
     Ok(())
 }
 

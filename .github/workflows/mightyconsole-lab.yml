@@ -91,7 +91,7 @@ jobs:
               ;;
           esac
           case " $lists " in *" temporal "*) more="namespaces,workers,start-workflow,schedule-edit,external-storage,codec"; detail="relations,schedule-detail" ;; esac
-          case " $LAB_TOOLS " in " all "|*" nats "*) nats_only="connect,core,streams,consumers,kv-objects,services" ;; esac
+          case " $LAB_TOOLS " in " all "|*" nats "*) nats_only="connect,core,streams,consumers,kv-objects,services,schemas" ;; esac
           echo "checklists: ${lists:-none}${more:+, temporal-more ($more)}${detail:+, temporal-detail ($detail)}${nats_only:+, nats ($nats_only)}"
           echo "lists=$lists" >> "$GITHUB_OUTPUT"
           echo "more=$more" >> "$GITHUB_OUTPUT"

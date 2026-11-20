@@ -7,7 +7,7 @@ mod support;
 
 use message_codecs::types::*;
 use message_codecs::{
-    Codecs, CodecsConfig, RegistryClient, RegistryConfig, codec::detect_plain, wire,
+    Codecs, CodecsConfig, MappingCount, RegistryClient, RegistryConfig, codec::detect_plain, wire,
 };
 use serde_json::json;
 use support::FakeRegistry;
@@ -97,6 +97,22 @@ fn auto_detect_order_on_ambiguous_payloads() {
             CodecId::Hex,
         ),
         (
+            "CBOR map",
+            vec![0xa2, 0x61, b'a', 0x01, 0x61, b'b', 0x82, 0x02, 0x03],
+            CodecId::Cbor,
+        ),
+        ("CBOR array", vec![0x83, 0x01, 0x02, 0x03], CodecId::Cbor),
+        (
+            "self-described CBOR",
+            vec![0xd9, 0xd9, 0xf7, 0xa1, 0x61, b'k', 0xf5],
+            CodecId::Cbor,
+        ),
+        (
+            "both MessagePack and CBOR stays MessagePack",
+            vec![0x80],
+            CodecId::Msgpack,
+        ),
+        (
             "base64 text is never base64",
             b"AAGr/w==".to_vec(),
             CodecId::Utf8,
@@ -138,6 +154,10 @@ async fn every_codec_round_trips_through_the_engine() {
         (
             CodecId::Msgpack,
             r#"{"b":1,"a":"x","bin":{"$binary":"AP8="},"ext":{"$ext":-1,"data":"AQ=="}}"#,
+        ),
+        (
+            CodecId::Cbor,
+            r#"{"b":1,"a":"x","bin":{"$binary":"AP8="},"at":{"$tag":1,"value":1795060000}}"#,
         ),
     ];
     for (codec, text) in cases {
@@ -221,12 +241,14 @@ async fn local_schemas_and_mappings() {
                 id: "m1".into(),
                 target: MappingTarget::Subject { pattern: "orders.proto.>".into() },
                 part: Part::Value,
-                schema_id: "proto".into(),
+                schema_id: Some("proto".into()),
                 message_type: Some("lab.orders.Order".into()),
+                codec: None,
+                wire_format: None,
             },
-            SchemaMapping { id: "m2".into(), target: MappingTarget::KvBucket { bucket: "config".into() }, part: Part::Value, schema_id: "json".into(), message_type: None },
-            SchemaMapping { id: "m3".into(), target: MappingTarget::Topic { name: "orders-avro".into() }, part: Part::Value, schema_id: "avro".into(), message_type: None },
-            SchemaMapping { id: "m4".into(), target: MappingTarget::Topic { name: "bad".into() }, part: Part::Value, schema_id: "broken".into(), message_type: None },
+            SchemaMapping { id: "m2".into(), target: MappingTarget::KvBucket { bucket: "config".into() }, part: Part::Value, schema_id: Some("json".into()), message_type: None, codec: None, wire_format: None },
+            SchemaMapping { id: "m3".into(), target: MappingTarget::Topic { name: "orders-avro".into() }, part: Part::Value, schema_id: Some("avro".into()), message_type: None, codec: None, wire_format: None },
+            SchemaMapping { id: "m4".into(), target: MappingTarget::Topic { name: "bad".into() }, part: Part::Value, schema_id: Some("broken".into()), message_type: None, codec: None, wire_format: None },
         ],
         ..CodecsConfig::default()
     });
@@ -238,9 +260,7 @@ async fn local_schemas_and_mappings() {
     assert_eq!(codecs.local().len(), 3);
 
     // Protobuf through a subject mapping (encode with the mapping, decode by auto-detect).
-    let subject = Target::Subject {
-        subject: "orders.proto.eu".into(),
-    };
+    let subject = Target::subject("orders.proto.eu");
     let text = r#"{"id":"o-1","total":{"currency":"EUR","units":"12"},"status":"SHIPPED"}"#;
     let enc = codecs
         .encode(
@@ -275,9 +295,7 @@ async fn local_schemas_and_mappings() {
         Some("local:proto#lab.orders.Order")
     );
     // Another subject falls through to the plain codecs.
-    let other = Target::Subject {
-        subject: "orders.eu".into(),
-    };
+    let other = Target::subject("orders.eu");
     assert_eq!(
         codecs
             .decode(&enc.bytes, Some(&other), Part::Value, &CodecChoice::auto())
@@ -686,4 +704,196 @@ async fn unreachable_registry_is_a_connect_error_and_decoding_goes_on() {
         .await;
     assert_eq!(d.codec, CodecId::Hex);
     assert!(d.error.unwrap().contains("registry schema 1"));
+}
+
+#[tokio::test]
+async fn mappings_without_a_schema_streams_wire_format_and_counts() {
+    let mapping = |id: &str,
+                   target: MappingTarget,
+                   codec: Option<CodecId>,
+                   schema: Option<&str>,
+                   wire: Option<WireFormat>| SchemaMapping {
+        id: id.into(),
+        target,
+        part: Part::Value,
+        schema_id: schema.map(Into::into),
+        message_type: schema.map(|_| "lab.orders.Order".into()),
+        codec,
+        wire_format: wire,
+    };
+    let codecs = Codecs::new(CodecsConfig {
+        local_schemas: vec![local("proto", SchemaType::Protobuf, proto_files())],
+        mappings: vec![
+            mapping(
+                "cbor",
+                MappingTarget::KvBucket {
+                    bucket: "sessions".into(),
+                },
+                Some(CodecId::Cbor),
+                None,
+                None,
+            ),
+            mapping(
+                "pay",
+                MappingTarget::Stream {
+                    name: "PAYMENTS".into(),
+                },
+                None,
+                Some("proto"),
+                Some(WireFormat::Confluent),
+            ),
+            mapping(
+                "none",
+                MappingTarget::Subject {
+                    pattern: "odd.>".into(),
+                },
+                None,
+                None,
+                None,
+            ),
+            mapping(
+                "avro-no-schema",
+                MappingTarget::Subject {
+                    pattern: "avro.>".into(),
+                },
+                Some(CodecId::Avro),
+                None,
+                None,
+            ),
+        ],
+        ..CodecsConfig::default()
+    });
+    // CBOR through a KV mapping: no schema needed, counted.
+    let kv = Target::KvBucket {
+        bucket: "sessions".into(),
+    };
+    let cbor =
+        message_codecs::codec::cbor::encode(r#"{"user":"c-2207","cart":[1009,1010]}"#).unwrap();
+    let d = codecs
+        .decode(&cbor, Some(&kv), Part::Value, &CodecChoice::auto())
+        .await;
+    assert_eq!(
+        (d.codec, d.text.as_deref()),
+        (
+            CodecId::Cbor,
+            Some(r#"{"user":"c-2207","cart":[1009,1010]}"#)
+        )
+    );
+    let d = codecs
+        .decode(b"\xff", Some(&kv), Part::Value, &CodecChoice::auto())
+        .await;
+    assert_eq!((d.codec, d.text.as_deref()), (CodecId::Hex, Some("ff")));
+    assert!(d.error.unwrap().contains("CBOR"));
+    assert_eq!(
+        codecs.stats().get("cbor"),
+        MappingCount {
+            decoded: 2,
+            failed: 1
+        }
+    );
+
+    // A stream mapping with the Confluent wire format and a local Protobuf schema: the header and
+    // the message indexes are skipped; a subject outside the stream is not mapped.
+    let text = r#"{"id":"o-1","total":{"currency":"EUR","units":"12"},"status":"SHIPPED"}"#;
+    let body = codecs
+        .encode(
+            None,
+            Part::Value,
+            &ComposePayload {
+                codec: CodecId::Protobuf,
+                text: text.into(),
+                schema: Some(SchemaRef::Local("proto".into())),
+                message_type: Some("lab.orders.Order".into()),
+                wire_format: None,
+            },
+        )
+        .await
+        .unwrap()
+        .bytes;
+    let framed = wire::write(42, Some(&[0]), &body);
+    let d = codecs
+        .decode(
+            &framed,
+            Some(&Target::stream_subject("PAYMENTS", "pay.eu")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_eq!(
+        (d.codec, d.text.as_deref()),
+        (CodecId::Protobuf, Some(text))
+    );
+    assert_eq!(
+        d.schema_ref.as_deref(),
+        Some("local:proto#lab.orders.Order")
+    );
+    let d = codecs
+        .decode(
+            &body,
+            Some(&Target::stream_subject("PAYMENTS", "pay.eu")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_eq!(d.codec, CodecId::Hex);
+    assert!(d.error.unwrap().contains("wire format"));
+    assert_eq!(
+        codecs.stats().get("pay"),
+        MappingCount {
+            decoded: 2,
+            failed: 1
+        }
+    );
+    assert_eq!(
+        codecs
+            .decode(
+                &framed,
+                Some(&Target::subject("pay.eu")),
+                Part::Value,
+                &CodecChoice::auto()
+            )
+            .await
+            .codec,
+        CodecId::Hex
+    );
+
+    // Mappings with nothing to decode with say so.
+    let d = codecs
+        .decode(
+            b"{}",
+            Some(&Target::subject("odd.x")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert!(d.error.unwrap().contains("neither a codec nor a schema"));
+    let d = codecs
+        .decode(
+            b"{}",
+            Some(&Target::subject("avro.x")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert!(d.error.unwrap().contains("needs a schema"));
+
+    // The mapping test decodes with a mapping that is not saved, and counts nothing.
+    let draft = mapping(
+        "draft",
+        MappingTarget::Subject {
+            pattern: "x.>".into(),
+        },
+        Some(CodecId::Cbor),
+        None,
+        None,
+    );
+    assert_eq!(codecs.decode_mapping(&draft, &cbor).codec, CodecId::Cbor);
+    assert_eq!(codecs.stats().get("draft"), MappingCount::default());
+
+    // The counts survive new codecs made with the same stats.
+    let again = Codecs::new(CodecsConfig {
+        stats: codecs.stats().clone(),
+        ..CodecsConfig::default()
+    });
+    assert_eq!(again.stats().get("cbor").decoded, 2);
 }

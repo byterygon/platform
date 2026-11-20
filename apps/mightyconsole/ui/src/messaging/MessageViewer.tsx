@@ -18,6 +18,7 @@ import type { ArrowBatch } from "@byterygon/ambidex/arrow";
 import { bigAt, columnIndex, dropFront, intAt, locate, type MessageRow, projectStream, readMessage, textAt } from "./arrow";
 import { COLUMNS, LABELS, type MessageLabels, type MessageSystem } from "./columns";
 import { MessageDetail, type SchemaLoader } from "./MessageDetail";
+import type { DecodeAs } from "./schemas/DecodeAs";
 import { exportObject, toJsonLines } from "./export";
 import type { LiveTail } from "./useLiveTail";
 
@@ -48,10 +49,12 @@ export interface MessageViewerProps {
   rowActions?: readonly RowAction[];
   /** Where each partition or stream last was, after every batch (for Restart after Stop). */
   onPositions?: (positions: LastPosition[]) => void;
+  /** "Decode as…" on messages that did not decode. */
+  decodeAs?: DecodeAs;
 }
 
 /** A message list with a detail pane, on a live or finite message stream. */
-export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = DEFAULT_MAX_MESSAGES, maxBytes = DEFAULT_MAX_BYTES, controls, onCompose, onLoadFull, loadSchema, rowActions, onPositions }: MessageViewerProps) {
+export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = DEFAULT_MAX_MESSAGES, maxBytes = DEFAULT_MAX_BYTES, controls, onCompose, onLoadFull, loadSchema, rowActions, onPositions, decodeAs }: MessageViewerProps) {
   const labels = { ...LABELS[system], ...labelsProp };
   const grid = useRef<DataGridHandle | null>(null);
   const [fields, setFields] = useState<Record<string, number> | null>(null);
@@ -200,6 +203,7 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
                 onLoadFull={onLoadFull}
                 loadSchema={loadSchema}
                 rowActions={rowActions}
+                decodeAs={decodeAs}
               />
             ) : (
               <EmptyLine>Select a {labels.item} to see it.</EmptyLine>

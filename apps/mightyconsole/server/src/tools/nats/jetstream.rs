@@ -1632,6 +1632,7 @@ impl NatsStreamsApi {
                 Some(consumer.messages().await.map_err(|e| remote("browse", e))?)
             }
         };
+        let stream_name = name.clone();
         let source = Browse {
             stream: name,
             messages,
@@ -1646,7 +1647,7 @@ impl NatsStreamsApi {
         let target = |m: &Message| {
             m.subject
                 .as_ref()
-                .map(|s| Target::Subject { subject: s.clone() })
+                .map(|s| Target::stream_subject(stream_name.clone(), s.clone()))
         };
         let req = TailRequest {
             codecs: &codecs,
@@ -1719,7 +1720,7 @@ impl NatsStreamsApi {
         let target = message
             .subject
             .clone()
-            .map(|subject| Target::Subject { subject });
+            .map(|subject| Target::stream_subject(name.clone(), subject));
         let row = decode_row(&codecs, message, &decode, target.as_ref(), 0).await;
         Ok(MessageRecord::from_row(&row))
     }

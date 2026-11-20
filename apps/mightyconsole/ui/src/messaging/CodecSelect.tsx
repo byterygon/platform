@@ -11,6 +11,7 @@ export const CODECS: readonly { id: CodecId | "auto"; label: string }[] = [
   { id: "hex", label: "Hex" },
   { id: "base64", label: "Base64" },
   { id: "msgpack", label: "MessagePack" },
+  { id: "cbor", label: "CBOR" },
   { id: "avro", label: "Avro" },
   { id: "protobuf", label: "Protobuf" },
   { id: "jsonschema", label: "JSON Schema" },
