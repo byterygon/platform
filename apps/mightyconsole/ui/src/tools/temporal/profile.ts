@@ -1,6 +1,6 @@
 // The Temporal profile (Mightyconsole spec §9.1): its versioned schema, defaults, validation and
 // the input of `temporal.connect`. Pure, so the form and the tests share it.
-import type { ConnectTemporalProfile, TemporalTlsOptions } from "@/gen/api";
+import type { ConnectTemporalProfile, ExternalStorageOptions, TemporalTlsOptions } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import type { FieldErrors, ProfileSchema } from "../types";
 
@@ -23,6 +23,116 @@ export interface TlsFields {
 }
 
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
+
+/** The SDKs' default threshold: payloads this size or larger are stored outside. */
+export const DEFAULT_THRESHOLD_BYTES = 256 * 1024;
+
+/**
+ * External Storage (TSK-103): where the SDKs' S3 driver keeps large payloads. Its keys are
+ * secrets: `s3AccessKeyId`, `s3SecretAccessKey`, `s3SessionToken`.
+ */
+export interface ExternalStorageFields {
+  enabled: boolean;
+  bucket: string;
+  endpoint: string;
+  region: string;
+  pathStyle: boolean;
+  /** Other buckets references may name, comma or line separated. */
+  readBuckets: string;
+  caPem: string;
+  thresholdBytes?: number | undefined;
+}
+
+export function externalStorageOf(fields: Record<string, unknown>): ExternalStorageFields {
+  const raw = fields["externalStorage"];
+  const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const out: ExternalStorageFields = {
+    enabled: o["enabled"] === true,
+    bucket: text(o["bucket"]),
+    endpoint: text(o["endpoint"]),
+    region: text(o["region"]),
+    pathStyle: o["pathStyle"] === true,
+    readBuckets: text(o["readBuckets"]),
+    caPem: text(o["caPem"]),
+  };
+  if (typeof o["thresholdBytes"] === "number") out.thresholdBytes = o["thresholdBytes"];
+  return out;
+}
+
+/** The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own. Its
+ * Authorization header is the secret `codecAuthorization`. */
+export interface PayloadCodecFields {
+  enabled: boolean;
+  endpoint: string;
+  /** One "namespace url" per line. */
+  namespaces: string;
+  caPem: string;
+  sendNamespace: boolean;
+  encodeInputs: boolean;
+  timeoutMs?: number | undefined;
+}
+
+export function payloadCodecOf(fields: Record<string, unknown>): PayloadCodecFields {
+  const raw = fields["codec"];
+  const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return {
+    enabled: o["enabled"] === true,
+    endpoint: text(o["endpoint"]),
+    namespaces: text(o["namespaces"]),
+    caPem: text(o["caPem"]),
+    sendNamespace: o["sendNamespace"] !== false,
+    encodeInputs: o["encodeInputs"] !== false,
+    ...(typeof o["timeoutMs"] === "number" ? { timeoutMs: o["timeoutMs"] } : {}),
+  };
+}
+
+/** The per-namespace endpoints of "namespace url" lines; `null` for a line that is not one. */
+export function codecNamespacesOf(lines: string): { namespace: string; endpoint: string }[] | null {
+  const out: { namespace: string; endpoint: string }[] = [];
+  for (const line of lines.split("\n").map((l) => l.trim()).filter((l) => l !== "")) {
+    const m = /^(\S+)\s*(?:→|->|=|\s)\s*(https?:\/\/\S+)$/.exec(line);
+    if (!m) return null;
+    out.push({ namespace: m[1]!, endpoint: m[2]! });
+  }
+  return out;
+}
+
+/** An endpoint the server will call: https, or http on localhost. */
+export function codecEndpointError(url: string): string | null {
+  const m = /^(https?):\/\/([^/:\s]+|\[[^\]]+\])(:\d+)?(\/\S*)?$/.exec(url.trim());
+  if (!m) return "An https:// URL, for example https://codec.internal:8888.";
+  if (m[1] === "http" && !["localhost", "127.0.0.1", "[::1]"].includes(m[2]!.toLowerCase())) return "Plain http is for localhost only; use https with the codec's CA.";
+  return null;
+}
+
+/** The Web UI's origins of a local dev server, allowed by default. */
+export const DEFAULT_CODEC_ORIGINS = "http://localhost:8233, http://127.0.0.1:8233";
+
+/** The codec endpoint (TSK-103): Temporal's codec-server protocol for the Web UI and the CLI. */
+export interface CodecServerFields {
+  enabled: boolean;
+  /** Comma or line separated. */
+  allowedOrigins: string;
+}
+
+export function codecServerOf(fields: Record<string, unknown>): CodecServerFields {
+  const raw = fields["codecServer"];
+  const o = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return { enabled: o["enabled"] === true, allowedOrigins: typeof o["allowedOrigins"] === "string" ? o["allowedOrigins"] : DEFAULT_CODEC_ORIGINS };
+}
+
+/** The codec endpoint of a saved profile on this server. */
+export function codecEndpointOf(origin: string, profileId: string): string {
+  return `${origin.replace(/\/+$/, "")}/codec/${encodeURIComponent(profileId)}`;
+}
+
+/** The buckets of a comma- or line-separated list. */
+export function bucketsOf(list: string): string[] {
+  return list
+    .split(/[\s,]+/)
+    .map((b) => b.trim())
+    .filter((b) => b !== "");
+}
 
 export function tlsOf(fields: Record<string, unknown>): TlsFields {
   const raw = fields["tls"];
@@ -73,6 +183,24 @@ export const profile: ProfileSchema = {
     const tls = tlsOf(record.fields);
     const apiKey = text(record.secrets["apiKey"]);
     const clientKey = text(record.secrets["clientKeyPem"]);
+    const payloadCodec = payloadCodecOf(record.fields);
+    if (payloadCodec.enabled) {
+      const e = payloadCodec.endpoint.trim() === "" ? "The codec server's URL is required." : codecEndpointError(payloadCodec.endpoint);
+      if (e) errors["codec.endpoint"] = e;
+      if (codecNamespacesOf(payloadCodec.namespaces) === null) errors["codec.namespaces"] = "One namespace and its URL per line: payments https://codec-payments:8888";
+      const anyHttps = /^https:/.test(payloadCodec.endpoint.trim()) || (codecNamespacesOf(payloadCodec.namespaces) ?? []).some((n) => n.endpoint.startsWith("https:"));
+      if (anyHttps && payloadCodec.caPem.trim() === "") errors["codec.caPem"] = "An https codec needs its CA certificate; the system's roots are not used.";
+      if (payloadCodec.timeoutMs !== undefined && (!Number.isInteger(payloadCodec.timeoutMs) || payloadCodec.timeoutMs < 100)) errors["codec.timeoutMs"] = "A whole number of milliseconds, 100 or more.";
+    }
+    const ext = externalStorageOf(record.fields);
+    const codec = codecServerOf(record.fields);
+    if (codec.enabled && !ext.enabled) errors["codecServer"] = "The codec endpoint resolves External Storage; turn External Storage on.";
+    if (codec.enabled && bucketsOf(codec.allowedOrigins).some((o) => !/^https?:\/\/[^\s/]+$/.test(o))) errors["codecServer.allowedOrigins"] = "Origins are scheme://host[:port], for example http://localhost:8233.";
+    if (ext.enabled) {
+      if (ext.bucket.trim() === "") errors["externalStorage.bucket"] = "Name the bucket.";
+      if (ext.endpoint.trim() !== "" && !/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(ext.endpoint.trim())) errors["externalStorage.endpoint"] = "An http:// or https:// URL, for example https://minio.example.com:9000.";
+      if (ext.thresholdBytes !== undefined && (!Number.isInteger(ext.thresholdBytes) || ext.thresholdBytes < 1)) errors["externalStorage.thresholdBytes"] = "A whole number of bytes, 1 or more.";
+    }
     if (apiKey !== "" && !tls.enabled) errors["tls"] = "An API key is only sent over TLS; turn TLS on.";
     else if ((tls.clientCertPem !== undefined) !== (clientKey !== "") && tls.enabled) {
       errors["tls"] = tls.clientCertPem === undefined ? "A client key needs its certificate." : "A client certificate needs its private key.";
@@ -90,13 +218,50 @@ export const profile: ProfileSchema = {
     }
     const apiKey = text(record.secrets["apiKey"]);
     const clientKeyPem = text(record.secrets["clientKeyPem"]);
+    const ext = externalStorageOf(record.fields);
+    const secret = (key: string) => text(record.secrets[key]).trim() || null;
+    const externalStorage: ExternalStorageOptions | null = ext.enabled
+      ? {
+          enabled: true,
+          bucket: ext.bucket.trim(),
+          readBuckets: bucketsOf(ext.readBuckets),
+          region: ext.region.trim() || null,
+          endpoint: ext.endpoint.trim() || null,
+          pathStyle: ext.pathStyle,
+          caPem: ext.caPem.trim() || null,
+          driverName: null,
+          thresholdBytes: ext.thresholdBytes ?? null,
+          maxPayloadBytes: null,
+        }
+      : null;
+    const codec = codecServerOf(record.fields);
+    const pc = payloadCodecOf(record.fields);
+    const payloadCodec = pc.enabled
+      ? {
+          enabled: true,
+          endpoint: pc.endpoint.trim(),
+          namespaces: codecNamespacesOf(pc.namespaces) ?? [],
+          caPem: pc.caPem.trim() || null,
+          sendNamespace: pc.sendNamespace,
+          encodeInputs: pc.encodeInputs,
+          timeoutMs: pc.timeoutMs ?? null,
+        }
+      : null;
     return {
       name: record.name,
+      codec: payloadCodec,
+      codecAuthorization: payloadCodec ? text(record.secrets["codecAuthorization"]).trim() || null : null,
+      profileId: record.id,
+      codecServer: externalStorage && codec.enabled ? { enabled: true, allowedOrigins: bucketsOf(codec.allowedOrigins) } : null,
       address: text(record.fields["address"]).trim() || null,
       namespace: text(record.fields["namespace"]).trim() || null,
       tls: options,
       clientKeyPem: clientKeyPem !== "" ? clientKeyPem : null,
       apiKey: apiKey !== "" ? apiKey : null,
+      externalStorage,
+      s3AccessKeyId: externalStorage ? secret("s3AccessKeyId") : null,
+      s3SecretAccessKey: externalStorage ? secret("s3SecretAccessKey") : null,
+      s3SessionToken: externalStorage ? secret("s3SessionToken") : null,
     };
   },
 };

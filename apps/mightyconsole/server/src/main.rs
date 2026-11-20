@@ -44,7 +44,7 @@ fn main() -> ExitCode {
 
 async fn serve(config: ServeConfig) -> ExitCode {
     let exposed = config.is_exposed();
-    let origin = config.public_origin.clone();
+    let origin = format!("{}{}", config.public_origin, config.base_path);
     let hosts = config.allowed_hosts.join(", ");
     let server = match Server::start(config).await {
         Ok(server) => server,

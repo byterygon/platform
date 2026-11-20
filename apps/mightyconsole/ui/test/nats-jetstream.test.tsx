@@ -377,7 +377,7 @@ describe("the tree (spec §6.2)", () => {
     expect(streams.open).toEqual({ kind: "nats.streams", params: {}, title: "Streams" });
     expect(streams.children!.map((n) => n.label)).toEqual(["ORDERS"]);
     expect(streams.children![0]!.children![0]!.open).toEqual({ kind: "nats.consumer", params: { stream: "ORDERS", consumer: "billing" }, title: "billing" });
-    expect(Object.keys(natsTool.tabKinds)).toEqual(["nats.server", "nats.subscribe", "nats.publish", "nats.streams", "nats.stream", "nats.consumer"]);
+    expect(Object.keys(natsTool.tabKinds)).toEqual(["nats.server", "nats.subscribe", "nats.publish", "nats.streams", "nats.stream", "nats.consumer", "nats.kvs", "nats.kv", "nats.objects", "nats.object", "nats.services"]);
   });
 
   test("JetStream off: the group says why", async () => {

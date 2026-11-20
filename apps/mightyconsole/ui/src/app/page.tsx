@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/control";
 import { ChevronLeft, ChevronRight, Copy } from "@/lib/icons";
+import type { LinkEvent } from "@/tools/types";
 
 /** A tool screen: header, bar and region in a column that fills the tab. */
 export function Page({ children, className }: { children: ReactNode; className?: string }) {
@@ -108,9 +109,50 @@ export function CopyButton({ value, what, className }: { value: string; what: st
   );
 }
 
-/** A link-styled button for table cells and lists: the link colour, no padding, an underline on hover, the focus ring. */
-export function LinkButton({ className, type = "button", ...props }: ComponentProps<"button">) {
-  return <button type={type} className={cn("max-w-full cursor-pointer truncate rounded-sm text-start text-body-1 text-fg-link hover:underline", focusRing, className)} {...props} />;
+/**
+ * A link-styled button for table cells and lists: the link colour, no padding, an underline on
+ * hover, the focus ring. With `onOpen` it is a link to a place (DOC-21 §3.7): a click and a middle
+ * click both call it with the event, so `TabProps.go` picks this tab or another.
+ */
+export function LinkButton({ className, type = "button", onOpen, onClick, onAuxClick, onMouseDown, ...props }: ComponentProps<"button"> & { onOpen?: (event: LinkEvent) => void }) {
+  return (
+    <button
+      type={type}
+      className={cn("max-w-full cursor-pointer truncate rounded-sm text-start text-body-1 text-fg-link hover:underline", focusRing, className)}
+      onClick={(e) => {
+        onClick?.(e);
+        if (onOpen && !e.defaultPrevented) onOpen(e);
+      }}
+      onAuxClick={(e) => {
+        onAuxClick?.(e);
+        if (onOpen && e.button === 1) {
+          e.preventDefault();
+          onOpen(e);
+        }
+      }}
+      onMouseDown={(e) => {
+        onMouseDown?.(e);
+        // The middle button would start the browser's autoscroll.
+        if (onOpen && e.button === 1) e.preventDefault();
+      }}
+      {...props}
+    />
+  );
+}
+
+/** The click and middle-click handlers of an element that is a link to a place (a table row's name). */
+export function linkHandlers(open: (event: LinkEvent) => void): Pick<ComponentProps<"button">, "onClick" | "onAuxClick" | "onMouseDown"> {
+  return {
+    onClick: (e) => open(e),
+    onAuxClick: (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      open(e);
+    },
+    onMouseDown: (e) => {
+      if (e.button === 1) e.preventDefault();
+    },
+  };
 }
 
 export interface PagerProps {

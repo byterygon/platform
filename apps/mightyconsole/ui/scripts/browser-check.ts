@@ -7,6 +7,14 @@
 //     the CSP all hold, because app.info answers over /rpc/ws and the status bar shows the origin;
 //   - a profile added through the UI connects (echo.connect), its Ticks tab streams with credits,
 //     and after a reload the tab comes back and connects again;
+//   - routing (DOC-21 §3.7): the URL follows the active tab, a deep link loads at its path and
+//     focuses its tab, Back and Forward and a reload keep each URL's place; and again on a
+//     second server with --router hash --base-path /tools/mc (the page, assets and WebSocket
+//     under the prefix, the place in the hash, reload, an edited hash, Back);
+//   - the navigation row (TSK-105): crumbs, a link up as a step, Back's list, Back and Forward,
+//     a segment's siblings menu, Copy link, the path folded into … when narrow; a link to a
+//     missing profile shows its page and opens with another profile; a profile sheet with a
+//     typed name holds the browser's Back (Discard changes?, useBlocker);
 //   - the page opened through 127.0.0.1 is redirected to the public origin;
 //   - every request goes to the server's origin (or data:/blob:), and no script or CSP error is
 //     logged;
@@ -43,7 +51,12 @@ const check = (ok: boolean, message: string) => {
   if (!ok) failures.push(message);
   return ok;
 };
-const until = async (page: Page, expression: string, what: string, timeoutMs = 20_000) => (await waitUntil(page, expression, timeoutMs)) || check(false, `timed out waiting for ${what}`);
+const until = async (page: Page, expression: string, what: string, timeoutMs = 20_000) => {
+  if (await waitUntil(page, expression, timeoutMs)) return true;
+  // What the page showed, so a failure in CI says more than its name.
+  const shown = await page.evaluate<string>(`document.body.innerText.replace(/\\s+/g, " ").slice(0, 600)`).catch(() => "");
+  return check(false, `timed out waiting for ${what}; the page showed: ${shown}`);
+};
 
 /** Monaco's share of the built UI: its chunks, workers and CSS, and whether the page loads any of it up front. */
 function monacoBundle(dist: string) {
@@ -147,6 +160,7 @@ async function main(): Promise<number> {
   const uiArgs = embedded ? [] : ["--ui", join(APP, "dist")];
   const server = spawn(serverBinary, ["--listen", `127.0.0.1:${port}`, ...uiArgs, "--data", data], { stdio: ["ignore", "ignore", "pipe"] });
   let chrome: ChildProcess | undefined;
+  let hashServer: ChildProcess | undefined;
   let cdp: Cdp | undefined;
   try {
     const [startup] = await waitForLine(server, /[\s\S]*open https:\/\/localhost:\d+\//, "mightyconsole-server");
@@ -206,6 +220,107 @@ async function main(): Promise<number> {
     await until(page, `[...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ticks · smoke"))`, "the restored tab");
     await until(page, `__mc.button("Start") && !__mc.has("Connect to smoke")`, "the restored tab to connect");
 
+    // 3a. Routing (DOC-21 §3.7, browser mode): the URL follows the active tab; a deep link loads
+    // the page and its assets at a deep path and focuses its tab; Back and Forward across loads
+    // focus each URL's tab; a reload keeps the place.
+    const selected = (title: string) => `[...document.querySelectorAll("[role=tab][aria-selected=true]")].some((t) => t.textContent.includes(${JSON.stringify(title)}))`;
+    await until(page, `location.pathname === "/echo/smoke/messages"`, "the URL of the restored active tab");
+    await page.navigate(`${origin}/echo/smoke/ticks`);
+    await until(page, `${selected("Ticks · smoke")} && __mc.button("Start")`, "the deep link's tab");
+    await page.navigate(`${origin}/echo/smoke/compose`);
+    await until(page, selected("Composer"), "the second deep link's tab");
+    await run(page, `history.back()`);
+    await until(page, `location.pathname === "/echo/smoke/ticks" && ${selected("Ticks · smoke")}`, "Back to the Ticks tab");
+    await run(page, `history.forward()`);
+    await until(page, `location.pathname === "/echo/smoke/compose" && ${selected("Composer")}`, "Forward to the Composer tab");
+    await run(
+      page,
+      `(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.textContent.includes("Ticks · smoke")); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`,
+    );
+    await until(page, `location.pathname === "/echo/smoke/ticks"`, "the URL following a clicked tab");
+    await page.navigate(`${origin}/echo/smoke/ticks`);
+    await until(page, `${selected("Ticks · smoke")} && location.pathname === "/echo/smoke/ticks"`, "the place after a reload");
+    // 3b. The navigation row (TSK-105) on a Temporal profile that never connects (no Temporal here):
+    // the row sits above the tab's states, so its crumbs, Back list, siblings and link all work.
+    const row = `document.querySelector("[role=tabpanel]:not([hidden]) [role=toolbar][aria-label=Location]")`;
+    const crumbs = `[...${row}.querySelectorAll("[data-slot=breadcrumb-item]")].map((el) => el.textContent.trim()).join(" / ")`;
+    const rowButton = (label: string) => `[...${row}.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
+    const press = (el: string) =>
+      `(() => { const t = ${el}; if (!t) throw new Error("nothing to press"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`;
+    const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((el) => el.textContent.trim() === ${JSON.stringify(label)})`;
+    await run(page, `__mc.click(__mc.button("Temporal"))`);
+    await until(page, `__mc.has("No Temporal connections yet")`, "the Temporal connection list");
+    await run(page, `__mc.click(__mc.button("Add connection"))`);
+    await until(page, `__mc.field("Name")`, "the Temporal profile sheet");
+    await run(page, `__mc.type(__mc.field("Name"), "lab")`);
+    // A port nothing listens on, so the profile never connects, with or without a lab running.
+    await until(page, `__mc.field("Address")`, "the Temporal form's Address");
+    await run(page, `__mc.field("Address") && __mc.type(__mc.field("Address"), "127.0.0.1:9")`);
+    await run(page, `__mc.click(__mc.button("Save"))`);
+    await until(page, `__mc.item("lab")`, "the saved Temporal profile");
+    await page.navigate(`${origin}/temporal/lab/orders/workflows/order-48213/history`);
+    await until(page, `${row} && ${crumbs} === "lab / orders / Workflows / order-48213 / History"`, "the navigation row's crumbs");
+    await until(page, `[...${row}.querySelectorAll("span")].some((s) => s.textContent === "/temporal/lab/orders/workflows/order-48213/history")`, "the link text");
+    check(await run(page, `${row}.querySelector("[aria-current=page]")?.textContent.trim() === "History"`) === true, "nav row: the current segment is not History");
+    // A link up is a step; Back's list names both; picking one moves the tab.
+    await run(page, press(rowButton("Workflows")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows" && ${crumbs} === "lab / orders / Workflows"`, "the Workflows crumb as a step");
+    await run(page, `${rowButton("Back")}.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }))`);
+    await until(page, `${menuItem("Workflows · orders")} && ${menuItem("History · order-48213")} && __mc.has("This tab")`, "Back's list of this tab");
+    await run(page, press(menuItem("History · order-48213")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows/order-48213/history"`, "the step picked from Back's list");
+    await run(page, press(rowButton("Forward")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows"`, "Forward in the row");
+    await run(page, press(rowButton("Back")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows/order-48213/history"`, "Back in the row");
+    // A level's siblings: the namespaces, which need the connection.
+    await run(page, press(rowButton("orders")));
+    await until(page, `__mc.has("Connect the profile to list them.")`, "the namespace segment's menu");
+    await run(page, `document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+    // Copy link copies the address bar's URL.
+    await page.send("Browser.grantPermissions", { origin, permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"] });
+    await run(page, press(rowButton("Copy link")));
+    await until(page, `__mc.has("Copied link")`, "Copy link's toast");
+    const copied = await page.evaluate<string>(`navigator.clipboard.readText()`).catch(() => "");
+    check(copied === `${origin}/temporal/lab/orders/workflows/order-48213/history`, `Copy link copied ${JSON.stringify(copied)}`);
+    // Narrow: the link text goes first, then the first segments fold into "…".
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 640, height: 800, deviceScaleFactor: 1, mobile: false });
+    await until(page, `${rowButton("Show the hidden path")} && ![...${row}.querySelectorAll("span")].some((s) => s.textContent.startsWith("/temporal/"))`, "the folded path");
+    check(await run(page, `${crumbs}.endsWith("order-48213 / History")`) === true, "nav row: the last two segments fold");
+    await run(page, press(rowButton("Show the hidden path")));
+    await until(page, `${menuItem("lab")} && ${menuItem("Workflows")}`, "the hidden path's menu");
+    await run(page, press(menuItem("Workflows")));
+    await until(page, `location.pathname === "/temporal/lab/orders/workflows"`, "a hidden segment picked");
+    await page.send("Emulation.clearDeviceMetricsOverride", {});
+    // Unsaved changes (useBlocker): a profile sheet with a typed name holds the browser's Back
+    // (inside the document: the steps above pushed entries).
+    await run(page, `__mc.click(__mc.button("Add connection"))`);
+    await until(page, `__mc.field("Name")`, "the profile sheet (unsaved changes)");
+    await sleep(300);
+    await run(page, `__mc.type(__mc.field("Name"), "half-typed")`);
+    await sleep(300);
+    await run(page, `history.back()`);
+    await until(page, `__mc.has("Discard changes?") && __mc.button("Keep editing")`, "Discard changes? on the browser's Back");
+    await run(page, `__mc.click(__mc.button("Keep editing"))`);
+    await until(page, `!__mc.has("Discard changes?")`, "Keep editing");
+    await sleep(500);
+    check(await run(page, `location.pathname === "/temporal/lab/orders/workflows" && __mc.field("Name")?.value === "half-typed"`) === true, "blocker: Keep editing left the page or the sheet");
+    await run(page, `history.back()`);
+    await until(page, `__mc.button("Discard changes")`, "Discard changes? again");
+    await run(page, `__mc.click(__mc.button("Discard changes"))`);
+    await until(page, `location.pathname !== "/temporal/lab/orders/workflows"`, "Back after discarding");
+    await run(page, `__mc.click(__mc.button("Cancel"))`);
+
+    // 3c. A link to a missing profile: its page, its URL kept, nothing connected.
+    await page.navigate(`${origin}/echo/nobody/ticks`);
+    await until(page, `__mc.has("This link needs an Echo profile named nobody") && __mc.button("Create profile nobody") && __mc.button("Import profiles…")`, "the missing-profile page");
+    check(await run(page, `location.pathname === "/echo/nobody/ticks"`) === true, "missing profile: the URL changed");
+    await run(page, press(`__mc.button("Open with another profile…")`));
+    await until(page, menuItem("smoke"), "another Echo profile to open the link with");
+    await run(page, press(menuItem("smoke")));
+    await until(page, `location.pathname === "/echo/smoke/ticks" && ${selected("Ticks · smoke")}`, "the link opened with smoke");
+
+
     // 3b. Monaco cold (TSK-93): the restored Messages tab's jq editor, three loads.
     const keystroke = await firstKeystroke(page, `${origin}/`);
     if (keystroke) console.log(`browser-check: jq editor: fallback at ${keystroke.fallbackMs} ms, Monaco ready at ${keystroke.monacoReadyMs} ms, first key shown ${keystroke.keystrokeMs} ms after it was pressed (median of 3 cold loads)`);
@@ -219,7 +334,47 @@ async function main(): Promise<number> {
     check(foreign.length === 0, `requests outside the server: ${foreign.join(", ")}`);
     check(page.requests.some((url) => url === `wss://localhost:${port}/rpc/ws`), "no WebSocket to /rpc/ws");
     check(page.errors.length === 0, `errors in the page:\n  ${page.errors.join("\n  ")}`);
+
+    // 6. Hash mode under a base path (DOC-21 §2.3, §3.7): a second server with --router hash
+    // --base-path /tools/mc. `/` leads to the base path; the page, its assets and the WebSocket
+    // are under it; the place is in the hash; a reload, an edited hash and Back keep it.
+    const hashPort = await freePort();
+    const hashOrigin = `https://localhost:${hashPort}`;
+    hashServer = spawn(serverBinary, ["--listen", `127.0.0.1:${hashPort}`, ...uiArgs, "--data", data, "--router", "hash", "--base-path", "/tools/mc"], { stdio: ["ignore", "ignore", "pipe"] });
+    await waitForLine(hashServer, /[\s\S]*open https:\/\/localhost:\d+\/tools\/mc\//, "mightyconsole-server --router hash");
+    const errorsBefore = page.errors.length;
+    await page.navigate(`${hashOrigin}/`);
+    await until(page, `location.pathname === "/tools/mc/" && __mc.button("Echo")`, "the page under the base path");
+    await run(page, `__mc.click(__mc.button("Echo"))`);
+    await until(page, `__mc.has(${JSON.stringify(hashOrigin)})`, "app.info over /tools/mc/rpc/ws");
+    await run(page, `__mc.click(__mc.button("Add connection"))`);
+    await until(page, `__mc.field("Name")`, "the profile sheet (hash mode)");
+    await run(page, `__mc.type(__mc.field("Name"), "smoke")`);
+    await run(page, `__mc.click(__mc.button("Save"))`);
+    await until(page, `__mc.item("smoke")`, "the saved profile (hash mode)");
+    await run(page, `__mc.dblclick(__mc.item("smoke"))`);
+    await until(page, `__mc.item("Ticks")`, "echo.connect (hash mode)");
+    await run(page, `__mc.dblclick(__mc.item("Ticks"))`);
+    await until(page, `location.hash === "#/echo/smoke/ticks" && location.pathname === "/tools/mc/"`, "the place in the hash");
+    await run(page, `__mc.dblclick(__mc.item("Composer"))`);
+    await until(page, `location.hash === "#/echo/smoke/compose" && ${selected("Composer")}`, "the Composer's place in the hash");
+    await savedTab(page, "Composer", 15_000);
+    // A reload keeps the hash: the restored page opens its place (the marker tells the pages apart).
+    await run(page, `(window.__old = true)`);
+    await page.send("Page.reload", {});
+    await until(page, `!window.__old && ${selected("Composer")} && location.hash === "#/echo/smoke/compose"`, "the place after a reload (hash mode)");
+    // An edited hash opens or focuses its tab; Back shows the entry before it.
+    await run(page, `(location.hash = "#/echo/smoke/ticks", true)`);
+    await until(page, `${selected("Ticks · smoke")}`, "the edited hash's tab");
+    await run(page, `history.back()`);
+    await until(page, `location.hash === "#/echo/smoke/compose" && ${selected("Composer")}`, "Back to the Composer (hash mode)");
+    const hashRequests = page.requests.filter((url) => url.startsWith(`${hashOrigin}/`) || url.startsWith(`wss://localhost:${hashPort}/`));
+    check(hashRequests.some((url) => url === `wss://localhost:${hashPort}/tools/mc/rpc/ws`), "hash mode: no WebSocket to /tools/mc/rpc/ws");
+    const outside = hashRequests.filter((url) => url.startsWith(`${hashOrigin}/`) && url !== `${hashOrigin}/` && !url.startsWith(`${hashOrigin}/tools/mc/`));
+    check(outside.length === 0, `hash mode: requests outside the base path: ${outside.join(", ")}`);
+    check(page.errors.length === errorsBefore, `hash mode: errors in the page:\n  ${page.errors.slice(errorsBefore).join("\n  ")}`);
   } finally {
+    hashServer?.kill();
     cdp?.close();
     chrome?.kill();
     server.kill();
@@ -237,6 +392,7 @@ async function main(): Promise<number> {
 main().then(
   (code) => process.exit(code),
   (error: unknown) => {
+    if (failures.length > 0) console.error(`browser-check: before the error:\n- ${failures.join("\n- ")}`);
     console.error(`browser-check: ${error instanceof Error ? error.stack : String(error)}`);
     process.exit(1);
   },

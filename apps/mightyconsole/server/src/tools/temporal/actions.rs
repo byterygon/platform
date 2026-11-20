@@ -22,7 +22,7 @@ use super::{TOOL, rfc3339};
 use crate::core::{ToolError, random_id};
 
 /// Who the history says made the change.
-const IDENTITY: &str = "mightyconsole";
+pub(super) const IDENTITY: &str = "mightyconsole";
 
 fn required(field: &str, value: Option<&str>) -> Result<String, ToolError> {
     match value.map(str::trim).filter(|v| !v.is_empty()) {
@@ -50,18 +50,28 @@ pub async fn signal(client: &TemporalClient, input: WorkflowSignalInput) -> Resu
     let namespace = client.namespace_or_default(input.namespace.as_deref());
     client
         .service()
-        .signal_workflow_execution(client.request(
-            &namespace,
-            ws::SignalWorkflowExecutionRequest {
-                namespace: namespace.clone(),
-                workflow_execution: Some(execution(&input.workflow_id, input.run_id.as_deref())?),
-                signal_name: name.to_owned(),
-                input: (!args.is_empty()).then_some(Payloads { payloads: args }),
-                identity: IDENTITY.into(),
-                request_id: random_id(),
-                ..Default::default()
-            },
-        ))
+        .signal_workflow_execution(
+            client.request(
+                &namespace,
+                ws::SignalWorkflowExecutionRequest {
+                    namespace: namespace.clone(),
+                    workflow_execution: Some(execution(
+                        &input.workflow_id,
+                        input.run_id.as_deref(),
+                    )?),
+                    signal_name: name.to_owned(),
+                    input: super::extstore::offload(
+                        client,
+                        &namespace,
+                        (!args.is_empty()).then_some(Payloads { payloads: args }),
+                    )
+                    .await?,
+                    identity: IDENTITY.into(),
+                    request_id: random_id(),
+                    ..Default::default()
+                },
+            ),
+        )
         .await
         .map_err(|s| status_error(&client.address, &s))?;
     Ok(())
@@ -213,7 +223,7 @@ pub fn spec_in_words(spec: Option<&sched::ScheduleSpec>) -> String {
     parts.join("; ")
 }
 
-fn action_of(result: &sched::ScheduleActionResult) -> ScheduleAction {
+pub(super) fn action_of(result: &sched::ScheduleActionResult) -> ScheduleAction {
     let started = result.start_workflow_result.clone().unwrap_or_default();
     ScheduleAction {
         scheduled_time: result.schedule_time.as_ref().and_then(rfc3339),
@@ -374,7 +384,7 @@ pub async fn schedule_describe(
     })
 }
 
-fn overlap(policy: Option<ScheduleOverlap>) -> i32 {
+pub(super) fn overlap(policy: Option<ScheduleOverlap>) -> i32 {
     match policy {
         None => 0,
         Some(ScheduleOverlap::Skip) => 1,

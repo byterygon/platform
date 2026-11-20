@@ -525,6 +525,22 @@
       ],
       "type": "object"
     },
+    "CodecNamespaceEndpoint": {
+      "description": "One namespace's own codec endpoint.",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace",
+        "endpoint"
+      ],
+      "type": "object"
+    },
     "CodecSelector": {
       "anyOf": [
         {
@@ -535,6 +551,30 @@
         }
       ],
       "description": "`\"auto\"` or a codec id."
+    },
+    "CodecServerOptions": {
+      "description": "The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at\n`/codec/<profileId>/decode` and `/encode` while the profile is connected.",
+      "properties": {
+        "allowedOrigins": {
+          "default": null,
+          "description": "The browser origins allowed to call it (the Temporal Web UI's); callers without an Origin\n(the CLI) are accepted.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     },
     "ComposePayload": {
       "description": "What the Composer sends for a key or a value (spec §5.7).",
@@ -845,12 +885,83 @@
             "null"
           ]
         },
+        "codec": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PayloadCodecOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The payload codec (TSK-92, spec §9.5)."
+        },
+        "codecAuthorization": {
+          "default": null,
+          "description": "The codec's `Authorization` header value; never logged, never sent to the browser again.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "codecServer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodecServerOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Serve the profile on the codec endpoint (TSK-103)."
+        },
+        "externalStorage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExternalStorageOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "External Storage (TSK-103)."
+        },
         "name": {
           "type": "string"
         },
         "namespace": {
           "default": null,
           "description": "The namespace opened first; `default` when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profileId": {
+          "default": null,
+          "description": "The profile's stable id in the browser: the codec endpoint's path names it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "s3AccessKeyId": {
+          "default": null,
+          "description": "The S3 credentials of External Storage; never logged.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "s3SecretAccessKey": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "s3SessionToken": {
+          "default": null,
           "type": [
             "string",
             "null"
@@ -1504,6 +1615,98 @@
         "Other"
       ],
       "type": "string"
+    },
+    "ExternalStorageOptions": {
+      "description": "Temporal External Storage on an S3-compatible store (TSK-103): where the SDKs' S3 driver keeps\npayloads of 256 KiB or more. Its credentials come beside it as `s3AccessKeyId`,\n`s3SecretAccessKey` and `s3SessionToken`.",
+      "properties": {
+        "bucket": {
+          "default": null,
+          "description": "Where Mightyconsole and the codec endpoint write; read too.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "caPem": {
+          "default": null,
+          "description": "The store's CA (PEM); the system's trust store when empty (spec Open question (b)).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driverName": {
+          "default": null,
+          "description": "`aws.s3driver` when empty: the name the workers' driver has.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "default": null,
+          "description": "`https://s3.<region>.amazonaws.com` when empty; MinIO and other stores give theirs.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxPayloadBytes": {
+          "default": null,
+          "description": "The largest payload read or written (50 MiB, the Go driver's default).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pathStyle": {
+          "default": null,
+          "description": "`<endpoint>/<bucket>/<key>` addressing (MinIO and most S3-compatible stores).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "readBuckets": {
+          "default": null,
+          "description": "Other buckets references may name (the workers' buckets); `bucket` is always read.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "region": {
+          "default": null,
+          "description": "`us-east-1` when empty.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thresholdBytes": {
+          "default": null,
+          "description": "Payloads this size or larger are stored outside (262144, the SDKs' default).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     },
     "Filter": {
       "description": "The filter (spec §5.4).",
@@ -3229,6 +3432,66 @@
       ],
       "type": "string"
     },
+    "NatsEndpointStats": {
+      "description": "One endpoint's counters.",
+      "properties": {
+        "averageProcessingTimeNs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "data": {
+          "description": "The service's own `data`, as JSON text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errors": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lastError": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "processingTimeNs": {
+          "description": "Total time spent in the handler, in nanoseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "queueGroup": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requests": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "subject",
+        "requests",
+        "errors",
+        "processingTimeNs",
+        "averageProcessingTimeNs"
+      ],
+      "type": "object"
+    },
     "NatsGetMessageInput": {
       "properties": {
         "connId": {
@@ -3279,6 +3542,995 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "NatsKvBucketInfo": {
+      "description": "A bucket's configuration and state (spec §6.5, `KvBucketInfo`).",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "compression": {
+          "type": "boolean"
+        },
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "history": {
+          "description": "Revisions kept per key.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "maxBytes": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxValueSize": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mirror": {
+          "description": "The bucket it mirrors (a leaf node's copy).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "ttlMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "values": {
+          "description": "Entries stored, every revision and delete marker included.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bucket",
+        "values",
+        "bytes",
+        "history",
+        "storage",
+        "replicas",
+        "compression",
+        "createdUs"
+      ],
+      "type": "object"
+    },
+    "NatsKvBucketInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket"
+      ],
+      "type": "object"
+    },
+    "NatsKvBucketsListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "NatsKvConfig": {
+      "description": "A new bucket (spec §6.4: history, TTL, max value size, storage, replicas).",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "compression": {
+          "type": "boolean"
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "history": {
+          "description": "Revisions kept per key, 1 to 64.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "maxBytes": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxValueSize": {
+          "default": null,
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "ttlMs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bucket",
+        "history",
+        "storage",
+        "replicas",
+        "compression"
+      ],
+      "type": "object"
+    },
+    "NatsKvCreateInput": {
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/NatsKvConfig"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "config"
+      ],
+      "type": "object"
+    },
+    "NatsKvGetInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "key": {
+          "type": "string"
+        },
+        "revision": {
+          "default": null,
+          "description": "The latest when absent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "key"
+      ],
+      "type": "object"
+    },
+    "NatsKvHistoryInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "key"
+      ],
+      "type": "object"
+    },
+    "NatsKvKey": {
+      "description": "One key of the list: its last entry.",
+      "properties": {
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "key": {
+          "type": "string"
+        },
+        "operation": {
+          "description": "`put`, `delete` or `purge`.",
+          "type": "string"
+        },
+        "preview": {
+          "description": "The value's first characters when it is UTF-8.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "revision",
+        "operation",
+        "createdUs",
+        "size"
+      ],
+      "type": "object"
+    },
+    "NatsKvKeyInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "key"
+      ],
+      "type": "object"
+    },
+    "NatsKvKeysInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "filter": {
+          "default": null,
+          "description": "A key or pattern (`feature.>`, `limits.*`); every key when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "includeDeleted": {
+          "default": null,
+          "description": "Keys whose last entry is a delete or purge marker too.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "description": "At most 10,000 (the default).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "bucket"
+      ],
+      "type": "object"
+    },
+    "NatsKvKeysOutput": {
+      "properties": {
+        "keys": {
+          "items": {
+            "$ref": "#/$defs/NatsKvKey"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "description": "More keys match than were listed: narrow with a filter.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "keys",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "NatsKvPutInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "expectRevision": {
+          "default": null,
+          "description": "The key's current revision; 0 when it must not exist yet. A different one is `Conflict`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/ComposePayload"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "key",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "NatsKvPutOutput": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schemaRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "revision",
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "NatsKvWatchInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "decode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecodeOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Filter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fromRevision": {
+          "default": null,
+          "description": "Start at this revision (overrides `includeHistory`).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "includeHistory": {
+          "default": null,
+          "description": "Every revision kept first, then the changes (else the current value of each key first).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "keys": {
+          "default": null,
+          "description": "A key or pattern; `>` for the whole bucket.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maxScan": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "streamId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "streamId",
+        "bucket"
+      ],
+      "type": "object"
+    },
+    "NatsObjBucketInfo": {
+      "description": "An object store's configuration and state.",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "bytes": {
+          "description": "Bytes stored: the objects' chunks and their metadata.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "compression": {
+          "type": "boolean"
+        },
+        "createdUs": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxBytes": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sealed": {
+          "description": "A sealed bucket takes no more changes.",
+          "type": "boolean"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "ttlMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bucket",
+        "bytes",
+        "storage",
+        "replicas",
+        "compression",
+        "sealed",
+        "createdUs"
+      ],
+      "type": "object"
+    },
+    "NatsObjBucketInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket"
+      ],
+      "type": "object"
+    },
+    "NatsObjBucketsListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "NatsObjConfig": {
+      "description": "A new object store (spec §6.4).",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "compression": {
+          "type": "boolean"
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "maxBytes": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replicas": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "storage": {
+          "$ref": "#/$defs/NatsStorage"
+        },
+        "ttlMs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bucket",
+        "storage",
+        "replicas",
+        "compression"
+      ],
+      "type": "object"
+    },
+    "NatsObjCreateInput": {
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/NatsObjConfig"
+        },
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "config"
+      ],
+      "type": "object"
+    },
+    "NatsObjGetSummary": {
+      "description": "The end of a download.",
+      "properties": {
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "size"
+      ],
+      "type": "object"
+    },
+    "NatsObjListOutput": {
+      "properties": {
+        "objects": {
+          "description": "In name order.",
+          "items": {
+            "$ref": "#/$defs/NatsObjectInfo"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "description": "More than 10,000 objects: the first ones read are listed.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "objects",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadFinishInput": {
+      "properties": {
+        "sha256": {
+          "default": null,
+          "description": "The file's SHA-256 as the browser computed it (hex, or `SHA-256=<base64url>`); checked\nwhen given.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uploadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uploadId"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadIdInput": {
+      "properties": {
+        "uploadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uploadId"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadPartInput": {
+      "properties": {
+        "data": {
+          "description": "The part's bytes in base64.",
+          "type": "string"
+        },
+        "index": {
+          "description": "0, 1, 2… in order.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "uploadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uploadId",
+        "index",
+        "data"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadPartOutput": {
+      "properties": {
+        "received": {
+          "description": "Bytes stored so far.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "received"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadStartInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headers": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/NatsObjectHeader"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "description": "The file's size: the parts must add up to it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "name",
+        "size"
+      ],
+      "type": "object"
+    },
+    "NatsObjUploadStartOutput": {
+      "properties": {
+        "partBytes": {
+          "description": "Every part but the last is this long.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "uploadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uploadId",
+        "partBytes"
+      ],
+      "type": "object"
+    },
+    "NatsObjectHeader": {
+      "description": "One header of an object.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "NatsObjectInfo": {
+      "description": "An object's metadata (spec §6.3: name, size, modified, chunks, digest, description, headers).",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "chunkSize": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "description": "`SHA-256=<base64url>`, as the clients write it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headers": {
+          "items": {
+            "$ref": "#/$defs/NatsObjectHeader"
+          },
+          "type": "array"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NatsObjectLink"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "modifiedUs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "nuid": {
+          "description": "This version's id; its chunks are on `$O.<bucket>.C.<nuid>`.",
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bucket",
+        "name",
+        "size",
+        "chunks",
+        "headers",
+        "metadata",
+        "nuid"
+      ],
+      "type": "object"
+    },
+    "NatsObjectInput": {
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "bucket",
+        "name"
+      ],
+      "type": "object"
+    },
+    "NatsObjectLink": {
+      "description": "The object or bucket an object links to.",
+      "properties": {
+        "bucket": {
+          "type": "string"
+        },
+        "name": {
+          "description": "The object; absent for a link to the whole bucket.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bucket"
+      ],
       "type": "object"
     },
     "NatsPeer": {
@@ -3622,6 +4874,177 @@
         "rttMs",
         "connection",
         "jetstream"
+      ],
+      "type": "object"
+    },
+    "NatsServiceEndpoint": {
+      "description": "One endpoint of a service.",
+      "properties": {
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "queueGroup": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "subject",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "NatsServiceInfo": {
+      "description": "A service instance as `$SRV.INFO` describes it.",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/NatsServiceEndpoint"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "rttMs": {
+          "description": "From the request to this reply.",
+          "format": "double",
+          "type": "number"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "id",
+        "version",
+        "metadata",
+        "endpoints",
+        "rttMs"
+      ],
+      "type": "object"
+    },
+    "NatsServicePing": {
+      "description": "A `$SRV.PING` reply.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "rttMs": {
+          "format": "double",
+          "type": "number"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "id",
+        "version",
+        "rttMs"
+      ],
+      "type": "object"
+    },
+    "NatsServiceStats": {
+      "description": "A service instance as `$SRV.STATS` reports it.",
+      "properties": {
+        "endpoints": {
+          "items": {
+            "$ref": "#/$defs/NatsEndpointStats"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "started": {
+          "description": "When the instance started (RFC 3339, as the service wrote it).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "id",
+        "version",
+        "endpoints"
+      ],
+      "type": "object"
+    },
+    "NatsServicesInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "default": null,
+          "description": "Only this instance of `name`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "default": null,
+          "description": "Only this service.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeoutMs": {
+          "default": null,
+          "description": "How long replies are gathered; 2,000 by default.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId"
       ],
       "type": "object"
     },
@@ -4260,6 +5683,71 @@
       ],
       "type": "object"
     },
+    "PayloadCodecOptions": {
+      "description": "The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that\nmightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header\ncomes beside it as `codecAuthorization`.",
+      "properties": {
+        "caPem": {
+          "default": null,
+          "description": "The codec's CA (PEM): the only trusted root (Open question 31).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enabled": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "encodeInputs": {
+          "default": null,
+          "description": "Encode the inputs Mightyconsole sends through `/encode` (on when empty).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "default": null,
+          "description": "`https://codec.internal:8888`; plain http on localhost only.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "namespaces": {
+          "description": "Namespaces with their own endpoint.",
+          "items": {
+            "$ref": "#/$defs/CodecNamespaceEndpoint"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sendNamespace": {
+          "default": null,
+          "description": "Send `X-Namespace` (on when empty).",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "timeoutMs": {
+          "default": null,
+          "description": "Per call (10000 when empty).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "Poller": {
       "properties": {
         "identity": {
@@ -4362,6 +5850,368 @@
         }
       ],
       "description": "A schema in the registry, by id or by subject and version."
+    },
+    "RelationChild": {
+      "description": "A child started by this run, from its history.",
+      "properties": {
+        "closeTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure": {
+          "description": "The failure's message, or why it could not start.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "initiatedEventId": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/WorkflowStatus",
+          "description": "`Running` once started; `Unspecified` while only initiated or when it could not start."
+        },
+        "workflowId": {
+          "type": "string"
+        },
+        "workflowType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowId",
+        "workflowType",
+        "status",
+        "initiatedEventId"
+      ],
+      "type": "object"
+    },
+    "RelationEdge": {
+      "description": "An arrow: parent to child, or the sender of a signal or cancel to its target.",
+      "properties": {
+        "eventId": {
+          "description": "The event of this run that records it.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "from": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RelationEdgeKind"
+        },
+        "label": {
+          "description": "The signal's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "RelationEdgeKind": {
+      "enum": [
+        "child",
+        "signal",
+        "cancel"
+      ],
+      "type": "string"
+    },
+    "RelationFamily": {
+      "description": "What the server can say about the family, and how much of it is drawn.",
+      "properties": {
+        "drawn": {
+          "description": "Boxes drawn in the tree (the other ends of signals not counted).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "levels": {
+          "description": "Levels drawn.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "notDrawn": {
+          "description": "Workflows of the family left out of the drawing.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "query": {
+          "description": "The Workflows query that lists the scope's workflows; absent when the server has no\nattribute for it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Why Whole family is not offered: the server's answer.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/RelationScope",
+          "description": "The scope the answer is for (`direct` when the server cannot list the family)."
+        },
+        "supported": {
+          "description": "The server's visibility knows `RootWorkflowId` (Temporal Server 1.24 and later).",
+          "type": "boolean"
+        },
+        "total": {
+          "description": "Workflows in the family (every run), as the server counts them; absent when unsupported.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "scope",
+        "supported",
+        "drawn",
+        "levels",
+        "notDrawn"
+      ],
+      "type": "object"
+    },
+    "RelationNode": {
+      "description": "One box of the graph: a workflow, by its ID (its latest run seen).",
+      "properties": {
+        "closeTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "current": {
+          "description": "The run the tab shows.",
+          "type": "boolean"
+        },
+        "durationMs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "failure": {
+          "description": "The failure's message, for a failed child (from this run's history).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "level": {
+          "description": "Depth below the top drawn level (0); absent for a workflow outside the tree (the other end\nof a signal or cancel).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "missing": {
+          "description": "Gone from the server (past retention, or never started).",
+          "type": "boolean"
+        },
+        "parentWorkflowId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "description": "Empty when only the workflow ID is known (a child that did not start).",
+          "type": "string"
+        },
+        "startTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/WorkflowStatus"
+        },
+        "workflowId": {
+          "type": "string"
+        },
+        "workflowType": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowId",
+        "runId",
+        "workflowType",
+        "status",
+        "missing",
+        "current"
+      ],
+      "type": "object"
+    },
+    "RelationParent": {
+      "description": "The parent, with what happens to this child when it closes (while the child is pending in it).",
+      "properties": {
+        "parentClosePolicy": {
+          "description": "`Terminate`, `Abandon` or `RequestCancel`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflowId",
+        "runId"
+      ],
+      "type": "object"
+    },
+    "RelationRuns": {
+      "description": "The run's place in its chain of runs.",
+      "properties": {
+        "continuedAs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunLink"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run that continued this one."
+        },
+        "continuedFrom": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunLink"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run this one continued from (continue-as-new, retry or cron)."
+        },
+        "firstRunId": {
+          "description": "The first run of the chain, when it is another run.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resetFrom": {
+          "description": "The run this one was reset from.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resetTo": {
+          "description": "The latest run made by resetting this one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RelationScope": {
+      "description": "Whole family (every workflow under the root) or Direct only (one level each way).",
+      "enum": [
+        "family",
+        "direct"
+      ],
+      "type": "string"
+    },
+    "RelationSignal": {
+      "description": "A signal or cancel between this run and another workflow, from this run's history.",
+      "properties": {
+        "direction": {
+          "$ref": "#/$defs/SignalDirection"
+        },
+        "eventId": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/RelationEdgeKind",
+          "description": "`signal` or `cancel`."
+        },
+        "outcome": {
+          "description": "For a sent one: `Delivered`, `Failed: <cause>`, or absent while in flight.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "signalName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "direction",
+        "kind",
+        "workflowId",
+        "eventId"
+      ],
+      "type": "object"
     },
     "RemoteError": {
       "description": "The target's own error code, for Details.",
@@ -4519,6 +6369,25 @@
       "required": [
         "connId",
         "threadId",
+        "runId"
+      ],
+      "type": "object"
+    },
+    "RunLink": {
+      "description": "Another run of the same workflow ID, and why it exists.",
+      "properties": {
+        "initiator": {
+          "description": "`Workflow` (continue-as-new), `Retry` or `CronSchedule`; absent for a reset.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": "string"
+        }
+      },
+      "required": [
         "runId"
       ],
       "type": "object"
@@ -4814,6 +6683,50 @@
       ],
       "type": "object"
     },
+    "ScheduleBackfillInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "endTime": {
+          "description": "RFC 3339, after the start and not in the future.",
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "overlap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScheduleOverlap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The schedule's own policy when absent."
+        },
+        "scheduleId": {
+          "type": "string"
+        },
+        "startTime": {
+          "description": "RFC 3339, in the past.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId",
+        "startTime",
+        "endTime"
+      ],
+      "type": "object"
+    },
     "ScheduleDetail": {
       "description": "Everything `DescribeSchedule` says; the parts are protobuf JSON, payloads decoded.",
       "properties": {
@@ -4995,6 +6908,131 @@
       ],
       "type": "object"
     },
+    "ScheduleRun": {
+      "description": "One row of a schedule's Runs: a workflow it started, or a time it matched with no run.",
+      "properties": {
+        "closeTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "durationMs": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scheduledTime": {
+          "description": "The time the spec called for (`TemporalScheduledStartTime`); for Trigger now, the trigger.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "skipped": {
+          "description": "A matched time with no run: why, as far as it can be told.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "startTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workflowId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ScheduleRunsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nextPageToken": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pageSize": {
+          "default": null,
+          "description": "1 to 100; 20 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "scheduleId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId"
+      ],
+      "type": "object"
+    },
+    "ScheduleRunsOutput": {
+      "properties": {
+        "nextPageToken": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "description": "The Workflows query the runs come from.",
+          "type": "string"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/ScheduleRun"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "runs",
+        "query"
+      ],
+      "type": "object"
+    },
     "ScheduleSpecForm": {
       "properties": {
         "calendars": {
@@ -5113,6 +7151,71 @@
         "notes",
         "nextRuns",
         "recentActions"
+      ],
+      "type": "object"
+    },
+    "ScheduleTimesInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "endTime": {
+          "default": null,
+          "description": "RFC 3339; when absent, the range grows from `startTime` until `limit` times are found\n(at most five years ahead).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "default": null,
+          "description": "At most this many times: 20 when absent, 1,000 at most.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scheduleId": {
+          "type": "string"
+        },
+        "startTime": {
+          "description": "RFC 3339.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "scheduleId",
+        "startTime"
+      ],
+      "type": "object"
+    },
+    "ScheduleTimesOutput": {
+      "properties": {
+        "times": {
+          "description": "RFC 3339, oldest first.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "truncated": {
+          "description": "More times matched than were sent.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "times",
+        "truncated"
       ],
       "type": "object"
     },
@@ -5461,6 +7564,13 @@
         "source"
       ],
       "type": "object"
+    },
+    "SignalDirection": {
+      "enum": [
+        "received",
+        "sent"
+      ],
+      "type": "string"
     },
     "StateTask": {
       "description": "A task of the next step: the node to run, its error, its interrupts.",
@@ -5907,6 +8017,91 @@
       },
       "required": [
         "serverVersion"
+      ],
+      "type": "object"
+    },
+    "TemporalTestCodecInput": {
+      "description": "\"Test codec\" in the profile sheet: the draft profile, and the namespace to sample (the\nprofile's when empty).",
+      "properties": {
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profile": {
+          "$ref": "#/$defs/ConnectTemporalProfile"
+        }
+      },
+      "required": [
+        "profile"
+      ],
+      "type": "object"
+    },
+    "TemporalTestCodecOutput": {
+      "description": "What the codec did with the inputs of the namespace's latest workflows.",
+      "properties": {
+        "codec": {
+          "description": "The codec's host and port.",
+          "type": "string"
+        },
+        "decoded": {
+          "description": "Payloads the codec changed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "error": {
+          "description": "Why the codec failed, when it did.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "description": "Encodings before and after, distinct.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "sampled": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "to": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workflowIds": {
+          "description": "The workflows sampled (their inputs' first payload).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "namespace",
+        "codec",
+        "workflowIds",
+        "sampled",
+        "decoded",
+        "from",
+        "to",
+        "ms"
       ],
       "type": "object"
     },
@@ -6903,6 +9098,112 @@
             "string",
             "null"
           ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId"
+      ],
+      "type": "object"
+    },
+    "WorkflowRelations": {
+      "properties": {
+        "children": {
+          "items": {
+            "$ref": "#/$defs/RelationChild"
+          },
+          "type": "array"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/RelationEdge"
+          },
+          "type": "array"
+        },
+        "family": {
+          "$ref": "#/$defs/RelationFamily"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/RelationNode"
+          },
+          "type": "array"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RelationParent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rootWorkflowId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runs": {
+          "$ref": "#/$defs/RelationRuns"
+        },
+        "signals": {
+          "items": {
+            "$ref": "#/$defs/RelationSignal"
+          },
+          "type": "array"
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowRow",
+          "description": "The run the tab shows."
+        }
+      },
+      "required": [
+        "workflow",
+        "nodes",
+        "edges",
+        "children",
+        "signals",
+        "runs",
+        "family"
+      ],
+      "type": "object"
+    },
+    "WorkflowRelationsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "description": "The latest run when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RelationScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`family` when absent; a server without `RootWorkflowId` answers as `direct`."
         },
         "workflowId": {
           "type": "string"
@@ -8559,6 +10860,498 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/NatsKvCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.buckets.create",
+      "output": {
+        "$ref": "#/$defs/NatsKvBucketInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvBucketInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.buckets.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvBucketInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.buckets.info",
+      "output": {
+        "$ref": "#/$defs/NatsKvBucketInfo"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvBucketsListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.buckets.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsKvBucketInfo"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvKeyInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvGetInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.get",
+      "output": {
+        "$ref": "#/$defs/MessageRecord"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvHistoryInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.history",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/MessageRecord"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvKeysInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.kv.keys",
+      "output": {
+        "$ref": "#/$defs/NatsKvKeysOutput"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvKeyInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.purge",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvPutInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.kv.put",
+      "output": {
+        "$ref": "#/$defs/NatsKvPutOutput"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsKvWatchInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "nats.kv.watch",
+      "output": {
+        "$ref": "#/$defs/TailSummary"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjCreateInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.buckets.create",
+      "output": {
+        "$ref": "#/$defs/NatsObjBucketInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjBucketInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.buckets.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjBucketInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.obj.buckets.info",
+      "output": {
+        "$ref": "#/$defs/NatsObjBucketInfo"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjBucketsListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.obj.buckets.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsObjBucketInfo"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjectInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.delete",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjectInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "nats.obj.get",
+      "output": {
+        "$ref": "#/$defs/NatsObjGetSummary"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 3600000,
+      "timeout_max_ms": 3600000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjectInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.obj.info",
+      "output": {
+        "$ref": "#/$defs/NatsObjectInfo"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjBucketInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.obj.list",
+      "output": {
+        "$ref": "#/$defs/NatsObjListOutput"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjUploadIdInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.uploadAbort",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjUploadFinishInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.uploadFinish",
+      "output": {
+        "$ref": "#/$defs/NatsObjectInfo"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjUploadPartInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.uploadPart",
+      "output": {
+        "$ref": "#/$defs/NatsObjUploadPartOutput"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsObjUploadStartInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "nats.obj.uploadStart",
+      "output": {
+        "$ref": "#/$defs/NatsObjUploadStartOutput"
+      },
+      "perm": "nats.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/NatsConnIdInput"
       },
       "kind": "query",
@@ -8566,6 +11359,78 @@
       "name": "nats.server.info",
       "output": {
         "$ref": "#/$defs/NatsServerInfoOutput"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsServicesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.services.discover",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsServiceInfo"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsServicesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.services.ping",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsServicePing"
+        },
+        "type": "array"
+      },
+      "perm": "nats.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NatsServicesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "nats.services.stats",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NatsServiceStats"
+        },
+        "type": "array"
       },
       "perm": "nats.read",
       "redact": [],
@@ -8591,7 +11456,11 @@
       "perm": "temporal.read",
       "redact": [
         "profile.clientKeyPem",
-        "profile.apiKey"
+        "profile.apiKey",
+        "profile.s3AccessKeyId",
+        "profile.s3SecretAccessKey",
+        "profile.s3SessionToken",
+        "profile.codecAuthorization"
       ],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -8712,6 +11581,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ScheduleBackfillInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.schedules.backfill",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "temporal.write",
+      "redact": [],
+      "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ScheduleWriteInput"
       },
       "kind": "mutation",
@@ -8799,6 +11689,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ScheduleTimesInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.schedules.matchingTimes",
+      "output": {
+        "$ref": "#/$defs/ScheduleTimesOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/SchedulePatchInput"
       },
       "kind": "mutation",
@@ -8810,6 +11721,27 @@
       "perm": "temporal.write",
       "redact": [],
       "risk": "Write",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ScheduleRunsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.schedules.runs",
+      "output": {
+        "$ref": "#/$defs/ScheduleRunsOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
     },
@@ -8893,6 +11825,34 @@
       },
       "perm": "temporal.read",
       "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/TemporalTestCodecInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "temporal.testCodec",
+      "output": {
+        "$ref": "#/$defs/TemporalTestCodecOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [
+        "profile.clientKeyPem",
+        "profile.apiKey",
+        "profile.s3AccessKeyId",
+        "profile.s3SecretAccessKey",
+        "profile.s3SessionToken",
+        "profile.codecAuthorization"
+      ],
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
@@ -9093,6 +12053,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/WorkflowRelationsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.workflows.relations",
+      "output": {
+        "$ref": "#/$defs/WorkflowRelations"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/WorkflowResetInput"
       },
       "kind": "mutation",
@@ -9237,5 +12218,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:3a24a2e0e2713fb963147683e38b97ca5f0a07909649ea6f76e70b59c4a41a1a"
+  "schema_hash": "sha256:317ab3a2806e24d9f3378f8be085cfcca5d5583cfefe76ce592a5f6d797050f9"
 }

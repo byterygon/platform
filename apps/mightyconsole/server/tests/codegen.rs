@@ -355,7 +355,150 @@ fn the_procedures_of_the_spec() {
             Risk::Write,
             defaults,
         ),
+        (
+            "nats.kv.buckets.create",
+            Mutation,
+            "nats.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "nats.kv.buckets.delete",
+            Mutation,
+            "nats.destroy",
+            Risk::Destructive,
+            defaults,
+        ),
+        (
+            "nats.kv.buckets.info",
+            Query,
+            "nats.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "nats.kv.buckets.list",
+            Query,
+            "nats.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "nats.kv.delete",
+            Mutation,
+            "nats.destroy",
+            Risk::Destructive,
+            defaults,
+        ),
+        ("nats.kv.get", Query, "nats.read", Risk::Read, defaults),
+        ("nats.kv.history", Query, "nats.read", Risk::Read, defaults),
+        ("nats.kv.keys", Query, "nats.read", Risk::Read, defaults),
+        (
+            "nats.kv.purge",
+            Mutation,
+            "nats.destroy",
+            Risk::Destructive,
+            defaults,
+        ),
+        ("nats.kv.put", Mutation, "nats.write", Risk::Write, defaults),
+        ("nats.kv.watch", Stream, "nats.read", Risk::Read, live),
+        (
+            "nats.obj.buckets.create",
+            Mutation,
+            "nats.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "nats.obj.buckets.delete",
+            Mutation,
+            "nats.destroy",
+            Risk::Destructive,
+            defaults,
+        ),
+        (
+            "nats.obj.buckets.info",
+            Query,
+            "nats.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "nats.obj.buckets.list",
+            Query,
+            "nats.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "nats.obj.delete",
+            Mutation,
+            "nats.destroy",
+            Risk::Destructive,
+            defaults,
+        ),
+        (
+            "nats.obj.get",
+            Stream,
+            "nats.read",
+            Risk::Read,
+            (
+                Some(Duration::from_secs(3600)),
+                Some(Duration::from_secs(3600)),
+            ),
+        ),
+        ("nats.obj.info", Query, "nats.read", Risk::Read, defaults),
+        ("nats.obj.list", Query, "nats.read", Risk::Read, defaults),
+        (
+            "nats.obj.uploadAbort",
+            Mutation,
+            "nats.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "nats.obj.uploadFinish",
+            Mutation,
+            "nats.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "nats.obj.uploadPart",
+            Mutation,
+            "nats.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
+            "nats.obj.uploadStart",
+            Mutation,
+            "nats.write",
+            Risk::Write,
+            defaults,
+        ),
         ("nats.server.info", Query, "nats.read", Risk::Read, defaults),
+        (
+            "nats.services.discover",
+            Query,
+            "nats.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "nats.services.ping",
+            Query,
+            "nats.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "nats.services.stats",
+            Query,
+            "nats.read",
+            Risk::Read,
+            defaults,
+        ),
         (
             "temporal.connect",
             Mutation,
@@ -399,6 +542,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.schedules.backfill",
+            Mutation,
+            "temporal.write",
+            Risk::Write,
+            defaults,
+        ),
+        (
             "temporal.schedules.create",
             Mutation,
             "temporal.write",
@@ -427,10 +577,24 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.schedules.matchingTimes",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.schedules.pause",
             Mutation,
             "temporal.write",
             Risk::Write,
+            defaults,
+        ),
+        (
+            "temporal.schedules.runs",
+            Query,
+            "temporal.read",
+            Risk::Read,
             defaults,
         ),
         (
@@ -457,6 +621,13 @@ fn the_procedures_of_the_spec() {
         (
             "temporal.taskQueues.describe",
             Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.testCodec",
+            Mutation,
             "temporal.read",
             Risk::Read,
             defaults,
@@ -525,6 +696,13 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.workflows.relations",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "temporal.workflows.reset",
             Mutation,
             "temporal.write",
@@ -584,8 +762,17 @@ fn the_procedures_of_the_spec() {
     assert_eq!(redact("echo.connect"), ["profile.token"]);
     assert_eq!(
         redact("temporal.connect"),
-        ["profile.clientKeyPem", "profile.apiKey"]
+        [
+            "profile.clientKeyPem",
+            "profile.apiKey",
+            "profile.s3AccessKeyId",
+            "profile.s3SecretAccessKey",
+            "profile.s3SessionToken",
+            "profile.codecAuthorization"
+        ]
     );
+    // Test codec takes the same draft profile, secrets and all.
+    assert_eq!(redact("temporal.testCodec"), redact("temporal.connect"));
     assert_eq!(
         redact("nats.connect"),
         [

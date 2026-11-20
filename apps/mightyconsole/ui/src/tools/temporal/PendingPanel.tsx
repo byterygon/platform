@@ -2,6 +2,7 @@
 // `temporal-workflow`): the pending activities as a table (state, attempt, last failure, next
 // attempt), the chosen one's attempts, heartbeat, last worker and failure chain in a split pane
 // with Copy failure; pending child workflows and the pending workflow task below.
+import type { LinkEvent } from "../types";
 import { useContext, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,7 +99,7 @@ export function nextAttemptText(at: number | null, now: number): string {
   return left <= 0 ? "now" : `in ${spanText(Math.ceil(left / 1000) * 1000)}`;
 }
 
-export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detail: WorkflowDetail; now: number; onRefresh(): void; onOpenWorkflow(workflowId: string, runId: string): void }) {
+export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detail: WorkflowDetail; now: number; onRefresh(): void; onOpenWorkflow(workflowId: string, runId: string, event?: LinkEvent): void }) {
   const notify = useContext(NoticeContext);
   const activities = detail.pendingActivities.map(readPendingActivity);
   const { pendingChildren: children, pendingWorkflowTask: task } = detail;
@@ -179,7 +180,7 @@ export function PendingPanel({ detail, now, onRefresh, onOpenWorkflow }: { detai
               {children.map((c, i) => (
                 <TableRow key={text(c["workflowId"]) || i}>
                   <TableCell>
-                    <LinkButton onClick={() => onOpenWorkflow(text(c["workflowId"]), text(c["runId"]))}>
+                    <LinkButton onOpen={(e) => onOpenWorkflow(text(c["workflowId"]), text(c["runId"]), e)}>
                       {text(c["workflowId"])}
                     </LinkButton>
                   </TableCell>

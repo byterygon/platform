@@ -12,7 +12,7 @@ import { NamespacesTab, formatBytes, formatRetention } from "@/tools/temporal/Na
 import { REFRESH_MS, WorkersTab, filterWorkers, isIdle, pollsFor } from "@/tools/temporal/WorkersTab";
 import { temporalTool } from "@/tools/temporal";
 import { profile as schema } from "@/tools/temporal/profile";
-import type { TabProps, TabRecord } from "@/tools/types";
+import type { TabProps, TabView } from "@/tools/types";
 import { axeViolations, byRole, byText, cleanup, click, render, type, waitFor } from "./support/render";
 
 afterEach(() => {
@@ -20,7 +20,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function props(client: unknown, tab: Partial<TabRecord> & { kind: string; params: Record<string, unknown> }, active = true): TabProps & { openTab: ReturnType<typeof vi.fn> } {
+function props(client: unknown, tab: Partial<TabView> & { kind: string; params: Record<string, unknown> }, active = true): TabProps & { openTab: ReturnType<typeof vi.fn> } {
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
   profile.fields["namespace"] = "lab";
   const openTab = vi.fn();

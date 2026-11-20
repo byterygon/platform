@@ -54,9 +54,10 @@ schemars = { version = "1.2.3", default-features = false, features = ["derive", 
 security-types = { path = "../../../crates/security-types", features = ["tokio"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+hmac = "0.13.0"
 sha2 = "0.11"
 time = { version = "0.3.55", default-features = false, features = ["std", "formatting"] }
-tokio = { version = "1.54.1", default-features = false, features = ["fs", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1.54.1", default-features = false, features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { version = "0.7.20", default-features = false }
 tonic = { version = "0.14.9", default-features = false, features = ["transport", "tls-ring", "tls-native-roots", "codegen"] }
 tonic-prost = "0.14.9"

@@ -26,6 +26,144 @@ pub struct TemporalTlsOptions {
     pub server_name: Option<String>,
 }
 
+/// Temporal External Storage on an S3-compatible store (TSK-103): where the SDKs' S3 driver keeps
+/// payloads of 256 KiB or more. Its credentials come beside it as `s3AccessKeyId`,
+/// `s3SecretAccessKey` and `s3SessionToken`.
+#[derive(Debug, Clone, Default, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalStorageOptions {
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub enabled: Option<bool>,
+    /// Where Mightyconsole and the codec endpoint write; read too.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub bucket: Option<String>,
+    /// Other buckets references may name (the workers' buckets); `bucket` is always read.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub read_buckets: Option<Vec<String>>,
+    /// `us-east-1` when empty.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub region: Option<String>,
+    /// `https://s3.<region>.amazonaws.com` when empty; MinIO and other stores give theirs.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub endpoint: Option<String>,
+    /// `<endpoint>/<bucket>/<key>` addressing (MinIO and most S3-compatible stores).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub path_style: Option<bool>,
+    /// The store's CA (PEM); the system's trust store when empty (spec Open question (b)).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub ca_pem: Option<String>,
+    /// `aws.s3driver` when empty: the name the workers' driver has.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub driver_name: Option<String>,
+    /// Payloads this size or larger are stored outside (262144, the SDKs' default).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub threshold_bytes: Option<u64>,
+    /// The largest payload read or written (50 MiB, the Go driver's default).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub max_payload_bytes: Option<u64>,
+}
+
+/// "Test codec" in the profile sheet: the draft profile, and the namespace to sample (the
+/// profile's when empty).
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporalTestCodecInput {
+    pub profile: ConnectTemporalProfile,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub namespace: Option<String>,
+}
+
+/// What the codec did with the inputs of the namespace's latest workflows.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporalTestCodecOutput {
+    pub namespace: String,
+    /// The codec's host and port.
+    pub codec: String,
+    /// The workflows sampled (their inputs' first payload).
+    pub workflow_ids: Vec<String>,
+    pub sampled: u32,
+    /// Payloads the codec changed.
+    pub decoded: u32,
+    /// Encodings before and after, distinct.
+    pub from: Vec<String>,
+    pub to: Vec<String>,
+    pub ms: u64,
+    /// Why the codec failed, when it did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
+}
+
+/// One namespace's own codec endpoint.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CodecNamespaceEndpoint {
+    pub namespace: String,
+    pub endpoint: String,
+}
+
+/// The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that
+/// mightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header
+/// comes beside it as `codecAuthorization`.
+#[derive(Debug, Clone, Default, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PayloadCodecOptions {
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub enabled: Option<bool>,
+    /// `https://codec.internal:8888`; plain http on localhost only.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub endpoint: Option<String>,
+    /// Namespaces with their own endpoint.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub namespaces: Option<Vec<CodecNamespaceEndpoint>>,
+    /// The codec's CA (PEM): the only trusted root (Open question 31).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub ca_pem: Option<String>,
+    /// Send `X-Namespace` (on when empty).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub send_namespace: Option<bool>,
+    /// Encode the inputs Mightyconsole sends through `/encode` (on when empty).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub encode_inputs: Option<bool>,
+    /// Per call (10000 when empty).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub timeout_ms: Option<u64>,
+}
+
+/// The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at
+/// `/codec/<profileId>/decode` and `/encode` while the profile is connected.
+#[derive(Debug, Clone, Default, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CodecServerOptions {
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub enabled: Option<bool>,
+    /// The browser origins allowed to call it (the Temporal Web UI's); callers without an Origin
+    /// (the CLI) are accepted.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub allowed_origins: Option<Vec<String>>,
+}
+
 /// The Temporal profile as `toConnect` builds it (spec §9.1).
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +188,36 @@ pub struct ConnectTemporalProfile {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub api_key: Option<String>,
+    /// External Storage (TSK-103).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub external_storage: Option<ExternalStorageOptions>,
+    /// The profile's stable id in the browser: the codec endpoint's path names it.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub profile_id: Option<String>,
+    /// The payload codec (TSK-92, spec §9.5).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub codec: Option<PayloadCodecOptions>,
+    /// The codec's `Authorization` header value; never logged, never sent to the browser again.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub codec_authorization: Option<String>,
+    /// Serve the profile on the codec endpoint (TSK-103).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub codec_server: Option<CodecServerOptions>,
+    /// The S3 credentials of External Storage; never logged.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub s3_access_key_id: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub s3_secret_access_key: Option<String>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub s3_session_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]

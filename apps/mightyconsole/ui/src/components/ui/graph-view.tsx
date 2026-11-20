@@ -27,13 +27,23 @@ export interface GraphViewNode {
   kind?: GraphViewNodeKind;
   /** The id of the group (cluster) the node is drawn in. */
   group?: string;
+  /** A second, muted line under the label (a status and a type, say); the node grows to two lines. */
+  detail?: string;
+  /** A status dot before the detail. */
+  tone?: GraphViewTone;
+  /** The node the graph is about: accent edge, without the "done" of visited. */
+  emphasis?: boolean;
 }
+
+export type GraphViewTone = "neutral" | "info" | "success" | "warning" | "danger";
 
 export interface GraphViewEdge {
   source: string;
   target: string;
   /** A branch of a conditional edge: drawn dashed. */
   conditional?: boolean;
+  /** Drawn dashed for another reason (a message between nodes rather than a step, say). */
+  dashed?: boolean;
   label?: string;
 }
 
@@ -57,6 +67,8 @@ export interface GraphViewProps {
   selectedId?: string | null;
   /** Click or Enter on a node. */
   onNodeSelect?: (id: string) => void;
+  /** Double-click on a node (open it elsewhere, say). */
+  onNodeOpen?: (id: string) => void;
   /** The graph's accessible name. */
   "aria-label"?: string;
   /** Extra classes on the root; give it a height. */
@@ -65,7 +77,7 @@ export interface GraphViewProps {
 }
 
 /** Layout units (px at zoom 1). Exported for tests. */
-export const GEOMETRY = { nodeHeight: 36, pillHeight: 28, minWidth: 72, maxWidth: 240, charWidth: 7.5, padding: 32, nodeSep: 32, rankSep: 52, margin: 24, minZoom: 0.25, maxZoom: 2 } as const;
+export const GEOMETRY = { nodeHeight: 36, detailHeight: 52, pillHeight: 28, minWidth: 72, maxWidth: 240, charWidth: 7.5, padding: 32, nodeSep: 32, rankSep: 52, margin: 24, minZoom: 0.25, maxZoom: 2 } as const;
 
 const classes = {
   root: "relative isolate min-h-panel-xs w-full overflow-hidden rounded-lg border border-border-subtle bg-layer font-sans text-body-1 text-fg select-none",
@@ -89,8 +101,14 @@ const classes = {
     "data-visited:border-accent-compound data-visited:text-accent-subtle-fg",
     "data-active:border-accent-solid data-active:bg-accent-solid data-active:text-accent-solid-fg data-active:hover:bg-accent-solid-hover",
     "data-selected:bg-selected data-selected:hover:bg-selected-hover",
+    "data-detail:flex-col data-detail:items-start data-detail:justify-center data-detail:gap-stack-xs data-detail:px-inset-sm",
+    "data-emphasis:border-accent-compound data-emphasis:bg-accent-subtle data-emphasis:text-accent-subtle-fg data-emphasis:data-selected:bg-selected",
     focusRing,
   ],
+  nodeLabel: "max-w-full truncate",
+  nodeDetail: "flex max-w-full items-center gap-inline-xs truncate text-caption-1 text-fg-muted",
+  dot: "size-inline-sm shrink-0 rounded-full",
+  tone: { neutral: "bg-fg-muted", info: "bg-info", success: "bg-success", warning: "bg-warning", danger: "bg-danger" } satisfies Record<GraphViewTone, string>,
   controls: "absolute right-0 bottom-0 flex items-center gap-inline-xs p-inset-xs",
   empty: "flex h-full min-h-panel-xs items-center justify-center p-inset-md text-body-1 text-fg-muted",
   hidden: "sr-only",
@@ -128,8 +146,10 @@ const isPill = (n: GraphViewNode) => n.kind === "start" || n.kind === "end";
 
 /** The size a node's label needs (no DOM measuring: the same in jsdom and the browser). */
 export function nodeSize(n: GraphViewNode): { width: number; height: number } {
-  const width = Math.round(Math.min(GEOMETRY.maxWidth, Math.max(GEOMETRY.minWidth, n.label.length * GEOMETRY.charWidth + GEOMETRY.padding)));
-  return { width, height: isPill(n) ? GEOMETRY.pillHeight : GEOMETRY.nodeHeight };
+  // The detail is a caption (smaller) after a dot.
+  const chars = Math.max(n.label.length, n.detail ? n.detail.length * 0.85 + (n.tone ? 2 : 0) : 0);
+  const width = Math.round(Math.min(GEOMETRY.maxWidth, Math.max(GEOMETRY.minWidth, chars * GEOMETRY.charWidth + GEOMETRY.padding)));
+  return { width, height: isPill(n) ? GEOMETRY.pillHeight : n.detail ? GEOMETRY.detailHeight : GEOMETRY.nodeHeight };
 }
 
 /** The layered layout of the graph (top-left corners, px at zoom 1). Exported for tests. */
@@ -202,7 +222,7 @@ const clampZoom = (k: number) => Math.min(GEOMETRY.maxZoom, Math.max(GEOMETRY.mi
 const NONE: readonly never[] = [];
 
 /** A read-only directed graph laid out in layers, with pan, zoom and keyboard navigation along its edges. */
-export function GraphView({ nodes = NONE, edges = NONE, groups = NONE, direction = "TB", activeIds = NONE, visitedIds = NONE, selectedId = null, onNodeSelect, "aria-label": ariaLabel = "Graph", className, ref }: GraphViewProps) {
+export function GraphView({ nodes = NONE, edges = NONE, groups = NONE, direction = "TB", activeIds = NONE, visitedIds = NONE, selectedId = null, onNodeSelect, onNodeOpen, "aria-label": ariaLabel = "Graph", className, ref }: GraphViewProps) {
   // Laid out again only when the graph itself changes, not when a caller passes equal arrays anew
   // (the layout effect below fits the view, which would otherwise render forever).
   const key = JSON.stringify([nodes, edges, groups, direction]);
@@ -386,14 +406,14 @@ export function GraphView({ nodes = NONE, edges = NONE, groups = NONE, direction
             {layout.edges.map((e) => {
               const s = edgeState(e.edge);
               return (
-                <g key={e.index} data-slot="graph-view-edge" data-conditional={e.edge.conditional ? "" : undefined}>
+                <g key={e.index} data-slot="graph-view-edge" data-conditional={e.edge.conditional ? "" : undefined} data-dashed={e.edge.dashed ? "" : undefined}>
                   <path
                     d={edgePath(e.points)}
                     className={classes.edge}
                     data-active={s === "active" ? "" : undefined}
                     data-visited={s === "visited" ? "" : undefined}
                     strokeWidth={s ? 2 : 1.5}
-                    strokeDasharray={e.edge.conditional ? "6 4" : undefined}
+                    strokeDasharray={e.edge.conditional || e.edge.dashed ? "6 4" : undefined}
                     markerEnd={`url(#${markerId}-${s ? "arrow-on" : "arrow"})`}
                   />
                   {e.label && e.edge.label ? (
@@ -424,17 +444,30 @@ export function GraphView({ nodes = NONE, edges = NONE, groups = NONE, direction
                 data-active={active.has(id) ? "" : undefined}
                 data-visited={visited.has(id) && !active.has(id) ? "" : undefined}
                 data-selected={selectedId === id ? "" : undefined}
+                data-detail={n.node.detail ? "" : undefined}
+                data-emphasis={n.node.emphasis ? "" : undefined}
                 aria-pressed={onNodeSelect ? selectedId === id : undefined}
-                aria-label={`${n.node.label}${state(id)}`}
-                title={n.node.label}
+                aria-label={`${n.node.label}${n.node.detail ? `, ${n.node.detail}` : ""}${state(id)}`}
+                title={n.node.detail ? `${n.node.label}\n${n.node.detail}` : n.node.label}
                 tabIndex={id === tabStop ? 0 : -1}
                 className={cn(classes.node)}
                 style={{ left: n.x, top: n.y, width: n.width, height: n.height }}
                 onFocus={() => setFocused(id)}
                 onClick={() => onNodeSelect?.(id)}
+                onDoubleClick={onNodeOpen ? () => onNodeOpen(id) : undefined}
                 onKeyDown={(event) => onNodeKeyDown(event, id)}
               >
-                {n.node.label}
+                {n.node.detail ? (
+                  <>
+                    <span className={classes.nodeLabel}>{n.node.label}</span>
+                    <span className={classes.nodeDetail}>
+                      {n.node.tone ? <span data-slot="graph-view-dot" data-tone={n.node.tone} aria-hidden="true" className={cn(classes.dot, classes.tone[n.node.tone])} /> : null}
+                      <span className="truncate">{n.node.detail}</span>
+                    </span>
+                  </>
+                ) : (
+                  n.node.label
+                )}
               </button>
             );
           })}

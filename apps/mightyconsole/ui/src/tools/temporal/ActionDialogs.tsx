@@ -284,9 +284,9 @@ export function PauseDialog({ open, onOpenChange, scheduleId, pausing, busy, err
     <Shell
       open={open}
       onOpenChange={onOpenChange}
-      title={`${pausing ? "Pause" : "Resume"} ${scheduleId}?`}
-      description={pausing ? "No new runs start until it is resumed." : "It starts runs again from now."}
-      confirm={pausing ? "Pause" : "Resume"}
+      title={`${pausing ? "Pause" : "Unpause"} ${scheduleId}?`}
+      description={pausing ? "No new runs start until it is unpaused." : "It starts runs again from now."}
+      confirm={pausing ? "Pause" : "Unpause"}
       busy={busy}
       error={error}
       onConfirm={() => onConfirm(note.trim())}
@@ -317,9 +317,9 @@ export function TriggerDialog({ open, onOpenChange, scheduleId, busy, error, onC
     <Shell
       open={open}
       onOpenChange={onOpenChange}
-      title={`Run ${scheduleId} now?`}
+      title={`Trigger ${scheduleId} now?`}
       description="Starts its workflow once, outside its schedule."
-      confirm="Run now"
+      confirm="Trigger now"
       busy={busy}
       error={error}
       onConfirm={() => onConfirm(overlap === "default" ? null : overlap)}
@@ -358,6 +358,110 @@ export function DeleteScheduleDialog({ open, onOpenChange, scheduleId, busy, err
         <FieldLabel>Type {scheduleId} to confirm</FieldLabel>
         <Input value={typed} onValueChange={setTyped} autoComplete="off" spellCheck={false} />
       </Field>
+    </Shell>
+  );
+}
+
+/** A `datetime-local` value (local time, minutes) for an instant. */
+export function localInput(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export interface BackfillCount {
+  count: number;
+  /** More than `count` matched. */
+  truncated: boolean;
+}
+
+type CountState = BackfillCount | "counting" | { error: string } | null;
+
+/**
+ * Backfill (DOC-21 §9.4, TSK-104): a past range and an overlap policy; the confirmation names how
+ * many runs it starts, counted by the server (`ListScheduleMatchingTimes`) as the range changes.
+ */
+export function BackfillDialog({ open, onOpenChange, scheduleId, busy, error, now, countRuns, onBackfill }: { open: boolean; onOpenChange(open: boolean): void; scheduleId: string; busy: boolean; error: DescribedError | null; now?: number; countRuns(startIso: string, endIso: string): Promise<BackfillCount>; onBackfill(startIso: string, endIso: string, overlap: ScheduleOverlap | null): void }) {
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [overlap, setOverlap] = useState<ScheduleOverlap | "default">("default");
+  const [count, setCount] = useState<CountState>(null);
+  useFreshOnOpen(open, () => {
+    const at = now ?? Date.now();
+    setStart(localInput(at - 3_600_000));
+    setEnd(localInput(at));
+    setOverlap("default");
+    setCount(null);
+  });
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  const problem = !start || !end || Number.isNaN(startMs) || Number.isNaN(endMs) ? "Give a start and an end." : endMs <= startMs ? "The end comes after the start." : endMs > Date.now() + 60_000 ? "A backfill covers past times only." : null;
+  useEffect(() => {
+    if (!open || problem) return undefined;
+    let live = true;
+    setCount("counting");
+    const timer = setTimeout(() => {
+      countRuns(new Date(startMs).toISOString(), new Date(endMs).toISOString()).then(
+        (c) => {
+          if (live) setCount(c);
+        },
+        (e: unknown) => {
+          if (live) setCount({ error: e instanceof Error ? e.message : String(e) });
+        },
+      );
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- countRuns is a fresh closure each render
+  }, [open, problem, startMs, endMs]);
+  const n = count !== null && typeof count === "object" && "count" in count ? count : null;
+  const failed = count !== null && typeof count === "object" && "error" in count ? count.error : null;
+  const words =
+    problem ??
+    (failed !== null
+      ? `Could not count the runs: ${failed}`
+      : n === null
+        ? "Counting the times the spec matched…"
+        : n.count === 0
+          ? "The spec matched no time in this range: nothing would start."
+          : `Starts ${n.truncated ? "more than " : ""}${n.count.toLocaleString("en-GB")} ${n.count === 1 && !n.truncated ? "run" : "runs"}, one for each time the spec matched.`);
+  return (
+    <Shell
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Backfill ${scheduleId}?`}
+      description="Runs the schedule's action for every time its spec matched in a past range, as if it had run then."
+      confirm={n && n.count > 0 && !n.truncated ? `Start ${n.count} ${n.count === 1 ? "run" : "runs"}` : "Backfill"}
+      busy={busy}
+      error={error}
+      disabled={problem !== null || n === null || n.count === 0}
+      onConfirm={() => onBackfill(new Date(startMs).toISOString(), new Date(endMs).toISOString(), overlap === "default" ? null : overlap)}
+    >
+      <div className="grid grid-cols-2 gap-inline-md">
+        <Field>
+          <FieldLabel>From</FieldLabel>
+          <Input type="datetime-local" value={start} onValueChange={setStart} />
+        </Field>
+        <Field>
+          <FieldLabel>To</FieldLabel>
+          <Input type="datetime-local" value={end} onValueChange={setEnd} />
+        </Field>
+      </div>
+      <Field>
+        <FieldLabel>If a run is still going</FieldLabel>
+        <Select aria-label="Overlap policy" items={OVERLAP} value={overlap} onValueChange={(v) => setOverlap(v as ScheduleOverlap | "default")}>
+          {(Object.keys(OVERLAP) as (ScheduleOverlap | "default")[]).map((o) => (
+            <SelectItem key={o} value={o}>
+              {OVERLAP[o]}
+            </SelectItem>
+          ))}
+        </Select>
+      </Field>
+      <p role="status" className={problem || failed !== null ? "text-body-1 text-danger-fg" : "text-body-1 text-fg"}>
+        {words}
+      </p>
     </Shell>
   );
 }

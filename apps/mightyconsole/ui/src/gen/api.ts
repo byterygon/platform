@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:3a24a2e0e2713fb963147683e38b97ca5f0a07909649ea6f76e70b59c4a41a1a";
+export const SCHEMA_HASH = "sha256:317ab3a2806e24d9f3378f8be085cfcca5d5583cfefe76ce592a5f6d797050f9";
 
 // ---- Types
 
@@ -142,9 +142,25 @@ export type CodecId = "utf8" | "json" | "hex" | "base64" | "msgpack" | "avro" | 
 export type CodecInfo = { id: CodecId, label: string, needsSchema: boolean, canEncode: boolean, };
 
 /**
+ * One namespace's own codec endpoint.
+ */
+export type CodecNamespaceEndpoint = { namespace: string, endpoint: string, };
+
+/**
  * `"auto"` or a codec id.
  */
 export type CodecSelector = Auto | CodecId;
+
+/**
+ * The codec endpoint of a profile (TSK-103): Temporal's codec-server protocol at
+ * `/codec/<profileId>/decode` and `/encode` while the profile is connected.
+ */
+export type CodecServerOptions = { enabled?: boolean | null, 
+/**
+ * The browser origins allowed to call it (the Temporal Web UI's); callers without an Origin
+ * (the CLI) are accepted.
+ */
+allowedOrigins?: Array<string> | null, };
 
 /**
  * What the Composer sends for a key or a value (spec §5.7).
@@ -262,7 +278,31 @@ clientKeyPem?: string | null,
 /**
  * Sent as `Authorization: Bearer`; never logged.
  */
-apiKey?: string | null, };
+apiKey?: string | null, 
+/**
+ * External Storage (TSK-103).
+ */
+externalStorage?: ExternalStorageOptions | null, 
+/**
+ * The profile's stable id in the browser: the codec endpoint's path names it.
+ */
+profileId?: string | null, 
+/**
+ * The payload codec (TSK-92, spec §9.5).
+ */
+codec?: PayloadCodecOptions | null, 
+/**
+ * The codec's `Authorization` header value; never logged, never sent to the browser again.
+ */
+codecAuthorization?: string | null, 
+/**
+ * Serve the profile on the codec endpoint (TSK-103).
+ */
+codecServer?: CodecServerOptions | null, 
+/**
+ * The S3 credentials of External Storage; never logged.
+ */
+s3AccessKeyId?: string | null, s3SecretAccessKey?: string | null, s3SessionToken?: string | null, };
 
 /**
  * The state of a live handle (spec §2.2, "Status").
@@ -380,6 +420,49 @@ export type ErrorPosition = { line: number, column: number, };
  * What an event is about, for the History filter and the Timeline's lanes.
  */
 export type EventCategory = "Workflow" | "WorkflowTask" | "Activity" | "Timer" | "ChildWorkflow" | "Signal" | "Update" | "Marker" | "Other";
+
+/**
+ * Temporal External Storage on an S3-compatible store (TSK-103): where the SDKs' S3 driver keeps
+ * payloads of 256 KiB or more. Its credentials come beside it as `s3AccessKeyId`,
+ * `s3SecretAccessKey` and `s3SessionToken`.
+ */
+export type ExternalStorageOptions = { enabled?: boolean | null, 
+/**
+ * Where Mightyconsole and the codec endpoint write; read too.
+ */
+bucket?: string | null, 
+/**
+ * Other buckets references may name (the workers' buckets); `bucket` is always read.
+ */
+readBuckets?: Array<string> | null, 
+/**
+ * `us-east-1` when empty.
+ */
+region?: string | null, 
+/**
+ * `https://s3.<region>.amazonaws.com` when empty; MinIO and other stores give theirs.
+ */
+endpoint?: string | null, 
+/**
+ * `<endpoint>/<bucket>/<key>` addressing (MinIO and most S3-compatible stores).
+ */
+pathStyle?: boolean | null, 
+/**
+ * The store's CA (PEM); the system's trust store when empty (spec Open question (b)).
+ */
+caPem?: string | null, 
+/**
+ * `aws.s3driver` when empty: the name the workers' driver has.
+ */
+driverName?: string | null, 
+/**
+ * Payloads this size or larger are stored outside (262144, the SDKs' default).
+ */
+thresholdBytes?: number | null, 
+/**
+ * The largest payload read or written (50 MiB, the Go driver's default).
+ */
+maxPayloadBytes?: number | null, };
 
 /**
  * The filter (spec §5.4).
@@ -856,12 +939,227 @@ export type NatsDeliverFrom = "all" | "last" | "new" | "byStartSequence" | "bySt
 
 export type NatsDiscard = "old" | "new";
 
+/**
+ * One endpoint's counters.
+ */
+export type NatsEndpointStats = { name: string, subject: string, queueGroup?: string, requests: number, errors: number, 
+/**
+ * Total time spent in the handler, in nanoseconds.
+ */
+processingTimeNs: number, averageProcessingTimeNs: number, lastError?: string, 
+/**
+ * The service's own `data`, as JSON text.
+ */
+data?: string, };
+
 export type NatsGetMessageInput = { connId: string, stream: string, sequence: number, decode?: DecodeOptions | null, };
 
 /**
  * JetStream through a domain or an API prefix (leaf nodes, imported JetStream).
  */
 export type NatsJetStreamOptions = { domain?: string | null, apiPrefix?: string | null, };
+
+/**
+ * A bucket's configuration and state (spec §6.5, `KvBucketInfo`).
+ */
+export type NatsKvBucketInfo = { bucket: string, description?: string, 
+/**
+ * Entries stored, every revision and delete marker included.
+ */
+values: number, bytes: number, 
+/**
+ * Revisions kept per key.
+ */
+history: number, ttlMs?: number, maxValueSize?: number, maxBytes?: number, storage: NatsStorage, replicas: number, compression: boolean, createdUs: number, 
+/**
+ * The bucket it mirrors (a leaf node's copy).
+ */
+mirror?: string, };
+
+export type NatsKvBucketInput = { connId: string, bucket: string, };
+
+export type NatsKvBucketsListInput = { connId: string, };
+
+/**
+ * A new bucket (spec §6.4: history, TTL, max value size, storage, replicas).
+ */
+export type NatsKvConfig = { bucket: string, description?: string | null, 
+/**
+ * Revisions kept per key, 1 to 64.
+ */
+history: number, ttlMs?: number | null, maxValueSize?: number | null, maxBytes?: number | null, storage: NatsStorage, replicas: number, compression: boolean, };
+
+export type NatsKvCreateInput = { connId: string, config: NatsKvConfig, };
+
+export type NatsKvGetInput = { connId: string, bucket: string, key: string, 
+/**
+ * The latest when absent.
+ */
+revision?: number | null, decode?: DecodeOptions | null, };
+
+export type NatsKvHistoryInput = { connId: string, bucket: string, key: string, decode?: DecodeOptions | null, };
+
+/**
+ * One key of the list: its last entry.
+ */
+export type NatsKvKey = { key: string, revision: number, 
+/**
+ * `put`, `delete` or `purge`.
+ */
+operation: string, createdUs: number, size: number, 
+/**
+ * The value's first characters when it is UTF-8.
+ */
+preview?: string, };
+
+export type NatsKvKeyInput = { connId: string, bucket: string, key: string, };
+
+export type NatsKvKeysInput = { connId: string, bucket: string, 
+/**
+ * A key or pattern (`feature.>`, `limits.*`); every key when absent.
+ */
+filter?: string | null, 
+/**
+ * At most 10,000 (the default).
+ */
+limit?: number | null, 
+/**
+ * Keys whose last entry is a delete or purge marker too.
+ */
+includeDeleted?: boolean | null, };
+
+export type NatsKvKeysOutput = { keys: Array<NatsKvKey>, 
+/**
+ * More keys match than were listed: narrow with a filter.
+ */
+truncated: boolean, };
+
+export type NatsKvPutInput = { connId: string, bucket: string, key: string, payload: ComposePayload, 
+/**
+ * The key's current revision; 0 when it must not exist yet. A different one is `Conflict`.
+ */
+expectRevision?: number | null, };
+
+export type NatsKvPutOutput = { revision: number, bytes: number, schemaRef?: string, };
+
+export type NatsKvWatchInput = { connId: string, streamId: string, bucket: string, 
+/**
+ * A key or pattern; `>` for the whole bucket.
+ */
+keys?: string | null, 
+/**
+ * Every revision kept first, then the changes (else the current value of each key first).
+ */
+includeHistory?: boolean | null, 
+/**
+ * Start at this revision (overrides `includeHistory`).
+ */
+fromRevision?: number | null, decode?: DecodeOptions | null, filter?: Filter | null, maxScan?: number | null, limit?: number | null, };
+
+/**
+ * An object store's configuration and state.
+ */
+export type NatsObjBucketInfo = { bucket: string, description?: string, 
+/**
+ * Bytes stored: the objects' chunks and their metadata.
+ */
+bytes: number, ttlMs?: number, maxBytes?: number, storage: NatsStorage, replicas: number, compression: boolean, 
+/**
+ * A sealed bucket takes no more changes.
+ */
+sealed: boolean, createdUs: number, };
+
+export type NatsObjBucketInput = { connId: string, bucket: string, };
+
+export type NatsObjBucketsListInput = { connId: string, };
+
+/**
+ * A new object store (spec §6.4).
+ */
+export type NatsObjConfig = { bucket: string, description?: string | null, ttlMs?: number | null, maxBytes?: number | null, storage: NatsStorage, replicas: number, compression: boolean, };
+
+export type NatsObjCreateInput = { connId: string, config: NatsObjConfig, };
+
+/**
+ * The end of a download.
+ */
+export type NatsObjGetSummary = { name: string, size: number, digest?: string, };
+
+export type NatsObjListOutput = { 
+/**
+ * In name order.
+ */
+objects: Array<NatsObjectInfo>, 
+/**
+ * More than 10,000 objects: the first ones read are listed.
+ */
+truncated: boolean, };
+
+export type NatsObjUploadFinishInput = { uploadId: string, 
+/**
+ * The file's SHA-256 as the browser computed it (hex, or `SHA-256=<base64url>`); checked
+ * when given.
+ */
+sha256?: string | null, };
+
+export type NatsObjUploadIdInput = { uploadId: string, };
+
+export type NatsObjUploadPartInput = { uploadId: string, 
+/**
+ * 0, 1, 2… in order.
+ */
+index: number, 
+/**
+ * The part's bytes in base64.
+ */
+data: string, };
+
+export type NatsObjUploadPartOutput = { 
+/**
+ * Bytes stored so far.
+ */
+received: number, };
+
+export type NatsObjUploadStartInput = { connId: string, bucket: string, name: string, description?: string | null, headers?: Array<NatsObjectHeader> | null, 
+/**
+ * The file's size: the parts must add up to it.
+ */
+size: number, };
+
+export type NatsObjUploadStartOutput = { uploadId: string, 
+/**
+ * Every part but the last is this long.
+ */
+partBytes: number, };
+
+/**
+ * One header of an object.
+ */
+export type NatsObjectHeader = { name: string, value: string, };
+
+/**
+ * An object's metadata (spec §6.3: name, size, modified, chunks, digest, description, headers).
+ */
+export type NatsObjectInfo = { bucket: string, name: string, description?: string, size: number, chunks: number, modifiedUs?: number, 
+/**
+ * `SHA-256=<base64url>`, as the clients write it.
+ */
+digest?: string, headers: Array<NatsObjectHeader>, metadata: { [key in string]: string }, 
+/**
+ * This version's id; its chunks are on `$O.<bucket>.C.<nuid>`.
+ */
+nuid: string, link?: NatsObjectLink, chunkSize?: number, };
+
+export type NatsObjectInput = { connId: string, bucket: string, name: string, };
+
+/**
+ * The object or bucket an object links to.
+ */
+export type NatsObjectLink = { bucket: string, 
+/**
+ * The object; absent for a link to the whole bucket.
+ */
+name?: string, };
 
 export type NatsPeer = { name: string, current: boolean, offline: boolean, 
 /**
@@ -932,6 +1230,48 @@ rttMs: number, connection: NatsConnection,
  * `null` when JetStream is off on the server or for this account; `jetstreamError` says why.
  */
 jetstream: NatsAccountInfo | null, jetstreamError?: string, };
+
+/**
+ * One endpoint of a service.
+ */
+export type NatsServiceEndpoint = { name: string, subject: string, queueGroup?: string, metadata: { [key in string]: string }, };
+
+/**
+ * A service instance as `$SRV.INFO` describes it.
+ */
+export type NatsServiceInfo = { name: string, id: string, version: string, description?: string, metadata: { [key in string]: string }, endpoints: Array<NatsServiceEndpoint>, 
+/**
+ * From the request to this reply.
+ */
+rttMs: number, };
+
+/**
+ * A `$SRV.PING` reply.
+ */
+export type NatsServicePing = { name: string, id: string, version: string, rttMs: number, };
+
+/**
+ * A service instance as `$SRV.STATS` reports it.
+ */
+export type NatsServiceStats = { name: string, id: string, version: string, 
+/**
+ * When the instance started (RFC 3339, as the service wrote it).
+ */
+started?: string, endpoints: Array<NatsEndpointStats>, };
+
+export type NatsServicesInput = { connId: string, 
+/**
+ * Only this service.
+ */
+name?: string | null, 
+/**
+ * Only this instance of `name`.
+ */
+id?: string | null, 
+/**
+ * How long replies are gathered; 2,000 by default.
+ */
+timeoutMs?: number | null, };
 
 export type NatsSourceState = { name: string, 
 /**
@@ -1051,6 +1391,37 @@ export type PartitionOffset = { partition: number,
  */
 offset: string, };
 
+/**
+ * The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that
+ * mightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header
+ * comes beside it as `codecAuthorization`.
+ */
+export type PayloadCodecOptions = { enabled?: boolean | null, 
+/**
+ * `https://codec.internal:8888`; plain http on localhost only.
+ */
+endpoint?: string | null, 
+/**
+ * Namespaces with their own endpoint.
+ */
+namespaces?: Array<CodecNamespaceEndpoint> | null, 
+/**
+ * The codec's CA (PEM): the only trusted root (Open question 31).
+ */
+caPem?: string | null, 
+/**
+ * Send `X-Namespace` (on when empty).
+ */
+sendNamespace?: boolean | null, 
+/**
+ * Encode the inputs Mightyconsole sends through `/encode` (on when empty).
+ */
+encodeInputs?: boolean | null, 
+/**
+ * Per call (10000 when empty).
+ */
+timeoutMs?: number | null, };
+
 export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond: number, };
 
 /**
@@ -1072,6 +1443,150 @@ export type RecordHeaderEncoding = "text" | "base64";
  * A schema in the registry, by id or by subject and version.
  */
 export type RegistryRef = { id: number, } | { subject: string, version: SchemaVersion, };
+
+/**
+ * A child started by this run, from its history.
+ */
+export type RelationChild = { workflowId: string, runId?: string, workflowType: string, 
+/**
+ * `Running` once started; `Unspecified` while only initiated or when it could not start.
+ */
+status: WorkflowStatus, initiatedEventId: number, startTime?: string, closeTime?: string, 
+/**
+ * The failure's message, or why it could not start.
+ */
+failure?: string, };
+
+/**
+ * An arrow: parent to child, or the sender of a signal or cancel to its target.
+ */
+export type RelationEdge = { from: string, to: string, kind: RelationEdgeKind, 
+/**
+ * The signal's name.
+ */
+label?: string, 
+/**
+ * The event of this run that records it.
+ */
+eventId?: number, };
+
+export type RelationEdgeKind = "child" | "signal" | "cancel";
+
+/**
+ * What the server can say about the family, and how much of it is drawn.
+ */
+export type RelationFamily = { 
+/**
+ * The scope the answer is for (`direct` when the server cannot list the family).
+ */
+scope: RelationScope, 
+/**
+ * The server's visibility knows `RootWorkflowId` (Temporal Server 1.24 and later).
+ */
+supported: boolean, 
+/**
+ * Why Whole family is not offered: the server's answer.
+ */
+reason?: string, 
+/**
+ * The Workflows query that lists the scope's workflows; absent when the server has no
+ * attribute for it.
+ */
+query?: string, 
+/**
+ * Workflows in the family (every run), as the server counts them; absent when unsupported.
+ */
+total?: number, 
+/**
+ * Boxes drawn in the tree (the other ends of signals not counted).
+ */
+drawn: number, 
+/**
+ * Levels drawn.
+ */
+levels: number, 
+/**
+ * Workflows of the family left out of the drawing.
+ */
+notDrawn: number, };
+
+/**
+ * One box of the graph: a workflow, by its ID (its latest run seen).
+ */
+export type RelationNode = { workflowId: string, 
+/**
+ * Empty when only the workflow ID is known (a child that did not start).
+ */
+runId: string, workflowType: string, status: WorkflowStatus, startTime?: string, closeTime?: string, durationMs?: number, parentWorkflowId?: string, 
+/**
+ * Depth below the top drawn level (0); absent for a workflow outside the tree (the other end
+ * of a signal or cancel).
+ */
+level?: number, 
+/**
+ * The failure's message, for a failed child (from this run's history).
+ */
+failure?: string, 
+/**
+ * Gone from the server (past retention, or never started).
+ */
+missing: boolean, 
+/**
+ * The run the tab shows.
+ */
+current: boolean, };
+
+/**
+ * The parent, with what happens to this child when it closes (while the child is pending in it).
+ */
+export type RelationParent = { workflowId: string, runId: string, 
+/**
+ * `Terminate`, `Abandon` or `RequestCancel`.
+ */
+parentClosePolicy?: string, };
+
+/**
+ * The run's place in its chain of runs.
+ */
+export type RelationRuns = { 
+/**
+ * The first run of the chain, when it is another run.
+ */
+firstRunId?: string, 
+/**
+ * The run this one continued from (continue-as-new, retry or cron).
+ */
+continuedFrom?: RunLink, 
+/**
+ * The run that continued this one.
+ */
+continuedAs?: RunLink, 
+/**
+ * The run this one was reset from.
+ */
+resetFrom?: string, 
+/**
+ * The latest run made by resetting this one.
+ */
+resetTo?: string, };
+
+/**
+ * Whole family (every workflow under the root) or Direct only (one level each way).
+ */
+export type RelationScope = "family" | "direct";
+
+/**
+ * A signal or cancel between this run and another workflow, from this run's history.
+ */
+export type RelationSignal = { direction: SignalDirection, 
+/**
+ * `signal` or `cancel`.
+ */
+kind: RelationEdgeKind, workflowId: string, runId?: string, signalName?: string, eventId: number, time?: string, 
+/**
+ * For a sent one: `Delivered`, `Failed: <cause>`, or absent while in flight.
+ */
+outcome?: string, };
 
 /**
  * The target's own error code, for Details.
@@ -1116,6 +1631,15 @@ resume?: JsonValue | null, update?: JsonValue | null,
 goto?: JsonValue | null, };
 
 export type RunIdInput = { connId: string, threadId: string, runId: string, };
+
+/**
+ * Another run of the same workflow ID, and why it exists.
+ */
+export type RunLink = { runId: string, 
+/**
+ * `Workflow` (continue-as-new), `Retry` or `CronSchedule`; absent for a reset.
+ */
+initiator?: string, };
 
 /**
  * The end of `langgraph.runs.stream` and `langgraph.runs.join`.
@@ -1204,6 +1728,20 @@ workflowId: string,
  */
 args: unknown[], executionTimeout?: string | null, runTimeout?: string | null, taskTimeout?: string | null, retryPolicy?: RetryPolicyForm | null, memo?: Record<string, unknown>, searchAttributes?: Record<string, unknown>, };
 
+export type ScheduleBackfillInput = { connId: string, namespace?: string | null, scheduleId: string, 
+/**
+ * RFC 3339, in the past.
+ */
+startTime: string, 
+/**
+ * RFC 3339, after the start and not in the future.
+ */
+endTime: string, 
+/**
+ * The schedule's own policy when absent.
+ */
+overlap?: ScheduleOverlap | null, };
+
 /**
  * Everything `DescribeSchedule` says; the parts are protobuf JSON, payloads decoded.
  */
@@ -1269,6 +1807,31 @@ catchupWindow?: string | null, pauseOnFailure: boolean, };
 
 export type ScheduleRef = { connId: string, namespace?: string | null, scheduleId: string, };
 
+/**
+ * One row of a schedule's Runs: a workflow it started, or a time it matched with no run.
+ */
+export type ScheduleRun = { 
+/**
+ * The time the spec called for (`TemporalScheduledStartTime`); for Trigger now, the trigger.
+ */
+scheduledTime?: string, startTime?: string, closeTime?: string, workflowId?: string, runId?: string, status?: WorkflowStatus, durationMs?: number, 
+/**
+ * A matched time with no run: why, as far as it can be told.
+ */
+skipped?: string, };
+
+export type ScheduleRunsInput = { connId: string, namespace?: string | null, scheduleId: string, 
+/**
+ * 1 to 100; 20 when absent.
+ */
+pageSize?: number | null, nextPageToken?: string | null, };
+
+export type ScheduleRunsOutput = { runs: Array<ScheduleRun>, 
+/**
+ * The Workflows query the runs come from.
+ */
+query: string, nextPageToken?: string, };
+
 export type ScheduleSpecForm = { calendars: Array<CalendarForm>, intervals: Array<IntervalForm>, cronStrings: Array<string>, 
 /**
  * An IANA time zone; UTC when absent.
@@ -1298,6 +1861,31 @@ notes: string,
  * The next runs, RFC 3339.
  */
 nextRuns: Array<string>, recentActions: Array<ScheduleAction>, };
+
+export type ScheduleTimesInput = { connId: string, namespace?: string | null, scheduleId: string, 
+/**
+ * RFC 3339.
+ */
+startTime: string, 
+/**
+ * RFC 3339; when absent, the range grows from `startTime` until `limit` times are found
+ * (at most five years ahead).
+ */
+endTime?: string | null, 
+/**
+ * At most this many times: 20 when absent, 1,000 at most.
+ */
+limit?: number | null, };
+
+export type ScheduleTimesOutput = { 
+/**
+ * RFC 3339, oldest first.
+ */
+times: Array<string>, 
+/**
+ * More times matched than were sent.
+ */
+truncated: boolean, };
 
 export type ScheduleWriteInput = { connId: string, namespace?: string | null, scheduleId: string, schedule: ScheduleForm, 
 /**
@@ -1400,6 +1988,8 @@ export type SeenTaskQueue = { name: string, source: TaskQueueSource,
  */
 error?: string, };
 
+export type SignalDirection = "received" | "sent";
+
 /**
  * A task of the next step: the node to run, its error, its interrupts.
  */
@@ -1492,6 +2082,37 @@ clusterName?: string, capabilities: TemporalCapabilities, };
  * What `temporal.info` says about the server.
  */
 export type TemporalInfoOutput = { serverVersion: string, clusterName?: string, };
+
+/**
+ * "Test codec" in the profile sheet: the draft profile, and the namespace to sample (the
+ * profile's when empty).
+ */
+export type TemporalTestCodecInput = { profile: ConnectTemporalProfile, namespace?: string | null, };
+
+/**
+ * What the codec did with the inputs of the namespace's latest workflows.
+ */
+export type TemporalTestCodecOutput = { namespace: string, 
+/**
+ * The codec's host and port.
+ */
+codec: string, 
+/**
+ * The workflows sampled (their inputs' first payload).
+ */
+workflowIds: Array<string>, sampled: number, 
+/**
+ * Payloads the codec changed.
+ */
+decoded: number, 
+/**
+ * Encodings before and after, distinct.
+ */
+from: Array<string>, to: Array<string>, ms: number, 
+/**
+ * Why the codec failed, when it did.
+ */
+error?: string, };
 
 /**
  * TLS settings of a profile (spec §4.2 `TemporalTlsOptions`); `secrets.clientKeyPem` comes beside it as
@@ -1807,6 +2428,22 @@ reason?: string | null, };
  */
 export type WorkflowRef = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, };
 
+export type WorkflowRelations = { 
+/**
+ * The run the tab shows.
+ */
+workflow: WorkflowRow, rootWorkflowId?: string, nodes: Array<RelationNode>, edges: Array<RelationEdge>, parent?: RelationParent, children: Array<RelationChild>, signals: Array<RelationSignal>, runs: RelationRuns, family: RelationFamily, };
+
+export type WorkflowRelationsInput = { connId: string, namespace?: string | null, workflowId: string, 
+/**
+ * The latest run when absent.
+ */
+runId?: string | null, 
+/**
+ * `family` when absent; a server without `RootWorkflowId` answers as `direct`.
+ */
+scope?: RelationScope | null, };
+
 export type WorkflowResetInput = { connId: string, namespace?: string | null, workflowId: string, runId: string, 
 /**
  * The event to reset to: a WorkflowTaskCompleted, WorkflowTaskStarted or failed task event.
@@ -2003,22 +2640,52 @@ export interface Procedures {
   readonly "nats.js.streams.list": ProcedureDef<"query", NatsStreamsListInput, Array<NatsStreamSummary>, ToolError>;
   readonly "nats.js.streams.purge": ProcedureDef<"mutation", NatsStreamPurgeInput, NatsStreamPurgeOutput, ToolError>;
   readonly "nats.js.streams.update": ProcedureDef<"mutation", NatsStreamConfigInput, NatsStreamInfo, ToolError>;
+  readonly "nats.kv.buckets.create": ProcedureDef<"mutation", NatsKvCreateInput, NatsKvBucketInfo, ToolError>;
+  readonly "nats.kv.buckets.delete": ProcedureDef<"mutation", NatsKvBucketInput, Empty, ToolError>;
+  readonly "nats.kv.buckets.info": ProcedureDef<"query", NatsKvBucketInput, NatsKvBucketInfo, ToolError>;
+  readonly "nats.kv.buckets.list": ProcedureDef<"query", NatsKvBucketsListInput, Array<NatsKvBucketInfo>, ToolError>;
+  readonly "nats.kv.delete": ProcedureDef<"mutation", NatsKvKeyInput, Empty, ToolError>;
+  readonly "nats.kv.get": ProcedureDef<"query", NatsKvGetInput, MessageRecord, ToolError>;
+  readonly "nats.kv.history": ProcedureDef<"query", NatsKvHistoryInput, Array<MessageRecord>, ToolError>;
+  readonly "nats.kv.keys": ProcedureDef<"query", NatsKvKeysInput, NatsKvKeysOutput, ToolError>;
+  readonly "nats.kv.purge": ProcedureDef<"mutation", NatsKvKeyInput, Empty, ToolError>;
+  readonly "nats.kv.put": ProcedureDef<"mutation", NatsKvPutInput, NatsKvPutOutput, ToolError>;
+  readonly "nats.kv.watch": ProcedureDef<"stream", NatsKvWatchInput, TailSummary, ToolError>;
+  readonly "nats.obj.buckets.create": ProcedureDef<"mutation", NatsObjCreateInput, NatsObjBucketInfo, ToolError>;
+  readonly "nats.obj.buckets.delete": ProcedureDef<"mutation", NatsObjBucketInput, Empty, ToolError>;
+  readonly "nats.obj.buckets.info": ProcedureDef<"query", NatsObjBucketInput, NatsObjBucketInfo, ToolError>;
+  readonly "nats.obj.buckets.list": ProcedureDef<"query", NatsObjBucketsListInput, Array<NatsObjBucketInfo>, ToolError>;
+  readonly "nats.obj.delete": ProcedureDef<"mutation", NatsObjectInput, Empty, ToolError>;
+  readonly "nats.obj.get": ProcedureDef<"stream", NatsObjectInput, NatsObjGetSummary, ToolError>;
+  readonly "nats.obj.info": ProcedureDef<"query", NatsObjectInput, NatsObjectInfo, ToolError>;
+  readonly "nats.obj.list": ProcedureDef<"query", NatsObjBucketInput, NatsObjListOutput, ToolError>;
+  readonly "nats.obj.uploadAbort": ProcedureDef<"mutation", NatsObjUploadIdInput, Empty, ToolError>;
+  readonly "nats.obj.uploadFinish": ProcedureDef<"mutation", NatsObjUploadFinishInput, NatsObjectInfo, ToolError>;
+  readonly "nats.obj.uploadPart": ProcedureDef<"mutation", NatsObjUploadPartInput, NatsObjUploadPartOutput, ToolError>;
+  readonly "nats.obj.uploadStart": ProcedureDef<"mutation", NatsObjUploadStartInput, NatsObjUploadStartOutput, ToolError>;
   readonly "nats.server.info": ProcedureDef<"query", NatsConnIdInput, NatsServerInfoOutput, ToolError>;
+  readonly "nats.services.discover": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceInfo>, ToolError>;
+  readonly "nats.services.ping": ProcedureDef<"query", NatsServicesInput, Array<NatsServicePing>, ToolError>;
+  readonly "nats.services.stats": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceStats>, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
   readonly "temporal.info": ProcedureDef<"query", TemporalConnIdInput, TemporalInfoOutput, ToolError>;
   readonly "temporal.namespaces.describe": ProcedureDef<"query", NamespaceDescribeInput, NamespaceDetail, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
   readonly "temporal.namespaces.searchAttributes": ProcedureDef<"query", SearchAttributesInput, SearchAttributesOutput, ToolError>;
+  readonly "temporal.schedules.backfill": ProcedureDef<"mutation", ScheduleBackfillInput, Empty, ToolError>;
   readonly "temporal.schedules.create": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
   readonly "temporal.schedules.delete": ProcedureDef<"mutation", ScheduleRef, Empty, ToolError>;
   readonly "temporal.schedules.describe": ProcedureDef<"query", ScheduleRef, ScheduleDetail, ToolError>;
   readonly "temporal.schedules.list": ProcedureDef<"query", SchedulesListInput, Array<ScheduleSummary>, ToolError>;
+  readonly "temporal.schedules.matchingTimes": ProcedureDef<"query", ScheduleTimesInput, ScheduleTimesOutput, ToolError>;
   readonly "temporal.schedules.pause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
+  readonly "temporal.schedules.runs": ProcedureDef<"query", ScheduleRunsInput, ScheduleRunsOutput, ToolError>;
   readonly "temporal.schedules.trigger": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.unpause": ProcedureDef<"mutation", SchedulePatchInput, Empty, ToolError>;
   readonly "temporal.schedules.update": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
   readonly "temporal.taskQueues.describe": ProcedureDef<"query", TaskQueueDescribeInput, TaskQueueDescription, ToolError>;
+  readonly "temporal.testCodec": ProcedureDef<"mutation", TemporalTestCodecInput, TemporalTestCodecOutput, ToolError>;
   readonly "temporal.workers.list": ProcedureDef<"query", WorkersListInput, WorkersListOutput, ToolError>;
   readonly "temporal.workflows.cancel": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
   readonly "temporal.workflows.count": ProcedureDef<"query", WorkflowsCountInput, WorkflowsCountOutput, ToolError>;
@@ -2028,6 +2695,7 @@ export interface Procedures {
   readonly "temporal.workflows.list": ProcedureDef<"query", WorkflowsListInput, WorkflowsListOutput, ToolError>;
   readonly "temporal.workflows.query": ProcedureDef<"query", WorkflowQueryInput, WorkflowQueryOutput, ToolError>;
   readonly "temporal.workflows.rawEvent": ProcedureDef<"query", WorkflowRawEventInput, WorkflowRawEventOutput, ToolError>;
+  readonly "temporal.workflows.relations": ProcedureDef<"query", WorkflowRelationsInput, WorkflowRelations, ToolError>;
   readonly "temporal.workflows.reset": ProcedureDef<"mutation", WorkflowResetInput, WorkflowResetOutput, ToolError>;
   readonly "temporal.workflows.signal": ProcedureDef<"mutation", WorkflowSignalInput, Empty, ToolError>;
   readonly "temporal.workflows.start": ProcedureDef<"mutation", WorkflowStartInput, WorkflowStartOutput, ToolError>;
@@ -2128,8 +2796,44 @@ export interface Api {
         readonly update: Procedures["nats.js.streams.update"];
       };
     };
+    readonly kv: {
+      readonly buckets: {
+        readonly create: Procedures["nats.kv.buckets.create"];
+        readonly delete: Procedures["nats.kv.buckets.delete"];
+        readonly info: Procedures["nats.kv.buckets.info"];
+        readonly list: Procedures["nats.kv.buckets.list"];
+      };
+      readonly delete: Procedures["nats.kv.delete"];
+      readonly get: Procedures["nats.kv.get"];
+      readonly history: Procedures["nats.kv.history"];
+      readonly keys: Procedures["nats.kv.keys"];
+      readonly purge: Procedures["nats.kv.purge"];
+      readonly put: Procedures["nats.kv.put"];
+      readonly watch: Procedures["nats.kv.watch"];
+    };
+    readonly obj: {
+      readonly buckets: {
+        readonly create: Procedures["nats.obj.buckets.create"];
+        readonly delete: Procedures["nats.obj.buckets.delete"];
+        readonly info: Procedures["nats.obj.buckets.info"];
+        readonly list: Procedures["nats.obj.buckets.list"];
+      };
+      readonly delete: Procedures["nats.obj.delete"];
+      readonly get: Procedures["nats.obj.get"];
+      readonly info: Procedures["nats.obj.info"];
+      readonly list: Procedures["nats.obj.list"];
+      readonly uploadAbort: Procedures["nats.obj.uploadAbort"];
+      readonly uploadFinish: Procedures["nats.obj.uploadFinish"];
+      readonly uploadPart: Procedures["nats.obj.uploadPart"];
+      readonly uploadStart: Procedures["nats.obj.uploadStart"];
+    };
     readonly server: {
       readonly info: Procedures["nats.server.info"];
+    };
+    readonly services: {
+      readonly discover: Procedures["nats.services.discover"];
+      readonly ping: Procedures["nats.services.ping"];
+      readonly stats: Procedures["nats.services.stats"];
     };
   };
   readonly temporal: {
@@ -2142,11 +2846,14 @@ export interface Api {
       readonly searchAttributes: Procedures["temporal.namespaces.searchAttributes"];
     };
     readonly schedules: {
+      readonly backfill: Procedures["temporal.schedules.backfill"];
       readonly create: Procedures["temporal.schedules.create"];
       readonly delete: Procedures["temporal.schedules.delete"];
       readonly describe: Procedures["temporal.schedules.describe"];
       readonly list: Procedures["temporal.schedules.list"];
+      readonly matchingTimes: Procedures["temporal.schedules.matchingTimes"];
       readonly pause: Procedures["temporal.schedules.pause"];
+      readonly runs: Procedures["temporal.schedules.runs"];
       readonly trigger: Procedures["temporal.schedules.trigger"];
       readonly unpause: Procedures["temporal.schedules.unpause"];
       readonly update: Procedures["temporal.schedules.update"];
@@ -2154,6 +2861,7 @@ export interface Api {
     readonly taskQueues: {
       readonly describe: Procedures["temporal.taskQueues.describe"];
     };
+    readonly testCodec: Procedures["temporal.testCodec"];
     readonly workers: {
       readonly list: Procedures["temporal.workers.list"];
     };
@@ -2166,6 +2874,7 @@ export interface Api {
       readonly list: Procedures["temporal.workflows.list"];
       readonly query: Procedures["temporal.workflows.query"];
       readonly rawEvent: Procedures["temporal.workflows.rawEvent"];
+      readonly relations: Procedures["temporal.workflows.relations"];
       readonly reset: Procedures["temporal.workflows.reset"];
       readonly signal: Procedures["temporal.workflows.signal"];
       readonly start: Procedures["temporal.workflows.start"];
@@ -2774,9 +3483,279 @@ export const procedures: Api = {
         },
       },
     },
+    kv: {
+      buckets: {
+        create: {
+          name: "nats.kv.buckets.create",
+          kind: "mutation",
+          perm: "nats.write",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        delete: {
+          name: "nats.kv.buckets.delete",
+          kind: "mutation",
+          perm: "nats.destroy",
+          risk: "Destructive",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        info: {
+          name: "nats.kv.buckets.info",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        list: {
+          name: "nats.kv.buckets.list",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+      },
+      delete: {
+        name: "nats.kv.delete",
+        kind: "mutation",
+        perm: "nats.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "nats.kv.get",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      history: {
+        name: "nats.kv.history",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      keys: {
+        name: "nats.kv.keys",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      purge: {
+        name: "nats.kv.purge",
+        kind: "mutation",
+        perm: "nats.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      put: {
+        name: "nats.kv.put",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      watch: {
+        name: "nats.kv.watch",
+        kind: "stream",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
+      },
+    },
+    obj: {
+      buckets: {
+        create: {
+          name: "nats.obj.buckets.create",
+          kind: "mutation",
+          perm: "nats.write",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        delete: {
+          name: "nats.obj.buckets.delete",
+          kind: "mutation",
+          perm: "nats.destroy",
+          risk: "Destructive",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        info: {
+          name: "nats.obj.buckets.info",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        list: {
+          name: "nats.obj.buckets.list",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+      },
+      delete: {
+        name: "nats.obj.delete",
+        kind: "mutation",
+        perm: "nats.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "nats.obj.get",
+        kind: "stream",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 3600000,
+        timeoutMaxMs: 3600000,
+      },
+      info: {
+        name: "nats.obj.info",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "nats.obj.list",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      uploadAbort: {
+        name: "nats.obj.uploadAbort",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      uploadFinish: {
+        name: "nats.obj.uploadFinish",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      uploadPart: {
+        name: "nats.obj.uploadPart",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      uploadStart: {
+        name: "nats.obj.uploadStart",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
     server: {
       info: {
         name: "nats.server.info",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    services: {
+      discover: {
+        name: "nats.services.discover",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      ping: {
+        name: "nats.services.ping",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      stats: {
+        name: "nats.services.stats",
         kind: "query",
         perm: "nats.read",
         risk: "Read",
@@ -2851,6 +3830,16 @@ export const procedures: Api = {
       },
     },
     schedules: {
+      backfill: {
+        name: "temporal.schedules.backfill",
+        kind: "mutation",
+        perm: "temporal.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       create: {
         name: "temporal.schedules.create",
         kind: "mutation",
@@ -2891,11 +3880,31 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+      matchingTimes: {
+        name: "temporal.schedules.matchingTimes",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       pause: {
         name: "temporal.schedules.pause",
         kind: "mutation",
         perm: "temporal.write",
         risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      runs: {
+        name: "temporal.schedules.runs",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,
@@ -2943,6 +3952,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+    },
+    testCodec: {
+      name: "temporal.testCodec",
+      kind: "mutation",
+      perm: "temporal.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 300000,
     },
     workers: {
       list: {
@@ -3029,6 +4048,16 @@ export const procedures: Api = {
       },
       rawEvent: {
         name: "temporal.workflows.rawEvent",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      relations: {
+        name: "temporal.workflows.relations",
         kind: "query",
         perm: "temporal.read",
         risk: "Read",

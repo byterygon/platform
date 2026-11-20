@@ -2,7 +2,8 @@
 // tabs: Timeline, History, Input and result, Pending, Stack trace. The history loads page by page
 // and, while the run is open, follows live. Signal, cancel, terminate and reset are in the toolbar,
 // each behind its confirmation (ActionDialogs); Queries is the sixth view.
-import { useContext, useEffect, useMemo, useState } from "react";
+import { linkTo } from "@/app/tab-view";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -14,30 +15,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
 import { CopyButton, Page, PageHeader, chipClass, gutterTable } from "@/app/page";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { useTabView } from "@/app/tab-view";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/app/messages";
 import type { EventCategory, HistoryEvent, WorkflowDetail } from "@/gen/api";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Add, ArrowClockwise, ArrowCounterclockwise, ArrowImport, Checkmark, Clock, Code, Copy, Dismiss, Flash, Link, List, MoreHorizontal, Pin, Play, SplitVertical, Stop, type IconDefinition } from "@/lib/icons";
+import { Add, ArrowClockwise, ArrowCounterclockwise, Checkmark, Code, Dismiss, Flash, MoreHorizontal, Stop } from "@/lib/icons";
 import { ToggleButton } from "@/components/ui/toggle-button";
-import { NoticeContext } from "@/app/page";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IconButton } from "@/components/ui/icon-button";
-import type { DescribedError, TabProps } from "../types";
-import { formatDuration, formatTime } from "./format";
+import type { DescribedError, LinkEvent, TabProps } from "../types";
+import { STATUS_TONE, formatDuration, formatTime } from "./format";
+import { RelationsPanel } from "./RelationsPanel";
 import { formatDurationText } from "./schedule-preview";
-import { CATEGORIES, buildTimeline, clockText, eventMs, eventSummary, failureChain, inputAndResult, isClosed, itemEventId, spanText, type ItemInfo, type ItemStatus, type LaneKind } from "./history";
+import { buildTimeline, eventMs, failureChain, inputAndResult, isClosed, itemEventId, spanText, type LaneKind } from "./history";
 import { CancelDialog, ResetDialog, SignalDialog, TerminateDialog, useAction } from "./ActionDialogs";
 import { QueriesPanel } from "./QueriesPanel";
 import { StartWorkflowSheet, type StartPrefill } from "./StartWorkflowSheet";
 import { HistoryPanel } from "./HistoryPanel";
+import { KIND_ICON, TimelinePane } from "./TimelinePane";
 import { PendingPanel } from "./PendingPanel";
 import { statusLabel } from "./WorkflowsTab";
 import { useWorkflow } from "./useWorkflow";
 
-const STATUS_VARIANT = { Running: "info", Completed: "success", Failed: "danger", Canceled: "neutral", Terminated: "danger", ContinuedAsNew: "info", TimedOut: "warning", Paused: "neutral", Unspecified: "neutral" } as const;
+const STATUS_VARIANT = STATUS_TONE;
 
-type Section = "timeline" | "history" | "io" | "pending" | "stack" | "queries";
+/** The sections, and the view words ending a workflow's URL (DOC-21 §3.7). */
+export const WORKFLOW_VIEWS = ["timeline", "history", "relations", "input", "pending", "queries", "stack"] as const;
+type Section = (typeof WORKFLOW_VIEWS)[number];
 type Dialog = "signal" | "cancel" | "terminate" | "reset" | "startAnother" | null;
 
 const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" ? String(value) : "");
@@ -85,12 +90,13 @@ function stateLabel(value: unknown): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
 
-export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab }: TabProps) {
+export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab, navigate, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const namespace = text(tab.params["namespace"]) || "default";
   const workflowId = text(tab.params["workflowId"]);
   const runId = text(tab.params["runId"]) || undefined;
   const state = useWorkflow({ client, connId, namespace, workflowId, runId, note, onLive });
-  const [section, setSection] = useState<Section>("timeline");
+  const [section, setSection] = useTabView({ tab, navigate }, WORKFLOW_VIEWS, "timeline");
   const [selected, setSelected] = useState<number | null>(null);
   useTabActions({ refresh: state.refresh });
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -123,6 +129,8 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
 
   const w = detail?.workflow;
   const pending = detail ? detail.pendingActivities.length + detail.pendingChildren.length : 0;
+  // Parent and children, known from the history before the Relations view loads.
+  const related = useMemo(() => (w?.parentWorkflowId ? 1 : 0) + new Set(events.filter((e) => e.eventType === "StartChildWorkflowExecutionInitiated").map((e) => text(e.attributes["workflowId"]))).size, [w?.parentWorkflowId, events]);
   return (
     <Page>
       <PageHeader
@@ -199,7 +207,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             The reset made run <span className="font-mono text-code">{newRun}</span>.
           </AlertDescription>
           <AlertActions>
-            <Button size="small" onClick={() => openTab({ kind: "temporal.workflow", params: { namespace, workflowId, runId: newRun }, title: workflowId })}>
+            <Button size="small" onClick={() => go({ kind: "temporal.workflow", params: { namespace, workflowId, runId: newRun }, title: workflowId })}>
               Open new run
             </Button>
             <Button size="small" appearance="subtle" onClick={() => setNewRun(null)}>
@@ -218,7 +226,10 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <TabsTrigger value="history">
               History <span className="text-body-1 text-fg-muted">{formatCount(events.length)}</span>
             </TabsTrigger>
-            <TabsTrigger value="io">Input and result</TabsTrigger>
+            <TabsTrigger value="relations">
+              Relations {related > 0 ? <span className="text-body-1 text-fg-muted">{related}</span> : null}
+            </TabsTrigger>
+            <TabsTrigger value="input">Input and result</TabsTrigger>
             <TabsTrigger value="pending">
               Pending {pending > 0 ? <span className="text-body-1 text-fg-muted">{pending}</span> : null}
             </TabsTrigger>
@@ -234,10 +245,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               workflowId={workflowId}
               selected={selected}
               onSelect={(id) => setSelected(id)}
-              onOpenHistory={(id) => {
-                setSelected(id);
-                setSection("history");
-              }}
+              onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 ?? null }, title: workflowId2 }, event)}
             />
           </TabsContent>
           <TabsContent value="history" className="flex min-h-0 flex-1 flex-col">
@@ -260,11 +268,26 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               }
             />
           </TabsContent>
-          <TabsContent value="io" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
+          <TabsContent value="relations" className="flex min-h-0 flex-1 flex-col">
+            <RelationsPanel
+              client={client}
+              connId={connId}
+              namespace={namespace}
+              workflowId={workflowId}
+              runId={detail.workflow.runId}
+              active={section === "relations"}
+              version={events.length}
+              now={now}
+              note={note}
+              onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, ...(runId2 ? { runId: runId2 } : {}) }, title: workflowId2 }, event)}
+              onListWorkflows={(query) => go({ kind: "temporal.workflows", params: { namespace, query }, title: `Workflows · ${namespace}` })}
+            />
+          </TabsContent>
+          <TabsContent value="input" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <InputResultPanel events={events} detail={detail} />
           </TabsContent>
           <TabsContent value="pending" className="flex min-h-0 flex-1 flex-col">
-            <PendingPanel detail={detail} now={now} onRefresh={state.refresh} onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })} />
+            <PendingPanel detail={detail} now={now} onRefresh={state.refresh} onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 }, event)} />
           </TabsContent>
           <TabsContent value="queries" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <QueriesPanel client={client} connId={connId} namespace={namespace} workflowId={workflowId} runId={detail.workflow.runId} active={section === "queries"} note={note} />
@@ -284,7 +307,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           namespace={namespace}
           prefill={prefillOf(w, events)}
           note={note}
-          onOpenWorkflow={(workflowId2, runId2) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 })}
+          onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 }, event)}
         />
       ) : null}
       <SignalDialog
@@ -353,8 +376,6 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-/** The Timeline's lane icons, by kind. */
-const KIND_ICON: Record<LaneKind, IconDefinition> = { workflow: Link, workflowTask: List, activity: Flash, timer: Clock, child: SplitVertical, signal: Play, update: ArrowImport, marker: Pin };
 /** The filter chips, in the mockup's order. */
 const KIND_CHIPS: readonly { kind: LaneKind; label: string }[] = [
   { kind: "activity", label: "Activities" },
@@ -365,7 +386,6 @@ const KIND_CHIPS: readonly { kind: LaneKind; label: string }[] = [
   { kind: "update", label: "Updates" },
   { kind: "workflowTask", label: "Workflow tasks" },
 ];
-const ITEM_BADGE: Record<ItemStatus, "accent" | "success" | "danger" | "warning" | "info" | "neutral"> = { running: "info", success: "success", danger: "danger", warning: "warning", info: "info", neutral: "neutral" };
 
 interface TimelinePanelProps {
   events: HistoryEvent[];
@@ -374,13 +394,14 @@ interface TimelinePanelProps {
   /** The run is followed live (open, its history streaming in). */
   live: boolean;
   workflowId: string;
+  /** The selected event: the item it belongs to is selected (an event picked in History selects its activity). */
   selected: number | null;
   onSelect(id: number): void;
-  /** Opens History at an event. */
-  onOpenHistory(eventId: number): void;
+  /** Opens a child workflow in its own tab. */
+  onOpenWorkflow(workflowId: string, runId?: string, event?: LinkEvent): void;
 }
 
-function TimelinePanel({ events, pending, now, live, workflowId, selected, onSelect, onOpenHistory }: TimelinePanelProps) {
+function TimelinePanel({ events, pending, now, live, workflowId, selected, onSelect, onOpenWorkflow }: TimelinePanelProps) {
   const data = useMemo(() => buildTimeline(events, { workflowId, pending, now }), [events, workflowId, pending, now]);
   const [hidden, setHidden] = useState<ReadonlySet<LaneKind>>(() => new Set());
   const [follow, setFollow] = useState(true);
@@ -390,7 +411,7 @@ function TimelinePanel({ events, pending, now, live, workflowId, selected, onSel
     return data.items.filter((i) => shown.has(i.laneId));
   }, [data.items, lanes]);
   if (events.length === 0) return <EmptyLine>No history yet.</EmptyLine>;
-  const selectedId = selected === null ? null : `e${selected}`;
+  const selectedId = selected === null ? null : (data.itemOfEvent.get(selected) ?? null);
   const picked = selectedId ? data.info.get(selectedId) : undefined;
   const toggle = (kind: LaneKind, on: boolean) =>
     setHidden((h) => {
@@ -444,67 +465,11 @@ function TimelinePanel({ events, pending, now, live, workflowId, selected, onSel
         follow={live && follow}
         onFollowChange={setFollow}
         toolbar={toolbar}
+        aside={<TimelinePane info={picked} events={events} pending={pending} now={now} onOpenWorkflow={onOpenWorkflow} />}
+        asideLabel={picked ? `${picked.name}, ${picked.what}` : "Selected item"}
         className="min-h-0 flex-1"
       />
-      <SelectedStrip info={picked} onOpenHistory={onOpenHistory} />
     </div>
-  );
-}
-
-/** The strip under the Timeline: the selected item's times, attempt and failure, and its events in History. */
-function SelectedStrip({ info, onOpenHistory }: { info: ItemInfo | undefined; onOpenHistory(eventId: number): void }) {
-  const notify = useContext(NoticeContext);
-  if (!info) {
-    return <p className="shrink-0 border-t border-border-subtle px-inset-lg py-stack-md text-caption-1 text-fg-muted">Click a bar, or focus it and press Enter, to see its times, attempt and failure here. Plus and minus zoom, the arrow keys pan, Home fits.</p>;
-  }
-  const end = info.end;
-  const facts = [
-    `${clockText(info.start, true)} → ${end === null ? "now" : clockText(end, true)}`,
-    end === null ? "" : spanText(end - info.start),
-    info.attempt ? `attempt ${info.attempt}${info.maximumAttempts ? ` of ${info.maximumAttempts}` : ""}` : "",
-    info.taskQueue ? `task queue ${info.taskQueue}` : "",
-  ].filter(Boolean);
-  const failure = info.failure;
-  const copyFailure = async () => {
-    if (!failure) return;
-    const value = `${failure.type ? `${failure.type}: ` : ""}${failure.message}`;
-    try {
-      await navigator.clipboard.writeText(value);
-      notify({ title: "Copied the failure", description: value.length > 64 ? `${value.slice(0, 61)}…` : value, type: "success" });
-    } catch {
-      notify({ title: "Could not copy the failure", description: "The browser refused the clipboard. Select the text instead.", type: "warning" });
-    }
-  };
-  const range = info.firstEventId === info.lastEventId ? `Event ${info.firstEventId}` : `Events ${info.firstEventId}–${info.lastEventId}`;
-  return (
-    <section aria-label="Selected item" className="flex shrink-0 items-center gap-inline-lg border-t border-border-subtle px-inset-lg py-stack-md">
-      <div className="flex min-w-0 flex-1 flex-col gap-stack-xs">
-        <p className="flex items-center gap-inline-sm text-body-1-strong text-fg">
-          {info.name} · {info.what}
-          <CopyButton value={info.name} what="name" />
-          <Badge appearance="tint" variant={ITEM_BADGE[info.status]}>{info.state}</Badge>
-        </p>
-        <p className="truncate text-body-1 text-fg-muted">
-          {facts.join(" · ")}
-          {failure ? (
-            <>
-              {" · "}
-              {failure.type ? <span className="text-body-1-strong text-fg">{failure.type}: </span> : null}
-              {failure.message}
-              {failure.nonRetryable ? " (non-retryable)" : ""}
-            </>
-          ) : null}
-        </p>
-      </div>
-      <Button appearance="secondary" onClick={() => onOpenHistory(info.firstEventId)}>
-        <Icon icon={List} /> {range} in History
-      </Button>
-      {failure ? (
-        <Button appearance="secondary" onClick={() => void copyFailure()}>
-          <Icon icon={Copy} /> Copy failure
-        </Button>
-      ) : null}
-    </section>
   );
 }
 

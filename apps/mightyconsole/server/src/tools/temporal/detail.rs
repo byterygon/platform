@@ -10,7 +10,7 @@ use super::detail_types::{
     WorkflowQueryInput, WorkflowQueryOutput, WorkflowRawEventInput, WorkflowRawEventOutput,
     WorkflowRef,
 };
-use super::payloads::{decode_payloads, encode_json, payload_encodings, to_json, to_json_raw};
+use super::payloads::{decode_payloads, encode_json, payload_encodings, to_json_raw};
 use super::proto::temporal::api::common::v1::{Payloads, WorkflowExecution};
 use super::proto::temporal::api::history::v1::HistoryEvent as ProtoEvent;
 use super::proto::temporal::api::query::v1::WorkflowQuery;
@@ -79,9 +79,48 @@ pub fn event_type_name(event_type: i32) -> (String, EventCategory) {
     (name, category)
 }
 
-/// One event as the UI reads it: the envelope typed, the attributes as decoded protobuf JSON.
-pub fn history_event(event: &ProtoEvent) -> Result<HistoryEvent, ToolError> {
-    let raw = to_json_raw("temporal.api.history.v1.HistoryEvent", event)?;
+/// Events as the UI reads them, their External Storage references resolved (TSK-103).
+pub async fn history_events<'a>(
+    client: &TemporalClient,
+    namespace: &str,
+    events: impl IntoIterator<Item = &'a ProtoEvent>,
+) -> Result<Vec<HistoryEvent>, ToolError> {
+    let events: Vec<&ProtoEvent> = events.into_iter().collect();
+    let mut raws = Value::Array(
+        events
+            .iter()
+            .map(|e| to_json_raw("temporal.api.history.v1.HistoryEvent", *e))
+            .collect::<Result<Vec<_>, _>>()?,
+    );
+    super::extstore::resolve_json(client.external.as_deref(), namespace, &mut raws).await;
+    super::codec_client::decode_json(client.payload_codec.as_deref(), namespace, &mut raws).await;
+    let Value::Array(raws) = raws else {
+        unreachable!("an array stays an array")
+    };
+    events
+        .into_iter()
+        .zip(raws)
+        .map(|(e, raw)| history_event_from(e, raw))
+        .collect()
+}
+
+/// A message as JSON with its payloads decoded, External Storage references resolved first.
+pub async fn to_json_resolved<M: prost::Message>(
+    client: &TemporalClient,
+    namespace: &str,
+    full_name: &str,
+    message: &M,
+) -> Result<Value, ToolError> {
+    let mut value = to_json_raw(full_name, message)?;
+    super::extstore::resolve_json(client.external.as_deref(), namespace, &mut value).await;
+    super::codec_client::decode_json(client.payload_codec.as_deref(), namespace, &mut value).await;
+    decode_payloads(&mut value);
+    Ok(value)
+}
+
+/// One event as the UI reads it, from its raw JSON (External Storage references already resolved):
+/// the envelope typed, the attributes as decoded protobuf JSON.
+fn history_event_from(event: &ProtoEvent, raw: Value) -> Result<HistoryEvent, ToolError> {
     let encodings = payload_encodings(&raw);
     let mut decoded = raw;
     decode_payloads(&mut decoded);
@@ -198,10 +237,15 @@ pub async fn describe(
         .map_err(|s| status_error(&client.address, &s))?
         .into_inner();
     let info = response.workflow_execution_info.clone().unwrap_or_default();
-    let mut json = object(to_json(
-        "temporal.api.workflowservice.v1.DescribeWorkflowExecutionResponse",
-        &response,
-    )?);
+    let mut json = object(
+        to_json_resolved(
+            client,
+            &namespace,
+            "temporal.api.workflowservice.v1.DescribeWorkflowExecutionResponse",
+            &response,
+        )
+        .await?,
+    );
     let mut info_json = json
         .remove("workflowExecutionInfo")
         .map(object)
@@ -263,13 +307,8 @@ pub async fn history(
         .await
         .map_err(|s| status_error(&client.address, &s))?
         .into_inner();
-    let events = response
-        .history
-        .unwrap_or_default()
-        .events
-        .iter()
-        .map(history_event)
-        .collect::<Result<Vec<_>, _>>()?;
+    let history = response.history.unwrap_or_default();
+    let events = history_events(client, &namespace, &history.events).await?;
     Ok(WorkflowHistoryOutput {
         events,
         next_page_token: encode_token(&response.next_page_token),
@@ -312,14 +351,13 @@ pub async fn follow_step(
         .await
         .map_err(|s| status_error(&client.address, &s))?
         .into_inner();
-    let events = response
-        .history
-        .unwrap_or_default()
-        .events
-        .iter()
-        .filter(|e| e.event_id > after)
-        .map(history_event)
-        .collect::<Result<Vec<_>, _>>()?;
+    let history = response.history.unwrap_or_default();
+    let events = history_events(
+        client,
+        namespace,
+        history.events.iter().filter(|e| e.event_id > after),
+    )
+    .await?;
     Ok(FollowStep {
         events,
         token: response.next_page_token,
@@ -347,19 +385,26 @@ pub async fn query(
     let namespace = client.namespace_or_default(input.namespace.as_deref());
     let response = client
         .service()
-        .query_workflow(client.request(
-            &namespace,
-            ws::QueryWorkflowRequest {
-                namespace: namespace.clone(),
-                execution: Some(execution(&input.workflow_id, input.run_id.as_deref())?),
-                query: Some(WorkflowQuery {
-                    query_type: input.query_type.trim().to_owned(),
-                    query_args: (!args.is_empty()).then_some(Payloads { payloads: args }),
-                    header: None,
-                }),
-                ..Default::default()
-            },
-        ))
+        .query_workflow(
+            client.request(
+                &namespace,
+                ws::QueryWorkflowRequest {
+                    namespace: namespace.clone(),
+                    execution: Some(execution(&input.workflow_id, input.run_id.as_deref())?),
+                    query: Some(WorkflowQuery {
+                        query_type: input.query_type.trim().to_owned(),
+                        query_args: super::extstore::offload(
+                            client,
+                            &namespace,
+                            (!args.is_empty()).then_some(Payloads { payloads: args }),
+                        )
+                        .await?,
+                        header: None,
+                    }),
+                    ..Default::default()
+                },
+            ),
+        )
         .await
         .map_err(|s| status_error(&client.address, &s))?
         .into_inner();
@@ -370,10 +415,13 @@ pub async fn query(
             "the workflow is not running, so the query was rejected",
         ));
     }
-    let mut result = to_json(
+    let mut result = to_json_resolved(
+        client,
+        &namespace,
         "temporal.api.common.v1.Payloads",
         &response.query_result.unwrap_or_default(),
-    )?;
+    )
+    .await?;
     // `Payloads` came out as an array; one result is the value itself.
     if let Value::Array(items) = &mut result
         && items.len() == 1

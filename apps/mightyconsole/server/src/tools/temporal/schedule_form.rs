@@ -529,10 +529,25 @@ pub fn apply(form: &ScheduleForm, base: sched::Schedule) -> Result<sched::Schedu
 }
 
 /// `CreateSchedule`.
+/// The schedule's workflow input, stored outside when it is large (TSK-103).
+async fn offload_input(
+    client: &TemporalClient,
+    namespace: &str,
+    schedule: &mut sched::Schedule,
+) -> Result<(), ToolError> {
+    if let Some(sched::schedule_action::Action::StartWorkflow(start)) =
+        schedule.action.as_mut().and_then(|a| a.action.as_mut())
+    {
+        start.input = super::extstore::offload(client, namespace, start.input.take()).await?;
+    }
+    Ok(())
+}
+
 pub async fn create(client: &TemporalClient, input: ScheduleWriteInput) -> Result<(), ToolError> {
     let id = required("scheduleId", &input.schedule_id, "a schedule ID")?;
     let namespace = client.namespace_or_default(input.namespace.as_deref());
-    let schedule = apply(&input.schedule, sched::Schedule::default())?;
+    let mut schedule = apply(&input.schedule, sched::Schedule::default())?;
+    offload_input(client, &namespace, &mut schedule).await?;
     client
         .service()
         .create_schedule(client.request(
@@ -580,7 +595,8 @@ pub async fn update(client: &TemporalClient, input: ScheduleWriteInput) -> Resul
             "the schedule changed since this sheet was opened; reload it and apply your changes again",
         ));
     }
-    let schedule = apply(&input.schedule, stored.schedule.unwrap_or_default())?;
+    let mut schedule = apply(&input.schedule, stored.schedule.unwrap_or_default())?;
+    offload_input(client, &namespace, &mut schedule).await?;
     client
         .service()
         .update_schedule(client.request(

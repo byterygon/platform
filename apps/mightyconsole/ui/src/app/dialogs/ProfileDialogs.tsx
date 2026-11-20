@@ -1,7 +1,9 @@
 // Profile dialogs (Mightyconsole spec §4): add, edit and duplicate in a Sheet with the tool's
 // connection form; delete; export with "Include secrets" off by default; import with a choice per
 // conflicting profile (Replace, Keep both, Skip); the confirmation for closing a busy tab.
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
+import { ServicesContext } from "@/app/client";
+import { useSheetGuard } from "@/app/leave-guard";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -46,15 +48,19 @@ export interface ProfileSheetProps {
   /** The base record's load state; `newer` makes the sheet read-only. */
   recordState?: RecordState;
   onSave: (record: ProfileRecord) => Promise<void>;
+  /** A new profile's name, filled in (a link's missing profile). */
+  name?: string;
 }
 
-export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave }: ProfileSheetProps) {
+export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames, recordState, onSave, name = "" }: ProfileSheetProps) {
+  const services = useContext(ServicesContext);
   const fresh = () => {
     const defaults = tool.profile.defaults();
-    if (!base) return { name: "", color: "", fields: defaults.fields, secrets: {} as Record<string, unknown>, extras: defaults.extras };
+    if (!base) return { name, color: "", fields: defaults.fields, secrets: {} as Record<string, unknown>, extras: defaults.extras };
     return { name: mode === "duplicate" ? `${base.name} copy` : base.name, color: base.color ?? "", fields: structuredClone(base.fields), secrets: {} as Record<string, unknown>, extras: structuredClone(base.extras) };
   };
   const [draft, setDraft] = useState(fresh);
+  const releaseGuard = useSheetGuard(open, draft);
   const [clearSecrets, setClearSecrets] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
@@ -65,7 +71,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
       setClearSecrets(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, base?.id, mode]);
+  }, [open, base?.id, mode, name]);
   const readOnly = recordState?.kind === "newer";
   const stored = useMemo(() => new Set(base && mode !== "add" && !clearSecrets ? Object.keys(base.secrets).filter((k) => base.secrets[k] !== "" && base.secrets[k] != null) : []), [base, mode, clearSecrets]);
 
@@ -97,6 +103,7 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
     setSaving(true);
     try {
       await onSave(record);
+      releaseGuard();
     } finally {
       setSaving(false);
     }
@@ -147,6 +154,9 @@ export function ProfileSheet({ open, onOpenChange, tool, base, mode, takenNames,
               storedSecrets={stored}
               errors={errors}
               disabled={readOnly}
+              {...(mode === "edit" && base ? { profileId: base.id } : {})}
+              {...(services ? { client: services.client } : {})}
+              draft={build}
               onFields={(patch) => setDraft((d) => ({ ...d, fields: { ...d.fields, ...patch } }))}
               onSecrets={(patch) => setDraft((d) => ({ ...d, secrets: { ...d.secrets, ...patch } }))}
             />
@@ -200,6 +210,26 @@ export function CloseTabDialog({ title, open, onCancel, onClose }: { title: stri
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction appearance="primary" onClick={onClose}>
             Close tab
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+/** Leaving a tab whose sheet has changes that are not saved (DOC-21 §3.7, TSK-105). */
+export function DiscardChangesDialog({ open, onKeep, onDiscard }: { open: boolean; onKeep: () => void; onDiscard: () => void }) {
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => !o && onKeep()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+          <AlertDialogDescription>A sheet in this tab has changes that are not saved. Leaving drops them.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction appearance="danger" onClick={onDiscard}>
+            Discard changes
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

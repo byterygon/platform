@@ -31,7 +31,9 @@ import {
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const codeEditorVariants = {
   variant: {
-    outline: "rounded-lg border border-border-subtle border-b-border-control-bottom data-readonly:border-b-border-subtle",
+    // A field: focused by the pointer it shows Fluent's accent underline, as a one-line field does
+    // (TSK-94); the double ring is for keyboard focus only.
+    outline: "rounded-lg border border-border-subtle border-b-border-control-bottom data-readonly:border-b-border-subtle data-focused:not-data-focus-visible:shadow-focus-underline",
     ghost: "",
   },
   /** The height of a `singleLine` editor, as Input's sizes. */
@@ -44,7 +46,7 @@ export const codeEditorVariants = {
 
 const base = [
   "relative flex h-panel-xs w-full min-h-0 min-w-0 flex-col overflow-hidden bg-editor text-editor-fg",
-  "outline-none data-focused:outline-solid data-focused:outline-[length:var(--by-ring-width)] data-focused:outline-offset-[var(--by-ring-inner-width)] data-focused:outline-ring data-focused:ring-[length:var(--by-ring-inner-width)] data-focused:ring-ring-inner",
+  "outline-none data-focus-visible:outline-solid data-focus-visible:outline-[length:var(--by-ring-width)] data-focus-visible:outline-offset-[var(--by-ring-inner-width)] data-focus-visible:outline-ring data-focus-visible:ring-[length:var(--by-ring-inner-width)] data-focus-visible:ring-ring-inner",
   "data-loading:cursor-progress",
   "data-invalid:border-danger-border data-invalid:border-b-danger-stroke",
 ];
@@ -63,10 +65,33 @@ const singleLineBase = [
 const fallbackClasses =
   "size-full flex-1 resize-none bg-editor p-inset-sm font-mono text-code text-editor-fg caret-editor-cursor outline-none selection:bg-editor-selection placeholder:text-editor-gutter";
 const singleLineFallbackClasses =
-  "w-full min-w-0 flex-1 resize-none overflow-hidden bg-transparent font-mono text-code leading-none whitespace-pre text-editor-fg caret-editor-cursor outline-none selection:bg-editor-selection placeholder:text-fg-subtle self-center";
+  "w-full min-w-0 flex-1 resize-none overflow-hidden bg-transparent font-mono text-code leading-none whitespace-pre text-editor-fg caret-editor-cursor outline-none selection:bg-editor-selection placeholder:text-fg-subtle self-center data-[size=small]:text-code-sm";
 
-/** What a completion item is, for its icon in the list. */
-export type CodeCompletionKind = "keyword" | "field" | "operator" | "value" | "function" | "variable" | "constant" | "type" | "snippet" | "history";
+/**
+ * What a completion item is, for its icon in the list (coloured by the syntax role of the kind,
+ * MONACO_COLORS `symbolIcon.*`). Besides the code kinds, a value's type (TSK-94: a search
+ * attribute's): `text`, `keyword-value` (an exact string), `number`, `boolean`, `date`, `list`;
+ * `history` is a recent entry and `saved` a saved one.
+ */
+export type CodeCompletionKind =
+  | "keyword"
+  | "field"
+  | "property"
+  | "operator"
+  | "value"
+  | "function"
+  | "variable"
+  | "constant"
+  | "type"
+  | "snippet"
+  | "history"
+  | "saved"
+  | "text"
+  | "keyword-value"
+  | "number"
+  | "boolean"
+  | "date"
+  | "list";
 
 /** One suggestion. */
 export interface CodeCompletionItem {
@@ -75,8 +100,8 @@ export interface CodeCompletionItem {
   kind?: CodeCompletionKind | undefined;
   /** A short note beside the label: a type, "saved query", "seen in 3 rows". */
   detail?: string | undefined;
-  /** A longer description in the details pane. */
-  documentation?: string | undefined;
+  /** A longer description in the details pane: plain text, or Markdown (`code` shows in the editor's font). */
+  documentation?: string | { markdown: string } | undefined;
   insertText?: string | undefined;
   /** `insertText` is a snippet (`${1:value}` placeholders, `$0` for the cursor). */
   snippet?: boolean | undefined;
@@ -162,6 +187,14 @@ export interface CodeEditorProps extends Omit<ComponentProps<"div">, "className"
   placeholder?: string | undefined;
   /** Line numbers in the gutter. */
   lineNumbers?: boolean | undefined;
+  /**
+   * Multi-line only: the editor is sized by its text, at least this many lines tall (a field:
+   * JSON input about 7, a config about 3), growing to `maxRows`; the line height is the
+   * `text.code` role's. Without it, set the height with `className`.
+   */
+  rows?: number | undefined;
+  /** With `rows`: the most lines shown before the text scrolls (twice `rows` by default). */
+  maxRows?: number | undefined;
   /** Tab moves focus instead of indenting (Ctrl+M toggles it at any time). */
   tabMovesFocus?: boolean | undefined;
   /** Accessible name of the text area; use it, or aria-labelledby on a visible label. */
@@ -178,9 +211,11 @@ const MONACO_LANGUAGES: Record<CodeLanguage, string> = { json: "json", yaml: "ya
 const LABELS: Record<CodeLanguage, string> = { json: "JSON editor", yaml: "YAML editor", protobuf: "Protobuf editor", plaintext: "Text editor", jq: "jq editor" };
 const monacoLanguage = (language: string) => (MONACO_LANGUAGES as Record<string, string>)[language] ?? language;
 const defaultLabel = (language: string) => (LABELS as Record<string, string>)[language] ?? "Code editor";
+/** Monaco's CompletionItemKind (and so its codicon) per kind. */
 const COMPLETION_KIND: Record<CodeCompletionKind, string> = {
   keyword: "Keyword",
   field: "Field",
+  property: "Property",
   operator: "Operator",
   value: "Value",
   function: "Function",
@@ -189,6 +224,13 @@ const COMPLETION_KIND: Record<CodeCompletionKind, string> = {
   type: "TypeParameter",
   snippet: "Snippet",
   history: "Reference",
+  saved: "Folder",
+  text: "Text",
+  "keyword-value": "Enum",
+  number: "Unit",
+  boolean: "EnumMember",
+  date: "Event",
+  list: "Struct",
 };
 /** Line breaks in a one-line editor (typed, pasted or set) become spaces. */
 const oneLine = (text: string) => text.replace(/\r\n|\r|\n/g, " ");
@@ -214,6 +256,30 @@ const SINGLE_LINE_OPTIONS = {
   suggest: { showStatusBar: false },
 };
 
+/** A multi-line editor's gutter: line numbers in two characters, no glyph margin, folding only in a pane (no `rows`). */
+const MULTI_LINE_OPTIONS = {
+  glyphMargin: false,
+  lineNumbersMinChars: 2,
+};
+
+/** The decorations column from the tokens (space.inset.xs); a field sized by `rows` has no folding. */
+function gutter(reader: { value: (cssVar: string) => string }, field: boolean) {
+  const decorations = Math.round(Number.parseFloat(reader.value("--by-space-inset-xs"))) || undefined;
+  return { folding: !field, ...(decorations !== undefined ? { lineDecorationsWidth: decorations } : {}) };
+}
+
+/** Scrollbars and the overview ruler, shown only while the text overflows (TSK-94). */
+function scrolling(overflowing: boolean, field: boolean) {
+  return {
+    scrollbar: { vertical: overflowing ? ("auto" as const) : ("hidden" as const), horizontal: field ? ("hidden" as const) : ("auto" as const), alwaysConsumeMouseWheel: overflowing, useShadows: overflowing },
+    overviewRulerLanes: overflowing ? 2 : 0,
+    overviewRulerBorder: overflowing,
+    hideCursorInOverviewRuler: !overflowing,
+    // A field wraps long lines rather than scrolling sideways.
+    ...(field ? { wordWrap: "on" as const } : {}),
+  };
+}
+
 /**
  * A code editor on Monaco for JSON, YAML, Protobuf and text, themed by the design tokens of its
  * region and loaded lazily from the app's bundle, with no network. JSON validates against a JSON
@@ -237,11 +303,15 @@ export function CodeEditor({
   readOnly = false,
   placeholder,
   lineNumbers = true,
+  rows,
+  maxRows,
   tabMovesFocus = false,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   onEditorReady,
   className,
+  style,
+  onPointerDown,
   ref,
   ...props
 }: CodeEditorProps) {
@@ -249,8 +319,12 @@ export function CodeEditor({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const fallbackRef = useRef<HTMLTextAreaElement>(null);
   const [editor, setEditor] = useState<{ editor: MonacoEditor; monaco: Monaco; original: { setValue: (v: string) => void } | undefined } | null>(null);
-  const [focused, setFocused] = useState(false);
+  // How the editor got focus: the pointer shows the underline, the keyboard the double ring.
+  const [focused, setFocused] = useState<false | "pointer" | "keyboard">(false);
+  const pointerDown = useRef(false);
   const pendingFocus = useRef(false);
+  // With `rows`: the height Monaco's content asks for, clamped to rows..maxRows lines (px).
+  const [fitHeight, setFitHeight] = useState<number | undefined>(undefined);
   const [fallbackText, setFallbackText] = useState(value ?? defaultValue);
   const latest = useRef({ onValueChange, onSubmit, onDiagnosticsChange, value, onEditorReady, completion });
   latest.current = { onValueChange, onSubmit, onDiagnosticsChange, value, onEditorReady, completion };
@@ -261,8 +335,9 @@ export function CodeEditor({
   textRef.current = text;
   const label = ariaLabel ?? defaultLabel(language);
   const showLineNumbers = lineNumbers && !singleLine;
-  const optionsRef = useRef({ readOnly, language, placeholder, lineNumbers: showLineNumbers, tabMovesFocus, label, diff, singleLine });
-  optionsRef.current = { readOnly, language, placeholder, lineNumbers: showLineNumbers, tabMovesFocus, label, diff, singleLine };
+  const fit = !singleLine && rows !== undefined ? { min: Math.max(1, rows), max: Math.max(1, rows, maxRows ?? rows * 2) } : undefined;
+  const optionsRef = useRef({ readOnly, language, placeholder, lineNumbers: showLineNumbers, tabMovesFocus, label, diff, singleLine, size, fit });
+  optionsRef.current = { readOnly, language, placeholder, lineNumbers: showLineNumbers, tabMovesFocus, label, diff, singleLine, size, fit };
   // One URI per editor, so a JSON Schema applies to this model only.
   const uri = `inmemory://byterygon/code-editor/${useId().replace(/[^A-Za-z0-9]/g, "")}.json`;
 
@@ -288,7 +363,7 @@ export function CodeEditor({
         const model = monaco.editor.createModel(o.singleLine ? oneLine(initialText) : initialText, monacoLanguage(o.language), monaco.Uri.parse(uri));
         // A one-line editor centres its line in the field: padding from the frame's inner height.
         const metrics = () => {
-          const m = monacoMetrics(reader);
+          const m = monacoMetrics(reader, o.singleLine && o.size === "small" ? "code-sm" : "code");
           if (!o.singleLine) return m;
           const room = Math.max(0, root.clientHeight - m.lineHeight);
           return { ...m, padding: { top: Math.floor(room / 2), bottom: Math.ceil(room / 2) } };
@@ -309,7 +384,9 @@ export function CodeEditor({
           stickyScroll: { enabled: false },
           wordBasedSuggestions: "off" as const,
           links: false,
-          ...(o.singleLine ? SINGLE_LINE_OPTIONS : {}),
+          // The tokens colour brackets as delimiters; Monaco's rainbow pairs are not used (TSK-94).
+          bracketPairColorization: { enabled: false },
+          ...(o.singleLine ? SINGLE_LINE_OPTIONS : { ...MULTI_LINE_OPTIONS, ...gutter(reader, o.fit !== undefined), ...scrolling(false, o.fit !== undefined) }),
         };
         let instance: MonacoEditor;
         let originalModel: ReturnType<Monaco["editor"]["createModel"]> | undefined;
@@ -367,8 +444,10 @@ export function CodeEditor({
           frame = 0;
           if (disposed) return;
           theme = monacoTheme(reader);
+          overflow.sync();
           applyTheme(monaco, theme, doc);
           instance.updateOptions(metrics());
+          layout();
         };
         const schedule = () => {
           if (!frame) frame = requestAnimationFrame(retheme);
@@ -386,8 +465,34 @@ export function CodeEditor({
           }
         });
         observer.observe(doc.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-density"], subtree: true, childList: true, characterData: true });
+        // Scrollbars and the overview ruler only when the text overflows; with `rows`, the height
+        // follows the text between its rows and maxRows lines.
+        let overflowing: boolean | undefined;
+        const layout = () => {
+          if (disposed || o.singleLine) return;
+          const fitting = optionsRef.current.fit;
+          const content = instance.getContentHeight();
+          let room = instance.getLayoutInfo().height;
+          if (fitting) {
+            const m = monacoMetrics(reader);
+            const lines = (n: number) => n * m.lineHeight + m.padding.top + m.padding.bottom;
+            const inner = Math.min(Math.max(content, lines(fitting.min)), lines(fitting.max));
+            const frame = root.offsetHeight - root.clientHeight;
+            setFitHeight(inner + frame);
+            room = inner;
+          }
+          const over = content > room + 1;
+          if (over !== overflowing) {
+            overflowing = over;
+            instance.updateOptions(scrolling(over, fitting !== undefined));
+          }
+        };
+        const sized = instance.onDidContentSizeChange(layout);
+        const laidOut = instance.onDidLayoutChange(layout);
+        layout();
         const focus = instance.onDidFocusEditorWidget(() => {
-          setFocused(true);
+          setFocused(pointerDown.current ? "pointer" : "keyboard");
+          pointerDown.current = false;
           applyTheme(monaco, theme, doc);
         });
         const blur = instance.onDidBlurEditorWidget(() => setFocused(false));
@@ -398,6 +503,8 @@ export function CodeEditor({
           observer.disconnect();
           changes.dispose();
           diagnostics.dispose();
+          sized.dispose();
+          laidOut.dispose();
           focus.dispose();
           blur.dispose();
           (diffEditor ?? instance).dispose();
@@ -478,8 +585,9 @@ export function CodeEditor({
             kind: kinds[COMPLETION_KIND[item.kind ?? "value"]] ?? 0,
             insertText: item.insertText ?? item.label,
             range: item.replace ? rangeOf(item.replace) : wordRange,
-            ...(item.detail !== undefined ? { detail: item.detail } : {}),
-            ...(item.documentation !== undefined ? { documentation: item.documentation } : {}),
+            // The details pane's header repeats `detail`; documentation that says it already goes without it (TSK-94).
+            ...(item.detail !== undefined && item.documentation === undefined ? { detail: item.detail } : {}),
+            ...(item.documentation !== undefined ? { documentation: typeof item.documentation === "string" ? item.documentation : { value: item.documentation.markdown, isTrusted: false, supportHtml: false } } : {}),
             ...(item.snippet ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet } : {}),
             ...(item.sortText !== undefined ? { sortText: item.sortText } : {}),
             ...(item.filterText !== undefined ? { filterText: item.filterText } : {}),
@@ -556,8 +664,14 @@ export function CodeEditor({
       data-loading={editor ? undefined : ""}
       data-readonly={readOnly ? "" : undefined}
       data-focused={focused ? "" : undefined}
+      data-focus-visible={focused === "keyboard" && !singleLine ? "" : undefined}
       aria-busy={editor ? undefined : true}
-      className={singleLine ? cn(singleLineBase, codeEditorVariants.size[size], className) : cn(base, codeEditorVariants.variant[variant], className)}
+      className={singleLine ? cn(singleLineBase, codeEditorVariants.size[size], className) : cn(base, codeEditorVariants.variant[variant], fit ? "text-code" : undefined, className)}
+      style={fit ? { height: fitHeight !== undefined ? `${fitHeight}px` : `calc(${fit.min}lh + 2 * var(--by-space-inset-sm))`, ...style } : style}
+      onPointerDown={(event) => {
+        pointerDown.current = true;
+        onPointerDown?.(event);
+      }}
       ref={(node) => {
         rootRef.current = node;
         if (typeof ref === "function") return ref(node);
@@ -588,7 +702,11 @@ export function CodeEditor({
           onValueChange?.(next);
         }}
         onKeyDown={onFallbackKeyDown}
-        onFocus={() => setFocused(true)}
+        data-size={singleLine ? size : undefined}
+        onFocus={() => {
+          setFocused(pointerDown.current ? "pointer" : "keyboard");
+          pointerDown.current = false;
+        }}
         onBlur={() => setFocused(false)}
         className={singleLine ? singleLineFallbackClasses : fallbackClasses}
       />

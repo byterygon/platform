@@ -646,7 +646,7 @@ fn api_error(what: &str, e: ApiError) -> ToolError {
 }
 
 /// One JetStream API call: `$JS.API.<subject>` (or the profile's prefix or domain).
-async fn api<T: DeserializeOwned, B: Serialize + ?Sized>(
+pub(super) async fn api<T: DeserializeOwned, B: Serialize + ?Sized>(
     c: &NatsClient,
     what: &str,
     subject: String,
@@ -692,27 +692,27 @@ async fn api<T: DeserializeOwned, B: Serialize + ?Sized>(
 
 // ---- Conversions -----------------------------------------------------------------------------
 
-fn us(t: OffsetDateTime) -> i64 {
+pub(super) fn us(t: OffsetDateTime) -> i64 {
     i64::try_from(t.unix_timestamp_nanos() / 1000).unwrap_or(i64::MAX)
 }
 
 /// A JetStream time, `None` for the zero time an empty stream reports.
-fn us_opt(t: OffsetDateTime) -> Option<i64> {
+pub(super) fn us_opt(t: OffsetDateTime) -> Option<i64> {
     let v = us(t);
     (v > 0).then_some(v)
 }
 
-fn time_of(field: &str, micros: i64) -> Result<OffsetDateTime, ToolError> {
+pub(super) fn time_of(field: &str, micros: i64) -> Result<OffsetDateTime, ToolError> {
     OffsetDateTime::from_unix_timestamp_nanos(i128::from(micros) * 1000)
         .map_err(|_| ToolError::invalid(TOOL, field, "not a valid time"))
 }
 
-fn ms(d: Duration) -> u64 {
+pub(super) fn ms(d: Duration) -> u64 {
     u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
 }
 
 /// A positive limit, `None` for the server's "no limit" (`-1` or `0`).
-fn limit<T: Into<i64> + Copy>(v: T) -> Option<T> {
+pub(super) fn limit<T: Into<i64> + Copy>(v: T) -> Option<T> {
     (v.into() > 0).then_some(v)
 }
 
@@ -865,7 +865,10 @@ pub fn name_of(field: &str, what: &str, name: &str) -> Result<String, ToolError>
     Ok(n.to_owned())
 }
 
-fn positive<T: Into<i64> + Copy>(field: &str, v: Option<T>) -> Result<Option<T>, ToolError> {
+pub(super) fn positive<T: Into<i64> + Copy>(
+    field: &str,
+    v: Option<T>,
+) -> Result<Option<T>, ToolError> {
     match v {
         Some(x) if x.into() <= 0 => Err(ToolError::invalid(
             TOOL,
@@ -947,7 +950,7 @@ fn apply(target: &mut stream::Config, c: &NatsStreamConfig) -> Result<(), ToolEr
     Ok(())
 }
 
-fn positive_u(field: &str, v: Option<u64>) -> Result<Option<u64>, ToolError> {
+pub(super) fn positive_u(field: &str, v: Option<u64>) -> Result<Option<u64>, ToolError> {
     match v {
         Some(0) => Err(ToolError::invalid(
             TOOL,
@@ -1322,7 +1325,7 @@ struct RawStored {
 }
 
 /// Every stream of the account, in name order.
-async fn list_streams(
+pub(super) async fn list_streams(
     c: &NatsClient,
     subject: Option<&str>,
 ) -> Result<Vec<stream::Info>, ToolError> {
@@ -1344,7 +1347,7 @@ async fn list_streams(
     Ok(out)
 }
 
-async fn get_info(c: &NatsClient, name: &str) -> Result<stream::Info, ToolError> {
+pub(super) async fn get_info(c: &NatsClient, name: &str) -> Result<stream::Info, ToolError> {
     api(
         c,
         "stream info",

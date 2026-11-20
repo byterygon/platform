@@ -60,7 +60,7 @@ export default {
     },
     {
       id: "shell",
-      text: "The shell matches TSK-64's: tool rail, connection list, tabs restored after a reload, command bar, status bar, palette with every action and binding, every row of 3.4, the states of 3.5, Settings and About; axe passes in light, dark, compact and comfortable.",
+      text: "The shell matches TSK-64's: tool rail, connection list, tabs restored after a reload, command bar, status bar, palette with every action and binding, every row of 3.4, the states of 3.5, Settings and About; axe passes in light, dark, compact and comfortable. TSK-101 and TSK-105 (DOC-21 §3.7): URLs per place and back and forward per tab; the navigation row (Back's list, crumbs from the routes with siblings and overflow, the link and Copy link); links in the same tab, Mod+click or middle-click for another; a sheet with changes asks before leaving (useBlocker); the missing-profile page.",
       checks: [
         vitest("test/shell.test.tsx", "keyboard, palette, dialogs"),
         vitest("test/shell.test.tsx", "accessibility"),
@@ -96,6 +96,13 @@ export default {
           await until(`[...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ticks · acceptance"))`, "the tab restored after a reload");
           await shot("after a reload, dark");
           await page.send("Emulation.setEmulatedMedia", { features: [] });
+        }),
+        vitest("test/routing.test.tsx"),
+        vitest("test/nav-row.test.tsx"),
+        command("the Breadcrumb's overflow in packages/ui", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/breadcrumb"]),
+        command("browser-check: the row, Back's list, siblings, the fold, the blocker and the missing-profile page", ["node", "scripts/browser-check.ts"], {
+          cwd: "apps/mightyconsole/ui",
+          env: { MIGHTYCONSOLE_SERVER: "{server}", BYTERYGON_REQUIRE_BROWSER: "1" },
         }),
       ],
     },

@@ -4,6 +4,7 @@
 // destructive actions are proved by the cargo tests on workflows they start themselves; the browser
 // opens their confirmations but never confirms one, so the lab's seeded workflows stay as they are.
 import { browser, cargo, type Checklist, command, manual, vitest } from "../checklist.mts";
+import { APPEARANCES, appearance, openSuggestions, suggestionRows, suggestionsOnTop, typeInEditor } from "../editors.mts";
 
 /** One cargo check per test function (the filter names the function), against the lab. */
 const lab = (...names: string[]) => names.map((name) => cargo(name, { features: ["lab-tests"] }));
@@ -94,7 +95,7 @@ export default {
   items: [
     {
       id: "workflows",
-      text: "Namespaces; the workflow list with visibility queries, the Status menu, count and paging.",
+      text: "Namespaces; the workflow list with visibility queries, the Status menu, count and paging. TSK-105 (DOC-21 §3.7): a workflow opened from the list takes a step in the same tab; the navigation row shows the profile, the namespace, Workflows, the workflow and its view; Back's list names the steps; the namespace segment lists the cluster's namespaces and switching keeps the view; a link to a profile this browser lacks shows its page.",
       lab: true,
       checks: [
         ...lab(
@@ -128,6 +129,57 @@ export default {
           await pickStatus(ctx, "Running");
           await until(`__mc.has("fulfilment-long-running") && __mc.has("retrying-1") && !__mc.has("failed-1")`, "the Running status");
           await shot("filtered by Running");
+        }),
+        vitest("test/nav-row.test.tsx"),
+        vitest("test/routing.test.tsx"),
+        browser("a workflow in the same tab, the row, Back's list, the namespace's siblings, a missing profile", async (ctx) => {
+          const { page, origin, run, until, shot } = ctx;
+          const row = `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=toolbar][aria-label=Location]")].find((r) => r.offsetParent !== null)`;
+          const crumbs = `[...${row}.querySelectorAll("[data-slot=breadcrumb-item]")].map((el) => el.textContent.trim()).join(" / ")`;
+          const rowButton = (label: string) => `[...${row}.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
+          await runningWorkflows(ctx);
+          const tabs = await run<number>(`document.querySelectorAll("[role=tablist][aria-label=Tabs] [role=tab]").length`);
+          await run(click("fulfilment-long-running"));
+          await until(`${row} && ${crumbs} === "lab-temporal / lab / Workflows / fulfilment-long-running / Timeline"`, "the workflow's crumbs in the same tab");
+          const after = await run<number>(`document.querySelectorAll("[role=tablist][aria-label=Tabs] [role=tab]").length`);
+          if (after !== tabs) throw new Error(`a link opened a tab (${tabs} → ${after})`);
+          await shot("the navigation row on a workflow");
+          await run(`${rowButton("Back")}.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }))`);
+          await until(`${menuItem("Workflows · lab")} && ${menuItem("Timeline · fulfilment-long-running")}`, "Back's list of this tab");
+          await shot("Back's list");
+          await run(`document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+          await run(press(rowButton("Back")));
+          await until(`location.pathname === "/temporal/lab-temporal/lab/workflows" && ${crumbs} === "lab-temporal / lab / Workflows"`, "Back to the list in the same tab");
+          await run(press(rowButton("lab")));
+          await until(`${menuItem("default")} && __mc.has("Namespaces of lab-temporal")`, "the namespace segment's siblings");
+          await shot("the namespace's siblings");
+          await run(press(menuItem("default")));
+          await until(`location.pathname === "/temporal/lab-temporal/default/workflows" && ${crumbs} === "lab-temporal / default / Workflows"`, "Workflows of default, the view kept");
+          await page.navigate(`${origin}/temporal/prod-eu/lab/workflows/retrying-1/history`);
+          await until(`__mc.has("This link needs a Temporal profile named prod-eu") && location.pathname === "/temporal/prod-eu/lab/workflows/retrying-1/history"`, "the missing-profile page");
+          await shot("a link to a missing profile");
+        }),
+        // TSK-94: the query's suggestions, as the mockup's temporal-workflows frame: built-in
+        // attributes before the namespace's custom one (the lab registers OrderId), each with its
+        // type, over the table's sticky header, in every appearance.
+        browser("the query's suggestions: built-in then custom attributes, over the table (TSK-94)", async (ctx) => {
+          const { until, run, shot } = ctx;
+          await connectLab(ctx);
+          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await until(`__mc.has(" workflows") && __mc.has("fulfilment-long-running")`, "the workflow list");
+          await typeInEditor(ctx, "Visibility query", "Or");
+          await openSuggestions(ctx);
+          await until(`[...document.querySelectorAll("[data-slot=code-editor-overflow] .suggest-widget.visible .monaco-list-row")].some((r) => r.textContent.includes("OrderId") && r.textContent.includes("Keyword · custom"))`, "OrderId offered as a custom Keyword");
+          await typeInEditor(ctx, "Visibility query", 'WorkflowType = "Fulfilment" AND Ex');
+          for (const [theme, density] of APPEARANCES) {
+            await appearance(ctx, theme, density);
+            await openSuggestions(ctx, theme === "light" && density === "comfortable");
+            const rows = await suggestionRows(ctx);
+            if (!rows.some((r) => r.includes("ExecutionStatus") && r.includes("Keyword"))) throw new Error(`no ExecutionStatus suggestion: ${JSON.stringify(rows)}`);
+            if (!(await suggestionsOnTop(ctx))) throw new Error(`${theme}/${density}: a suggestion row is covered`);
+            await shot(`query suggestions, ${theme}, ${density}`);
+          }
+          await appearance(ctx, "light", "comfortable");
         }),
       ],
     },
@@ -247,7 +299,7 @@ export default {
           await until(`__mc.has("every-minute") && __mc.has("Every 1 minute")`, "the seeded schedule");
           await shot("schedules");
           await run(click("every-minute"));
-          await until(`__mc.has("Upcoming runs")`, "the schedule's detail");
+          await until(`__mc.has("Computed by the server") && __mc.has("TemporalScheduledById")`, "the schedule's detail");
           await shot("schedule detail");
           await run(`__mc.dblclick(__mc.item("Task queues"))`);
           await until(`__mc.field("Task queue")`, "the task queue form");
@@ -255,6 +307,42 @@ export default {
           await run(click("Look up"));
           await until(`__mc.has("Workflow pollers") && __mc.has("Activity pollers")`, "the pollers");
           await shot("task queue pollers");
+        }),
+      ],
+    },
+    {
+      id: "timeline-pane",
+      text: "Uy Son's feedback of 2026-11-19, part 1 (TSK-100, DOC-21 Open question 45 (r)): a Timeline item's details open in a pane beside the chart (times and waits, worker, retry policy, the failure with Copy, its own events unfolding to their attributes); an open workflow-task fold in History shows its events indented with a guide line; no key hints drawn on buttons.",
+      lab: true,
+      checks: [
+        vitest("test/temporal-timeline-detail.test.ts"),
+        vitest("test/temporal-workflow.test.tsx"),
+        vitest("test/temporal-history-view.test.ts"),
+        vitest("test/temporal-write-sheets.test.tsx"),
+        vitest("test/shell.test.tsx"),
+        command("the Timeline's aside and Fit's tooltip in packages/ui", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/timeline"]),
+        browser("the retrying activity's pane beside the Timeline and an open fold in History", async (ctx) => {
+          const { run, until, shot } = ctx;
+          await runningWorkflows(ctx);
+          await run(click("retrying-1"));
+          // The tab may be open already from the detail walk, on another view: go to the Timeline.
+          await until(`__mc.has("Input and result") && ${panelButton("Timeline")}`, "the workflow's views");
+          await run(click("Timeline"));
+          // Other workflow tabs stay mounted (hidden), so every query takes the element on screen.
+          const shown = (selector: string) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.offsetParent !== null)`;
+          const panel = shown("[data-slot=timeline-aside]");
+          await until(`${panel} && __mc.has("Click a bar, a diamond or a pin")`, "the Timeline with its empty pane");
+          await run(`__mc.click(${shown("[data-slot=timeline-item][data-shape=hatched]")})`);
+          await until(`${panel}.textContent.includes("Retrying") && ${panel}.textContent.includes("Events") && ${panel}.textContent.includes("the payment provider is down")`, "the retrying activity's details, failure and events");
+          // Within the workflow's tab (its outermost tab panel): the title bar's command search box keeps its Ctrl+K, as search fields do.
+          const hints = await run<number>(`(() => { let tab = ${panel}; while (tab.parentElement && tab.parentElement.closest("[role=tabpanel]")) tab = tab.parentElement.closest("[role=tabpanel]"); return tab.querySelectorAll("button kbd").length; })()`);
+          if (hints > 0) throw new Error(`${hints} key hint(s) drawn on buttons`);
+          await shot("timeline with the retrying activity's pane");
+          await run(click("History"));
+          await until(shown("button[aria-label^='Unfold events']"), "a folded workflow task");
+          await run(`__mc.click(${shown("button[aria-label^='Unfold events']")})`);
+          await until(shown("tr[data-in-fold] [data-slot=fold-guide]"), "the fold's events indented with the guide line");
+          await shot("history with an open fold");
         }),
       ],
     },

@@ -65,6 +65,9 @@ pub struct TestServer {
     pub server: Server,
     pub roots: Arc<rustls::RootCertStore>,
     pub _dir: tempfile::TempDir,
+    /// The base path (`--base-path`) and the session cookie's name under it.
+    pub prefix: String,
+    pub cookie_name: String,
 }
 
 pub fn config(dir: &Path, ui: Option<std::path::PathBuf>) -> ServeConfig {
@@ -76,12 +79,28 @@ pub fn config(dir: &Path, ui: Option<std::path::PathBuf>) -> ServeConfig {
             dir: dir.join("tls"),
         },
         ui,
+        codec_listen: None,
+        router: Default::default(),
+        base_path: String::new(),
     }
 }
 
 pub async fn start_with(ui: Option<std::path::PathBuf>, options: StartOptions) -> TestServer {
+    start_configured(ui, options, |_| {}).await
+}
+
+/// A server whose configuration `change` adjusts (router mode, base path).
+pub async fn start_configured(
+    ui: Option<std::path::PathBuf>,
+    options: StartOptions,
+    change: impl FnOnce(&mut ServeConfig),
+) -> TestServer {
     let dir = tempfile::tempdir().unwrap();
-    let server = Server::start_with(config(dir.path(), ui), options)
+    let mut config = config(dir.path(), ui);
+    change(&mut config);
+    let prefix = config.base_path.clone();
+    let cookie_name = config.session_cookie();
+    let server = Server::start_with(config, options)
         .await
         .expect("server starts");
     // The generated certificate names localhost; the test trusts exactly it.
@@ -92,6 +111,8 @@ pub async fn start_with(ui: Option<std::path::PathBuf>, options: StartOptions) -
         server,
         roots: Arc::new(roots),
         _dir: dir,
+        prefix,
+        cookie_name,
     }
 }
 
@@ -158,7 +179,7 @@ impl TestServer {
     pub async fn http(&self, path: &str, host: &str, cookie: Option<&str>) -> HttpResponse {
         let mut tls = self.tls().await;
         let cookie = cookie
-            .map(|c| format!("Cookie: {COOKIE}={c}\r\n"))
+            .map(|c| format!("Cookie: {}={c}\r\n", self.cookie_name))
             .unwrap_or_default();
         let request =
             format!("GET {path} HTTP/1.1\r\nHost: {host}\r\n{cookie}Connection: close\r\n\r\n");
@@ -198,7 +219,11 @@ impl TestServer {
         origin: Option<&str>,
         cookie: Option<&str>,
     ) -> Result<Socket, u16> {
-        let url = format!("wss://localhost:{}/rpc/ws", self.addr().port());
+        let url = format!(
+            "wss://localhost:{}{}/rpc/ws",
+            self.addr().port(),
+            self.prefix
+        );
         let mut request = url.into_client_request().unwrap();
         let headers = request.headers_mut();
         headers.insert(header::HOST, HeaderValue::from_str(host).unwrap());
@@ -206,7 +231,7 @@ impl TestServer {
             headers.insert(header::ORIGIN, HeaderValue::from_str(origin).unwrap());
         }
         if let Some(cookie) = cookie {
-            let value = format!("{COOKIE}={cookie}");
+            let value = format!("{}={cookie}", self.cookie_name);
             headers.insert(header::COOKIE, HeaderValue::from_str(&value).unwrap());
         }
         match tokio_tungstenite::client_async(request, self.tls().await).await {

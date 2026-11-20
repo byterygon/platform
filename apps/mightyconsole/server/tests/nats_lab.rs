@@ -965,3 +965,831 @@ async fn consumers_list_info_create_and_delete() {
     let err = tab.error(8, Code::NotFound).await;
     assert_eq!(err.details.unwrap()["resource"], "consumer");
 }
+
+// ---- Key-Value (batch 3a) ----------------------------------------------------------------------
+
+#[tokio::test]
+async fn kv_buckets_keys_get_history_and_the_deleted_key() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let buckets = call(
+        &mut tab,
+        3,
+        "nats.kv.buckets.list",
+        json!({ "connId": conn }),
+    )
+    .await;
+    let config = buckets
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["bucket"] == "config")
+        .expect("the config bucket");
+    assert_eq!(config["history"], 5, "{config}");
+    let keys = call(
+        &mut tab,
+        4,
+        "nats.kv.keys",
+        json!({ "connId": conn, "bucket": "config" }),
+    )
+    .await;
+    let names: Vec<&str> = keys["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| s(&k["key"]))
+        .collect();
+    assert_eq!(names, ["feature.checkout", "limits.orders", "motd"]);
+    assert_eq!(keys["truncated"], false);
+    let motd = &keys["keys"][2];
+    assert_eq!(motd["preview"], "Welcome to the lab");
+    let all = call(
+        &mut tab,
+        5,
+        "nats.kv.keys",
+        json!({ "connId": conn, "bucket": "config", "includeDeleted": true }),
+    )
+    .await;
+    let legacy = all["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|k| k["key"] == "legacy.flag")
+        .expect("the deleted key");
+    assert_eq!(legacy["operation"], "delete");
+    let filtered = call(
+        &mut tab,
+        6,
+        "nats.kv.keys",
+        json!({ "connId": conn, "bucket": "config", "filter": "feature.>" }),
+    )
+    .await;
+    assert_eq!(filtered["keys"].as_array().unwrap().len(), 1);
+
+    let latest = call(
+        &mut tab,
+        7,
+        "nats.kv.get",
+        json!({ "connId": conn, "bucket": "config", "key": "feature.checkout" }),
+    )
+    .await;
+    assert_eq!(latest["source"], "config");
+    assert_eq!(latest["subject"], "feature.checkout");
+    assert_eq!(latest["operation"], "put");
+    assert_eq!(latest["payloadCodec"], "json");
+    let history = call(
+        &mut tab,
+        8,
+        "nats.kv.history",
+        json!({ "connId": conn, "bucket": "config", "key": "feature.checkout" }),
+    )
+    .await;
+    let revisions: Vec<u64> = history
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| s(&e["sequence"]).parse().unwrap())
+        .collect();
+    assert_eq!(revisions.len(), 3);
+    assert_eq!(
+        revisions.last().unwrap().to_string(),
+        s(&latest["sequence"])
+    );
+    let first = call(
+        &mut tab,
+        9,
+        "nats.kv.get",
+        json!({ "connId": conn, "bucket": "config", "key": "feature.checkout", "revision": revisions[0] }),
+    )
+    .await;
+    assert!(
+        s(&first["payloadText"]).contains("\"revision\": 0"),
+        "{first}"
+    );
+    tab.call(
+        10,
+        "nats.kv.get",
+        json!({ "connId": conn, "bucket": "config", "key": "no.such.key" }),
+    )
+    .await;
+    let err = tab.error(10, Code::NotFound).await;
+    assert_eq!(err.details.unwrap()["resource"], "key");
+    tab.call(
+        11,
+        "nats.kv.buckets.info",
+        json!({ "connId": conn, "bucket": "nope" }),
+    )
+    .await;
+    let err = tab.error(11, Code::NotFound).await;
+    assert_eq!(err.details.unwrap()["resource"], "bucket");
+
+    // Watch: by default each key's current entry first (the deleted key's marker too), then
+    // changes; with history, every revision kept.
+    tab.call(
+        12,
+        "nats.kv.watch",
+        json!({ "connId": conn, "streamId": "w-cur", "bucket": "config", "limit": 4 }),
+    )
+    .await;
+    let (batches, _) = read_stream(&mut tab, 12).await;
+    let mut keys = column(&batches, "subject");
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            Some("feature.checkout".into()),
+            Some("legacy.flag".into()),
+            Some("limits.orders".into()),
+            Some("motd".into())
+        ]
+    );
+    tab.call(
+        13,
+        "nats.kv.watch",
+        json!({ "connId": conn, "streamId": "w-all", "bucket": "config", "keys": "feature.>", "includeHistory": true, "limit": 3 }),
+    )
+    .await;
+    let (batches, _) = read_stream(&mut tab, 13).await;
+    assert_eq!(u64s(&batches, "sequence"), revisions);
+}
+
+#[tokio::test]
+async fn kv_create_put_with_revisions_delete_purge_watch_and_delete_the_bucket() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let bucket = format!("mc_labtest_{}", std::process::id());
+    let created = call(
+        &mut tab,
+        3,
+        "nats.kv.buckets.create",
+        json!({ "connId": conn, "config": { "bucket": bucket, "history": 4, "storage": "memory", "replicas": 1, "compression": false, "ttlMs": 3_600_000 } }),
+    )
+    .await;
+    assert_eq!(created["history"], 4);
+    assert_eq!(created["ttlMs"], 3_600_000);
+    tab.call(
+        4,
+        "nats.kv.buckets.create",
+        json!({ "connId": conn, "config": { "bucket": bucket, "history": 1, "storage": "memory", "replicas": 1, "compression": false } }),
+    )
+    .await;
+    let err = tab.error(4, Code::FailedPrecondition).await;
+    assert_eq!(err.details.unwrap()["field"], "bucket");
+
+    // A watch with history over the bucket, ending after four entries.
+    tab.call(
+        5,
+        "nats.kv.watch",
+        json!({ "connId": conn, "streamId": "w-1", "bucket": bucket, "includeHistory": true, "limit": 4 }),
+    )
+    .await;
+    let mut ipc = tab.chunk(5).await;
+    tab.client.credit(5, 1).await;
+
+    let put = |id: u32, value: &str, expect: Option<u64>| {
+        let mut input = json!({ "connId": conn, "bucket": bucket, "key": "feature.x", "payload": { "codec": "json", "text": value } });
+        if let Some(r) = expect {
+            input["expectRevision"] = json!(r);
+        }
+        (id, input)
+    };
+    let (id, input) = put(6, "{\"v\": 1}", Some(0));
+    let r1 = call(&mut tab, id, "nats.kv.put", input).await["revision"]
+        .as_u64()
+        .unwrap();
+    let (id, input) = put(7, "{\"v\": 2}", Some(0));
+    tab.call(id, "nats.kv.put", input).await;
+    let err = tab.error(7, Code::FailedPrecondition).await;
+    assert_eq!(err.details.unwrap()["field"], "expectRevision");
+    let (id, input) = put(8, "{\"v\": 2}", Some(r1));
+    let r2 = call(&mut tab, id, "nats.kv.put", input).await["revision"]
+        .as_u64()
+        .unwrap();
+    assert!(r2 > r1);
+    // "Put revision 1 back" with the revision seen before a concurrent change: Conflict.
+    let (id, input) = put(9, "{\"v\": 1}", Some(r1));
+    tab.call(id, "nats.kv.put", input).await;
+    let err = tab.error(9, Code::FailedPrecondition).await;
+    assert!(
+        err.message.contains("no longer at revision"),
+        "{}",
+        err.message
+    );
+    let (id, input) = put(10, "{\"v\": 1}", Some(r2));
+    call(&mut tab, id, "nats.kv.put", input).await;
+    call(
+        &mut tab,
+        11,
+        "nats.kv.delete",
+        json!({ "connId": conn, "bucket": bucket, "key": "feature.x" }),
+    )
+    .await;
+
+    let summary = loop {
+        let frame = tab.frame(5).await;
+        match frame.kind {
+            Kind::Chunk => {
+                ipc.extend_from_slice(&frame.payload);
+                tab.client.credit(5, 1).await;
+            }
+            Kind::StreamEnd => break serde_json::from_slice::<Value>(&frame.payload).unwrap(),
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    };
+    assert_eq!(summary["endReason"], "limit");
+    let batches = decode(&ipc);
+    assert_eq!(
+        column(&batches, "operation"),
+        [
+            Some("put".into()),
+            Some("put".into()),
+            Some("put".into()),
+            Some("delete".into())
+        ]
+    );
+    assert_eq!(column(&batches, "subject")[0].as_deref(), Some("feature.x"));
+
+    let keys = call(
+        &mut tab,
+        12,
+        "nats.kv.keys",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    assert_eq!(keys["keys"].as_array().unwrap().len(), 0);
+    let history = call(
+        &mut tab,
+        13,
+        "nats.kv.history",
+        json!({ "connId": conn, "bucket": bucket, "key": "feature.x" }),
+    )
+    .await;
+    assert_eq!(history.as_array().unwrap().len(), 4);
+    call(
+        &mut tab,
+        14,
+        "nats.kv.purge",
+        json!({ "connId": conn, "bucket": bucket, "key": "feature.x" }),
+    )
+    .await;
+    let history = call(
+        &mut tab,
+        15,
+        "nats.kv.history",
+        json!({ "connId": conn, "bucket": bucket, "key": "feature.x" }),
+    )
+    .await;
+    assert_eq!(history.as_array().unwrap().len(), 1);
+    assert_eq!(history[0]["operation"], "purge");
+
+    call(
+        &mut tab,
+        16,
+        "nats.kv.buckets.delete",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    tab.call(
+        17,
+        "nats.kv.buckets.info",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    tab.error(17, Code::NotFound).await;
+}
+
+/// Reads a `bytes` stream to its end: the bytes and the summary.
+async fn download(tab: &mut Tab, id: u32) -> (Vec<u8>, Value) {
+    let mut out = Vec::new();
+    loop {
+        let frame = tab.frame(id).await;
+        match frame.kind {
+            Kind::Chunk => {
+                out.extend_from_slice(&frame.payload);
+                tab.client.credit(id, 1).await;
+            }
+            Kind::StreamEnd => {
+                return (
+                    out,
+                    serde_json::from_slice::<Value>(&frame.payload).unwrap(),
+                );
+            }
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    }
+}
+
+/// The seed's 5 MiB file (`labtools/seed.py`).
+fn lab_blob() -> Vec<u8> {
+    (0..5 * 1024 * 1024)
+        .map(|i: usize| ((i * 31 + 7) % 251) as u8)
+        .collect()
+}
+
+fn sha256_digest(bytes: &[u8]) -> String {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+    format!(
+        "SHA-256={}",
+        base64::engine::general_purpose::URL_SAFE.encode(sha2::Sha256::digest(bytes))
+    )
+}
+
+#[tokio::test]
+async fn object_store_buckets_list_info_and_download_the_lab_files() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let buckets = call(
+        &mut tab,
+        3,
+        "nats.obj.buckets.list",
+        json!({ "connId": conn }),
+    )
+    .await;
+    let files = buckets
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["bucket"] == "files")
+        .expect("the lab's object store files");
+    assert_eq!(files["description"], "Mightyconsole lab");
+    assert!(files["bytes"].as_u64().unwrap() > 5 * 1024 * 1024);
+    assert_eq!(files["sealed"], false);
+    // KV buckets are not object stores.
+    assert!(
+        !buckets
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|b| b["bucket"] == "config")
+    );
+    let info = call(
+        &mut tab,
+        4,
+        "nats.obj.buckets.info",
+        json!({ "connId": conn, "bucket": "files" }),
+    )
+    .await;
+    assert_eq!(info["bucket"], "files");
+
+    let list = call(
+        &mut tab,
+        5,
+        "nats.obj.list",
+        json!({ "connId": conn, "bucket": "files" }),
+    )
+    .await;
+    assert_eq!(list["truncated"], false);
+    let names: Vec<&str> = list["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| s(&o["name"]))
+        .collect();
+    assert_eq!(names, ["blob-5MiB.bin", "readme.txt"]);
+    let blob = &list["objects"][0];
+    assert_eq!(blob["size"], 5 * 1024 * 1024);
+    assert_eq!(blob["chunks"], 40, "128 KiB chunks");
+    assert!(blob["modifiedUs"].as_i64().unwrap() > 0);
+    let expected = lab_blob();
+    assert_eq!(blob["digest"], sha256_digest(&expected));
+
+    let readme = call(
+        &mut tab,
+        6,
+        "nats.obj.info",
+        json!({ "connId": conn, "bucket": "files", "name": "readme.txt" }),
+    )
+    .await;
+    assert_eq!(readme["size"], 32);
+
+    tab.call(
+        7,
+        "nats.obj.get",
+        json!({ "connId": conn, "bucket": "files", "name": "blob-5MiB.bin" }),
+    )
+    .await;
+    let (bytes, summary) = download(&mut tab, 7).await;
+    assert_eq!(summary["size"], 5 * 1024 * 1024);
+    assert_eq!(summary["digest"], blob["digest"]);
+    assert!(bytes == expected, "the downloaded bytes are the seed's");
+
+    tab.call(
+        8,
+        "nats.obj.info",
+        json!({ "connId": conn, "bucket": "files", "name": "nope.bin" }),
+    )
+    .await;
+    let err = tab.error(8, Code::NotFound).await;
+    assert_eq!(err.details.unwrap()["resource"], "object");
+    tab.call(
+        9,
+        "nats.obj.get",
+        json!({ "connId": conn, "bucket": "files", "name": "nope.bin" }),
+    )
+    .await;
+    tab.error(9, Code::NotFound).await;
+    tab.call(
+        10,
+        "nats.obj.list",
+        json!({ "connId": conn, "bucket": "no_such_store" }),
+    )
+    .await;
+    let err = tab.error(10, Code::NotFound).await;
+    assert_eq!(err.details.unwrap()["resource"], "bucket");
+}
+
+#[tokio::test]
+async fn object_store_create_upload_in_parts_replace_abort_and_delete() {
+    use base64::Engine as _;
+    let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let bucket = format!("mc_labtest_obj_{}", std::process::id());
+    let created = call(
+        &mut tab,
+        3,
+        "nats.obj.buckets.create",
+        json!({ "connId": conn, "config": { "bucket": bucket, "description": "test", "storage": "memory", "replicas": 1, "compression": false } }),
+    )
+    .await;
+    assert_eq!(created["storage"], "memory");
+    tab.call(
+        4,
+        "nats.obj.buckets.create",
+        json!({ "connId": conn, "config": { "bucket": bucket, "storage": "memory", "replicas": 1, "compression": false } }),
+    )
+    .await;
+    let err = tab.error(4, Code::FailedPrecondition).await;
+    assert_eq!(err.details.unwrap()["field"], "bucket");
+
+    // 9 MiB in three parts: 4 MiB, 4 MiB, 1 MiB.
+    let size = 9 * 1024 * 1024;
+    let data: Vec<u8> = (0..size).map(|i: usize| (i % 253) as u8).collect();
+    let start = |id: u32, size: usize| {
+        (
+            id,
+            json!({ "connId": conn, "bucket": bucket, "name": "reports/big file.bin", "size": size, "description": "nine", "headers": [{ "name": "Content-Type", "value": "application/octet-stream" }] }),
+        )
+    };
+    let (id, input) = start(5, size);
+    let started = call(&mut tab, id, "nats.obj.uploadStart", input).await;
+    let upload = s(&started["uploadId"]).to_owned();
+    let part = started["partBytes"].as_u64().unwrap() as usize;
+    assert_eq!(part, 4 * 1024 * 1024);
+    // Out of order.
+    tab.call(
+        6,
+        "nats.obj.uploadPart",
+        json!({ "uploadId": upload, "index": 1, "data": b64(&data[..part]) }),
+    )
+    .await;
+    let err = tab.error(6, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "index");
+    // Finishing early.
+    tab.call(7, "nats.obj.uploadFinish", json!({ "uploadId": upload }))
+        .await;
+    let err = tab.error(7, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "size");
+    let mut id = 8;
+    for (i, chunk) in data.chunks(part).enumerate() {
+        let got = call(
+            &mut tab,
+            id,
+            "nats.obj.uploadPart",
+            json!({ "uploadId": upload, "index": i, "data": b64(chunk) }),
+        )
+        .await;
+        assert_eq!(got["received"], (i * part + chunk.len()) as u64);
+        id += 1;
+    }
+    let hex: String = {
+        use sha2::Digest as _;
+        sha2::Sha256::digest(&data)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    };
+    let info = call(
+        &mut tab,
+        id,
+        "nats.obj.uploadFinish",
+        json!({ "uploadId": upload, "sha256": hex }),
+    )
+    .await;
+    id += 1;
+    assert_eq!(info["size"], size as u64);
+    assert_eq!(info["chunks"], 72, "9 MiB in 128 KiB chunks");
+    assert_eq!(info["digest"], sha256_digest(&data));
+    assert_eq!(info["description"], "nine");
+    assert_eq!(info["headers"][0]["value"], "application/octet-stream");
+    // The upload is over.
+    tab.call(
+        id,
+        "nats.obj.uploadPart",
+        json!({ "uploadId": upload, "index": 3, "data": b64(b"x") }),
+    )
+    .await;
+    tab.error(id, Code::NotFound).await;
+    id += 1;
+
+    tab.call(
+        id,
+        "nats.obj.get",
+        json!({ "connId": conn, "bucket": bucket, "name": "reports/big file.bin" }),
+    )
+    .await;
+    let (bytes, summary) = download(&mut tab, id).await;
+    id += 1;
+    assert_eq!(summary["size"], size as u64);
+    assert!(bytes == data, "the bytes read back are the ones uploaded");
+
+    // Replace it with a small version: the old chunks are purged.
+    let (sid, input) = start(id, 5);
+    let small = call(&mut tab, sid, "nats.obj.uploadStart", input).await;
+    id += 1;
+    let small_id = s(&small["uploadId"]).to_owned();
+    call(
+        &mut tab,
+        id,
+        "nats.obj.uploadPart",
+        json!({ "uploadId": small_id, "index": 0, "data": b64(b"hello") }),
+    )
+    .await;
+    id += 1;
+    let v2 = call(
+        &mut tab,
+        id,
+        "nats.obj.uploadFinish",
+        json!({ "uploadId": small_id, "sha256": sha256_digest(b"hello") }),
+    )
+    .await;
+    id += 1;
+    assert_eq!(v2["size"], 5);
+    assert_ne!(v2["nuid"], info["nuid"]);
+    let state = call(
+        &mut tab,
+        id,
+        "nats.obj.buckets.info",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    id += 1;
+    assert!(
+        state["bytes"].as_u64().unwrap() < 1024 * 1024,
+        "the 9 MiB version's chunks are gone: {state}"
+    );
+
+    // An aborted upload leaves nothing; a wrong digest discards the upload.
+    let (sid, input) = start(id, part + 10);
+    let aborted = call(&mut tab, sid, "nats.obj.uploadStart", input).await;
+    id += 1;
+    let aborted_id = s(&aborted["uploadId"]).to_owned();
+    call(
+        &mut tab,
+        id,
+        "nats.obj.uploadPart",
+        json!({ "uploadId": aborted_id, "index": 0, "data": b64(&data[..part]) }),
+    )
+    .await;
+    id += 1;
+    call(
+        &mut tab,
+        id,
+        "nats.obj.uploadAbort",
+        json!({ "uploadId": aborted_id }),
+    )
+    .await;
+    id += 1;
+    tab.call(
+        id,
+        "nats.obj.uploadPart",
+        json!({ "uploadId": aborted_id, "index": 1, "data": b64(b"0123456789") }),
+    )
+    .await;
+    tab.error(id, Code::NotFound).await;
+    id += 1;
+    let (sid, input) = start(id, 3);
+    let wrong = call(&mut tab, sid, "nats.obj.uploadStart", input).await;
+    id += 1;
+    let wrong_id = s(&wrong["uploadId"]).to_owned();
+    call(
+        &mut tab,
+        id,
+        "nats.obj.uploadPart",
+        json!({ "uploadId": wrong_id, "index": 0, "data": b64(b"abc") }),
+    )
+    .await;
+    id += 1;
+    tab.call(
+        id,
+        "nats.obj.uploadFinish",
+        json!({ "uploadId": wrong_id, "sha256": sha256_digest(b"abd") }),
+    )
+    .await;
+    let err = tab.error(id, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "sha256");
+    id += 1;
+    let state = call(
+        &mut tab,
+        id,
+        "nats.obj.buckets.info",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    id += 1;
+    assert!(
+        state["bytes"].as_u64().unwrap() < 1024 * 1024,
+        "the aborted upload's chunks are gone: {state}"
+    );
+    let current = call(
+        &mut tab,
+        id,
+        "nats.obj.info",
+        json!({ "connId": conn, "bucket": bucket, "name": "reports/big file.bin" }),
+    )
+    .await;
+    id += 1;
+    assert_eq!(current["nuid"], v2["nuid"], "neither replaced the object");
+
+    // Too large, and a bad header.
+    tab.call(
+        id,
+        "nats.obj.uploadStart",
+        json!({ "connId": conn, "bucket": bucket, "name": "x", "size": 2u64 << 30 }),
+    )
+    .await;
+    let err = tab.error(id, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "size");
+    id += 1;
+    tab.call(id, "nats.obj.uploadStart", json!({ "connId": conn, "bucket": bucket, "name": "x", "size": 1, "headers": [{ "name": "a b", "value": "1" }] }))
+        .await;
+    let err = tab.error(id, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "headers");
+    id += 1;
+
+    // An empty file.
+    let empty = call(
+        &mut tab,
+        id,
+        "nats.obj.uploadStart",
+        json!({ "connId": conn, "bucket": bucket, "name": "empty", "size": 0 }),
+    )
+    .await;
+    id += 1;
+    let empty = call(
+        &mut tab,
+        id,
+        "nats.obj.uploadFinish",
+        json!({ "uploadId": empty["uploadId"] }),
+    )
+    .await;
+    id += 1;
+    assert_eq!(empty["size"], 0);
+    assert_eq!(empty["chunks"], 0);
+
+    call(
+        &mut tab,
+        id,
+        "nats.obj.delete",
+        json!({ "connId": conn, "bucket": bucket, "name": "reports/big file.bin" }),
+    )
+    .await;
+    id += 1;
+    let list = call(
+        &mut tab,
+        id,
+        "nats.obj.list",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    id += 1;
+    let names: Vec<&str> = list["objects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| s(&o["name"]))
+        .collect();
+    assert_eq!(names, ["empty"]);
+    tab.call(
+        id,
+        "nats.obj.delete",
+        json!({ "connId": conn, "bucket": bucket, "name": "reports/big file.bin" }),
+    )
+    .await;
+    tab.error(id, Code::NotFound).await;
+    id += 1;
+    call(
+        &mut tab,
+        id,
+        "nats.obj.buckets.delete",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    id += 1;
+    tab.call(
+        id,
+        "nats.obj.buckets.info",
+        json!({ "connId": conn, "bucket": bucket }),
+    )
+    .await;
+    tab.error(id, Code::NotFound).await;
+}
+
+#[tokio::test]
+async fn services_discover_stats_and_ping_the_lab_echo() {
+    let (_t, mut tab) = setup().await;
+    let out = connect(&mut tab, 2, lab_profile()).await;
+    let conn = s(&out["connId"]).to_owned();
+    let found = call(
+        &mut tab,
+        3,
+        "nats.services.discover",
+        json!({ "connId": conn, "timeoutMs": 1000 }),
+    )
+    .await;
+    let echo = found
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "echo")
+        .unwrap_or_else(|| panic!("the lab's echo service: {found}"));
+    assert_eq!(echo["version"], "1.0.0");
+    assert_eq!(
+        echo["description"],
+        "Echoes the request (Mightyconsole lab)"
+    );
+    let subjects: Vec<&str> = echo["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| s(&e["subject"]))
+        .collect();
+    assert!(
+        subjects.contains(&"lab.echo") && subjects.contains(&"lab.echo.upper"),
+        "{subjects:?}"
+    );
+    let id = s(&echo["id"]).to_owned();
+
+    // A request through the service, then its counters.
+    call(&mut tab, 4, "nats.core.request", json!({ "connId": conn, "subject": "lab.echo", "headers": [], "payload": { "codec": "utf8", "text": "ping" }, "timeoutMs": 5000 })).await;
+    let stats = call(
+        &mut tab,
+        5,
+        "nats.services.stats",
+        json!({ "connId": conn, "name": "echo", "id": id, "timeoutMs": 1000 }),
+    )
+    .await;
+    let stats = stats.as_array().unwrap();
+    assert_eq!(stats.len(), 1, "{stats:?}");
+    let endpoint = stats[0]["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["subject"] == "lab.echo")
+        .unwrap();
+    assert!(endpoint["requests"].as_u64().unwrap() >= 1, "{endpoint}");
+    assert!(stats[0]["started"].is_string());
+
+    let pings = call(
+        &mut tab,
+        6,
+        "nats.services.ping",
+        json!({ "connId": conn, "name": "echo", "timeoutMs": 1000 }),
+    )
+    .await;
+    let ping = pings
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == id.as_str())
+        .unwrap();
+    assert!(ping["rttMs"].as_f64().unwrap() >= 0.0);
+
+    // Nobody by that name: an empty answer, quickly (no responders).
+    let started = std::time::Instant::now();
+    let none = call(
+        &mut tab,
+        7,
+        "nats.services.ping",
+        json!({ "connId": conn, "name": "nobody_here", "timeoutMs": 2000 }),
+    )
+    .await;
+    assert_eq!(none, json!([]));
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(1500),
+        "no responders ends the wait"
+    );
+    tab.call(
+        8,
+        "nats.services.stats",
+        json!({ "connId": conn, "id": "x" }),
+    )
+    .await;
+    let err = tab.error(8, Code::InvalidArgument).await;
+    assert_eq!(err.details.unwrap()["field"], "id");
+}

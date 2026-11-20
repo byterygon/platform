@@ -3,8 +3,8 @@
   "schemaVersion": 1,
   "name": "breadcrumb",
   "title": "Breadcrumb",
-  "description": "Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list of links, the current place, separators and an ellipsis for collapsed items, on Base UI's useRender.",
-  "usage": "Use Breadcrumb to show and move up a path: connection, schema, table, column; a settings section. Compose it as Breadcrumb > BreadcrumbList > BreadcrumbItem (BreadcrumbLink with href, or render a router link) with BreadcrumbSeparator between items, and BreadcrumbPage for the last, current place. Collapse a long middle into BreadcrumbEllipsis inside a DropdownMenuTrigger listing the hidden places. It is not a substitute for navigation: use Sidebar or NavigationMenu for that; for steps of a task, Stepper.",
+  "description": "Where the user is in a hierarchy, as a trail of links: a <nav> with an ordered list of links, the current place, separators and an ellipsis for collapsed items, on Base UI's useRender; useBreadcrumbOverflow folds the first items into the ellipsis when the trail does not fit.",
+  "usage": "Use Breadcrumb to show and move up a path: connection, schema, table, column; a settings section. Compose it as Breadcrumb > BreadcrumbList > BreadcrumbItem (BreadcrumbLink with href, or render a router link) with BreadcrumbSeparator between items, and BreadcrumbPage for the last, current place. Collapse a long middle into BreadcrumbEllipsis inside a DropdownMenuTrigger listing the hidden places. It is not a substitute for navigation: use Sidebar or NavigationMenu for that; for steps of a task, Stepper. When the trail can be longer than its room, useBreadcrumbOverflow({ count, signature, available? }) gives the list ref and the indexes to fold: mark each BreadcrumbItem with data-breadcrumb-index={i} and the ellipsis item with data-breadcrumb-overflow, and render one ellipsis menu in place of the folded items; the last two always show (Fluent's rule).",
   "status": "experimental",
   "base": "@base-ui/react/use-render",
   "dependencies": [
@@ -36,6 +36,16 @@
       "name": "className",
       "type": "string",
       "description": "On each part: extra classes, merged after the component's own."
+    },
+    {
+      "name": "data-breadcrumb-index",
+      "type": "number",
+      "description": "BreadcrumbItem: its index, for useBreadcrumbOverflow to measure."
+    },
+    {
+      "name": "data-breadcrumb-overflow",
+      "type": "string",
+      "description": "BreadcrumbItem: marks the item holding the ellipsis menu, for useBreadcrumbOverflow."
     }
   ],
   "variants": {},
@@ -125,6 +135,7 @@
     "The current place has aria-current=\"page\" and is not a link; the separators are aria-hidden, so they are not read between items.",
     "Links are in the tab order with a visible focus ring; a collapsed middle is a menu button with an accessible name.",
     "Long names are truncated visually but keep their full text for assistive technology.",
-    "Only colours transition; nothing moves."
+    "Only colours transition; nothing moves.",
+    "Folded places stay reachable: the ellipsis is a menu button listing them, and the current place and its parent never fold."
   ]
 }

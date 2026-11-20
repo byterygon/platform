@@ -4,22 +4,23 @@
 // ID, the input as a Monaco JSON array, and folded sections that show their values. Ctrl+Enter
 // starts; the toast carries the run ID and Open workflow. "Copy as CLI command" gives the same
 // request as `temporal workflow start`.
+import { useSheetGuard } from "@/app/leave-guard";
 import { useContext, useEffect, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { NoticeContext } from "@/app/page";
 import { ErrorState } from "@/app/states";
 import type { MightyClient } from "@/app/client";
 import type { IdConflictPolicy, IdReusePolicy, WorkflowStartInput } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import { ArrowCounterclockwise, Code, Play } from "@/lib/icons";
-import type { DescribedError } from "../types";
+import type { DescribedError, LinkEvent } from "../types";
 import { ArgsField, parseArgs } from "./ActionDialogs";
 import { workflowStartCommand } from "./cli";
 import { addressOf, tlsOf } from "./profile";
@@ -48,7 +49,7 @@ export interface StartWorkflowSheetProps {
   /** Workflow types and task queues seen in the loaded rows. */
   suggestions?: { types: readonly string[]; queues: readonly string[] } | undefined;
   note(e: unknown): DescribedError;
-  onOpenWorkflow(workflowId: string, runId: string): void;
+  onOpenWorkflow(workflowId: string, runId: string, event?: LinkEvent): void;
   /** Called after a start, e.g. to refresh the list. */
   onStarted?: (() => void) | undefined;
 }
@@ -158,6 +159,7 @@ function keysOf(text: string): string[] {
 export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile, namespace, prefill, suggestions, note, onOpenWorkflow, onStarted }: StartWorkflowSheetProps) {
   const notify = useContext(NoticeContext);
   const [d, setD] = useState<Draft>(() => draftOf(prefill));
+  const releaseGuard = useSheetGuard(open, d);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<DescribedError | null>(null);
   const [tried, setTried] = useState(false);
@@ -181,6 +183,7 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
     try {
       const out = await client.temporal.workflows.start({ connId, namespace, ...built.input });
       const workflowId = built.input.workflowId;
+      releaseGuard();
       onOpenChange(false);
       onStarted?.();
       notify({
@@ -339,9 +342,15 @@ export function StartWorkflowSheet({ open, onOpenChange, client, connId, profile
           </Button>
           <span className="flex-1" />
           <Button appearance="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="submit" form="start-workflow" appearance="primary" loading={busy} disabled={connId === null}>
-            <Icon icon={Play} /> Start workflow <Kbd className="ms-inline-xs">Ctrl+Enter</Kbd>
-          </Button>
+          {/* No key hint on the button (DOC-21 §3.4): Ctrl+Enter is in its tooltip. */}
+          <Tooltip>
+            <TooltipTrigger render={<Button type="submit" form="start-workflow" appearance="primary" loading={busy} disabled={connId === null} aria-keyshortcuts="Control+Enter" />}>
+              <Icon icon={Play} /> Start workflow
+            </TooltipTrigger>
+            <TooltipContent>
+              Start the workflow <TooltipShortcut>Ctrl+Enter</TooltipShortcut>
+            </TooltipContent>
+          </Tooltip>
         </SheetFooter>
       </SheetContent>
     </Sheet>

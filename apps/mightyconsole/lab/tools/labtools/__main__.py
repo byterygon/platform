@@ -1,4 +1,4 @@
-"""python -m labtools <generate|seed|check|nats-echo|kafka-member|temporal-worker> [args]"""
+"""python -m labtools <generate|seed|check|nats-echo|kafka-member|temporal-worker|temporal-codec> [args]"""
 
 import asyncio
 import sys
@@ -26,6 +26,10 @@ def main():
         from . import temporal_worker
 
         return asyncio.run(temporal_worker.main())
+    if command == "temporal-codec":
+        from . import codec
+
+        return codec.serve()
     print(__doc__, file=sys.stderr)
     return 2
 

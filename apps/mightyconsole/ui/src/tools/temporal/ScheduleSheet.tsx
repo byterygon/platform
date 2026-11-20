@@ -6,6 +6,7 @@
 // open; Policies, Workflow options and State folded, each showing its value. Edit lists what
 // changed before it sends the whole schedule with the conflict token; a concurrent change comes
 // back as Conflict with Reload. "Show as JSON" shows the request and its CLI command.
+import { useSheetGuard } from "@/app/leave-guard";
 import { useContext, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -111,6 +112,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
   const editing = mode.kind === "edit";
   const [stored, setStored] = useState<{ form: ScheduleForm; conflictToken: string } | null>(mode.kind === "edit" ? { form: mode.form, conflictToken: mode.conflictToken } : null);
   const [d, setD] = useState<ScheduleDraft>(() => (mode.kind === "edit" ? draftOfForm(mode.scheduleId, mode.form) : newDraft()));
+  const releaseGuard = useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   // "Runs" while it is typed (null: it shows the schedule in words).
   const [runsDraft, setRunsDraft] = useState<string | null>(null);
@@ -157,6 +159,7 @@ export function ScheduleSheet({ open, onOpenChange, client, connId, profile, nam
     try {
       if (editing) await client.temporal.schedules.update({ connId, namespace, scheduleId, schedule: form, conflictToken: stored?.conflictToken ?? null });
       else await client.temporal.schedules.create({ connId, namespace, scheduleId, schedule: form });
+      releaseGuard();
       onOpenChange(false);
       notify({ title: editing ? `Updated ${scheduleId}` : `Created ${scheduleId}`, type: "success" });
       onSaved(scheduleId);

@@ -56,6 +56,15 @@ pub struct TemporalClient {
     pub address: String,
     /// The profile's namespace.
     pub namespace: String,
+    /// External Storage, when the profile sets it up (TSK-103).
+    pub external: Option<std::sync::Arc<super::extstore::ExternalStore>>,
+    /// The channel without the profile's API key: the codec endpoint asks Temporal with the
+    /// caller's token on it.
+    pub channel: Channel,
+    /// The profile's payload codec (TSK-92, spec §9.5).
+    pub payload_codec: Option<std::sync::Arc<super::codec_client::PayloadCodec>>,
+    /// The codec endpoint's settings, when the profile serves one.
+    pub codec: Option<super::codec::CodecProfile>,
 }
 
 impl TemporalClient {
@@ -136,6 +145,17 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
         None => None,
     };
 
+    let external = super::extstore::ExternalStore::from_profile(
+        profile.external_storage.as_ref(),
+        super::extstore::S3Secrets {
+            access_key_id: profile.s3_access_key_id.clone(),
+            secret_access_key: profile.s3_secret_access_key.clone(),
+            session_token: profile.s3_session_token.clone(),
+        },
+    )
+    .map_err(|(field, message)| invalid(field, message))?
+    .map(std::sync::Arc::new);
+
     let scheme = if tls.enabled { "https" } else { "http" };
     let mut endpoint = Endpoint::from_shared(format!("{scheme}://{address}"))
         .map_err(|_| invalid("address", "not a valid host:port"))?
@@ -152,14 +172,33 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
         .connect()
         .await
         .map_err(|e| connect_error(&address, tls.enabled, &e))?;
+    let payload_codec = super::codec_client::PayloadCodec::from_profile(
+        profile.codec.as_ref(),
+        profile.codec_authorization.as_deref(),
+    )?
+    .map(std::sync::Arc::new);
     let headers = CallHeaders { bearer };
+    let codec = profile
+        .codec_server
+        .as_ref()
+        .filter(|c| c.enabled.unwrap_or(false))
+        .map(|c| {
+            super::codec::CodecProfile::new(
+                profile.name.clone(),
+                c.allowed_origins.clone().unwrap_or_default(),
+            )
+        });
     Ok(TemporalClient {
         operator: OperatorServiceClient::with_interceptor(channel.clone(), headers.clone()),
+        codec,
+        payload_codec,
+        channel: channel.clone(),
         service: WorkflowServiceClient::with_interceptor(channel, headers)
             // A history page of 1,000 events can be large; the default 4 MiB is too small.
             .max_decoding_message_size(64 * 1024 * 1024),
         address,
         namespace,
+        external,
     })
 }
 

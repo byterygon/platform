@@ -28,7 +28,17 @@ async def check_nats():
     consumer = await js.consumer_info("ORDERS", "billing")
     expect(consumer.num_pending > 0 and consumer.num_ack_pending > 0, f"nats: billing has pending {consumer.num_pending}, ack pending {consumer.num_ack_pending}")
     kv = await js.key_value("config")
-    history = await kv.history("feature.checkout")
+    # nats-py's history ends at once when its new consumer briefly reports nothing pending (a race
+    # in the client, seen as "NoKeysError" now and then): try again before failing.
+    from nats.js.errors import NoKeysError
+
+    history = []
+    for attempt in range(5):
+        try:
+            history = await kv.history("feature.checkout")
+            break
+        except NoKeysError:
+            await asyncio.sleep(0.2 * (attempt + 1))
     expect(len(history) == 3, f"nats: feature.checkout has {len(history)} revisions")
     store = await js.object_store("files")
     blob = await store.get_info("blob-5MiB.bin")
@@ -107,6 +117,7 @@ def check_kafka_listeners():
 
 
 async def check_temporal():
+    from temporalio.api.operatorservice.v1 import ListSearchAttributesRequest
     from temporalio.client import Client
 
     client = await Client.connect("temporal:7233", namespace="lab")
@@ -115,10 +126,36 @@ async def check_temporal():
         ids.add(wf.id)
     for wid in ["fulfilment-long-running", "completed-1", "failed-1", "retrying-1", "parent-1", "parent-1-child", "proto-1"]:
         expect(wid in ids, f"temporal: workflow {wid} is missing")
+    # The family for Relations (TSK-104) forms over a few seconds: wait for its last member.
+    family = ["family-root", "family-order", "family-order-fraud", "family-order-payment", "family-order-receipt", "family-support"]
+    for _ in range(60):
+        seen = {wf.id async for wf in client.list_workflows()}
+        if all(wid in seen for wid in family):
+            break
+        await asyncio.sleep(1)
+    for wid in family:
+        expect(wid in seen, f"temporal: workflow {wid} of the family is missing")
+    # The custom search attribute (TSK-94): registered, and on the samples.
+    listed = await client.operator_service.list_search_attributes(ListSearchAttributesRequest(namespace="lab"))
+    expect("OrderId" in listed.custom_attributes, "temporal: the custom search attribute OrderId is not registered in namespace lab")
+    tagged = [wf.id async for wf in client.list_workflows('OrderId = "ord-long"')]
+    expect(tagged == ["fulfilment-long-running"], f"temporal: OrderId = \"ord-long\" finds {tagged}")
     status = await client.get_workflow_handle("fulfilment-long-running").query("status")
     expect(status == "waiting for approval", f"temporal: fulfilment says {status!r}")
     schedules = [s.id async for s in await client.list_schedules()]
     expect("every-minute" in schedules, "temporal: schedule every-minute is missing")
+    # The payload codec (TSK-92): encrypted-1's input is stored encrypted.
+    expect("encrypted-1" in ids, "temporal: workflow encrypted-1 is missing")
+    if "encrypted-1" in ids:
+        history = await client.get_workflow_handle("encrypted-1").fetch_history()
+        payload = history.events[0].workflow_execution_started_event_attributes.input.payloads[0]
+        expect(payload.metadata.get("encoding") == b"binary/encrypted", "temporal: encrypted-1's input is not encrypted")
+    # External Storage (TSK-103): the large input is a reference in the history, not the data.
+    expect("big-payload-1" in ids, "temporal: workflow big-payload-1 is missing")
+    if "big-payload-1" in ids:
+        history = await client.get_workflow_handle("big-payload-1").fetch_history()
+        payload = history.events[0].workflow_execution_started_event_attributes.input.payloads[0]
+        expect(payload.metadata.get("messageType") == b"temporal.api.sdk.v1.ExternalStorageReference", "temporal: big-payload-1's input is not stored outside")
 
 
 def check_langgraph():
@@ -133,6 +170,10 @@ def check_langgraph():
         expect(len(history) >= 4, f"langgraph: the history thread has {len(history)} checkpoints")
     graph = requests.get(f"{base}/assistants/{assistants[0]['assistant_id']}/graph", params={"xray": "true"}, timeout=10).json()
     expect(len(graph.get("nodes", [])) >= 5, "langgraph: the graph has fewer than 5 nodes")
+    # The context schema (TSK-94), for the Run form's Context field.
+    schemas = requests.get(f"{base}/assistants/{assistants[0]['assistant_id']}/schemas", timeout=10).json()
+    context = schemas.get("context_schema") or {}
+    expect("user_id" in context.get("properties", {}), f"langgraph: the context schema has no user_id ({context})")
 
 
 CHECKS = {"nats": lambda: asyncio.run(check_nats()), "kafka": check_kafka, "kafka-listeners": check_kafka_listeners, "temporal": lambda: asyncio.run(check_temporal()), "langgraph": check_langgraph}

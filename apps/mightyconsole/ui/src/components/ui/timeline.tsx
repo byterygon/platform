@@ -1,6 +1,6 @@
 import { useCallback, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { Kbd } from "@/components/ui/kbd";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/control";
 
@@ -113,6 +113,10 @@ const classes = {
   edge: "pointer-events-none absolute top-1/2 -translate-y-1/2 text-caption-1 text-fg-muted",
   now: "absolute inset-y-0 w-px bg-accent-compound",
   empty: "p-inset-md text-body-1 text-fg-muted",
+  /** The chart (overview, axis, lanes) and the pane beside it, under the toolbar. */
+  body: "flex min-h-0 flex-1",
+  chart: "flex min-h-0 min-w-0 flex-1 flex-col",
+  aside: "flex w-panel-pane max-w-1/2 min-h-0 min-w-0 shrink-0 flex-col overflow-auto border-s border-border-subtle",
 };
 
 /** Time to fit every item, with a little room on both sides; `now` closes the running ones. */
@@ -230,6 +234,13 @@ export interface TimelineProps {
   follow?: boolean | undefined;
   /** Called with `false` when the person pans away from now (keys, wheel, the overview), so the app can offer "Jump to now". */
   onFollowChange?: ((follow: boolean) => void) | undefined;
+  /**
+   * A pane beside the chart, under the toolbar: the selected item's details (times, failure, its
+   * events). The chart's keys and wheel leave it alone. None when absent.
+   */
+  aside?: ReactNode;
+  /** The pane's name for assistive technology (it is a `complementary` region): "Selected item". */
+  asideLabel?: string | undefined;
   /** Extra classes, merged after the component's own so they win. */
   className?: string | undefined;
 }
@@ -276,6 +287,8 @@ export function Timeline({
   overviewLabel = "Whole range",
   follow = false,
   onFollowChange,
+  aside,
+  asideLabel = "Selected item",
   className,
 }: TimelineProps) {
   const [range, setRange] = useState<TimelineRange | null>(null);
@@ -346,6 +359,7 @@ export function Timeline({
   };
 
   const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest?.("[data-slot=timeline-aside]")) return;
     if (event.ctrlKey || event.metaKey) {
       const box = event.currentTarget.getBoundingClientRect();
       const anchor = box.width > 0 ? Math.min(Math.max((event.clientX - box.left) / box.width, 0), 1) : 0.5;
@@ -492,9 +506,12 @@ export function Timeline({
       {controls ? (
         <div data-slot="timeline-toolbar" className={cn(classes.toolbar)}>
           <div role="group" aria-label="Zoom" className={cn(classes.zoom)}>
-            <button type="button" className={cn(classes.zoomPart, classes.zoomButton, focusRing)} onClick={() => setRange(null)}>
-              Fit <Kbd>Home</Kbd>
-            </button>
+            <Tooltip>
+              <TooltipTrigger render={<button type="button" aria-keyshortcuts="Home" className={cn(classes.zoomPart, classes.zoomButton, focusRing)} onClick={() => setRange(null)} />}>Fit</TooltipTrigger>
+              <TooltipContent>
+                Fit everything <TooltipShortcut>Home</TooltipShortcut>
+              </TooltipContent>
+            </Tooltip>
             <button type="button" aria-label="Zoom out" className={cn(classes.zoomPart, classes.zoomButton, focusRing)} onClick={() => zoom(2)}>
               <span aria-hidden="true">−</span>
             </button>
@@ -513,61 +530,70 @@ export function Timeline({
           {toolbar}
         </div>
       ) : null}
-      {controls && items.length > 0 ? (
-        <div data-slot="timeline-overview" className={cn(classes.overview)}>
-          <div className={cn(classes.gutter)}>
-            {overviewLabel} · {formatOffset(extentEnd - first0)}
-          </div>
-          <div ref={overviewRef} aria-hidden="true" onPointerDown={onOverviewDown} onPointerMove={onOverviewMove} onPointerUp={onOverviewUp} onPointerCancel={onOverviewUp} className={cn(classes.overviewTrack)}>
-            <span className={cn(classes.overviewBand)} />
-            {overviewMarks.map((item) => (
-              <span key={item.id} className={cn(classes.overviewMark)} style={{ left: `${((item.start - fitted.start) / fitSpan) * 100}%` }} />
-            ))}
-            <span data-slot="timeline-window" className={cn(classes.overviewWindow)} style={{ left: `${windowLeft}%`, width: `${Math.max(windowRight - windowLeft, 0.5)}%` }} />
-            {running ? <span className="absolute right-0 top-1/2 -translate-y-1/2 pe-inline-sm text-caption-1 text-fg-muted">now {formatTime(now, 1000)}</span> : null}
-          </div>
-        </div>
-      ) : null}
-      <div data-slot="timeline-axis" aria-hidden="true" className={cn(classes.axis)}>
-        <div className={cn(classes.gutter)} />
-        <div className="relative h-control-sm min-w-0 flex-1 overflow-hidden">
-          {ticks.map((t) => (
-            <span key={t} className={cn(classes.tick)} style={{ left: `${percent(t)}%` }}>
-              {tickLabel(t)}
-            </span>
-          ))}
-        </div>
-      </div>
-      {lanes.length === 0 ? (
-        <p className={cn(classes.empty)}>{emptyLabel}</p>
-      ) : (
-        <div ref={lanesRef} data-slot="timeline-lanes" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} className={cn(classes.lanes)}>
-          <div style={{ height: lanes.length * ROW }} className="relative">
-            {lanes.slice(first, last).map((lane, i) => (
-              <div
-                key={lane.id}
-                data-slot="timeline-lane"
-                data-selected={selectedLane === lane.id ? "" : undefined}
-                style={{ position: "absolute", top: (first + i) * ROW, left: 0, right: 0, height: ROW }}
-                className={cn(classes.lane)}
-              >
-                <div className={cn(classes.laneLabel)} title={lane.detail ? `${lane.label} · ${lane.detail}` : lane.label}>
-                  {lane.icon}
-                  <span className="min-w-0 flex-1 truncate">{lane.label}</span>
-                  {lane.detail ? <span className="shrink-0 text-fg-muted">{lane.detail}</span> : null}
-                </div>
-                <div className={cn(classes.track)}>
-                  {ticks.map((t) => (
-                    <span key={t} aria-hidden="true" className={cn(classes.grid)} style={{ left: `${percent(t)}%` }} />
-                  ))}
-                  {(byLane.get(lane.id) ?? []).map(renderItem)}
-                  {nowAt >= 0 && nowAt <= 100 ? <span aria-hidden="true" data-slot="timeline-now" className={cn(classes.now)} style={{ left: `${nowAt}%` }} /> : null}
-                </div>
+      <div data-slot="timeline-body" className={cn(classes.body)}>
+        <div data-slot="timeline-chart" className={cn(classes.chart)}>
+          {controls && items.length > 0 ? (
+            <div data-slot="timeline-overview" className={cn(classes.overview)}>
+              <div className={cn(classes.gutter)}>
+                {overviewLabel} · {formatOffset(extentEnd - first0)}
               </div>
-            ))}
+              <div ref={overviewRef} aria-hidden="true" onPointerDown={onOverviewDown} onPointerMove={onOverviewMove} onPointerUp={onOverviewUp} onPointerCancel={onOverviewUp} className={cn(classes.overviewTrack)}>
+                <span className={cn(classes.overviewBand)} />
+                {overviewMarks.map((item) => (
+                  <span key={item.id} className={cn(classes.overviewMark)} style={{ left: `${((item.start - fitted.start) / fitSpan) * 100}%` }} />
+                ))}
+                <span data-slot="timeline-window" className={cn(classes.overviewWindow)} style={{ left: `${windowLeft}%`, width: `${Math.max(windowRight - windowLeft, 0.5)}%` }} />
+                {running ? <span className="absolute right-0 top-1/2 -translate-y-1/2 pe-inline-sm text-caption-1 text-fg-muted">now {formatTime(now, 1000)}</span> : null}
+              </div>
+            </div>
+          ) : null}
+          <div data-slot="timeline-axis" aria-hidden="true" className={cn(classes.axis)}>
+            <div className={cn(classes.gutter)} />
+            <div className="relative h-control-sm min-w-0 flex-1 overflow-hidden">
+              {ticks.map((t) => (
+                <span key={t} className={cn(classes.tick)} style={{ left: `${percent(t)}%` }}>
+                  {tickLabel(t)}
+                </span>
+              ))}
+            </div>
           </div>
+          {lanes.length === 0 ? (
+            <p className={cn(classes.empty)}>{emptyLabel}</p>
+          ) : (
+            <div ref={lanesRef} data-slot="timeline-lanes" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} className={cn(classes.lanes)}>
+              <div style={{ height: lanes.length * ROW }} className="relative">
+                {lanes.slice(first, last).map((lane, i) => (
+                  <div
+                    key={lane.id}
+                    data-slot="timeline-lane"
+                    data-selected={selectedLane === lane.id ? "" : undefined}
+                    style={{ position: "absolute", top: (first + i) * ROW, left: 0, right: 0, height: ROW }}
+                    className={cn(classes.lane)}
+                  >
+                    <div className={cn(classes.laneLabel)} title={lane.detail ? `${lane.label} · ${lane.detail}` : lane.label}>
+                      {lane.icon}
+                      <span className="min-w-0 flex-1 truncate">{lane.label}</span>
+                      {lane.detail ? <span className="shrink-0 text-fg-muted">{lane.detail}</span> : null}
+                    </div>
+                    <div className={cn(classes.track)}>
+                      {ticks.map((t) => (
+                        <span key={t} aria-hidden="true" className={cn(classes.grid)} style={{ left: `${percent(t)}%` }} />
+                      ))}
+                      {(byLane.get(lane.id) ?? []).map(renderItem)}
+                      {nowAt >= 0 && nowAt <= 100 ? <span aria-hidden="true" data-slot="timeline-now" className={cn(classes.now)} style={{ left: `${nowAt}%` }} /> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+        {aside === undefined || aside === null ? null : (
+          <aside data-slot="timeline-aside" aria-label={asideLabel} className={cn(classes.aside)}>
+            {aside}
+          </aside>
+        )}
+      </div>
     </div>
   );
 }

@@ -161,9 +161,13 @@ export interface ItemInfo {
   status: ItemStatus;
   start: number;
   end: number | null;
+  /** Its lane's kind. */
+  kind: LaneKind;
   /** The events it covers (first and last ids), for "Events 18–20 in History". */
   firstEventId: number;
   lastEventId: number;
+  /** Every event of it, in history order: scheduled, started, closed; the Timeline's pane lists them. */
+  eventIds: number[];
   attempt?: number;
   maximumAttempts?: number;
   taskQueue?: string;
@@ -177,7 +181,12 @@ export interface TimelineData {
   info: Map<string, ItemInfo>;
   /** How many of each kind: lanes for activities, timers and children; events for the rest. */
   counts: Record<LaneKind, number>;
+  /** The item each event belongs to (event id → item id), so an event picked in History selects its item. */
+  itemOfEvent: Map<number, string>;
 }
+
+/** An item's facts as a case of buildTimeline starts them; `add` fills in the rest. */
+type NewInfo = Omit<ItemInfo, "kind" | "eventIds">;
 
 export interface TimelineOptions {
   /** The workflow lane's name; "Workflow" when absent. */
@@ -281,9 +290,9 @@ export function buildTimeline(events: readonly HistoryEvent[], options: Timeline
     }
     return l;
   };
-  const add = (item: Item, meta: ItemInfo, eventId: number) => {
+  const add = (item: Item, meta: NewInfo, eventId: number) => {
     items.push(item);
-    info.set(item.id, meta);
+    info.set(item.id, { ...meta, kind: laneByKey.get(item.laneId)?.kind ?? "workflow", eventIds: [eventId] });
     byEvent.set(eventId, item);
   };
   // Signals, updates and markers share a lane by name: "signal 13" for one, "3 signals" for more.
@@ -306,6 +315,7 @@ export function buildTimeline(events: readonly HistoryEvent[], options: Timeline
     meta.status = status;
     meta.state = state;
     meta.lastEventId = lastEventId;
+    meta.eventIds.push(lastEventId);
     if (failure) meta.failure = failure;
     return { item, meta };
   };
@@ -338,6 +348,7 @@ export function buildTimeline(events: readonly HistoryEvent[], options: Timeline
         const meta = item ? info.get(item.id) : undefined;
         if (!item || !meta) break;
         meta.lastEventId = id;
+        meta.eventIds.push(id);
         if (event.eventType === "WorkflowTaskStarted") {
           meta.state = "Started";
         } else {
@@ -357,7 +368,7 @@ export function buildTimeline(events: readonly HistoryEvent[], options: Timeline
         counts.activity += 1;
         const activityId = at(a, "activityId");
         const max = num(obj(a["retryPolicy"])["maximumAttempts"]);
-        const meta: ItemInfo = { name, what: `activity ${id}`, state: "Scheduled", status: "running", start: t, end: null, firstEventId: id, lastEventId: id, taskQueue: at(a, "taskQueue", "name") };
+        const meta: NewInfo = { name, what: `activity ${id}`, state: "Scheduled", status: "running", start: t, end: null, firstEventId: id, lastEventId: id, taskQueue: at(a, "taskQueue", "name") };
         if (max) meta.maximumAttempts = max;
         const item: Item = { id: `e${id}`, laneId: l.id, start: t, end: null, status: "running", label: name };
         const p = pendingById.get(activityId);
@@ -387,7 +398,10 @@ export function buildTimeline(events: readonly HistoryEvent[], options: Timeline
         const item = scheduled === null ? undefined : byEvent.get(scheduled);
         const meta = item ? info.get(item.id) : undefined;
         if (meta && meta.state === "Scheduled") meta.state = "Running";
-        if (meta) meta.lastEventId = id;
+        if (meta) {
+          meta.lastEventId = id;
+          meta.eventIds.push(id);
+        }
         break;
       }
       case "ActivityTaskCompleted":
@@ -434,6 +448,7 @@ export function buildTimeline(events: readonly HistoryEvent[], options: Timeline
         if (meta) {
           meta.state = "Running";
           meta.lastEventId = id;
+          meta.eventIds.push(id);
         }
         break;
       }
@@ -486,6 +501,7 @@ export function buildTimeline(events: readonly HistoryEvent[], options: Timeline
           meta.status = closing;
           meta.state = CLOSE_WORD[event.eventType] ?? "Closed";
           meta.lastEventId = id;
+          meta.eventIds.push(id);
           const failure = failureOf(a["failure"]);
           if (failure) meta.failure = failure;
         }
@@ -515,7 +531,9 @@ export function buildTimeline(events: readonly HistoryEvent[], options: Timeline
       default:
     }
   }
-  return { lanes, items, info, counts };
+  const itemOfEvent = new Map<number, string>();
+  for (const [itemId, meta] of info) for (const eventId of meta.eventIds) itemOfEvent.set(eventId, itemId);
+  return { lanes, items, info, counts, itemOfEvent };
 }
 
 /** The event id an item stands for (`e12` is event 12). */

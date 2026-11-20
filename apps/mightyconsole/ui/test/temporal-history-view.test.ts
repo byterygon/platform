@@ -65,7 +65,12 @@ describe("History view", () => {
     expect(rows.map((r) => (r.kind === "group" ? `g${r.first}-${r.last}` : r.event.eventId))).toEqual([1, "g2-4", 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     const group = rows[1]!;
     expect(group.kind === "group" && groupSummary(group.events)).toBe("3 events · 76 ms · worker orders-7f9c@host-3");
-    expect(historyRows(events, { ...base, expanded: new Set([2]) }).length).toBe(rows.length + 3);
+    const open = historyRows(events, { ...base, expanded: new Set([2]) });
+    expect(open.length).toBe(rows.length + 3);
+    // An open fold's events come right under it, marked to be drawn indented; the rest are not.
+    expect(open.flatMap((r) => (r.kind === "event" && r.inFold ? [r.event.eventId] : []))).toEqual([2, 3, 4]);
+    expect(open.slice(2, 5).every((r) => r.kind === "event" && r.inFold)).toBe(true);
+    expect(historyRows(events, { ...base, fold: false }).some((r) => r.kind === "event" && r.inFold)).toBe(false);
     expect(historyRows(events, { ...base, fold: false }).length).toBe(13);
     expect(historyRows(events, { ...base, category: "Activity" }).map((r) => (r.kind === "event" ? r.event.eventId : 0))).toEqual([5, 6, 7, 9, 11, 12, 13]);
     // The search reads types, summaries and the decoded attributes.

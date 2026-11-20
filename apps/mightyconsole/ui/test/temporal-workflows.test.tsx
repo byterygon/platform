@@ -9,7 +9,7 @@ import type { WorkflowRow, WorkflowsListInput } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import { WorkflowsTab } from "@/tools/temporal/WorkflowsTab";
 import { profile as schema } from "@/tools/temporal/profile";
-import type { TabProps, TabRecord } from "@/tools/types";
+import type { TabProps, TabView } from "@/tools/types";
 import { fake, suggest } from "../../../../packages/ui/test/fakes/monaco.ts";
 import { axeViolations, byRole, byText, cleanup, click, editorArea, key, render, settle, type, waitFor } from "./support/render";
 
@@ -46,7 +46,7 @@ function setup(options: { list?: (input: WorkflowsListInput) => Promise<{ execut
   }));
   const client = { temporal: { workflows: { list, count }, namespaces: { list: namespaces, searchAttributes } } } as unknown as MightyClient;
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
-  const tab: TabRecord = { id: "t1", tool: "temporal", profileId: "01T", kind: "temporal.workflows", params: { namespace: "default", query: options.query ?? "" }, title: "Workflows · default", pinned: false };
+  const tab: TabView = { id: "t1", tool: "temporal", profileId: "01T", kind: "temporal.workflows", params: { namespace: "default", query: options.query ?? "" }, title: "Workflows · default", pinned: false };
   const props: TabProps = {
     tab,
     profile,
@@ -208,8 +208,14 @@ describe("Workflows (spec §9.3)", () => {
       await waitFor(() => byText(/invalid search attribute/) !== null, "the message");
       await waitFor(() => (fake.markers as unknown[]).length > 0, "the marker");
       expect(fake.markers).toEqual([{ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 6, message: "invalid search attribute: Bogus", severity: 8 }]);
+      // Only the query takes the danger edges, not the namespace and status Selects (TSK-94).
+      const form = document.querySelector('form[aria-label="Workflow query"]')!;
+      expect([...form.querySelectorAll("[data-invalid]")].map((e) => e.getAttribute("data-slot"))).toEqual(["code-editor"]);
       await type(queryInput(), 'Bogus = "y"');
       await waitFor(() => (fake.markers as unknown[]).length === 0, "no marker once the text changed");
+      expect(form.querySelectorAll("[data-invalid]")).toHaveLength(0);
+      // The message stays under the row until the next run.
+      expect(byText(/invalid search attribute/)).not.toBeNull();
     });
   });
 
