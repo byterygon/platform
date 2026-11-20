@@ -765,6 +765,26 @@
       ]
     },
     {
+      "name": "log-viewer",
+      "type": "registry:ui",
+      "title": "LogViewer",
+      "description": "Log lines as they arrive (container and pod logs, a Compose project's merged logs): appended through a ref with no React state per line, at most maxLines kept, virtualized rows, ANSI SGR colours and bold, italic and underline on the terminal.* roles, stdout and stderr marked, timestamps, follow, wrap, and search with Mod+F.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/button",
+        "@byterygon/cn",
+        "@byterygon/control",
+        "@byterygon/search-input",
+        "@byterygon/theme-scope"
+      ],
+      "files": [
+        {
+          "path": "ui/log-viewer.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "menubar",
       "type": "registry:ui",
       "title": "Menubar",
@@ -1352,6 +1372,24 @@
       ]
     },
     {
+      "name": "terminal",
+      "type": "registry:ui",
+      "title": "Terminal",
+      "description": "An interactive terminal on xterm.js 6, loaded lazily from the app's own bundle (no CDN), themed from the terminal.* roles of its region and rethemed when they change; keystrokes leave as bytes through onData, size changes through onResize, output goes in through ref.write.",
+      "dependencies": [],
+      "registryDependencies": [
+        "@byterygon/cn",
+        "@byterygon/token-reader",
+        "@byterygon/xterm"
+      ],
+      "files": [
+        {
+          "path": "ui/terminal.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "textarea",
       "type": "registry:ui",
       "title": "Textarea",
@@ -1600,11 +1638,45 @@
         "monaco-editor"
       ],
       "registryDependencies": [
-        "@byterygon/monaco-theme"
+        "@byterygon/monaco-theme",
+        "@byterygon/token-reader"
       ],
       "files": [
         {
           "path": "lib/monaco.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
+      "name": "xterm",
+      "type": "registry:lib",
+      "title": "xterm",
+      "description": "Loads xterm.js lazily from the app's own bundle (its stylesheet, the fit and search addons; no CDN) and builds an xterm.js theme and font from the terminal.* roles and text.code in scope at the terminal. The Terminal component imports it from @/lib/xterm.",
+      "dependencies": [
+        "@xterm/xterm",
+        "@xterm/addon-fit",
+        "@xterm/addon-search"
+      ],
+      "registryDependencies": [
+        "@byterygon/token-reader"
+      ],
+      "files": [
+        {
+          "path": "lib/xterm.ts",
+          "type": "registry:lib"
+        }
+      ]
+    },
+    {
+      "name": "token-reader",
+      "type": "registry:lib",
+      "title": "token-reader",
+      "description": "Reads design-token variables at an element as the browser resolves them there (its data-theme and data-density region, the preset loaded) and converts colours to hex, for libraries that draw their own colours. @/lib/monaco and @/lib/xterm import it.",
+      "dependencies": [],
+      "files": [
+        {
+          "path": "lib/token-reader.ts",
           "type": "registry:lib"
         }
       ]

@@ -1,0 +1,171 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "log-viewer",
+  "title": "LogViewer",
+  "description": "Log lines as they arrive (container and pod logs, a Compose project's merged logs): appended through a ref with no React state per line, at most maxLines kept, virtualized rows, ANSI SGR colours and bold, italic and underline on the terminal.* roles, stdout and stderr marked, timestamps, follow, wrap, and search with Mod+F.",
+  "usage": "Use LogViewer for output that keeps coming: a container's or pod's logs, a build, a Compose project's services merged by time (streamColumn with a chart category per service). Lines never go through props: call ref.append(lines) as they arrive (each { ts?, stream?, text }, text with ANSI escapes as the process wrote them) and ref.clear() for a new run. Keep follow in the app's toolbar with onFollowChange: scrolling up stops following, scrolling back to the end or the footer's Follow resumes it. Give onDownload to offer the loaded lines as a file (the app saves it). Mod+F, F3 and Shift+F3 search the loaded lines; ref.openSearch() opens the bar from a button. Use Terminal for an interactive session, CodeBlock for a fixed snippet, JsonViewer for structured data.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    {
+      "name": "ref",
+      "type": "Ref<LogViewerHandle>",
+      "description": "append(lines), clear(), lines(), text() (the loaded lines as text), openSearch(), scrollToEnd()."
+    },
+    {
+      "name": "maxLines",
+      "type": "number",
+      "description": "At most this many lines are kept; the oldest are dropped in chunks of a tenth, and the footer counts them.",
+      "default": 50000
+    },
+    {
+      "name": "follow",
+      "type": "boolean",
+      "description": "Keep the newest line in view (controlled); scrolling up turns it off through onFollowChange."
+    },
+    {
+      "name": "defaultFollow",
+      "type": "boolean",
+      "description": "Follow at first, when follow is not controlled.",
+      "default": true
+    },
+    {
+      "name": "onFollowChange",
+      "type": "(follow: boolean) => void",
+      "description": "Called when scrolling, End or the footer's Follow changes following."
+    },
+    {
+      "name": "wrap",
+      "type": "boolean",
+      "description": "Long lines wrap (each rendered row is measured) instead of scrolling sideways.",
+      "default": false
+    },
+    {
+      "name": "timestamps",
+      "type": "boolean",
+      "description": "Shows each line's ts in a column.",
+      "default": true
+    },
+    {
+      "name": "formatTimestamp",
+      "type": "(ts: string | number) => string",
+      "description": "How a timestamp is shown; formatLogTimestamp (UTC to the millisecond) by default."
+    },
+    {
+      "name": "streamColors",
+      "type": "Record<string, LogStreamColor>",
+      "description": "The colour marking each stream at the start of its rows: neutral, danger, warning, success, info or cat-1 to cat-8.",
+      "default": "{ stderr: \"danger\" }"
+    },
+    {
+      "name": "streamColumn",
+      "type": "boolean",
+      "description": "Shows each line's stream in a column with its colour's swatch (a project's services).",
+      "default": false
+    },
+    {
+      "name": "onDownload",
+      "type": "(text: string) => void",
+      "description": "Shows a Download button in the footer; called with the loaded lines as text."
+    },
+    {
+      "name": "emptyText",
+      "type": "ReactNode",
+      "description": "What an empty viewer says.",
+      "default": "No log lines yet."
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Accessible name of the log (role=\"log\").",
+      "default": "Log"
+    },
+    {
+      "name": "overscan",
+      "type": "number",
+      "description": "Rows rendered beyond the viewport on each side.",
+      "default": 12
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own; set the height here."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "The frame in terminal.bg; data-slot=\"log-viewer\", data-follow while following."
+    },
+    {
+      "name": "search",
+      "element": "div",
+      "description": "role=\"search\": the query, the match count (aria-live), Previous, Next and Close; data-slot=\"log-viewer-search\"."
+    },
+    {
+      "name": "scroller",
+      "element": "div",
+      "description": "role=\"log\", the scroll container and the tab stop; data-slot=\"log-viewer-scroller\"."
+    },
+    {
+      "name": "row",
+      "element": "div",
+      "description": "One line: the timestamp, the stream and the text; data-slot=\"log-viewer-row\", data-stream, data-wrap, data-current (the current match's line)."
+    },
+    {
+      "name": "footer",
+      "element": "div",
+      "description": "The line count (and how many were dropped), Follow while not following, Download; data-slot=\"log-viewer-footer\"."
+    }
+  ],
+  "states": [
+    {
+      "name": "focus-visible",
+      "variant": "focus-visible",
+      "description": "Keyboard focus on the scroller: Fluent's double ring (focusRing)."
+    }
+  ],
+  "tokens": [
+    "color.bg.layer",
+    "color.border.subtle",
+    "color.fg.muted",
+    "color.ring",
+    "color.ring-inner",
+    "font.mono",
+    "font.sans",
+    "radius.lg",
+    "ring.inner-width",
+    "ring.width",
+    "space.inline.sm",
+    "space.inset.sm",
+    "space.inset.xs",
+    "terminal.bg",
+    "terminal.fg",
+    "text.body-1.leading",
+    "text.body-1.size",
+    "text.body-1.tracking",
+    "text.body-1.weight",
+    "text.caption-1.leading",
+    "text.caption-1.size",
+    "text.caption-1.tracking",
+    "text.caption-1.weight",
+    "text.code-sm.leading",
+    "text.code-sm.size",
+    "text.code-sm.tracking",
+    "text.code-sm.weight"
+  ],
+  "examples": {
+    "minimal": "LogViewerMinimal",
+    "realistic": "LogViewerRealistic"
+  },
+  "accessibility": [
+    "The lines are role=\"log\" with aria-live=\"off\" (a busy log would flood a screen reader) and an accessible name; the scroller is the tab stop, so arrows, Page Up and Page Down scroll it and End follows again.",
+    "Mod+F opens a search bar (role=\"search\") whose count is announced politely; Enter and F3 go to the next match, Shift with them to the previous one, Escape closes it and returns focus to the log.",
+    "Colour is never the only mark: stderr rows also carry data-stream, the stream column names the stream, and every ANSI colour reads at 4.5:1 on terminal.bg (the token build checks each pair).",
+    "Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner."
+  ]
+}

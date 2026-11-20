@@ -43,7 +43,7 @@ const ITEMS = [
   "tabs", "toast", "command-palette",
   "breadcrumb", "pagination", "stepper", "navigation-menu",
   "sidebar", "tree",
-  "sql-editor", "code-input", "code-editor", "hex-view", "key-value-editor",
+  "sql-editor", "code-input", "code-editor", "hex-view", "key-value-editor", "log-viewer", "terminal",
   "separator", "scroll-area", "card", "collapsible", "accordion",
   "resizable", "toolbar", "status-bar", "badge", "tag",
   "avatar", "progress", "spinner", "skeleton", "empty-state", "alert",
@@ -83,7 +83,7 @@ function blankApp(dir: string, registryTemplate: string): void {
     name: "blank-vite-app",
     private: true,
     type: "module",
-    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority", "react-day-picker", "date-fns", "monaco-editor", "@codemirror/commands", "@codemirror/lang-json", "@codemirror/lang-sql", "@codemirror/language", "@codemirror/state", "@codemirror/view", "@lezer/highlight"].map((n) => [n, version(n)])),
+    dependencies: Object.fromEntries(["react", "react-dom", "@base-ui/react", "@tanstack/react-form", "cn", "class-variance-authority", "react-day-picker", "date-fns", "monaco-editor", "@codemirror/commands", "@codemirror/lang-json", "@codemirror/lang-sql", "@codemirror/language", "@codemirror/state", "@codemirror/view", "@lezer/highlight", "@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-search"].map((n) => [n, version(n)])),
     devDependencies: Object.fromEntries(["vite", "@tailwindcss/vite", "tailwindcss"].map((n) => [n, version(n)])),
   });
   write("tsconfig.json", { compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", jsx: "react-jsx", strict: true, baseUrl: ".", paths: { "@/*": ["./src/*"] } }, include: ["src"] });
@@ -150,7 +150,7 @@ function serve(dir: string): Promise<Server> {
 const itemContent = (name: string) => (JSON.parse(readFileSync(join(REGISTRY, `${name}.json`), "utf8")) as { files: { content: string }[] }).files[0]!.content;
 
 function checkInstalledFiles(app: string, label: string): void {
-  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ["src/lib/monaco.ts", "monaco"], ["src/lib/motion.ts", "motion"], ["src/lib/icons.ts", "icons"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
+  for (const [path, item] of [["src/lib/cn.ts", "cn"], ["src/lib/theme-scope.ts", "theme-scope"], ["src/lib/monaco.ts", "monaco"], ["src/lib/token-reader.ts", "token-reader"], ["src/lib/xterm.ts", "xterm"], ["src/lib/motion.ts", "motion"], ["src/lib/icons.ts", "icons"], ...ITEMS.map((name) => [`src/components/ui/${name}.tsx`, name] as const)] as const) {
     const full = join(app, path);
     if (check(existsSync(full), `${label}: ${path} was not installed`)) {
       check(readFileSync(full, "utf8") === itemContent(item), `${label}: ${path} differs from the registry item ${item}`);
@@ -207,6 +207,8 @@ import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarInput, ToolbarLink, Toolba
 import { SqlEditor } from "@/components/ui/sql-editor";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { HexView } from "@/components/ui/hex-view";
+import { LogViewer } from "@/components/ui/log-viewer";
+import { Terminal } from "@/components/ui/terminal";
 import { KeyValueEditor } from "@/components/ui/key-value-editor";
 import { CodeInput } from "@/components/ui/code-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -531,6 +533,8 @@ createRoot(document.getElementById("root")!).render(
     <SqlEditor aria-label="Query" defaultValue="select 1;" onRun={(run) => console.log(run.text)} markers={[{ start: 7, message: "check" }]} />
     <CodeEditor aria-label="Payload" defaultValue={'{"id":1}'} jsonSchema={{ type: "object" }} onSubmit={(v) => console.log(v)} />
     <HexView aria-label="Bytes" bytes={[0, 1, 72, 105]} />
+    <LogViewer aria-label="Logs" ref={(h) => h?.append([{ text: "\\u001b[31merror\\u001b[0m" }])} />
+    <Terminal aria-label="Shell" onReady={() => {}} />
     <KeyValueEditor aria-label="Headers" value={[{ key: "a", value: "b" }]} onChange={() => {}} valueEncodings={["text", "base64"]} />
     <Field><FieldLabel>Filter</FieldLabel><CodeInput language="sql" defaultValue="id = 1" onSubmit={(v) => console.log(v)} /></Field>
     <CodeInput aria-label="Cell value" language="json" pretty value='{"id":1}' />

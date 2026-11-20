@@ -1,0 +1,123 @@
+{
+  "$schema": "../../../component.manifest.schema.json",
+  "schemaVersion": 1,
+  "name": "terminal",
+  "title": "Terminal",
+  "description": "An interactive terminal on xterm.js 6, loaded lazily from the app's own bundle (no CDN), themed from the terminal.* roles of its region and rethemed when they change; keystrokes leave as bytes through onData, size changes through onResize, output goes in through ref.write.",
+  "usage": "Use Terminal for an exec session or a shell: pass onData to the process's stdin (bytes, UTF-8), onResize to the process's terminal size, and write its stdout and stderr with ref.write(bytes) as they arrive (writes before xterm.js has loaded are queued). onReady fires once it is open. Set readOnly when the session ends (keystrokes are ignored, the cursor stops blinking) and ref.reset() before a new one. Mod+Shift+C copies the selection and Mod+Shift+V pastes; Ctrl+C goes to the process. ref.findNext and findPrevious search the scrollback. The height comes from className; the terminal fits its columns and rows to the element. Use LogViewer for output alone, CodeBlock for a fixed snippet.",
+  "status": "experimental",
+  "base": null,
+  "dependencies": [],
+  "props": [
+    {
+      "name": "ref",
+      "type": "Ref<TerminalHandle>",
+      "description": "write(bytes | text), focus(), clear(), reset(), findNext(query), findPrevious(query), size()."
+    },
+    {
+      "name": "onData",
+      "type": "(data: Uint8Array) => void",
+      "description": "Keystrokes, pastes and terminal replies as bytes, for the process's stdin."
+    },
+    {
+      "name": "onResize",
+      "type": "(cols: number, rows: number) => void",
+      "description": "The size in cells once loaded and whenever the element's size changes."
+    },
+    {
+      "name": "onReady",
+      "type": "() => void",
+      "description": "Called once xterm.js has loaded and the terminal is open."
+    },
+    {
+      "name": "fontSize",
+      "type": "number",
+      "description": "The font size in px; text.code's size of the region by default."
+    },
+    {
+      "name": "scrollback",
+      "type": "number",
+      "description": "Lines kept above the screen (read at mount).",
+      "default": 5000
+    },
+    {
+      "name": "readOnly",
+      "type": "boolean",
+      "description": "Output only: keystrokes are ignored and the cursor does not blink (a finished session).",
+      "default": false
+    },
+    {
+      "name": "screenReaderMode",
+      "type": "boolean",
+      "description": "xterm.js's screen reader mode: an accessible buffer of the output (read at mount).",
+      "default": false
+    },
+    {
+      "name": "aria-label",
+      "type": "string",
+      "description": "Accessible name of the terminal and of its input.",
+      "default": "Terminal"
+    },
+    {
+      "name": "className",
+      "type": "string",
+      "description": "Extra classes, merged after the component's own; set the height here."
+    }
+  ],
+  "variants": {},
+  "slots": [
+    {
+      "name": "root",
+      "element": "div",
+      "description": "role=\"group\", the frame in terminal.bg; data-slot=\"terminal\", data-loading until xterm.js has loaded, data-readonly."
+    },
+    {
+      "name": "fallback",
+      "element": "div",
+      "description": "\"Loading the terminal…\" (or why it could not load) until xterm.js is ready; data-slot=\"terminal-fallback\"."
+    },
+    {
+      "name": "surface",
+      "element": "div",
+      "description": "Where xterm.js renders, a data-foreign-dom element; data-slot=\"terminal-surface\"."
+    }
+  ],
+  "states": [
+    {
+      "name": "focus-within",
+      "variant": "focus-within",
+      "description": "The keyboard is in the terminal: the ring around the frame (ring.width in color.ring)."
+    },
+    {
+      "name": "loading",
+      "variant": "data-loading",
+      "description": "xterm.js is loading: aria-busy, the progress cursor and the fallback text."
+    }
+  ],
+  "tokens": [
+    "color.border.subtle",
+    "color.fg.muted",
+    "color.ring",
+    "font.mono",
+    "radius.lg",
+    "ring.inner-width",
+    "ring.width",
+    "space.inset.sm",
+    "terminal.bg",
+    "terminal.fg",
+    "text.code.leading",
+    "text.code.size",
+    "text.code.tracking",
+    "text.code.weight"
+  ],
+  "examples": {
+    "minimal": "TerminalMinimal",
+    "realistic": "TerminalRealistic"
+  },
+  "accessibility": [
+    "The frame is role=\"group\" with the accessible name, which xterm.js's input (a textarea) also takes; it is the tab stop, and every key, Tab and Escape included, goes to the process. Mod+Shift+C and Mod+Shift+V copy and paste.",
+    "screenReaderMode gives xterm.js's accessible buffer of the output (off by default: it costs speed); the app should also say when a session starts and ends outside the terminal.",
+    "Every ANSI colour reads at 4.5:1 on terminal.bg and the cursor at 3:1 (the token build checks each pair).",
+    "The frame shows the ring while the keyboard is inside: ring.width in color.ring."
+  ]
+}

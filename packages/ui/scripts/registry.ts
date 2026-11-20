@@ -74,7 +74,18 @@ export const LIBS: Record<string, { dependencies: string[]; description: string;
     dependencies: ["monaco-editor"],
     description: "Loads Monaco lazily from the app's own bundle (ESM, its editor worker through Vite's ?worker, no CDN or AMD loader) and builds a Monaco theme from the design tokens in scope at the editor. SqlEditor imports it from @/lib/monaco; with a bundler other than Vite, set MonacoEnvironment.getWorker and replace the ?worker import.",
     llms: "loads Monaco lazily and offline (Vite ?worker) and turns the token roles in scope into a Monaco theme; SqlEditor depends on it.",
-    registryDependencies: ["monaco-theme"],
+    registryDependencies: ["monaco-theme", "token-reader"],
+  },
+  xterm: {
+    dependencies: ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-search"],
+    description: "Loads xterm.js lazily from the app's own bundle (its stylesheet, the fit and search addons; no CDN) and builds an xterm.js theme and font from the terminal.* roles and text.code in scope at the terminal. The Terminal component imports it from @/lib/xterm.",
+    llms: "loads xterm.js lazily and offline and turns the terminal.* roles in scope into its theme; Terminal depends on it.",
+    registryDependencies: ["token-reader"],
+  },
+  "token-reader": {
+    dependencies: [],
+    description: "Reads design-token variables at an element as the browser resolves them there (its data-theme and data-density region, the preset loaded) and converts colours to hex, for libraries that draw their own colours. @/lib/monaco and @/lib/xterm import it.",
+    llms: "resolves token variables at an element and gives colours as hex; the monaco and xterm helpers depend on it.",
   },
   "monaco-theme": {
     dependencies: [],

@@ -2869,6 +2869,111 @@ export function KeyValueEditorRealistic() {
 }
 ```
 
+### LogViewer
+
+[log-viewer.json](log-viewer.json): Log lines as they arrive (container and pod logs, a Compose project's merged logs): appended through a ref with no React state per line, at most maxLines kept, virtualized rows, ANSI SGR colours and bold, italic and underline on the terminal.* roles, stdout and stderr marked, timestamps, follow, wrap, and search with Mod+F.
+
+Usage: Use LogViewer for output that keeps coming: a container's or pod's logs, a build, a Compose project's services merged by time (streamColumn with a chart category per service). Lines never go through props: call ref.append(lines) as they arrive (each { ts?, stream?, text }, text with ANSI escapes as the process wrote them) and ref.clear() for a new run. Keep follow in the app's toolbar with onFollowChange: scrolling up stops following, scrolling back to the end or the footer's Follow resumes it. Give onDownload to offer the loaded lines as a file (the app saves it). Mod+F, F3 and Shift+F3 search the loaded lines; ref.openSearch() opens the bar from a button. Use Terminal for an interactive session, CodeBlock for a fixed snippet, JsonViewer for structured data.
+
+- Wraps: no Base UI part
+- Props: ref (Ref<LogViewerHandle>); maxLines (number, default 50000); follow (boolean); defaultFollow (boolean, default true); onFollowChange ((follow: boolean) => void); wrap (boolean, default false); timestamps (boolean, default true); formatTimestamp ((ts: string | number) => string); streamColors (Record<string, LogStreamColor>, default "{ stderr: \"danger\" }"); streamColumn (boolean, default false); onDownload ((text: string) => void); emptyText (ReactNode, default "No log lines yet."); aria-label (string, default "Log"); overscan (number, default 12); className (string)
+- States: focus-visible (focus-visible)
+- Tokens: color.bg.layer, color.border.subtle, color.fg.muted, color.ring, color.ring-inner, font.mono, font.sans, radius.lg, ring.inner-width, ring.width, space.inline.sm, space.inset.sm, space.inset.xs, terminal.bg, terminal.fg, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.caption-1.leading, text.caption-1.size, text.caption-1.tracking, text.caption-1.weight, text.code-sm.leading, text.code-sm.size, text.code-sm.tracking, text.code-sm.weight
+- Accessibility: The lines are role="log" with aria-live="off" (a busy log would flood a screen reader) and an accessible name; the scroller is the tab stop, so arrows, Page Up and Page Down scroll it and End follows again. Mod+F opens a search bar (role="search") whose count is announced politely; Enter and F3 go to the next match, Shift with them to the previous one, Escape closes it and returns focus to the log. Colour is never the only mark: stderr rows also carry data-stream, the stream column names the stream, and every ANSI colour reads at 4.5:1 on terminal.bg (the token build checks each pair). Focus shows the double ring: ring.width in color.ring around ring.inner-width in color.ring-inner.
+
+Examples (LogViewerMinimal, LogViewerRealistic):
+
+```tsx
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { LogViewer, type LogLine, type LogViewerHandle } from "@/components/ui/log-viewer";
+import { ToggleButton } from "@/components/ui/toggle-button";
+
+const ESC = "\u001b";
+
+/** The smallest useful LogViewer: a few lines appended through its ref. */
+export function LogViewerMinimal() {
+  const ref = useRef<LogViewerHandle>(null);
+  useEffect(() => {
+    ref.current?.append([{ text: "listening on :8080" }, { text: "GET /health 200 1ms" }]);
+  }, []);
+  return <LogViewer ref={ref} aria-label="api logs" timestamps={false} className="h-panel-xs" />;
+}
+
+/** A web service's log as Docker sends it: timestamps, stderr marked, ANSI levels. */
+const SAMPLE: LogLine[] = [
+  { ts: "2026-11-20T08:00:01.120458Z", stream: "stdout", text: `${ESC}[32mINFO${ESC}[0m  server listening on :8080` },
+  { ts: "2026-11-20T08:00:01.402113Z", stream: "stdout", text: `${ESC}[32mINFO${ESC}[0m  connected to ${ESC}[1mpostgres${ESC}[22m at db:5432` },
+  { ts: "2026-11-20T08:00:02.981374Z", stream: "stdout", text: `${ESC}[36mDEBUG${ESC}[0m GET /api/orders?status=PAID ${ESC}[2m(12 ms)${ESC}[0m` },
+  { ts: "2026-11-20T08:00:03.004921Z", stream: "stderr", text: `${ESC}[33mWARN${ESC}[0m  slow query: SELECT * FROM orders WHERE status = 'PAID' (842 ms)` },
+  { ts: "2026-11-20T08:00:04.551007Z", stream: "stderr", text: `${ESC}[1;31mERROR${ESC}[0m payment provider timed out for ${ESC}[4mord-1042${ESC}[24m after 3 attempts` },
+  { ts: "2026-11-20T08:00:05.000000Z", stream: "stdout", text: `${ESC}[35mTRACE${ESC}[0m retry scheduled ${ESC}[3min 30 s${ESC}[23m` },
+  { ts: "2026-11-20T08:00:05.120000Z", stream: "stdout", text: `${ESC}[34mINFO${ESC}[0m  ${ESC}[7m maintenance ${ESC}[27m window starts at 09:00` },
+];
+
+/** A container's Logs tab: follow, wrap and timestamps in a toolbar, more lines on demand, download. */
+export function LogViewerRealistic() {
+  const ref = useRef<LogViewerHandle>(null);
+  const [follow, setFollow] = useState(true);
+  const [wrap, setWrap] = useState(false);
+  const [timestamps, setTimestamps] = useState(true);
+  const [downloaded, setDownloaded] = useState<number | null>(null);
+  useEffect(() => {
+    ref.current?.append(SAMPLE);
+  }, []);
+  const more = () => {
+    const now = Date.now();
+    ref.current?.append(Array.from({ length: 20 }, (_, i) => ({ ts: now + i, stream: i % 7 === 6 ? "stderr" : "stdout", text: `GET /api/orders/${1000 + i} 200 ${(i % 5) + 1} ms` })));
+  };
+  return (
+    <div className="flex flex-col gap-stack-sm">
+      <div className="flex flex-wrap items-center gap-inline-sm">
+        <ToggleButton size="small" pressed={follow} onPressedChange={setFollow}>
+          Follow
+        </ToggleButton>
+        <ToggleButton size="small" pressed={wrap} onPressedChange={setWrap}>
+          Wrap
+        </ToggleButton>
+        <ToggleButton size="small" pressed={timestamps} onPressedChange={setTimestamps}>
+          Timestamps
+        </ToggleButton>
+        <Button appearance="secondary" size="small" onClick={more}>
+          Twenty more lines
+        </Button>
+        <Button appearance="subtle" size="small" onClick={() => ref.current?.openSearch()}>
+          Search
+        </Button>
+      </div>
+      <LogViewer
+        ref={ref}
+        aria-label="orders-api logs"
+        follow={follow}
+        onFollowChange={setFollow}
+        wrap={wrap}
+        timestamps={timestamps}
+        onDownload={(text) => setDownloaded(text.split("\n").length)}
+        className="h-panel-sm"
+      />
+      {downloaded === null ? null : <p className="text-caption-1 text-fg-muted">Downloaded {downloaded} lines.</p>}
+      <LogViewer
+        aria-label="shop project logs"
+        streamColumn
+        streamColors={{ web: "cat-1", worker: "cat-2", db: "cat-3" }}
+        ref={(handle) => {
+          if (handle && handle.lines().length === 0)
+            handle.append([
+              { ts: "2026-11-20T08:00:01Z", stream: "db", text: "database system is ready to accept connections" },
+              { ts: "2026-11-20T08:00:02Z", stream: "web", text: "listening on :8080" },
+              { ts: "2026-11-20T08:00:03Z", stream: "worker", text: "picked up job 17" },
+            ]);
+        }}
+        className="h-panel-xs"
+      />
+    </div>
+  );
+}
+```
+
 ### Menubar
 
 [menubar.json](menubar.json): A row of menus, as at the top of a desktop window, on Base UI's Menubar: titles that open DropdownMenu-style menus (shortcuts, danger, checkbox and radio items, groups, separators, submenus), moving between menus with the arrow keys or the pointer once one is open.
@@ -5127,6 +5232,82 @@ export function TagRealistic() {
 }
 ```
 
+### Terminal
+
+[terminal.json](terminal.json): An interactive terminal on xterm.js 6, loaded lazily from the app's own bundle (no CDN), themed from the terminal.* roles of its region and rethemed when they change; keystrokes leave as bytes through onData, size changes through onResize, output goes in through ref.write.
+
+Usage: Use Terminal for an exec session or a shell: pass onData to the process's stdin (bytes, UTF-8), onResize to the process's terminal size, and write its stdout and stderr with ref.write(bytes) as they arrive (writes before xterm.js has loaded are queued). onReady fires once it is open. Set readOnly when the session ends (keystrokes are ignored, the cursor stops blinking) and ref.reset() before a new one. Mod+Shift+C copies the selection and Mod+Shift+V pastes; Ctrl+C goes to the process. ref.findNext and findPrevious search the scrollback. The height comes from className; the terminal fits its columns and rows to the element. Use LogViewer for output alone, CodeBlock for a fixed snippet.
+
+- Wraps: no Base UI part
+- Props: ref (Ref<TerminalHandle>); onData ((data: Uint8Array) => void); onResize ((cols: number, rows: number) => void); onReady (() => void); fontSize (number); scrollback (number, default 5000); readOnly (boolean, default false); screenReaderMode (boolean, default false); aria-label (string, default "Terminal"); className (string)
+- States: focus-within (focus-within), loading (data-loading)
+- Tokens: color.border.subtle, color.fg.muted, color.ring, font.mono, radius.lg, ring.inner-width, ring.width, space.inset.sm, terminal.bg, terminal.fg, text.code.leading, text.code.size, text.code.tracking, text.code.weight
+- Accessibility: The frame is role="group" with the accessible name, which xterm.js's input (a textarea) also takes; it is the tab stop, and every key, Tab and Escape included, goes to the process. Mod+Shift+C and Mod+Shift+V copy and paste. screenReaderMode gives xterm.js's accessible buffer of the output (off by default: it costs speed); the app should also say when a session starts and ends outside the terminal. Every ANSI colour reads at 4.5:1 on terminal.bg and the cursor at 3:1 (the token build checks each pair). The frame shows the ring while the keyboard is inside: ring.width in color.ring.
+
+Examples (TerminalMinimal, TerminalRealistic):
+
+```tsx
+import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Terminal, type TerminalHandle } from "@/components/ui/terminal";
+
+/** The smallest useful Terminal: output written once it is ready. */
+export function TerminalMinimal() {
+  const ref = useRef<TerminalHandle>(null);
+  return <Terminal ref={ref} aria-label="Output" readOnly onReady={() => ref.current?.write("build finished in 4.2 s\r\n")} className="h-panel-xs" />;
+}
+
+const ESC = "\u001b";
+
+/**
+ * An exec session, with a local echo standing in for the process: what is typed comes back, Enter
+ * gives a new prompt, the size is shown. An app sends `onData` to the process's stdin instead and
+ * writes its stdout with `ref.write`.
+ */
+export function TerminalRealistic() {
+  const ref = useRef<TerminalHandle>(null);
+  const [size, setSize] = useState<string>("");
+  const [ended, setEnded] = useState(false);
+  const prompt = `${ESC}[32mroot@orders-api${ESC}[0m:${ESC}[34m/app${ESC}[0m# `;
+  const decoder = new TextDecoder();
+  return (
+    <div className="flex flex-col gap-stack-sm">
+      <div className="flex items-center gap-inline-sm">
+        <span className="min-w-0 flex-1 text-caption-1 text-fg-muted">{ended ? "Exited with code 0" : size ? `Connected · ${size}` : "Connecting…"}</span>
+        <Button
+          appearance="secondary"
+          size="small"
+          onClick={() => {
+            ref.current?.reset();
+            ref.current?.write(prompt);
+            setEnded(false);
+            ref.current?.focus();
+          }}
+        >
+          Reconnect
+        </Button>
+      </div>
+      <Terminal
+        ref={ref}
+        aria-label="orders-api shell"
+        readOnly={ended}
+        onReady={() => ref.current?.write(`${ESC}[1mbash${ESC}[0m 5.2 · /bin/sh fallback\r\n${prompt}`)}
+        onResize={(cols, rows) => setSize(`${cols} × ${rows}`)}
+        onData={(bytes) => {
+          const text = decoder.decode(bytes);
+          if (text === "\u0004") {
+            ref.current?.write("exit\r\n");
+            setEnded(true);
+          } else if (text === "\r") ref.current?.write(`\r\n${prompt}`);
+          else ref.current?.write(bytes);
+        }}
+        className="h-panel-sm"
+      />
+    </div>
+  );
+}
+```
+
 ### Textarea
 
 [textarea.json](textarea.json): A multi-line text input on Base UI's Input rendering a <textarea>, in Input's appearances and sizes, with placeholder, invalid and disabled states; works inside a Field.
@@ -5834,6 +6015,8 @@ export function TypeBadgeRealistic() {
 - [control.json](control.json): the double focus ring and the size and appearance names (with the aliases kept for one release); every control depends on it.
 - [theme-scope.json](theme-scope.json): gives popups in a portal the theme and density of their trigger; the popup components depend on it.
 - [monaco.json](monaco.json): loads Monaco lazily and offline (Vite ?worker) and turns the token roles in scope into a Monaco theme; SqlEditor depends on it.
+- [xterm.json](xterm.json): loads xterm.js lazily and offline and turns the terminal.* roles in scope into its theme; Terminal depends on it.
+- [token-reader.json](token-reader.json): resolves token variables at an element and gives colours as hex; the monaco and xterm helpers depend on it.
 - [monaco-theme.json](monaco-theme.json): which token role colours each Monaco colour id and SQL token type; the monaco helper depends on it.
 - [icons.json](icons.json): Fluent UI System Icons as path data, one export per icon (ChevronDown, Database); the Icon component depends on it.
 - [motion.json](motion.json): looping animations through the Web Animations API, off under reduced motion; Spinner, Progress and Skeleton depend on it.
@@ -6268,6 +6451,29 @@ Tailwind names: `--color-X` gives bg-X, text-X, border-X, ring-X; `--spacing-X` 
 - `diff.remove.fg` (semantic color): `--by-diff-remove-fg`. Tailwind `*-diff-remove-fg` (--color-diff-remove-fg). Values: light oklch(0.46 0.17 27), dark oklch(0.82 0.101 27). Text and marker colour for removed lines and characters in a diff: the +/- sign, line numbers and a summary count. Not for the code itself, which keeps its syntax colours.
 - `diff.change.bg` (semantic color): `--by-diff-change-bg`. Tailwind `*-diff-change` (--color-diff-change). Values: light oklch(0.6365 0.147 61.42 / 0.185), dark oklch(0.7426 0.1817 56.01 / 0.175). Background of changed lines and characters in a diff (translucent, so the syntax colours on top stay readable). Not for status messages: use color.status.*.bg. Pair it with diff.change.fg, a +/- marker or an icon.
 - `diff.change.fg` (semantic color): `--by-diff-change-fg`. Tailwind `*-diff-change-fg` (--color-diff-change-fg). Values: light oklch(0.46 0.097 75), dark oklch(0.82 0.105 75). Text and marker colour for changed lines and characters in a diff: the +/- sign, line numbers and a summary count. Not for the code itself, which keeps its syntax colours.
+
+### terminal (roles)
+
+- `terminal.bg` (semantic color): `--by-terminal-bg`. Tailwind `*-terminal` (--color-terminal). Values: light oklch(1 0 0), dark oklch(0.25 0.0108 275). Background of a Terminal and of a LogViewer. Not for the app background: use color.bg.canvas.
+- `terminal.fg` (semantic color): `--by-terminal-fg`. Tailwind `*-terminal-fg` (--color-terminal-fg). Values: light oklch(0.22 0.0054 275), dark oklch(0.955 0.003 275). Default text of a Terminal and a LogViewer: output with no ANSI colour. Not for coloured output: use terminal.ansi.*.
+- `terminal.cursor` (semantic color): `--by-terminal-cursor`. Tailwind `*-terminal-cursor` (--color-terminal-cursor). Values: light oklch(0.22 0.0054 275), dark oklch(0.955 0.003 275). The cursor of a Terminal. Not for the focus ring: use color.ring.
+- `terminal.selection` (semantic color): `--by-terminal-selection`. Tailwind `*-terminal-selection` (--color-terminal-selection). Values: light oklch(0.4592 0.3083 264.16 / 0.153), dark oklch(0.6378 0.1973 280.34 / 0.292). Background of selected text in a Terminal and of a LogViewer's search match under the cursor (translucent). Not for a selected row or item: use color.interactive.selected.
+- `terminal.ansi.black` (semantic color): `--by-terminal-ansi-black`. Tailwind `*-terminal-ansi-black` (--color-terminal-ansi-black). Values: light oklch(0.22 0.0054 275), dark oklch(0.7825 0.0108 275). Text colour of ANSI black (SGR 30, 40) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.red` (semantic color): `--by-terminal-ansi-red`. Tailwind `*-terminal-ansi-red` (--color-terminal-ansi-red). Values: light oklch(0.46 0.17 27), dark oklch(0.82 0.101 27). Text colour of ANSI red (SGR 31, 41) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.green` (semantic color): `--by-terminal-ansi-green`. Tailwind `*-terminal-ansi-green` (--color-terminal-ansi-green). Values: light oklch(0.46 0.119 150), dark oklch(0.82 0.098 150). Text colour of ANSI green (SGR 32, 42) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.yellow` (semantic color): `--by-terminal-ansi-yellow`. Tailwind `*-terminal-ansi-yellow` (--color-terminal-ansi-yellow). Values: light oklch(0.46 0.097 75), dark oklch(0.82 0.105 75). Text colour of ANSI yellow (SGR 33, 43) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.blue` (semantic color): `--by-terminal-ansi-blue`. Tailwind `*-terminal-ansi-blue` (--color-terminal-ansi-blue). Values: light oklch(0.46 0.1445 255), dark oklch(0.82 0.0915 255). Text colour of ANSI blue (SGR 34, 44) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.magenta` (semantic color): `--by-terminal-ansi-magenta`. Tailwind `*-terminal-ansi-magenta` (--color-terminal-ansi-magenta). Values: light oklch(0.46 0.136 350), dark oklch(0.82 0.112 350). Text colour of ANSI magenta (SGR 35, 45) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.cyan` (semantic color): `--by-terminal-ansi-cyan`. Tailwind `*-terminal-ansi-cyan` (--color-terminal-ansi-cyan). Values: light oklch(0.46 0.0794 190), dark oklch(0.82 0.077 190). Text colour of ANSI cyan (SGR 36, 46) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.white` (semantic color): `--by-terminal-ansi-white`. Tailwind `*-terminal-ansi-white` (--color-terminal-ansi-white). Values: light oklch(0.505 0.012 275), dark oklch(0.955 0.003 275). Text colour of ANSI white (SGR 37, 47) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.bright-black` (semantic color): `--by-terminal-ansi-bright-black`. Tailwind `*-terminal-ansi-bright-black` (--color-terminal-ansi-bright-black). Values: light oklch(0.46 0.0102 275), dark oklch(0.82 0.0084 275). Text colour of ANSI bright black, the grey of dim output (SGR 90, 100) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.bright-red` (semantic color): `--by-terminal-ansi-bright-red`. Tailwind `*-terminal-ansi-bright-red` (--color-terminal-ansi-bright-red). Values: light oklch(0.505 0.2 27), dark oklch(0.955 0.0223 27). Text colour of ANSI bright red (SGR 91, 101) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.bright-green` (semantic color): `--by-terminal-ansi-bright-green`. Tailwind `*-terminal-ansi-bright-green` (--color-terminal-ansi-bright-green). Values: light oklch(0.505 0.1391 150), dark oklch(0.955 0.035 150). Text colour of ANSI bright green (SGR 92, 102) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.bright-yellow` (semantic color): `--by-terminal-ansi-bright-yellow`. Tailwind `*-terminal-ansi-bright-yellow` (--color-terminal-ansi-bright-yellow). Values: light oklch(0.22 0.0464 75), dark oklch(0.955 0.0364 75). Text colour of ANSI bright yellow (SGR 93, 103) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.bright-blue` (semantic color): `--by-terminal-ansi-bright-blue`. Tailwind `*-terminal-ansi-bright-blue` (--color-terminal-ansi-bright-blue). Values: light oklch(0.505 0.1663 255), dark oklch(0.955 0.0217 255). Text colour of ANSI bright blue (SGR 94, 104) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.bright-magenta` (semantic color): `--by-terminal-ansi-bright-magenta`. Tailwind `*-terminal-ansi-bright-magenta` (--color-terminal-ansi-bright-magenta). Values: light oklch(0.505 0.16 350), dark oklch(0.955 0.0263 350). Text colour of ANSI bright magenta (SGR 95, 105) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.bright-cyan` (semantic color): `--by-terminal-ansi-bright-cyan`. Tailwind `*-terminal-ansi-bright-cyan` (--color-terminal-ansi-bright-cyan). Values: light oklch(0.505 0.0872 190), dark oklch(0.955 0.0275 190). Text colour of ANSI bright cyan (SGR 96, 106) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
+- `terminal.ansi.bright-white` (semantic color): `--by-terminal-ansi-bright-white`. Tailwind `*-terminal-ansi-bright-white` (--color-terminal-ansi-bright-white). Values: light oklch(0.505 0.012 275), dark oklch(1 0 0). Text colour of ANSI bright white (SGR 97, 107) in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text. Not for interface text or status: use color.fg.* or color.status.*.
 
 ### Primitives
 

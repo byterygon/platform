@@ -8,7 +8,7 @@
  * Their pairs are listed at the bottom and checked in both modes of every preset.
  */
 import type { ContrastPair } from "../model.js";
-import { type RoleDef, byDensity, pairs, px, ramp, ref } from "./authoring.js";
+import { type RoleDef, byDensity, byTheme, pairs, px, ramp, ref } from "./authoring.js";
 
 const color = (path: string, value: RoleDef["value"], use: string, avoid: string, tailwind?: string): RoleDef => ({
   path,
@@ -247,7 +247,55 @@ const diff: RoleDef[] = DIFFS.flatMap(([name, rampName, what]): RoleDef[] => [
   ),
 ]);
 
-export const DOMAIN_ROLES: readonly RoleDef[] = [...syntax, ...editor, ...dataTypes, ...grid, ...chartCat, ...chartSeq, ...chartDiv, ...diff];
+// ---------------------------------------------------------------------------------------------
+// Terminal (Mightyconsole spec §15, TSK-81): the Terminal (xterm.js) and the LogViewer's ANSI
+// colours. The sixteen ANSI colours are text, so each is a step that reads on terminal.bg: the
+// normal colours step 11, the bright ones a step apart (light 10, a solid; dark 12). Black and
+// white are the neutral ramp's text steps, so a program that prints black on the default
+// background in a dark terminal (or white in a light one) stays readable.
+
+const ANSI: readonly (readonly [string, ReturnType<typeof ramp> | ReturnType<typeof ref>, string])[] = [
+  ["black", ramp("neutral", 12, 10), "ANSI black (SGR 30, 40)"],
+  ["red", ramp("red", 11), "ANSI red (SGR 31, 41)"],
+  ["green", ramp("green", 11), "ANSI green (SGR 32, 42)"],
+  ["yellow", ramp("amber", 11), "ANSI yellow (SGR 33, 43)"],
+  ["blue", ramp("blue", 11), "ANSI blue (SGR 34, 44)"],
+  ["magenta", ramp("pink", 11), "ANSI magenta (SGR 35, 45)"],
+  ["cyan", ramp("teal", 11), "ANSI cyan (SGR 36, 46)"],
+  ["white", ramp("neutral", 10, 12), "ANSI white (SGR 37, 47)"],
+  ["bright-black", ramp("neutral", 11), "ANSI bright black, the grey of dim output (SGR 90, 100)"],
+  ["bright-red", ramp("red", 10, 12), "ANSI bright red (SGR 91, 101)"],
+  ["bright-green", ramp("green", 10, 12), "ANSI bright green (SGR 92, 102)"],
+  ["bright-yellow", ramp("amber", 12), "ANSI bright yellow (SGR 93, 103)"],
+  ["bright-blue", ramp("blue", 10, 12), "ANSI bright blue (SGR 94, 104)"],
+  ["bright-magenta", ramp("pink", 10, 12), "ANSI bright magenta (SGR 95, 105)"],
+  ["bright-cyan", ramp("teal", 10, 12), "ANSI bright cyan (SGR 96, 106)"],
+  ["bright-white", byTheme(ref("color.neutral.10"), ref("color.base.white")), "ANSI bright white (SGR 97, 107)"],
+];
+
+const terminal: RoleDef[] = [
+  color("terminal.bg", ref("editor.bg"), "Background of a Terminal and of a LogViewer.", "Not for the app background: use color.bg.canvas.", "--color-terminal"),
+  color("terminal.fg", ref("editor.fg"), "Default text of a Terminal and a LogViewer: output with no ANSI colour.", "Not for coloured output: use terminal.ansi.*.", "--color-terminal-fg"),
+  color("terminal.cursor", ref("editor.cursor"), "The cursor of a Terminal.", "Not for the focus ring: use color.ring.", "--color-terminal-cursor"),
+  color(
+    "terminal.selection",
+    ref("editor.selection"),
+    "Background of selected text in a Terminal and of a LogViewer's search match under the cursor (translucent).",
+    "Not for a selected row or item: use color.interactive.selected.",
+    "--color-terminal-selection",
+  ),
+  ...ANSI.map(([name, value, what]) =>
+    color(
+      `terminal.ansi.${name}`,
+      value,
+      `Text colour of ${what} in a Terminal and a LogViewer; as a background (SGR 4x), the same colour with terminal.bg as the text.`,
+      "Not for interface text or status: use color.fg.* or color.status.*.",
+      `--color-terminal-ansi-${name}`,
+    ),
+  ),
+];
+
+export const DOMAIN_ROLES: readonly RoleDef[] = [...syntax, ...editor, ...dataTypes, ...grid, ...chartCat, ...chartSeq, ...chartDiv, ...diff, ...terminal];
 
 // ---------------------------------------------------------------------------------------------
 // Contrast pairs
@@ -255,6 +303,7 @@ export const DOMAIN_ROLES: readonly RoleDef[] = [...syntax, ...editor, ...dataTy
 const SYNTAX_PATHS = SYNTAX.map(([name]) => `syntax.${name}`);
 const TYPE_PATHS = [...DATA_TYPES.map(([name]) => `data.type.${name}`), "data.null"];
 const ROWS = ["grid.row-bg", "grid.row-bg-alt"];
+const ANSI_PATHS = ANSI.map(([name]) => `terminal.ansi.${name}`);
 const SURFACES = ["color.bg.canvas", "color.bg.surface", "color.bg.raised", "color.bg.overlay", "color.bg.inset"];
 
 export const DOMAIN_PAIRS: readonly ContrastPair[] = [
@@ -279,4 +328,9 @@ export const DOMAIN_PAIRS: readonly ContrastPair[] = [
     ...pairs("text", [`diff.${name}.fg`], [`diff.${name}.bg`], "color.bg.canvas"),
     ...pairs("text", ["color.fg.default"], [`diff.${name}.bg`], "color.bg.surface"),
   ]),
+  // Terminal: every ANSI colour and the default text on the terminal, the text on a selection,
+  // and the cursor as a mark.
+  ...pairs("text", ["terminal.fg", ...ANSI_PATHS], ["terminal.bg"]),
+  ...pairs("text", ["terminal.fg"], ["terminal.selection"], "terminal.bg"),
+  ...pairs("ui", ["terminal.cursor"], ["terminal.bg"]),
 ];
