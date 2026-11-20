@@ -134,6 +134,8 @@ export interface DescribedError {
   remoteCode?: string;
   /** For `HostKey`: the key the host presented (spec §10.2), for the trust dialog. */
   hostKey?: HostKeyDetails;
+  /** The target's error name, when the tool gives one (`StandaloneActivitiesUnsupported`). */
+  remoteName?: string;
 }
 
 /** Where a tab is: one of its tool's tab kinds with its params (DOC-21 §3.7). */

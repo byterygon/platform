@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { browser, cargo, type Checklist, vitest } from "../checklist.mts";
+import { typeInEditor } from "../editors.mts";
 
 /** One cargo check per test function, against the lab. */
 const lab = (...names: string[]) => names.map((name) => cargo(name, { features: ["lab-tests"] }));
@@ -25,6 +26,7 @@ const sheetField = (formId: string, label: string) => `(() => { const f = docume
 const shownRuns = (label: string) => `[...document.querySelectorAll('[aria-label="${label}"]')].filter((l) => l.checkVisibility()).flatMap((l) => [...l.querySelectorAll("li")].map((li) => li.dataset.at))`;
 const sw = (label: string) => sheetField("start-workflow", label);
 const sc = (label: string) => sheetField("schedule-form", label);
+const ra = (label: string) => sheetField("run-activity", label);
 
 /** Opens the page and connects the lab's Temporal profile (made by the TSK-83 checklist or here). */
 export async function connectLab({ page, origin, until, run }: Ctx): Promise<void> {
@@ -256,7 +258,44 @@ export default {
         }),
       ],
     },
-    { id: "activities", text: "Standalone activities: listed, run from the sheet (the lab worker completes it), described with input and result, cancelled and terminated; a server without them shows the reason.", lab: true, checks: [] },
+    {
+      id: "activities",
+      text: "Standalone activities: listed, run from the sheet (the lab worker completes it), described with input and result, cancelled and terminated; a server without them shows the reason.",
+      lab: true,
+      checks: [
+        ...lab(
+          "the_lab_server_runs_them",
+          "one_is_run_listed_counted_and_described_with_its_input_and_result",
+          "a_failing_one_shows_its_failure_and_why_it_stopped",
+          "a_running_one_is_cancelled_through_its_heartbeat",
+          "terminate_needs_a_reason_and_ends_it_at_once",
+          "a_start_needs_one_of_the_close_timeouts_and_a_used_id_conflicts",
+        ),
+        ...unit("a_server_without_them_says_so_and_what_they_need", "decoded_payloads_read_as_values"),
+        vitest("test/temporal-activities.test.tsx"),
+        browser("the Activities tab, an activity run from the sheet, opened from the toast with its result", async (ctx) => {
+          const { run, until, shot } = ctx;
+          await connectLab(ctx);
+          await run(`__mc.dblclick(__mc.item("Activities"))`);
+          await until(`__mc.has("sa-charge-1") && ${shownButton("Run activity")}`, "the seeded standalone activity");
+          await shot("activities");
+          await run(`__mc.click(${shownButton("Run activity")})`);
+          await until(ra("Activity type"), "the Run activity sheet");
+          const id = `acceptance-activity-${Date.now()}`;
+          await run(`__mc.type(${ra("Activity type")}, "charge")`);
+          await run(`__mc.type(${ra("Task queue")}, "lab")`);
+          await run(`__mc.type(${ra("Activity ID")}, ${JSON.stringify(id)})`);
+          await typeInEditor(ctx, "Input", '["ord-walk"]');
+          await until(`document.getElementById("run-activity").textContent.includes("for activities")`, "the queue's activity workers");
+          await shot("run-activity-sheet");
+          await run(`__mc.click(document.querySelector('button[form="run-activity"]'))`);
+          await until(`__mc.has(${JSON.stringify(`Started ${id}`)}) && ${shownButton("Open activity")}`, "the toast with Open activity");
+          await run(`__mc.click(${shownButton("Open activity")})`);
+          await until(`__mc.has("charged ord-walk")`, "the activity's result", 30_000);
+          await shot("activity-detail");
+        }),
+      ],
+    },
     {
       id: "codec",
       text: "Codec server: the encrypted payloads of the lab's codec workflow show decoded and labelled; with the codec stopped they show as stored with the reason; inputs sent with Encode inputs arrive encoded; Test codec reports the sample.",

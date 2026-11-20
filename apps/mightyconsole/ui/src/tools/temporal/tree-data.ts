@@ -2,6 +2,7 @@
 // namespaces, one folder each, and counts beside Namespaces, Schedules and Workers. Loaded once per
 // connection through the shell's `sidebarData` contract; the tree re-renders when it arrives.
 import type { MightyClient } from "@/app/client";
+import { describeError } from "@/app/messages";
 import type { ProfileRecord } from "@/profiles/record";
 import type { SidebarData } from "../types";
 import { namespaceOf } from "./profile";
@@ -9,8 +10,11 @@ import { namespaceOf } from "./profile";
 export interface TreeData {
   /** The cluster's namespaces by name, the profile's first; absent until listed. */
   namespaces?: string[];
-  /** Per namespace: how many schedules and workers polling (only the profile's namespace is counted). */
-  counts: Record<string, { schedules?: number; workers?: number }>;
+  /**
+   * Per namespace: how many schedules, workers polling and standalone activities, or why the
+   * server has no standalone activities (only the profile's namespace is counted).
+   */
+  counts: Record<string, { schedules?: number; workers?: number; activities?: number; activitiesUnsupported?: string }>;
 }
 
 const data = new Map<string, TreeData>();
@@ -54,7 +58,16 @@ async function load(profile: ProfileRecord, connId: string, client: MightyClient
     (out) => update(connId, (d) => ({ ...d, counts: { ...d.counts, [namespace]: { ...d.counts[namespace], workers: new Set(out.workers.map((w) => w.identity)).size } } })),
     () => undefined,
   );
-  await Promise.all([lists, schedules, workers]);
+  // Standalone activities (TSK-92): the count, or the server's reason when it has none; other errors leave it out.
+  const activities = client.temporal.activities.count({ connId, namespace }).then(
+    (out) => update(connId, (d) => ({ ...d, counts: { ...d.counts, [namespace]: { ...d.counts[namespace], activities: Number(out.count) } } })),
+    (e: unknown) => {
+      const described = describeError(e);
+      if (described.remoteName !== "StandaloneActivitiesUnsupported") return;
+      update(connId, (d) => ({ ...d, counts: { ...d.counts, [namespace]: { ...d.counts[namespace], activitiesUnsupported: described.title } } }));
+    },
+  );
+  await Promise.all([lists, schedules, workers, activities]);
 }
 
 export const temporalTreeData: SidebarData = {

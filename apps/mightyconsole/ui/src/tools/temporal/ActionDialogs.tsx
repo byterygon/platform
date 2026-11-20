@@ -160,7 +160,7 @@ export function SignalDialog({ open, onOpenChange, workflowId, busy, error, onSe
   );
 }
 
-export function CancelDialog({ open, onOpenChange, workflowId, busy, error, onCancelWorkflow }: { open: boolean; onOpenChange(open: boolean): void; workflowId: string; busy: boolean; error: DescribedError | null; onCancelWorkflow(reason: string): void }) {
+export function CancelDialog({ open, onOpenChange, workflowId, busy, error, onCancelWorkflow, description = "The workflow is asked to cancel itself and may clean up first, finish anyway or refuse. To end it at once, terminate it." }: { open: boolean; onOpenChange(open: boolean): void; workflowId: string; busy: boolean; error: DescribedError | null; onCancelWorkflow(reason: string): void; description?: string }) {
   const [reason, setReason] = useState("");
   useFreshOnOpen(open, () => setReason(""));
   return (
@@ -168,7 +168,7 @@ export function CancelDialog({ open, onOpenChange, workflowId, busy, error, onCa
       open={open}
       onOpenChange={onOpenChange}
       title={`Request cancellation of ${workflowId}?`}
-      description="The workflow is asked to cancel itself and may clean up first, finish anyway or refuse. To end it at once, terminate it."
+      description={description}
       confirm="Request cancellation"
       busy={busy}
       error={error}
@@ -182,7 +182,7 @@ export function CancelDialog({ open, onOpenChange, workflowId, busy, error, onCa
   );
 }
 
-export function TerminateDialog({ open, onOpenChange, workflowId, busy, error, onTerminate }: { open: boolean; onOpenChange(open: boolean): void; workflowId: string; busy: boolean; error: DescribedError | null; onTerminate(reason: string): void }) {
+export function TerminateDialog({ open, onOpenChange, workflowId, busy, error, onTerminate, description = "The run ends at once, without cleanup: its activities are not told and nothing in the workflow code runs. This cannot be undone.", reasonNote = "It is written in the history." }: { open: boolean; onOpenChange(open: boolean): void; workflowId: string; busy: boolean; error: DescribedError | null; onTerminate(reason: string): void; description?: string; reasonNote?: string }) {
   const [reason, setReason] = useState("");
   useFreshOnOpen(open, () => setReason(""));
   return (
@@ -190,7 +190,7 @@ export function TerminateDialog({ open, onOpenChange, workflowId, busy, error, o
       open={open}
       onOpenChange={onOpenChange}
       title={`Terminate ${workflowId}?`}
-      description="The run ends at once, without cleanup: its activities are not told and nothing in the workflow code runs. This cannot be undone."
+      description={description}
       confirm="Terminate"
       danger
       busy={busy}
@@ -201,7 +201,7 @@ export function TerminateDialog({ open, onOpenChange, workflowId, busy, error, o
       <Field>
         <FieldLabel>Reason (required)</FieldLabel>
         <Input value={reason} onValueChange={setReason} autoComplete="off" />
-        <FieldDescription>It is written in the history.</FieldDescription>
+        <FieldDescription>{reasonNote}</FieldDescription>
       </Field>
     </Shell>
   );

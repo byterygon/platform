@@ -2,6 +2,9 @@
 //
 //   namespaces                                     the cluster's namespaces
 //   <namespace>/workflows?q=<query>                a namespace's workflows (a query up to 200 characters)
+//   <namespace>/activities?q=<query>               a namespace's standalone activities
+//   <namespace>/activities/<activity id>/overview?run=<run id>
+//                                                  a standalone activity
 //   <namespace>/workflows/<workflow id>/<view>?run=<run id>
 //                                                  a workflow at a section: timeline, history, relations, input,
 //                                                  pending, queries, stack
@@ -63,6 +66,16 @@ export const temporalHrefs: Record<string, (params: Record<string, unknown>) => 
     const run = str(p["runId"]);
     return { path: path(nsOf(p), "workflows", workflowId, viewOf(p, WORKFLOW_VIEWS, "timeline")), ...(run ? { search: { run } } : {}) };
   },
+  "temporal.activities": (p) => {
+    const q = shortSearch(p["query"]);
+    return { path: path(nsOf(p), "activities"), ...(q ? { search: { q } } : {}) };
+  },
+  "temporal.activity": (p) => {
+    const activityId = str(p["activityId"]);
+    if (!activityId) return null;
+    const run = str(p["runId"]);
+    return { path: path(nsOf(p), "activities", activityId, "overview"), ...(run ? { search: { run } } : {}) };
+  },
   "temporal.schedules": (p) => ({ path: path(nsOf(p), "schedules") }),
   "temporal.schedule": (p) => (str(p["scheduleId"]) ? { path: path(nsOf(p), "schedules", str(p["scheduleId"]), "overview") } : null),
   "temporal.taskQueue": (p) => (str(p["name"]) ? { path: path(nsOf(p), "task-queues", str(p["name"]), "overview") } : { path: path(nsOf(p), "task-queues") }),
@@ -104,6 +117,20 @@ export function temporalRoutes(parent: AnyRoute): AnyRoute[] {
               ),
             workflowSiblings,
           ),
+        ],
+      }),
+      placeRoute(namespace, "activities", "Activities", (p, search) => ({ kind: "temporal.activities", params: { namespace: ns(p), query: str(search["q"]) } }), {
+        validateSearch: stringSearch("q"),
+        children: (activities) => [
+          levelRoute(activities, "$activityId", (p) => p["activityId"] ?? "", (activity) => [
+            placeRoute(
+              activity,
+              "overview",
+              "Overview",
+              (p, search) => ({ kind: "temporal.activity", params: { namespace: ns(p), activityId: p["activityId"] ?? "", ...(search["run"] ? { runId: str(search["run"]) } : {}) } }),
+              { validateSearch: stringSearch("run") },
+            ),
+          ]),
         ],
       }),
       placeRoute(namespace, "schedules", "Schedules", (p) => ({ kind: "temporal.schedules", params: { namespace: ns(p) } }), {

@@ -4,10 +4,11 @@
 //! [`crate::tools`].
 //!
 //! TSK-83 built the workflows, their detail and actions, schedules and task queues; TSK-92 adds
-//! namespaces in full and the workers.
+//! namespaces in full, the workers and standalone activities.
 
 mod actions;
 mod actions_types;
+mod activities;
 mod client;
 pub mod codec;
 mod codec_client;
@@ -40,6 +41,11 @@ use self::proto::temporal::api::workflowservice::v1 as ws;
 use crate::core::{Empty, Handle, Hub, ToolError, ToolResult};
 
 pub use self::actions_types::*;
+pub use self::activities::{
+    ActivitiesCountInput, ActivitiesCountOutput, ActivitiesListInput, ActivitiesListOutput,
+    ActivityDetail, ActivityIdConflictPolicy, ActivityReasonInput, ActivityRef, ActivityRow,
+    ActivityStartInput, ActivityStartOutput, ActivityStatus, StandaloneActivitiesSupport,
+};
 pub use self::detail_types::*;
 pub use self::namespaces::{Archival, NamespaceDescribeInput, NamespaceDetail, NamespaceLimits};
 pub use self::relations_types::*;
@@ -80,6 +86,8 @@ pub struct TemporalSchedulesApi(pub Arc<Hub>);
 pub struct TemporalTaskQueuesApi(pub Arc<Hub>);
 /// `temporal.workers.*`.
 pub struct TemporalWorkersApi(pub Arc<Hub>);
+/// `temporal.activities.*` (standalone activities).
+pub struct TemporalActivitiesApi(pub Arc<Hub>);
 
 /// RFC 3339 in UTC, `None` for an unset or out-of-range timestamp.
 fn rfc3339(timestamp: &prost_types::Timestamp) -> Option<String> {
@@ -166,6 +174,7 @@ async fn server_info(client: &TemporalClient) -> Result<ServerInfo, ToolError> {
         .await
         .map_err(|s| status_error(&client.address, &s))?
         .into_inner();
+    let standalone_activities = activities::support(client, &namespace).await;
     // Best effort: a cluster that withholds this (Temporal Cloud) still connects.
     let cluster = service
         .get_cluster_info(client.request(&namespace, ws::GetClusterInfoRequest {}))
@@ -183,6 +192,7 @@ async fn server_info(client: &TemporalClient) -> Result<ServerInfo, ToolError> {
                 .as_ref()
                 .map(|c| c.visibility_store.clone())
                 .unwrap_or_default(),
+            standalone_activities,
         },
         cluster_name: cluster
             .map(|c| c.cluster_name)
@@ -672,6 +682,57 @@ impl TemporalWorkersApi {
     }
 }
 
+#[rpc::router(namespace = "temporal.activities")]
+impl TemporalActivitiesApi {
+    /// One page of standalone activities matching a visibility query.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn list(&self, ctx: Ctx, input: ActivitiesListInput) -> ToolResult<ActivitiesListOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(activities::list(&handle.value, input).await?)
+    }
+
+    /// How many standalone activities a visibility query matches.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn count(
+        &self,
+        ctx: Ctx,
+        input: ActivitiesCountInput,
+    ) -> ToolResult<ActivitiesCountOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(activities::count(&handle.value, input).await?)
+    }
+
+    /// One standalone activity: its state, timeouts, retries, input and outcome, decoded.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn describe(&self, ctx: Ctx, input: ActivityRef) -> ToolResult<ActivityDetail> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(activities::describe(&handle.value, input).await?)
+    }
+
+    /// Runs an activity without a workflow; JSON arguments, one payload each.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn start(&self, ctx: Ctx, input: ActivityStartInput) -> ToolResult<ActivityStartOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(activities::start(&handle.value, input).await?)
+    }
+
+    /// Asks the activity to cancel; its worker sees it at the next heartbeat.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Write)]
+    async fn cancel(&self, ctx: Ctx, input: ActivityReasonInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        activities::cancel(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+
+    /// Ends the activity at once; the reason is required.
+    #[rpc::mutation(perm = "temporal.write", risk = Risk::Destructive)]
+    async fn terminate(&self, ctx: Ctx, input: ActivityReasonInput) -> ToolResult<Empty> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        activities::terminate(&handle.value, input).await?;
+        Ok(Empty {})
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -734,3 +795,6 @@ mod lab_relations_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_schedule_detail_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_activity_tests;
