@@ -13,6 +13,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { MightyClient } from "@/app/client";
+import { useSheetGuard } from "@/app/leave-guard";
+import { linkTo } from "@/app/tab-view";
 import { parseDuration } from "@/app/duration";
 import { Required } from "@/app/form-parts";
 import { LinkButton, NoticeContext, Page, PageHeader, PageRegion, gutterTable } from "@/app/page";
@@ -21,7 +23,7 @@ import type { NatsObjBucketInfo, NatsObjConfig, NatsStorage } from "@/gen/api";
 import { describeError } from "@/messaging/compose-helpers";
 import { Add, ArrowClockwise } from "@/lib/icons";
 import { cn } from "@/lib/cn";
-import type { DescribedError, TabProps } from "../types";
+import type { DescribedError, TabProps, LinkEvent } from "../types";
 import { formatAgo, formatDuration, formatSize } from "./format";
 import { parseCount, parseSize } from "./stream-form";
 import { reloadStreams } from "./tree-data";
@@ -69,6 +71,7 @@ export function objectStoreConfigOf(d: ObjectStoreDraft): NatsObjConfig {
 
 export function ObjectStoreSheet({ open, onOpenChange, profileName, connId, client, onCreated }: { open: boolean; onOpenChange(open: boolean): void; profileName: string; connId: string; client: MightyClient; onCreated(info: NatsObjBucketInfo): void }) {
   const [d, setD] = useState<ObjectStoreDraft>(EMPTY_OBJECT_STORE);
+  const releaseGuard = useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState<{ title: string; field: string | null } | null>(null);
@@ -91,6 +94,7 @@ export function ObjectStoreSheet({ open, onOpenChange, profileName, connId, clie
     setBusy(true);
     try {
       const info = await client.nats.obj.buckets.create({ connId, config: objectStoreConfigOf(d) });
+      releaseGuard();
       onCreated(info);
       onOpenChange(false);
     } catch (e) {
@@ -172,7 +176,8 @@ export function ObjectStoreSheet({ open, onOpenChange, profileName, connId, clie
   );
 }
 
-export function ObjectBucketsTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function ObjectBucketsTab({ tab, profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
   const [buckets, setBuckets] = useState<NatsObjBucketInfo[] | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -198,7 +203,7 @@ export function ObjectBucketsTab({ tab, profile, connId, client, useTabActions, 
   }, [load]);
   useTabActions({ refresh: () => void load(), primary: () => setCreating(true) });
   if (connId === null) return <DisconnectedState name={profile.name} onConnect={() => undefined} />;
-  const open = (bucket: string) => openTab({ kind: "nats.object", params: { bucket }, title: bucket });
+  const open = (bucket: string, event?: LinkEvent) => go({ kind: "nats.object", params: { bucket }, title: bucket }, event);
   return (
     <Page>
       <PageHeader
@@ -240,7 +245,7 @@ export function ObjectBucketsTab({ tab, profile, connId, client, useTabActions, 
                 <TableRow key={b.bucket}>
                   <TableCell>
                     <span className="flex items-center gap-inline-sm">
-                      <LinkButton className="font-mono" onClick={() => open(b.bucket)}>
+                      <LinkButton className="font-mono" onOpen={(e) => open(b.bucket, e)}>
                         {b.bucket}
                       </LinkButton>
                       {b.sealed ? (

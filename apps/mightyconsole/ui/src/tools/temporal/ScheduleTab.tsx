@@ -4,6 +4,8 @@
 // next run, the policies and the counts. Tabs: Runs (the workflows it started and the times it did
 // not run, paged by token), Upcoming (the next 20 times from the server), Spec and action, JSON. The
 // side: the next five times, the action and the note.
+import { linkTo } from "@/app/tab-view";
+import type { LinkEvent } from "../types";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -118,7 +120,9 @@ function useRuns(client: TabProps["client"], connId: string | null, namespace: s
   };
 }
 
-export function ScheduleTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function ScheduleTab({ tab, profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const namespace = text(tab.params["namespace"]) || "default";
   const scheduleId = text(tab.params["scheduleId"]);
   const notify = useContext(NoticeContext);
@@ -186,7 +190,7 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
       notify({ title: `Could not copy ${what}`, description: "The browser refused the clipboard.", type: "warning" });
     }
   };
-  const openWorkflow = (workflowId: string, runId?: string) => openTab({ kind: "temporal.workflow", params: { namespace, workflowId, ...(runId ? { runId } : {}) }, title: workflowId });
+  const openWorkflow = (workflowId: string, runId?: string, event?: LinkEvent) => go({ kind: "temporal.workflow", params: { namespace, workflowId, ...(runId ? { runId } : {}) }, title: workflowId }, event);
 
   if (deleted) return <EmptyLine>{scheduleId} was deleted. Close this tab.</EmptyLine>;
   const s = detail?.summary;
@@ -444,7 +448,7 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
   );
 }
 
-function RunsTable({ runs, nextAt, now, onOpenWorkflow }: { runs: ReturnType<typeof useRuns>; nextAt: number | null; now: number; onOpenWorkflow(workflowId: string, runId?: string): void }) {
+function RunsTable({ runs, nextAt, now, onOpenWorkflow }: { runs: ReturnType<typeof useRuns>; nextAt: number | null; now: number; onOpenWorkflow(workflowId: string, runId?: string, event?: LinkEvent): void }) {
   const out = runs.out;
   if (runs.error && !out) return <ErrorState error={runs.error} onRetry={runs.reload} />;
   if (!out) return <LoadingRows label="Loading the runs" />;
@@ -484,7 +488,7 @@ function RunsTable({ runs, nextAt, now, onOpenWorkflow }: { runs: ReturnType<typ
                   </TableCell>
                   <TableCell className="w-full max-w-0">
                     {r.workflowId ? (
-                      <LinkButton className="block font-mono text-code" title={r.workflowId} onClick={() => onOpenWorkflow(r.workflowId!, r.runId)}>
+                      <LinkButton className="block font-mono text-code" title={r.workflowId} onOpen={(e) => onOpenWorkflow(r.workflowId!, r.runId, e)}>
                         {r.workflowId}
                       </LinkButton>
                     ) : (

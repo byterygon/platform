@@ -2,6 +2,7 @@
 // optional expected revision (only if the key is still at it; 0: only if it does not exist yet),
 // and the value with its codec and schema. KV entries have no headers. A wrong revision is
 // Conflict: the sheet says so and keeps the draft.
+import { useSheetGuard } from "@/app/leave-guard";
 import { useCallback, useEffect, useState } from "react";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ export function KvPutSheet({ open, onOpenChange, bucket, initial, profile, connI
   const [key, setKey] = useState("");
   const [expect, setExpect] = useState("");
   const [draft, setDraft] = useState<ComposerDraft>(EMPTY_DRAFT);
+  const releaseGuard = useSheetGuard(open, { key, expect, draft });
   const [fieldError, setFieldError] = useState<{ field: string; message: string } | null>(null);
   useEffect(() => {
     if (!open) return;
@@ -63,6 +65,7 @@ export function KvPutSheet({ open, onOpenChange, bucket, initial, profile, connI
     setFieldError(null);
     try {
       const out = await client.nats.kv.put({ connId, bucket, key: key.trim(), payload: d.value, expectRevision: expectN });
+      releaseGuard();
       onPut(key.trim(), out.revision);
       return `Put ${key.trim()} at revision ${out.revision} (${out.bytes.toLocaleString()} bytes).`;
     } catch (e) {

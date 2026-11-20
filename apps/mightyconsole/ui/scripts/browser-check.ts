@@ -13,7 +13,8 @@
 //     under the prefix, the place in the hash, reload, an edited hash, Back);
 //   - the navigation row (TSK-105): crumbs, a link up as a step, Back's list, Back and Forward,
 //     a segment's siblings menu, Copy link, the path folded into … when narrow; a link to a
-//     missing profile shows its page and opens with another profile;
+//     missing profile shows its page and opens with another profile; a profile sheet with a
+//     typed name holds the browser's Back (Discard changes?, useBlocker);
 //   - the page opened through 127.0.0.1 is redirected to the public origin;
 //   - every request goes to the server's origin (or data:/blob:), and no script or CSP error is
 //     logged;
@@ -291,6 +292,24 @@ async function main(): Promise<number> {
     await run(page, press(menuItem("Workflows")));
     await until(page, `location.pathname === "/temporal/lab/orders/workflows"`, "a hidden segment picked");
     await page.send("Emulation.clearDeviceMetricsOverride", {});
+    // Unsaved changes (useBlocker): a profile sheet with a typed name holds the browser's Back
+    // (inside the document: the steps above pushed entries).
+    await run(page, `__mc.click(__mc.button("Add connection"))`);
+    await until(page, `__mc.field("Name")`, "the profile sheet (unsaved changes)");
+    await sleep(300);
+    await run(page, `__mc.type(__mc.field("Name"), "half-typed")`);
+    await sleep(300);
+    await run(page, `history.back()`);
+    await until(page, `__mc.has("Discard changes?") && __mc.button("Keep editing")`, "Discard changes? on the browser's Back");
+    await run(page, `__mc.click(__mc.button("Keep editing"))`);
+    await until(page, `!__mc.has("Discard changes?")`, "Keep editing");
+    await sleep(500);
+    check(await run(page, `location.pathname === "/temporal/lab/orders/workflows" && __mc.field("Name")?.value === "half-typed"`) === true, "blocker: Keep editing left the page or the sheet");
+    await run(page, `history.back()`);
+    await until(page, `__mc.button("Discard changes")`, "Discard changes? again");
+    await run(page, `__mc.click(__mc.button("Discard changes"))`);
+    await until(page, `location.pathname !== "/temporal/lab/orders/workflows"`, "Back after discarding");
+    await run(page, `__mc.click(__mc.button("Cancel"))`);
 
     // 3c. A link to a missing profile: its page, its URL kept, nothing connected.
     await page.navigate(`${origin}/echo/nobody/ticks`);
@@ -300,6 +319,7 @@ async function main(): Promise<number> {
     await until(page, menuItem("smoke"), "another Echo profile to open the link with");
     await run(page, press(menuItem("smoke")));
     await until(page, `location.pathname === "/echo/smoke/ticks" && ${selected("Ticks · smoke")}`, "the link opened with smoke");
+
 
     // 3b. Monaco cold (TSK-93): the restored Messages tab's jq editor, three loads.
     const keystroke = await firstKeystroke(page, `${origin}/`);

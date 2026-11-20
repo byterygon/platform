@@ -2,6 +2,7 @@
 // the signals and cancels between it and other workflows, and its runs, as a graph (GraphView, left
 // to right) and as lists. Whole family draws every workflow under the root (RootWorkflowId); Direct
 // only one level each way. Loaded when the view is first shown, again when the scope changes.
+import type { LinkEvent } from "../types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,7 @@ export interface RelationsPanelProps {
   version: number;
   now: number;
   note(error: unknown): DescribedError;
-  onOpenWorkflow(workflowId: string, runId?: string): void;
+  onOpenWorkflow(workflowId: string, runId?: string, event?: LinkEvent): void;
   onListWorkflows(query: string): void;
 }
 
@@ -160,7 +161,7 @@ export function RelationsPanel({ client, connId, namespace, workflowId, runId, a
     run === runId ? (
       <span className="font-mono text-code">{shortRun(run)} (this run)</span>
     ) : (
-      <LinkButton className="font-mono text-code" title={run} onClick={() => onOpenWorkflow(workflowId, run)}>
+      <LinkButton className="font-mono text-code" title={run} onOpen={(e) => onOpenWorkflow(workflowId, run, e)}>
         {shortRun(run)}
       </LinkButton>
     );

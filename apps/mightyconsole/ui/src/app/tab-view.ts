@@ -3,7 +3,7 @@
 // replaces the tab's current step (TSK-105's links may push one instead). Without the shell's
 // `navigate` (a screen in a test) the section is local state only.
 import { useEffect, useState } from "react";
-import type { TabProps } from "@/tools/types";
+import type { LinkEvent, TabPlace, TabProps } from "@/tools/types";
 
 export function viewOf<V extends string>(params: Record<string, unknown>, views: readonly V[], fallback: V): V {
   const view = params["view"];
@@ -21,4 +21,12 @@ export function useTabView<V extends string>(props: { tab: TabProps["tab"]; navi
     if (next !== fromTab) navigate?.({ kind: tab.kind, params: { ...tab.params, view: next }, title: tab.title }, { replace: true });
   };
   return [view, change];
+}
+
+/**
+ * How a screen follows a link (DOC-21 §3.7): the shell's `go` (this tab, or another with Mod or
+ * the middle button), else a tab of its own (a screen in a test without the shell).
+ */
+export function linkTo(props: Pick<TabProps, "go" | "openTab">): (place: TabPlace, event?: LinkEvent) => void {
+  return (place, event) => (props.go ? props.go(place, event) : props.openTab(place));
 }

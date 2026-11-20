@@ -5,6 +5,7 @@
 // columns, the cluster's peers, the mirror and sources, and the busiest subjects as bars that
 // open Messages filtered by them. Messages: StreamMessages. Consumers: a table, and New consumer.
 // Sealed and mirror streams disable Edit and Purge and say why.
+import { linkTo } from "@/app/tab-view";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -221,7 +222,9 @@ function ConsumersView({ consumers, onOpen, onNew, disabled }: { consumers: Nats
 
 type Dialog = "edit" | "purge" | "delete" | "consumer" | null;
 
-export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab }: TabProps) {
+export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const name = text(tab.params["stream"]);
   const notify = useContext(NoticeContext);
   const [info, setInfo] = useState<NatsStreamInfo | null>(null);
@@ -379,7 +382,7 @@ export function StreamTab({ tab, profile, connId, client, useTabActions, onLive,
               consumers={consumers}
               disabled={c?.sealed === true}
               onNew={() => setDialog("consumer")}
-              onOpen={(consumer) => openTab({ kind: "nats.consumer", params: { stream: name, consumer }, title: consumer })}
+              onOpen={(consumer) => go({ kind: "nats.consumer", params: { stream: name, consumer }, title: consumer })}
             />
           </TabsContent>
         </Tabs>

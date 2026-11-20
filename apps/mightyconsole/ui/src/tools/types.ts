@@ -88,8 +88,20 @@ export interface TabProps {
    * back and forward history, or with `replace` a change of the current step (a section shown).
    */
   navigate?: (place: TabPlace, options?: { replace?: boolean }) => void;
+  /**
+   * Follows a link inside the page (DOC-21 §3.7, TSK-105): a step in this tab, or another tab
+   * (opened or focused) when the event asks for one, Mod+click or the middle button.
+   */
+  go?: (place: TabPlace, event?: LinkEvent) => void;
   /** Saves a change to this tab's profile (its extras: templates, saved filters). */
   updateProfile?: (change: (record: ProfileRecord) => ProfileRecord) => Promise<void>;
+}
+
+/** What a link's click says about where it opens: Ctrl or Cmd held, the middle button. */
+export interface LinkEvent {
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  button?: number;
 }
 
 /** The shell's per-tab actions (spec §3.4). */

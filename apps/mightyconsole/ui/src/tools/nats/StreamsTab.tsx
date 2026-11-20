@@ -2,6 +2,8 @@
 // storage, messages, bytes, consumers, created), a subject to find the streams that take it, and
 // New stream. The streams behind KV buckets and object stores show only when asked. The tree's Streams group opens it (DOC-21 Open question 47: §6.2 lists no tab for
 // the list itself). JetStream off says so.
+import type { LinkEvent } from "../types";
+import { linkTo } from "@/app/tab-view";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +23,9 @@ import { formatAgo, formatSize } from "./format";
 import { validatePattern } from "./profile";
 import { isBackingStream, reloadStreams } from "./tree-data";
 
-export function StreamsTab({ tab, profile, connId, client, useTabActions, note, openTab }: TabProps) {
+export function StreamsTab({ tab, profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+  const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+
   const notify = useContext(NoticeContext);
   const [streams, setStreams] = useState<NatsStreamSummary[] | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -53,7 +57,7 @@ export function StreamsTab({ tab, profile, connId, client, useTabActions, note, 
   useTabActions({ refresh: () => void load(), primary: () => setCreating(true) });
 
   if (connId === null) return <DisconnectedState name={profile.name} onConnect={() => undefined} />;
-  const open = (name: string) => openTab({ kind: "nats.stream", params: { stream: name }, title: name });
+  const open = (name: string, event?: LinkEvent) => go({ kind: "nats.stream", params: { stream: name }, title: name }, event);
   const all = streams ?? [];
   const hidden = all.filter(isBackingStream).length;
   const shown = backing ? all : all.filter((s) => !isBackingStream(s));
@@ -109,7 +113,7 @@ export function StreamsTab({ tab, profile, connId, client, useTabActions, note, 
                 <TableRow key={s.name}>
                   <TableCell>
                     <span className="flex items-center gap-inline-sm">
-                      <LinkButton className="font-mono" onClick={() => open(s.name)}>
+                      <LinkButton className="font-mono" onOpen={(e) => open(s.name, e)}>
                         {s.name}
                       </LinkButton>
                       {s.sealed ? (

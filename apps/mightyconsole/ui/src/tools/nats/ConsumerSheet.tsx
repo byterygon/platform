@@ -1,6 +1,7 @@
 // Create a consumer (§6.4 "Consumer: create (Sheet)", §6.5 pull or push): the name, durable or
 // ephemeral, the filter subjects, where delivery starts, the ack policy and wait, the limits, and
 // for a push consumer the deliver subject and queue group. The server's error marks its field.
+import { useSheetGuard } from "@/app/leave-guard";
 import { useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -154,6 +155,7 @@ export interface ConsumerSheetProps {
 
 export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId, client, onCreated }: ConsumerSheetProps) {
   const [d, setD] = useState<ConsumerDraft>(EMPTY_CONSUMER);
+  const releaseGuard = useSheetGuard(open, d);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState<{ title: string; field: string | null } | null>(null);
@@ -181,6 +183,7 @@ export function ConsumerSheet({ open, onOpenChange, stream, profileName, connId,
     setServer(null);
     try {
       const info = await client.nats.js.consumers.create({ connId, stream, config: consumerConfigOf(d) });
+      releaseGuard();
       onCreated(info);
       onOpenChange(false);
     } catch (e) {
