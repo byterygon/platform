@@ -7,8 +7,10 @@
 # throwaway registry (localhost:5000/byterygon/mightyconsole) for the check that every pull
 # request and main run does. The images are the ones `release.mts image` built and
 # image-check.sh checked: skopeo copies each saved tarball (any architecture, no emulation) to
-# REPOSITORY:VERSION-amd64 / -arm64, and `docker buildx imagetools create` joins them under the
-# tags below, so the pushed bytes are the checked bytes.
+# REPOSITORY:VERSION-amd64 / -arm64 as OCI manifests, and `docker buildx imagetools create` joins
+# them under the tags below, so the pushed layers are the checked layers. OCI, because buildx
+# refuses index annotations on a Docker manifest list (since the ubuntu-24.04 runner image of
+# 2026-11-16).
 #
 # Tags: the exact VERSION; `alpha` (floating) for 0.1.0-alpha.N and 0.1.0-alpha.N.R; `latest` only for a version with
 # no pre-release part (0.1.0 on). It refuses to run when REPOSITORY:VERSION already exists: a
@@ -43,10 +45,10 @@ fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 gunzip -c "$amd64" > "$work/amd64.tar"
-skopeo copy --dest-tls-verify="$verify" "docker-archive:$work/amd64.tar" "docker://$repo:$version-amd64"
+skopeo copy --format oci --dest-tls-verify="$verify" "docker-archive:$work/amd64.tar" "docker://$repo:$version-amd64"
 rm -f "$work/amd64.tar"
 gunzip -c "$arm64" > "$work/arm64.tar"
-skopeo copy --dest-tls-verify="$verify" "docker-archive:$work/arm64.tar" "docker://$repo:$version-arm64"
+skopeo copy --format oci --dest-tls-verify="$verify" "docker-archive:$work/arm64.tar" "docker://$repo:$version-arm64"
 rm -f "$work/arm64.tar"
 
 # The annotations on the index are what GitHub reads to link a multi-arch package to its repository.
