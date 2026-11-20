@@ -2,19 +2,23 @@
 // the Server screen, Subscribe (core NATS live tail), Publish (publish and request, with the send
 // history), and JetStream: the streams (list, Info, Messages, Consumers, the stream form, purge and
 // delete) and their consumers (state, position bar, create, delete), and Key-Value (buckets, keys,
-// a key's entry and history with revisions compared, put through the Composer, watch). Object
-// Store and Services follow in the next batch of TSK-85.
+// a key's entry and history with revisions compared, put through the Composer, watch), Object
+// Store (buckets, objects, upload in parts with progress, download, delete) and Services
+// (discovered with $SRV.INFO, STATS and PING).
 import { Icon } from "@/components/ui/icon";
 import type { ConnectNatsProfile } from "@/gen/api";
-import { ArrowDownload, ArrowUp, Braces, Database, Flash, NumberSymbol, Server } from "@/lib/icons";
+import { ArrowDownload, ArrowUp, Braces, Database, Flash, Folder, NumberSymbol, PlugConnected, Server } from "@/lib/icons";
 import { NatsMark } from "../marks";
 import type { ResourceNode, ToolModule } from "../types";
 import { ConnectionForm } from "./ConnectionForm";
 import { ConsumerTab, consumerTitle } from "./ConsumerTab";
 import { KvBucketsTab } from "./KvBuckets";
 import { KvTab, kvTitle } from "./KvTab";
+import { ObjectBucketsTab } from "./ObjectBuckets";
+import { ObjectTab, objectTitle } from "./ObjectTab";
 import { PublishTab } from "./PublishTab";
 import { ServerTab } from "./ServerTab";
+import { ServicesTab } from "./ServicesTab";
 import { StreamTab, streamTitle } from "./StreamTab";
 import { StreamsTab } from "./StreamsTab";
 import { SubscribeTab, subscribeTitle } from "./SubscribeTab";
@@ -76,6 +80,23 @@ function kvNode(profileId: string, connId: string): ResourceNode {
   };
 }
 
+/** The Object Store group: each bucket. */
+function objectsNode(profileId: string, connId: string): ResourceNode {
+  const tree = treeDataOf(connId);
+  const stores = tree.objectStores ?? [];
+  return {
+    id: `${profileId}/objects`,
+    label: "Object Store",
+    icon: <Icon icon={Folder} />,
+    expanded: true,
+    ...(tree.objectStores ? { meta: count(stores.length) } : {}),
+    open: { kind: "nats.objects", params: {}, title: "Object Store" },
+    children: tree.error
+      ? []
+      : stores.map((b) => ({ id: `${profileId}/objects/${b}`, label: b, icon: <Icon icon={Folder} />, open: { kind: "nats.object", params: { bucket: b }, title: b } })),
+  };
+}
+
 export const natsTool: ToolModule = {
   id: "nats",
   label: "NATS",
@@ -87,7 +108,7 @@ export const natsTool: ToolModule = {
   profile,
   ConnectionForm,
   // §6.2: Server · Subjects (bookmarks, "Subscribe to…") · Streams (each with its consumers) ·
-  // Key-Value (buckets) · Publish.
+  // Key-Value (buckets) · Object Store (buckets) · Services · Publish.
   sidebarTree({ profile: p, connId }): readonly ResourceNode[] {
     const bookmarks = bookmarksOf(p.extras);
     return [
@@ -110,6 +131,8 @@ export const natsTool: ToolModule = {
       },
       streamsNode(p.id, connId),
       kvNode(p.id, connId),
+      objectsNode(p.id, connId),
+      { id: `${p.id}/services`, label: "Services", icon: <Icon icon={PlugConnected} />, open: { kind: "nats.services", params: {}, title: "Services" } },
       { id: `${p.id}/publish`, label: "Publish", icon: <Icon icon={ArrowUp} />, open: { kind: "nats.publish", params: {}, title: "Publish" } },
     ];
   },
@@ -123,6 +146,9 @@ export const natsTool: ToolModule = {
     "nats.consumer": { title: consumerTitle, Component: ConsumerTab },
     "nats.kvs": { title: () => "Key-Value", Component: KvBucketsTab },
     "nats.kv": { title: kvTitle, Component: KvTab },
+    "nats.objects": { title: () => "Object Store", Component: ObjectBucketsTab },
+    "nats.object": { title: objectTitle, Component: ObjectTab },
+    "nats.services": { title: () => "Services", Component: ServicesTab },
   },
   actions: [
     {
@@ -163,6 +189,30 @@ export const natsTool: ToolModule = {
       keywords: ["nats", "key-value", "kv", "new bucket"],
       run({ openTab }) {
         openTab({ kind: "nats.kvs", params: { create: true }, title: "Key-Value" });
+      },
+    },
+    {
+      id: "objects",
+      label: "Show the object stores",
+      keywords: ["nats", "object store", "files", "bucket", "upload"],
+      run({ openTab }) {
+        openTab({ kind: "nats.objects", params: {}, title: "Object Store" });
+      },
+    },
+    {
+      id: "create-object-store",
+      label: "Create an object store",
+      keywords: ["nats", "object store", "new bucket"],
+      run({ openTab }) {
+        openTab({ kind: "nats.objects", params: { create: true }, title: "Object Store" });
+      },
+    },
+    {
+      id: "services",
+      label: "Discover the services",
+      keywords: ["nats", "micro", "service", "$SRV", "ping", "stats"],
+      run({ openTab }) {
+        openTab({ kind: "nats.services", params: {}, title: "Services" });
       },
     },
     {

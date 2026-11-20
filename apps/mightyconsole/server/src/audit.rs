@@ -7,8 +7,9 @@
 //! duration. Never inputs: entries carry only their digest, which is not printed either.
 //!
 //! Read calls are accepted silently, and so are the terminal's own input calls (`term.write`,
-//! `term.resize`: one per keystroke batch), which would otherwise flood the log; recorded in
-//! the spec's Open questions.
+//! `term.resize`: one per keystroke batch) and an Object Store upload's parts
+//! (`nats.obj.uploadPart`: one per 4 MiB; its start and finish are logged), which would otherwise
+//! flood the log; recorded in the spec's Open questions.
 
 use std::io::Write as _;
 use std::sync::Arc;
@@ -43,7 +44,7 @@ impl LogAuditSink {
     pub fn format(entry: &AuditEntry) -> Option<String> {
         let name = entry.action.name.as_str();
         let refused = matches!(entry.decision, AuditDecision::Deny { .. });
-        let quiet = matches!(name, "term.write" | "term.resize");
+        let quiet = matches!(name, "term.write" | "term.resize" | "nats.obj.uploadPart");
         if !refused && (entry.risk == Risk::Read || quiet) {
             return None;
         }

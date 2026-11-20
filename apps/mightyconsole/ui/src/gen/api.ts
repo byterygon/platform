@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:7f8c60aebcc8020f54a03ce445569421edf73556b06a0e9cc6005373a23d1e75";
+export const SCHEMA_HASH = "sha256:317ab3a2806e24d9f3378f8be085cfcca5d5583cfefe76ce592a5f6d797050f9";
 
 // ---- Types
 
@@ -939,6 +939,19 @@ export type NatsDeliverFrom = "all" | "last" | "new" | "byStartSequence" | "bySt
 
 export type NatsDiscard = "old" | "new";
 
+/**
+ * One endpoint's counters.
+ */
+export type NatsEndpointStats = { name: string, subject: string, queueGroup?: string, requests: number, errors: number, 
+/**
+ * Total time spent in the handler, in nanoseconds.
+ */
+processingTimeNs: number, averageProcessingTimeNs: number, lastError?: string, 
+/**
+ * The service's own `data`, as JSON text.
+ */
+data?: string, };
+
 export type NatsGetMessageInput = { connId: string, stream: string, sequence: number, decode?: DecodeOptions | null, };
 
 /**
@@ -1043,6 +1056,111 @@ includeHistory?: boolean | null,
  */
 fromRevision?: number | null, decode?: DecodeOptions | null, filter?: Filter | null, maxScan?: number | null, limit?: number | null, };
 
+/**
+ * An object store's configuration and state.
+ */
+export type NatsObjBucketInfo = { bucket: string, description?: string, 
+/**
+ * Bytes stored: the objects' chunks and their metadata.
+ */
+bytes: number, ttlMs?: number, maxBytes?: number, storage: NatsStorage, replicas: number, compression: boolean, 
+/**
+ * A sealed bucket takes no more changes.
+ */
+sealed: boolean, createdUs: number, };
+
+export type NatsObjBucketInput = { connId: string, bucket: string, };
+
+export type NatsObjBucketsListInput = { connId: string, };
+
+/**
+ * A new object store (spec §6.4).
+ */
+export type NatsObjConfig = { bucket: string, description?: string | null, ttlMs?: number | null, maxBytes?: number | null, storage: NatsStorage, replicas: number, compression: boolean, };
+
+export type NatsObjCreateInput = { connId: string, config: NatsObjConfig, };
+
+/**
+ * The end of a download.
+ */
+export type NatsObjGetSummary = { name: string, size: number, digest?: string, };
+
+export type NatsObjListOutput = { 
+/**
+ * In name order.
+ */
+objects: Array<NatsObjectInfo>, 
+/**
+ * More than 10,000 objects: the first ones read are listed.
+ */
+truncated: boolean, };
+
+export type NatsObjUploadFinishInput = { uploadId: string, 
+/**
+ * The file's SHA-256 as the browser computed it (hex, or `SHA-256=<base64url>`); checked
+ * when given.
+ */
+sha256?: string | null, };
+
+export type NatsObjUploadIdInput = { uploadId: string, };
+
+export type NatsObjUploadPartInput = { uploadId: string, 
+/**
+ * 0, 1, 2… in order.
+ */
+index: number, 
+/**
+ * The part's bytes in base64.
+ */
+data: string, };
+
+export type NatsObjUploadPartOutput = { 
+/**
+ * Bytes stored so far.
+ */
+received: number, };
+
+export type NatsObjUploadStartInput = { connId: string, bucket: string, name: string, description?: string | null, headers?: Array<NatsObjectHeader> | null, 
+/**
+ * The file's size: the parts must add up to it.
+ */
+size: number, };
+
+export type NatsObjUploadStartOutput = { uploadId: string, 
+/**
+ * Every part but the last is this long.
+ */
+partBytes: number, };
+
+/**
+ * One header of an object.
+ */
+export type NatsObjectHeader = { name: string, value: string, };
+
+/**
+ * An object's metadata (spec §6.3: name, size, modified, chunks, digest, description, headers).
+ */
+export type NatsObjectInfo = { bucket: string, name: string, description?: string, size: number, chunks: number, modifiedUs?: number, 
+/**
+ * `SHA-256=<base64url>`, as the clients write it.
+ */
+digest?: string, headers: Array<NatsObjectHeader>, metadata: { [key in string]: string }, 
+/**
+ * This version's id; its chunks are on `$O.<bucket>.C.<nuid>`.
+ */
+nuid: string, link?: NatsObjectLink, chunkSize?: number, };
+
+export type NatsObjectInput = { connId: string, bucket: string, name: string, };
+
+/**
+ * The object or bucket an object links to.
+ */
+export type NatsObjectLink = { bucket: string, 
+/**
+ * The object; absent for a link to the whole bucket.
+ */
+name?: string, };
+
 export type NatsPeer = { name: string, current: boolean, offline: boolean, 
 /**
  * Operations behind the leader.
@@ -1112,6 +1230,48 @@ rttMs: number, connection: NatsConnection,
  * `null` when JetStream is off on the server or for this account; `jetstreamError` says why.
  */
 jetstream: NatsAccountInfo | null, jetstreamError?: string, };
+
+/**
+ * One endpoint of a service.
+ */
+export type NatsServiceEndpoint = { name: string, subject: string, queueGroup?: string, metadata: { [key in string]: string }, };
+
+/**
+ * A service instance as `$SRV.INFO` describes it.
+ */
+export type NatsServiceInfo = { name: string, id: string, version: string, description?: string, metadata: { [key in string]: string }, endpoints: Array<NatsServiceEndpoint>, 
+/**
+ * From the request to this reply.
+ */
+rttMs: number, };
+
+/**
+ * A `$SRV.PING` reply.
+ */
+export type NatsServicePing = { name: string, id: string, version: string, rttMs: number, };
+
+/**
+ * A service instance as `$SRV.STATS` reports it.
+ */
+export type NatsServiceStats = { name: string, id: string, version: string, 
+/**
+ * When the instance started (RFC 3339, as the service wrote it).
+ */
+started?: string, endpoints: Array<NatsEndpointStats>, };
+
+export type NatsServicesInput = { connId: string, 
+/**
+ * Only this service.
+ */
+name?: string | null, 
+/**
+ * Only this instance of `name`.
+ */
+id?: string | null, 
+/**
+ * How long replies are gathered; 2,000 by default.
+ */
+timeoutMs?: number | null, };
 
 export type NatsSourceState = { name: string, 
 /**
@@ -2491,7 +2651,22 @@ export interface Procedures {
   readonly "nats.kv.purge": ProcedureDef<"mutation", NatsKvKeyInput, Empty, ToolError>;
   readonly "nats.kv.put": ProcedureDef<"mutation", NatsKvPutInput, NatsKvPutOutput, ToolError>;
   readonly "nats.kv.watch": ProcedureDef<"stream", NatsKvWatchInput, TailSummary, ToolError>;
+  readonly "nats.obj.buckets.create": ProcedureDef<"mutation", NatsObjCreateInput, NatsObjBucketInfo, ToolError>;
+  readonly "nats.obj.buckets.delete": ProcedureDef<"mutation", NatsObjBucketInput, Empty, ToolError>;
+  readonly "nats.obj.buckets.info": ProcedureDef<"query", NatsObjBucketInput, NatsObjBucketInfo, ToolError>;
+  readonly "nats.obj.buckets.list": ProcedureDef<"query", NatsObjBucketsListInput, Array<NatsObjBucketInfo>, ToolError>;
+  readonly "nats.obj.delete": ProcedureDef<"mutation", NatsObjectInput, Empty, ToolError>;
+  readonly "nats.obj.get": ProcedureDef<"stream", NatsObjectInput, NatsObjGetSummary, ToolError>;
+  readonly "nats.obj.info": ProcedureDef<"query", NatsObjectInput, NatsObjectInfo, ToolError>;
+  readonly "nats.obj.list": ProcedureDef<"query", NatsObjBucketInput, NatsObjListOutput, ToolError>;
+  readonly "nats.obj.uploadAbort": ProcedureDef<"mutation", NatsObjUploadIdInput, Empty, ToolError>;
+  readonly "nats.obj.uploadFinish": ProcedureDef<"mutation", NatsObjUploadFinishInput, NatsObjectInfo, ToolError>;
+  readonly "nats.obj.uploadPart": ProcedureDef<"mutation", NatsObjUploadPartInput, NatsObjUploadPartOutput, ToolError>;
+  readonly "nats.obj.uploadStart": ProcedureDef<"mutation", NatsObjUploadStartInput, NatsObjUploadStartOutput, ToolError>;
   readonly "nats.server.info": ProcedureDef<"query", NatsConnIdInput, NatsServerInfoOutput, ToolError>;
+  readonly "nats.services.discover": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceInfo>, ToolError>;
+  readonly "nats.services.ping": ProcedureDef<"query", NatsServicesInput, Array<NatsServicePing>, ToolError>;
+  readonly "nats.services.stats": ProcedureDef<"query", NatsServicesInput, Array<NatsServiceStats>, ToolError>;
   readonly "temporal.connect": ProcedureDef<"mutation", TemporalConnectInput, TemporalConnectOutput, ToolError>;
   readonly "temporal.disconnect": ProcedureDef<"mutation", TemporalConnIdInput, Empty, ToolError>;
   readonly "temporal.info": ProcedureDef<"query", TemporalConnIdInput, TemporalInfoOutput, ToolError>;
@@ -2636,8 +2811,29 @@ export interface Api {
       readonly put: Procedures["nats.kv.put"];
       readonly watch: Procedures["nats.kv.watch"];
     };
+    readonly obj: {
+      readonly buckets: {
+        readonly create: Procedures["nats.obj.buckets.create"];
+        readonly delete: Procedures["nats.obj.buckets.delete"];
+        readonly info: Procedures["nats.obj.buckets.info"];
+        readonly list: Procedures["nats.obj.buckets.list"];
+      };
+      readonly delete: Procedures["nats.obj.delete"];
+      readonly get: Procedures["nats.obj.get"];
+      readonly info: Procedures["nats.obj.info"];
+      readonly list: Procedures["nats.obj.list"];
+      readonly uploadAbort: Procedures["nats.obj.uploadAbort"];
+      readonly uploadFinish: Procedures["nats.obj.uploadFinish"];
+      readonly uploadPart: Procedures["nats.obj.uploadPart"];
+      readonly uploadStart: Procedures["nats.obj.uploadStart"];
+    };
     readonly server: {
       readonly info: Procedures["nats.server.info"];
+    };
+    readonly services: {
+      readonly discover: Procedures["nats.services.discover"];
+      readonly ping: Procedures["nats.services.ping"];
+      readonly stats: Procedures["nats.services.stats"];
     };
   };
   readonly temporal: {
@@ -3401,9 +3597,165 @@ export const procedures: Api = {
         timeoutMaxMs: 43200000,
       },
     },
+    obj: {
+      buckets: {
+        create: {
+          name: "nats.obj.buckets.create",
+          kind: "mutation",
+          perm: "nats.write",
+          risk: "Write",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        delete: {
+          name: "nats.obj.buckets.delete",
+          kind: "mutation",
+          perm: "nats.destroy",
+          risk: "Destructive",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        info: {
+          name: "nats.obj.buckets.info",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+        list: {
+          name: "nats.obj.buckets.list",
+          kind: "query",
+          perm: "nats.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
+      },
+      delete: {
+        name: "nats.obj.delete",
+        kind: "mutation",
+        perm: "nats.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      get: {
+        name: "nats.obj.get",
+        kind: "stream",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 3600000,
+        timeoutMaxMs: 3600000,
+      },
+      info: {
+        name: "nats.obj.info",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "nats.obj.list",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      uploadAbort: {
+        name: "nats.obj.uploadAbort",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      uploadFinish: {
+        name: "nats.obj.uploadFinish",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      uploadPart: {
+        name: "nats.obj.uploadPart",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      uploadStart: {
+        name: "nats.obj.uploadStart",
+        kind: "mutation",
+        perm: "nats.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
     server: {
       info: {
         name: "nats.server.info",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    services: {
+      discover: {
+        name: "nats.services.discover",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      ping: {
+        name: "nats.services.ping",
+        kind: "query",
+        perm: "nats.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      stats: {
+        name: "nats.services.stats",
         kind: "query",
         perm: "nats.read",
         risk: "Read",
