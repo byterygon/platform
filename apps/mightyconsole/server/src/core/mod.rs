@@ -34,7 +34,10 @@ use security_types::Clock;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
-pub use error::{ErrorPosition, RemoteError, ToolError, ToolErrorKind, ToolResult};
+pub use error::{
+    ErrorPosition, HostKeyDetails, HostKeyFingerprint, HostKeyState, RemoteError, ToolError,
+    ToolErrorKind, ToolResult,
+};
 pub use types::{AppEvent, ConnectionState, Empty};
 
 /// Idle time after which the sweep releases a handle with no running stream (spec §2.2).

@@ -19,7 +19,7 @@ import { StatusBar, StatusBarButton, StatusBarItem, StatusBarSpacer } from "@/co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toast, useToast } from "@/components/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { AppEvent } from "@/gen/api";
+import type { AppEvent, HostKeyDetails, HostKeyFingerprint } from "@/gen/api";
 import { cn } from "@/lib/cn";
 import { layerSurface } from "@/lib/control";
 import { Add, ArrowImport, Info, Options, QuestionCircle, Search, Server, Settings as SettingsIcon, Window } from "@/lib/icons";
@@ -30,6 +30,7 @@ import { TOOLS, toolById, toolCategory, toolIcon } from "@/tools/registry";
 import type { DescribedError, LiveState, ResourceNode, TabActionHandlers, TabPlace, TabProps, TabRecord, ToolModule } from "@/tools/types";
 import { useServices } from "./client";
 import { AboutDialog, ShortcutsDialog } from "./dialogs/InfoDialogs";
+import { HostKeyDialog } from "./dialogs/HostKeyDialog";
 import { CloseTabDialog, DeleteProfileDialog, DiscardChangesDialog, ExportDialog, ImportDialog, ProfileSheet } from "./dialogs/ProfileDialogs";
 import { SettingsDialog } from "./dialogs/SettingsDialog";
 import { describeError } from "./messages";
@@ -326,15 +327,28 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
   // --- Connections ------------------------------------------------------------------------------
 
+  // A connect that failed with `HostKey` (spec §10.2) asks the person to trust the key.
+  const [hostKeyPrompt, setHostKeyPrompt] = useState<{ profileId: string; details: HostKeyDetails } | null>(null);
+
+  /**
+   * Sets a connection's state and writes it to `stateRef` at once, so a connect that answers
+   * before React renders again (a fast server, a call made outside an event) still sees its own
+   * `connecting` and is not taken for a cancelled one.
+   */
+  const setConn = (profileId: string, conn: ConnState) => {
+    stateRef.current = { ...stateRef.current, conns: { ...stateRef.current.conns, [profileId]: conn } };
+    dispatch({ type: "conn", profileId, conn });
+  };
+
   const connectProfile = useCallback(
-    async (profileId: string): Promise<boolean> => {
-      const profile = profileById(profileId);
+    async (profileId: string, record?: ProfileRecord): Promise<boolean> => {
+      const profile = record ?? profileById(profileId);
       const t = profile ? toolById(tools, profile.tool) : undefined;
       if (!profile || !t) return false;
       const current = connOf(profileId);
       if (current.status === "connected") return true;
       if (current.status === "connecting") return false;
-      dispatch({ type: "conn", profileId, conn: { status: "connecting", connId: null, since: Date.now() } });
+      setConn(profileId, { status: "connecting", connId: null, since: Date.now() });
       try {
         const { connId } = await t.connect(client, profile);
         // Cancelled while it was connecting: release what arrived.
@@ -342,17 +356,32 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
           void t.disconnect(client, connId).catch(() => {});
           return false;
         }
-        dispatch({ type: "conn", profileId, conn: { status: "connected", connId } });
+        setConn(profileId, { status: "connected", connId });
         return true;
       } catch (e) {
         const error = note(e);
-        if (connOf(profileId).status === "connecting") dispatch({ type: "conn", profileId, conn: { status: "failed", connId: null, error } });
+        if (connOf(profileId).status === "connecting") {
+          setConn(profileId, { status: "failed", connId: null, error });
+          if (error.hostKey && t.trustHostKey) setHostKeyPrompt({ profileId, details: error.hostKey });
+        }
         return false;
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [client, tools, dispatch, note],
   );
+
+  /** Stores the key the person trusted and connects again with it. */
+  const trustHostKey = async (profileId: string, key: HostKeyFingerprint) => {
+    setHostKeyPrompt(null);
+    const record = profileById(profileId);
+    const t = record ? toolById(tools, record.tool) : undefined;
+    if (!record || !t?.trustHostKey) return;
+    const next = { ...t.trustHostKey(record, key), updatedAt: new Date().toISOString() };
+    await saveProfile(next);
+    setConn(profileId, DISCONNECTED);
+    void connectProfile(profileId, next);
+  };
 
   const disconnectProfile = (profileId: string) => {
     const conn = connOf(profileId);
@@ -1204,6 +1233,10 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                           editProfile={() => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.tool, editId: t.profileId } })}
                           nav={navOf(t, profiles.find((p) => p.id === t.profileId))}
                           guard={guardFor(t.id)}
+                          trust={() => {
+                            const details = state.conns[t.profileId]?.error?.hostKey;
+                            if (details) setHostKeyPrompt({ profileId: t.profileId, details });
+                          }}
                           tabProps={{
                             client,
                             useTabActions: hookFor(t.id),
@@ -1283,6 +1316,20 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         }}
       />
       </LeaveGuardContext>
+      {(() => {
+        const record = hostKeyPrompt ? profiles.find((p) => p.id === hostKeyPrompt.profileId) : undefined;
+        const t = record ? toolById(tools, record.tool) : undefined;
+        return (
+          <HostKeyDialog
+            open={hostKeyPrompt !== null && record !== undefined}
+            name={record?.name ?? ""}
+            target={(record && t?.targetOf?.(record)) ?? record?.name ?? ""}
+            details={hostKeyPrompt?.details ?? null}
+            onCancel={() => setHostKeyPrompt(null)}
+            onTrust={(key) => hostKeyPrompt && void trustHostKey(hostKeyPrompt.profileId, key)}
+          />
+        );
+      })()}
       <DeleteProfileDialog open={deleting !== undefined} name={deleting?.name ?? ""} onCancel={closeDialog} onDelete={() => deleting && void doDelete(deleting.id)} />
       <DiscardChangesDialog open={leaving !== null || blocker.status === "blocked"} onKeep={keepEditing} onDiscard={discardChanges} />
       <CloseTabDialog open={closing !== undefined} title={closing?.title ?? ""} onCancel={closeDialog} onClose={() => closing && closeTab(closing.id, true)} />
@@ -1347,6 +1394,8 @@ interface TabBodyProps {
   connect: () => void;
   cancelConnect: () => void;
   editProfile: () => void;
+  /** Opens the host key dialog again for a `HostKey` failure. */
+  trust: () => void;
   tabProps: Pick<TabProps, "client" | "useTabActions" | "onLive" | "note" | "openTab" | "navigate" | "go" | "updateProfile">;
   /** The navigation row (DOC-21 §3.7); none when the tab's profile or tool is gone. */
   nav: NavRowProps | null;
@@ -1355,7 +1404,7 @@ interface TabBodyProps {
 }
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */
-function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, tabProps, nav, guard }: TabBodyProps) {
+function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, trust, tabProps, nav, guard }: TabBodyProps) {
   const t = toolById(tools, tab.tool);
   const kind = t?.tabKinds[tab.kind];
   let overlay: ReactNode = null;
@@ -1369,7 +1418,7 @@ function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, ed
   } else if (conn.status === "connecting" || conn.status === "reconnecting") {
     overlay = <ConnectingState name={profile.name} since={conn.since ?? Date.now()} onCancel={cancelConnect} />;
   } else if (conn.status === "failed" && conn.error) {
-    overlay = <ErrorState error={conn.error} onRetry={connect} onEditProfile={editProfile} onRefresh={connect} />;
+    overlay = <ErrorState error={conn.error} onRetry={connect} onEditProfile={editProfile} onRefresh={connect} onTrust={trust} />;
   } else if (conn.status === "disconnected") {
     overlay = <DisconnectedState name={profile.name} onConnect={connect} />;
   }

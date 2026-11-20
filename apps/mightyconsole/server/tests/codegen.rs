@@ -45,6 +45,31 @@ fn the_procedures_of_the_spec() {
             (None, None),
         ),
         ("app.info", Query, "app.read", Risk::Read, defaults),
+        // Docker over SSH (TSK-81, spec §10.6): connect waits for SSH, the login and the ping.
+        (
+            "docker.connect",
+            Mutation,
+            "docker.read",
+            Risk::Read,
+            (
+                Some(Duration::from_secs(60)),
+                Some(Duration::from_secs(300)),
+            ),
+        ),
+        (
+            "docker.disconnect",
+            Mutation,
+            "docker.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "docker.host.info",
+            Query,
+            "docker.read",
+            Risk::Read,
+            defaults,
+        ),
         ("echo.connect", Mutation, "echo.read", Risk::Read, defaults),
         (
             "echo.disconnect",
@@ -774,6 +799,15 @@ fn the_procedures_of_the_spec() {
     };
     assert_eq!(redact("term.write"), ["data"]);
     assert_eq!(redact("echo.connect"), ["profile.token"]);
+    // The SSH secrets of a Docker profile are never logged.
+    assert_eq!(
+        redact("docker.connect"),
+        [
+            "profile.privateKey",
+            "profile.passphrase",
+            "profile.password"
+        ]
+    );
     assert_eq!(
         redact("temporal.connect"),
         [

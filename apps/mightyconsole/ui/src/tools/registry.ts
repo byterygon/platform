@@ -4,13 +4,14 @@
 // `order` and groups them by `category` (DOC-21 Open question 45); the helpers below give the
 // defaults, so a module that sets neither keeps working.
 import type { IconDefinition } from "@/lib/icons";
+import { dockerTool } from "./docker";
 import { echoTool } from "./echo";
 import { langgraphTool } from "./langgraph";
 import { natsTool } from "./nats";
 import { temporalTool } from "./temporal";
 import type { ToolCategory, ToolModule } from "./types";
 
-export const TOOLS: readonly ToolModule[] = [echoTool, natsTool, langgraphTool, temporalTool];
+export const TOOLS: readonly ToolModule[] = [echoTool, natsTool, dockerTool, langgraphTool, temporalTool];
 
 /** The navigation's groups in display order. */
 export const TOOL_CATEGORIES: readonly ToolCategory[] = ["Messaging", "Infrastructure", "Workflows and agents", "Other"];

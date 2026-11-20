@@ -54,6 +54,40 @@ pub struct ErrorPosition {
     pub column: u32,
 }
 
+/// Whether an SSH host key is new or differs from the trusted one (spec §10.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum HostKeyState {
+    /// The profile trusts no key yet: the first connection.
+    Unknown,
+    /// The host presented another key than the trusted one.
+    Changed,
+}
+
+/// An SSH host key as the profile stores it and the trust dialog shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HostKeyFingerprint {
+    /// The key's SSH algorithm name: `ssh-ed25519`, `ecdsa-sha2-nistp256`, `ssh-rsa`, ...
+    pub algorithm: String,
+    /// OpenSSH's form, `SHA256:` and the unpadded base64 digest (as `ssh-keygen -lf` prints it).
+    pub fingerprint_sha256: String,
+}
+
+/// For `HostKey`: the key the host presented, and the trusted one when it changed (spec §10.2).
+/// Nothing was sent to the host: the check runs in the handshake, before authentication.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HostKeyDetails {
+    pub state: HostKeyState,
+    pub algorithm: String,
+    pub fingerprint_sha256: String,
+    /// The trusted key, for `changed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub expected: Option<HostKeyFingerprint>,
+}
+
 /// `details` of every tool procedure's errors (spec §2.6).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +112,10 @@ pub struct ToolError {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub position: Option<ErrorPosition>,
+    /// For `HostKey`: what the trust dialog shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub host_key: Option<HostKeyDetails>,
 }
 
 impl ToolError {
@@ -91,6 +129,19 @@ impl ToolError {
             resource: None,
             field: None,
             position: None,
+            host_key: None,
+        }
+    }
+
+    /// The host key is unknown or changed; the UI asks the person to trust it.
+    pub fn host_key(
+        system: &str,
+        message: impl Into<String>,
+        details: HostKeyDetails,
+    ) -> ToolError {
+        ToolError {
+            host_key: Some(details),
+            ..ToolError::new(ToolErrorKind::HostKey, system, message)
         }
     }
 

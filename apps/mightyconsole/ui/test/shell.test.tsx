@@ -360,12 +360,15 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
   test("Alt+Shift+1 switches tools; F6 moves between panes", async () => {
     const fake = createFakeServices();
     await mount(fake);
-    // The navigation's order: Messaging (NATS), Workflows and agents (Temporal, LangGraph), then Other (Echo).
+    // The navigation's order: Messaging (NATS), Infrastructure (Docker), Workflows and agents
+    // (Temporal, LangGraph), then Other (Echo).
     await key("!", { altKey: true, shiftKey: true, code: "Digit1" } as KeyboardEventInit, document.body);
     expect(byRole("button", "NATS")?.getAttribute("aria-current")).toBe("page");
     await key("@", { altKey: true, shiftKey: true, code: "Digit2" } as KeyboardEventInit, document.body);
+    expect(byRole("button", "Docker")?.getAttribute("aria-current")).toBe("page");
+    await key("#", { altKey: true, shiftKey: true, code: "Digit3" } as KeyboardEventInit, document.body);
     expect(byRole("button", "Temporal")?.getAttribute("aria-current")).toBe("page");
-    await key("$", { altKey: true, shiftKey: true, code: "Digit4" } as KeyboardEventInit, document.body);
+    await key("%", { altKey: true, shiftKey: true, code: "Digit5" } as KeyboardEventInit, document.body);
     expect(byRole("button", "Echo")?.getAttribute("aria-current")).toBe("page");
     await key("F6", {}, document.body);
     expect(document.activeElement?.closest("[data-pane]")).not.toBeNull();
@@ -378,6 +381,8 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
     expect(byRole("button", "Temporal")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("mark-temporal");
     expect(byRole("button", "LangGraph")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("mark-langgraph");
     expect(byRole("button", "Echo")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("braces");
+    // Docker keeps Fluent's box-multiple until Docker approves its logo (OQ 45 (e)).
+    expect(byRole("button", "Docker")?.querySelector("svg[data-icon]")?.getAttribute("data-icon")).toBe("box-multiple");
   });
 
   describe("the tool navigation (DOC-21 §3.1)", () => {
@@ -394,7 +399,7 @@ describe("keyboard, palette, dialogs (spec §3.3, §3.4, §3.6)", () => {
       const fake = createFakeServices();
       await mount(fake);
       expect(nav().hasAttribute("data-collapsed")).toBe(false);
-      expect(groups()).toEqual(["Messaging", "Workflows and agents", "Other"]);
+      expect(groups()).toEqual(["Messaging", "Infrastructure", "Workflows and agents", "Other"]);
       expect(nav().textContent).toContain("Temporal");
       await click(byRole("button", "Collapse the tool list")!);
       expect(nav().hasAttribute("data-collapsed")).toBe(true);

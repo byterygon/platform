@@ -158,6 +158,12 @@
       { "path": "fluent/book-open-24-regular.svg", "size": 24, "style": "regular", "sha256": "34fc2b5099c94799ea99a719773b5be245823ae9f9b618ea18179d5bb6045b47", "upstreamSha256": "54ede95fca3b1132ed1249ff48e69e6c4ca3c9d41d40c6e07b2d765ca540b3ac" },
       { "path": "fluent/book-open-24-filled.svg", "size": 24, "style": "filled", "sha256": "4183e37d2fe5710360b341b8e27726ec116144e970438d721979ab79409c95b3", "upstreamSha256": "83b69a6ca3e784b4d0526b0fa7ac157668bbd7be8fe636e204ad5f40985e8d49" }
     ] },
+    { "name": "box-multiple", "files": [
+      { "path": "fluent/box-multiple-20-regular.svg", "size": 20, "style": "regular", "sha256": "31b3fe6c212f7e73f642ef300917f737d4cb477f9da05f5037c9bd0259f4337d", "upstreamSha256": "acff056a9d3a3bc5bb375cb7b5db3d147b2427974180a20a4faaf9e0ff40c29d" },
+      { "path": "fluent/box-multiple-20-filled.svg", "size": 20, "style": "filled", "sha256": "faa86ff8fcd14840563d4c191c41a4e5aaa5134b1f43d6e859a62892044f20a3", "upstreamSha256": "58c3f6f646638f041e8978b320e7f8bff1fbb138fa3751f9074d1d14fe31315a" },
+      { "path": "fluent/box-multiple-24-regular.svg", "size": 24, "style": "regular", "sha256": "e4ef4cc1727089a3c2d3c6a7208270cf4499bb606031044d9f7de3562d4e1d0a", "upstreamSha256": "f781ac6fc9eb8fa0d271ae4e3bdf2b71d33f408809e200a328fa05a1b6b6bc65" },
+      { "path": "fluent/box-multiple-24-filled.svg", "size": 24, "style": "filled", "sha256": "4b1f6a7d375fe9cb9b32c92b381b38a9cc7a6238a496a24e613f53d7b2d53cc1", "upstreamSha256": "72f5815733b2e7c258d327425a09d106e7ebc46a92d159e358cfd85f056aeeae" }
+    ] },
     { "name": "braces", "files": [
       { "path": "fluent/braces-16-regular.svg", "size": 16, "style": "regular", "sha256": "699175342389bf8d7fa7e5e065fb752b3982b5679ac6d6f3d888f8193dc79c81", "upstreamSha256": "37b3843698b6d26e0e40dd320dabc29a0e8bd88ea07e46bd6ae86864f177752d" },
       { "path": "fluent/braces-16-filled.svg", "size": 16, "style": "filled", "sha256": "fe000cd683f5b18f710abb11b1932f181c9bdab6e91d953ff162db3840d9855b", "upstreamSha256": "b606c035df9993df66cf77605e7c68326b26f430a7d0485536d86b0c61bf83e7" },
