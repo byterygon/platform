@@ -6,6 +6,7 @@ import type { MightyClient } from "@/app/client";
 import type { LocalSchema, SchemaIssue, SchemaMapping, SchemasStatusOutput } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
 import { type SchemaChoice, mappingsOf, schemasOf, withDecoding } from "./model";
+import { type RegistryFields, registryToConnect, withRegistry } from "./registry";
 
 /** The menus' schemas: the profile's, with the message types the server compiled (or the ones the profile lists). */
 export function schemaChoices(schemas: readonly LocalSchema[], status: SchemasStatusOutput | null): SchemaChoice[] {
@@ -73,4 +74,24 @@ export async function saveDecoding(
   if (connId === null) return [];
   const out = await client.messaging.schemas.update({ connId, schemas: [...schemas], mappings: [...mappings] });
   return out.issues;
+}
+
+/**
+ * Saves the profile's registry (null removes it) with a secret typed in the sheet, then gives it
+ * to the connection (`messaging.registry.set`), so the next reads use it.
+ */
+export async function saveRegistry(
+  updateProfile: ((change: (record: ProfileRecord) => ProfileRecord) => Promise<void>) | undefined,
+  client: MightyClient,
+  connId: string | null,
+  profile: ProfileRecord,
+  registry: RegistryFields | null,
+  secrets: { password?: string; token?: string },
+  wireFormatSubjects: boolean,
+): Promise<void> {
+  if (!updateProfile) throw new Error("This tab cannot change its profile.");
+  await updateProfile((record) => withRegistry(record, registry, secrets));
+  if (connId === null) return;
+  const next = withRegistry(profile, registry, secrets);
+  await client.messaging.registry.set({ connId, registry: registry ? registryToConnect(registry, next.secrets, wireFormatSubjects) : null });
 }

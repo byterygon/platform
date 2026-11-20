@@ -424,6 +424,11 @@ pub struct SchemaMapping {
     #[serde(default)]
     #[cfg_attr(feature = "codegen", ts(optional = nullable))]
     pub schema_id: Option<String>,
+    /// A schema from the profile's registry instead of a local one: a subject and version, or
+    /// an id. With neither, a `confluent` mapping takes the id each message carries.
+    #[serde(default)]
+    #[cfg_attr(feature = "codegen", ts(optional = nullable))]
+    pub registry: Option<RegistryRef>,
     #[serde(default)]
     #[cfg_attr(feature = "codegen", ts(optional = nullable))]
     pub message_type: Option<String>,

@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:e00d78b3643530578b0163346ff433d6f14e93ec2d5dceb55ebaed3b19858bfa";
+export const SCHEMA_HASH = "sha256:51412292a0934a3509a820e239af773d5b0af47300617c2ec2878b75c4d75070";
 
 // ---- Types
 
@@ -395,7 +395,11 @@ schemas?: Array<LocalSchema> | null,
 /**
  * The profile's `extras.mappings` (subject patterns, KV buckets).
  */
-mappings?: Array<SchemaMapping> | null, };
+mappings?: Array<SchemaMapping> | null, 
+/**
+ * The profile's Schema Registry (`fields.schemaRegistry` and its secrets).
+ */
+schemaRegistry?: RegistryProfile | null, };
 
 /**
  * The Temporal profile as `toConnect` builds it (spec §9.1).
@@ -1705,9 +1709,67 @@ export type RecordHeader = { name: string, value: string, encoding: RecordHeader
 export type RecordHeaderEncoding = "text" | "base64";
 
 /**
+ * How the server authenticates to the registry.
+ */
+export type RegistryAuthKind = "none" | "basic" | "bearer";
+
+/**
+ * The profile's registry (`fields.schemaRegistry` with its secrets), as a tool's connect input
+ * and `messaging.registry.test` take it.
+ */
+export type RegistryProfile = { 
+/**
+ * `http://host:port[/path]` or `https://…`.
+ */
+url: string, auth?: RegistryAuthKind | null, username?: string | null, 
+/**
+ * Secret `registryPassword`.
+ */
+password?: string | null, 
+/**
+ * Secret `registryToken`.
+ */
+token?: string | null, 
+/**
+ * The CA to trust for `https` (no system roots), the server name to check, and a client
+ * certificate for mutual TLS (its key a secret).
+ */
+tls?: TlsOptions | null, 
+/**
+ * NATS: the subject patterns whose messages may carry the Confluent wire format, which
+ * auto-detect looks for there only. Absent: everywhere (Kafka).
+ */
+wireFormatSubjects?: Array<string> | null, };
+
+/**
  * A schema in the registry, by id or by subject and version.
  */
 export type RegistryRef = { id: number, } | { subject: string, version: SchemaVersion, };
+
+export type RegistrySetInput = { connId: string, 
+/**
+ * The profile's registry as saved; `null` removes it.
+ */
+registry?: RegistryProfile | null, };
+
+export type RegistrySubjectsInput = { connId: string, };
+
+export type RegistryTestInput = { registry: RegistryProfile, };
+
+/**
+ * What a registry said when tested.
+ */
+export type RegistryTestOutput = { url: string, subjects: number, 
+/**
+ * `READWRITE`, `READONLY`, `IMPORT`; absent when the registry does not say.
+ */
+mode?: string, 
+/**
+ * The global compatibility level; absent when the registry does not say.
+ */
+compatibility?: string, };
+
+export type RegistryVersionsInput = { connId: string, subject: string, };
 
 /**
  * A child started by this run, from its history.
@@ -2198,7 +2260,12 @@ export type SchemaMapping = { id: string, target: MappingTarget, part: Part,
 /**
  * The local schema, for Avro, Protobuf and JSON Schema; none for the codecs without one.
  */
-schemaId?: string | null, messageType?: string | null, 
+schemaId?: string | null, 
+/**
+ * A schema from the profile's registry instead of a local one: a subject and version, or
+ * an id. With neither, a `confluent` mapping takes the id each message carries.
+ */
+registry?: RegistryRef | null, messageType?: string | null, 
 /**
  * The codec; the schema's when absent (mappings saved before CBOR name a schema only).
  */
@@ -2250,7 +2317,11 @@ issues: Array<SchemaIssue>,
 /**
  * Every mapping, in order, with what it decoded.
  */
-mappings: Array<MappingStatus>, };
+mappings: Array<MappingStatus>, 
+/**
+ * The registry the connection uses, if any.
+ */
+registryUrl?: string, };
 
 export type SchemasUpdateInput = { connId: string, schemas?: Array<LocalSchema> | null, mappings?: Array<SchemaMapping> | null, };
 
@@ -2966,6 +3037,10 @@ export interface Procedures {
   readonly "messaging.decode": ProcedureDef<"query", DecodeInput, DecodeOutput, ToolError>;
   readonly "messaging.encode": ProcedureDef<"query", EncodeInput, EncodeOutput, ToolError>;
   readonly "messaging.filter.check": ProcedureDef<"query", FilterCheckInput, FilterCheckOutput, never>;
+  readonly "messaging.registry.set": ProcedureDef<"mutation", RegistrySetInput, Empty, ToolError>;
+  readonly "messaging.registry.subjects": ProcedureDef<"query", RegistrySubjectsInput, Array<string>, ToolError>;
+  readonly "messaging.registry.test": ProcedureDef<"query", RegistryTestInput, RegistryTestOutput, ToolError>;
+  readonly "messaging.registry.versions": ProcedureDef<"query", RegistryVersionsInput, Array<number>, ToolError>;
   readonly "messaging.schemas.inspect": ProcedureDef<"query", InspectInput, Inspection, ToolError>;
   readonly "messaging.schemas.status": ProcedureDef<"query", SchemasStatusInput, SchemasStatusOutput, ToolError>;
   readonly "messaging.schemas.update": ProcedureDef<"mutation", SchemasUpdateInput, SchemasUpdateOutput, ToolError>;
@@ -3124,6 +3199,12 @@ export interface Api {
     readonly encode: Procedures["messaging.encode"];
     readonly filter: {
       readonly check: Procedures["messaging.filter.check"];
+    };
+    readonly registry: {
+      readonly set: Procedures["messaging.registry.set"];
+      readonly subjects: Procedures["messaging.registry.subjects"];
+      readonly test: Procedures["messaging.registry.test"];
+      readonly versions: Procedures["messaging.registry.versions"];
     };
     readonly schemas: {
       readonly inspect: Procedures["messaging.schemas.inspect"];
@@ -3678,6 +3759,48 @@ export const procedures: Api = {
     filter: {
       check: {
         name: "messaging.filter.check",
+        kind: "query",
+        perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    registry: {
+      set: {
+        name: "messaging.registry.set",
+        kind: "mutation",
+        perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      subjects: {
+        name: "messaging.registry.subjects",
+        kind: "query",
+        perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      test: {
+        name: "messaging.registry.test",
+        kind: "query",
+        perm: "messaging.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      versions: {
+        name: "messaging.registry.versions",
         kind: "query",
         perm: "messaging.read",
         risk: "Read",

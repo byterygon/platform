@@ -2,6 +2,7 @@
 // input of `nats.connect`. Pure, so the form and the tests share it.
 import type { ConnectNatsProfile, LocalSchema, NatsAuth, SchemaMapping, TlsOptions } from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
+import { registryOf, registryToConnect } from "@/messaging/schemas/registry";
 import type { FieldErrors, ProfileSchema } from "../types";
 
 export const DEFAULT_SERVER = "nats://127.0.0.1:4222";
@@ -142,6 +143,7 @@ export const profile: ProfileSchema = {
     const js = record(rec.fields["jetstream"]);
     const schemas = Array.isArray(rec.extras["schemas"]) ? (rec.extras["schemas"] as LocalSchema[]) : [];
     const mappings = Array.isArray(rec.extras["mappings"]) ? (rec.extras["mappings"] as SchemaMapping[]) : [];
+    const registry = registryOf(rec);
     return {
       name: rec.name,
       servers: serversOf(rec.fields),
@@ -159,6 +161,8 @@ export const profile: ProfileSchema = {
       requestTimeoutMs: requestTimeoutOf(rec),
       schemas,
       mappings,
+      // The registry's wire format is looked for only on the subjects the profile lists.
+      schemaRegistry: registry ? registryToConnect(registry, rec.secrets, true) : null,
     };
   },
 };

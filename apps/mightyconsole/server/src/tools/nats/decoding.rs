@@ -260,7 +260,7 @@ impl NatsSchemasApi {
                     )
                     .retryable(true)
                 })??;
-        Ok(test_mapping(&codecs, &input, source, samples, note))
+        Ok(test_mapping(&codecs, &input, source, samples, note).await)
     }
 }
 

@@ -250,6 +250,7 @@ mod tests {
             target,
             part,
             schema_id: Some(id.into()),
+            registry: None,
             message_type: None,
             codec: None,
             wire_format: None,

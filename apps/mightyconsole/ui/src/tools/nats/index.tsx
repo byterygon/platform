@@ -243,6 +243,14 @@ export const natsTool: ToolModule = {
       },
     },
     {
+      id: "add-registry",
+      label: "Add a schema registry",
+      keywords: ["nats", "schema registry", "confluent", "apicurio", "redpanda", "wire format"],
+      run({ openTab }) {
+        openTab({ kind: "nats.schemas", params: { create: "registry" }, title: "Schemas" });
+      },
+    },
+    {
       id: "publish",
       label: "Publish a message",
       keywords: ["nats", "send", "request", "reply"],

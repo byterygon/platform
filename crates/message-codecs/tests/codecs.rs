@@ -242,13 +242,14 @@ async fn local_schemas_and_mappings() {
                 target: MappingTarget::Subject { pattern: "orders.proto.>".into() },
                 part: Part::Value,
                 schema_id: Some("proto".into()),
+                registry: None,
                 message_type: Some("lab.orders.Order".into()),
                 codec: None,
                 wire_format: None,
             },
-            SchemaMapping { id: "m2".into(), target: MappingTarget::KvBucket { bucket: "config".into() }, part: Part::Value, schema_id: Some("json".into()), message_type: None, codec: None, wire_format: None },
-            SchemaMapping { id: "m3".into(), target: MappingTarget::Topic { name: "orders-avro".into() }, part: Part::Value, schema_id: Some("avro".into()), message_type: None, codec: None, wire_format: None },
-            SchemaMapping { id: "m4".into(), target: MappingTarget::Topic { name: "bad".into() }, part: Part::Value, schema_id: Some("broken".into()), message_type: None, codec: None, wire_format: None },
+            SchemaMapping { id: "m2".into(), target: MappingTarget::KvBucket { bucket: "config".into() }, part: Part::Value, schema_id: Some("json".into()), registry: None, message_type: None, codec: None, wire_format: None },
+            SchemaMapping { id: "m3".into(), target: MappingTarget::Topic { name: "orders-avro".into() }, part: Part::Value, schema_id: Some("avro".into()), registry: None, message_type: None, codec: None, wire_format: None },
+            SchemaMapping { id: "m4".into(), target: MappingTarget::Topic { name: "bad".into() }, part: Part::Value, schema_id: Some("broken".into()), registry: None, message_type: None, codec: None, wire_format: None },
         ],
         ..CodecsConfig::default()
     });
@@ -717,6 +718,7 @@ async fn mappings_without_a_schema_streams_wire_format_and_counts() {
         target,
         part: Part::Value,
         schema_id: schema.map(Into::into),
+        registry: None,
         message_type: schema.map(|_| "lab.orders.Order".into()),
         codec,
         wire_format: wire,
@@ -887,7 +889,10 @@ async fn mappings_without_a_schema_streams_wire_format_and_counts() {
         None,
         None,
     );
-    assert_eq!(codecs.decode_mapping(&draft, &cbor).codec, CodecId::Cbor);
+    assert_eq!(
+        codecs.decode_mapping(&draft, &cbor).await.codec,
+        CodecId::Cbor
+    );
     assert_eq!(codecs.stats().get("draft"), MappingCount::default());
 
     // The counts survive new codecs made with the same stats.
@@ -896,4 +901,280 @@ async fn mappings_without_a_schema_streams_wire_format_and_counts() {
         ..CodecsConfig::default()
     });
     assert_eq!(again.stats().get("cbor").decoded, 2);
+}
+
+#[tokio::test]
+async fn registry_mappings_and_wire_format_only_on_listed_subjects() {
+    let (fake, url) = FakeRegistry::start().await;
+    fake.add(
+        "lab/common/money.proto",
+        Some("PROTOBUF"),
+        MONEY_PROTO,
+        json!([]),
+    );
+    let proto_id = fake.add(
+        "orders-proto-value",
+        Some("PROTOBUF"),
+        ORDER_PROTO,
+        json!([{ "name": "lab/common/money.proto", "subject": "lab/common/money.proto", "version": 1 }]),
+    );
+    let _v1 = fake.add("orders-avro-value", None, ORDER_V1, json!([]));
+    let v2 = fake.add("orders-avro-value", None, ORDER_V2, json!([]));
+    let registry = RegistryClient::new(&RegistryConfig::new(url)).unwrap();
+    let mapping = |id: &str,
+                   pattern: &str,
+                   codec: CodecId,
+                   r: Option<RegistryRef>,
+                   wire: Option<WireFormat>| SchemaMapping {
+        id: id.into(),
+        target: MappingTarget::Subject {
+            pattern: pattern.into(),
+        },
+        part: Part::Value,
+        schema_id: None,
+        registry: r,
+        message_type: None,
+        codec: Some(codec),
+        wire_format: wire,
+    };
+    let subject_v1 = RegistryRef::Subject {
+        subject: "orders-avro-value".into(),
+        version: SchemaVersion::Number(1),
+    };
+    let codecs = Codecs::new(CodecsConfig {
+        registry: Some(registry.clone()),
+        mappings: vec![
+            // Raw Avro bytes, the schema by subject and version.
+            mapping(
+                "raw",
+                "avro.raw",
+                CodecId::Avro,
+                Some(subject_v1.clone()),
+                None,
+            ),
+            // The wire format with the schema named anyway.
+            mapping(
+                "named",
+                "avro.named",
+                CodecId::Avro,
+                Some(subject_v1.clone()),
+                Some(WireFormat::Confluent),
+            ),
+            // The wire format, the schema from each message's id.
+            mapping(
+                "by-id",
+                "proto.>",
+                CodecId::Protobuf,
+                None,
+                Some(WireFormat::Confluent),
+            ),
+        ],
+        wire_format_on: Some(vec!["wire.>".into()]),
+        ..CodecsConfig::default()
+    });
+    let subject = |s: &str| Target::subject(s);
+    let avro_v1 = r#"{"id":"o","customer":"c","amount":"1.00","placedAt":"2026-11-17T10:00:00Z","note":null}"#;
+
+    // Encoding through a mapping follows its wire format: raw here.
+    let raw = codecs
+        .encode(
+            Some(&subject("avro.raw")),
+            Part::Value,
+            &ComposePayload {
+                codec: CodecId::Avro,
+                text: avro_v1.into(),
+                schema: None,
+                message_type: None,
+                wire_format: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(raw.schema_id, None, "no wire format written");
+    assert_eq!(
+        raw.schema_ref.as_deref(),
+        Some("registry:orders-avro-value/1")
+    );
+    let d = codecs
+        .decode(
+            &raw.bytes,
+            Some(&subject("avro.raw")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_eq!(
+        (d.codec, d.text.as_deref(), d.error.as_deref()),
+        (CodecId::Avro, Some(avro_v1), None)
+    );
+    assert_eq!(
+        d.schema_ref.as_deref(),
+        Some("registry:orders-avro-value/1")
+    );
+    assert_eq!(
+        codecs.stats().get("raw"),
+        MappingCount {
+            decoded: 1,
+            failed: 0
+        }
+    );
+
+    // ... and the wire format here.
+    let named = codecs
+        .encode(
+            Some(&subject("avro.named")),
+            Part::Value,
+            &ComposePayload {
+                codec: CodecId::Avro,
+                text: avro_v1.into(),
+                schema: None,
+                message_type: None,
+                wire_format: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(named.bytes[0], 0);
+    let d = codecs
+        .decode(
+            &named.bytes,
+            Some(&subject("avro.named")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_eq!((d.codec, d.text.as_deref()), (CodecId::Avro, Some(avro_v1)));
+    // Raw bytes under a `confluent` mapping fail with the reason, kept as hex.
+    let d = codecs
+        .decode(
+            &raw.bytes,
+            Some(&subject("avro.named")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_eq!(d.codec, CodecId::Hex);
+    assert!(
+        d.error
+            .unwrap()
+            .contains("not in the Confluent wire format")
+    );
+
+    // Protobuf in the wire format with no schema named: the id and message indexes decide.
+    let text =
+        r#"{"id":"o-2","total":{"currency":"EUR","units":"3"},"items":["a"],"status":"PLACED"}"#;
+    let proto = codecs
+        .encode(
+            None,
+            Part::Value,
+            &ComposePayload {
+                codec: CodecId::Protobuf,
+                text: text.into(),
+                schema: Some(SchemaRef::Registry(RegistryRef::Id { id: proto_id })),
+                message_type: None,
+                wire_format: None,
+            },
+        )
+        .await
+        .unwrap();
+    let d = codecs
+        .decode(
+            &proto.bytes,
+            Some(&subject("proto.orders")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_eq!(
+        (d.codec, d.text.as_deref()),
+        (CodecId::Protobuf, Some(text))
+    );
+    assert_eq!(d.schema_ref, Some(format!("registry:{proto_id}")));
+    assert_eq!(
+        codecs.stats().get("by-id"),
+        MappingCount {
+            decoded: 1,
+            failed: 0
+        }
+    );
+
+    // A mapping to a subject the registry does not have says so.
+    let missing = mapping(
+        "missing",
+        "x",
+        CodecId::Avro,
+        Some(RegistryRef::Subject {
+            subject: "nope-value".into(),
+            version: SchemaVersion::Latest(Latest::Latest),
+        }),
+        None,
+    );
+    let d = codecs.decode_mapping(&missing, &raw.bytes).await;
+    assert_eq!(d.codec, CodecId::Hex);
+    assert!(d.error.unwrap().starts_with("mapping missing: "));
+
+    // Auto-detect looks for the wire format only on the listed subjects: elsewhere the bytes
+    // fall through to plain detection without asking the registry.
+    let v2_bytes = codecs
+        .encode(None, Part::Value, &ComposePayload {
+            codec: CodecId::Avro,
+            text: r#"{"id":"o","customer":"c","amount":"1.00","placedAt":"2026-11-17T10:00:00Z","note":null,"channel":"WEB"}"#.into(),
+            schema: Some(SchemaRef::Registry(RegistryRef::Id { id: v2 })),
+            message_type: None,
+            wire_format: None,
+        })
+        .await
+        .unwrap()
+        .bytes;
+    assert!(codecs.wire_format_applies(Some(&subject("wire.orders"))));
+    assert!(!codecs.wire_format_applies(Some(&subject("other"))));
+    assert!(!codecs.wire_format_applies(None));
+    assert!(!codecs.wire_format_applies(Some(&Target::KvBucket { bucket: "b".into() })));
+    let d = codecs
+        .decode(
+            &v2_bytes,
+            Some(&subject("wire.orders")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_eq!(
+        (d.codec, d.schema_ref),
+        (CodecId::Avro, Some(format!("registry:{v2}")))
+    );
+    let fresh = Codecs::new(CodecsConfig {
+        registry: Some(RegistryClient::new(&RegistryConfig::new(registry.url())).unwrap()),
+        wire_format_on: Some(vec!["wire.>".into()]),
+        ..CodecsConfig::default()
+    });
+    let before = fake.requests().len();
+    let d = fresh
+        .decode(
+            &v2_bytes,
+            Some(&subject("other")),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_ne!(d.codec, CodecId::Avro);
+    assert_eq!(
+        fake.requests().len(),
+        before,
+        "no registry call outside the listed subjects"
+    );
+    // Without the list (Kafka) every target is looked at.
+    let kafka = Codecs::new(CodecsConfig {
+        registry: Some(registry.clone()),
+        ..CodecsConfig::default()
+    });
+    assert!(kafka.wire_format_applies(None));
+    let d = kafka
+        .decode(
+            &v2_bytes,
+            Some(&Target::Topic { name: "t".into() }),
+            Part::Value,
+            &CodecChoice::auto(),
+        )
+        .await;
+    assert_eq!(d.codec, CodecId::Avro);
 }

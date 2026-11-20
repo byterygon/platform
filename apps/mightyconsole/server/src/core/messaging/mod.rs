@@ -8,6 +8,7 @@
 
 pub mod arrow;
 pub mod record;
+pub mod registry;
 pub mod tail;
 pub mod testing;
 
@@ -308,6 +309,10 @@ pub struct SchemasStatusOutput {
     pub issues: Vec<SchemaIssue>,
     /// Every mapping, in order, with what it decoded.
     pub mappings: Vec<MappingStatus>,
+    /// The registry the connection uses, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub registry_url: Option<String>,
 }
 
 /// Messages a mapping test decodes by default and at most.
@@ -387,7 +392,7 @@ pub struct MappingSample {
 
 /// Decodes a tool's samples with a mapping (shared by `nats.schemas.test` and Kafka's): the
 /// connection's registry, the schemas as edited, and only this mapping, so nothing is counted.
-pub fn test_mapping(
+pub async fn test_mapping(
     base: &Codecs,
     input: &MappingTestInput,
     source: String,
@@ -413,22 +418,20 @@ pub fn test_mapping(
         None => Vec::new(),
     };
     let mut failed = 0;
-    let rows: Vec<MappingTestRow> = samples
-        .into_iter()
-        .map(|s| {
-            let d = codecs.decode_mapping(&input.mapping, &s.payload);
-            if d.error.is_some() {
-                failed += 1;
-            }
-            MappingTestRow {
-                subject: s.subject,
-                sequence: s.sequence,
-                codec: d.codec,
-                text: d.text.map(|t| cut(t, MAPPING_TEST_TEXT)),
-                error: d.error,
-            }
-        })
-        .collect();
+    let mut rows = Vec::with_capacity(samples.len());
+    for s in samples {
+        let d = codecs.decode_mapping(&input.mapping, &s.payload).await;
+        if d.error.is_some() {
+            failed += 1;
+        }
+        rows.push(MappingTestRow {
+            subject: s.subject,
+            sequence: s.sequence,
+            codec: d.codec,
+            text: d.text.map(|t| cut(t, MAPPING_TEST_TEXT)),
+            error: d.error,
+        });
+    }
     let decoded = rows.len() as u32 - failed;
     MappingTestOutput {
         source,
@@ -577,6 +580,7 @@ impl SchemasApi {
             schemas,
             issues: codecs.issues().to_vec(),
             mappings,
+            registry_url: codecs.registry().map(|r| r.url()),
         })
     }
 
@@ -592,6 +596,7 @@ impl SchemasApi {
             mappings: input.mappings.unwrap_or_default(),
             naming: current.naming().clone(),
             stats: current.stats().clone(),
+            wire_format_on: current.wire_format_on().map(<[String]>::to_vec),
         });
         let issues = codecs.issues().to_vec();
         self.0.set_codecs(session, &input.conn_id, codecs)?;
@@ -634,6 +639,7 @@ pub fn mount(router: &ambidex::Router, hub: &Arc<Hub>) -> Result<(), ambidex::Re
     router.mount(CodecsApi(Arc::clone(hub)))?;
     router.mount(SchemasApi(Arc::clone(hub)))?;
     router.mount(FilterApi(Arc::clone(hub)))?;
+    router.mount(registry::RegistryApi(Arc::clone(hub)))?;
     Ok(())
 }
 

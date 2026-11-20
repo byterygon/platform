@@ -1318,6 +1318,17 @@
             "null"
           ]
         },
+        "schemaRegistry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RegistryProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The profile's Schema Registry (`fields.schemaRegistry` and its secrets)."
+        },
         "schemas": {
           "default": null,
           "description": "The profile's `extras.schemas`.",
@@ -6793,6 +6804,84 @@
       ],
       "type": "string"
     },
+    "RegistryAuthKind": {
+      "description": "How the server authenticates to the registry.",
+      "enum": [
+        "none",
+        "basic",
+        "bearer"
+      ],
+      "type": "string"
+    },
+    "RegistryProfile": {
+      "description": "The profile's registry (`fields.schemaRegistry` with its secrets), as a tool's connect input\nand `messaging.registry.test` take it.",
+      "properties": {
+        "auth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RegistryAuthKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "password": {
+          "default": null,
+          "description": "Secret `registryPassword`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tls": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TlsOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The CA to trust for `https` (no system roots), the server name to check, and a client\ncertificate for mutual TLS (its key a secret)."
+        },
+        "token": {
+          "default": null,
+          "description": "Secret `registryToken`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "`http://host:port[/path]` or `https://…`.",
+          "type": "string"
+        },
+        "username": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "wireFormatSubjects": {
+          "default": null,
+          "description": "NATS: the subject patterns whose messages may carry the Confluent wire format, which\nauto-detect looks for there only. Absent: everywhere (Kafka).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
     "RegistryRef": {
       "anyOf": [
         {
@@ -6825,6 +6914,97 @@
         }
       ],
       "description": "A schema in the registry, by id or by subject and version."
+    },
+    "RegistrySetInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "registry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RegistryProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The profile's registry as saved; `null` removes it."
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "RegistrySubjectsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "RegistryTestInput": {
+      "properties": {
+        "registry": {
+          "$ref": "#/$defs/RegistryProfile"
+        }
+      },
+      "required": [
+        "registry"
+      ],
+      "type": "object"
+    },
+    "RegistryTestOutput": {
+      "description": "What a registry said when tested.",
+      "properties": {
+        "compatibility": {
+          "description": "The global compatibility level; absent when the registry does not say.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "description": "`READWRITE`, `READONLY`, `IMPORT`; absent when the registry does not say.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subjects": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "subjects"
+      ],
+      "type": "object"
+    },
+    "RegistryVersionsInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "subject"
+      ],
+      "type": "object"
     },
     "RelationChild": {
       "description": "A child started by this run, from its history.",
@@ -8342,6 +8522,18 @@
         "part": {
           "$ref": "#/$defs/Part"
         },
+        "registry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RegistryRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A schema from the profile's registry instead of a local one: a subject and version, or\nan id. With neither, a `confluent` mapping takes the id each message carries."
+        },
         "schemaId": {
           "default": null,
           "description": "The local schema, for Avro, Protobuf and JSON Schema; none for the codecs without one.",
@@ -8471,6 +8663,13 @@
             "$ref": "#/$defs/MappingStatus"
           },
           "type": "array"
+        },
+        "registryUrl": {
+          "description": "The registry the connection uses, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "schemas": {
           "description": "The schemas that compiled, in id order.",
@@ -11665,6 +11864,106 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/RegistrySetInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "messaging.registry.set",
+      "output": {
+        "$ref": "#/$defs/Empty"
+      },
+      "perm": "messaging.read",
+      "redact": [
+        "registry.password",
+        "registry.token",
+        "registry.tls.clientKeyPem"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RegistrySubjectsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.registry.subjects",
+      "output": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RegistryTestInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.registry.test",
+      "output": {
+        "$ref": "#/$defs/RegistryTestOutput"
+      },
+      "perm": "messaging.read",
+      "redact": [
+        "registry.password",
+        "registry.token",
+        "registry.tls.clientKeyPem"
+      ],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/RegistryVersionsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.registry.versions",
+      "output": {
+        "items": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/InspectInput"
       },
       "kind": "query",
@@ -11742,7 +12041,10 @@
         "profile.token",
         "profile.nkeySeed",
         "profile.creds",
-        "profile.tls.clientKeyPem"
+        "profile.tls.clientKeyPem",
+        "profile.schemaRegistry.password",
+        "profile.schemaRegistry.token",
+        "profile.schemaRegistry.tls.clientKeyPem"
       ],
       "risk": "Read",
       "timeout_default_ms": 30000,
@@ -13602,5 +13904,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:e00d78b3643530578b0163346ff433d6f14e93ec2d5dceb55ebaed3b19858bfa"
+  "schema_hash": "sha256:51412292a0934a3509a820e239af773d5b0af47300617c2ec2878b75c4d75070"
 }
