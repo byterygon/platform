@@ -246,7 +246,7 @@ describe("Stream (spec §6.3)", () => {
     const [input, options] = browse.mock.calls[0]! as unknown as [Record<string, unknown>, Record<string, unknown>];
     expect(input).toMatchObject({ connId: "conn-1", stream: "ORDERS", start: { from: "sequence", sequence: 10 }, subject: "orders.paid", follow: false });
     expect(options).toEqual({ timeoutMs: 300_000 });
-    expect(COLUMNS.jetstream).toEqual(["sequence", "subject", "timestamp", "payloadSize", "payloadText"]);
+    expect(COLUMNS.jetstream).toEqual(["sequence", "subject", "timestamp", "payloadSize", "payloadCodec", "payloadText"]);
     const cutRow = () => [...container.querySelectorAll<HTMLElement>(".bdg-body > [role=row]:not([hidden])")].find((r) => [...r.querySelectorAll("[role=gridcell]")].some((c) => c.textContent === "11"));
     await waitFor(() => cutRow() !== undefined, "the cut row");
     await click(cutRow()!.querySelector("[role=gridcell]"));
@@ -377,7 +377,7 @@ describe("the tree (spec §6.2)", () => {
     expect(streams.open).toEqual({ kind: "nats.streams", params: {}, title: "Streams" });
     expect(streams.children!.map((n) => n.label)).toEqual(["ORDERS"]);
     expect(streams.children![0]!.children![0]!.open).toEqual({ kind: "nats.consumer", params: { stream: "ORDERS", consumer: "billing" }, title: "billing" });
-    expect(Object.keys(natsTool.tabKinds)).toEqual(["nats.server", "nats.subscribe", "nats.publish", "nats.streams", "nats.stream", "nats.consumer", "nats.kvs", "nats.kv", "nats.objects", "nats.object", "nats.services"]);
+    expect(Object.keys(natsTool.tabKinds)).toEqual(["nats.server", "nats.subscribe", "nats.publish", "nats.streams", "nats.stream", "nats.consumer", "nats.kvs", "nats.kv", "nats.objects", "nats.object", "nats.services", "nats.schemas"]);
   });
 
   test("JetStream off: the group says why", async () => {

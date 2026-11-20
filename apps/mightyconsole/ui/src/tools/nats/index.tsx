@@ -3,11 +3,13 @@
 // history), and JetStream: the streams (list, Info, Messages, Consumers, the stream form, purge and
 // delete) and their consumers (state, position bar, create, delete), and Key-Value (buckets, keys,
 // a key's entry and history with revisions compared, put through the Composer, watch), Object
-// Store (buckets, objects, upload in parts with progress, download, delete) and Services
-// (discovered with $SRV.INFO, STATS and PING).
+// Store (buckets, objects, upload in parts with progress, download, delete), Services
+// (discovered with $SRV.INFO, STATS and PING) and Schemas (the messaging core's schemas and
+// mappings of the profile, mappings tested on the last messages JetStream keeps).
 import { Icon } from "@/components/ui/icon";
 import type { ConnectNatsProfile } from "@/gen/api";
-import { ArrowDownload, ArrowUp, Braces, Database, Flash, Folder, NumberSymbol, PlugConnected, Server } from "@/lib/icons";
+import { ArrowDownload, ArrowUp, Braces, Code, Database, Flash, Folder, NumberSymbol, PlugConnected, Server } from "@/lib/icons";
+import { mappingsOf, schemasOf } from "@/messaging/schemas/model";
 import { NatsMark } from "../marks";
 import type { ResourceNode, ToolModule } from "../types";
 import { ConnectionForm } from "./ConnectionForm";
@@ -18,6 +20,7 @@ import { ObjectBucketsTab } from "./ObjectBuckets";
 import { ObjectTab, objectTitle } from "./ObjectTab";
 import { PublishTab } from "./PublishTab";
 import { ServerTab } from "./ServerTab";
+import { SchemasTab } from "./SchemasTab";
 import { ServicesTab } from "./ServicesTab";
 import { StreamTab, streamTitle } from "./StreamTab";
 import { StreamsTab } from "./StreamsTab";
@@ -108,7 +111,7 @@ export const natsTool: ToolModule = {
   profile,
   ConnectionForm,
   // §6.2: Server · Subjects (bookmarks, "Subscribe to…") · Streams (each with its consumers) ·
-  // Key-Value (buckets) · Object Store (buckets) · Services · Publish.
+  // Key-Value (buckets) · Object Store (buckets) · Services · Schemas · Publish.
   sidebarTree({ profile: p, connId }): readonly ResourceNode[] {
     const bookmarks = bookmarksOf(p.extras);
     return [
@@ -133,6 +136,13 @@ export const natsTool: ToolModule = {
       kvNode(p.id, connId),
       objectsNode(p.id, connId),
       { id: `${p.id}/services`, label: "Services", icon: <Icon icon={PlugConnected} />, open: { kind: "nats.services", params: {}, title: "Services" } },
+      {
+        id: `${p.id}/schemas`,
+        label: "Schemas",
+        icon: <Icon icon={Code} />,
+        meta: <span className="text-caption-1 text-fg-muted">{schemasOf(p).length + mappingsOf(p).length > 0 ? `${schemasOf(p).length} · ${mappingsOf(p).length}` : ""}</span>,
+        open: { kind: "nats.schemas", params: {}, title: "Schemas" },
+      },
       { id: `${p.id}/publish`, label: "Publish", icon: <Icon icon={ArrowUp} />, open: { kind: "nats.publish", params: {}, title: "Publish" } },
     ];
   },
@@ -149,6 +159,7 @@ export const natsTool: ToolModule = {
     "nats.objects": { title: () => "Object Store", Component: ObjectBucketsTab },
     "nats.object": { title: objectTitle, Component: ObjectTab },
     "nats.services": { title: () => "Services", Component: ServicesTab },
+    "nats.schemas": { title: () => "Schemas", Component: SchemasTab },
   },
   actions: [
     {
@@ -213,6 +224,22 @@ export const natsTool: ToolModule = {
       keywords: ["nats", "micro", "service", "$SRV", "ping", "stats"],
       run({ openTab }) {
         openTab({ kind: "nats.services", params: {}, title: "Services" });
+      },
+    },
+    {
+      id: "schemas",
+      label: "Manage schemas and mappings",
+      keywords: ["nats", "decode", "codec", "protobuf", "avro", "json schema", "cbor", "mapping"],
+      run({ openTab }) {
+        openTab({ kind: "nats.schemas", params: {}, title: "Schemas" });
+      },
+    },
+    {
+      id: "add-schema",
+      label: "Add a schema",
+      keywords: ["nats", "protobuf", "proto", "avro", "json schema", "descriptor"],
+      run({ openTab }) {
+        openTab({ kind: "nats.schemas", params: { create: "schema" }, title: "Schemas" });
       },
     },
     {

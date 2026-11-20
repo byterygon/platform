@@ -14,12 +14,13 @@ import { DisconnectedState, LiveBadge } from "@/app/states";
 import { useStore } from "@/app/store";
 import * as api from "@/gen/api";
 import { Star } from "@/lib/icons";
-import { CodecSelect } from "@/messaging/CodecSelect";
+import { CodecMenu } from "@/messaging/schemas/CodecMenu";
 import { FilterBar } from "@/messaging/FilterBar";
 import { MessageViewer } from "@/messaging/MessageViewer";
 import { useLiveTail } from "@/messaging/useLiveTail";
 import type { TabProps } from "../types";
 import { bookmarksOf } from "./profile";
+import { subjectPlace, useViewDecoding } from "./SchemasTab";
 import { SubjectsInput } from "./SubjectsInput";
 
 /** The tab's title: "Subscribe orders.>", "Subscribe orders.> +1". */
@@ -34,7 +35,7 @@ export function subjectsOf(params: Record<string, unknown>): string[] {
   return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string" && s !== "") : [];
 }
 
-export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLive, note, updateProfile }: TabProps) {
+export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLive, note, updateProfile, openTab }: TabProps) {
   const services = useServices();
   const { state } = useStore();
   const [subjects, setSubjects] = useState<string[]>(() => subjectsOf(tab.params));
@@ -64,6 +65,8 @@ export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLi
     },
     [client, connId],
   );
+  const place = useCallback((m: Parameters<typeof subjectPlace>[0]) => subjectPlace(m), []);
+  const view = useViewDecoding({ client, connId, profile, updateProfile, openTab }, place);
   if (connId === null) return <DisconnectedState name={profile.name} onConnect={() => undefined} />;
 
   const running = tail.status === "live" || tail.status === "paused";
@@ -81,7 +84,7 @@ export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLi
     .join(" · ");
   const controls = (
     <div className="flex flex-wrap items-end gap-inline-sm border-b border-border-subtle px-inset-sm py-inset-xs">
-      <CodecSelect label="Value codec" value={decode.value ?? { codec: "auto" }} onChange={(value) => setDecode((d) => ({ ...d, value }))} />
+      <CodecMenu label="Value codec" value={decode.value ?? { codec: "auto" }} onChange={(value) => setDecode((d) => ({ ...d, value }))} schemas={view.choices} onManage={view.onManage} />
     </div>
   );
   return (
@@ -111,7 +114,7 @@ export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLi
       </PageBar>
       <PageRegion>
         <FilterBar system="nats" applied={filter} onApply={setFilter} check={check} />
-        <MessageViewer system="nats" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} loadSchema={loadSchema} />
+        <MessageViewer system="nats" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} loadSchema={loadSchema} {...(view.decodeAs ? { decodeAs: view.decodeAs } : {})} />
         <p className="border-t border-border-subtle px-inset-lg py-stack-sm text-caption-1 text-fg-muted">
           {subjects.length === 0 ? "Add a subject or a pattern (orders.*, orders.>), then Start." : "Core NATS cannot replay: messages before Start are not shown. For stored messages, browse a stream."}
         </p>

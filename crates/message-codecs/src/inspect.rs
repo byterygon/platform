@@ -35,6 +35,8 @@ pub struct Inspection {
     pub schema_type: SchemaType,
     /// Protobuf: the message types offered; empty for the other types.
     pub message_types: Vec<String>,
+    /// Protobuf: every message type of the files, nested ones too; empty for the other types.
+    pub all_message_types: Vec<String>,
     /// The JSON Schema (draft 2020-12) of the codec's JSON.
     #[cfg_attr(feature = "codegen", ts(type = "unknown"))]
     #[cfg_attr(feature = "codegen", schemars(with = "serde_json::Value"))]
@@ -61,6 +63,10 @@ pub fn inspect(schema: &CompiledSchema, message_type: Option<&str>) -> Result<In
     Ok(Inspection {
         schema_type: schema.schema_type(),
         message_types: schema.message_types(),
+        all_message_types: match schema {
+            CompiledSchema::Protobuf(s) => s.all_message_types(),
+            _ => Vec::new(),
+        },
         example: serde_json::to_string_pretty(&example)
             .map_err(|e| CodecError::invalid(e.to_string()))?,
         json_schema,

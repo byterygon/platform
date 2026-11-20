@@ -16,11 +16,12 @@ import type { MessageRow } from "./arrow";
 import { timestampText } from "./arrow";
 import type { MessageLabels } from "./columns";
 import { parseSchemaRef } from "./schema-ref";
+import { type DecodeAs, DecodeAsPanel } from "./schemas/DecodeAs";
 
 /** Fetches a schema's text for the Schema tab (the tool's `messaging.schemas.inspect`). */
 export type SchemaLoader = (ref: NonNullable<ReturnType<typeof parseSchemaRef>>) => Promise<string>;
 
-const JSON_CODECS = new Set(["json", "msgpack", "avro", "protobuf", "jsonschema"]);
+const JSON_CODECS = new Set(["json", "cbor", "msgpack", "avro", "protobuf", "jsonschema"]);
 
 function ValueView({ text, codec, raw, label }: { text: string | null; codec: string | null; raw: Uint8Array | null; label: string }) {
   if (raw === null && text === null) return <EmptyLine>No {label.toLowerCase()}.</EmptyLine>;
@@ -37,18 +38,23 @@ export interface MessageDetailProps {
   onLoadFull?: ((message: MessageRow) => Promise<Uint8Array>) | null | undefined;
   loadSchema?: SchemaLoader | undefined;
   rowActions?: readonly { label: string; run(message: MessageRow): void }[] | undefined;
+  /** "Decode as…" on a message that did not decode: the tool's codecs and its mapping targets. */
+  decodeAs?: DecodeAs | undefined;
 }
 
-export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadSchema, rowActions }: MessageDetailProps) {
+export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadSchema, rowActions, decodeAs }: MessageDetailProps) {
   const [full, setFull] = useState<Uint8Array | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [schemaText, setSchemaText] = useState<string | null>(null);
+  const [decoding, setDecoding] = useState(false);
   useEffect(() => {
     setFull(null);
     setLoadError(null);
     setSchemaText(null);
+    setDecoding(false);
   }, [m]);
+  const failed = m.decodeError !== null && !m.payloadTruncated;
   const ref = parseSchemaRef(m.schemaRef);
   const loadFull = async () => {
     if (!onLoadFull) return;
@@ -88,12 +94,22 @@ export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadS
             {a.label}
           </Button>
         ))}
+        {decodeAs && failed ? (
+          <Button appearance={decoding ? "secondary" : "primary"} size="small" aria-expanded={decoding} onClick={() => setDecoding((d) => !d)}>
+            Decode as…
+          </Button>
+        ) : null}
       </div>
       {m.decodeError ? (
         <Alert intent={m.payloadTruncated ? "info" : "warning"} className="mx-inset-sm">
           <AlertTitle>{m.payloadTruncated ? "Payload cut" : "Not decoded as chosen"}</AlertTitle>
           <AlertDescription>{m.decodeError}</AlertDescription>
         </Alert>
+      ) : null}
+      {decodeAs && failed && decoding ? (
+        <div className="min-h-0 shrink overflow-auto px-inset-sm pt-stack-xs">
+          <DecodeAsPanel message={m} decodeAs={decodeAs} />
+        </div>
       ) : null}
       <Tabs defaultValue="value" className="flex min-h-0 flex-1 flex-col">
         <TabsList>

@@ -26,6 +26,7 @@ import type { DescribedError, TabProps } from "../types";
 import { ConsumerSheet } from "./ConsumerSheet";
 import { DeleteStreamDialog, PurgeDialog, useAction } from "./JetStreamDialogs";
 import { StreamMessages } from "./StreamMessages";
+import { subjectPlace, useViewDecoding } from "./SchemasTab";
 import { StreamSheet } from "./StreamSheet";
 import { formatAgo, formatDuration, formatShortCount, formatSize, formatUs } from "./format";
 import { Fact, Usage } from "./parts";
@@ -222,10 +223,11 @@ function ConsumersView({ consumers, onOpen, onNew, disabled }: { consumers: Nats
 
 type Dialog = "edit" | "purge" | "delete" | "consumer" | null;
 
-export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, go: goProp }: TabProps) {
+export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, go: goProp, updateProfile }: TabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
-
   const name = text(tab.params["stream"]);
+  const place = useCallback((m: Parameters<typeof subjectPlace>[0]) => subjectPlace(m, name), [name]);
+  const decoding = useViewDecoding({ client, connId, profile, updateProfile, openTab }, place);
   const notify = useContext(NoticeContext);
   const [info, setInfo] = useState<NatsStreamInfo | null>(null);
   const [consumers, setConsumers] = useState<NatsConsumerInfo[] | null>(null);
@@ -372,6 +374,7 @@ export function StreamTab({ tab, profile, connId, client, useTabActions, onLive,
               note={note}
               onLive={onLive}
               subject={subject.value}
+              decoding={decoding}
               registerActions={(a) => {
                 live.current = a;
               }}

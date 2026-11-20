@@ -20,9 +20,9 @@ use message_codecs::filter::{Filter, FilterIssue};
 use message_codecs::inspect::{Inspection, inspect};
 use message_codecs::schema::compile_local;
 use message_codecs::{
-    CodecError, CodecId, CodecInfo, CodecSelector, Codecs, ComposePayload, DecodeOptions, Decoded,
-    ErrorKind, LocalSchema, Message, Part, SchemaIssue, SchemaMapping, SchemaRef, Target,
-    codec_list,
+    CodecError, CodecId, CodecInfo, CodecSelector, Codecs, CodecsConfig, ComposePayload,
+    DecodeOptions, Decoded, ErrorKind, LocalSchema, MappingCount, Message, Part, SchemaIssue,
+    SchemaMapping, SchemaRef, Target, codec_list,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -275,6 +275,179 @@ pub struct SchemasUpdateOutput {
     pub issues: Vec<SchemaIssue>,
 }
 
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemasStatusInput {
+    pub conn_id: String,
+}
+
+/// A local schema in use on a connection.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaStatus {
+    pub id: String,
+    /// Protobuf: the message types offered; empty for the other types.
+    pub message_types: Vec<String>,
+}
+
+/// A mapping's counts this session.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MappingStatus {
+    pub id: String,
+    pub count: MappingCount,
+}
+
+/// What a connection's codecs hold now (the Schemas tab).
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemasStatusOutput {
+    /// The schemas that compiled, in id order.
+    pub schemas: Vec<SchemaStatus>,
+    /// Schemas that do not compile, with file and line.
+    pub issues: Vec<SchemaIssue>,
+    /// Every mapping, in order, with what it decoded.
+    pub mappings: Vec<MappingStatus>,
+}
+
+/// Messages a mapping test decodes by default and at most.
+pub const MAPPING_TEST_DEFAULT: u32 = 20;
+pub const MAPPING_TEST_MAX: u32 = 100;
+/// Decoded text a test row keeps.
+const MAPPING_TEST_TEXT: usize = 400;
+
+/// A tool's `<tool>.schemas.test` input: a mapping, maybe not saved, tried on the last messages
+/// it matches.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MappingTestInput {
+    pub conn_id: String,
+    pub mapping: SchemaMapping,
+    /// The profile's schemas as edited (the saved ones when absent).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub schemas: Option<Vec<LocalSchema>>,
+    /// How many messages, 20 by default, 100 at most.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub limit: Option<u32>,
+}
+
+impl MappingTestInput {
+    pub fn limit(&self) -> usize {
+        self.limit
+            .unwrap_or(MAPPING_TEST_DEFAULT)
+            .clamp(1, MAPPING_TEST_MAX) as usize
+    }
+}
+
+/// One message of a mapping test.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MappingTestRow {
+    /// Where the message lives: its subject, or its KV key.
+    pub subject: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sequence: Option<u64>,
+    pub codec: CodecId,
+    /// The decoded value, cut at 400 characters; hex when it failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub error: Option<String>,
+}
+
+/// What a mapping test found.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MappingTestOutput {
+    /// What was read, in the tool's words ("streams ORDERS, AUDIT").
+    pub source: String,
+    /// The oldest first.
+    pub rows: Vec<MappingTestRow>,
+    pub decoded: u32,
+    pub failed: u32,
+    /// Problems of the mapping's schema as edited.
+    pub issues: Vec<SchemaIssue>,
+    /// Why there are no messages, when there are none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub note: Option<String>,
+}
+
+/// A message a tool sampled for a mapping test.
+pub struct MappingSample {
+    pub subject: String,
+    pub sequence: Option<u64>,
+    pub payload: Vec<u8>,
+}
+
+/// Decodes a tool's samples with a mapping (shared by `nats.schemas.test` and Kafka's): the
+/// connection's registry, the schemas as edited, and only this mapping, so nothing is counted.
+pub fn test_mapping(
+    base: &Codecs,
+    input: &MappingTestInput,
+    source: String,
+    samples: Vec<MappingSample>,
+    note: Option<String>,
+) -> MappingTestOutput {
+    let codecs = match &input.schemas {
+        Some(schemas) => Codecs::new(CodecsConfig {
+            registry: base.registry().cloned(),
+            local_schemas: schemas.clone(),
+            naming: base.naming().clone(),
+            ..CodecsConfig::default()
+        }),
+        None => base.clone(),
+    };
+    let issues = match &input.mapping.schema_id {
+        Some(id) => codecs
+            .issues()
+            .iter()
+            .filter(|i| i.schema_id.as_deref() == Some(id.as_str()))
+            .cloned()
+            .collect(),
+        None => Vec::new(),
+    };
+    let mut failed = 0;
+    let rows: Vec<MappingTestRow> = samples
+        .into_iter()
+        .map(|s| {
+            let d = codecs.decode_mapping(&input.mapping, &s.payload);
+            if d.error.is_some() {
+                failed += 1;
+            }
+            MappingTestRow {
+                subject: s.subject,
+                sequence: s.sequence,
+                codec: d.codec,
+                text: d.text.map(|t| cut(t, MAPPING_TEST_TEXT)),
+                error: d.error,
+            }
+        })
+        .collect();
+    let decoded = rows.len() as u32 - failed;
+    MappingTestOutput {
+        source,
+        note: if rows.is_empty() { note } else { None },
+        rows,
+        decoded,
+        failed,
+        issues,
+    }
+}
+
+fn cut(mut text: String, max: usize) -> String {
+    if text.chars().count() > max {
+        text = text.chars().take(max).collect();
+        text.push('…');
+    }
+    text
+}
+
 // --- Procedures -------------------------------------------------------------------------------
 
 /// `messaging.decode` and `messaging.encode`.
@@ -341,6 +514,7 @@ impl SchemasApi {
                     return Ok(Inspection {
                         schema_type: local.schema_type,
                         message_types: Vec::new(),
+                        all_message_types: Vec::new(),
                         json_schema: serde_json::json!({}),
                         example: String::new(),
                         text: local_text(local),
@@ -373,8 +547,41 @@ impl SchemasApi {
         Ok(out)
     }
 
+    /// The connection's schemas in use, the ones that do not compile, and every mapping with
+    /// what it decoded this session.
+    #[rpc::query(perm = "messaging.read", risk = Risk::Read)]
+    async fn status(&self, ctx: Ctx, input: SchemasStatusInput) -> ToolResult<SchemasStatusOutput> {
+        let codecs = self.0.codecs(&ctx.session().id, &input.conn_id)?;
+        let mut ids: Vec<&str> = codecs.local().ids().collect();
+        ids.sort_unstable();
+        let schemas = ids
+            .into_iter()
+            .map(|id| SchemaStatus {
+                id: id.to_owned(),
+                message_types: codecs
+                    .local()
+                    .get(id)
+                    .map(|c| c.message_types())
+                    .unwrap_or_default(),
+            })
+            .collect();
+        let mappings = codecs
+            .mappings()
+            .iter()
+            .map(|m| MappingStatus {
+                id: m.id.clone(),
+                count: codecs.stats().get(&m.id),
+            })
+            .collect();
+        Ok(SchemasStatusOutput {
+            schemas,
+            issues: codecs.issues().to_vec(),
+            mappings,
+        })
+    }
+
     /// Replaces a connection's local schemas and mappings (the profile changed); the registry
-    /// stays. Streams already running keep the codecs they started with.
+    /// and the mappings' counts stay. Streams already running keep the codecs they started with.
     #[rpc::mutation(perm = "messaging.read", risk = Risk::Read)]
     async fn update(&self, ctx: Ctx, input: SchemasUpdateInput) -> ToolResult<SchemasUpdateOutput> {
         let session = &ctx.session().id;
@@ -384,6 +591,7 @@ impl SchemasApi {
             local_schemas: input.schemas.unwrap_or_default(),
             mappings: input.mappings.unwrap_or_default(),
             naming: current.naming().clone(),
+            stats: current.stats().clone(),
         });
         let issues = codecs.issues().to_vec();
         self.0.set_codecs(session, &input.conn_id, codecs)?;

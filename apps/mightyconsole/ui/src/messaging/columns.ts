@@ -4,12 +4,12 @@
 /** Which system's view: the grid shows its columns, the panes use its words. */
 export type MessageSystem = "kafka" | "nats" | "jetstream" | "kv";
 
-/** The grid's columns per system (names of the §5.1 schema). */
+/** The grid's columns per system (names of the §5.1 schema); `payloadCodec` says what decoded each row. */
 export const COLUMNS: Record<MessageSystem, readonly string[]> = {
-  kafka: ["partition", "offset", "timestamp", "keyText", "payloadText"],
-  nats: ["timestamp", "subject", "replyTo", "payloadSize", "payloadText"],
-  jetstream: ["sequence", "subject", "timestamp", "payloadSize", "payloadText"],
-  kv: ["subject", "sequence", "operation", "payloadText"],
+  kafka: ["partition", "offset", "timestamp", "keyText", "payloadCodec", "payloadText"],
+  nats: ["timestamp", "subject", "replyTo", "payloadSize", "payloadCodec", "payloadText"],
+  jetstream: ["sequence", "subject", "timestamp", "payloadSize", "payloadCodec", "payloadText"],
+  kv: ["subject", "sequence", "operation", "payloadCodec", "payloadText"],
 };
 
 /** The words a view uses. */

@@ -130,6 +130,17 @@ impl ProtoSchema {
         })
     }
 
+    /// Every message type of the schema's files, nested ones too (Google's well-known types left
+    /// out), for choosing which to offer.
+    pub fn all_message_types(&self) -> Vec<String> {
+        self.pool
+            .all_messages()
+            .filter(|m| !m.parent_file().name().starts_with("google/protobuf/"))
+            .filter(|m| !m.is_map_entry())
+            .map(|m| m.full_name().to_owned())
+            .collect()
+    }
+
     /// A message type by name; the first offered one when `name` is `None`.
     pub fn message(&self, name: Option<&str>) -> Result<MessageDescriptor> {
         let name = name.unwrap_or(&self.message_types[0]);

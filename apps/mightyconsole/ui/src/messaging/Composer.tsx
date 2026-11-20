@@ -41,7 +41,7 @@ export interface SchemaChoice {
 export const EMPTY_DRAFT: ComposerDraft = { key: null, headers: [], value: { codec: "json", text: "{\n  \n}" } };
 
 const SCHEMA_CODECS = new Set<CodecId>(["avro", "protobuf", "jsonschema"]);
-const JSON_TEXT = new Set<CodecId>(["json", "msgpack", "avro", "protobuf", "jsonschema"]);
+const JSON_TEXT = new Set<CodecId>(["json", "cbor", "msgpack", "avro", "protobuf", "jsonschema"]);
 const VALUE_CODECS = CODECS.filter((c) => c.id !== "auto") as { id: CodecId; label: string }[];
 
 /** The headers as the API takes them. */

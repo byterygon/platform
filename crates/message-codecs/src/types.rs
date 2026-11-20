@@ -17,6 +17,7 @@ pub enum CodecId {
     Hex,
     Base64,
     Msgpack,
+    Cbor,
     Avro,
     Protobuf,
     Jsonschema,
@@ -24,12 +25,13 @@ pub enum CodecId {
 
 impl CodecId {
     /// Every codec, in the order the codec selects list them.
-    pub const ALL: [CodecId; 8] = [
+    pub const ALL: [CodecId; 9] = [
         CodecId::Utf8,
         CodecId::Json,
         CodecId::Hex,
         CodecId::Base64,
         CodecId::Msgpack,
+        CodecId::Cbor,
         CodecId::Avro,
         CodecId::Protobuf,
         CodecId::Jsonschema,
@@ -43,6 +45,7 @@ impl CodecId {
             CodecId::Hex => "hex",
             CodecId::Base64 => "base64",
             CodecId::Msgpack => "msgpack",
+            CodecId::Cbor => "cbor",
             CodecId::Avro => "avro",
             CodecId::Protobuf => "protobuf",
             CodecId::Jsonschema => "jsonschema",
@@ -57,6 +60,7 @@ impl CodecId {
             CodecId::Hex => "Hex",
             CodecId::Base64 => "Base64",
             CodecId::Msgpack => "MessagePack",
+            CodecId::Cbor => "CBOR",
             CodecId::Avro => "Avro",
             CodecId::Protobuf => "Protobuf",
             CodecId::Jsonschema => "JSON Schema",
@@ -139,9 +143,37 @@ impl Part {
     rename_all_fields = "camelCase"
 )]
 pub enum Target {
-    Topic { name: String },
-    Subject { subject: String },
-    KvBucket { bucket: String },
+    Topic {
+        name: String,
+    },
+    /// A NATS subject; `stream` when the message was read from a JetStream stream.
+    Subject {
+        subject: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "codegen", ts(optional = nullable))]
+        stream: Option<String>,
+    },
+    KvBucket {
+        bucket: String,
+    },
+}
+
+impl Target {
+    /// A NATS subject outside a stream (core NATS).
+    pub fn subject(subject: impl Into<String>) -> Self {
+        Target::Subject {
+            subject: subject.into(),
+            stream: None,
+        }
+    }
+
+    /// A NATS subject read from a JetStream stream.
+    pub fn stream_subject(stream: impl Into<String>, subject: impl Into<String>) -> Self {
+        Target::Subject {
+            subject: subject.into(),
+            stream: Some(stream.into()),
+        }
+    }
 }
 
 /// A registry schema version: a number or `"latest"`.
@@ -363,9 +395,13 @@ pub struct LocalSchema {
     rename_all_fields = "camelCase"
 )]
 pub enum MappingTarget {
-    /// A NATS subject pattern with `*` and `>`.
+    /// A NATS subject pattern with `*` and `>`, in core NATS and in JetStream.
     Subject {
         pattern: String,
+    },
+    /// The messages of a JetStream stream, whatever their subject.
+    Stream {
+        name: String,
     },
     Topic {
         name: String,
@@ -375,7 +411,8 @@ pub enum MappingTarget {
     },
 }
 
-/// A local schema mapped to messages (spec §4.2, `extras.mappings`).
+/// A codec, with a local schema when it needs one, mapped to messages (spec §4.2,
+/// `extras.mappings`); the first mapping that matches a message wins.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "codegen", derive(ts_rs::TS, schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
@@ -383,10 +420,30 @@ pub struct SchemaMapping {
     pub id: String,
     pub target: MappingTarget,
     pub part: Part,
-    pub schema_id: String,
+    /// The local schema, for Avro, Protobuf and JSON Schema; none for the codecs without one.
+    #[serde(default)]
+    #[cfg_attr(feature = "codegen", ts(optional = nullable))]
+    pub schema_id: Option<String>,
     #[serde(default)]
     #[cfg_attr(feature = "codegen", ts(optional = nullable))]
     pub message_type: Option<String>,
+    /// The codec; the schema's when absent (mappings saved before CBOR name a schema only).
+    #[serde(default)]
+    #[cfg_attr(feature = "codegen", ts(optional = nullable))]
+    pub codec: Option<CodecId>,
+    /// `confluent`: the bytes start with the wire format's magic byte and schema id (and, for
+    /// Protobuf, the message indexes), which are skipped. Raw bytes when absent.
+    #[serde(default)]
+    #[cfg_attr(feature = "codegen", ts(optional = nullable))]
+    pub wire_format: Option<WireFormat>,
+}
+
+impl SchemaMapping {
+    /// The codec this mapping decodes with: its own, else its schema's type's (needs the
+    /// compiled schemas, so the caller passes the schema's type).
+    pub fn codec_with(&self, schema_type: Option<SchemaType>) -> Option<CodecId> {
+        self.codec.or(schema_type.map(SchemaType::codec))
+    }
 }
 
 /// A Kafka subject naming strategy (spec §5.3).

@@ -3,8 +3,8 @@
 // (password, nkey, no-auth default user, TLS, a token server and an operator-mode server for
 // .creds). The UI's: test/nats.test.tsx (jsdom), and a walk through the tool in a browser with
 // screenshots. Each TSK-85 batch wires its items; run
-// `pnpm --filter @byterygon/mightyconsole acceptance nats --lab-up --strict --only connect,core,streams,consumers,kv-objects,services`
-// until every item is wired.
+// `pnpm --filter @byterygon/mightyconsole acceptance nats --lab-up --strict`.
+import { readFileSync } from "node:fs";
 import { browser, type BrowserContext, cargo, type Checklist, vitest } from "../checklist.mts";
 
 const lab = (filter: string) => cargo(filter, { features: ["lab-tests"] });
@@ -53,6 +53,15 @@ const vfield = (label: string) => `(() => { const l = [...document.querySelector
 const radio = (label: string) => `[...document.querySelectorAll("[role=alertdialog] label")].find((l) => ${TEXT}(l).startsWith(${JSON.stringify(label)})).querySelector("[role=radio]")`;
 /** Presses an element as a pointer does (the data grid selects on pointerdown). */
 const press = (el: string) => `((el) => { for (const [T, type] of [[PointerEvent, "pointerdown"], [MouseEvent, "mousedown"], [PointerEvent, "pointerup"], [MouseEvent, "mouseup"], [MouseEvent, "click"]]) el.dispatchEvent(new T(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })(${el})`;
+/** The lab's Protobuf schema, as the walk uploads it. */
+const fixture = (name: string) => readFileSync(new URL(`../../../../crates/message-codecs/tests/fixtures/${name}`, import.meta.url), "utf8");
+/** A visible option of the open select or menu by its text. */
+const option = (text: string) => `[...document.querySelectorAll("[role=option], [role=menuitem], [role=menuitemcheckbox]")].find((o) => ${TEXT}(o).startsWith(${JSON.stringify(text)}) && o.getClientRects().length > 0)`;
+/** The open dialog's select whose trigger shows `text`. */
+const dialogSelect = (text: string) => `[...document.querySelectorAll("[role=dialog] [role=combobox]")].find((c) => ${TEXT}(c).startsWith(${JSON.stringify(text)}))`;
+/** Whether a visible grid row has `text`. */
+const rowHas = (text: string) => `[...document.querySelectorAll(".bdg-body > [role=row]:not([hidden])")].some((r) => r.getClientRects().length > 0 && (r.textContent || "").includes(${JSON.stringify(text)}))`;
+
 /** A visible grid's first row's cell. */
 const firstCell = `[...document.querySelectorAll(".bdg-body > [role=row]:not([hidden]) [role=gridcell]")].find((c) => c.getClientRects().length > 0)`;
 
@@ -455,7 +464,112 @@ export default {
       id: "schemas",
       text: "A local Protobuf schema mapped to orders.proto.> decodes those payloads; every destructive action is confirmed as in the pattern; CI green.",
       lab: true,
-      checks: [],
+      // Batch 4 (decoding): the Schemas tab, the mapping test on the last 20 messages, the viewer's
+      // codec menu and Codec column, "Decode as…", CBOR.
+      checks: [
+        lab("mapping_tests_on_streams_buckets_and_a_cbor_stream_and_the_counts"),
+        lab("subscribe_with_wildcards_and_a_queue_group_publish_and_request"),
+        vitest("test/messaging-schemas.test.tsx", "subjects, targets, where a kept mapping goes"),
+        vitest("test/messaging-schemas.test.tsx", "schemas with their status, mappings in order with their counts"),
+        vitest("test/messaging-schemas.test.tsx", "Add mapping: a CBOR mapping for a KV bucket"),
+        vitest("test/messaging-schemas.test.tsx", "Add a Protobuf schema: compile errors at file and line"),
+        vitest("test/messaging-schemas.test.tsx", "tries a choice on the failed message's bytes"),
+        browser("a Protobuf schema compiled, mapped to orders.proto.> and tested; Decode as… keeps a mapping", async ({ page, origin, until, run, shot }) => {
+          const name = `walk-orders-${Date.now().toString(36)}`;
+          const files = [
+            ["lab/orders/order.proto", fixture("order.proto")],
+            ["lab/common/money.proto", fixture("money.proto")],
+          ];
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await until(`__mc.item("Schemas")`, "Schemas in the tree");
+          await run(`__mc.dblclick(__mc.item("Schemas"))`);
+          await until(vbutton("Add mapping") + ` && __mc.has("kept in the profile")`, "the Schemas tab");
+          await shot("the Schemas tab");
+          // A Protobuf schema from two .proto files, their paths as the imports name them.
+          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("Add schema") && b.getClientRects().length > 0))`);
+          await until(option("Protobuf (.proto files)"), "the Add schema menu");
+          await run(`__mc.click(${option("Protobuf (.proto files)")})`);
+          await until(vfield("Name*"), "the schema sheet");
+          await run(`__mc.type(${vfield("Name*")}, ${JSON.stringify(name)})`);
+          await run(`(() => {
+            const input = document.querySelector("[role=dialog] input[type=file]");
+            const dt = new DataTransfer();
+            for (const [path, text] of ${JSON.stringify(files)}) dt.items.add(new File([text], path.split("/").pop(), { type: "text/plain" }));
+            input.files = dt.files;
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+            return true;
+          })()`);
+          await until(`[...document.querySelectorAll("[role=dialog] [aria-label=Files] button")].length >= 4`, "the two files");
+          for (const [i, [path]] of files.entries()) {
+            await run(`__mc.click(document.querySelectorAll("[role=dialog] [aria-label=Files] [role=listitem] button[aria-current]")[${i}])`);
+            await run(`__mc.type(${vfield("Path")}, ${JSON.stringify(path)})`);
+          }
+          await run(`__mc.click(${vbutton("Compile")})`);
+          await until(`__mc.has("Compiled: ")`, "compiled on the server");
+          await shot("a Protobuf schema compiled, with its message types");
+          await run(`__mc.click(${vbutton("Save schema")})`);
+          await until(`__mc.has(${JSON.stringify(`Saved schema ${name}`)}) && __mc.has("compiled")`, "the saved schema, compiled");
+          // A mapping for orders.proto.>, tested on the last 20 messages before saving.
+          await run(`__mc.click(${vbutton("Add mapping")})`);
+          await until(vfield("Pattern*"), "the mapping sheet");
+          await run(`__mc.type(${vfield("Pattern*")}, "orders.proto.>")`);
+          await run(`__mc.click(${dialogSelect("JSON")})`);
+          await until(option("Protobuf"), "the codecs");
+          await run(`__mc.click(${option("Protobuf")})`);
+          await until(`${dialogSelect(name)}`, "the schema chosen");
+          await run(`__mc.click(${vbutton("Run the test")})`);
+          await until(`__mc.has("20 decoded · 0 failed")`, "the test on the last 20");
+          await shot("a mapping tested on the last 20 messages");
+          await run(`__mc.click(${vbutton("Save mapping")})`);
+          await until(`__mc.has("Saved the mapping for orders.proto.>")`, "the saved mapping");
+          // The mapping decodes ORDERS' Protobuf messages: the Codec column says so.
+          await run(`__mc.dblclick(__mc.item("ORDERS"))`);
+          await until(`__mc.has("1,051")`, "the stream's info");
+          await run(`__mc.click([...document.querySelectorAll('[aria-label="Stream views"] [role=tab]')].find((t) => (t.textContent || "").startsWith("Messages")))`);
+          await until(vfield("Subject filter"), "the Messages view");
+          await run(`__mc.type(${vfield("Subject filter")}, "orders.proto.>")`);
+          await run(`__mc.click(${vbutton("Browse")})`);
+          await until(`__mc.has("Ended") && ${rowHas("protobuf")}`, "values decoded by the mapping");
+          await run(press(firstCell));
+          await until(`__mc.has(${JSON.stringify(`local:`)})`, "the detail with its schema");
+          await shot("ORDERS' Protobuf messages decoded by the mapping");
+          // Decode as…: the JSON orders read as this Protobuf schema fail; keep JSON for one subject.
+          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => (b.getAttribute("aria-label") || "").startsWith("Value codec:") && b.getClientRects().length > 0))`);
+          await until(option("Protobuf"), "the codec menu");
+          await run(`__mc.click(${option("Protobuf")})`);
+          await until(option(name), "the schemas of Protobuf");
+          await shot("the codec menu with the profile's schemas");
+          await run(`__mc.click(${option(name)})`);
+          await until(`!${option("JSON")}`, "the codec menu closed");
+          await run(`__mc.type(${vfield("Subject filter")}, "orders.eu.created")`);
+          await run(`__mc.click(${vbutton("Browse")})`);
+          await until(`__mc.has("Ended") && ${rowHas("orders.eu.created")}`, "the JSON orders");
+          await run(press(firstCell));
+          await until(vbutton("Decode as…"), "a message that did not decode");
+          await run(`__mc.click(${vbutton("Decode as…")})`);
+          await until(`document.querySelector("[data-slot=decode-as] [role=combobox]")`, "Decode as…");
+          await run(`__mc.click(document.querySelector("[data-slot=decode-as] [role=combobox]"))`);
+          await until(option("JSON"), "the choices");
+          await run(`__mc.click(${option("JSON")})`);
+          await until(`document.querySelector("[data-slot=decode-as] [role=tree]")`, "the value as JSON");
+          await run(`(document.querySelector("[data-slot=decode-as]").scrollIntoView({ block: "nearest" }), true)`);
+          await shot("Decode as… JSON on a message that did not decode");
+          await run(`__mc.click(${vbutton("Keep as a mapping for subject orders.eu.created")})`);
+          await until(`__mc.has("Kept as a mapping")`, "the kept mapping");
+          // The Schemas tab: both mappings, the new one first, with their counts; then tidy up.
+          await run(`__mc.click(${tab("Schemas")})`);
+          await run(`__mc.click(${vbutton("Refresh")})`);
+          await until(`__mc.button("Delete the mapping for orders.eu.created") && __mc.has(" · 0 failed")`, "the mappings with their counts");
+          await shot("the mappings with what they decoded");
+          for (const m of ["orders.eu.created", "orders.proto.>"]) {
+            await run(`__mc.click(__mc.button(${JSON.stringify(`Delete the mapping for ${m}`)}))`);
+            await until(`!__mc.button(${JSON.stringify(`Delete the mapping for ${m}`)})`, `the mapping for ${m} deleted`);
+          }
+          await run(`__mc.click(__mc.button(${JSON.stringify(`Delete ${name}`)}))`);
+          await until(`!__mc.button(${JSON.stringify(`Delete ${name}`)})`, "the schema deleted");
+        }),
+      ],
     },
   ],
 } satisfies Checklist;
