@@ -1179,6 +1179,10 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                     onDuplicate={(id) => dispatch({ type: "dialog", dialog: { kind: "profile", tool: tool.id, duplicateOf: id } })}
                     onExport={(id) => exportIds([id])}
                     onDelete={(id) => dispatch({ type: "dialog", dialog: { kind: "deleteProfile", id } })}
+                    onUpdateProfile={async (id, change) => {
+                      const record = profileById(id);
+                      if (record) await saveProfile({ ...change(record), updatedAt: new Date().toISOString() });
+                    }}
                   />
                 </SidebarContent>
               </Sidebar>

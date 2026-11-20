@@ -181,6 +181,61 @@ export default {
           }
           await appearance(ctx, "light", "comfortable");
         }),
+        // TSK-95: the mockup's query row (namespace with its folder, "Status: Any", the query's
+        // icon, Columns, Run), Save query into the tree, the saved query renamed and deleted from
+        // its node's menu, and a column hidden by Columns, kept after a reload.
+        vitest("test/saved-queries.test.tsx"),
+        browser("Save query, the saved query in the tree renamed and deleted, Columns (TSK-95)", async (ctx) => {
+          const { page, until, run, shot } = ctx;
+          const name = `Failed ${Date.now().toString(36)}`;
+          const renamed = `${name} renamed`;
+          const dialog = `[...document.querySelectorAll("[role=dialog], [role=alertdialog]")].find((d) => d.offsetParent !== null)`;
+          await connectLab(ctx);
+          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await until(`__mc.has(" workflows") && __mc.has("scheduled-")`, "the workflow list");
+          for (const [theme, density] of APPEARANCES) {
+            await appearance(ctx, theme, density);
+            await shot(`the query row, ${theme}, ${density}`);
+          }
+          await appearance(ctx, "light", "comfortable");
+          await pickStatus(ctx, "Failed");
+          await until(`__mc.has("failed-1") && !__mc.has("scheduled-")`, "the Failed workflows");
+          await run(press(panelButton("Save query")));
+          await until(`document.querySelector('input[placeholder="Failed today"]')`, "the name field");
+          await run(`__mc.type(document.querySelector('input[placeholder="Failed today"]'), ${JSON.stringify(name)})`);
+          await shot("Save query");
+          await run(`__mc.click([...document.querySelectorAll("button[type=submit]")].find((b) => b.textContent.trim() === "Save"))`);
+          await until(`__mc.item(${JSON.stringify(name)})`, "the saved query under Workflows");
+          await shot("the saved query in the tree");
+          await run(`(() => { const el = __mc.item(${JSON.stringify(name)}); el.click(); el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 120, clientY: 300 })); return true; })()`);
+          await until(menuItem("Rename saved query…"), "Rename in the node's menu");
+          await shot("the saved query's menu");
+          await run(press(menuItem("Rename saved query…")));
+          await until(`${dialog} && ${dialog}.querySelector("input")`, "the rename dialog");
+          await run(`__mc.type(${dialog}.querySelector("input"), ${JSON.stringify(renamed)})`);
+          await run(`__mc.click([...${dialog}.querySelectorAll("button")].find((b) => b.textContent.trim() === "Rename"))`);
+          await until(`__mc.item(${JSON.stringify(renamed)})`, "the renamed node");
+          await run(`(() => { const el = __mc.item(${JSON.stringify(renamed)}); el.click(); el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: 120, clientY: 300 })); return true; })()`);
+          await until(menuItem("Delete saved query"), "Delete in the node's menu");
+          await run(press(menuItem("Delete saved query")));
+          await until(`${dialog} && ${dialog}.textContent.includes("Delete the saved query")`, "the confirmation");
+          await shot("deleting the saved query");
+          await run(`__mc.click([...${dialog}.querySelectorAll("button")].find((b) => b.textContent.trim() === "Delete"))`);
+          await until(`!__mc.item(${JSON.stringify(renamed)})`, "the saved query gone");
+          // Columns: hide Run ID; it stays hidden after a reload.
+          const heads = `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) thead th")].map((h) => h.textContent.trim())`;
+          await run(press(panelButton("Columns")));
+          await until(`[...document.querySelectorAll("li")].some((l) => l.textContent.trim() === "Run ID")`, "the Columns chooser");
+          await shot("Columns");
+          await run(press(`[...document.querySelectorAll("li")].find((l) => l.textContent.trim() === "Run ID").querySelector("[role=checkbox]")`));
+          await until(`!${heads}.includes("Run ID")`, "Run ID hidden");
+          await page.navigate(await run<string>("location.href"));
+          await until(`${heads}.includes("Workflow ID") && !${heads}.includes("Run ID")`, "Run ID still hidden after a reload");
+          await run(press(panelButton("Columns")));
+          await until(`[...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Reset to default")`, "the chooser again");
+          await run(press(`[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Reset to default")`));
+          await until(`${heads}.includes("Run ID")`, "the columns reset");
+        }),
       ],
     },
     {

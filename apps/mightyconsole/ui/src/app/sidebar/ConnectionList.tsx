@@ -1,7 +1,8 @@
 // The sidebar (Mightyconsole spec §3.1): the selected tool's connection list, each profile a Tree
 // root with a status glyph (disconnected, connecting, connected, reconnecting, failed) and, under
 // a connected profile, the tool's resource tree. A filter box, a context menu (Connect,
-// Disconnect, Open, Edit, Duplicate, Export, Delete, Copy id) and the "No profile" state.
+// Disconnect, Open, Edit, Duplicate, Export, Delete, Copy id; a resource's own items, as a saved
+// query's Rename and Delete, TSK-95) and the "No profile" state.
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ServicesContext } from "@/app/client";
 import { Button } from "@/components/ui/button";
@@ -16,11 +17,12 @@ import { Add, ArrowImport, CheckmarkCircle, Circle, Clock, ErrorCircle, Warning 
 import type { RecordState } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
 import { toolIcon } from "@/tools/registry";
-import type { ResourceNode, ToolModule } from "@/tools/types";
+import type { ResourceAction, ResourceNode, ToolModule } from "@/tools/types";
 import { COLOR_CLASS } from "../dialogs/ProfileDialogs";
 import { ariaBindingOf, bindingOf } from "../shortcuts";
 import { LoadingRows } from "../states";
 import type { ConnState } from "../store";
+import { ResourceActionDialog } from "./ResourceActionDialog";
 
 const GLYPH = {
   connected: { icon: CheckmarkCircle, filled: true, tone: "success" },
@@ -101,6 +103,8 @@ export interface ConnectionListProps {
   onDuplicate: (profileId: string) => void;
   onExport: (profileId: string) => void;
   onDelete: (profileId: string) => void;
+  /** Changes a profile (a resource's menu item, as a saved query's Rename). */
+  onUpdateProfile: (profileId: string, change: (record: ProfileRecord) => ProfileRecord) => Promise<void>;
 }
 
 export function ConnectionList(props: ConnectionListProps) {
@@ -162,6 +166,17 @@ export function ConnectionList(props: ConnectionListProps) {
   const selectedProfile = selected ? parseNode(selected) : null;
   const profile = selectedProfile ? profiles?.find((p) => p.id === selectedProfile.profileId) : undefined;
   const status = profile ? (conns[profile.id]?.status ?? "disconnected") : undefined;
+  // The selected resource's own menu items, and the one asking its question.
+  const selectedConn = profile ? conns[profile.id] : undefined;
+  const resourceActions =
+    profile && selectedProfile?.resource && selectedConn?.status === "connected" && selectedConn.connId ? (findResource(tool.sidebarTree({ profile, connId: selectedConn.connId }), selectedProfile.resource)?.actions ?? []) : [];
+  const [asking, setAsking] = useState<{ profileId: string; action: ResourceAction } | null>(null);
+  const runAction = (profileId: string, item: ResourceAction, value: string) => Promise.resolve(item.run({ value, updateProfile: (change) => props.onUpdateProfile(profileId, change) }));
+  const pick = (item: ResourceAction) => {
+    if (!profile) return;
+    if (item.prompt || item.confirm) setAsking({ profileId: profile.id, action: item });
+    else void runAction(profile.id, item, "");
+  };
 
   const expandProfile = (id: string) => setExpanded((e) => (e.includes(id) ? e : [...e, id]));
   // Profiles the person opened while they were not connected: they open once connected, also when
@@ -265,6 +280,16 @@ export function ConnectionList(props: ConnectionListProps) {
           <ContextMenuItem disabled={!selected} onClick={() => selected && action({ id: selected, label: "" })}>
             Open
           </ContextMenuItem>
+          {resourceActions.length > 0 ? (
+            <>
+              <ContextMenuSeparator />
+              {resourceActions.map((item) => (
+                <ContextMenuItem key={item.label} danger={item.danger === true} onClick={() => pick(item)}>
+                  {item.label}
+                </ContextMenuItem>
+              ))}
+            </>
+          ) : null}
           <ContextMenuSeparator />
           <ContextMenuItem disabled={!profile} onClick={() => profile && props.onEdit(profile.id)}>
             Edit
@@ -284,6 +309,7 @@ export function ConnectionList(props: ConnectionListProps) {
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      <ResourceActionDialog action={asking?.action ?? null} onClose={() => setAsking(null)} onRun={(item, value) => (asking ? runAction(asking.profileId, item, value) : Promise.resolve())} />
     </div>
   );
 }

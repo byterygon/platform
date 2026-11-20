@@ -1,6 +1,6 @@
 // Parts of the Workflows list from the TSK-91 mockup frame `temporal-workflows`: the Columns
 // chooser (hide and reorder, kept per tab kind in this browser) and Save query (into the profile's
-// saved queries, which the tree lists under Workflows).
+// saved queries, which the tree lists under Workflows, where its menu renames and deletes them).
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,7 +10,8 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowDown, ArrowUp, ColumnTriple, Star } from "@/lib/icons";
-import type { SavedQuery } from "./profile";
+import type { ResourceAction } from "../types";
+import { savedQueriesOf, type SavedQuery } from "./profile";
 
 /** The list's columns after Workflow ID (which always shows first). */
 export const WORKFLOW_COLUMNS = [
@@ -175,4 +176,33 @@ export function SaveQueryButton({ query, saved, onSave, onRemove, disabled }: { 
 /** The saved queries with `name` set to `query` (replacing one of that name or that query). */
 export function withSaved(list: readonly SavedQuery[], name: string, query: string): SavedQuery[] {
   return [...list.filter((s) => s.name !== name && s.query !== query), { name, query }];
+}
+
+/** The saved queries with `from` named `to`, in the same place; unchanged when `from` is gone. */
+export function renameSaved(list: readonly SavedQuery[], from: string, to: string): SavedQuery[] {
+  return list.flatMap((s) => (s.name === to && s.name !== from ? [] : s.name === from ? [{ ...s, name: to }] : [s]));
+}
+
+/** Why `to` cannot be the new name of `from`, or null. */
+export function renameError(list: readonly SavedQuery[], from: string, to: string): string | null {
+  if (to === "") return "A name is required.";
+  return to !== from && list.some((s) => s.name === to) ? `A saved query is already named "${to}".` : null;
+}
+
+/** A saved query's Rename and Delete in the tree's context menu (TSK-95). */
+export function savedQueryActions(name: string, list: readonly SavedQuery[]): ResourceAction[] {
+  return [
+    {
+      label: "Rename saved query…",
+      prompt: { title: `Rename "${name}"`, label: "Name", value: name, submit: "Rename", validate: (to) => renameError(list, name, to) },
+      run: ({ value, updateProfile }) => updateProfile((r) => ({ ...r, extras: { ...r.extras, savedQueries: renameSaved(savedQueriesOf(r.extras), name, value) } })),
+    },
+    {
+      // Named in full: the profile's own Delete is in the same menu.
+      label: "Delete saved query…",
+      danger: true,
+      confirm: { title: `Delete the saved query "${name}"?`, description: "It leaves the tree and the query's suggestions. Tabs showing its results stay open.", submit: "Delete" },
+      run: ({ updateProfile }) => updateProfile((r) => ({ ...r, extras: { ...r.extras, savedQueries: savedQueriesOf(r.extras).filter((s) => s.name !== name) } })),
+    },
+  ];
 }

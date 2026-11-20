@@ -15,6 +15,7 @@ import { TaskQueueTab } from "./TaskQueueTab";
 import { WorkersTab } from "./WorkersTab";
 import { WorkflowTab } from "./WorkflowTab";
 import { WorkflowsTab } from "./WorkflowsTab";
+import { savedQueryActions } from "./list-parts";
 import { namespaceOf, profile, savedQueriesOf } from "./profile";
 import { temporalHrefs, temporalRoutes } from "./routes";
 import { requestSheet } from "./sheet-parts";
@@ -73,6 +74,7 @@ export const temporalTool: ToolModule = {
                     label: saved.name,
                     icon: <Icon icon={Search} />,
                     open: { kind: "temporal.workflows", params: { namespace, query: saved.query }, title: `${saved.name} · ${namespace}` },
+                    actions: savedQueryActions(saved.name, savedQueriesOf(p.extras)),
                   })),
                   expanded: true,
                 }
