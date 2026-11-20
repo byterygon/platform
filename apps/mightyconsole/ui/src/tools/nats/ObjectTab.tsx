@@ -4,6 +4,7 @@
 // metadata holds: chunks and their size, digest, nuid, headers, metadata, a link) with Download
 // (progress, cancel) and Delete. Upload is a Sheet with a dropzone: the file goes in parts of
 // 4 MiB with the progress per part and Cancel, which purges what was written (objects-io.ts).
+import { useSheetGuard } from "@/app/leave-guard";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ function UploadSheet({ open, onOpenChange, bucket, profile, connId, client, exis
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [description, setDescription] = useState("");
+  const releaseGuard = useSheetGuard(open, { file: file?.name ?? null, name, description });
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [error, setError] = useState<{ title: string; field: string | null } | null>(null);
   const [tried, setTried] = useState(false);
@@ -90,6 +92,7 @@ function UploadSheet({ open, onOpenChange, bucket, profile, connId, client, exis
     setProgress({ part: 0, parts: Math.max(1, Math.ceil(file.size / (4 * 1024 * 1024))), sent: 0, total: file.size });
     try {
       const info = await uploadObject(client, { connId, bucket, name, description, file }, setProgress, controller.signal);
+      releaseGuard();
       onUploaded(info);
       onOpenChange(false);
     } catch (e) {
