@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:10219dac86e6ca88df1d6e1f062d9c7d8e274d60e27d637ca600d5da93a2dfd0";
+export const SCHEMA_HASH = "sha256:e00d78b3643530578b0163346ff433d6f14e93ec2d5dceb55ebaed3b19858bfa";
 
 // ---- Types
 
@@ -2548,9 +2548,17 @@ export type ThreadsSearchInput = { connId: string, metadata?: JsonValue | null,
  */
 status?: string | null, 
 /**
- * 1 to 1000; 50 when absent. Newest first.
+ * 1 to 1000; 50 when absent.
  */
-limit?: number | null, offset?: number | null, };
+limit?: number | null, offset?: number | null, 
+/**
+ * `updated_at` (when absent), `created_at`, `thread_id` or `status`.
+ */
+sortBy?: string | null, 
+/**
+ * `desc` (when absent, newest first) or `asc`.
+ */
+sortOrder?: string | null, };
 
 /**
  * An inclusive range of RFC 3339 times.

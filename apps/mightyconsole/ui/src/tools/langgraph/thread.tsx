@@ -1,8 +1,10 @@
-// A thread (spec §11.2): Run (input, stream modes, live events beside the GraphView with the
-// running node lit, chat messages, the interrupt and its Resume form, Stop and Rollback, joining
+// A thread (spec §11.2), laid out as the TSK-91 mockup's langgraph-thread frame (TSK-95): a header
+// with the thread, its status, assistant and checkpoint, and Stop, "…" (Roll back, Delete thread)
+// and Run; then Run (assistant and input, the other options in one Advanced fold; the interrupt
+// callout first, then the GraphView with the running node lit, chat messages and events; joining
 // the run again after a reconnect), State (current values, next nodes, tasks; Edit state) and
 // History (checkpoints; Fork from here, Run from here).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { GraphView } from "@/components/ui/graph-view";
 import { Icon } from "@/components/ui/icon";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { JsonViewer } from "@/components/ui/json-viewer";
 import { RelativeTime } from "@/components/ui/relative-time";
@@ -24,12 +28,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
+import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { liveTimeout } from "@/app/client";
 import { CopyButton, Page, PageHeader } from "@/app/page";
+import { ariaBindingOf, bindingOf } from "@/app/shortcuts";
 import { EmptyLine, ErrorState, LiveBadge, LoadingRows } from "@/app/states";
 import { useTabView } from "@/app/tab-view";
 import * as api from "@/gen/api";
-import { ArrowClockwise, ArrowUndo, Edit, History, Play, Stop } from "@/lib/icons";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/control";
+import { ArrowClockwise, ArrowUndo, ChevronDown, ChevronRight, Delete, Edit, History, MoreHorizontal, Play, Stop } from "@/lib/icons";
 import type { DescribedError, LiveState, TabProps } from "../types";
 import { EMPTY_RUN, type RunEvent, type RunInterrupt, type RunView, eventName, interruptsOf, parseChunk, reduceRun } from "./run-events";
 import { JsonField, StatusBadge, configSchema, parseJson, partialSchema, preview, schemaObject, shortId, toGraphView, useLoad } from "./shared";
@@ -63,16 +71,60 @@ export function defaultInput(schema: unknown): string {
 /** The thread's sections, the view words of its URL (DOC-21 §3.7). */
 export const THREAD_VIEWS = ["run", "state", "history"] as const;
 
+/** Checkpoints per page of History; the header's count says "50+" past one page. */
+const HISTORY_PAGE = 50;
+
+/** The run options folded under Advanced. */
+export interface AdvancedOptions {
+  modes: readonly string[];
+  subgraphs: boolean;
+  before: string;
+  after: string;
+  config: string;
+  context: string;
+}
+
+/**
+ * The Advanced row's one line (TSK-95, the mockup's "values, updates, messages · subgraphs off · no
+ * interrupts"), and what in the fold stops a run, so a folded problem still shows.
+ */
+export function advancedSummary(o: AdvancedOptions): { text: string; problem: string | null } {
+  const before = nodeList(o.before);
+  const after = nodeList(o.after);
+  const interrupts = [before ? `interrupt before ${before.join(", ")}` : null, after ? `after ${after.join(", ")}` : null].filter(Boolean).join(", ");
+  const json = [o.config.trim() !== "" ? "config" : null, o.context.trim() !== "" ? "context" : null].filter(Boolean);
+  const parts = [o.modes.length > 0 ? MODES.filter((m) => o.modes.includes(m.id)).map((m) => m.label).join(", ") : "no stream modes", `subgraphs ${o.subgraphs ? "on" : "off"}`, interrupts || "no interrupts", ...(json.length > 0 ? [`${json.join(" and ")} set`] : [])];
+  const bad = [!parseJson(o.config).ok ? "Config" : null, !parseJson(o.context).ok ? "Context" : null].filter(Boolean);
+  return { text: parts.join(" · "), problem: bad.length > 0 ? `${bad.join(" and ")} ${bad.length > 1 ? "are" : "is"} not valid JSON` : null };
+}
+
+/** What the Run screen tells the header. */
+interface RunStatus {
+  running: boolean;
+  canRun: boolean;
+  /** A run of this tab to roll back. */
+  runId: string | null;
+  assistantName: string | null;
+  live: LiveState | null;
+}
+const NO_RUN: RunStatus = { running: false, canRun: false, runId: null, assistantName: null, live: null };
+
 export function ThreadTab(props: TabProps) {
-  const { tab, connId, client, note, useTabActions } = props;
+  const { tab, connId, client, note, useTabActions, profile } = props;
+  const toast = useToast();
   const threadId = text(tab.params["threadId"]);
   const [view, setView] = useTabView(props, THREAD_VIEWS, "run");
   const [fromCheckpoint, setFromCheckpoint] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const thread = useLoad(connId ? () => client.langgraph.threads.get({ connId, threadId }) : null, [connId, threadId, version], note);
+  // The latest checkpoints, for the header's checkpoint and count and for History.
+  const history = useLoad(connId ? () => client.langgraph.threads.history({ connId, threadId, limit: HISTORY_PAGE, before: null }) : null, [connId, threadId, version], note);
   const changed = () => setVersion((v) => v + 1);
+  const [status, setStatus] = useState<RunStatus>(NO_RUN);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<DescribedError | null>(null);
   // The Run screen registers the tab's actions; State and History reload with `version`.
-  const runActions = useRef<Parameters<TabProps["useTabActions"]>[0]>({});
+  const runActions = useRef<Parameters<TabProps["useTabActions"]>[0] & { rollback?: () => void }>({});
   useTabActions({
     primary: () => runActions.current.primary?.(),
     stop: () => runActions.current.stop?.(),
@@ -80,19 +132,48 @@ export function ThreadTab(props: TabProps) {
     clear: () => runActions.current.clear?.(),
     refresh: changed,
   });
+  const remove = async () => {
+    if (!connId) return;
+    try {
+      await client.langgraph.threads.delete({ connId, threadId });
+      setDeleting(false);
+      toast.add({ title: `Thread ${shortId(threadId)} deleted`, type: "success" });
+      // The thread is gone: this tab goes back to the list of threads.
+      const place = { kind: "langgraph.threads", params: {}, title: `Threads · ${profile.name}` };
+      if (props.navigate) props.navigate(place, { replace: true });
+      else props.openTab(place);
+    } catch (e) {
+      setDeleting(false);
+      setDeleteError(note(e));
+    }
+  };
+  const checkpoint = history.data?.[0]?.checkpointId ?? null;
+  const count = history.data ? (history.data.length >= HISTORY_PAGE ? `${HISTORY_PAGE}+` : String(history.data.length)) : null;
   return (
     <Page>
       <PageHeader
-        title={<span className="font-mono">Thread {shortId(threadId)}</span>}
+        title={<span className="font-mono">{shortId(threadId)}</span>}
         adornment={
           <>
             <CopyButton value={threadId} what="thread ID" />
             {thread.data ? <StatusBadge status={thread.data.status} /> : null}
+            {/* While a run streams (an ended run's reason is in the status bar). */}
+            {status.live && status.live.status !== "ended" ? <LiveBadge live={status.live} unit="events/s" /> : null}
           </>
         }
         subtitle={
           <>
-            {props.profile.name} · <span className="font-mono">{threadId}</span>
+            {status.assistantName ? (
+              <>
+                Assistant <span className="text-body-1-strong text-fg">{status.assistantName}</span> ·{" "}
+              </>
+            ) : null}
+            {checkpoint ? (
+              <>
+                checkpoint <span className="font-mono">{shortId(checkpoint)}</span> <CopyButton value={checkpoint} what="checkpoint ID" /> ·{" "}
+              </>
+            ) : null}
+            {count !== null ? `${count} checkpoint${count === "1" ? "" : "s"}` : null}
             {thread.data?.updatedAt ? (
               <>
                 {" "}
@@ -101,16 +182,47 @@ export function ThreadTab(props: TabProps) {
             ) : null}
           </>
         }
+        actions={
+          <>
+            <Button disabled={!status.running} onClick={() => runActions.current.stop?.()}>
+              <Icon icon={Stop} /> Stop
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<IconButton appearance="subtle" aria-label="More actions" />}>
+                <Icon icon={MoreHorizontal} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem disabled={status.runId === null} onClick={() => runActions.current.rollback?.()}>
+                  <Icon icon={ArrowUndo} /> Roll back the run…
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem danger disabled={!connId} onClick={() => setDeleting(true)}>
+                  <Icon icon={Delete} /> Delete thread…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {/* No key hint drawn by the button (DOC-21 §3.4): the binding is in its tooltip and the palette. */}
+            <Tooltip>
+              <TooltipTrigger render={<Button appearance="primary" disabled={status.running || !status.canRun} aria-keyshortcuts={ariaBindingOf("primary")} onClick={() => runActions.current.primary?.()} />}>
+                <Icon icon={Play} /> Run
+              </TooltipTrigger>
+              <TooltipContent>
+                Run the graph <TooltipShortcut>{bindingOf("primary")}</TooltipShortcut>
+              </TooltipContent>
+            </Tooltip>
+          </>
+        }
       />
       {thread.error ? <ErrorState error={thread.error} onRetry={changed} onRefresh={changed} /> : null}
+      {deleteError ? <ErrorState error={deleteError} onRetry={() => setDeleteError(null)} /> : null}
       <Tabs value={view} onValueChange={(v) => setView(v as typeof view)} className="mt-stack-md flex min-h-0 flex-1 flex-col">
         <TabsList aria-label="Thread views" className="px-inset-lg">
           <TabsTrigger value="run">Run</TabsTrigger>
           <TabsTrigger value="state">State</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="history">History {count !== null ? <span className="text-body-1 text-fg-muted">{count}</span> : null}</TabsTrigger>
         </TabsList>
         <TabsContent value="run" keepMounted className="flex min-h-0 flex-1 flex-col p-0">
-          <RunPanel {...props} threadId={threadId} thread={thread.data} actions={runActions} fromCheckpoint={fromCheckpoint} clearCheckpoint={() => setFromCheckpoint(null)} onRunEnded={changed} />
+          <RunPanel {...props} threadId={threadId} thread={thread.data} actions={runActions} onStatus={setStatus} fromCheckpoint={fromCheckpoint} clearCheckpoint={() => setFromCheckpoint(null)} onRunEnded={changed} />
         </TabsContent>
         <TabsContent value="state" className="flex min-h-0 flex-1 flex-col overflow-auto p-0">
           <StatePanel {...props} threadId={threadId} version={version} onChanged={changed} />
@@ -119,7 +231,7 @@ export function ThreadTab(props: TabProps) {
           <HistoryPanel
             {...props}
             threadId={threadId}
-            version={version}
+            history={history}
             onChanged={changed}
             onRunFrom={(checkpointId) => {
               setFromCheckpoint(checkpointId);
@@ -128,8 +240,57 @@ export function ThreadTab(props: TabProps) {
           />
         </TabsContent>
       </Tabs>
+      <AlertDialog open={deleting} onOpenChange={(o) => !o && setDeleting(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete thread {shortId(threadId)} on {profile.name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>The thread, its checkpoints and its runs are deleted on the server.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction appearance="danger" onClick={() => void remove()}>
+              Delete thread
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Page>
   );
+}
+
+/** The Advanced row of the Run form: one line that says what is set, the options under it. */
+function AdvancedFold({ summary, problem, open, onOpenChange, children }: { summary: string; problem: string | null; open: boolean; onOpenChange(open: boolean): void; children: ReactNode }) {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-stack-md">
+      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => onOpenChange(!open)} className={cn("flex items-start gap-inline-sm rounded-sm text-start text-body-1 text-fg-muted", focusRing)}>
+        <Icon icon={open ? ChevronDown : ChevronRight} className="mt-stack-xs shrink-0" />
+        <span>
+          <span className="text-body-1-strong text-fg">Advanced</span> · {summary}
+          {problem ? <span className="block text-danger-fg">{problem}</span> : null}
+        </span>
+      </button>
+      {open ? (
+        <div id={id} role="group" aria-label="Advanced run options" className="flex flex-col gap-stack-md">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** "Refund 129.90 EUR…?" from an interrupt's value: a string, or the question an object carries. */
+export function interruptQuestion(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    for (const key of ["question", "message", "prompt", "description"]) {
+      const v = (value as Record<string, unknown>)[key];
+      if (typeof v === "string" && v !== "") return v;
+    }
+  }
+  return preview(value);
 }
 
 interface PanelProps extends TabProps {
@@ -140,7 +301,8 @@ interface PanelProps extends TabProps {
 
 interface RunPanelProps extends PanelProps {
   thread: api.Thread | null;
-  actions: { current: Parameters<TabProps["useTabActions"]>[0] };
+  actions: { current: Parameters<TabProps["useTabActions"]>[0] & { rollback?: () => void } };
+  onStatus: (status: RunStatus) => void;
   fromCheckpoint: string | null;
   clearCheckpoint: () => void;
   onRunEnded: () => void;
@@ -154,7 +316,7 @@ interface Running {
   paused(): boolean;
 }
 
-function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fromCheckpoint, clearCheckpoint, onRunEnded }: RunPanelProps) {
+function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded }: RunPanelProps) {
   const toast = useToast();
   const assistants = useLoad(connId ? () => client.langgraph.assistants.search({ connId, graphId: null, metadata: null, limit: 1000, offset: null }) : null, [connId], note);
   const [assistantId, setAssistantId] = useState<string | null>(null);
@@ -190,6 +352,10 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
   const [contextText, setContextText] = useState("");
   const [gotoNode, setGotoNode] = useState<string | null>(null);
   const [eventsView, setEventsView] = useState<"messages" | "events">("messages");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  // The nodes the thread waits at (the state's `next`), for the interrupt callout.
+  const [waitingAt, setWaitingAt] = useState<readonly string[]>([]);
   const running = useRef<Running | null>(null);
   const viewRef = useRef<RunView>(EMPTY_RUN);
   /** A run the stream lost (the connection dropped): joined again once connected. */
@@ -264,14 +430,14 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
     })();
   };
 
-  /** After a run: the interrupts from the state when the stream did not carry them, and the thread. */
-  const afterRun = async () => {
-    onRunEnded();
-    if (!connId || viewRef.current.interrupts.length > 0) return;
+  /** The state's interrupts (when the stream did not carry them) and the nodes it waits at. */
+  const loadWaiting = async () => {
+    if (!connId) return;
     try {
       const state = await client.langgraph.threads.state({ connId, threadId, checkpointId: null, subgraphs: null });
       const interrupts = interruptsOf(state);
-      if (interrupts.length > 0) {
+      setWaitingAt(interrupts.length > 0 ? state.next : []);
+      if (interrupts.length > 0 && viewRef.current.interrupts.length === 0) {
         viewRef.current = { ...viewRef.current, interrupts };
         setRun(viewRef.current);
       }
@@ -279,6 +445,16 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
       // The state is a convenience here; the State tab shows its error.
     }
   };
+  /** After a run: the interrupts and where it waits, and the thread. */
+  const afterRun = async () => {
+    onRunEnded();
+    await loadWaiting();
+  };
+  // A thread opened while it waits at an interrupt shows the callout at once (the mockup's frame).
+  useEffect(() => {
+    void loadWaiting();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per thread and connection
+  }, [connId, threadId]);
 
   const start = (command: api.RunCommand | null) => {
     if (!connId || !assistantId || running.current) return;
@@ -287,6 +463,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
     setError(null);
     viewRef.current = EMPTY_RUN;
     setRun(EMPTY_RUN);
+    setWaitingAt([]);
     lost.current = null;
     const streamMode = [...new Set([...MODES.filter((m) => modes.includes(m.id)).map((m) => m.server), "tasks"])];
     const call = client.langgraph.runs.stream(
@@ -368,6 +545,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
       viewRef.current = EMPTY_RUN;
       setRun(EMPTY_RUN);
     },
+    rollback: () => setRollingBack(true),
   };
 
   const isRunning = live?.status === "live" || live?.status === "paused";
@@ -380,27 +558,20 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
   const contextSchema = schemaObject(schemas.data?.contextSchema);
   const assistantName = assistants.data?.find((a) => a.assistantId === assistantId)?.name;
   const shownEvents = run.events.filter((e) => eventName(e.event).mode !== "tasks" || modes.includes("debug"));
-  const items = Object.fromEntries((assistants.data ?? []).map((a) => [a.assistantId, `${a.name} (${a.graphId})`]));
+  const items = Object.fromEntries((assistants.data ?? []).map((a) => [a.assistantId, `${a.name} · graph ${a.graphId}`]));
+  const advanced = advancedSummary({ modes, subgraphs, before, after, config: configText, context: contextText });
+  const runnable = Boolean(assistantId) && canRun;
+  const runId = run.runId ?? null;
+  // The header shows Stop, Run and Roll back from what this screen knows.
+  useEffect(() => {
+    onStatus({ running: isRunning, canRun: runnable, runId, assistantName: assistantName ?? null, live });
+  }, [onStatus, isRunning, runnable, runId, assistantName, live]);
+  const waiting = run.interrupts.length > 0 && !isRunning;
 
   return (
     <Resizable orientation="horizontal" className="min-h-0 flex-1">
       <ResizablePanel defaultSize={38} minSize={24}>
         <div className="flex h-full min-h-0 flex-col overflow-auto">
-          <Toolbar aria-label="Run actions">
-            <ToolbarGroup>
-              <ToolbarButton render={<Button appearance="primary" disabled={isRunning || !assistantId || !canRun} />} onClick={() => start(null)}>
-                <Icon icon={Play} /> Run
-              </ToolbarButton>
-              <ToolbarButton render={<Button disabled={!isRunning} />} onClick={() => void stop()}>
-                <Icon icon={Stop} /> Stop
-              </ToolbarButton>
-              <ToolbarSeparator />
-              <ToolbarButton render={<Button appearance="subtle" disabled={!run.runId} />} onClick={() => setRollingBack(true)}>
-                <Icon icon={ArrowUndo} /> Rollback
-              </ToolbarButton>
-            </ToolbarGroup>
-            {live ? <LiveBadge live={live} unit="events/s" /> : null}
-          </Toolbar>
           <div className="flex flex-col gap-stack-md px-inset-lg py-inset-md">
             {assistants.error ? <ErrorState error={assistants.error} onRetry={() => void assistants.reload()} /> : null}
             <Field>
@@ -408,7 +579,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
               <Select value={assistantId} onValueChange={(v) => setAssistantId(v as string)} items={items} placeholder="Choose an assistant">
                 {(assistants.data ?? []).map((a) => (
                   <SelectItem key={a.assistantId} value={a.assistantId}>
-                    {a.name} ({a.graphId})
+                    {a.name} · graph {a.graphId}
                   </SelectItem>
                 ))}
               </Select>
@@ -434,38 +605,55 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
               onSubmit={() => start(null)}
               description={fromCheckpoint ? "Leave it empty to continue from the checkpoint as it is." : inputMissing ? "A new run needs an input." : "The graph's input as JSON, checked against its input schema (Ctrl+Space suggests). Ctrl+Enter runs."}
             />
-            <JsonField label="Config" value={configText} onChange={setConfigText} rows={3} schema={configSchema(schemas.data?.configSchema)} schemaLabel={assistantName ? `${assistantName}'s config schema` : "the config schema"} onSubmit={() => start(null)} description={`Optional, e.g. {"configurable": {"model": "small"}}; checked against the assistant’s config schema.`} />
-            {contextSchema ? <JsonField label="Context" value={contextText} onChange={setContextText} rows={3} schema={contextSchema} schemaLabel={assistantName ? `${assistantName}'s context schema` : "the context schema"} onSubmit={() => start(null)} description="Optional: the graph's runtime context, checked against its context schema." /> : null}
-            <fieldset className="flex flex-col gap-stack-xs">
-              <legend className="text-body-1-strong text-fg">Stream modes</legend>
-              <div className="flex flex-wrap gap-inline-md">
-                {MODES.map((m) => (
-                  <label key={m.id} className="flex items-center gap-inline-xs text-body-1 text-fg">
-                    <Checkbox checked={modes.includes(m.id)} onCheckedChange={(on) => setModes((list) => (on ? [...list, m.id] : list.filter((x) => x !== m.id)))} />
-                    {m.label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <label className="flex items-center gap-inline-sm text-body-1 text-fg">
-              <Switch checked={subgraphs} onCheckedChange={setSubgraphs} />
-              Stream subgraphs
-            </label>
-            <Field>
-              <FieldLabel>Interrupt before</FieldLabel>
-              <Input value={before} onValueChange={setBefore} placeholder="Node names, comma-separated, or *" />
-            </Field>
-            <Field>
-              <FieldLabel>Interrupt after</FieldLabel>
-              <Input value={after} onValueChange={setAfter} placeholder="Node names, comma-separated, or *" />
-              <FieldDescription>{graphView ? `Nodes: ${graphView.nodes.filter((n) => !n.kind || n.kind === "node").map((n) => n.id).join(", ")}` : null}</FieldDescription>
-            </Field>
+            {/* Config and Context sit in the fold (DOC-21 Open question 45: the mockup has no place for them). */}
+            <AdvancedFold summary={advanced.text} problem={advanced.problem} open={advancedOpen} onOpenChange={setAdvancedOpen}>
+              <JsonField label="Config" value={configText} onChange={setConfigText} rows={3} schema={configSchema(schemas.data?.configSchema)} schemaLabel={assistantName ? `${assistantName}'s config schema` : "the config schema"} onSubmit={() => start(null)} description={`Optional, e.g. {"configurable": {"model": "small"}}; checked against the assistant’s config schema.`} />
+              {contextSchema ? <JsonField label="Context" value={contextText} onChange={setContextText} rows={3} schema={contextSchema} schemaLabel={assistantName ? `${assistantName}'s context schema` : "the context schema"} onSubmit={() => start(null)} description="Optional: the graph's runtime context, checked against its context schema." /> : null}
+              <fieldset className="flex flex-col gap-stack-xs">
+                <legend className="text-body-1-strong text-fg">Stream modes</legend>
+                <div className="flex flex-wrap gap-inline-md">
+                  {MODES.map((m) => (
+                    <label key={m.id} className="flex items-center gap-inline-xs text-body-1 text-fg">
+                      <Checkbox checked={modes.includes(m.id)} onCheckedChange={(on) => setModes((list) => (on ? [...list, m.id] : list.filter((x) => x !== m.id)))} />
+                      {m.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <label className="flex items-center gap-inline-sm text-body-1 text-fg">
+                <Switch checked={subgraphs} onCheckedChange={setSubgraphs} />
+                Stream subgraphs
+              </label>
+              <Field>
+                <FieldLabel>Interrupt before</FieldLabel>
+                <Input value={before} onValueChange={setBefore} placeholder="Node names, comma-separated, or *" />
+              </Field>
+              <Field>
+                <FieldLabel>Interrupt after</FieldLabel>
+                <Input value={after} onValueChange={setAfter} placeholder="Node names, comma-separated, or *" />
+                <FieldDescription>{graphView ? `Nodes: ${graphView.nodes.filter((n) => !n.kind || n.kind === "node").map((n) => n.id).join(", ")}` : null}</FieldDescription>
+              </Field>
+            </AdvancedFold>
           </div>
         </div>
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel minSize={30}>
         <div className="flex h-full min-h-0 flex-col gap-stack-md px-inset-lg py-inset-md">
+          {waiting ? (
+            <Alert intent="warning">
+              <AlertTitle>
+                {waitingAt.length > 0 ? `Waiting at ${waitingAt.join(", ")}.` : "Waiting at an interrupt."} <span className="text-body-1 text-fg">The graph asks: {interruptQuestion(run.interrupts[0]!.value)}</span>
+                {run.interrupts.length > 1 ? <span className="text-body-1 text-fg"> (and {run.interrupts.length - 1} more)</span> : null}
+              </AlertTitle>
+              <AlertDescription>Resume with a value, update the state and continue, or go to another node.</AlertDescription>
+              <AlertActions>
+                <Button appearance="secondary" onClick={() => setResuming(true)}>
+                  Resume…
+                </Button>
+              </AlertActions>
+            </Alert>
+          ) : null}
           {error ? <ErrorState error={error} onRetry={() => (lost.current ? join(lost.current.runId, lost.current.lastEventId) : start(null))} /> : null}
           {run.error ? (
             <Alert intent="danger">
@@ -473,17 +661,18 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
               <AlertDescription>{run.error}</AlertDescription>
             </Alert>
           ) : null}
-          {run.interrupts.length > 0 && !isRunning ? (
-            <Alert intent="warning">
-              <AlertTitle>The run is waiting at an interrupt</AlertTitle>
-              <AlertDescription>
+          <Dialog open={resuming && waiting} onOpenChange={(o) => !o && setResuming(false)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Resume the run</DialogTitle>
+                <DialogDescription>{waitingAt.length > 0 ? `The graph waits at ${waitingAt.join(", ")}.` : "The graph waits at an interrupt."}</DialogDescription>
+              </DialogHeader>
+              <DialogBody className="flex flex-col gap-stack-md">
                 {run.interrupts.map((i: RunInterrupt, n) => (
-                  <pre key={i.id ?? n} className="max-h-panel-xs overflow-auto font-mono text-code whitespace-pre-wrap">
+                  <pre key={i.id ?? n} aria-label="Interrupt value" className="max-h-panel-xs overflow-auto rounded-md bg-layer-alt p-inset-xs font-mono text-code whitespace-pre-wrap text-fg">
                     {pretty(i.value)}
                   </pre>
                 ))}
-              </AlertDescription>
-              <div className="flex flex-col gap-stack-sm pt-stack-sm">
                 <ToggleGroup aria-label="How to continue" value={[resumeMode]} onValueChange={(v) => v[0] && setResumeMode(v[0] as ResumeMode)}>
                   <ToggleGroupItem value="resume">Resume with a value</ToggleGroupItem>
                   <ToggleGroupItem value="update">Update state and continue</ToggleGroupItem>
@@ -502,20 +691,32 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, fro
                 ) : (
                   <JsonField label={resumeMode === "resume" ? "Value for interrupt()" : "State update"} value={resumeText} onChange={setResumeText} rows={3} schema={resumeMode === "update" ? partialSchema(schemas.data?.stateSchema) : undefined} />
                 )}
-                <div>
-                  <Button appearance="primary" disabled={resumeCommand() === null} onClick={() => start(resumeCommand())}>
-                    Resume
-                  </Button>
-                </div>
-              </div>
-            </Alert>
-          ) : null}
+              </DialogBody>
+              <DialogFooter>
+                <Button onClick={() => setResuming(false)}>Cancel</Button>
+                <Button
+                  appearance="primary"
+                  disabled={resumeCommand() === null}
+                  onClick={() => {
+                    setResuming(false);
+                    start(resumeCommand());
+                  }}
+                >
+                  Resume
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           {graph.error ? <ErrorState error={graph.error} onRetry={() => void graph.reload()} /> : null}
           {graphView && graphView.nodes.length > 0 ? <GraphView aria-label="Run graph" nodes={graphView.nodes} edges={graphView.edges} groups={graphView.groups} activeIds={run.active} visitedIds={run.visited} className="h-panel-sm shrink-0" /> : null}
           <Tabs value={eventsView} onValueChange={(v) => setEventsView(v as typeof eventsView)} size="small" className="flex min-h-0 flex-1 flex-col">
             <TabsList aria-label="Run output">
-              <TabsTrigger value="messages">Messages ({run.messages.length})</TabsTrigger>
-              <TabsTrigger value="events">Events ({run.count})</TabsTrigger>
+              <TabsTrigger value="messages">
+                Messages <span className="text-fg-muted">{run.messages.length}</span>
+              </TabsTrigger>
+              <TabsTrigger value="events">
+                Events <span className="text-fg-muted">{run.count}</span>
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="messages" className="min-h-0 flex-1 overflow-auto">
               {run.messages.length === 0 ? (
@@ -729,10 +930,9 @@ function StatePanel({ threadId, connId, client, note, version, onChanged }: Pane
 
 // ---- History ----------------------------------------------------------------------------------
 
-function HistoryPanel({ threadId, connId, client, note, version, onChanged, onRunFrom }: PanelProps & { version: number; onChanged: () => void; onRunFrom: (checkpointId: string) => void }) {
+function HistoryPanel({ threadId, connId, client, note, history, onChanged, onRunFrom }: PanelProps & { history: ReturnType<typeof useLoad<api.ThreadState[]>>; onChanged: () => void; onRunFrom: (checkpointId: string) => void }) {
   const toast = useToast();
   const [older, setOlder] = useState<api.ThreadState[]>([]);
-  const history = useLoad(connId ? () => client.langgraph.threads.history({ connId, threadId, limit: 50, before: null }) : null, [connId, threadId, version], note);
   useEffect(() => setOlder([]), [history.data]);
   const all = useMemo(() => [...(history.data ?? []), ...older], [history.data, older]);
   const [selected, setSelected] = useState<string | null>(null);

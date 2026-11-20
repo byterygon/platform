@@ -8,9 +8,26 @@ import { APPEARANCES, appearance, openSuggestions, suggestionRows, suggestionsOn
 
 const lab = (filter: string) => cargo(filter, { features: ["lab-tests"] });
 
-/** The run toolbar's button (the Run sub-tab is a button too). */
-/** A button of the Run bar on screen (other thread tabs stay mounted, hidden; their own view panels are not marked hidden). */
-const runBar = (label: string) => `[...document.querySelectorAll('[aria-label="Run actions"] button')].find((b) => b.checkVisibility() && b.textContent.trim() === ${JSON.stringify(label)})`;
+/**
+ * A button of the thread's header on screen: Stop, More actions, Run (TSK-95; the Run sub-tab is a
+ * button too, and other thread tabs stay mounted, hidden).
+ */
+const runBar = (label: string) => `[...document.querySelectorAll("header button")].find((b) => b.checkVisibility() && (b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)}))`;
+/** A visible button by its text. */
+const visibleButton = (label: string) => `[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === ${JSON.stringify(label)})`;
+/** The Run form's Advanced row (TSK-95), folded at first. */
+const advancedRow = `[...document.querySelectorAll("button[aria-expanded]")].find((b) => b.checkVisibility() && b.textContent.trim().startsWith("Advanced ·"))`;
+/** An item of the open menu, by the start of its text. */
+const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.trim().startsWith(${JSON.stringify(label)}))`;
+/** Fires a pointer's events on an element, as a person's click does (Base UI opens on pointerdown). */
+const press = (selector: string) =>
+  `(() => {
+    const el = ${selector};
+    if (!el) throw new Error("nothing to press");
+    el.focus();
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) el.dispatchEvent(type.startsWith("pointer") ? new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, button: 0, isPrimary: true }) : new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 }));
+    return true;
+  })()`;
 
 /** Opens the LangGraph tool and the lab profile's resource tree, adding the profile first when
  * this browser has none (its defaults point at the lab). A reloaded page reconnects the profile
@@ -127,13 +144,17 @@ export default {
           await until(`${runBar("Run")} && !${runBar("Run")}.hasAttribute("data-disabled") && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
           await run(`__mc.click(${runBar("Run")})`);
           await shot("run started");
-          await until(`__mc.has("The run is waiting at an interrupt")`, "the run stopped at approve's interrupt");
+          await until(`__mc.has("Waiting at ") && __mc.has("The graph asks:")`, "the run stopped at approve's interrupt");
           await until(`document.querySelector('[data-graph-node="plan"][data-visited]')`, "the nodes that ran, lit in the graph");
           await shot("run at the interrupt");
-          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "Resume"))`);
+          // Resume… opens the form in a dialog (TSK-95); its Resume sends the value.
+          await run(`__mc.click(${visibleButton("Resume…")})`);
+          await until(`document.querySelector("[role=dialog]") && [...document.querySelectorAll("[role=dialog] button")].some((b) => b.textContent.trim() === "Resume")`, "the Resume dialog");
+          await shot("the Resume dialog");
+          await run(`__mc.click([...document.querySelectorAll("[role=dialog] button")].find((b) => b.textContent.trim() === "Resume"))`);
           await until(`__mc.has("Final: Here is what I found")`, "the resumed run's final message");
           await shot("resumed to the end");
-          await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && t.textContent.trim() === "History"))`);
+          await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && t.textContent.trim().startsWith("History")))`);
           await until(`__mc.button("Fork from here")`, "the checkpoint history");
           await shot("history");
         }),
@@ -155,6 +176,9 @@ export default {
           await typeInEditor(ctx, "Metadata (JSON)", "");
           await run(`__mc.click(__mc.button("New thread"))`);
           await until(`${runBar("Run")} && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
+          // Context sits in the Advanced fold (TSK-95).
+          await until(advancedRow, "the Advanced row");
+          await run(`__mc.click(${advancedRow})`);
           await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) label")].some((l) => l.textContent.trim() === "Context")`, "the Context field (the graph's context schema)");
           await typeInEditor(ctx, "Context", "{}");
           await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [data-schema-problems]")].some((p) => /1 problem: missing property "user_id" \\(required by [^)]+'s context schema\\)/.test(p.textContent))`, "the context schema's problem listed under the field");
@@ -171,6 +195,50 @@ export default {
             if (!rows.some((r) => r.includes("approved") && r.includes("boolean"))) throw new Error(`JSON completion does not name the type: ${JSON.stringify(rows)}`);
             if (!(await suggestionsOnTop(ctx))) throw new Error(`${theme}/${density}: a suggestion row is covered`);
             await shot(`input suggestions, ${theme}, ${density}`);
+          }
+          await appearance(ctx, "light", "comfortable");
+        }),
+        // TSK-95: the thread as the mockup's langgraph-thread frame (the header's Stop, "…" and
+        // Run; the interrupt callout first; the Advanced row folded), and the threads list's
+        // Advanced (sort and rows per page) as langgraph-threads.
+        vitest("test/langgraph.test.tsx", "thread and threads on the mockup"),
+        browser("the thread's header, the interrupt callout, the Advanced fold, the threads' Advanced (TSK-95)", async (ctx) => {
+          const { page, origin, until, run, shot } = ctx;
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await run(`__mc.dblclick(__mc.item("Threads"))`);
+          await until(`__mc.button("New thread")`, "the Threads tab");
+          await run(`__mc.click(__mc.button("New thread"))`);
+          await until(`${runBar("Run")} && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
+          const summary = await run<string>(`${advancedRow}.textContent.trim()`);
+          if (summary !== "Advanced · values, updates, messages · subgraphs on · no interrupts") throw new Error(`the Advanced row says ${JSON.stringify(summary)}`);
+          await run(`__mc.click(${runBar("Run")})`);
+          await until(`__mc.has("Waiting at ") && __mc.has("The graph asks:")`, "the interrupt callout");
+          await until(`[...document.querySelectorAll("header")].some((h) => h.checkVisibility() && /checkpoint \\S+.*\\d+\\+? checkpoints?/.test(h.textContent))`, "the header's checkpoint and count");
+          // The callout comes before the graph.
+          const first = await run<boolean>(`(() => { const alert = [...document.querySelectorAll("[role=alert], [data-slot=alert]")].find((a) => a.checkVisibility() && a.textContent.includes("Waiting at")); const graph = [...document.querySelectorAll("[data-graph-node]")].find((n) => n.checkVisibility()); return Boolean(alert && graph && (alert.compareDocumentPosition(graph) & Node.DOCUMENT_POSITION_FOLLOWING)); })()`);
+          if (!first) throw new Error("the interrupt callout is not before the graph");
+          for (const [theme, density] of APPEARANCES) {
+            await appearance(ctx, theme, density);
+            await shot(`thread at the interrupt, ${theme}, ${density}`);
+          }
+          await appearance(ctx, "light", "comfortable");
+          await run(`__mc.click(${advancedRow})`);
+          await until(`${advancedRow}.getAttribute("aria-expanded") === "true" && __mc.has("Interrupt before")`, "the Advanced fold open");
+          await shot("the Advanced fold open");
+          await run(press(runBar("More actions")));
+          await until(`${menuItem("Roll back the run")} && ${menuItem("Delete thread")}`, "the header's menu");
+          await shot("the header's menu");
+          await run(press(menuItem("Delete thread")));
+          await until(`[...document.querySelectorAll("[role=alertdialog]")].some((d) => d.textContent.includes("Delete thread"))`, "the delete confirmation");
+          await run(`__mc.click([...document.querySelectorAll("[role=alertdialog] button")].find((b) => b.textContent.trim() === "Delete thread"))`);
+          await until(`__mc.button("New thread") && ${visibleButton("New thread")}`, "back on the threads list");
+          // The threads list's Advanced: sort and rows per page.
+          await run(press(`[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim().startsWith("Advanced"))`));
+          await until(`[...document.querySelectorAll("label")].some((l) => l.checkVisibility() && l.textContent.trim() === "Sort by")`, "the threads' Advanced");
+          for (const [theme, density] of APPEARANCES) {
+            await appearance(ctx, theme, density);
+            await shot(`threads with Advanced open, ${theme}, ${density}`);
           }
           await appearance(ctx, "light", "comfortable");
         }),

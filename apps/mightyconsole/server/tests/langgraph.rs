@@ -553,6 +553,33 @@ async fn threads_state_history_and_fork() {
     .await;
     let err = tab.error(11, Code::NotFound).await;
     assert_eq!(details(&err)["resource"], "thread");
+
+    // Sort and limit from the list's Advanced menu (TSK-95); an unknown order is refused.
+    tab.call(
+        12,
+        "langgraph.threads.search",
+        json!({ "connId": conn, "limit": 200, "sortBy": "created_at", "sortOrder": "asc" }),
+    )
+    .await;
+    tab.result(12).await;
+    assert_eq!(
+        mock.last("/threads/search").body,
+        json!({ "limit": 200, "offset": 0, "sort_by": "created_at", "sort_order": "asc" })
+    );
+    tab.call(
+        13,
+        "langgraph.threads.search",
+        json!({ "connId": conn, "sortBy": "name" }),
+    )
+    .await;
+    tab.error(13, Code::InvalidArgument).await;
+    tab.call(
+        14,
+        "langgraph.threads.search",
+        json!({ "connId": conn, "sortOrder": "up" }),
+    )
+    .await;
+    tab.error(14, Code::InvalidArgument).await;
 }
 
 /// The `jsonl` lines of every chunk of call `id` until its end, and the summary.
