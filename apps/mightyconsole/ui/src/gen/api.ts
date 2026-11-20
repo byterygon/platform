@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:51412292a0934a3509a820e239af773d5b0af47300617c2ec2878b75c4d75070";
+export const SCHEMA_HASH = "sha256:022957b96e3b0e275768f5206a0854cb8ade18fd3ce13e67770a5b4a3c757d93";
 
 // ---- Types
 
@@ -281,6 +281,24 @@ messageType?: string | null,
 wireFormat?: WireFormat | null, };
 
 /**
+ * A Compose project as its containers' labels describe it.
+ */
+export type ComposeProject = { project: string, workingDir?: string, 
+/**
+ * The compose files, comma-separated as Compose writes them.
+ */
+configFiles?: string, services: Array<ComposeService>, };
+
+/**
+ * A Compose service and its containers.
+ */
+export type ComposeService = { service: string, 
+/**
+ * The containers' names.
+ */
+containers: Array<string>, };
+
+/**
  * The Docker tool's profile as `toConnect` builds it (spec §4.4, §10.1).
  */
 export type ConnectDockerProfile = { name: string, 
@@ -451,6 +469,178 @@ s3AccessKeyId?: string | null, s3SecretAccessKey?: string | null, s3SessionToken
  */
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "failed" | "closed";
 
+/**
+ * What an action did to one container.
+ */
+export type ContainerActionResult = { id: string, 
+/**
+ * Docker's reason when it refused; absent on success.
+ */
+error?: string, };
+
+/**
+ * The container's health check and its last results.
+ */
+export type ContainerHealth = { 
+/**
+ * `healthy`, `unhealthy`, `starting` or `none`.
+ */
+status: string, failingStreak: number, 
+/**
+ * The check's command (`Config.Healthcheck.Test`), e.g. `["CMD-SHELL", "curl -f ..."]`.
+ */
+test: Array<string>, intervalSec?: number, 
+/**
+ * Oldest first, as Docker keeps them (the last five).
+ */
+log: Array<HealthResult>, };
+
+export type ContainerIdInput = { connId: string, 
+/**
+ * The container's id, short id or name.
+ */
+id: string, };
+
+/**
+ * `docker.containers.inspect`: the Overview's facts and the raw answer for Inspect.
+ */
+export type ContainerInspectOutput = { overview: ContainerOverview, inspect: Record<string, unknown>, };
+
+/**
+ * A mount: a volume, a bind or a tmpfs.
+ */
+export type ContainerMount = { 
+/**
+ * `volume`, `bind`, `tmpfs`, ...
+ */
+kind: string, 
+/**
+ * The volume's name.
+ */
+name?: string, source: string, destination: string, readWrite: boolean, };
+
+/**
+ * A network the container is attached to.
+ */
+export type ContainerNetwork = { name: string, ipAddress?: string, ipv6Address?: string, gateway?: string, aliases: Array<string>, };
+
+/**
+ * What the Overview shows, read from `docker inspect` (spec §10.4).
+ */
+export type ContainerOverview = { id: string, name: string, image: string, imageId: string, 
+/**
+ * RFC 3339.
+ */
+created: string, state: string, running: boolean, paused: boolean, restarting: boolean, startedAt?: string, finishedAt?: string, exitCode?: number, 
+/**
+ * Why the container failed to start, as Docker says it.
+ */
+error?: string, oomKilled: boolean, restartCount: number, 
+/**
+ * `no`, `always`, `unless-stopped`, `on-failure:3`.
+ */
+restartPolicy: string, command: Array<string>, entrypoint: Array<string>, workingDir: string, user: string, tty: boolean, env: Array<EnvVar>, labels: { [key in string]: string }, mounts: Array<ContainerMount>, networks: Array<ContainerNetwork>, ports: Array<PortBinding>, health?: ContainerHealth, 
+/**
+ * The CPU limit in CPUs (`HostConfig.NanoCpus`), when one is set.
+ */
+cpus?: number, 
+/**
+ * The memory limit in bytes, when one is set.
+ */
+memoryLimit?: number, project?: string, service?: string, };
+
+/**
+ * A published or exposed port of a container.
+ */
+export type ContainerPort = { privatePort: number, 
+/**
+ * `tcp`, `udp` or `sctp`.
+ */
+protocol: string, 
+/**
+ * The host address of a published port (`0.0.0.0`, `::`, `127.0.0.1`).
+ */
+ip?: string, publicPort?: number, };
+
+/**
+ * One row of the Containers table (`GET /containers/json`).
+ */
+export type ContainerRow = { 
+/**
+ * The full 64-character id.
+ */
+id: string, 
+/**
+ * The first name, without Docker's leading `/`.
+ */
+name: string, image: string, imageId: string, command: string, 
+/**
+ * Unix time in seconds.
+ */
+created: number, 
+/**
+ * `created`, `running`, `paused`, `restarting`, `removing`, `exited` or `dead`.
+ */
+state: string, 
+/**
+ * Docker's sentence: `Up 3 hours (healthy)`, `Exited (137) 2 days ago`.
+ */
+status: string, 
+/**
+ * `healthy`, `unhealthy` or `starting`, from the status.
+ */
+health?: string, 
+/**
+ * The exit code of an exited container, from the status.
+ */
+exitCode?: number, ports: Array<ContainerPort>, project?: string, service?: string, labels: { [key in string]: string }, };
+
+export type ContainersActionInput = { connId: string, ids: Array<string>, 
+/**
+ * Seconds to wait for a stop before killing; Docker's default (10) when absent.
+ */
+timeoutSec?: number | null, };
+
+export type ContainersListInput = { connId: string, 
+/**
+ * Stopped containers too; `true` when absent.
+ */
+all?: boolean | null, };
+
+export type ContainersLogsInput = { connId: string, id: string, 
+/**
+ * Keep the stream open for new lines.
+ */
+follow: boolean, 
+/**
+ * The last lines only; the whole log when absent.
+ */
+tail?: number | null, 
+/**
+ * Lines from this time on: RFC 3339 (a line's `ts`) or Unix seconds (`1732093201.5`).
+ */
+since?: string | null, streamId: string, };
+
+export type ContainersLogsSummary = { lines: number, 
+/**
+ * The container has a TTY: one stream, everything on stdout.
+ */
+tty: boolean, 
+/**
+ * `end`: the log ended (not following, or the container stopped).
+ */
+endReason: string, };
+
+export type ContainersRemoveInput = { connId: string, ids: Array<string>, 
+/**
+ * Kill a running container first.
+ */
+force: boolean, 
+/**
+ * Remove its anonymous volumes too (named volumes stay).
+ */
+volumes: boolean, };
+
 export type DecodeInput = { connId?: string | null, 
 /**
  * The bytes, base64.
@@ -478,6 +668,21 @@ export type DockerConnIdInput = { connId: string, };
 export type DockerConnectInput = { profile: ConnectDockerProfile, };
 
 export type DockerConnectOutput = { connId: string, host: HostInfo, };
+
+export type DockerEventsInput = { connId: string, streamId: string, 
+/**
+ * Some of `container`, `image`, `volume`, `network`; all four when absent.
+ */
+types?: Array<string> | null, 
+/**
+ * Only this container's events (its id or name).
+ */
+container?: string | null, 
+/**
+ * Events from this time on (RFC 3339 or Unix seconds), to resume after a reconnect; only
+ * new ones when absent.
+ */
+since?: string | null, };
 
 export type EchoConnIdInput = { connId: string, };
 
@@ -563,6 +768,11 @@ bytes: string, size: number, schemaId?: number, schemaRef?: string, };
  * Why a stream ended.
  */
 export type EndReason = "end" | "limit" | "maxScan" | "cancelled";
+
+/**
+ * An environment variable of the container's configuration.
+ */
+export type EnvVar = { name: string, value: string, };
 
 /**
  * Where in an input text an error is, 1-based (a codec's JSON, a schema, a jq program).
@@ -701,6 +911,11 @@ export type HeaderInput = { key: string, value: string, encoding?: HeaderEncodin
  * An extra header of the profile (custom auth); its value is a secret.
  */
 export type HeaderPair = { name: string, value: string, };
+
+/**
+ * One run of the health check.
+ */
+export type HealthResult = { start: string, end: string, exitCode: number, output: string, };
 
 /**
  * One event of a workflow's history.
@@ -1692,6 +1907,19 @@ encodeInputs?: boolean | null,
 timeoutMs?: number | null, };
 
 export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond: number, };
+
+/**
+ * A port of the container and where it is published.
+ */
+export type PortBinding = { 
+/**
+ * `8000/tcp`.
+ */
+port: string, 
+/**
+ * `127.0.0.1:8080`, `[::]:8080`; empty when the port is only exposed.
+ */
+published: Array<string>, };
 
 /**
  * An inclusive range of offsets or sequences, as decimal strings.
@@ -2999,8 +3227,17 @@ export interface ProcedureDef<
 export interface Procedures {
   readonly "app.events": ProcedureDef<"subscription", Empty, AppEvent, never>;
   readonly "app.info": ProcedureDef<"query", Empty, AppInfo, never>;
+  readonly "docker.compose.projects": ProcedureDef<"query", DockerConnIdInput, Array<ComposeProject>, ToolError>;
   readonly "docker.connect": ProcedureDef<"mutation", DockerConnectInput, DockerConnectOutput, ToolError>;
+  readonly "docker.containers.inspect": ProcedureDef<"query", ContainerIdInput, ContainerInspectOutput, ToolError>;
+  readonly "docker.containers.list": ProcedureDef<"query", ContainersListInput, Array<ContainerRow>, ToolError>;
+  readonly "docker.containers.logs": ProcedureDef<"stream", ContainersLogsInput, ContainersLogsSummary, ToolError>;
+  readonly "docker.containers.remove": ProcedureDef<"mutation", ContainersRemoveInput, Array<ContainerActionResult>, ToolError>;
+  readonly "docker.containers.restart": ProcedureDef<"mutation", ContainersActionInput, Array<ContainerActionResult>, ToolError>;
+  readonly "docker.containers.start": ProcedureDef<"mutation", ContainersActionInput, Array<ContainerActionResult>, ToolError>;
+  readonly "docker.containers.stop": ProcedureDef<"mutation", ContainersActionInput, Array<ContainerActionResult>, ToolError>;
   readonly "docker.disconnect": ProcedureDef<"mutation", DockerConnIdInput, Empty, ToolError>;
+  readonly "docker.events": ProcedureDef<"stream", DockerEventsInput, Empty, ToolError>;
   readonly "docker.host.info": ProcedureDef<"query", DockerConnIdInput, HostInfo, ToolError>;
   readonly "echo.connect": ProcedureDef<"mutation", EchoConnectInput, EchoConnectOutput, ToolError>;
   readonly "echo.disconnect": ProcedureDef<"mutation", EchoConnIdInput, Empty, ToolError>;
@@ -3140,8 +3377,21 @@ export interface Api {
     readonly info: Procedures["app.info"];
   };
   readonly docker: {
+    readonly compose: {
+      readonly projects: Procedures["docker.compose.projects"];
+    };
     readonly connect: Procedures["docker.connect"];
+    readonly containers: {
+      readonly inspect: Procedures["docker.containers.inspect"];
+      readonly list: Procedures["docker.containers.list"];
+      readonly logs: Procedures["docker.containers.logs"];
+      readonly remove: Procedures["docker.containers.remove"];
+      readonly restart: Procedures["docker.containers.restart"];
+      readonly start: Procedures["docker.containers.start"];
+      readonly stop: Procedures["docker.containers.stop"];
+    };
     readonly disconnect: Procedures["docker.disconnect"];
+    readonly events: Procedures["docker.events"];
     readonly host: {
       readonly info: Procedures["docker.host.info"];
     };
@@ -3366,6 +3616,18 @@ export const procedures: Api = {
     },
   },
   docker: {
+    compose: {
+      projects: {
+        name: "docker.compose.projects",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
     connect: {
       name: "docker.connect",
       kind: "mutation",
@@ -3376,6 +3638,78 @@ export const procedures: Api = {
       timeoutDefaultMs: 60000,
       timeoutMaxMs: 300000,
     },
+    containers: {
+      inspect: {
+        name: "docker.containers.inspect",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "docker.containers.list",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      logs: {
+        name: "docker.containers.logs",
+        kind: "stream",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 43200000,
+      },
+      remove: {
+        name: "docker.containers.remove",
+        kind: "mutation",
+        perm: "docker.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 120000,
+        timeoutMaxMs: 300000,
+      },
+      restart: {
+        name: "docker.containers.restart",
+        kind: "mutation",
+        perm: "docker.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 120000,
+        timeoutMaxMs: 720000,
+      },
+      start: {
+        name: "docker.containers.start",
+        kind: "mutation",
+        perm: "docker.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 120000,
+        timeoutMaxMs: 300000,
+      },
+      stop: {
+        name: "docker.containers.stop",
+        kind: "mutation",
+        perm: "docker.write",
+        risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 120000,
+        timeoutMaxMs: 720000,
+      },
+    },
     disconnect: {
       name: "docker.disconnect",
       kind: "mutation",
@@ -3385,6 +3719,16 @@ export const procedures: Api = {
       deprecated: false,
       timeoutDefaultMs: 30000,
       timeoutMaxMs: 300000,
+    },
+    events: {
+      name: "docker.events",
+      kind: "stream",
+      perm: "docker.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 30000,
+      timeoutMaxMs: 43200000,
     },
     host: {
       info: {

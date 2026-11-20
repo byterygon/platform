@@ -172,8 +172,12 @@ impl server::Handler for Host {
                 let paths = Arc::clone(&paths);
                 async move {
                     let path = request.uri().path().to_owned();
-                    paths.lock().unwrap().push(path.clone());
-                    Ok::<_, Infallible>(engine(api, &path))
+                    let full = request
+                        .uri()
+                        .path_and_query()
+                        .map_or(path.clone(), |p| p.to_string());
+                    paths.lock().unwrap().push(full);
+                    Ok::<_, Infallible>(engine(api, request.method(), &path))
                 }
             });
             let _ = hyper::server::conn::http1::Builder::new()
@@ -191,8 +195,89 @@ fn json_response(body: Value) -> Response<Full<Bytes>> {
         .unwrap()
 }
 
+/// A log frame: stream byte, three zero bytes, big-endian length, payload.
+fn log_frame(stream: u8, payload: &[u8]) -> Vec<u8> {
+    let mut out = vec![stream, 0, 0, 0];
+    out.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    out.extend_from_slice(payload);
+    out
+}
+
+fn bytes_response(body: Vec<u8>) -> Response<Full<Bytes>> {
+    Response::builder()
+        .body(Full::new(Bytes::from(body)))
+        .unwrap()
+}
+
+fn no_content(status: u16) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(status)
+        .body(Full::default())
+        .unwrap()
+}
+
 /// The fake Docker Engine.
-fn engine(api: &str, path: &str) -> Response<Full<Bytes>> {
+fn engine(api: &str, method: &hyper::Method, path: &str) -> Response<Full<Bytes>> {
+    use hyper::Method;
+    match (method, path) {
+        (&Method::GET, "/v1.47/containers/json") => json_response(json!([
+            {
+                "Id": "aaa1", "Names": ["/shop-web-1"], "Image": "busybox:1.37", "ImageID": "sha256:b",
+                "Command": "httpd -f", "Created": 1795161601, "State": "running",
+                "Status": "Up 3 hours (healthy)",
+                "Ports": [{ "IP": "127.0.0.1", "PrivatePort": 8080, "PublicPort": 18080, "Type": "tcp" }],
+                "Labels": { "com.docker.compose.project": "shop", "com.docker.compose.service": "web",
+                            "com.docker.compose.project.working_dir": "/srv/shop" },
+            },
+            {
+                "Id": "bbb2", "Names": ["/stopped"], "Image": "busybox:1.37", "ImageID": "sha256:b",
+                "Command": "sh -c 'exit 3'", "Created": 1795161000, "State": "exited",
+                "Status": "Exited (3) 2 hours ago", "Ports": [], "Labels": {},
+            },
+        ])),
+        (&Method::GET, "/v1.47/containers/web/json") => json_response(json!({
+            "Id": "aaa1", "Name": "/shop-web-1", "Created": "2026-11-20T07:00:00Z", "Image": "sha256:b",
+            "State": { "Status": "running", "Running": true, "StartedAt": "2026-11-20T07:00:01Z",
+                       "FinishedAt": "0001-01-01T00:00:00Z", "ExitCode": 0 },
+            "Config": { "Image": "busybox:1.37", "Tty": false, "Env": ["SECRET=hunter2"], "Cmd": ["httpd"] },
+            "HostConfig": { "RestartPolicy": { "Name": "unless-stopped" } },
+        })),
+        (&Method::GET, "/v1.47/containers/tty/json") => {
+            json_response(json!({ "Id": "ccc3", "Name": "/tty", "Config": { "Tty": true } }))
+        }
+        (&Method::GET, "/v1.47/containers/web/logs") => {
+            let mut body = log_frame(1, b"2026-11-20T07:00:01.000000001Z listening on :8080\n");
+            body.extend(log_frame(2, b"2026-11-20T07:00:02.5Z warning 1\n2026-11-20T07:00:03Z warn"));
+            body.extend(log_frame(2, b"ing 2\n"));
+            bytes_response(body)
+        }
+        (&Method::GET, "/v1.47/containers/tty/logs") => bytes_response(
+            b"2026-11-20T07:00:01Z \x1b[32mgreen\x1b[0m tty line\r\n".to_vec(),
+        ),
+        (&Method::POST, "/v1.47/containers/web/start") => no_content(204),
+        (&Method::POST, "/v1.47/containers/stopped/start") => no_content(304),
+        (&Method::DELETE, "/v1.47/containers/stopped") => no_content(204),
+        (&Method::DELETE, "/v1.47/containers/web") => Response::builder()
+            .status(409)
+            .body(Full::new(Bytes::from(
+                json!({ "message": "cannot remove container \"/shop-web-1\": container is running: stop the container before removing or force remove" }).to_string(),
+            )))
+            .unwrap(),
+        (&Method::GET, "/v1.47/events") => bytes_response(
+            [
+                json!({ "Type": "container", "Action": "start", "Actor": { "ID": "aaa1", "Attributes": { "name": "shop-web-1" } }, "timeNano": 1_795_161_601_000_000_000u64 }),
+                json!({ "Type": "network", "Action": "connect", "Actor": { "ID": "n1", "Attributes": { "container": "aaa1" } }, "time": 1795161602 }),
+            ]
+            .iter()
+            .map(|e| format!("{e}\n"))
+            .collect::<String>()
+            .into_bytes(),
+        ),
+        (_, path) => engine_basics(api, path),
+    }
+}
+
+fn engine_basics(api: &str, path: &str) -> Response<Full<Bytes>> {
     match path {
         "/_ping" => Response::builder()
             .header("api-version", api)
@@ -509,4 +594,177 @@ async fn a_session_the_host_ends_turns_the_connection_failed() {
         .await;
     let err = tab.error(3, Code::Unavailable).await;
     assert!(err.message.contains("connect again"), "{}", err.message);
+}
+
+/// Splits a `jsonl` chunk into its lines.
+fn lines(chunk: &[u8]) -> Vec<Value> {
+    assert_eq!(chunk.last(), Some(&b'\n'), "whole lines only");
+    chunk
+        .split(|b| *b == b'\n')
+        .filter(|l| !l.is_empty())
+        .map(|l| serde_json::from_slice(l).unwrap())
+        .collect()
+}
+
+/// Reads a stream's chunks until it ends; returns the lines and the summary.
+async fn drain(tab: &mut Tab, id: u32) -> (Vec<Value>, Value) {
+    let mut all = Vec::new();
+    loop {
+        let frame = tab.frame(id).await;
+        match frame.kind {
+            ambidex::Kind::Chunk => {
+                all.extend(lines(&frame.payload));
+                tab.client.credit(id, 1).await;
+            }
+            ambidex::Kind::StreamEnd => {
+                return (all, serde_json::from_slice(&frame.payload).unwrap());
+            }
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    }
+}
+
+#[tokio::test]
+async fn containers_are_listed_acted_on_and_their_logs_split_by_stream() {
+    let (_t, lab, mut tab) = setup().await;
+    tab.call(
+        2,
+        "docker.connect",
+        json!({ "profile": lab.profile(json!({})) }),
+    )
+    .await;
+    let conn_id = tab.result(2).await["connId"].as_str().unwrap().to_owned();
+
+    tab.call(3, "docker.containers.list", json!({ "connId": conn_id }))
+        .await;
+    let rows = tab.result(3).await;
+    assert_eq!(rows[0]["name"], "shop-web-1");
+    assert_eq!(rows[0]["health"], "healthy");
+    assert_eq!(rows[0]["project"], "shop");
+    assert_eq!(rows[0]["ports"][0]["publicPort"], 18080);
+    assert_eq!(rows[1]["exitCode"], 3);
+
+    tab.call(4, "docker.compose.projects", json!({ "connId": conn_id }))
+        .await;
+    let projects = tab.result(4).await;
+    assert_eq!(projects[0]["project"], "shop");
+    assert_eq!(projects[0]["workingDir"], "/srv/shop");
+    assert_eq!(projects[0]["services"][0]["containers"][0], "shop-web-1");
+
+    // One result per id: a started one, one already running (304), one refused.
+    tab.call(
+        5,
+        "docker.containers.start",
+        json!({ "connId": conn_id, "ids": ["web", "stopped", "missing"] }),
+    )
+    .await;
+    let results = tab.result(5).await;
+    assert_eq!(results[0], json!({ "id": "web" }));
+    assert_eq!(results[1], json!({ "id": "stopped" }));
+    assert!(
+        results[2]["error"]
+            .as_str()
+            .unwrap()
+            .contains("page not found")
+    );
+    tab.call(
+        6,
+        "docker.containers.remove",
+        json!({ "connId": conn_id, "ids": ["stopped", "web"], "force": false, "volumes": true }),
+    )
+    .await;
+    let results = tab.result(6).await;
+    assert_eq!(results[0], json!({ "id": "stopped" }));
+    assert!(
+        results[1]["error"]
+            .as_str()
+            .unwrap()
+            .contains("container is running")
+    );
+
+    // A name that would leave the path is refused before anything is sent.
+    tab.call(
+        7,
+        "docker.containers.stop",
+        json!({ "connId": conn_id, "ids": ["../images"] }),
+    )
+    .await;
+    let err = tab.error(7, Code::InvalidArgument).await;
+    assert_eq!(details(&err)["field"], "ids");
+
+    tab.call(
+        8,
+        "docker.containers.logs",
+        json!({ "connId": conn_id, "id": "web", "follow": false, "tail": 100,
+                "since": "2026-11-20T07:00:00Z", "streamId": "logs-1" }),
+    )
+    .await;
+    let (log, summary) = drain(&mut tab, 8).await;
+    assert_eq!(
+        log,
+        vec![
+            json!({ "ts": "2026-11-20T07:00:01.000000001Z", "stream": "stdout", "text": "listening on :8080" }),
+            json!({ "ts": "2026-11-20T07:00:02.5Z", "stream": "stderr", "text": "warning 1" }),
+            json!({ "ts": "2026-11-20T07:00:03Z", "stream": "stderr", "text": "warning 2" }),
+        ]
+    );
+    assert_eq!(
+        summary,
+        json!({ "lines": 3, "tty": false, "endReason": "end" })
+    );
+
+    tab.call(
+        9,
+        "docker.containers.logs",
+        json!({ "connId": conn_id, "id": "tty", "follow": true, "streamId": "logs-2" }),
+    )
+    .await;
+    let (log, summary) = drain(&mut tab, 9).await;
+    assert_eq!(
+        log,
+        vec![
+            json!({ "ts": "2026-11-20T07:00:01Z", "stream": "stdout", "text": "\u{1b}[32mgreen\u{1b}[0m tty line" })
+        ]
+    );
+    assert_eq!(summary["tty"], true);
+
+    tab.call(
+        10,
+        "docker.events",
+        json!({ "connId": conn_id, "streamId": "events-1", "container": "web" }),
+    )
+    .await;
+    let (events, _) = drain(&mut tab, 10).await;
+    assert_eq!(events[0]["kind"], "container");
+    assert_eq!(events[0]["name"], "shop-web-1");
+    assert_eq!(events[0]["timeMs"], 1_795_161_601_000u64);
+    assert_eq!(events[1]["timeMs"], 1_795_161_602_000u64);
+
+    tab.call(
+        11,
+        "docker.containers.inspect",
+        json!({ "connId": conn_id, "id": "web" }),
+    )
+    .await;
+    let inspect = tab.result(11).await;
+    assert_eq!(inspect["overview"]["name"], "shop-web-1");
+    assert_eq!(inspect["overview"]["restartPolicy"], "unless-stopped");
+    assert_eq!(inspect["overview"]["env"][0]["value"], "hunter2");
+    assert!(inspect["overview"].get("finishedAt").is_none());
+    assert_eq!(inspect["inspect"]["Id"], "aaa1");
+    tab.call(
+        12,
+        "docker.containers.inspect",
+        json!({ "connId": conn_id, "id": "missing" }),
+    )
+    .await;
+    let err = tab.error(12, Code::NotFound).await;
+    assert_eq!(details(&err)["resource"], "container");
+
+    let paths = lab.seen.paths.lock().unwrap().clone();
+    assert!(paths.contains(
+        &"/v1.47/containers/web/logs?stdout=1&stderr=1&timestamps=1&follow=0&tail=100&since=1795158000.000000000".to_owned()
+    ), "{paths:?}");
+    assert!(paths.contains(&"/v1.47/containers/stopped?force=0&v=1".to_owned()));
+    assert!(!paths.iter().any(|p| p.contains("images")));
 }

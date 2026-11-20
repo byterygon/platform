@@ -133,16 +133,7 @@ impl Engine {
         };
         tokio::time::timeout(CALL_TIMEOUT, call)
             .await
-            .unwrap_or_else(|_| {
-                Err(ToolError::new(
-                    ToolErrorKind::Connect,
-                    TOOL,
-                    format!(
-                        "Docker did not answer {path} within {} s",
-                        CALL_TIMEOUT.as_secs()
-                    ),
-                ))
-            })
+            .unwrap_or_else(|_| Err(no_answer(path, CALL_TIMEOUT)))
     }
 
     /// `GET` returning JSON.
@@ -153,6 +144,59 @@ impl Engine {
     ) -> Result<T, ToolError> {
         self.call(Method::GET, path, None, resource).await
     }
+
+    /// A request whose body streams for as long as it lasts (logs, events, stats): the headers
+    /// within [`CALL_TIMEOUT`], an error status read as the error, the body left to the caller.
+    pub async fn stream(
+        &self,
+        method: Method,
+        path: &str,
+        resource: &str,
+    ) -> Result<Incoming, ToolError> {
+        let response = tokio::time::timeout(CALL_TIMEOUT, self.send(method, path, None))
+            .await
+            .unwrap_or_else(|_| Err(no_answer(path, CALL_TIMEOUT)))?;
+        let status = response.status();
+        if !status.is_success() {
+            let bytes = read_body(response, 64 * 1024).await?;
+            return Err(http_error(status, &bytes, resource));
+        }
+        Ok(response.into_body())
+    }
+
+    /// A call whose answer carries nothing to read (start, stop, remove), within `limit`. `304
+    /// Not Modified` (start a running container, stop a stopped one) is success: the container
+    /// is where it was asked to be.
+    pub async fn act(
+        &self,
+        method: Method,
+        path: &str,
+        resource: &str,
+        limit: Duration,
+    ) -> Result<(), ToolError> {
+        let call = async {
+            let response = self.send(method, path, None).await?;
+            let status = response.status();
+            let bytes = read_body(response, 64 * 1024).await?;
+            if status.is_success() || status == StatusCode::NOT_MODIFIED {
+                Ok(())
+            } else {
+                Err(http_error(status, &bytes, resource))
+            }
+        };
+        tokio::time::timeout(limit, call)
+            .await
+            .unwrap_or_else(|_| Err(no_answer(path, limit)))
+    }
+}
+
+/// Docker did not answer `path` in time.
+fn no_answer(path: &str, limit: Duration) -> ToolError {
+    ToolError::new(
+        ToolErrorKind::Connect,
+        TOOL,
+        format!("Docker did not answer {path} within {} s", limit.as_secs()),
+    )
 }
 
 /// `GET /_ping`: the host's API version and the round trip.
@@ -163,16 +207,7 @@ async fn ping(ssh: &SshSession, socket_path: &str) -> Result<(ApiVersion, Ping),
         send(ssh, socket_path, Method::GET, "/_ping", None),
     )
     .await
-    .unwrap_or_else(|_| {
-        Err(ToolError::new(
-            ToolErrorKind::Connect,
-            TOOL,
-            format!(
-                "Docker did not answer /_ping within {} s",
-                CALL_TIMEOUT.as_secs()
-            ),
-        ))
-    })?;
+    .unwrap_or_else(|_| Err(no_answer("/_ping", CALL_TIMEOUT)))?;
     let round_trip = started.elapsed();
     let status = response.status();
     let header = response

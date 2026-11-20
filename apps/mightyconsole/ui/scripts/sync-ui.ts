@@ -31,6 +31,8 @@ export const ITEMS = [
   "combobox",
   // TSK-105 (navigation row): the breadcrumb with its overflow.
   "breadcrumb",
+  // TSK-81 (Docker): a container's logs.
+  "log-viewer",
 ];
 
 interface Item {

@@ -23,6 +23,133 @@ export interface FakeServer {
   produced: api.EchoProduceInput[];
   /** The profile each Docker handle connected with (TSK-81). */
   dockerProfiles: Map<string, api.ConnectDockerProfile>;
+  /** The Docker host's containers (TSK-81 batch 2b). */
+  dockerContainers: api.ContainerRow[];
+  /** Each container's log lines, by name. */
+  dockerLogs: Map<string, { ts: string; stream: "stdout" | "stderr"; text: string }[]>;
+  /** Containers whose logs stay open for pushed lines (as `follow` on a running one). */
+  dockerFollow: Set<string>;
+  /** Pushes `jsonl` lines to the open `docker.events` and followed logs streams. */
+  dockerPush: { events: ((lines: object[]) => void)[]; logs: Map<string, ((lines: object[]) => void)[]> };
+  /** Containers the next action refuses, with Docker's reason. */
+  dockerRefuse: Map<string, string>;
+}
+
+/** A container row as the fake host lists it. */
+export function fakeContainer(name: string, patch: Partial<api.ContainerRow> = {}): api.ContainerRow {
+  return {
+    id: `${name.replace(/[^a-z0-9]/g, "")}${"0".repeat(64)}`.slice(0, 64),
+    name,
+    image: "busybox:1.37",
+    imageId: "sha256:b",
+    command: "sh",
+    created: 1795161601,
+    state: "running",
+    status: "Up 3 hours",
+    ports: [],
+    labels: {},
+    ...patch,
+  };
+}
+
+/** The fake host's containers: the project shop, a stopped one, a TTY one. */
+export function fakeContainers(): api.ContainerRow[] {
+  const shop = (service: string, patch: Partial<api.ContainerRow> = {}) =>
+    fakeContainer(`shop-${service}-1`, {
+      project: "shop",
+      service,
+      labels: { "com.docker.compose.project": "shop", "com.docker.compose.service": service, "com.docker.compose.project.working_dir": "/srv/shop" },
+      ...patch,
+    });
+  return [
+    shop("web", { status: "Up 3 hours (healthy)", health: "healthy", ports: [{ privatePort: 8080, protocol: "tcp", ip: "127.0.0.1", publicPort: 18080 }] }),
+    shop("worker", { state: "restarting", status: "Restarting (1) 12 seconds ago" }),
+    fakeContainer("stopped", { state: "exited", status: "Exited (3) 2 hours ago", exitCode: 3 }),
+    fakeContainer("tty"),
+  ];
+}
+
+/** `docker inspect` of a fake container, with the Overview read from it. */
+export function fakeInspect(row: api.ContainerRow): api.ContainerInspectOutput {
+  const overview: api.ContainerOverview = {
+    id: row.id,
+    name: row.name,
+    image: row.image,
+    imageId: row.imageId,
+    created: "2026-11-20T07:00:00Z",
+    state: row.state,
+    running: row.state === "running",
+    paused: row.state === "paused",
+    restarting: row.state === "restarting",
+    ...(row.state === "running" ? { startedAt: "2026-11-20T07:00:01Z" } : { startedAt: "2026-11-20T07:00:01Z", finishedAt: "2026-11-20T07:00:02Z", exitCode: row.exitCode ?? 0 }),
+    oomKilled: false,
+    restartCount: 0,
+    restartPolicy: "unless-stopped",
+    command: ["sh", "-c", "echo hi; sleep 1000"],
+    entrypoint: [],
+    workingDir: "/app",
+    user: "app",
+    tty: row.name === "tty",
+    env: [
+      { name: "LOG_LEVEL", value: "info" },
+      { name: "STRIPE_API_KEY", value: "sk_test_hidden" },
+    ],
+    labels: row.labels,
+    mounts: [{ kind: "volume", name: "shop_media", source: "/var/lib/docker/volumes/shop_media/_data", destination: "/app/media", readWrite: true }],
+    networks: [{ name: "shop_default", ipAddress: "172.20.0.4", gateway: "172.20.0.1", aliases: [] }],
+    ports: [{ port: "8080/tcp", published: ["127.0.0.1:18080"] }],
+    ...(row.health ? { health: { status: row.health, failingStreak: 0, test: ["CMD-SHELL", "wget -qO- localhost:8080"], intervalSec: 10, log: [{ start: "2026-11-20T08:00:00Z", end: "2026-11-20T08:00:00.1Z", exitCode: 0, output: "ok" }] } } : {}),
+    ...(row.project ? { project: row.project } : {}),
+    ...(row.service ? { service: row.service } : {}),
+  };
+  return { overview, inspect: { Id: row.id, Name: `/${row.name}`, Config: { Env: overview.env.map((e) => `${e.name}=${e.value}`) } } };
+}
+
+/**
+ * A `jsonl` stream call: `first` as one chunk, then (when `pushers` is given) more lines pushed by
+ * the test until it is cancelled, else the summary.
+ */
+function jsonlCall<T>(first: readonly object[], summary: T, pushers?: ((lines: object[]) => void)[]): StreamCall<T, Uint8Array> {
+  const encoder = new TextEncoder();
+  const encode = (lines: readonly object[]) => encoder.encode(lines.map((l) => `${JSON.stringify(l)}\n`).join(""));
+  const queue: Uint8Array[] = first.length > 0 ? [encode(first)] : [];
+  let wake: (() => void) | null = null;
+  let cancelled = false;
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const result = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  result.catch(() => {});
+  const push = (lines: object[]) => {
+    queue.push(encode(lines));
+    wake?.();
+  };
+  pushers?.push(push);
+  return {
+    result,
+    cancel() {
+      cancelled = true;
+      if (pushers) pushers.splice(pushers.indexOf(push), 1);
+      reject(new RpcError("Cancelled", "cancelled", { local: true }));
+      wake?.();
+    },
+    async *chunks() {
+      for (;;) {
+        if (cancelled) return;
+        const next = queue.shift();
+        if (next) {
+          yield next;
+          continue;
+        }
+        if (!pushers) break;
+        await new Promise<void>((r) => (wake = r));
+        wake = null;
+      }
+      resolve(summary);
+    },
+  } as unknown as StreamCall<T, Uint8Array>;
 }
 
 /** The key the fake Docker host presents (TSK-81). */
@@ -65,7 +192,42 @@ export function fakeHostInfo(profile: api.ConnectDockerProfile): api.HostInfo {
 const unavailable = () => new RpcError("Unavailable", "connection closed", { retryable: true, local: true });
 
 export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
-  const server: FakeServer = { calls: [], handles: new Map(), down: false, ticks: 3, connectGate: null, messageChunks: [], produced: [], dockerProfiles: new Map() };
+  const server: FakeServer = {
+    calls: [],
+    handles: new Map(),
+    down: false,
+    ticks: 3,
+    connectGate: null,
+    messageChunks: [],
+    produced: [],
+    dockerProfiles: new Map(),
+    dockerContainers: fakeContainers(),
+    dockerLogs: new Map(),
+    dockerFollow: new Set(),
+    dockerPush: { events: [], logs: new Map() },
+    dockerRefuse: new Map(),
+  };
+  const dockerGone = () => new RpcError("NotFound", "this connection is closed; connect again", { details: { kind: "NotFound", system: "docker", message: "gone", retryable: false, resource: "connection" } });
+  const dockerHandle = (connId: string) => {
+    if (!server.dockerProfiles.has(connId)) throw dockerGone();
+  };
+  const dockerRow = (id: string) => {
+    const row = server.dockerContainers.find((r) => r.name === id || r.id === id);
+    if (!row) throw new RpcError("NotFound", `No such container: ${id}`, { details: { kind: "NotFound", system: "docker", message: `No such container: ${id}`, retryable: false, resource: "container" } });
+    return row;
+  };
+  const dockerAct = (procedure: string, input: { connId: string; ids: string[] }, change: (row: api.ContainerRow) => void): api.ContainerActionResult[] => {
+    record(procedure, input);
+    dockerHandle(input.connId);
+    return input.ids.map((id) => {
+      const refused = server.dockerRefuse.get(id);
+      if (refused) return { id, error: refused };
+      const row = server.dockerContainers.find((r) => r.id === id || r.name === id);
+      if (!row) return { id, error: `No such container: ${id}` };
+      change(row);
+      return { id };
+    });
+  };
   let ids = 0;
   let subscriber: { push(e: api.AppEvent): void; fail(e: unknown): void } | null = null;
   const record = (procedure: string, input: unknown) => server.calls.push({ procedure, input });
@@ -255,6 +417,64 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
           const p = server.dockerProfiles.get(input.connId);
           if (!p) throw new RpcError("NotFound", "this connection is closed; connect again", { details: { kind: "NotFound", system: "docker", message: "gone", retryable: false, resource: "connection" } });
           return fakeHostInfo(p);
+        },
+      },
+      containers: {
+        list: async (input: api.ContainersListInput) => {
+          record("docker.containers.list", input);
+          dockerHandle(input.connId);
+          return server.dockerContainers.map((r) => ({ ...r }));
+        },
+        inspect: async (input: api.ContainerIdInput) => {
+          record("docker.containers.inspect", input);
+          dockerHandle(input.connId);
+          return fakeInspect(dockerRow(input.id));
+        },
+        start: async (input: api.ContainersActionInput) =>
+          dockerAct("docker.containers.start", input, (r) => {
+            r.state = "running";
+            r.status = "Up 1 second";
+            delete r.exitCode;
+          }),
+        stop: async (input: api.ContainersActionInput) =>
+          dockerAct("docker.containers.stop", input, (r) => {
+            r.state = "exited";
+            r.status = "Exited (0) 1 second ago";
+            r.exitCode = 0;
+          }),
+        restart: async (input: api.ContainersActionInput) =>
+          dockerAct("docker.containers.restart", input, (r) => {
+            r.state = "running";
+            r.status = "Up 1 second";
+          }),
+        remove: async (input: api.ContainersRemoveInput) => {
+          const removed: string[] = [];
+          const out = dockerAct("docker.containers.remove", input, (r) => removed.push(r.id));
+          server.dockerContainers = server.dockerContainers.filter((r) => !removed.includes(r.id));
+          return out;
+        },
+        logs: (input: api.ContainersLogsInput) => {
+          record("docker.containers.logs", input);
+          const row = server.dockerContainers.find((r) => r.name === input.id || r.id === input.id);
+          const lines = server.dockerLogs.get(input.id) ?? [];
+          const tail = input.tail === null || input.tail === undefined ? lines : lines.slice(-input.tail);
+          const since = input.since ?? null;
+          const shown = since !== null && since.includes("T") ? tail.filter((l) => l.ts >= since) : tail;
+          const follow = input.follow && server.dockerFollow.has(input.id);
+          const pushers = server.dockerPush.logs.get(input.id) ?? [];
+          server.dockerPush.logs.set(input.id, pushers);
+          return jsonlCall(shown, { lines: shown.length, tty: row?.name === "tty", endReason: "end" }, follow ? pushers : undefined);
+        },
+      },
+      events: (input: api.DockerEventsInput) => {
+        record("docker.events", input);
+        return jsonlCall([], {}, server.dockerPush.events);
+      },
+      compose: {
+        projects: async (input: api.DockerConnIdInput) => {
+          record("docker.compose.projects", input);
+          dockerHandle(input.connId);
+          return [];
         },
       },
     },

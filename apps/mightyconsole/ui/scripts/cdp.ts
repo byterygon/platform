@@ -148,7 +148,7 @@ export const HELPERS = `(() => {
     click: (el) => { if (!el) throw new Error("nothing to click"); el.click(); return true; },
     dblclick: (el) => { if (!el) throw new Error("nothing to double-click"); el.click(); el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); return true; },
     field: (label) => { const l = [...document.querySelectorAll("label")].find((x) => text(x) === label); return l && (l.control || document.getElementById(l.htmlFor)); },
-    type: (el, value) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(el, value); el.dispatchEvent(new Event("input", { bubbles: true })); return true; },
+    type: (el, value) => { el.focus(); const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value").set; set.call(el, value); el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); return true; },
   };
   return true;
 })()`;

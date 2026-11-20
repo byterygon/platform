@@ -47,6 +47,13 @@ fn the_procedures_of_the_spec() {
         ("app.info", Query, "app.read", Risk::Read, defaults),
         // Docker over SSH (TSK-81, spec §10.6): connect waits for SSH, the login and the ping.
         (
+            "docker.compose.projects",
+            Query,
+            "docker.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "docker.connect",
             Mutation,
             "docker.read",
@@ -56,6 +63,68 @@ fn the_procedures_of_the_spec() {
                 Some(Duration::from_secs(300)),
             ),
         ),
+        // Containers and events (TSK-81 batch 2b): stop and restart wait out the grace period.
+        (
+            "docker.containers.inspect",
+            Query,
+            "docker.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "docker.containers.list",
+            Query,
+            "docker.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "docker.containers.logs",
+            Stream,
+            "docker.read",
+            Risk::Read,
+            live,
+        ),
+        (
+            "docker.containers.remove",
+            Mutation,
+            "docker.destroy",
+            Risk::Destructive,
+            (
+                Some(Duration::from_secs(120)),
+                Some(Duration::from_secs(300)),
+            ),
+        ),
+        (
+            "docker.containers.restart",
+            Mutation,
+            "docker.write",
+            Risk::Write,
+            (
+                Some(Duration::from_secs(120)),
+                Some(Duration::from_secs(720)),
+            ),
+        ),
+        (
+            "docker.containers.start",
+            Mutation,
+            "docker.write",
+            Risk::Write,
+            (
+                Some(Duration::from_secs(120)),
+                Some(Duration::from_secs(300)),
+            ),
+        ),
+        (
+            "docker.containers.stop",
+            Mutation,
+            "docker.write",
+            Risk::Write,
+            (
+                Some(Duration::from_secs(120)),
+                Some(Duration::from_secs(720)),
+            ),
+        ),
         (
             "docker.disconnect",
             Mutation,
@@ -63,6 +132,7 @@ fn the_procedures_of_the_spec() {
             Risk::Read,
             defaults,
         ),
+        ("docker.events", Stream, "docker.read", Risk::Read, live),
         (
             "docker.host.info",
             Query,

@@ -86,10 +86,11 @@ export function ConnectionForm({ fields, secrets, storedSecrets, errors, onField
               placeholder={placeholder("privateKey", "Set (paste to replace)", "-----BEGIN OPENSSH PRIVATE KEY-----")}
               disabled={disabled}
             />
-            <FileInput onFilesChange={(files) => void readKeyFile(files)} chooseLabel="Choose key file" emptyLabel="Or paste OpenSSH or PEM text above" disabled={disabled} />
             <FieldDescription>A profile secret: never logged, exported only when you include secrets.</FieldDescription>
             {errors["privateKey"] ? <FieldError match>{errors["privateKey"]}</FieldError> : null}
           </Field>
+          {/* Outside the Field: a Field labels one control, and the key's text area is the one to name. */}
+          <FileInput aria-label="Private key file" onFilesChange={(files) => void readKeyFile(files)} chooseLabel="Choose key file" emptyLabel="Or paste OpenSSH or PEM text above" disabled={disabled} />
           <Field invalid={errors["passphrase"] !== undefined}>
             <FieldLabel>Passphrase</FieldLabel>
             <PasswordInput value={str(secrets["passphrase"])} onValueChange={(v) => onSecrets({ passphrase: v })} placeholder={placeholder("passphrase", "Set (type to replace)", "Only for an encrypted key")} autoComplete="off" disabled={disabled} />

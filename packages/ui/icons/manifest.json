@@ -274,6 +274,14 @@
       { "path": "fluent/copy-24-regular.svg", "size": 24, "style": "regular", "sha256": "70bfc5fe012847d0e026dc92e31fa62b82c0683f3bf74762181a83559bb0a0ba", "upstreamSha256": "df92d70f05a1b0e771ad8fc2383c23d6ac7178bda3b4e7a57e5a03972fa9c1e8" },
       { "path": "fluent/copy-24-filled.svg", "size": 24, "style": "filled", "sha256": "9cb3b6ac34ba5ec90da449c7d3d92854f7b23944c93077f1e5b4d6364a403de4", "upstreamSha256": "4c381a8491613b20f0fbf55d2078c0db154541057591930eec2cd5f72dcd22bc" }
     ] },
+    { "name": "cube", "files": [
+      { "path": "fluent/cube-16-regular.svg", "size": 16, "style": "regular", "sha256": "df062e86e6a716b05de8a8cbd800f7cee44dba3bad4eb9e48e914b626a2c1f8a", "upstreamSha256": "9719df22b46a0d370fc1bc26064eef981f77e6c382c67f325b1b3ef3b2a1cead" },
+      { "path": "fluent/cube-16-filled.svg", "size": 16, "style": "filled", "sha256": "b33ab8611e34178014b59236641494afe192b5d46776e2689d3084d25b6d8ac9", "upstreamSha256": "1c19784df46c62f19e64bb93b3a67dc3794b63db71c66899d7f000a95de10644" },
+      { "path": "fluent/cube-20-regular.svg", "size": 20, "style": "regular", "sha256": "287b598b0e837c10d8006e6a4dd6c351f7af03bafc1561b98bd744f9c5273fe0", "upstreamSha256": "f09591d7306c8ed46ba7cf41465f265023e805e90328bccaa3be2a412d6c3cae" },
+      { "path": "fluent/cube-20-filled.svg", "size": 20, "style": "filled", "sha256": "d9283b4e760cb3dab4a052da559ea9e3b64b6c824db982587ec0ace6b0618cd6", "upstreamSha256": "5f12dcd56a6cff341f60cec8c3c516eeb49970e1092b23b1e3d3817663ba224e" },
+      { "path": "fluent/cube-24-regular.svg", "size": 24, "style": "regular", "sha256": "7950273fbfb55319ecdc404fe29feaa0d7aeb8740275014fdb3cd1e7c328fb02", "upstreamSha256": "b5355fa909afa8ceb767bb95c043a502df5b11354a86004b34fc723f09d3f20d" },
+      { "path": "fluent/cube-24-filled.svg", "size": 24, "style": "filled", "sha256": "ebf3c8ba6fc7a1938218064e25be8ec7789f7cb4a4685a33e86f25a67cc501bb", "upstreamSha256": "49523912b48af3e1d7adcde1b6b1992181b60fd7ec2dd8db61cc29c6eb80e5af" }
+    ] },
     { "name": "database", "files": [
       { "path": "fluent/database-16-regular.svg", "size": 16, "style": "regular", "sha256": "141117ee221dfc399faed1b4e4c903fc9e6ebf2b0d4b1559920657133e6c4d51", "upstreamSha256": "d4305eba54050a83858c90b8f7db6443549ed7081eafc2859706c7b485fa2ed7" },
       { "path": "fluent/database-16-filled.svg", "size": 16, "style": "filled", "sha256": "c033d882ea583f6512e4b7f3c85c4fe5fa199fa253b4f85fab30ff80feb1b4f6", "upstreamSha256": "bb2b42ff0fb3ac0e2349d291be3c00783910a85ce924fc2f5d038f0225872418" },
@@ -584,6 +592,14 @@
       { "path": "fluent/split-vertical-24-regular.svg", "size": 24, "style": "regular", "sha256": "be9bff78e74caa3e093348efe2dd5525b12e46be7054f9bd2e3acace7f206c1e", "upstreamSha256": "40576d1a24d3613ea1c97db753635f5ddba5f7b12d38cefc5d60fa7749681030" },
       { "path": "fluent/split-vertical-24-filled.svg", "size": 24, "style": "filled", "sha256": "b252e8de83336d8faa1ee91f67f79d9d66593e84d3071236f17300d39899d84a", "upstreamSha256": "532dc562dcb17cafb11d4844acdbc39d21b5452025d393399e79bcdb1f4716ea" }
     ] },
+    { "name": "stack", "files": [
+      { "path": "fluent/stack-16-regular.svg", "size": 16, "style": "regular", "sha256": "1d52bddd0bd23ce90ed8fb3e0e85acf10425f8e7279078d47df7cedc17a6df23", "upstreamSha256": "3878405b8b1d3f9b88016a7f74bf8dabca5b36c9d9335f25a95696a1f278ce13" },
+      { "path": "fluent/stack-16-filled.svg", "size": 16, "style": "filled", "sha256": "93b033ce42911b8c24be38b01f96b5cb7ca9743c3b7b7a494449bfcec062799e", "upstreamSha256": "74bbc5d759477b2da995e865a9e728f61ca3ad6776854a12c0fa170bb763ce45" },
+      { "path": "fluent/stack-20-regular.svg", "size": 20, "style": "regular", "sha256": "50d46deb46419dc33d5a62305601689633d8199b5fb35513c8c927c6f7ec2e7a", "upstreamSha256": "e3ad3bed3ff60e4db0fbdf14e68d84d87b8b4de0b41a928c1c7aa6a45292b464" },
+      { "path": "fluent/stack-20-filled.svg", "size": 20, "style": "filled", "sha256": "376b6d4ef815f40419db39e23fc09c1d35e90f2ea91a821a5c79c98decfd359e", "upstreamSha256": "1e21e5bd5fa08fea43a3cce5cfc7861c93cdeb23e0c890b17ea2454b69e93bec" },
+      { "path": "fluent/stack-24-regular.svg", "size": 24, "style": "regular", "sha256": "052f053b38f79e5b64c0151e01ef46e441a8a5b02fbf1094e21abe8570dcd826", "upstreamSha256": "576584f43a21811337503fbdaf490ea5e2ec06d8fa693952bce7357530892ecb" },
+      { "path": "fluent/stack-24-filled.svg", "size": 24, "style": "filled", "sha256": "c00d3b124590b6f60bb7876903e9102c80de845bd69930812f378782c2872bad", "upstreamSha256": "c1ef4dbcc1b09e10c38734381fb428634bdb84d6fb9fae89ba6e96162948a5a3" }
+    ] },
     { "name": "star", "files": [
       { "path": "fluent/star-16-regular.svg", "size": 16, "style": "regular", "sha256": "58e59c61d155110b3320a74e9a1b6d43d17b9b87da26da433bb6f9c411df1098", "upstreamSha256": "6669c812cdec59e45228236e2527c12624c4ee2bc1cb81d11879885038b718ef" },
       { "path": "fluent/star-16-filled.svg", "size": 16, "style": "filled", "sha256": "d70d9853cae8b04dc913331eb1e47111a6f6018b9e4cac8162be8aceca62f981", "upstreamSha256": "2979412aabff467a12d002929b0b155d2289079f5aa42a1123f3f1075f018370" },
@@ -685,6 +701,10 @@
       { "path": "fluent/window-20-filled.svg", "size": 20, "style": "filled", "sha256": "c5d7d82b180495483fed4b969945808182a68c58f9790d02faaa418c7a925031", "upstreamSha256": "ff041a898ee789bae77f7862745666d3917bc0c01d41eeb1660f67a322e2f57d" },
       { "path": "fluent/window-24-regular.svg", "size": 24, "style": "regular", "sha256": "f08e83f21378e70e6052084140d022b9bef223f0b83e95e2ca087743b6557fb7", "upstreamSha256": "ddcaef90add10f8a626973bdffa7411280c6c45dec3c151ee61781a506461e6d" },
       { "path": "fluent/window-24-filled.svg", "size": 24, "style": "filled", "sha256": "964efecc6ce38ffe98046e26fe01c6dc487a3b69687ff24234c3c7558ceb9e4b", "upstreamSha256": "5d9f797063a231d0b882751ebf6d4552eb99359285e9a42f4e63a5440ef993d6" }
+    ] },
+    { "name": "window-console", "files": [
+      { "path": "fluent/window-console-20-regular.svg", "size": 20, "style": "regular", "sha256": "0ac5675f8621f9b350c84835cdf33f5107b292be2fb2dba03b1090ddb4972680", "upstreamSha256": "6d198e13d313e59254a22ccc759fcf47bb32a9f73ae68a075004e0d6ca9aa579" },
+      { "path": "fluent/window-console-20-filled.svg", "size": 20, "style": "filled", "sha256": "9e182954604ef511d6fa3f03e08c4fd45db6c3a64e2c4f4c37f28146a55e8b05", "upstreamSha256": "f66d9be24414efe849da00e486a5d65d7330c6fd667a8a6fddf0cc734a571441" }
     ] }
   ]
 }

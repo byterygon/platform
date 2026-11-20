@@ -5,21 +5,28 @@
 //!   against the profile's trusted one (trust on first use, spec §10.2).
 //! - [`engine`]: the Docker Engine API, HTTP/1.1 over one `direct-streamlocal` channel to the
 //!   socket per request, the API version negotiated from `/_ping` (at least 1.41).
-//! - `docker.connect`, `docker.disconnect`, `docker.host.info` (this batch); containers,
-//!   images, volumes, networks and Compose projects follow in the next batches of TSK-81.
+//! - `docker.connect`, `docker.disconnect`, `docker.host.info` (batch 1).
+//! - [`containers`]: `docker.containers.*`, the list, inspect, start, stop, restart, remove and
+//!   the logs stream (batch 2b); stats and exec follow in batch 2c.
+//! - [`events`]: `docker.events`, the host's events that keep the lists live, and
+//!   `docker.compose.projects` from the containers' labels.
+//! - [`stream`]: the `jsonl` forwarding the logs and the events share.
 //!
 //! When the SSH session ends by itself (the host closed it, keepalives went unanswered), the
 //! handle's state turns `failed` on `app.events` with the reason, and the UI offers to connect
 //! again. Releasing the handle closes the session.
 
+pub mod containers;
 pub mod engine;
+pub mod events;
 pub mod ssh;
+pub mod stream;
 pub mod types;
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use ambidex::{Ctx, rpc};
+use ambidex::{BinarySink, Ctx, rpc};
 use serde_json::Value;
 
 use crate::core::{ConnectionState, Empty, Hub, ToolError, ToolResult};
@@ -294,6 +301,18 @@ impl DockerApi {
         self.0.remove(&ctx.session().id, TOOL, &input.conn_id);
         Ok(Empty {})
     }
+
+    /// The host's events (containers, images, volumes, networks) as `jsonl` lines
+    /// ([`events::DockerEvent`]) until the stream is stopped; the lists refresh rows from them.
+    #[rpc::stream(perm = "docker.read", risk = Risk::Read, timeout_max = "12h")]
+    async fn events(
+        &self,
+        ctx: Ctx,
+        input: events::DockerEventsInput,
+        sink: BinarySink,
+    ) -> ToolResult<Empty> {
+        events::run(&self.0, &ctx, input, &sink).await
+    }
 }
 
 /// Closes the session when the handle is released, and reports a session that ended by itself.
@@ -333,6 +352,8 @@ impl DockerHostApi {
 pub fn mount(router: &ambidex::Router, hub: &Arc<Hub>) -> Result<(), ambidex::RegistryError> {
     router.mount(DockerApi(Arc::clone(hub)))?;
     router.mount(DockerHostApi(Arc::clone(hub)))?;
+    router.mount(containers::DockerContainersApi(Arc::clone(hub)))?;
+    router.mount(events::DockerComposeApi(Arc::clone(hub)))?;
     Ok(())
 }
 
