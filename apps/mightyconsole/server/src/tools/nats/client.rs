@@ -16,7 +16,7 @@ use serde::Deserialize;
 use ts_rs::TS;
 
 use super::TOOL;
-use crate::core::tls::{TlsOptions, client_config};
+use crate::core::tls::{TlsOptions, TlsOptionsError, client_config};
 use crate::core::{ConnectionState, Hub, RemoteError, ToolError, ToolErrorKind};
 
 /// The default server (spec §6.1).
@@ -229,6 +229,18 @@ pub struct Prepared {
 
 /// The async-nats options of a profile; field errors name the profile's field.
 pub fn options(profile: &ConnectNatsProfile) -> Result<Prepared, ToolError> {
+    let tls_config = client_config(&profile.tls.clone().unwrap_or_default());
+    prepare(profile, tls_config)
+}
+
+/// [`options`] with the TLS configuration already built (or why it could not be). It is only
+/// required when the profile asks for TLS: a plain `nats://` profile connects without one, so a
+/// machine with no trust store (a `FROM scratch` image) still reaches a plain server, and a server
+/// that turns out to require TLS fails at connect with a TLS error.
+fn prepare(
+    profile: &ConnectNatsProfile,
+    tls_config: Result<rustls::ClientConfig, TlsOptionsError>,
+) -> Result<Prepared, ToolError> {
     let server_text = servers_of(profile);
     let servers = parse_servers(&server_text)?;
     let tls = wants_tls(profile, &server_text);
@@ -273,15 +285,17 @@ pub fn options(profile: &ConnectNatsProfile) -> Result<Prepared, ToolError> {
                 .map_err(|e| ToolError::invalid(TOOL, "creds", format!("not a .creds file: {e}")))?
         }
     };
-    let tls_options = profile.tls.clone().unwrap_or_default();
-    let config =
-        client_config(&tls_options).map_err(|e| ToolError::invalid(TOOL, e.field, e.message))?;
     options = options
         .name(&connection_name)
         .connection_timeout(CONNECT_TIMEOUT)
         .request_timeout(Some(request_timeout))
-        .tls_client_config(config)
         .require_tls(tls);
+    match tls_config {
+        Ok(config) => options = options.tls_client_config(config),
+        Err(e) if tls => return Err(ToolError::invalid(TOOL, e.field, e.message)),
+        // Plain: no usable trust store is not this connection's problem.
+        Err(_) => {}
+    }
     if let Some(prefix) = non_empty(&profile.inbox_prefix) {
         if prefix.contains(['*', '>', ' ']) {
             return Err(ToolError::invalid(
@@ -602,6 +616,31 @@ mod tests {
         match options(&profile(v)) {
             Ok(_) => panic!("accepted"),
             Err(e) => e,
+        }
+    }
+
+    #[test]
+    fn no_trust_store_only_matters_when_tls_is_asked_for() {
+        // A machine without CA certificates (the FROM scratch image): client_config fails.
+        let none = || {
+            Err(TlsOptionsError {
+                field: "tls.caPem",
+                message: "this system has no trusted CA certificates; pin the server's CA".into(),
+            })
+        };
+        let plain = profile(json!({ "name": "lab", "servers": ["nats://127.0.0.1:4222"] }));
+        let prepared = prepare(&plain, none()).unwrap();
+        assert!(!prepared.tls);
+        for asks in [
+            json!({ "name": "lab", "servers": ["tls://127.0.0.1:4222"] }),
+            json!({ "name": "lab", "tls": { "enabled": true } }),
+        ] {
+            let e = match prepare(&profile(asks), none()) {
+                Ok(_) => panic!("TLS without a trust store accepted"),
+                Err(e) => e,
+            };
+            assert_eq!(e.field.as_deref(), Some("tls.caPem"));
+            assert!(e.message.contains("no trusted CA"));
         }
     }
 
