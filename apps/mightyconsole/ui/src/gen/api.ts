@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:1db06d27c7e30e859d833c7b8ceab4f2ee892b5957f9997a4046622918745d74";
+export const SCHEMA_HASH = "sha256:39ad96791e668202e1647f0db361cd10412d7e26952ce91c5ef7c72b757e30c6";
 
 // ---- Types
 
@@ -595,6 +595,15 @@ health?: string,
  */
 exitCode?: number, ports: Array<ContainerPort>, project?: string, service?: string, labels: { [key in string]: string }, };
 
+/**
+ * A container that uses an image, a volume or a network.
+ */
+export type ContainerUse = { name: string, 
+/**
+ * `running`, `exited`, ...
+ */
+state: string, };
+
 export type ContainersActionInput = { connId: string, ids: Array<string>, 
 /**
  * Seconds to wait for a stop before killing; Docker's default (10) when absent.
@@ -1031,7 +1040,82 @@ export type IdConflictPolicy = "fail" | "useExisting" | "terminateExisting";
  */
 export type IdReusePolicy = "allowDuplicate" | "allowDuplicateFailedOnly" | "rejectDuplicate";
 
+export type ImageRefInput = { connId: string, 
+/**
+ * An id (`sha256:…` or short) or a reference (`busybox:1.37`, `registry.lan:5000/a/b:1`).
+ */
+id: string, };
+
+/**
+ * What removing one image or tag did.
+ */
+export type ImageRemoveResult = { id: string, 
+/**
+ * Tags taken off.
+ */
+untagged: Array<string>, 
+/**
+ * Image and layer ids deleted.
+ */
+deleted: Array<string>, 
+/**
+ * Docker's reason when it refused; absent on success.
+ */
+error?: string, };
+
+/**
+ * One image of `GET /images/json`; the table shows a row per tag.
+ */
+export type ImageRow = { 
+/**
+ * `sha256:…`.
+ */
+id: string, 
+/**
+ * `busybox:1.37`; empty for a dangling image.
+ */
+repoTags: Array<string>, 
+/**
+ * `busybox@sha256:…`.
+ */
+repoDigests: Array<string>, 
+/**
+ * Unix time in seconds.
+ */
+created: number, 
+/**
+ * Bytes, its shared layers included.
+ */
+size: number, 
+/**
+ * Neither a tag nor a digest names it (Docker's `dangling=true`); an image pulled by
+ * digest only is not dangling.
+ */
+dangling: boolean, labels: { [key in string]: string }, 
+/**
+ * Containers made from it, stopped ones too.
+ */
+usedBy: Array<ContainerUse>, };
+
+export type ImagesListInput = { connId: string, };
+
+export type ImagesRemoveInput = { connId: string, 
+/**
+ * Ids or references; a reference removes that tag, and the image with its last tag.
+ */
+ids: Array<string>, 
+/**
+ * Remove an image other tags point at, or one stopped containers use; never one a running
+ * container uses (Docker refuses).
+ */
+force: boolean, };
+
 export type InspectInput = { connId?: string | null, schema: InspectSchema, messageType?: string | null, };
+
+/**
+ * `docker inspect` of an image, a volume or a network.
+ */
+export type InspectOutput = { inspect: Record<string, unknown>, };
 
 /**
  * A schema to inspect: a reference, or a local schema not saved yet (the schema editor).
@@ -1888,6 +1972,54 @@ maxScan?: number | null,
  * Stop after this many matches.
  */
 limit?: number | null, };
+
+export type NetworkIdInput = { connId: string, 
+/**
+ * The network's id or name.
+ */
+id: string, };
+
+/**
+ * One network of `GET /networks`.
+ */
+export type NetworkRow = { id: string, name: string, 
+/**
+ * `bridge`, `host`, `null`, `overlay`, `macvlan`, ...
+ */
+driver: string, 
+/**
+ * `local`, `swarm` or `global`.
+ */
+scope: string, internal: boolean, attachable: boolean, ipv6: boolean, subnets: Array<NetworkSubnet>, 
+/**
+ * RFC 3339.
+ */
+created?: string, labels: { [key in string]: string }, 
+/**
+ * The Compose project that made it.
+ */
+project?: string, 
+/**
+ * `bridge`, `host` or `none`: every engine has it and it cannot be removed.
+ */
+builtIn: boolean, 
+/**
+ * Containers attached to it, stopped ones too.
+ */
+usedBy: Array<ContainerUse>, };
+
+/**
+ * A subnet of a network's IPAM configuration.
+ */
+export type NetworkSubnet = { 
+/**
+ * `172.18.0.0/16`, `fd00::/64`.
+ */
+subnet: string, gateway?: string, };
+
+export type NetworksListInput = { connId: string, };
+
+export type NetworksRemoveInput = { connId: string, ids: Array<string>, };
 
 /**
  * Which part of a message a codec reads or writes.
@@ -2981,6 +3113,43 @@ export type UpdateStateOutput = {
  */
 checkpointId?: string, checkpoint: JsonValue, };
 
+export type VolumeNameInput = { connId: string, name: string, };
+
+/**
+ * One volume of `GET /volumes`.
+ */
+export type VolumeRow = { name: string, driver: string, 
+/**
+ * `local` or `global`.
+ */
+scope: string, mountpoint: string, 
+/**
+ * RFC 3339.
+ */
+createdAt?: string, labels: { [key in string]: string }, 
+/**
+ * The Compose project that made it.
+ */
+project?: string, 
+/**
+ * Bytes on disk, from `/system/df`; absent when Docker did not say.
+ */
+size?: number, 
+/**
+ * Containers that mount it, stopped ones too.
+ */
+usedBy: Array<ContainerUse>, };
+
+export type VolumesListInput = { connId: string, };
+
+export type VolumesListOutput = { volumes: Array<VolumeRow>, 
+/**
+ * Why there are no sizes, when `/system/df` failed.
+ */
+sizeError?: string, };
+
+export type VolumesRemoveInput = { connId: string, names: Array<string>, };
+
 /**
  * Whether encoding writes the Confluent wire format (spec §5.3).
  */
@@ -3269,6 +3438,15 @@ export interface Procedures {
   readonly "docker.disconnect": ProcedureDef<"mutation", DockerConnIdInput, Empty, ToolError>;
   readonly "docker.events": ProcedureDef<"stream", DockerEventsInput, Empty, ToolError>;
   readonly "docker.host.info": ProcedureDef<"query", DockerConnIdInput, HostInfo, ToolError>;
+  readonly "docker.images.inspect": ProcedureDef<"query", ImageRefInput, InspectOutput, ToolError>;
+  readonly "docker.images.list": ProcedureDef<"query", ImagesListInput, Array<ImageRow>, ToolError>;
+  readonly "docker.images.remove": ProcedureDef<"mutation", ImagesRemoveInput, Array<ImageRemoveResult>, ToolError>;
+  readonly "docker.networks.inspect": ProcedureDef<"query", NetworkIdInput, InspectOutput, ToolError>;
+  readonly "docker.networks.list": ProcedureDef<"query", NetworksListInput, Array<NetworkRow>, ToolError>;
+  readonly "docker.networks.remove": ProcedureDef<"mutation", NetworksRemoveInput, Array<ContainerActionResult>, ToolError>;
+  readonly "docker.volumes.inspect": ProcedureDef<"query", VolumeNameInput, InspectOutput, ToolError>;
+  readonly "docker.volumes.list": ProcedureDef<"query", VolumesListInput, VolumesListOutput, ToolError>;
+  readonly "docker.volumes.remove": ProcedureDef<"mutation", VolumesRemoveInput, Array<ContainerActionResult>, ToolError>;
   readonly "echo.connect": ProcedureDef<"mutation", EchoConnectInput, EchoConnectOutput, ToolError>;
   readonly "echo.disconnect": ProcedureDef<"mutation", EchoConnIdInput, Empty, ToolError>;
   readonly "echo.messages.get": ProcedureDef<"query", EchoGetInput, FullMessage, ToolError>;
@@ -3426,6 +3604,21 @@ export interface Api {
     readonly events: Procedures["docker.events"];
     readonly host: {
       readonly info: Procedures["docker.host.info"];
+    };
+    readonly images: {
+      readonly inspect: Procedures["docker.images.inspect"];
+      readonly list: Procedures["docker.images.list"];
+      readonly remove: Procedures["docker.images.remove"];
+    };
+    readonly networks: {
+      readonly inspect: Procedures["docker.networks.inspect"];
+      readonly list: Procedures["docker.networks.list"];
+      readonly remove: Procedures["docker.networks.remove"];
+    };
+    readonly volumes: {
+      readonly inspect: Procedures["docker.volumes.inspect"];
+      readonly list: Procedures["docker.volumes.list"];
+      readonly remove: Procedures["docker.volumes.remove"];
     };
   };
   readonly echo: {
@@ -3791,6 +3984,102 @@ export const procedures: Api = {
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    images: {
+      inspect: {
+        name: "docker.images.inspect",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "docker.images.list",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      remove: {
+        name: "docker.images.remove",
+        kind: "mutation",
+        perm: "docker.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 120000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    networks: {
+      inspect: {
+        name: "docker.networks.inspect",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "docker.networks.list",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      remove: {
+        name: "docker.networks.remove",
+        kind: "mutation",
+        perm: "docker.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 120000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    volumes: {
+      inspect: {
+        name: "docker.volumes.inspect",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      list: {
+        name: "docker.volumes.list",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      remove: {
+        name: "docker.volumes.remove",
+        kind: "mutation",
+        perm: "docker.destroy",
+        risk: "Destructive",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 120000,
         timeoutMaxMs: 300000,
       },
     },

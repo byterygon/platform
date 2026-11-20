@@ -2042,6 +2042,23 @@
       ],
       "type": "object"
     },
+    "ContainerUse": {
+      "description": "A container that uses an image, a volume or a network.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "state": {
+          "description": "`running`, `exited`, ...",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "state"
+      ],
+      "type": "object"
+    },
     "ContainersActionInput": {
       "properties": {
         "connId": {
@@ -3780,6 +3797,154 @@
       ],
       "type": "string"
     },
+    "ImageRefInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "description": "An id (`sha256:…` or short) or a reference (`busybox:1.37`, `registry.lan:5000/a/b:1`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "id"
+      ],
+      "type": "object"
+    },
+    "ImageRemoveResult": {
+      "description": "What removing one image or tag did.",
+      "properties": {
+        "deleted": {
+          "description": "Image and layer ids deleted.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "error": {
+          "description": "Docker's reason when it refused; absent on success.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "untagged": {
+          "description": "Tags taken off.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "untagged",
+        "deleted"
+      ],
+      "type": "object"
+    },
+    "ImageRow": {
+      "description": "One image of `GET /images/json`; the table shows a row per tag.",
+      "properties": {
+        "created": {
+          "description": "Unix time in seconds.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "dangling": {
+          "description": "Neither a tag nor a digest names it (Docker's `dangling=true`); an image pulled by\ndigest only is not dangling.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "`sha256:…`.",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "repoDigests": {
+          "description": "`busybox@sha256:…`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "repoTags": {
+          "description": "`busybox:1.37`; empty for a dangling image.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "size": {
+          "description": "Bytes, its shared layers included.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "usedBy": {
+          "description": "Containers made from it, stopped ones too.",
+          "items": {
+            "$ref": "#/$defs/ContainerUse"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "repoTags",
+        "repoDigests",
+        "created",
+        "size",
+        "dangling",
+        "labels",
+        "usedBy"
+      ],
+      "type": "object"
+    },
+    "ImagesListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "ImagesRemoveInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "force": {
+          "description": "Remove an image other tags point at, or one stopped containers use; never one a running\ncontainer uses (Docker refuses).",
+          "type": "boolean"
+        },
+        "ids": {
+          "description": "Ids or references; a reference removes that tag, and the image with its last tag.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connId",
+        "ids",
+        "force"
+      ],
+      "type": "object"
+    },
     "InspectInput": {
       "properties": {
         "connId": {
@@ -3802,6 +3967,19 @@
       },
       "required": [
         "schema"
+      ],
+      "type": "object"
+    },
+    "InspectOutput": {
+      "description": "`docker inspect` of an image, a volume or a network.",
+      "properties": {
+        "inspect": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "inspect"
       ],
       "type": "object"
     },
@@ -7502,6 +7680,149 @@
       ],
       "type": "object"
     },
+    "NetworkIdInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "description": "The network's id or name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "id"
+      ],
+      "type": "object"
+    },
+    "NetworkRow": {
+      "description": "One network of `GET /networks`.",
+      "properties": {
+        "attachable": {
+          "type": "boolean"
+        },
+        "builtIn": {
+          "description": "`bridge`, `host` or `none`: every engine has it and it cannot be removed.",
+          "type": "boolean"
+        },
+        "created": {
+          "description": "RFC 3339.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driver": {
+          "description": "`bridge`, `host`, `null`, `overlay`, `macvlan`, ...",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "internal": {
+          "type": "boolean"
+        },
+        "ipv6": {
+          "type": "boolean"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "project": {
+          "description": "The Compose project that made it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "description": "`local`, `swarm` or `global`.",
+          "type": "string"
+        },
+        "subnets": {
+          "items": {
+            "$ref": "#/$defs/NetworkSubnet"
+          },
+          "type": "array"
+        },
+        "usedBy": {
+          "description": "Containers attached to it, stopped ones too.",
+          "items": {
+            "$ref": "#/$defs/ContainerUse"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "driver",
+        "scope",
+        "internal",
+        "attachable",
+        "ipv6",
+        "subnets",
+        "labels",
+        "builtIn",
+        "usedBy"
+      ],
+      "type": "object"
+    },
+    "NetworkSubnet": {
+      "description": "A subnet of a network's IPAM configuration.",
+      "properties": {
+        "gateway": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subnet": {
+          "description": "`172.18.0.0/16`, `fd00::/64`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subnet"
+      ],
+      "type": "object"
+    },
+    "NetworksListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "NetworksRemoveInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connId",
+        "ids"
+      ],
+      "type": "object"
+    },
     "Part": {
       "description": "Which part of a message a codec reads or writes.",
       "enum": [
@@ -10923,6 +11244,134 @@
       ],
       "type": "object"
     },
+    "VolumeNameInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "name"
+      ],
+      "type": "object"
+    },
+    "VolumeRow": {
+      "description": "One volume of `GET /volumes`.",
+      "properties": {
+        "createdAt": {
+          "description": "RFC 3339.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driver": {
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "mountpoint": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "project": {
+          "description": "The Compose project that made it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "description": "`local` or `global`.",
+          "type": "string"
+        },
+        "size": {
+          "description": "Bytes on disk, from `/system/df`; absent when Docker did not say.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "usedBy": {
+          "description": "Containers that mount it, stopped ones too.",
+          "items": {
+            "$ref": "#/$defs/ContainerUse"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "driver",
+        "scope",
+        "mountpoint",
+        "labels",
+        "usedBy"
+      ],
+      "type": "object"
+    },
+    "VolumesListInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId"
+      ],
+      "type": "object"
+    },
+    "VolumesListOutput": {
+      "properties": {
+        "sizeError": {
+          "description": "Why there are no sizes, when `/system/df` failed.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "volumes": {
+          "items": {
+            "$ref": "#/$defs/VolumeRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "volumes"
+      ],
+      "type": "object"
+    },
+    "VolumesRemoveInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connId",
+        "names"
+      ],
+      "type": "object"
+    },
     "WireFormat": {
       "description": "Whether encoding writes the Confluent wire format (spec §5.3).",
       "enum": [
@@ -12223,6 +12672,210 @@
       "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ImageRefInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.images.inspect",
+      "output": {
+        "$ref": "#/$defs/InspectOutput"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ImagesListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.images.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ImageRow"
+        },
+        "type": "array"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ImagesRemoveInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.images.remove",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ImageRemoveResult"
+        },
+        "type": "array"
+      },
+      "perm": "docker.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 120000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NetworkIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.networks.inspect",
+      "output": {
+        "$ref": "#/$defs/InspectOutput"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NetworksListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.networks.list",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/NetworkRow"
+        },
+        "type": "array"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/NetworksRemoveInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.networks.remove",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ContainerActionResult"
+        },
+        "type": "array"
+      },
+      "perm": "docker.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 120000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/VolumeNameInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.volumes.inspect",
+      "output": {
+        "$ref": "#/$defs/InspectOutput"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/VolumesListInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.volumes.list",
+      "output": {
+        "$ref": "#/$defs/VolumesListOutput"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/VolumesRemoveInput"
+      },
+      "kind": "mutation",
+      "log_input": false,
+      "name": "docker.volumes.remove",
+      "output": {
+        "items": {
+          "$ref": "#/$defs/ContainerActionResult"
+        },
+        "type": "array"
+      },
+      "perm": "docker.destroy",
+      "redact": [],
+      "risk": "Destructive",
+      "timeout_default_ms": 120000,
       "timeout_max_ms": 300000
     },
     {
@@ -15033,5 +15686,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:1db06d27c7e30e859d833c7b8ceab4f2ee892b5957f9997a4046622918745d74"
+  "schema_hash": "sha256:39ad96791e668202e1647f0db361cd10412d7e26952ce91c5ef7c72b757e30c6"
 }

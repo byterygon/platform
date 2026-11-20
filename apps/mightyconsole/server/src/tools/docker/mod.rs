@@ -8,6 +8,8 @@
 //! - `docker.connect`, `docker.disconnect`, `docker.host.info` (batch 1).
 //! - [`containers`]: `docker.containers.*`, the list, inspect, start, stop, restart, remove and
 //!   the logs stream (batch 2b); [`stats`] and [`exec`] (batch 2c).
+//! - [`resources`]: `docker.images.*`, `docker.volumes.*`, `docker.networks.*`: the lists with
+//!   what uses each item, inspect and remove (batch 3).
 //! - [`events`]: `docker.events`, the host's events that keep the lists live, and
 //!   `docker.compose.projects` from the containers' labels.
 //! - [`stream`]: the `jsonl` forwarding the logs and the events share.
@@ -20,6 +22,7 @@ pub mod containers;
 pub mod engine;
 pub mod events;
 pub mod exec;
+pub mod resources;
 pub mod ssh;
 pub mod stats;
 pub mod stream;
@@ -356,6 +359,9 @@ pub fn mount(router: &ambidex::Router, hub: &Arc<Hub>) -> Result<(), ambidex::Re
     router.mount(DockerHostApi(Arc::clone(hub)))?;
     router.mount(containers::DockerContainersApi(Arc::clone(hub)))?;
     router.mount(events::DockerComposeApi(Arc::clone(hub)))?;
+    router.mount(resources::DockerImagesApi(Arc::clone(hub)))?;
+    router.mount(resources::DockerVolumesApi(Arc::clone(hub)))?;
+    router.mount(resources::DockerNetworksApi(Arc::clone(hub)))?;
     Ok(())
 }
 

@@ -335,7 +335,7 @@ pub struct ContainersLogsSummary {
 
 // ---- Reading Docker's answers -----------------------------------------------------------------
 
-fn text(value: &Value, key: &str) -> String {
+pub(super) fn text(value: &Value, key: &str) -> String {
     value
         .get(key)
         .and_then(Value::as_str)
@@ -343,7 +343,7 @@ fn text(value: &Value, key: &str) -> String {
         .to_owned()
 }
 
-fn non_empty(value: &Value, key: &str) -> Option<String> {
+pub(super) fn non_empty(value: &Value, key: &str) -> Option<String> {
     value
         .get(key)
         .and_then(Value::as_str)
@@ -351,7 +351,7 @@ fn non_empty(value: &Value, key: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn strings(value: Option<&Value>) -> Vec<String> {
+pub(super) fn strings(value: Option<&Value>) -> Vec<String> {
     match value {
         Some(Value::Array(items)) => items
             .iter()
@@ -363,7 +363,7 @@ fn strings(value: Option<&Value>) -> Vec<String> {
     }
 }
 
-fn labels(value: Option<&Value>) -> BTreeMap<String, String> {
+pub(super) fn labels(value: Option<&Value>) -> BTreeMap<String, String> {
     value
         .and_then(Value::as_object)
         .into_iter()
@@ -595,11 +595,15 @@ pub fn overview(inspect: &Value) -> ContainerOverview {
     }
 }
 
-/// A container named in a path: an id or a name (`[A-Za-z0-9_.-]`, as Docker allows).
+/// A container named in a path: an id or a name (`[A-Za-z0-9][A-Za-z0-9_.-]*`, as Docker
+/// allows), so `..` never reaches the path.
 pub fn container_ref<'a>(field: &str, value: &'a str) -> Result<&'a str, ToolError> {
     let value = value.trim().trim_start_matches('/');
-    let ok = !value.is_empty()
-        && value.len() <= 255
+    let ok = value.len() <= 255
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
         && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'));
@@ -783,12 +787,14 @@ pub async fn list(client: &DockerClient, all: bool) -> Result<Vec<ContainerRow>,
     Ok(items.iter().map(container_row).collect())
 }
 
-/// Runs `action` on every id at once; each id gets its own result.
-async fn each(
+/// Runs `action` on every id at once; each id gets its own result. `resource` names what a 404
+/// means (`container`, `volume`, `network`).
+pub(super) async fn each(
     client: &DockerClient,
     ids: &[&str],
     method: Method,
     path: impl Fn(&str) -> String,
+    resource: &str,
     limit: Duration,
 ) -> Vec<ContainerActionResult> {
     join_all(ids.iter().map(|id| {
@@ -797,7 +803,7 @@ async fn each(
         async move {
             let error = client
                 .engine
-                .act(method, &path, "container", limit)
+                .act(method, &path, resource, limit)
                 .await
                 .err()
                 .map(|e| e.message);
@@ -849,6 +855,7 @@ impl DockerContainersApi {
             &ids,
             Method::POST,
             |id| format!("/containers/{id}/{verb}{query}"),
+            "container",
             limit,
         )
         .await)
@@ -897,6 +904,7 @@ impl DockerContainersApi {
             &ids,
             Method::POST,
             |id| format!("/containers/{id}/start"),
+            "container",
             Duration::from_secs(90),
         )
         .await)
@@ -955,6 +963,7 @@ impl DockerContainersApi {
             &ids,
             Method::DELETE,
             |id| format!("/containers/{id}{query}"),
+            "container",
             Duration::from_secs(90),
         )
         .await)

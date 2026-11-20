@@ -506,3 +506,140 @@ async fn drain_bytes(tab: &mut Tab, id: u32) -> (String, Value) {
         }
     }
 }
+
+#[tokio::test]
+async fn lab_images_volumes_and_networks_with_docker_s_refusals() {
+    let (_t, mut tab) = setup().await;
+    let trusted = presented_key(&mut tab, 2).await;
+    tab.call(
+        3,
+        "docker.connect",
+        json!({ "profile": profile(json!({ "hostKey": trusted })) }),
+    )
+    .await;
+    let conn_id = tab.result(3).await["connId"].as_str().unwrap().to_owned();
+    let find = |list: &Value, key: &str, value: &str| {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r[key] == value)
+            .unwrap_or_else(|| panic!("no {value} in {list}"))
+            .clone()
+    };
+    let users = |row: &Value| {
+        row["usedBy"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| u["name"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+
+    // The lab's busybox is pulled by digest: no tag, not dangling, used by running containers.
+    tab.call(4, "docker.images.list", json!({ "connId": conn_id }))
+        .await;
+    let images = tab.result(4).await;
+    let busybox = images
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| {
+            i["repoDigests"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d.as_str().unwrap().starts_with("busybox@"))
+        })
+        .unwrap_or_else(|| panic!("no busybox in {images}"))
+        .clone();
+    assert_eq!(busybox["dangling"], false);
+    assert!(users(&busybox).contains(&"tty".to_owned()), "{busybox}");
+    assert_eq!(busybox["usedBy"][0]["state"], "running");
+    let image_id = busybox["id"].as_str().unwrap().to_owned();
+    tab.call(
+        5,
+        "docker.images.inspect",
+        json!({ "connId": conn_id, "id": image_id }),
+    )
+    .await;
+    assert_eq!(tab.result(5).await["inspect"]["Id"], image_id);
+    tab.call(
+        6,
+        "docker.images.remove",
+        json!({ "connId": conn_id, "ids": [image_id], "force": false }),
+    )
+    .await;
+    let refused = tab.result(6).await;
+    assert!(
+        refused[0]["error"].as_str().unwrap().contains("conflict"),
+        "{refused}"
+    );
+
+    tab.call(7, "docker.volumes.list", json!({ "connId": conn_id }))
+        .await;
+    let out = tab.result(7).await;
+    assert!(out.get("sizeError").is_none(), "{out}");
+    let volumes = &out["volumes"];
+    let cache = find(volumes, "name", "lab-cache");
+    assert_eq!(users(&cache), ["stopped"]);
+    assert!(cache["size"].is_u64(), "{cache}");
+    let shop_data = find(volumes, "name", "shop_shop-data");
+    assert_eq!(shop_data["project"], "shop");
+    assert_eq!(users(&shop_data), ["shop-web-1"]);
+    tab.call(
+        8,
+        "docker.volumes.inspect",
+        json!({ "connId": conn_id, "name": "lab-cache" }),
+    )
+    .await;
+    assert_eq!(tab.result(8).await["inspect"]["Name"], "lab-cache");
+    // A stopped container's volume is in use too.
+    tab.call(
+        9,
+        "docker.volumes.remove",
+        json!({ "connId": conn_id, "names": ["lab-cache"] }),
+    )
+    .await;
+    let refused = tab.result(9).await;
+    assert!(
+        refused[0]["error"].as_str().unwrap().contains("in use"),
+        "{refused}"
+    );
+
+    tab.call(10, "docker.networks.list", json!({ "connId": conn_id }))
+        .await;
+    let networks = tab.result(10).await;
+    let bridge = find(&networks, "name", "bridge");
+    assert_eq!(bridge["builtIn"], true);
+    let lab_net = find(&networks, "name", "lab-net");
+    assert_eq!(lab_net["builtIn"], false);
+    assert!(
+        !lab_net["subnets"].as_array().unwrap().is_empty(),
+        "{lab_net}"
+    );
+    let mut on_lab_net = users(&lab_net);
+    on_lab_net.sort();
+    assert_eq!(on_lab_net, ["stopped", "tty"]);
+    assert_eq!(find(&networks, "name", "shop_shop-net")["project"], "shop");
+    tab.call(
+        11,
+        "docker.networks.inspect",
+        json!({ "connId": conn_id, "id": "lab-net" }),
+    )
+    .await;
+    assert_eq!(tab.result(11).await["inspect"]["Name"], "lab-net");
+    tab.call(
+        12,
+        "docker.networks.remove",
+        json!({ "connId": conn_id, "ids": ["bridge"] }),
+    )
+    .await;
+    let refused = tab.result(12).await;
+    assert!(
+        refused[0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("pre-defined"),
+        "{refused}"
+    );
+}
