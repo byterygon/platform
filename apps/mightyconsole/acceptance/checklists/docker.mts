@@ -2,8 +2,8 @@
 // server's checks: tests/docker.rs against a stand-in SSH server, tests/docker_lab.rs (feature
 // lab-tests) against the lab's sshd and Docker. The UI's: test/docker.test.tsx and
 // test/docker-containers.test.tsx (jsdom), and a walk in the browser against the lab. Batch 1
-// wired host-key and errors, batch 2b the containers and the logs, batch 2c stats and exec; the
-// resources come with their batch. Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
+// wired host-key and errors, batch 2b the containers and the logs, batch 2c stats and exec, batch 3
+// the images, volumes and networks (test/docker-resources.test.tsx). Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -178,7 +178,68 @@ export default {
       id: "resources",
       text: "Images, volumes and networks: list, inspect, remove with the in-use refusal; the host info.",
       lab: true,
-      checks: [],
+      checks: [
+        cargo("images_volumes_and_networks_show_what_uses_them_and_refusals_come_back_per_item"),
+        lab("lab_images_volumes_and_networks_with_docker_s_refusals"),
+        vitest("test/docker-resources.test.tsx", "images"),
+        vitest("test/docker-resources.test.tsx", "volumes and networks"),
+        // The walk removes lab-scratch and lab-scratch-net; the seed brings them back.
+        command("lab: seed the docker host again (lab-scratch, lab-scratch-net)", ["node", "apps/mightyconsole/lab/lab.mts", "seed", "docker"]),
+        browser("images, volumes and networks: in use refused, inspect, unused ones removed; the host", async ({ page, origin, lab: credentials, until, run, shot }) => {
+          const row = (table: string, text: string) => `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) table[aria-label='${table}'] tbody tr")].find((r) => r.textContent.includes(${JSON.stringify(text)}))`;
+          const inDialog = (label: string) => `[...document.querySelectorAll("[role=alertdialog] button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)})`;
+          await page.navigate(`${origin}/`);
+          await labTree({ lab: credentials, until, run, shot });
+
+          // Images: busybox (pulled by digest) runs in tty and the shop: Remove is off, with why.
+          await run(`__mc.dblclick(__mc.item("Images"))`);
+          await until(`location.pathname === "/docker/lab/images"`, "the Images tab");
+          try {
+            await until(`${row("Images", "busybox")}`, "busybox in the images");
+          } catch (e) {
+            await shot("images, not found");
+            throw new Error(`${(e as Error).message}: ${await run<string>(`[...document.querySelectorAll("[role=tabpanel]:not([hidden])")].map((p) => p.textContent.slice(0, 600)).join(" | ") || document.querySelector("main")?.textContent.slice(0, 600)`)}`);
+          }
+          // Used by names two, the rest in its title.
+          await until(`${row("Images", "busybox")}.innerHTML.includes("tty (running)")`, "busybox used by tty");
+          await shot("images");
+          await run(`__mc.click(${row("Images", "busybox")}.querySelector("button[aria-label^='Actions for']"))`);
+          await until(`[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.includes("Remove"))?.getAttribute("aria-disabled") === "true" && __mc.has("Docker refuses to remove an image a running container uses")`, "Remove off for an image in use");
+          await shot("images, in-use refusal");
+          await run(`__mc.click([...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.includes("Inspect")))`);
+          await until(`__mc.has("docker image inspect") && document.querySelector("[role=dialog] [aria-label^='docker image inspect']")`, "the image's inspect");
+          await shot("image inspect");
+          await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+          await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+          await until(`!document.querySelector("[role=dialog]")`, "the sheet closed");
+
+          // Volumes: lab-cache is the stopped container's, so Remove is off; lab-scratch goes by its typed name.
+          await run(`__mc.dblclick(__mc.item("Volumes"))`);
+          await until(`location.pathname === "/docker/lab/volumes" && ${row("Volumes", "lab-scratch")}`, "the volumes");
+          await until(`document.querySelector("button[aria-label='Remove lab-cache: In use by stopped']")?.getAttribute("aria-disabled") === "true"`, "Remove off for lab-cache");
+          await shot("volumes");
+          await run(`__mc.click(document.querySelector("button[aria-label='Remove lab-scratch']"))`);
+          await until(`document.querySelector("[role=alertdialog] input") && document.querySelector("[role=alertdialog]").textContent.includes("lab-scratch to remove it")`, "the typed-name dialog");
+          await run(`__mc.type(document.querySelector("[role=alertdialog] input"), "lab-scratch")`);
+          await shot("remove volume, name typed");
+          await run(`__mc.click(${inDialog("Remove volume")})`);
+          await until(`!${row("Volumes", "lab-scratch")}`, "lab-scratch removed");
+
+          // Networks: bridge is predefined; lab-scratch-net has nothing attached and goes.
+          await run(`__mc.dblclick(__mc.item("Networks"))`);
+          await until(`location.pathname === "/docker/lab/networks" && ${row("Networks", "lab-scratch-net")}`, "the networks");
+          await until(`document.querySelector("button[aria-label^='Remove bridge: Every engine has bridge']")?.getAttribute("aria-disabled") === "true"`, "bridge kept");
+          await shot("networks");
+          await run(`__mc.click(document.querySelector("button[aria-label='Remove lab-scratch-net']"))`);
+          await until(`(document.querySelector("[role=alertdialog]")?.textContent ?? "").includes("Remove network lab-scratch-net?")`, "the confirmation");
+          await run(`__mc.click(${inDialog("Remove network")})`);
+          await until(`!${row("Networks", "lab-scratch-net")}`, "lab-scratch-net removed");
+
+          await run(`__mc.dblclick(__mc.item("Host"))`);
+          await until(`location.pathname === "/docker/lab/host" && __mc.has("Kernel")`, "the host's facts");
+          await shot("host");
+        }),
+      ],
     },
     {
       id: "errors",

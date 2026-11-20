@@ -390,6 +390,22 @@
       { "path": "fluent/folder-open-24-regular.svg", "size": 24, "style": "regular", "sha256": "8c8d30fec57da8f58e0c6f6e939041d5d1deb15bb097c47eb47b98f849e07ab9", "upstreamSha256": "ce6a3115f9f2b48605780bdd7328f6d03b1d7c193b0d8beb63057e49ad802c3e" },
       { "path": "fluent/folder-open-24-filled.svg", "size": 24, "style": "filled", "sha256": "9b158c4f646a3d2ea04f0581d75541e8d59386470d7664e67fd7b95d2ae48873", "upstreamSha256": "f7524b04012e455a721e962ea0e1c2c66341e90eb23c9d46a367f36c7d43adea" }
     ] },
+    { "name": "globe", "files": [
+      { "path": "fluent/globe-16-regular.svg", "size": 16, "style": "regular", "sha256": "b75a1c12c0e7e7cb5c971960a56b58f01794b3eadda052448e79c2312ac6946e", "upstreamSha256": "eb471218a9840b035ac7efbfe82a6475f156d5412abaca8fa18e3a2b40f4960b" },
+      { "path": "fluent/globe-16-filled.svg", "size": 16, "style": "filled", "sha256": "c092c7e97a521a2b0aaf2bd9146268d1aff5c3e323294e0b47fd4ea80aec1a0e", "upstreamSha256": "51aa5cb48663d540b220a31e56a27cd8cba9208fefd2d9d359674acae7a7d9d4" },
+      { "path": "fluent/globe-20-regular.svg", "size": 20, "style": "regular", "sha256": "cd7452f609b27e529ecfb8d9bd0ed9fd21adf38a8ef29a65dd03c2d053bc930d", "upstreamSha256": "acf22c2117985e09961afd4fea939d0c1d577c517a18f9dfba87d7cf72c75ba3" },
+      { "path": "fluent/globe-20-filled.svg", "size": 20, "style": "filled", "sha256": "f45f772af4d2aecfe168b64f227554c2cbe2ed61d8352331b97bb63af61d4a0f", "upstreamSha256": "9e6c9a3c5f84677b8e234f29ab03f9a9d998e087b41f04171b5e6a6ccc7645f8" },
+      { "path": "fluent/globe-24-regular.svg", "size": 24, "style": "regular", "sha256": "f8825736783452b75d76c5f22c33a2f01753704f6128599fa452c456814d6704", "upstreamSha256": "b4b6c808740358fcd26042d72585c44dd66a166b0b51364a4c931956505598ec" },
+      { "path": "fluent/globe-24-filled.svg", "size": 24, "style": "filled", "sha256": "9120d0abad8707b75f72ad2d26bb6af414703f3999cf9a3d27628b7de5d38991", "upstreamSha256": "32f5aa5555d80760fabb0365923fb1331ad25af4a66d511c60dab9f7077c28fa" }
+    ] },
+    { "name": "hard-drive", "files": [
+      { "path": "fluent/hard-drive-16-regular.svg", "size": 16, "style": "regular", "sha256": "740f2c6d8f203c8465c294eeb6c15b5a46f54eb6239d00aacc547cc8b86ad66e", "upstreamSha256": "1589568518676074e730606f69e7a1d8ed943b10b30cebdff7f037dce11aee52" },
+      { "path": "fluent/hard-drive-16-filled.svg", "size": 16, "style": "filled", "sha256": "5958ac7b890d1d56e85701be4ceb1db4b97c9cf1d718c6ce24ff75272de926a9", "upstreamSha256": "64bf59c7fe10675a61e17ada32136221159eeda1af14ad744f57b9c2b766b2a9" },
+      { "path": "fluent/hard-drive-20-regular.svg", "size": 20, "style": "regular", "sha256": "6134cee073d5c75d13fad123946e5e69917161dbcaea9eb3d2fa5428c41124ed", "upstreamSha256": "04551457489e67a9b568cc7d2f710a26776d3675ee4dd92b4535692085104b35" },
+      { "path": "fluent/hard-drive-20-filled.svg", "size": 20, "style": "filled", "sha256": "168914dcacb5fa9762422941c51f35effe1acfa35ccf826030b4820b1bc20a50", "upstreamSha256": "5a64d0e4ae65dcb29564f4f368600ddf91453a1ac35e8939e9f53a3eb08a1f6e" },
+      { "path": "fluent/hard-drive-24-regular.svg", "size": 24, "style": "regular", "sha256": "48125e0faf93fd8101502bb4b2a9c6f830d2fd4592aa2759bc2a3dcc8da8d845", "upstreamSha256": "3f8f488efe3dac7cdd160ece652484e2982dbcb6f12676f339c8f0b296061d17" },
+      { "path": "fluent/hard-drive-24-filled.svg", "size": 24, "style": "filled", "sha256": "a5547c57914dfaa2c4e0dd1cafc3da645ed59573b57961f19fabec8247974ce2", "upstreamSha256": "6d276736d996943b7d150e85ad5efdeeab272b278beff9ede77d6dcbe63ab3b5" }
+    ] },
     { "name": "history", "files": [
       { "path": "fluent/history-16-regular.svg", "size": 16, "style": "regular", "sha256": "8a25fec0a4310f1b7d7a03da824825b6f02f7c700e1185d5532e04573b54148e", "upstreamSha256": "6e6736422b7556378528c0fc10c975a96d3985155df257bea0967c8ed8039e4e" },
       { "path": "fluent/history-16-filled.svg", "size": 16, "style": "filled", "sha256": "b72e30b0f374c88e1da359db66d3e8337dfdd349990690961dbb30b209d3925f", "upstreamSha256": "20d6e0024774b18e8798d2850aa309518de9040cec8066e10825d1a33ac32092" },
@@ -397,6 +413,14 @@
       { "path": "fluent/history-20-filled.svg", "size": 20, "style": "filled", "sha256": "2e4b6c94d731221fcc3315a7746e47d48e5c57bf13e61c64d2b9977a43b51d2b", "upstreamSha256": "22f0f271b44f3297e4677b53c6c65b82707f16b1277fda6f2661ec9ba2d1deb9" },
       { "path": "fluent/history-24-regular.svg", "size": 24, "style": "regular", "sha256": "0710d817e0a8ffd27524ba99dae667c7d73c34c062d9694df11de05a94a1c83d", "upstreamSha256": "e6c4c0ec931c23fe1ebc2f58d6949237ff0b9a08a1947b90cb840e38e353d69d" },
       { "path": "fluent/history-24-filled.svg", "size": 24, "style": "filled", "sha256": "30ae35c1d9ba4cc21d344ef9443c093d96c3d0b4e2951bc917943174875cc203", "upstreamSha256": "c7dc18e4555f7036a02b552d0fb65b47731ba66e2e0488e8f9a5862aedc8545d" }
+    ] },
+    { "name": "image", "files": [
+      { "path": "fluent/image-16-regular.svg", "size": 16, "style": "regular", "sha256": "ae367d57dcb133e1da6d1b5cb8b8654a9698b74a42cf99cdce8d8699d3c3ac8b", "upstreamSha256": "78103d19e457ea13c5bb1a30f23311e1366472b3a0f76c8ae3fd989ed1159159" },
+      { "path": "fluent/image-16-filled.svg", "size": 16, "style": "filled", "sha256": "9064a0dddf93b5bfc65eb8c9f47eb2a5219446043b1018fb2c6e92bf2707273e", "upstreamSha256": "486014b6566f44b6fe5d000c93932ec1137a59948c1e391a5956f0599b40dbf0" },
+      { "path": "fluent/image-20-regular.svg", "size": 20, "style": "regular", "sha256": "f7bcbc89c0cf4acbf7583c2b49e4b0cc69d8808c9efab3465284bc998cbed3e8", "upstreamSha256": "0e57f2cad97fe254f56e0997f877e1bb902efc9e2fc9b14f2091d1ce7301226c" },
+      { "path": "fluent/image-20-filled.svg", "size": 20, "style": "filled", "sha256": "788f5208704c6fcb25ed0f30524cc26aeb1a6e4b2d077dddadd50c2599cfd20f", "upstreamSha256": "a2c80630798d0f82120470b772daf623662445ae438de6447c315ea72d593c23" },
+      { "path": "fluent/image-24-regular.svg", "size": 24, "style": "regular", "sha256": "205ef59cda912a67b298299e2e977d6e879beb872c115baf7a83e034d838a5a2", "upstreamSha256": "028a9cc4eba4b6f9c2264ace17983661011703ab28977258c16040d83e98aa5d" },
+      { "path": "fluent/image-24-filled.svg", "size": 24, "style": "filled", "sha256": "664a75654a1ebea751d31007654726185d3a99458e86387be85ead177c7ddff8", "upstreamSha256": "6dda0278c5884b3512b610143d1d3c39262b9a72ddf2d1c7a787f55431b35edf" }
     ] },
     { "name": "info", "files": [
       { "path": "fluent/info-16-regular.svg", "size": 16, "style": "regular", "sha256": "ec817f869442d04ef384aefc06da1a02941b017cd15a6e1020337dd00b6ad22f", "upstreamSha256": "0128b038bd7e9bce9257a855d3a5a82bdb20d4b8af4e2d94249524d185ad9ee0" },
