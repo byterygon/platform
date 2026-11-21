@@ -719,3 +719,66 @@ async fn lab_disk_usage_counts_and_a_containers_processes() {
     let err = tab.error(9, Code::FailedPrecondition).await;
     assert_eq!(err.details.unwrap()["kind"], "Conflict");
 }
+
+#[tokio::test]
+async fn lab_a_projects_containers_log_apart() {
+    // What a Compose project's merged logs read (batch 4b): each container's log on its own, with
+    // Docker's timestamps, and its start and die events carrying the project's labels.
+    let (_t, mut tab) = setup().await;
+    let trusted = presented_key(&mut tab, 2).await;
+    tab.call(
+        3,
+        "docker.connect",
+        json!({ "profile": profile(json!({ "hostKey": trusted })) }),
+    )
+    .await;
+    let conn_id = tab.result(3).await["connId"].as_str().unwrap().to_owned();
+    for (id, name, text) in [
+        (4, "shop-web-1", "web listening on :8080"),
+        (5, "shop-worker-1", "worker tick"),
+    ] {
+        tab.call(
+            id,
+            "docker.containers.logs",
+            json!({ "connId": conn_id, "id": name, "follow": false, "tail": 20, "streamId": format!("p-{id}") }),
+        )
+        .await;
+        let (log, _) = drain(&mut tab, id).await;
+        assert!(
+            log.iter()
+                .any(|l| l["text"].as_str().unwrap().starts_with(text)),
+            "{name}: {log:?}"
+        );
+        assert!(
+            log.iter().all(|l| l["ts"].as_str().unwrap().ends_with('Z')),
+            "{log:?}"
+        );
+    }
+
+    tab.call(
+        6,
+        "docker.events",
+        json!({ "connId": conn_id, "streamId": "p-e", "types": ["container"], "container": "shop-web-1" }),
+    )
+    .await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tab.call(
+        7,
+        "docker.containers.restart",
+        json!({ "connId": conn_id, "ids": ["shop-web-1"], "timeoutSec": 1 }),
+    )
+    .await;
+    assert_eq!(tab.result(7).await[0], json!({ "id": "shop-web-1" }));
+    let mut seen = Vec::new();
+    while !seen.iter().any(|a: &String| a == "start") {
+        for event in lines(&tab.chunk(6).await) {
+            assert_eq!(event["attributes"]["com.docker.compose.project"], "shop");
+            assert_eq!(event["attributes"]["com.docker.compose.service"], "web");
+            seen.push(event["action"].as_str().unwrap().to_owned());
+        }
+        tab.client.credit(6, 1).await;
+    }
+    assert!(seen.contains(&"die".to_owned()), "{seen:?}");
+    tab.client.cancel(6).await;
+    tab.error(6, Code::Cancelled).await;
+}

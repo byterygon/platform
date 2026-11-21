@@ -110,6 +110,8 @@ describe("URLs (DOC-21 §3.7)", () => {
     { tool: "docker", place: { kind: "docker.images", params: {} }, href: "/docker/prod.eu%2F1/images" },
     { tool: "docker", place: { kind: "docker.volumes", params: {} }, href: "/docker/prod.eu%2F1/volumes" },
     { tool: "docker", place: { kind: "docker.networks", params: {} }, href: "/docker/prod.eu%2F1/networks" },
+    { tool: "docker", place: { kind: "docker.project", params: { project: "shop", view: "logs" } }, href: "/docker/prod.eu%2F1/projects/shop/logs" },
+    { tool: "docker", place: { kind: "docker.project", params: { project: "shop", view: "containers" } }, href: "/docker/prod.eu%2F1/projects/shop/containers" },
   ];
 
   test.each(cases)("$place.kind → $href → the place", ({ tool: id, place, href, back }) => {

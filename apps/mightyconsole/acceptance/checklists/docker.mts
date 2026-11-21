@@ -5,7 +5,7 @@
 // wired host-key and errors, batch 2b the containers and the logs, batch 2c stats and exec, batch 3
 // the images, volumes and networks (test/docker-resources.test.tsx), batch 4 the approved extras
 // (test/docker-host.test.tsx: disk usage and events on the Host page, Processes, the tree's
-// counts). Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
+// counts; test/docker-project.test.tsx: a Compose project's logs merged). Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -273,6 +273,38 @@ export default {
           await run(`__mc.dblclick(__mc.item("Host"))`);
           await until(`location.pathname === "/docker/lab/host" && [...document.querySelectorAll("[role=tabpanel]:not([hidden]) ol[aria-label='Events'] li")].some((li) => li.textContent.includes("container top"))`, "the top event on the Host page");
           await shot("host, events");
+        }),
+        lab("lab_a_projects_containers_log_apart"),
+        vitest("test/docker-project.test.tsx"),
+        browser("the shop project's logs merged with a service column, a service hidden, its restart leaving lines", async ({ page, origin, lab: credentials, until, run, shot }) => {
+          const logHas = (text: string) => `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=log] *")].some((el) => el.childElementCount === 0 && el.textContent.includes(${JSON.stringify(text)}))`;
+          const chip = (label: string) => `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=group][aria-label=Services] button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)})`;
+          await page.navigate(`${origin}/`);
+          await labTree({ lab: credentials, until, run, shot });
+          await run(`__mc.dblclick(__mc.item("shop"))`);
+          await until(`location.pathname === "/docker/lab/projects/shop/logs" && ${logHas("web listening on :8080")} && ${logHas("worker tick")}`, "web's and worker's lines merged", 10_000);
+          await until(`${logHas("web")} && ${logHas("worker")} && __mc.has("Following 2 of 2 containers")`, "the service column, both followed");
+          await shot("project logs");
+          await run(`__mc.click(${chip("worker")})`);
+          await until(`!${logHas("worker tick")} && ${logHas("web listening on :8080")}`, "worker hidden");
+          await shot("project logs, web only");
+          await run(`__mc.click(${chip("worker")})`);
+          await until(`${logHas("worker tick")}`, "worker shown again");
+
+          // Containers: the project's only, with its menu; Restart all leaves a stop line per container and they join again.
+          await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim().startsWith("Containers") && t.offsetParent !== null))`);
+          await until(`location.pathname === "/docker/lab/projects/shop/containers" && ${visible("shop-web-1")} && !${visible("tty")}`, "the project's containers");
+          await shot("project containers");
+          await run(`__mc.click(document.querySelector("button[aria-label='Actions for project shop']"))`);
+          await until(`[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.includes("Restart all"))`, "the project menu");
+          await run(`__mc.click([...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.includes("Restart all")))`);
+          await until(`[...document.querySelectorAll("[role=alertdialog] button")].find((b) => b.textContent.trim() === "Restart 2 containers")`, "the confirmation");
+          await run(`__mc.click([...document.querySelectorAll("[role=alertdialog] button")].find((b) => b.textContent.trim() === "Restart 2 containers"))`);
+          await until(`!document.querySelector("[role=alertdialog]")`, "restarted");
+          await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === "Logs" && t.offsetParent !== null))`);
+          await until(`location.pathname === "/docker/lab/projects/shop/logs" && ${logHas("[shop-worker-1 stopped")} && ${logHas("[shop-web-1 stopped")}`, "a line per stopped container", 30_000);
+          await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=log] *")].filter((el) => el.childElementCount === 0 && el.textContent === "web listening on :8080").length >= 2 && __mc.has("Following 2 of 2 containers")`, "both joined again after the restart", 30_000);
+          await shot("project logs after a restart");
         }),
       ],
     },

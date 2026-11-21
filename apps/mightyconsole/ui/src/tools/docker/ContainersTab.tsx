@@ -4,7 +4,7 @@
 // `docker.events` with no polling (the footer names the last event); a filter box (name, image,
 // label) and chips (All, Running, Stopped, Problems); multi-select Start, Stop, Restart and Remove
 // (actions that make no sense for the selection are off); a project's menu stops or restarts all
-// its containers and asks once (§10.5). Remove names what goes, says named volumes stay, and offers
+// its containers and asks once (§10.5), and its name opens the project's tab (batch 4b). Remove names what goes, says named volumes stay, and offers
 // the anonymous volumes and Force; failures stay selected with their reason.
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogBody, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -76,7 +76,12 @@ function outcome(verb: string, done: number, failed: readonly { name: string; er
   };
 }
 
-export function ContainersTab({ profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+export interface ContainersTabProps extends TabProps {
+  /** Only this Compose project's containers, without the page header (a project tab's Containers view). */
+  project?: string | undefined;
+}
+
+export function ContainersTab({ profile, connId, client, useTabActions, note, openTab, go: goProp, project }: ContainersTabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
   const [rows, setRows] = useState<ContainerRow[] | null>(null);
@@ -137,7 +142,7 @@ export function ContainersTab({ profile, connId, client, useTabActions, note, op
     return () => clearInterval(timer);
   }, []);
 
-  const all = useMemo(() => rows ?? [], [rows]);
+  const all = useMemo(() => (rows ?? []).filter((r) => project === undefined || r.project === project), [rows, project]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.id, all.filter((r) => matchesFilter(r, f.id)).length])) as Record<ContainerFilter, number>, [all]);
   const shown = useMemo(() => all.filter((r) => matchesFilter(r, filter) && matchesSearch(r, search)), [all, filter, search]);
   const groups = useMemo(() => (grouped ? groupByProject(shown) : [{ project: null, rows: groupByProject(shown).flatMap((g) => g.rows) }]), [grouped, shown]);
@@ -190,22 +195,24 @@ export function ContainersTab({ profile, connId, client, useTabActions, note, op
 
   return (
     <Page>
-      <PageHeader
-        title="Containers"
-        adornment={
-          events.live ? (
-            <Badge appearance="tint" variant="success">
-              Live
-            </Badge>
-          ) : null
-        }
-        subtitle={[profile.name, rows ? `${all.length} ${all.length === 1 ? "container" : "containers"}` : null, rows ? `${running} running` : null, restarting > 0 ? `${restarting} restarting` : null].filter(Boolean).join(" · ")}
-        actions={
-          <Button appearance="subtle" onClick={() => void load()} loading={loading && rows !== null}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </Button>
-        }
-      />
+      {project === undefined ? (
+        <PageHeader
+          title="Containers"
+          adornment={
+            events.live ? (
+              <Badge appearance="tint" variant="success">
+                Live
+              </Badge>
+            ) : null
+          }
+          subtitle={[profile.name, rows ? `${all.length} ${all.length === 1 ? "container" : "containers"}` : null, rows ? `${running} running` : null, restarting > 0 ? `${restarting} restarting` : null].filter(Boolean).join(" · ")}
+          actions={
+            <Button appearance="subtle" onClick={() => void load()} loading={loading && rows !== null}>
+              <Icon icon={ArrowClockwise} /> Refresh
+            </Button>
+          }
+        />
+      ) : null}
       <PageBar aria-label="Filters and actions">
         <SearchInput aria-label="Filter containers" value={search} onValueChange={setSearch} placeholder="Filter by name, image or label" className="w-panel-xs" />
         <span className="flex items-center gap-inline-xs">
@@ -215,9 +222,11 @@ export function ContainersTab({ profile, connId, client, useTabActions, note, op
             </ToggleButton>
           ))}
         </span>
-        <label className="flex items-center gap-inline-sm whitespace-nowrap text-body-1 text-fg">
-          <Checkbox checked={grouped} onCheckedChange={(c) => setGrouped(c === true)} /> Group by project
-        </label>
+        {project === undefined ? (
+          <label className="flex items-center gap-inline-sm whitespace-nowrap text-body-1 text-fg">
+            <Checkbox checked={grouped} onCheckedChange={(c) => setGrouped(c === true)} /> Group by project
+          </label>
+        ) : null}
         <span className="flex-1" />
         {selection.length > 0 ? (
           <>
@@ -298,7 +307,13 @@ export function ContainersTab({ profile, connId, client, useTabActions, note, op
                       <TableCell colSpan={7}>
                         <span className="flex min-w-0 items-center gap-inline-md">
                           {group.project !== null ? <Icon icon={Stack} /> : null}
-                          <span className="text-body-1-strong text-fg">{group.project ?? "No project"}</span>
+                          {group.project !== null && project === undefined ? (
+                            <LinkButton className="text-body-1-strong" title={`Open ${group.project}'s merged logs`} onOpen={(event) => go({ kind: "docker.project", params: { project: group.project!, view: "logs" }, title: group.project! }, event)}>
+                              {group.project}
+                            </LinkButton>
+                          ) : (
+                            <span className="text-body-1-strong text-fg">{group.project ?? "No project"}</span>
+                          )}
                           <span className="truncate text-body-1 text-fg-muted">
                             {countWords(group.rows)}
                             {group.workingDir ? (
