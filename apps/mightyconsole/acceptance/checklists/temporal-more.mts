@@ -67,6 +67,14 @@ function temporalCli(): string {
   }
   return path;
 }
+/**
+ * A row of the resource tree under the profile `profile` (the tree is flat: its rows follow the
+ * profile's row at a deeper aria-level). `__mc.item` takes the first row anywhere, so with another
+ * profile connected and open (lab-temporal, from the earlier walks) it found that profile's
+ * Workers and Workflows instead, and the walk opened a list without its workflow.
+ */
+const itemOf = (profile: string, label: string) =>
+  `(() => { const text = (el) => (el.textContent || "").replace(/\\s+/g, " ").trim(); const rows = [...document.querySelectorAll("[role=treeitem]")]; const i = rows.findIndex((r) => text(r).startsWith(${JSON.stringify(profile)})); if (i < 0) return undefined; const level = Number(rows[i].getAttribute("aria-level")); for (const r of rows.slice(i + 1)) { if (Number(r.getAttribute("aria-level")) <= level) return undefined; if (text(r).startsWith(${JSON.stringify(label)})) return r; } return undefined; })()`;
 /** A switch by the text of its label. */
 const switchOf = (label: string) => `[...document.querySelectorAll("label")].find((l) => l.checkVisibility() && l.textContent.trim() === ${JSON.stringify(label)})?.querySelector("[role=switch]")`;
 /** A field of the profile sheet by its label (the sheet's own form). */
@@ -232,9 +240,9 @@ export default {
           await run(`__mc.click(__mc.button("Save"))`);
           await until(`__mc.item("lab-s3")`, "the saved profile");
           await run(`__mc.dblclick(__mc.item("lab-s3"))`);
-          await until(`__mc.item("Workers")`, "temporal.connect with External Storage");
+          await until(itemOf("lab-s3", "Workers"), "temporal.connect with External Storage");
           // Mightyconsole reads the stored input with the profile's keys.
-          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await run(`__mc.dblclick(${itemOf("lab-s3", "Workflows")})`);
           await until(`__mc.has("big-payload-1")`, "the workflow list");
           await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "big-payload-1"))`);
           await until(`[...document.querySelectorAll("[role=tab]")].some((t) => t.checkVisibility() && t.textContent.trim() === "Input and result")`, "the workflow tab");
@@ -332,8 +340,8 @@ export default {
           await run(`__mc.click(__mc.button("Save"))`);
           await until(`__mc.item("lab-codec")`, "the saved profile");
           await run(`__mc.dblclick(__mc.item("lab-codec"))`);
-          await until(`__mc.item("Workers")`, "temporal.connect with the codec");
-          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await until(itemOf("lab-codec", "Workers"), "temporal.connect with the codec");
+          await run(`__mc.dblclick(${itemOf("lab-codec", "Workflows")})`);
           await until(`__mc.has("encrypted-1")`, "the workflow list");
           await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "encrypted-1"))`);
           await until(`[...document.querySelectorAll("[role=tab]")].some((t) => t.checkVisibility() && t.textContent.trim() === "Input and result")`, "the workflow tab");
