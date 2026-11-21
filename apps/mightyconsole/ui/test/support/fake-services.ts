@@ -567,6 +567,22 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
           if (!p) throw new RpcError("NotFound", "this connection is closed; connect again", { details: { kind: "NotFound", system: "docker", message: "gone", retryable: false, resource: "connection" } });
           return fakeHostInfo(p);
         },
+        df: async (input: api.DockerConnIdInput): Promise<api.DiskUsage> => {
+          record("docker.host.df", input);
+          dockerHandle(input.connId);
+          if (server.dockerDfError) throw new RpcError("Unavailable", server.dockerDfError, { details: { kind: "Remote", system: "docker", message: server.dockerDfError, retryable: true } });
+          return {
+            images: { count: server.dockerImages.length, active: 3, size: 3_100_000_000, reclaimable: 1_200_000_000 },
+            containers: { count: server.dockerContainers.length, active: server.dockerContainers.filter((r) => r.state === "running").length, size: 184_000_000, reclaimable: 31_000_000 },
+            volumes: { count: server.dockerVolumes.length, active: 2, size: 12_500_000_000, reclaimable: 740_000_000 },
+            buildCache: { count: 0, active: 0, size: 0, reclaimable: 0 },
+          };
+        },
+        counts: async (input: api.DockerConnIdInput): Promise<api.HostCounts> => {
+          record("docker.host.counts", input);
+          dockerHandle(input.connId);
+          return { images: server.dockerImages.length, volumes: server.dockerVolumes.length, networks: server.dockerNetworks.length };
+        },
       },
       containers: {
         list: async (input: api.ContainersListInput) => {
@@ -601,6 +617,19 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
           const out = dockerAct("docker.containers.remove", input, (r) => removed.push(r.id));
           server.dockerContainers = server.dockerContainers.filter((r) => !removed.includes(r.id));
           return out;
+        },
+        top: async (input: api.ContainerIdInput): Promise<api.ContainerTop> => {
+          record("docker.containers.top", input);
+          dockerHandle(input.connId);
+          const row = dockerRow(input.id);
+          if (row.state !== "running") throw new RpcError("FailedPrecondition", `Container ${row.id} is not running`, { details: { kind: "Conflict", system: "docker", message: `Container ${row.id} is not running`, retryable: false } });
+          return {
+            titles: ["UID", "PID", "PPID", "C", "STIME", "TTY", "TIME", "CMD"],
+            processes: [
+              ["app", "4121", "4100", "0", "07:12", "?", "00:00:01", "/usr/local/bin/python /usr/local/bin/gunicorn shop.wsgi"],
+              ["app", "4188", "4121", "11", "07:12", "?", "00:02:13", "gunicorn: worker [shop.wsgi]"],
+            ],
+          };
         },
         stats: (input: api.ContainersStatsInput) => {
           record("docker.containers.stats", input);

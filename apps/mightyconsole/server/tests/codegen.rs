@@ -140,6 +140,13 @@ fn the_procedures_of_the_spec() {
             ),
         ),
         (
+            "docker.containers.top",
+            Query,
+            "docker.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "docker.disconnect",
             Mutation,
             "docker.read",
@@ -147,6 +154,14 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         ("docker.events", Stream, "docker.read", Risk::Read, live),
+        (
+            "docker.host.counts",
+            Query,
+            "docker.read",
+            Risk::Read,
+            defaults,
+        ),
+        ("docker.host.df", Query, "docker.read", Risk::Read, defaults),
         (
             "docker.host.info",
             Query,

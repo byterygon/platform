@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:39ad96791e668202e1647f0db361cd10412d7e26952ce91c5ef7c72b757e30c6";
+export const SCHEMA_HASH = "sha256:5d78b3128406fd0fbdd51f8c24483f9e63fae5e1959d456a0077903a1d303cd8";
 
 // ---- Types
 
@@ -596,6 +596,20 @@ health?: string,
 exitCode?: number, ports: Array<ContainerPort>, project?: string, service?: string, labels: { [key in string]: string }, };
 
 /**
+ * `docker.containers.top`: the processes of a running container, as the host's `ps` printed
+ * them (`ps -ef` by default; a BusyBox host prints fewer columns).
+ */
+export type ContainerTop = { 
+/**
+ * The column names: `UID`, `PID`, `PPID`, `C`, `STIME`, `TTY`, `TIME`, `CMD`, ...
+ */
+titles: Array<string>, 
+/**
+ * One row per process, a value per title.
+ */
+processes: Array<Array<string>>, };
+
+/**
  * A container that uses an image, a volume or a network.
  */
 export type ContainerUse = { name: string, 
@@ -694,6 +708,41 @@ export type DecodeOptions = { key?: CodecChoice, value?: CodecChoice,
 maxPayloadBytes?: number | null, };
 
 export type DecodeOutput = { codec: CodecId, text?: string, json?: JsonValue, schemaRef?: string, error?: string, };
+
+/**
+ * `docker.host.df`: the host's disk usage per kind.
+ */
+export type DiskUsage = { images: DiskUsageKind, 
+/**
+ * The containers' writable layers.
+ */
+containers: DiskUsageKind, 
+/**
+ * Local volumes; a size Docker could not read counts as 0.
+ */
+volumes: DiskUsageKind, buildCache: DiskUsageKind, };
+
+/**
+ * One kind of `docker system df`.
+ */
+export type DiskUsageKind = { 
+/**
+ * How many there are.
+ */
+count: number, 
+/**
+ * How many are in use: images and volumes some container uses, running containers, build
+ * cache records in use.
+ */
+active: number, 
+/**
+ * Bytes on disk.
+ */
+size: number, 
+/**
+ * Bytes a prune of this kind could free.
+ */
+reclaimable: number, };
 
 /**
  * How the server logs in to the host (spec §10.1, `fields.auth`).
@@ -975,6 +1024,11 @@ attributes: Record<string, unknown>,
  * absent when it has none.
  */
 encodings?: Array<string>, };
+
+/**
+ * `docker.host.counts`: what the tree shows beside Images, Volumes and Networks.
+ */
+export type HostCounts = { images: number, volumes: number, networks: number, };
 
 /**
  * `docker.host.info` (spec §10.4, Host): `/info` and `/version` of the Docker Engine, and the
@@ -3435,8 +3489,11 @@ export interface Procedures {
   readonly "docker.containers.start": ProcedureDef<"mutation", ContainersActionInput, Array<ContainerActionResult>, ToolError>;
   readonly "docker.containers.stats": ProcedureDef<"stream", ContainersStatsInput, ContainersStatsSummary, ToolError>;
   readonly "docker.containers.stop": ProcedureDef<"mutation", ContainersActionInput, Array<ContainerActionResult>, ToolError>;
+  readonly "docker.containers.top": ProcedureDef<"query", ContainerIdInput, ContainerTop, ToolError>;
   readonly "docker.disconnect": ProcedureDef<"mutation", DockerConnIdInput, Empty, ToolError>;
   readonly "docker.events": ProcedureDef<"stream", DockerEventsInput, Empty, ToolError>;
+  readonly "docker.host.counts": ProcedureDef<"query", DockerConnIdInput, HostCounts, ToolError>;
+  readonly "docker.host.df": ProcedureDef<"query", DockerConnIdInput, DiskUsage, ToolError>;
   readonly "docker.host.info": ProcedureDef<"query", DockerConnIdInput, HostInfo, ToolError>;
   readonly "docker.images.inspect": ProcedureDef<"query", ImageRefInput, InspectOutput, ToolError>;
   readonly "docker.images.list": ProcedureDef<"query", ImagesListInput, Array<ImageRow>, ToolError>;
@@ -3599,10 +3656,13 @@ export interface Api {
       readonly start: Procedures["docker.containers.start"];
       readonly stats: Procedures["docker.containers.stats"];
       readonly stop: Procedures["docker.containers.stop"];
+      readonly top: Procedures["docker.containers.top"];
     };
     readonly disconnect: Procedures["docker.disconnect"];
     readonly events: Procedures["docker.events"];
     readonly host: {
+      readonly counts: Procedures["docker.host.counts"];
+      readonly df: Procedures["docker.host.df"];
       readonly info: Procedures["docker.host.info"];
     };
     readonly images: {
@@ -3954,6 +4014,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 120000,
         timeoutMaxMs: 720000,
       },
+      top: {
+        name: "docker.containers.top",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
     },
     disconnect: {
       name: "docker.disconnect",
@@ -3976,6 +4046,26 @@ export const procedures: Api = {
       timeoutMaxMs: 43200000,
     },
     host: {
+      counts: {
+        name: "docker.host.counts",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      df: {
+        name: "docker.host.df",
+        kind: "query",
+        perm: "docker.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       info: {
         name: "docker.host.info",
         kind: "query",

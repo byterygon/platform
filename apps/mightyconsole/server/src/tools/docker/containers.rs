@@ -1032,6 +1032,23 @@ impl DockerContainersApi {
         super::stats::run(&self.0, &ctx, input, &sink).await
     }
 
+    /// The processes of a running container as the host's `ps` lists them (`docker top`); the
+    /// Stats tab asks every 5 seconds. `Conflict` when it is not running.
+    #[rpc::query(perm = "docker.read", risk = Risk::Read)]
+    async fn top(
+        &self,
+        ctx: Ctx,
+        input: ContainerIdInput,
+    ) -> ToolResult<super::system::ContainerTop> {
+        let client = self.client(&ctx, &input.conn_id)?;
+        let id = container_ref("id", &input.id)?;
+        let top: Value = client
+            .engine
+            .get(&format!("/containers/{id}/top"), "container")
+            .await?;
+        Ok(super::system::top(&top))
+    }
+
     /// A process in the container on a TTY (`bytes`: channel 1, then the output); its input
     /// through `term.*` on `terminalId`. Ends with the exit code.
     #[rpc::stream(perm = "docker.write", risk = Risk::Write, timeout_max = "12h")]

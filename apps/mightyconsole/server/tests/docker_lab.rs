@@ -643,3 +643,79 @@ async fn lab_images_volumes_and_networks_with_docker_s_refusals() {
         "{refused}"
     );
 }
+
+#[tokio::test]
+async fn lab_disk_usage_counts_and_a_containers_processes() {
+    let (_t, mut tab) = setup().await;
+    let trusted = presented_key(&mut tab, 2).await;
+    tab.call(
+        3,
+        "docker.connect",
+        json!({ "profile": profile(json!({ "hostKey": trusted })) }),
+    )
+    .await;
+    let conn_id = tab.result(3).await["connId"].as_str().unwrap().to_owned();
+
+    tab.call(4, "docker.host.df", json!({ "connId": conn_id }))
+        .await;
+    let df = tab.result(4).await;
+    for kind in ["images", "containers", "volumes", "buildCache"] {
+        let k = &df[kind];
+        assert!(
+            k["reclaimable"].as_u64().unwrap() <= k["size"].as_u64().unwrap(),
+            "{kind}: {df}"
+        );
+        assert!(
+            k["active"].as_u64().unwrap() <= k["count"].as_u64().unwrap(),
+            "{kind}: {df}"
+        );
+    }
+    // busybox is used by running containers; the seed's `lab-cache` has data.
+    assert!(df["images"]["active"].as_u64().unwrap() >= 1, "{df}");
+    assert!(df["containers"]["active"].as_u64().unwrap() >= 1, "{df}");
+    assert!(df["volumes"]["count"].as_u64().unwrap() >= 2, "{df}");
+
+    tab.call(5, "docker.host.counts", json!({ "connId": conn_id }))
+        .await;
+    let counts = tab.result(5).await;
+    tab.call(6, "docker.volumes.list", json!({ "connId": conn_id }))
+        .await;
+    let volumes = tab.result(6).await;
+    tab.call(7, "docker.networks.list", json!({ "connId": conn_id }))
+        .await;
+    let networks = tab.result(7).await;
+    assert_eq!(
+        counts["volumes"].as_u64().unwrap() as usize,
+        volumes["volumes"].as_array().unwrap().len()
+    );
+    assert_eq!(
+        counts["networks"].as_u64().unwrap() as usize,
+        networks.as_array().unwrap().len()
+    );
+    assert!(counts["images"].as_u64().unwrap() >= 1, "{counts}");
+
+    // `tty` runs a shell; the host's `ps` gives at least a PID and a command column.
+    tab.call(
+        8,
+        "docker.containers.top",
+        json!({ "connId": conn_id, "id": "tty" }),
+    )
+    .await;
+    let top = tab.result(8).await;
+    let titles: Vec<&str> = top["titles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap())
+        .collect();
+    assert!(titles.contains(&"PID"), "{top}");
+    assert!(!top["processes"].as_array().unwrap().is_empty(), "{top}");
+    tab.call(
+        9,
+        "docker.containers.top",
+        json!({ "connId": conn_id, "id": "stopped" }),
+    )
+    .await;
+    let err = tab.error(9, Code::FailedPrecondition).await;
+    assert_eq!(err.details.unwrap()["kind"], "Conflict");
+}

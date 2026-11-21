@@ -380,10 +380,30 @@ fn engine(api: &str, method: &hyper::Method, path: &str) -> Response<Full<Bytes>
             { "Name": "cache", "Driver": "local", "Scope": "local", "Mountpoint": "/var/lib/docker/volumes/cache/_data" },
             { "Name": "spare", "Driver": "local", "Scope": "local", "Mountpoint": "/var/lib/docker/volumes/spare/_data" },
         ], "Warnings": null })),
-        (&Method::GET, "/v1.47/system/df") => json_response(json!({ "Volumes": [
-            { "Name": "shop_data", "UsageData": { "Size": 2048, "RefCount": 1 } },
-            { "Name": "spare", "UsageData": { "Size": -1, "RefCount": 0 } },
-        ] })),
+        (&Method::GET, "/v1.47/system/df") => json_response(json!({
+            "LayersSize": 4_401_000,
+            "Images": [
+                { "Id": "sha256:b", "Size": 4_400_000, "SharedSize": 0, "Containers": 2 },
+                { "Id": "sha256:d", "Size": 1000, "SharedSize": 0, "Containers": 0 },
+            ],
+            "Containers": [
+                { "Id": "aaa1", "State": "running", "SizeRw": 512 },
+                { "Id": "bbb2", "State": "exited", "SizeRw": 64 },
+            ],
+            "Volumes": [
+                { "Name": "shop_data", "UsageData": { "Size": 2048, "RefCount": 1 } },
+                { "Name": "spare", "UsageData": { "Size": -1, "RefCount": 0 } },
+            ],
+            "BuildCache": [{ "ID": "k1", "Size": 300, "InUse": false, "Shared": false }],
+        })),
+        // Processes (batch 4): a BusyBox host's `ps` prints four columns.
+        (&Method::GET, "/v1.47/containers/web/top") => json_response(json!({
+            "Titles": ["PID", "USER", "TIME", "COMMAND"],
+            "Processes": [["4121", "root", "0:00", "httpd -f"], ["4188", "root", "0:00", "sh"]],
+        })),
+        (&Method::GET, "/v1.47/containers/stopped/top") => {
+            conflict("Container bbb2 is not running")
+        }
         (&Method::GET, "/v1.47/volumes/spare") => {
             json_response(json!({ "Name": "spare", "Driver": "local" }))
         }
@@ -1060,6 +1080,74 @@ async fn stats_come_as_samples_and_a_stopped_container_has_none() {
     .await;
     let err = tab.error(4, Code::FailedPrecondition).await;
     assert_eq!(details(&err)["kind"], "Conflict");
+}
+
+#[tokio::test]
+async fn the_host_has_its_disk_usage_and_counts_and_a_container_its_processes() {
+    let (_t, lab, mut tab) = setup().await;
+    tab.call(
+        2,
+        "docker.connect",
+        json!({ "profile": lab.profile(json!({})) }),
+    )
+    .await;
+    let conn_id = tab.result(2).await["connId"].as_str().unwrap().to_owned();
+    tab.call(3, "docker.host.df", json!({ "connId": conn_id }))
+        .await;
+    let df = tab.result(3).await;
+    assert_eq!(
+        df["images"],
+        json!({ "count": 2, "active": 1, "size": 4_401_000, "reclaimable": 1000 })
+    );
+    assert_eq!(
+        df["containers"],
+        json!({ "count": 2, "active": 1, "size": 576, "reclaimable": 64 })
+    );
+    // `spare`'s size is unknown (-1): it counts as 0.
+    assert_eq!(
+        df["volumes"],
+        json!({ "count": 2, "active": 1, "size": 2048, "reclaimable": 0 })
+    );
+    assert_eq!(
+        df["buildCache"],
+        json!({ "count": 1, "active": 0, "size": 300, "reclaimable": 300 })
+    );
+
+    tab.call(4, "docker.host.counts", json!({ "connId": conn_id }))
+        .await;
+    assert_eq!(
+        tab.result(4).await,
+        json!({ "images": 2, "volumes": 3, "networks": 2 })
+    );
+
+    tab.call(
+        5,
+        "docker.containers.top",
+        json!({ "connId": conn_id, "id": "web" }),
+    )
+    .await;
+    let top = tab.result(5).await;
+    assert_eq!(top["titles"], json!(["PID", "USER", "TIME", "COMMAND"]));
+    assert_eq!(
+        top["processes"][0],
+        json!(["4121", "root", "0:00", "httpd -f"])
+    );
+    tab.call(
+        6,
+        "docker.containers.top",
+        json!({ "connId": conn_id, "id": "stopped" }),
+    )
+    .await;
+    let err = tab.error(6, Code::FailedPrecondition).await;
+    assert_eq!(details(&err)["kind"], "Conflict");
+    tab.call(
+        7,
+        "docker.containers.top",
+        json!({ "connId": conn_id, "id": "../info" }),
+    )
+    .await;
+    let err = tab.error(7, Code::InvalidArgument).await;
+    assert_eq!(details(&err)["field"], "id");
 }
 
 #[tokio::test]

@@ -3,7 +3,9 @@
 // lab-tests) against the lab's sshd and Docker. The UI's: test/docker.test.tsx and
 // test/docker-containers.test.tsx (jsdom), and a walk in the browser against the lab. Batch 1
 // wired host-key and errors, batch 2b the containers and the logs, batch 2c stats and exec, batch 3
-// the images, volumes and networks (test/docker-resources.test.tsx). Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
+// the images, volumes and networks (test/docker-resources.test.tsx), batch 4 the approved extras
+// (test/docker-host.test.tsx: disk usage and events on the Host page, Processes, the tree's
+// counts). Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -238,6 +240,39 @@ export default {
           await run(`__mc.dblclick(__mc.item("Host"))`);
           await until(`location.pathname === "/docker/lab/host" && __mc.has("Kernel")`, "the host's facts");
           await shot("host");
+        }),
+      ],
+    },
+    {
+      id: "extras",
+      text: "Approved additions (DOC-21 Open question 45 q): disk usage and the host's events on the Host page; Processes in Stats; counts in the tree; a Compose project's logs merged; a read-only Files tab.",
+      lab: true,
+      checks: [
+        cargo("the_host_has_its_disk_usage_and_counts_and_a_container_its_processes"),
+        lab("lab_disk_usage_counts_and_a_containers_processes"),
+        vitest("test/docker-host.test.tsx"),
+        browser("the tree's counts, the host's disk usage, the worker's processes, and their top event on the Host page", async ({ page, origin, lab: credentials, until, run, shot }) => {
+          const row = (table: string, text: string) => `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) table[aria-label='${table}'] tbody tr")].find((r) => r.textContent.includes(${JSON.stringify(text)}))`;
+          await page.navigate(`${origin}/`);
+          await labTree({ lab: credentials, until, run, shot });
+          await until(`["Images", "Volumes", "Networks"].every((n) => /\\d+$/.test(__mc.item(n)?.textContent.trim() ?? ""))`, "the tree's counts");
+
+          await run(`__mc.dblclick(__mc.item("Host"))`);
+          await until(`location.pathname === "/docker/lab/host" && ${row("Disk usage", "Build cache")} && ${row("Disk usage", "Volumes")}`, "the disk usage");
+          await until(`/\\(\\d+ %\\)/.test(${row("Disk usage", "Images")}.textContent)`, "the images' reclaimable share");
+          await shot("host, disk usage");
+
+          // `docker top` is a container event: the Host page, still open, lists it.
+          await run(`__mc.dblclick(__mc.item("Containers"))`);
+          await until(`${visible("shop-worker-1")}`, "the containers");
+          await run(`__mc.click(${visible("shop-worker-1")})`);
+          await until(`__mc.has("Environment")`, "the worker's overview");
+          await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === "Stats" && t.offsetParent !== null))`);
+          await until(`location.pathname.endsWith("/shop-worker-1/stats") && document.querySelectorAll("[role=tabpanel]:not([hidden]) table[aria-label='Processes'] tbody tr").length > 0`, "the worker's processes");
+          await shot("stats, processes");
+          await run(`__mc.dblclick(__mc.item("Host"))`);
+          await until(`location.pathname === "/docker/lab/host" && [...document.querySelectorAll("[role=tabpanel]:not([hidden]) ol[aria-label='Events'] li")].some((li) => li.textContent.includes("container top"))`, "the top event on the Host page");
+          await shot("host, events");
         }),
       ],
     },

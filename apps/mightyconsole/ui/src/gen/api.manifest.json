@@ -2042,6 +2042,33 @@
       ],
       "type": "object"
     },
+    "ContainerTop": {
+      "description": "`docker.containers.top`: the processes of a running container, as the host's `ps` printed\nthem (`ps -ef` by default; a BusyBox host prints fewer columns).",
+      "properties": {
+        "processes": {
+          "description": "One row per process, a value per title.",
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "titles": {
+          "description": "The column names: `UID`, `PID`, `PPID`, `C`, `STIME`, `TTY`, `TIME`, `CMD`, ...",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "titles",
+        "processes"
+      ],
+      "type": "object"
+    },
     "ContainerUse": {
       "description": "A container that uses an image, a volume or a network.",
       "properties": {
@@ -2415,6 +2442,68 @@
       },
       "required": [
         "codec"
+      ],
+      "type": "object"
+    },
+    "DiskUsage": {
+      "description": "`docker.host.df`: the host's disk usage per kind.",
+      "properties": {
+        "buildCache": {
+          "$ref": "#/$defs/DiskUsageKind"
+        },
+        "containers": {
+          "$ref": "#/$defs/DiskUsageKind",
+          "description": "The containers' writable layers."
+        },
+        "images": {
+          "$ref": "#/$defs/DiskUsageKind"
+        },
+        "volumes": {
+          "$ref": "#/$defs/DiskUsageKind",
+          "description": "Local volumes; a size Docker could not read counts as 0."
+        }
+      },
+      "required": [
+        "images",
+        "containers",
+        "volumes",
+        "buildCache"
+      ],
+      "type": "object"
+    },
+    "DiskUsageKind": {
+      "description": "One kind of `docker system df`.",
+      "properties": {
+        "active": {
+          "description": "How many are in use: images and volumes some container uses, running containers, build\ncache records in use.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "count": {
+          "description": "How many there are.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reclaimable": {
+          "description": "Bytes a prune of this kind could free.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "size": {
+          "description": "Bytes on disk.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count",
+        "active",
+        "size",
+        "reclaimable"
       ],
       "type": "object"
     },
@@ -3555,6 +3644,32 @@
         "eventType",
         "category",
         "attributes"
+      ],
+      "type": "object"
+    },
+    "HostCounts": {
+      "description": "`docker.host.counts`: what the tree shows beside Images, Volumes and Networks.",
+      "properties": {
+        "images": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "networks": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "volumes": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "images",
+        "volumes",
+        "networks"
       ],
       "type": "object"
     },
@@ -12618,6 +12733,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/ContainerIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.containers.top",
+      "output": {
+        "$ref": "#/$defs/ContainerTop"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/DockerConnIdInput"
       },
       "kind": "mutation",
@@ -12652,6 +12788,48 @@
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/DockerConnIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.host.counts",
+      "output": {
+        "$ref": "#/$defs/HostCounts"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/DockerConnIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.host.df",
+      "output": {
+        "$ref": "#/$defs/DiskUsage"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
     },
     {
       "agent": "hidden",
@@ -15686,5 +15864,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:39ad96791e668202e1647f0db361cd10412d7e26952ce91c5ef7c72b757e30c6"
+  "schema_hash": "sha256:5d78b3128406fd0fbdd51f8c24483f9e63fae5e1959d456a0077903a1d303cd8"
 }
