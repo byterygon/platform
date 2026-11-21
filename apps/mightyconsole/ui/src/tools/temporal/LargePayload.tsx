@@ -406,7 +406,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
   const biggest = root?.node.info?.largestArrays[0];
 
   return (
-    <div className="flex min-h-0 flex-1" data-slot="payload-view">
+    <div className="flex min-h-0 min-w-0 flex-1" data-slot="payload-view">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 flex-wrap items-center gap-x-inline-md gap-y-stack-sm px-inset-lg py-stack-sm">
           <span className="text-body-1-strong text-fg">{label}</span>

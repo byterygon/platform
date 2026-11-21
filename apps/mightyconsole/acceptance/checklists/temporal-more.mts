@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { browser, cargo, type Checklist, vitest } from "../checklist.mts";
+import { browser, cargo, type Checklist, command, vitest } from "../checklist.mts";
 import { typeInEditor } from "../editors.mts";
 
 /** One cargo check per test function, against the lab. */
@@ -381,8 +381,12 @@ export default {
           "nodes_come_one_at_a_time_with_pages_of_children_and_the_root_names_the_largest_arrays",
           "jq_runs_on_the_server_and_reports_where_it_is_wrong",
           "downloads_give_indented_json_or_the_stored_bytes",
-          "a_jq_program_runs_on_one_value_and_its_outputs_are_cut_at_the_limit",
         ),
+        // The shared jq runner lives in message-codecs, which cargo() (mightyconsole-server) does not test.
+        command("message-codecs: a jq program runs on one value and its outputs are cut at the limit", [
+          "cargo", "test", "-p", "message-codecs", "--locked", "--lib", "--", "--exact",
+          "filter::tests::a_jq_program_runs_on_one_value_and_its_outputs_are_cut_at_the_limit",
+        ]),
         vitest("test/temporal-large-payload.test.tsx"),
         browser("large-1's input in the payload view: the tree pages, jq on the server, the size pane, then History by size", async (ctx) => {
           const { run, until, shot } = ctx;
@@ -400,6 +404,8 @@ export default {
           await run(`__mc.click(${shownButton("Load 50 more")})`);
           await until(`__mc.has("showing 1–100")`, "the next page");
           await typeInEditor(ctx, "jq", ".items | map(select(.qty == 0)) | length");
+          // Run jq is disabled until the editor's change reaches the form.
+          await until(`${shownButton("Run jq")}?.disabled === false`, "Run jq enabled");
           await run(`__mc.click(${shownButton("Run jq")})`);
           await until(`__mc.has("on the server,") && [...document.querySelectorAll("[data-slot=payload-view] strong")].some((s) => s.textContent === "312")`, "jq's result from the server", 30_000);
           await shot("payload-view");

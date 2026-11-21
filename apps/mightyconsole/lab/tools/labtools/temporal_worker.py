@@ -191,7 +191,7 @@ class LargeInput:
 def large_snapshot() -> dict:
     """About 1.5 MiB of JSON: 12,480 inventory lines, each with its recent history."""
     items = [
-        {"sku": f"A-{i:05d}", "qty": 0 if i % 40 == 1 else (i * 7) % 23, "bin": f"BER-1/{i % 40:02d}/{i % 9}", "history": [{"at": f"2026-11-{1 + i % 18:02d}", "delta": (i % 5) - 2}] * 2}
+        {"sku": f"A-{i:05d}", "qty": 0 if i % 40 == 1 else 1 + (i * 7) % 23, "bin": f"BER-1/{i % 40:02d}/{i % 9}", "history": [{"at": f"2026-11-{1 + i % 18:02d}", "delta": (i % 5) - 2}] * 2}
         for i in range(12_480)
     ]
     return {"warehouseIds": ["BER-1", "HAM-2"], "items": items, "snapshotAt": "2026-11-18T10:29:58Z", "debug": {"source": "lab", "note": "n" * 40_000, "rev": 7}}
