@@ -125,11 +125,15 @@ export function FilterBar({ system, applied, onApply, check, debounceMs = 300 }:
     if (ok) onApply(filter);
   };
   const jqLabel = useId();
+  // A quick field is never narrower than its label (kept on one line) or than size.field, so the
+  // row wraps instead of squeezing the labels over each other (TSK-106): min-w-min makes the
+  // field's minimum its content's, the label's width or the input's min-w-field.
   const field = (name: keyof FilterDraft, label: string, error: string | undefined, placeholder?: string) => (
-    <Field invalid={error !== undefined} className="min-w-0 flex-1">
-      <FieldLabel>{label}</FieldLabel>
+    <Field invalid={error !== undefined} className="min-w-min flex-1">
+      <FieldLabel className="whitespace-nowrap">{label}</FieldLabel>
       <Input
         size="small"
+        className="min-w-field"
         value={draft[name]}
         {...(placeholder ? { placeholder } : {})}
         onValueChange={set(name)}

@@ -196,6 +196,28 @@ describe("FilterBar (spec §5.4)", () => {
     expect(await axeViolations(container)).toEqual([]);
   });
 
+  // TSK-106: with min-w-0 the fields shrank below their labels ("Sequence from" over "Sequence
+  // to") and the row never wrapped. Each quick field's minimum is now its one-line label or the
+  // input's size.field, whichever is wider, so flex-wrap moves fields to a new row instead.
+  test.each(["kafka", "nats", "jetstream"] as const)("%s: fields never get narrower than their label; the row wraps", (system) => {
+    const { container } = render(<FilterBar system={system} applied={{}} onApply={() => {}} check={async () => ({ ok: true, errors: [] })} />);
+    const bar = container.querySelector<HTMLElement>("[data-slot=filter-bar]")!;
+    expect(bar.classList.contains("flex-wrap")).toBe(true);
+    const fields = [...bar.querySelectorAll<HTMLElement>("[data-slot=field]")];
+    const quick = fields.filter((f) => f.querySelector("input[data-slot=input]"));
+    expect(quick.length).toBe(7);
+    for (const f of quick) {
+      const name = f.querySelector("[data-slot=field-label]")!.textContent;
+      expect([name, f.classList.contains("min-w-min"), f.classList.contains("min-w-0")]).toEqual([name, true, false]);
+      expect([name, f.querySelector("[data-slot=field-label]")!.classList.contains("whitespace-nowrap")]).toEqual([name, true]);
+      // cn must know size.field, else the Input's own min-w-0 stays beside it and may win.
+      const input = f.querySelector("[data-slot=input]")!.classList;
+      expect([name, input.contains("min-w-field"), input.contains("min-w-0")]).toEqual([name, true, false]);
+    }
+    // The jq field has its own floor; no field may shrink to nothing.
+    for (const f of fields) expect(f.classList.contains("min-w-0")).toBe(false);
+  });
+
   test("subjects for NATS views; ranges", () => {
     expect(toFilter({ ...EMPTY_FILTER, subject: "orders.>", from: "2026-11-18T00:00:00Z", positionTo: "40" })).toEqual({ subject: "orders.>", time: { from: "2026-11-18T00:00:00Z", to: null }, position: { from: null, to: "40" } });
     expect(toFilter(EMPTY_FILTER)).toEqual({});

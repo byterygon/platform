@@ -221,6 +221,23 @@ const panelSize: RoleDef[] = PANELS.map(([name, value, fit]): RoleDef => ({
   avoid: "Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
 }));
 
+/**
+ * The narrowest a text field may get in a row of fields that wraps (a filter bar): fixed px, wide
+ * enough for a short value such as a timestamp. With the field's label kept on one line it is the
+ * field's minimum width, so the row wraps instead of squeezing labels over each other (TSK-106).
+ */
+const fieldSize: RoleDef[] = [
+  {
+    path: "size.field",
+    type: "dimension",
+    tier: "primitive",
+    value: px(160),
+    tailwind: "--spacing-field",
+    use: "Minimum width of a text field in a row of fields that wraps, such as a filter bar (160 px): the min-w-field utility.",
+    avoid: "Not a field's width in a form (fields fill their column) and not for panels: use size.panel.*.",
+  },
+];
+
 const borderWidth: RoleDef[] = [0, 1, 2, 3].map((value): RoleDef => ({
   path: `border.width.${value}`,
   type: "dimension",
@@ -363,6 +380,7 @@ export const SCALE_ROLES: readonly RoleDef[] = [
   ...iconSize,
   ...trackSize,
   ...panelSize,
+  ...fieldSize,
   ...borderWidth,
   ...breakpoint,
   ...opacity,

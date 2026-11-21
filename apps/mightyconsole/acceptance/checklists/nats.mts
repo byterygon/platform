@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { setTimeout as sleep } from "node:timers/promises";
 import { browser, type BrowserContext, cargo, type Checklist, vitest } from "../checklist.mts";
 
 const lab = (filter: string) => cargo(filter, { features: ["lab-tests"] });
@@ -270,7 +271,7 @@ export default {
         }),
         // TSK-101's routes on NATS (DOC-21 §3.7): each place's URL ends with its view word.
         vitest("test/routing.test.tsx", "nats."),
-        browser("ORDERS by its URL: the view in the URL and the crumbs, a consumer in the same tab, Back, the streams beside it, a link that arrives", async ({ page, origin, until, run, shot }) => {
+        browser("ORDERS by its URL: the view in the URL and the crumbs, a consumer in the same tab, Back, the streams beside it, a link that arrives, its filter bar wrapping at narrow widths", async ({ page, origin, until, run, shot }) => {
           const row = `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=toolbar][aria-label=Location]")].find((r) => r.offsetParent !== null)`;
           const crumbs = `[...${row}.querySelectorAll("[data-slot=breadcrumb-item]")].map((el) => el.textContent.trim()).join(" / ")`;
           const rowButton = (label: string) => `[...${row}.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
@@ -313,6 +314,40 @@ export default {
           await page.navigate(`${origin}/nats/lab/kv/config/watch`);
           await reach("/nats/lab/kv/config/watch", "lab / Key-Value / config / Watch", "a link to a bucket's Watch", `${view("Watch")}?.getAttribute("aria-selected") === "true"`);
           await shot("a link to a KV bucket's Watch");
+          // TSK-106: the FilterBar wraps instead of squeezing its labels over each other ("Sequence
+          // from" over "Sequence to"), at every width and in both densities.
+          const density = (want: "Compact" | "Comfortable") =>
+            run(`(() => { const b = document.querySelector('[title^="Density"]'); if (b && !b.textContent.includes(${JSON.stringify(want)})) __mc.click(b); })()`);
+          const filterBarFits = `(() => {
+            const bar = [...document.querySelectorAll("[data-slot=filter-bar]")].find((b) => b.getClientRects().length > 0);
+            if (!bar) return "no filter bar";
+            const bad = [];
+            if (bar.scrollWidth > bar.clientWidth + 1) bad.push("the bar scrolls sideways");
+            const labels = [...bar.querySelectorAll("[data-slot=field]")].map((f) => [f.getBoundingClientRect(), f.querySelector("[data-slot=field-label]")]);
+            for (const [f, l] of labels) {
+              const r = l.getBoundingClientRect();
+              if (r.right > f.right + 0.5 || r.left < f.left - 0.5) bad.push(l.textContent + " is wider than its field");
+            }
+            for (let i = 0; i < labels.length; i++)
+              for (let j = i + 1; j < labels.length; j++) {
+                const a = labels[i][1].getBoundingClientRect(), b = labels[j][1].getBoundingClientRect();
+                if (a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5) bad.push(labels[i][1].textContent + " overlaps " + labels[j][1].textContent);
+              }
+            return bad.join("; ");
+          })()`;
+          for (const d of ["Comfortable", "Compact"] as const) {
+            await density(d);
+            for (const width of [1280, 960, 640]) {
+              await page.send("Emulation.setDeviceMetricsOverride", { width, height: 800, deviceScaleFactor: 1, mobile: false });
+              await until(`document.documentElement.dataset.density === ${JSON.stringify(d.toLowerCase())} && document.documentElement.clientWidth === ${width}`, `${d} at ${width} px`);
+              await sleep(200);
+              const bad = await run<string>(filterBarFits);
+              if (bad) throw new Error(`KV Watch's filter bar, ${d}, ${width} px: ${bad}`);
+              if (width !== 1280) await shot(`KV Watch filter bar, ${d.toLowerCase()}, ${width} px`);
+            }
+          }
+          await page.send("Emulation.clearDeviceMetricsOverride", {});
+          await density("Comfortable");
           // Leave the bucket at Keys for the KV walk, which opens the same tab from the tree.
           await run(`__mc.click(${view("Keys")})`);
           await reach("/nats/lab/kv/config/keys", "lab / Key-Value / config / Keys", "the bucket back at Keys");
