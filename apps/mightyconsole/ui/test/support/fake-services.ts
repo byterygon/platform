@@ -37,6 +37,44 @@ export interface FakeServer {
   dockerStats: object[];
   /** The open exec: what was typed (decoded), its resizes; `exit(code)` ends it. */
   dockerExec: { input: string; resizes: { cols: number; rows: number }[]; output(text: string): void; exit(code: number): void } | null;
+  /** The host's images, volumes and networks (TSK-81 batch 3); removes follow Docker's refusals. */
+  dockerImages: api.ImageRow[];
+  dockerVolumes: api.VolumeRow[];
+  dockerNetworks: api.NetworkRow[];
+  /** Why `/system/df` failed, to list the volumes without sizes. */
+  dockerDfError: string | null;
+}
+
+/** The fake host's images: shop-api in use (two tags), an unused one, a digest-only one, a dangling one. */
+export function fakeImages(): api.ImageRow[] {
+  const image = (id: string, patch: Partial<api.ImageRow>): api.ImageRow => ({ id: `sha256:${id.padEnd(64, "0")}`, repoTags: [], repoDigests: [], created: 1795161000, size: 1000, dangling: false, labels: {}, usedBy: [], ...patch });
+  return [
+    image("a1", { repoTags: ["ghcr.io/acme/shop-api:2.4.1", "ghcr.io/acme/shop-api:latest"], size: 182_000_000, usedBy: [{ name: "shop-api-1", state: "running" }, { name: "migrate-7f3a", state: "created" }] }),
+    image("b2", { repoTags: ["alpine:3.21"], size: 7_800_000, usedBy: [{ name: "nightly-backup", state: "exited" }] }),
+    image("c3", { repoTags: ["registry.lan:5000/tools/jq:1.7"], size: 3_100_000 }),
+    image("d4", { repoDigests: ["busybox@sha256:a7db"], size: 4_400_000 }),
+    image("e5", { dangling: true, size: 412_000_000 }),
+  ];
+}
+
+export function fakeVolumes(): api.VolumeRow[] {
+  const volume = (name: string, patch: Partial<api.VolumeRow>): api.VolumeRow => ({ name, driver: "local", scope: "local", mountpoint: `/var/lib/docker/volumes/${name}/_data`, labels: {}, usedBy: [], ...patch });
+  return [
+    volume("shop_pgdata", { size: 1_900_000_000, project: "shop", labels: { "com.docker.compose.project": "shop" }, usedBy: [{ name: "shop-db-1", state: "running" }] }),
+    volume("backup-cache", { size: 20_000_000, usedBy: [{ name: "nightly-backup", state: "exited" }] }),
+    volume("old-cache", { size: 740_000_000 }),
+  ];
+}
+
+export function fakeNetworks(): api.NetworkRow[] {
+  const network = (name: string, patch: Partial<api.NetworkRow>): api.NetworkRow => ({ id: `${name}-id`, name, driver: "bridge", scope: "local", internal: false, attachable: false, ipv6: false, subnets: [], labels: {}, builtIn: false, usedBy: [], ...patch });
+  return [
+    network("bridge", { builtIn: true, subnets: [{ subnet: "172.17.0.0/16", gateway: "172.17.0.1" }] }),
+    network("host", { builtIn: true, driver: "host" }),
+    network("none", { builtIn: true, driver: "null" }),
+    network("shop_default", { subnets: [{ subnet: "172.18.0.0/16", gateway: "172.18.0.1" }], project: "shop", usedBy: [{ name: "shop-api-1", state: "running" }] }),
+    network("batch", { subnets: [{ subnet: "172.20.0.0/16" }], usedBy: [{ name: "nightly-backup", state: "exited" }] }),
+  ];
 }
 
 /** A container row as the fake host lists it. */
@@ -212,6 +250,10 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
     dockerRefuse: new Map(),
     dockerStats: [],
     dockerExec: null,
+    dockerImages: fakeImages(),
+    dockerVolumes: fakeVolumes(),
+    dockerNetworks: fakeNetworks(),
+    dockerDfError: null,
   };
   const statsPushers: ((lines: object[]) => void)[] = [];
   const dockerGone = () => new RpcError("NotFound", "this connection is closed; connect again", { details: { kind: "NotFound", system: "docker", message: "gone", retryable: false, resource: "connection" } });
@@ -435,6 +477,88 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
         record("docker.disconnect", input);
         server.handles.delete(input.connId);
         return {};
+      },
+      images: {
+        list: async (input: api.ImagesListInput) => {
+          record("docker.images.list", input);
+          dockerHandle(input.connId);
+          return server.dockerImages.map((i) => ({ ...i }));
+        },
+        inspect: async (input: api.ImageRefInput) => {
+          record("docker.images.inspect", input);
+          dockerHandle(input.connId);
+          const image = server.dockerImages.find((i) => i.id === input.id || i.repoTags.includes(input.id));
+          if (!image) throw new RpcError("NotFound", `No such image: ${input.id}`, { details: { kind: "NotFound", system: "docker", message: `No such image: ${input.id}`, retryable: false, resource: "image" } });
+          return { inspect: { Id: image.id, RepoTags: image.repoTags, Size: image.size } };
+        },
+        remove: async (input: api.ImagesRemoveInput) => {
+          record("docker.images.remove", input);
+          dockerHandle(input.connId);
+          return input.ids.map((id): api.ImageRemoveResult => {
+            const image = server.dockerImages.find((i) => i.id === id || i.repoTags.includes(id));
+            if (!image) return { id, untagged: [], deleted: [], error: `No such image: ${id}` };
+            if (image.usedBy.some((u) => u.state === "running")) return { id, untagged: [], deleted: [], error: `conflict: unable to delete ${id} (cannot be forced) - image is being used by running container` };
+            if (image.repoTags.includes(id) && image.repoTags.length > 1) {
+              image.repoTags = image.repoTags.filter((t) => t !== id);
+              return { id, untagged: [id], deleted: [] };
+            }
+            if (image.usedBy.length > 0 && !input.force) return { id, untagged: [], deleted: [], error: `conflict: unable to delete ${id} (must be forced) - image is being used by stopped container` };
+            server.dockerImages = server.dockerImages.filter((i) => i !== image);
+            return { id, untagged: image.repoTags, deleted: [image.id] };
+          });
+        },
+      },
+      volumes: {
+        list: async (input: api.VolumesListInput) => {
+          record("docker.volumes.list", input);
+          dockerHandle(input.connId);
+          const volumes = server.dockerVolumes.map((v) => {
+            const copy = { ...v };
+            if (server.dockerDfError !== null) delete copy.size;
+            return copy;
+          });
+          return { volumes, ...(server.dockerDfError !== null ? { sizeError: server.dockerDfError } : {}) };
+        },
+        inspect: async (input: api.VolumeNameInput) => {
+          record("docker.volumes.inspect", input);
+          dockerHandle(input.connId);
+          return { inspect: { Name: input.name, Driver: "local" } };
+        },
+        remove: async (input: api.VolumesRemoveInput) => {
+          record("docker.volumes.remove", input);
+          dockerHandle(input.connId);
+          return input.names.map((name): api.ContainerActionResult => {
+            const volume = server.dockerVolumes.find((v) => v.name === name);
+            if (!volume) return { id: name, error: `get ${name}: no such volume` };
+            if (volume.usedBy.length > 0) return { id: name, error: `remove ${name}: volume is in use` };
+            server.dockerVolumes = server.dockerVolumes.filter((v) => v !== volume);
+            return { id: name };
+          });
+        },
+      },
+      networks: {
+        list: async (input: api.NetworksListInput) => {
+          record("docker.networks.list", input);
+          dockerHandle(input.connId);
+          return server.dockerNetworks.map((n) => ({ ...n }));
+        },
+        inspect: async (input: api.NetworkIdInput) => {
+          record("docker.networks.inspect", input);
+          dockerHandle(input.connId);
+          const network = server.dockerNetworks.find((n) => n.id === input.id || n.name === input.id);
+          return { inspect: { Id: network?.id ?? input.id, Name: network?.name ?? input.id } };
+        },
+        remove: async (input: api.NetworksRemoveInput) => {
+          record("docker.networks.remove", input);
+          dockerHandle(input.connId);
+          return input.ids.map((id): api.ContainerActionResult => {
+            const network = server.dockerNetworks.find((n) => n.id === id || n.name === id);
+            if (!network) return { id, error: `network ${id} not found` };
+            if (network.builtIn) return { id, error: `${network.name} is a pre-defined network and cannot be removed` };
+            server.dockerNetworks = server.dockerNetworks.filter((n) => n !== network);
+            return { id };
+          });
+        },
       },
       host: {
         info: async (input: api.DockerConnIdInput) => {

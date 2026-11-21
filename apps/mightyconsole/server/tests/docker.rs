@@ -265,6 +265,15 @@ fn no_content(status: u16) -> Response<Full<Bytes>> {
         .unwrap()
 }
 
+fn conflict(message: &str) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(409)
+        .body(Full::new(Bytes::from(
+            json!({ "message": message }).to_string(),
+        )))
+        .unwrap()
+}
+
 /// The fake Docker Engine.
 fn engine(api: &str, method: &hyper::Method, path: &str) -> Response<Full<Bytes>> {
     use hyper::Method;
@@ -277,11 +286,15 @@ fn engine(api: &str, method: &hyper::Method, path: &str) -> Response<Full<Bytes>
                 "Ports": [{ "IP": "127.0.0.1", "PrivatePort": 8080, "PublicPort": 18080, "Type": "tcp" }],
                 "Labels": { "com.docker.compose.project": "shop", "com.docker.compose.service": "web",
                             "com.docker.compose.project.working_dir": "/srv/shop" },
+                "Mounts": [{ "Type": "volume", "Name": "shop_data" }],
+                "NetworkSettings": { "Networks": { "shop_default": { "NetworkID": "n1" } } },
             },
             {
                 "Id": "bbb2", "Names": ["/stopped"], "Image": "busybox:1.37", "ImageID": "sha256:b",
                 "Command": "sh -c 'exit 3'", "Created": 1795161000, "State": "exited",
                 "Status": "Exited (3) 2 hours ago", "Ports": [], "Labels": {},
+                "Mounts": [{ "Type": "volume", "Name": "cache" }],
+                "NetworkSettings": { "Networks": { "bridge": { "NetworkID": "n0" } } },
             },
         ])),
         (&Method::GET, "/v1.47/containers/web/json") => json_response(json!({
@@ -346,6 +359,56 @@ fn engine(api: &str, method: &hyper::Method, path: &str) -> Response<Full<Bytes>
             .collect::<String>()
             .into_bytes(),
         ),
+        // Images, volumes and networks (batch 3).
+        (&Method::GET, "/v1.47/images/json") => json_response(json!([
+            { "Id": "sha256:b", "RepoTags": ["busybox:1.37"], "RepoDigests": ["busybox@sha256:bd"],
+              "Created": 1795161000, "Size": 4_400_000, "Labels": null },
+            { "Id": "sha256:d", "RepoTags": ["<none>:<none>"], "RepoDigests": [], "Created": 1795160000, "Size": 1000 },
+        ])),
+        (&Method::GET, "/v1.47/images/busybox:1.37/json") => {
+            json_response(json!({ "Id": "sha256:b", "RepoTags": ["busybox:1.37"] }))
+        }
+        (&Method::DELETE, "/v1.47/images/busybox:1.37") => conflict(
+            "conflict: unable to delete busybox:1.37 (cannot be forced) - image is being used by running container aaa1",
+        ),
+        (&Method::DELETE, "/v1.47/images/sha256:d") => {
+            json_response(json!([{ "Deleted": "sha256:d" }]))
+        }
+        (&Method::GET, "/v1.47/volumes") => json_response(json!({ "Volumes": [
+            { "Name": "shop_data", "Driver": "local", "Scope": "local", "Mountpoint": "/var/lib/docker/volumes/shop_data/_data",
+              "Labels": { "com.docker.compose.project": "shop" } },
+            { "Name": "cache", "Driver": "local", "Scope": "local", "Mountpoint": "/var/lib/docker/volumes/cache/_data" },
+            { "Name": "spare", "Driver": "local", "Scope": "local", "Mountpoint": "/var/lib/docker/volumes/spare/_data" },
+        ], "Warnings": null })),
+        (&Method::GET, "/v1.47/system/df") => json_response(json!({ "Volumes": [
+            { "Name": "shop_data", "UsageData": { "Size": 2048, "RefCount": 1 } },
+            { "Name": "spare", "UsageData": { "Size": -1, "RefCount": 0 } },
+        ] })),
+        (&Method::GET, "/v1.47/volumes/spare") => {
+            json_response(json!({ "Name": "spare", "Driver": "local" }))
+        }
+        (&Method::DELETE, "/v1.47/volumes/spare") => no_content(204),
+        (&Method::DELETE, "/v1.47/volumes/shop_data") => {
+            conflict("remove shop_data: volume is in use - [aaa1]")
+        }
+        (&Method::GET, "/v1.47/networks") => json_response(json!([
+            { "Id": "n0", "Name": "bridge", "Driver": "bridge", "Scope": "local",
+              "IPAM": { "Config": [{ "Subnet": "172.17.0.0/16", "Gateway": "172.17.0.1" }] } },
+            { "Id": "n1", "Name": "shop_default", "Driver": "bridge", "Scope": "local", "Attachable": false,
+              "IPAM": { "Config": [{ "Subnet": "172.18.0.0/16", "Gateway": "172.18.0.1" }] },
+              "Labels": { "com.docker.compose.project": "shop" } },
+        ])),
+        (&Method::GET, "/v1.47/networks/n1") => {
+            json_response(json!({ "Id": "n1", "Name": "shop_default" }))
+        }
+        (&Method::DELETE, "/v1.47/networks/bridge") => Response::builder()
+            .status(403)
+            .body(Full::new(Bytes::from(
+                json!({ "message": "bridge is a pre-defined network and cannot be removed" })
+                    .to_string(),
+            )))
+            .unwrap(),
+        (&Method::DELETE, "/v1.47/networks/n1") => no_content(204),
         (_, path) => engine_basics(api, path),
     }
 }
@@ -997,4 +1060,145 @@ async fn stats_come_as_samples_and_a_stopped_container_has_none() {
     .await;
     let err = tab.error(4, Code::FailedPrecondition).await;
     assert_eq!(details(&err)["kind"], "Conflict");
+}
+
+#[tokio::test]
+async fn images_volumes_and_networks_show_what_uses_them_and_refusals_come_back_per_item() {
+    let (_t, lab, mut tab) = setup().await;
+    tab.call(
+        2,
+        "docker.connect",
+        json!({ "profile": lab.profile(json!({})) }),
+    )
+    .await;
+    let conn_id = tab.result(2).await["connId"].as_str().unwrap().to_owned();
+
+    tab.call(3, "docker.images.list", json!({ "connId": conn_id }))
+        .await;
+    let images = tab.result(3).await;
+    assert_eq!(images[0]["repoTags"], json!(["busybox:1.37"]));
+    assert_eq!(
+        images[0]["usedBy"],
+        json!([{ "name": "shop-web-1", "state": "running" }, { "name": "stopped", "state": "exited" }])
+    );
+    assert_eq!(images[1]["dangling"], true);
+    assert_eq!(images[1]["repoTags"], json!([]));
+
+    tab.call(
+        4,
+        "docker.images.inspect",
+        json!({ "connId": conn_id, "id": "busybox:1.37" }),
+    )
+    .await;
+    assert_eq!(tab.result(4).await["inspect"]["Id"], "sha256:b");
+
+    // In order: the image a running container uses is refused, the dangling one goes.
+    tab.call(
+        5,
+        "docker.images.remove",
+        json!({ "connId": conn_id, "ids": ["busybox:1.37", "sha256:d"], "force": true }),
+    )
+    .await;
+    let results = tab.result(5).await;
+    assert!(
+        results[0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("being used by running container")
+    );
+    assert_eq!(
+        results[1],
+        json!({ "id": "sha256:d", "untagged": [], "deleted": ["sha256:d"] })
+    );
+
+    tab.call(6, "docker.volumes.list", json!({ "connId": conn_id }))
+        .await;
+    let volumes = tab.result(6).await;
+    assert!(volumes.get("sizeError").is_none());
+    let volumes = volumes["volumes"].as_array().unwrap();
+    assert_eq!(volumes[0]["size"], 2048);
+    assert_eq!(volumes[0]["project"], "shop");
+    assert_eq!(volumes[0]["usedBy"][0]["name"], "shop-web-1");
+    assert_eq!(volumes[1]["usedBy"][0]["state"], "exited");
+    assert!(volumes[2].get("size").is_none());
+    assert_eq!(volumes[2]["usedBy"], json!([]));
+
+    tab.call(
+        7,
+        "docker.volumes.inspect",
+        json!({ "connId": conn_id, "name": "spare" }),
+    )
+    .await;
+    assert_eq!(tab.result(7).await["inspect"]["Name"], "spare");
+    tab.call(
+        8,
+        "docker.volumes.remove",
+        json!({ "connId": conn_id, "names": ["spare", "shop_data"] }),
+    )
+    .await;
+    let results = tab.result(8).await;
+    assert_eq!(results[0], json!({ "id": "spare" }));
+    assert!(results[1]["error"].as_str().unwrap().contains("in use"));
+
+    tab.call(9, "docker.networks.list", json!({ "connId": conn_id }))
+        .await;
+    let networks = tab.result(9).await;
+    assert_eq!(networks[0]["builtIn"], true);
+    assert_eq!(networks[0]["usedBy"][0]["name"], "stopped");
+    assert_eq!(networks[1]["builtIn"], false);
+    assert_eq!(
+        networks[1]["subnets"],
+        json!([{ "subnet": "172.18.0.0/16", "gateway": "172.18.0.1" }])
+    );
+    assert_eq!(networks[1]["usedBy"][0]["name"], "shop-web-1");
+    tab.call(
+        10,
+        "docker.networks.inspect",
+        json!({ "connId": conn_id, "id": "n1" }),
+    )
+    .await;
+    assert_eq!(tab.result(10).await["inspect"]["Name"], "shop_default");
+    tab.call(
+        11,
+        "docker.networks.remove",
+        json!({ "connId": conn_id, "ids": ["n1", "bridge"] }),
+    )
+    .await;
+    let results = tab.result(11).await;
+    assert_eq!(results[0], json!({ "id": "n1" }));
+    assert!(
+        results[1]["error"]
+            .as_str()
+            .unwrap()
+            .contains("pre-defined")
+    );
+
+    // Names that would leave the path are refused before anything is sent.
+    tab.call(
+        12,
+        "docker.images.remove",
+        json!({ "connId": conn_id, "ids": ["../containers/web"], "force": false }),
+    )
+    .await;
+    assert_eq!(
+        details(&tab.error(12, Code::InvalidArgument).await)["field"],
+        "ids"
+    );
+    tab.call(
+        13,
+        "docker.volumes.remove",
+        json!({ "connId": conn_id, "names": [] }),
+    )
+    .await;
+    assert_eq!(
+        details(&tab.error(13, Code::InvalidArgument).await)["field"],
+        "names"
+    );
+    let paths = lab.seen.paths.lock().unwrap().clone();
+    assert!(paths.iter().all(|p| !p.contains("..")), "{paths:?}");
+    assert!(
+        paths
+            .iter()
+            .any(|p| p == "/v1.47/images/busybox:1.37?force=1")
+    );
 }
