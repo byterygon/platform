@@ -517,10 +517,16 @@ async fn threads_state_history_and_fork() {
     )
     .await;
     let history = tab.result(8).await;
-    assert_eq!(history.as_array().unwrap().len(), 2);
+    assert_eq!(history["items"].as_array().unwrap().len(), 2);
+    assert!(
+        history.get("next").is_none(),
+        "the upstream had fewer than it was asked for"
+    );
+    assert_eq!(history["items"][0]["cuts"], json!([]));
+    // Upstream is asked for a few at a time (TSK-108), from the `before` checkpoint.
     assert_eq!(
         mock.last(&format!("{thread}/history")).body,
-        json!({ "limit": 10, "before": { "configurable": { "checkpoint_id": "c3" } } })
+        json!({ "limit": 3, "before": { "configurable": { "checkpoint_id": "c3" } } })
     );
 
     // Fork: update the state at a checkpoint.
@@ -761,10 +767,11 @@ async fn a_run_stream_follows_the_credits_and_joins_from_the_last_event() {
     )
     .await;
     let runs = tab.result(5).await;
-    assert_eq!(runs[0]["multitaskStrategy"], "reject");
+    assert_eq!(runs["items"][0]["multitaskStrategy"], "reject");
+    assert!(runs.get("next").is_none());
     assert_eq!(
         mock.last(&format!("/threads/{THREAD}/runs")).query,
-        "limit=20"
+        "limit=10&offset=0"
     );
 
     let cancel = format!("/threads/{THREAD}/runs/{RUN}/cancel");

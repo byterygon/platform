@@ -16,6 +16,7 @@
 //! The request and response shapes are those of the lab's server (`langgraph dev`, langgraph-api
 //! 0.18.2, its `/openapi.json`): see `model.rs` for the answers.
 
+pub mod budget;
 mod client;
 pub mod model;
 
@@ -32,6 +33,9 @@ use serde_json::{Map, Value, json};
 use tokio::time::Instant;
 use ts_rs::TS;
 
+use self::budget::{
+    EVENT_SHARE, FULL_SHARE, ITEM_SHARE, Page, REPLY_BUDGET, STATE_SHARE, UPSTREAM_BUDGET, ValueCut,
+};
 use self::client::{LangGraphClient, SseItem};
 use self::model::{
     Assistant, AssistantGraph, AssistantSchemas, LanggraphInfo, Run, StoreItem, Thread,
@@ -219,6 +223,11 @@ pub struct ThreadStateInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub subgraphs: Option<bool>,
+    /// Allow the reply to weigh up to 12 MiB instead of 8 MiB, to load a value that came back
+    /// cut (`cuts`); over that, `threads.readValue` streams it.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub full: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
@@ -234,6 +243,57 @@ pub struct ThreadHistoryInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub before: Option<String>,
+}
+
+/// A page of the history: at most about 4 MiB, whatever `limit` says (TSK-108).
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadHistoryPage {
+    /// Newest first. A value over its share is `null` with a note in the item's `cuts`.
+    pub items: Vec<ThreadState>,
+    /// Pass it as `before` for the next page; absent when the history ends here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub next: Option<String>,
+}
+
+/// A page of a thread's runs: at most about 4 MiB, whatever `limit` says (TSK-108).
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RunsPage {
+    /// Newest first. A run's metadata over its share is `null` with a note in its `cuts`.
+    pub items: Vec<Run>,
+    /// Pass it as `offset` for the next page; absent when the runs end here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub next: Option<u32>,
+}
+
+/// What `langgraph.threads.readValue` reads: one value of a checkpoint or of a run, whole.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadValueInput {
+    pub conn_id: String,
+    pub thread_id: String,
+    /// A run's value (`metadata`); when absent, a checkpoint's.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub run_id: Option<String>,
+    /// The checkpoint (the current state when absent).
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub checkpoint_id: Option<String>,
+    /// A `field` of a `cut`: `values`, `metadata`, `tasks.<n>.state`, `tasks.<n>.result`,
+    /// `interrupts.<n>` or `tasks.<n>.interrupts.<m>`.
+    pub field: String,
+}
+
+/// The end of `langgraph.threads.readValue`.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadValueSummary {
+    /// The JSON text sent.
+    pub bytes: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
@@ -346,6 +406,10 @@ pub struct RunsListInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub limit: Option<u32>,
+    /// The runs to skip: the `next` of the previous page.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub offset: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
@@ -363,9 +427,13 @@ pub struct RunEventLine {
     /// `metadata`, `values`, `updates`, `messages`, `custom`, `error`, ... With subgraphs,
     /// `updates|<subgraph>:<task>`.
     pub event: String,
+    /// `null` when the event's data was over 4 MiB: `cut` says what it was (TSK-108). A `values`
+    /// event repeats the whole state; `threads.state` or `threads.readValue` has it.
     pub data: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut: Option<ValueCut>,
 }
 
 /// The end of `langgraph.runs.stream` and `langgraph.runs.join`.
@@ -457,6 +525,34 @@ fn id<'a>(field: &str, value: &'a str) -> Result<&'a str, ToolError> {
     }
 }
 
+/// How many runs the first upstream call asks for.
+const RUNS_FIRST_PAGE: usize = 10;
+
+/// An upstream answer over the client's size cap: ask for less.
+fn too_big(e: &ToolError) -> bool {
+    e.message.contains("length limit exceeded")
+}
+
+/// A `field` of a cut (`values`, `tasks.0.state`, `interrupts.1`, ...) in the upstream's JSON.
+fn resolve_field<'a>(v: &'a Value, field: &str) -> Option<&'a Value> {
+    let mut cur = v;
+    let mut parts = field.split('.').peekable();
+    let mut last = "";
+    while let Some(key) = parts.next() {
+        cur = cur.get(key)?;
+        last = key;
+        if let Some(n) = parts.peek().and_then(|p| p.parse::<usize>().ok()) {
+            parts.next();
+            cur = cur.get(n)?;
+        }
+    }
+    // An interrupt is `{ "value": ..., "id": ... }`: its value is what was cut.
+    if last == "interrupts" {
+        cur = cur.get("value")?;
+    }
+    Some(cur)
+}
+
 fn limit(field: &str, value: Option<u32>, default: u32) -> Result<u32, ToolError> {
     match value.unwrap_or(default) {
         n @ 1..=1000 => Ok(n),
@@ -533,7 +629,14 @@ impl Seen {
         } else {
             event.event
         };
-        let data = serde_json::from_str(&event.data).unwrap_or(Value::String(event.data));
+        let (data, cut) = if event.data.len() > EVENT_SHARE {
+            (Value::Null, Some(budget::cut_text("data", &event.data)))
+        } else {
+            (
+                serde_json::from_str(&event.data).unwrap_or(Value::String(event.data)),
+                None,
+            )
+        };
         if name == "metadata"
             && let Some(run_id) = data.get("run_id").and_then(Value::as_str)
         {
@@ -550,6 +653,7 @@ impl Seen {
             event: name,
             data,
             id,
+            cut,
         };
         let before = chunk.len();
         serde_json::to_writer(&mut *chunk, &line).expect("a JSON value serializes");
@@ -849,32 +953,131 @@ impl ThreadsApi {
             vec![]
         };
         let v = handle.value.get(&path, &query, "thread").await?;
-        Ok(ThreadState::from_json(&v))
+        let share = if input.full.unwrap_or(false) {
+            FULL_SHARE
+        } else {
+            STATE_SHARE
+        };
+        Ok(ThreadState::from_json(&v).within(share))
     }
 
-    /// Checkpoints, newest first.
-    #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
-    async fn history(&self, ctx: Ctx, input: ThreadHistoryInput) -> ToolResult<Vec<ThreadState>> {
+    /// One value of a checkpoint or a run, whole, as JSON text in chunks: for a `cut` too big for
+    /// `state` with `full`.
+    #[rpc::stream(
+        perm = "langgraph.read",
+        risk = Risk::Read,
+        name = "readValue",
+        timeout_default = "10m",
+        timeout_max = "1h"
+    )]
+    async fn read_value(
+        &self,
+        ctx: Ctx,
+        input: ReadValueInput,
+        sink: BinarySink,
+    ) -> ToolResult<ReadValueSummary> {
         let handle = client(&self.0, &ctx, &input.conn_id)?;
         let thread = id("threadId", &input.thread_id)?;
-        let mut body = Map::new();
-        body.insert("limit".into(), limit("limit", input.limit, 50)?.into());
-        if let Some(before) = input.before.filter(|b| !b.is_empty()) {
-            id("before", &before)?;
-            body.insert(
-                "before".into(),
-                json!({ "configurable": { "checkpoint_id": before } }),
-            );
-        }
-        let v = handle
-            .value
-            .post(
-                &format!("/threads/{thread}/history"),
-                &Value::Object(body),
-                "thread",
+        let path = match (&input.run_id, &input.checkpoint_id) {
+            (Some(run), _) => format!("/threads/{thread}/runs/{}", id("runId", run)?),
+            (None, Some(c)) if !c.is_empty() => {
+                format!("/threads/{thread}/state/{}", id("checkpointId", c)?)
+            }
+            _ => format!("/threads/{thread}/state"),
+        };
+        let query = if input.run_id.is_none() && input.field.starts_with("tasks.") {
+            vec![("subgraphs", "true".to_owned())]
+        } else {
+            vec![]
+        };
+        let v = handle.value.get(&path, &query, "thread").await?;
+        let value = resolve_field(&v, &input.field).ok_or_else(|| {
+            ToolError::new(
+                ToolErrorKind::NotFound,
+                TOOL,
+                format!("{} has no {}", path, input.field),
             )
-            .await?;
-        Ok(items(&v, "history").map(ThreadState::from_json).collect())
+        })?;
+        let bytes = serde_json::to_vec(value).expect("a JSON value serializes");
+        for chunk in bytes.chunks(sink.max_chunk_bytes().clamp(1, CHUNK_BYTES)) {
+            sink.send(chunk.to_vec()).await?;
+        }
+        Ok(ReadValueSummary {
+            bytes: bytes.len() as u64,
+        })
+    }
+
+    /// Checkpoints, newest first, a page of at most about 4 MiB: fewer than `limit` when they are
+    /// big, with `next` for the rest. A value over its share comes back `null` and named in the
+    /// item's `cuts`; `state` (or `readValue`) gives it whole.
+    #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
+    async fn history(&self, ctx: Ctx, input: ThreadHistoryInput) -> ToolResult<ThreadHistoryPage> {
+        let handle = client(&self.0, &ctx, &input.conn_id)?;
+        let thread = id("threadId", &input.thread_id)?;
+        let want = limit("limit", input.limit, 50)? as usize;
+        let mut before = input.before.filter(|b| !b.is_empty());
+        if let Some(b) = &before {
+            id("before", b)?;
+        }
+        let mut page: Page<ThreadState> = Page::new(REPLY_BUDGET);
+        let mut ask = budget::FIRST_PAGE;
+        let mut fetched = 0;
+        let next = loop {
+            let take = ask.min(want - page.items.len()).max(1);
+            let mut body = Map::new();
+            body.insert("limit".into(), take.into());
+            if let Some(before) = &before {
+                body.insert(
+                    "before".into(),
+                    json!({ "configurable": { "checkpoint_id": before } }),
+                );
+            }
+            let v = match handle
+                .value
+                .post(
+                    &format!("/threads/{thread}/history"),
+                    &Value::Object(body),
+                    "thread",
+                )
+                .await
+            {
+                // A heavy page: ask for half as many, down to one checkpoint.
+                Err(e) if take > 1 && too_big(&e) => {
+                    ask = take / 2;
+                    continue;
+                }
+                other => other?,
+            };
+            let raw: Vec<&Value> = items(&v, "history").collect();
+            let got = raw.len();
+            let mut raw_bytes = 0;
+            let mut full = false;
+            for item in raw {
+                raw_bytes += budget::json_len(item);
+                let state = ThreadState::from_json(item).within(ITEM_SHARE);
+                let weight = state.weight();
+                if !page.fits(weight) {
+                    full = true;
+                    break;
+                }
+                page.add(state, weight);
+            }
+            fetched += raw_bytes;
+            let last = page.items.last().and_then(|s| s.checkpoint_id.clone());
+            if full || page.items.len() >= want || (got == take && fetched >= UPSTREAM_BUDGET) {
+                break last;
+            }
+            if got < take {
+                break None;
+            }
+            let Some(last) = last else { break None };
+            before = Some(last);
+            ask = budget::next_page_size(raw_bytes, got, want);
+        };
+        Ok(ThreadHistoryPage {
+            items: page.items,
+            next,
+        })
     }
 
     /// Writes values as a node; at a checkpoint this forks a new branch from it.
@@ -1101,17 +1304,75 @@ impl RunsApi {
         })
     }
 
-    /// The thread's runs, newest first.
+    /// The thread's runs, newest first, a page of at most about 4 MiB: fewer than `limit` when
+    /// their metadata is big, with `next` (an offset) for the rest. Metadata over its share comes
+    /// back `null` and named in the run's `cuts`; `get` gives it whole.
     #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
-    async fn list(&self, ctx: Ctx, input: RunsListInput) -> ToolResult<Vec<Run>> {
+    async fn list(&self, ctx: Ctx, input: RunsListInput) -> ToolResult<RunsPage> {
         let handle = client(&self.0, &ctx, &input.conn_id)?;
         let thread = id("threadId", &input.thread_id)?;
-        let query = [("limit", limit("limit", input.limit, 20)?.to_string())];
+        let want = limit("limit", input.limit, 20)? as usize;
+        let start = input.offset.unwrap_or(0) as usize;
+        let mut offset = start;
+        let mut page: Page<Run> = Page::new(REPLY_BUDGET);
+        let mut ask = RUNS_FIRST_PAGE;
+        let mut fetched = 0;
+        let next = loop {
+            let take = ask.min(want - page.items.len()).max(1);
+            let query = [("limit", take.to_string()), ("offset", offset.to_string())];
+            let v = match handle
+                .value
+                .get(&format!("/threads/{thread}/runs"), &query, "thread")
+                .await
+            {
+                Err(e) if take > 1 && too_big(&e) => {
+                    ask = take / 2;
+                    continue;
+                }
+                other => other?,
+            };
+            let raw: Vec<&Value> = items(&v, "runs").collect();
+            let got = raw.len();
+            let mut raw_bytes = 0;
+            let mut full = false;
+            for item in raw {
+                raw_bytes += budget::json_len(item);
+                let run = Run::from_json(item).within(ITEM_SHARE);
+                let weight = run.weight();
+                if !page.fits(weight) {
+                    full = true;
+                    break;
+                }
+                page.add(run, weight);
+            }
+            fetched += raw_bytes;
+            let consumed = start + page.items.len();
+            if full || page.items.len() >= want || (got == take && fetched >= UPSTREAM_BUDGET) {
+                break Some(consumed);
+            }
+            if got < take {
+                break None;
+            }
+            offset = consumed;
+            ask = budget::next_page_size(raw_bytes, got, want);
+        };
+        Ok(RunsPage {
+            items: page.items,
+            next: next.and_then(|n| u32::try_from(n).ok()),
+        })
+    }
+
+    /// One run, with its metadata whole when it weighs up to 12 MiB (more: `threads.readValue`).
+    #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
+    async fn get(&self, ctx: Ctx, input: RunIdInput) -> ToolResult<Run> {
+        let handle = client(&self.0, &ctx, &input.conn_id)?;
+        let thread = id("threadId", &input.thread_id)?;
+        let run = id("runId", &input.run_id)?;
         let v = handle
             .value
-            .get(&format!("/threads/{thread}/runs"), &query, "thread")
+            .get(&format!("/threads/{thread}/runs/{run}"), &[], "run")
             .await?;
-        Ok(items(&v, "runs").map(Run::from_json).collect())
+        Ok(Run::from_json(&v).within(FULL_SHARE))
     }
 
     /// Stops the run where it is (the thread keeps its checkpoints).

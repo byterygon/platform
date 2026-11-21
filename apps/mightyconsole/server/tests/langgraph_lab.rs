@@ -205,7 +205,7 @@ async fn lab_threads_search_create_delete_state_and_history() {
         json!({ "connId": conn, "threadId": seeded }),
     )
     .await;
-    assert!(history.as_array().unwrap().len() >= 5, "{history}");
+    assert!(history["items"].as_array().unwrap().len() >= 5, "{history}");
     let state = call(
         &mut tab,
         5,
@@ -214,7 +214,7 @@ async fn lab_threads_search_create_delete_state_and_history() {
     )
     .await;
     assert_eq!(state["values"]["approved"], true);
-    assert_eq!(state["checkpointId"], history[0]["checkpointId"]);
+    assert_eq!(state["checkpointId"], history["items"][0]["checkpointId"]);
 
     let thread = new_thread(&mut tab, 6, &conn).await;
     let found = call(
@@ -344,7 +344,7 @@ async fn lab_stop_and_rollback_a_run() {
         json!({ "connId": conn, "threadId": thread }),
     )
     .await;
-    let status = runs
+    let status = runs["items"]
         .as_array()
         .unwrap()
         .iter()
@@ -370,7 +370,7 @@ async fn lab_stop_and_rollback_a_run() {
     .await;
     // A pending run is stopped at once; `langgraph dev` deletes it when its worker would have
     // picked it up, so it may still be listed, but no longer pending.
-    let left = runs
+    let left = runs["items"]
         .as_array()
         .unwrap()
         .iter()
@@ -409,7 +409,7 @@ async fn lab_fork_and_time_travel_make_new_checkpoints() {
         json!({ "connId": conn, "threadId": thread }),
     )
     .await;
-    let before = before.as_array().unwrap().clone();
+    let before = before["items"].as_array().unwrap().clone();
     // The checkpoint where the tool node is next (step 1).
     let at_tools = before
         .iter()
@@ -461,7 +461,7 @@ async fn lab_fork_and_time_travel_make_new_checkpoints() {
         json!({ "connId": conn, "threadId": thread, "limit": 100 }),
     )
     .await;
-    let after = after.as_array().unwrap();
+    let after = after["items"].as_array().unwrap();
     assert!(
         after.len() > before.len() + 1,
         "{} then {}",
@@ -598,4 +598,201 @@ async fn lab_the_store_lists_searches_puts_and_deletes() {
     )
     .await;
     tab.error(11, Code::NotFound).await;
+}
+
+/// The id of the thread the lab seeded with `metadata.lab == kind` (`lab seed langgraph`).
+async fn seeded(tab: &mut Tab, id: u32, conn: &str, kind: &str) -> String {
+    let found = call(
+        tab,
+        id,
+        "langgraph.threads.search",
+        json!({ "connId": conn, "metadata": { "lab": kind } }),
+    )
+    .await;
+    found[0]["threadId"]
+        .as_str()
+        .unwrap_or_else(|| panic!("run `lab seed langgraph`: no {kind} thread"))
+        .to_owned()
+}
+
+/// TSK-108: a thread with 41 runs of big metadata (40 of 128 KiB, one of 2 MiB) comes in pages of
+/// at most 4 MiB, and the 2 MiB one is left out with a note and loaded on request.
+#[tokio::test]
+async fn lab_a_thread_with_many_heavy_runs_is_paged_by_bytes() {
+    let (_t, mut tab, conn) = setup().await;
+    let thread = seeded(&mut tab, 3, &conn, "many-runs").await;
+    let mut ids = Vec::new();
+    let mut cut_run = None;
+    let mut offset = Value::Null;
+    let mut pages = 0;
+    loop {
+        tab.call(
+            10 + pages,
+            "langgraph.runs.list",
+            json!({ "connId": conn, "threadId": thread, "limit": 100, "offset": offset }),
+        )
+        .await;
+        let frame = tab.frame(10 + pages).await;
+        assert_eq!(frame.kind, Kind::Result);
+        assert!(
+            frame.payload.len() < 5 * 1024 * 1024,
+            "{} bytes",
+            frame.payload.len()
+        );
+        let page: Value = serde_json::from_slice(&frame.payload).unwrap();
+        pages += 1;
+        for run in page["items"].as_array().unwrap() {
+            ids.push(run["runId"].as_str().unwrap().to_owned());
+            if !run["cuts"].as_array().unwrap().is_empty() {
+                assert_eq!(run["cuts"][0]["field"], "metadata");
+                assert_eq!(run["metadata"], Value::Null);
+                cut_run = Some(run["runId"].as_str().unwrap().to_owned());
+            }
+        }
+        match page.get("next") {
+            Some(next) => offset = next.clone(),
+            None => break,
+        }
+        assert!(pages < 10);
+    }
+    assert_eq!(ids.len(), 41, "every run once");
+    assert_eq!(
+        ids.iter().collect::<std::collections::HashSet<_>>().len(),
+        41
+    );
+    assert!(pages >= 2, "7 MiB of metadata is more than one 4 MiB page");
+    let cut_run = cut_run.expect("the run with 2 MiB of metadata is left out");
+    let run = call(
+        &mut tab,
+        30,
+        "langgraph.runs.get",
+        json!({ "connId": conn, "threadId": thread, "runId": cut_run }),
+    )
+    .await;
+    assert_eq!(run["cuts"], json!([]));
+    assert_eq!(
+        run["metadata"]["blob"].as_str().unwrap().len(),
+        2 * 1024 * 1024
+    );
+}
+
+/// TSK-108: a thread with checkpoints of up to 6 MiB: History's values are left out with a note,
+/// one checkpoint's state comes whole, and `readValue` streams the same value.
+#[tokio::test]
+async fn lab_heavy_checkpoints_are_left_out_of_history_and_load_on_request() {
+    let (_t, mut tab, conn) = setup().await;
+    let thread = seeded(&mut tab, 3, &conn, "heavy-state").await;
+    tab.call(
+        4,
+        "langgraph.threads.history",
+        json!({ "connId": conn, "threadId": thread }),
+    )
+    .await;
+    let frame = tab.frame(4).await;
+    assert_eq!(frame.kind, Kind::Result);
+    assert!(
+        frame.payload.len() < 4 * 1024 * 1024,
+        "{} bytes",
+        frame.payload.len()
+    );
+    let history: Value = serde_json::from_slice(&frame.payload).unwrap();
+    let items = history["items"].as_array().unwrap();
+    assert!(items.len() >= 5, "{history}");
+    // The checkpoints whose values are left out (over 1 MiB), and what else was: the first
+    // checkpoint's task holds the 1.5 MiB input.
+    let cut_field = |s: &Value, field: &str| {
+        s["cuts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["field"] == field)
+            .cloned()
+    };
+    let big: Vec<&Value> = items
+        .iter()
+        .filter(|s| cut_field(s, "values").is_some())
+        .collect();
+    assert!(
+        big.len() >= 4,
+        "checkpoints over 1 MiB of values are left out"
+    );
+    assert!(
+        items
+            .iter()
+            .any(|s| cut_field(s, "tasks.0.result").is_some()),
+        "a task's result over 1 MiB too: {history}"
+    );
+    let newest = big[0];
+    assert_eq!(newest["values"], Value::Null);
+    assert!(
+        cut_field(newest, "values").unwrap()["bytes"]
+            .as_u64()
+            .unwrap()
+            > 1024 * 1024
+    );
+    // The Step and Source columns still have their metadata.
+    assert!(newest["metadata"]["source"].is_string());
+
+    // The smallest of them comes whole from `state` (its values and the rest are under 8 MiB).
+    let bytes_of = |s: &Value| cut_field(s, "values").unwrap()["bytes"].as_u64().unwrap();
+    let smallest = big.iter().min_by_key(|s| bytes_of(s)).unwrap();
+    let state = call(
+        &mut tab,
+        5,
+        "langgraph.threads.state",
+        json!({ "connId": conn, "threadId": thread, "checkpointId": smallest["checkpointId"] }),
+    )
+    .await;
+    assert_eq!(state["cuts"], json!([]), "{}", state["cuts"]);
+    assert_eq!(
+        serde_json::to_vec(&state["values"]).unwrap().len() as u64,
+        bytes_of(smallest)
+    );
+
+    // The newest checkpoint holds the 6 MiB of values and the interrupt's copies of the last
+    // message: over the 8 MiB of `state`, so its values are left out, and `full` (12 MiB) loads them.
+    let checkpoint = newest["checkpointId"].as_str().unwrap().to_owned();
+    let state = call(
+        &mut tab,
+        7,
+        "langgraph.threads.state",
+        json!({ "connId": conn, "threadId": thread, "checkpointId": checkpoint }),
+    )
+    .await;
+    assert_eq!(state["cuts"][0]["field"], "values");
+    assert_eq!(state["values"], Value::Null);
+    let loaded = call(
+        &mut tab,
+        8,
+        "langgraph.threads.state",
+        json!({ "connId": conn, "threadId": thread, "checkpointId": checkpoint, "full": true }),
+    )
+    .await;
+    assert_eq!(loaded["cuts"], json!([]));
+    assert_eq!(
+        serde_json::to_vec(&loaded["values"]).unwrap().len() as u64,
+        bytes_of(newest)
+    );
+    // The stream carries the same value, for what is over even that.
+    tab.call(
+        9,
+        "langgraph.threads.readValue",
+        json!({ "connId": conn, "threadId": thread, "checkpointId": checkpoint, "field": "values" }),
+    )
+    .await;
+    let mut streamed = Vec::new();
+    loop {
+        let frame = tab.frame(9).await;
+        match frame.kind {
+            Kind::Chunk => {
+                streamed.extend_from_slice(&frame.payload);
+                tab.client.credit(9, 1).await;
+            }
+            Kind::StreamEnd => break,
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    }
+    assert_eq!(streamed.len() as u64, bytes_of(newest));
+    let streamed: Value = serde_json::from_slice(&streamed).unwrap();
+    assert_eq!(streamed, loaded["values"]);
 }

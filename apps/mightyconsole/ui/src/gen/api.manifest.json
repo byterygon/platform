@@ -8645,6 +8645,58 @@
       },
       "type": "object"
     },
+    "ReadValueInput": {
+      "description": "What `langgraph.threads.readValue` reads: one value of a checkpoint or of a run, whole.",
+      "properties": {
+        "checkpointId": {
+          "default": null,
+          "description": "The checkpoint (the current state when absent).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connId": {
+          "type": "string"
+        },
+        "field": {
+          "description": "A `field` of a `cut`: `values`, `metadata`, `tasks.<n>.state`, `tasks.<n>.result`,\n`interrupts.<n>` or `tasks.<n>.interrupts.<m>`.",
+          "type": "string"
+        },
+        "runId": {
+          "default": null,
+          "description": "A run's value (`metadata`); when absent, a checkpoint's.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "threadId",
+        "field"
+      ],
+      "type": "object"
+    },
+    "ReadValueSummary": {
+      "description": "The end of `langgraph.threads.readValue`.",
+      "properties": {
+        "bytes": {
+          "description": "The JSON text sent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bytes"
+      ],
+      "type": "object"
+    },
     "RecordHeader": {
       "description": "One header of a [`MessageRecord`]; names repeat when the system allows several values.",
       "properties": {
@@ -9329,6 +9381,13 @@
         "createdAt": {
           "type": "string"
         },
+        "cuts": {
+          "description": "The values this reply left out (`metadata`), each over its share (TSK-108).",
+          "items": {
+            "$ref": "#/$defs/ValueCut"
+          },
+          "type": "array"
+        },
         "metadata": true,
         "multitaskStrategy": {
           "type": [
@@ -9357,7 +9416,8 @@
         "status",
         "createdAt",
         "updatedAt",
-        "metadata"
+        "metadata",
+        "cuts"
       ],
       "type": "object"
     },
@@ -9495,6 +9555,16 @@
             "null"
           ]
         },
+        "offset": {
+          "default": null,
+          "description": "The runs to skip: the `next` of the previous page.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "threadId": {
           "type": "string"
         }
@@ -9502,6 +9572,31 @@
       "required": [
         "connId",
         "threadId"
+      ],
+      "type": "object"
+    },
+    "RunsPage": {
+      "description": "A page of a thread's runs: at most about 4 MiB, whatever `limit` says (TSK-108).",
+      "properties": {
+        "items": {
+          "description": "Newest first. A run's metadata over its share is `null` with a note in its `cuts`.",
+          "items": {
+            "$ref": "#/$defs/Run"
+          },
+          "type": "array"
+        },
+        "next": {
+          "description": "Pass it as `offset` for the next page; absent when the runs end here.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items"
       ],
       "type": "object"
     },
@@ -11480,6 +11575,29 @@
       ],
       "type": "object"
     },
+    "ThreadHistoryPage": {
+      "description": "A page of the history: at most about 4 MiB, whatever `limit` says (TSK-108).",
+      "properties": {
+        "items": {
+          "description": "Newest first. A value over its share is `null` with a note in the item's `cuts`.",
+          "items": {
+            "$ref": "#/$defs/ThreadState"
+          },
+          "type": "array"
+        },
+        "next": {
+          "description": "Pass it as `before` for the next page; absent when the history ends here.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
     "ThreadIdInput": {
       "properties": {
         "connId": {
@@ -11512,6 +11630,13 @@
             "string",
             "null"
           ]
+        },
+        "cuts": {
+          "description": "The values this reply left out, each over its share of the reply's bytes (TSK-108): the\nfield is `null` here and the cut says what it was. Empty when nothing was cut.",
+          "items": {
+            "$ref": "#/$defs/ValueCut"
+          },
+          "type": "array"
         },
         "interrupts": {
           "description": "Every pending interrupt of the state, its tasks' included.",
@@ -11550,7 +11675,8 @@
         "tasks",
         "checkpoint",
         "metadata",
-        "interrupts"
+        "interrupts",
+        "cuts"
       ],
       "type": "object"
     },
@@ -11566,6 +11692,14 @@
         },
         "connId": {
           "type": "string"
+        },
+        "full": {
+          "default": null,
+          "description": "Allow the reply to weigh up to 12 MiB instead of 8 MiB, to load a value that came back\ncut (`cuts`); over that, `threads.readValue` streams it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "subgraphs": {
           "default": null,
@@ -11924,6 +12058,36 @@
       },
       "required": [
         "checkpoint"
+      ],
+      "type": "object"
+    },
+    "ValueCut": {
+      "description": "A value that was left out of a reply because it was over its share.",
+      "properties": {
+        "bytes": {
+          "description": "Its size as compact JSON text.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "field": {
+          "description": "Where it was: `values`, `metadata`, `tasks.<n>.state`, `tasks.<n>.result`,\n`interrupts.<n>` or `tasks.<n>.interrupts.<m>`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "`object`, `array`, `string`, `number`, `boolean` or `null`.",
+          "type": "string"
+        },
+        "preview": {
+          "description": "The first characters of its JSON text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "bytes",
+        "kind",
+        "preview"
       ],
       "type": "object"
     },
@@ -14024,6 +14188,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/RunIdInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.runs.get",
+      "output": {
+        "$ref": "#/$defs/Run"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/RunsJoinInput"
       },
       "kind": "stream",
@@ -14051,10 +14236,7 @@
       "log_input": false,
       "name": "langgraph.runs.list",
       "output": {
-        "items": {
-          "$ref": "#/$defs/Run"
-        },
-        "type": "array"
+        "$ref": "#/$defs/RunsPage"
       },
       "perm": "langgraph.read",
       "redact": [],
@@ -14294,16 +14476,34 @@
       "log_input": false,
       "name": "langgraph.threads.history",
       "output": {
-        "items": {
-          "$ref": "#/$defs/ThreadState"
-        },
-        "type": "array"
+        "$ref": "#/$defs/ThreadHistoryPage"
       },
       "perm": "langgraph.read",
       "redact": [],
       "risk": "Read",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/ReadValueInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "langgraph.threads.readValue",
+      "output": {
+        "$ref": "#/$defs/ReadValueSummary"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 600000,
+      "timeout_max_ms": 3600000
     },
     {
       "agent": "hidden",
@@ -16564,5 +16764,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:e46ec9650455c2003a09d01d049686865f0705294bd22323ede0e34747e2a62c"
+  "schema_hash": "sha256:6202b4c16a7d6df1637f7cf513db19ae220752a80d1ab9932eed8451a4368c94"
 }

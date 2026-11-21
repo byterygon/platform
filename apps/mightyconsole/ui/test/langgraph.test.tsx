@@ -136,6 +136,7 @@ const STATE = (checkpointId: string, interrupts: api.Interrupt[] = []): api.Thre
   metadata: { step: 2, source: "loop", writes: { plan: {} } },
   createdAt: "2026-11-18T00:00:00Z",
   interrupts,
+  cuts: [],
 });
 
 interface Script {
@@ -189,7 +190,16 @@ function fakeClient() {
       },
     } as unknown as StreamCall<api.RunStreamSummary, Uint8Array>;
   };
-  const state = { interrupted: false, threads: [{ threadId: THREAD, status: "idle", createdAt: "2026-11-18T00:00:00Z", updatedAt: "2026-11-18T00:00:00Z", metadata: { lab: "x" } }] as api.Thread[] };
+  const state = {
+    interrupted: false,
+    /** The pages of History by their `before` (null: the first): the default is two checkpoints, no more. */
+    pages: new Map<string | null, api.ThreadHistoryPage>(),
+    /** Answers `threads.state` in place of the default state. */
+    stateFor: null as null | ((input: { checkpointId?: string | null; full?: boolean | null }) => api.ThreadState),
+    /** What `threads.readValue` sends, as JSON text. */
+    readValue: "",
+    threads: [{ threadId: THREAD, status: "idle", createdAt: "2026-11-18T00:00:00Z", updatedAt: "2026-11-18T00:00:00Z", metadata: { lab: "x" } }] as api.Thread[],
+  };
   const client = {
     langgraph: {
       assistants: {
@@ -212,8 +222,19 @@ function fakeClient() {
           state.threads = state.threads.filter((t) => t.threadId !== i.threadId);
           return {};
         },
-        state: async (i: unknown) => (rec("threads.state")(i), STATE("c2", state.interrupted ? [{ id: "i1", value: { question: "Send?" } }] : [])),
-        history: async (i: unknown) => (rec("threads.history")(i), [STATE("c2"), STATE("c1")]),
+        state: async (i: { checkpointId?: string | null; full?: boolean | null }) => (rec("threads.state")(i), state.stateFor ? state.stateFor(i) : STATE("c2", state.interrupted ? [{ id: "i1", value: { question: "Send?" } }] : [])),
+        history: async (i: { before?: string | null }) => (rec("threads.history")(i), state.pages.get(i.before ?? null) ?? { items: [STATE("c2"), STATE("c1")] }),
+        readValue: (i: unknown) => {
+          rec("threads.readValue")(i);
+          const bytes = enc.encode(state.readValue);
+          return {
+            result: Promise.resolve({ bytes: bytes.length }),
+            async *chunks() {
+              yield bytes.slice(0, 7);
+              yield bytes.slice(7);
+            },
+          } as unknown as StreamCall<api.ReadValueSummary, Uint8Array>;
+        },
         updateState: async (i: unknown) => (rec("threads.updateState")(i), { checkpointId: "c3", checkpoint: { checkpoint_id: "c3" } }),
       },
       runs: {
@@ -221,7 +242,7 @@ function fakeClient() {
         join: stream("runs.join"),
         cancel: async (i: unknown) => (rec("runs.cancel")(i), {}),
         rollback: async (i: unknown) => (rec("runs.rollback")(i), {}),
-        list: async () => [],
+        list: async () => ({ items: [] }),
       },
       store: {
         namespaces: async (i: unknown) => (rec("store.namespaces")(i), [["lab", "answers"]]),
@@ -404,6 +425,55 @@ describe("screens", () => {
     fake.script.chunks = [];
     await click(runBar("Run"));
     expect(fake.last("runs.stream")).toMatchObject({ checkpointId: "c2", input: { messages: [{ type: "human", content: "" }] } });
+  });
+
+  test("history: pages follow the server's token, and a value left out is a note that loads on request (TSK-108)", async () => {
+    const fake = fakeClient();
+    const big = (id: string): api.ThreadState => ({ ...STATE(id), values: null, cuts: [{ field: "values", bytes: 3 * 1024 * 1024, kind: "object", preview: '{"messages":[{"content":"xxxx' }] });
+    fake.state.pages.set(null, { items: [big("c9"), STATE("c8")], next: "c8" });
+    fake.state.pages.set("c8", { items: [STATE("c7")] });
+    fake.state.stateFor = (i) => ({ ...STATE(i.checkpointId ?? "c9"), values: i.full ? { messages: ["the whole value"] } : null });
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD })} />
+      </Toast>,
+    );
+    await settle();
+    const historyTab = [...document.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.textContent?.startsWith("History"));
+    // More than the first page holds: the count says so.
+    expect(historyTab?.textContent).toBe("History 2+");
+    await click(historyTab);
+    // The newest checkpoint is selected; its values are a note with the size, not a viewer.
+    const note = document.querySelector("[role=group][aria-label='Values, left out']");
+    expect(note?.textContent).toContain("Values is an object of 3.0 MiB");
+    expect(note?.textContent).toContain('{"messages":[{"content":"xxxx');
+    await click(buttonNamed("Load 3.0 MiB"));
+    expect(fake.last("threads.state")).toMatchObject({ threadId: THREAD, checkpointId: "c9", full: true });
+    expect(document.querySelector("[role=group][aria-label='Values, left out']")).toBeNull();
+    expect(document.body.textContent).toContain("the whole value");
+    // Older checkpoints: the token of the page, and the button goes with the last page.
+    await click(buttonNamed("Load older checkpoints"));
+    expect(fake.last("threads.history")).toMatchObject({ threadId: THREAD, before: "c8" });
+    expect(buttonNamed("Load older checkpoints")).toBeUndefined();
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(3);
+  });
+
+  test("a value over what one reply can carry is read as a stream (TSK-108)", async () => {
+    const fake = fakeClient();
+    const huge: api.ThreadState = { ...STATE("c2"), values: null, cuts: [{ field: "values", bytes: 30 * 1024 * 1024, kind: "object", preview: '{"a":' }] };
+    fake.state.stateFor = () => huge; // still cut with `full`: 12 MiB is not enough
+    fake.state.readValue = JSON.stringify({ a: "from the stream" });
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD, view: "state" })} />
+      </Toast>,
+    );
+    await settle();
+    expect(document.body.textContent).toContain("Values is an object of 30.0 MiB");
+    await click(buttonNamed("Load 30.0 MiB"));
+    expect(fake.last("threads.state")).toMatchObject({ full: true });
+    expect(fake.last("threads.readValue")).toMatchObject({ threadId: THREAD, checkpointId: "c2", field: "values" });
+    expect(document.body.textContent).toContain("from the stream");
   });
 
   test("the store lists namespaces and items, puts and deletes", async () => {
