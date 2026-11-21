@@ -341,9 +341,13 @@ export default {
           await until(`__mc.item("lab-codec")`, "the saved profile");
           await run(`__mc.dblclick(__mc.item("lab-codec"))`);
           await until(itemOf("lab-codec", "Workers"), "temporal.connect with the codec");
-          await run(`__mc.dblclick(${itemOf("lab-codec", "Workflows")})`);
+          // The list by its link, with a query for encrypted-1: unfiltered, the lab's every-minute
+          // schedule pushes the seeded encrypted-1 a row further down each minute after `lab up`,
+          // past the rendered rows on a slow run (30 minutes in on #182, 19 on main).
+          await page.navigate(`${origin}/temporal/lab-codec/lab/workflows?q=${encodeURIComponent('WorkflowId = "encrypted-1"')}`);
           try {
-            await until(`__mc.has("encrypted-1")`, "the workflow list");
+            // The row's button: the query (in the editor and the tab) holds the ID too.
+            await until(shownButton("encrypted-1"), "the workflow list", 30_000);
           } catch (e) {
             // Say what the list shows instead (which profile's tab, which workflows, any error).
             await shot("workflow-list-without-encrypted-1");
