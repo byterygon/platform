@@ -4329,6 +4329,13 @@ export const tokens = {
     description: "Width of a sheet panel (600 px), for a side sheet that holds a form in two columns: the w-panel-sheet and max-w-panel-sheet utilities. Not for controls, gaps or page layout: use size.control.*, space.* or the layout of the page; not a minimum width, panels shrink on narrow viewports (max-w-full).",
     values: { "base": "600px" },
   },
+  "size.field": {
+    cssVar: "--by-size-field",
+    type: "dimension",
+    tier: "primitive",
+    description: "Minimum width of a text field in a row of fields that wraps, such as a filter bar (160 px): the min-w-field utility. Not a field's width in a form (fields fill their column) and not for panels: use size.panel.*.",
+    values: { "base": "160px" },
+  },
   "border.width.0": {
     cssVar: "--by-border-width-0",
     type: "dimension",

@@ -10761,6 +10761,19 @@
           }
         },
         {
+          "name": "size/field",
+          "type": "FLOAT",
+          "description": "Minimum width of a text field in a row of fields that wraps, such as a filter bar (160 px): the min-w-field utility. Not a field's width in a form (fields fill their column) and not for panels: use size.panel.*.",
+          "scopes": [],
+          "hiddenFromPublishing": true,
+          "codeSyntax": {
+            "WEB": "var(--by-size-field)"
+          },
+          "valuesByMode": {
+            "Value": 160
+          }
+        },
+        {
           "name": "border/width/0",
           "type": "FLOAT",
           "description": "A 0 px border. Primitive: reference it through a role, never from a component. Not for the focus ring: use ring.width.",
