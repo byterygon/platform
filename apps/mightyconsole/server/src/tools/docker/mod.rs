@@ -10,6 +10,8 @@
 //!   the logs stream (batch 2b); [`stats`] and [`exec`] (batch 2c).
 //! - [`resources`]: `docker.images.*`, `docker.volumes.*`, `docker.networks.*`: the lists with
 //!   what uses each item, inspect and remove (batch 3).
+//! - [`system`]: `docker.host.df` (disk usage), `docker.host.counts` (the tree's counts) and the
+//!   processes of `docker.containers.top` (batch 4).
 //! - [`events`]: `docker.events`, the host's events that keep the lists live, and
 //!   `docker.compose.projects` from the containers' labels.
 //! - [`stream`]: the `jsonl` forwarding the logs and the events share.
@@ -26,6 +28,7 @@ pub mod resources;
 pub mod ssh;
 pub mod stats;
 pub mod stream;
+pub mod system;
 pub mod types;
 
 use std::sync::Arc;
@@ -350,6 +353,26 @@ impl DockerHostApi {
             .0
             .get::<DockerClient>(&ctx.session().id, TOOL, &input.conn_id)?;
         Ok(handle.value.host_info().await?)
+    }
+
+    /// Disk usage per kind (images, containers' writable layers, volumes, build cache) with what
+    /// a prune could free, from `/system/df`. Docker sizes every volume for it, so it can take a
+    /// while on a big host.
+    #[rpc::query(perm = "docker.read", risk = Risk::Read)]
+    async fn df(&self, ctx: Ctx, input: DockerConnIdInput) -> ToolResult<system::DiskUsage> {
+        let handle = self
+            .0
+            .get::<DockerClient>(&ctx.session().id, TOOL, &input.conn_id)?;
+        Ok(system::df(&handle.value).await?)
+    }
+
+    /// How many images, volumes and networks the host has (the tree's counts).
+    #[rpc::query(perm = "docker.read", risk = Risk::Read)]
+    async fn counts(&self, ctx: Ctx, input: DockerConnIdInput) -> ToolResult<system::HostCounts> {
+        let handle = self
+            .0
+            .get::<DockerClient>(&ctx.session().id, TOOL, &input.conn_id)?;
+        Ok(system::counts(&handle.value).await?)
     }
 }
 

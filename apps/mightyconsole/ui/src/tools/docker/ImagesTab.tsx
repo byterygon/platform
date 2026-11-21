@@ -73,7 +73,7 @@ export function matchesImage(line: ImageLine, search: string): boolean {
 export function ImagesTab({ profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
-  const list = useDockerList({ client, connId, note, kind: "image", load: (id) => client.docker.images.list({ connId: id }) });
+  const list = useDockerList({ client, connId, note, kind: "image", load: (id) => client.docker.images.list({ connId: id }), count: (rows) => rows.length });
   const [search, setSearch] = useState("");
   const [showDangling, setShowDangling] = useState(false);
   const [onlyUnused, setOnlyUnused] = useState(false);

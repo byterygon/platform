@@ -156,6 +156,38 @@ export function changesRows(event: DockerEvent): boolean {
   return ["create", "start", "restart", "stop", "die", "kill", "pause", "unpause", "destroy", "rename", "update", "health_status", "oom"].includes(action);
 }
 
+/**
+ * An event as the Host page's list says it (TSK-81 mockup frame docker-host): the action without
+ * its argument (`exec_start: sh -c …` is `exec_start`), and what it was about: the object's name,
+ * then the exit code or the action's argument (`shop-api-1 · exit 1`, `shop-api-1 · sh`).
+ */
+export function eventText(event: DockerEvent): { action: string; detail: string } {
+  const cut = event.action.indexOf(":");
+  const action = (cut < 0 ? event.action : event.action.slice(0, cut)).trim();
+  const argument = cut < 0 ? "" : event.action.slice(cut + 1).trim();
+  const subject = event.name ?? event.attributes["name"] ?? (event.kind === "container" ? shortId(event.id) : event.id);
+  const exit = event.attributes["exitCode"];
+  return { action, detail: [subject, exit !== undefined ? `exit ${exit}` : "", argument].filter(Boolean).join(" · ") };
+}
+
+/** Which of `docker top`'s columns the Processes table shows, by index: PID, user, CPU, command. */
+export interface ProcessColumns {
+  pid: number;
+  user: number;
+  cpu: number;
+  command: number;
+}
+
+/**
+ * The columns of a `docker.containers.top` answer to show. The host's `ps` decides them:
+ * `ps -ef` prints `UID PID PPID C STIME TTY TIME CMD`, BusyBox `PID USER TIME COMMAND`; a column
+ * the host does not print is -1.
+ */
+export function processColumns(titles: readonly string[]): ProcessColumns {
+  const find = (...names: string[]) => titles.findIndex((t) => names.includes(t.trim().toUpperCase()));
+  return { pid: find("PID"), user: find("UID", "USER"), cpu: find("C", "%CPU", "CPU"), command: find("CMD", "COMMAND", "ARGS") };
+}
+
 /** `18 Nov, 07:12` (the mockup's created column) from Unix seconds. */
 export function formatCreated(seconds: number, locale = "en-GB"): string {
   const date = new Date(seconds * 1000);

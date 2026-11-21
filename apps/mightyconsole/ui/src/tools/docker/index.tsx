@@ -4,7 +4,8 @@
 // the Host page. Batch 2b: the Containers list, live through `docker.events`, and a container's
 // Overview, Logs and Inspect; the tree groups the containers by Compose project (spec §10.4).
 // Batch 2c: the container's Stats and Terminal (exec). Batch 3: Images, Volumes and Networks, each
-// a list with Inspect (a sheet) and Remove.
+// a list with Inspect (a sheet) and Remove. Batch 4: the tree's counts, the Host page's disk usage
+// and events, a container's Processes.
 import type { AnyRoute } from "@tanstack/react-router";
 import { Icon } from "@/components/ui/icon";
 import { type SiblingContext, type SiblingList, levelRoute, path, placeRoute, str } from "@/app/router";
@@ -20,7 +21,7 @@ import { HostTab } from "./HostTab";
 import { ImagesTab } from "./ImagesTab";
 import { NetworksTab } from "./NetworksTab";
 import { profile, targetOf, trustHostKey } from "./profile";
-import { dockerTreeData, treeContainersOf } from "./tree-data";
+import { dockerTreeData, treeContainersOf, treeCountsOf } from "./tree-data";
 import { VolumesTab } from "./VolumesTab";
 
 const VIEW_LABELS: Record<(typeof CONTAINER_VIEWS)[number], string> = { overview: "Overview", logs: "Logs", stats: "Stats", terminal: "Terminal", inspect: "Inspect" };
@@ -78,6 +79,8 @@ export const dockerTool: ToolModule = {
   ConnectionForm,
   sidebarTree({ profile: p, connId }): readonly ResourceNode[] {
     const rows = treeContainersOf(connId);
+    const counts = treeCountsOf(connId);
+    const countMeta = (n: number | undefined) => (n === undefined ? {} : { meta: <span className="text-caption-1 text-fg-muted">{n}</span> });
     const up = rows?.filter((r) => r.state === "running").length ?? 0;
     return [
       {
@@ -91,18 +94,21 @@ export const dockerTool: ToolModule = {
       {
         id: `${p.id}/images`,
         label: "Images",
+        ...countMeta(counts.images),
         icon: <Icon icon={Image} />,
         open: { kind: "docker.images", params: {}, title: `Images · ${p.name}` },
       },
       {
         id: `${p.id}/volumes`,
         label: "Volumes",
+        ...countMeta(counts.volumes),
         icon: <Icon icon={HardDrive} />,
         open: { kind: "docker.volumes", params: {}, title: `Volumes · ${p.name}` },
       },
       {
         id: `${p.id}/networks`,
         label: "Networks",
+        ...countMeta(counts.networks),
         icon: <Icon icon={Globe} />,
         open: { kind: "docker.networks", params: {}, title: `Networks · ${p.name}` },
       },

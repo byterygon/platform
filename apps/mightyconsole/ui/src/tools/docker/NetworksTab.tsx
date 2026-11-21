@@ -40,7 +40,7 @@ export function networkRefusal(row: NetworkRow): string | null {
 export function NetworksTab({ profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
-  const list = useDockerList({ client, connId, note, kind: "network", load: (id) => client.docker.networks.list({ connId: id }) });
+  const list = useDockerList({ client, connId, note, kind: "network", load: (id) => client.docker.networks.list({ connId: id }), count: (rows) => rows.length });
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<NetworkFilter>("all");
   const [inspect, setInspect] = useState<InspectTarget | null>(null);

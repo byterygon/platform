@@ -36,7 +36,8 @@ describe("acceptance checklists", () => {
       ["temporal", "TSK-83", 6],
       ["temporal-more", "TSK-92", 8],
       ["temporal-detail", "TSK-104", 2],
-      ["docker", "TSK-81", 5],
+      // Section 18's five, then the additions Uy Son approved (DOC-21 Open question 45 q).
+      ["docker", "TSK-81", 6],
       ["langgraph", "TSK-84", 6],
       ["packaging", "TSK-87", 2],
     ]);

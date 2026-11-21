@@ -2,7 +2,7 @@
 // mockup frames docker-images and docker-volumes): a list loaded once and again after the host's
 // events of its kind (and the container events that change what uses an item), the "Used by" cell
 // (running containers first, each a link to its container), the Inspect sheet (`docker inspect` in
-// the JsonViewer) and the toast after a remove.
+// the JsonViewer) and the toast after a remove. Each list it loads gives the tree its count.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
@@ -18,6 +18,9 @@ import { Code, Delete } from "@/lib/icons";
 import type { DescribedError, LinkEvent } from "../types";
 import { type DockerEvent, changesRows } from "./format";
 import { type EventsState, useDockerEvents } from "./live";
+import { setTreeCount } from "./tree-data";
+
+const TREE_COUNT = { image: "images", volume: "volumes", network: "networks" } as const;
 
 /** How long after an event the list is loaded again (a project's `down` sends a burst). */
 export const RELOAD_DEBOUNCE_MS = 300;
@@ -42,7 +45,7 @@ export interface DockerList<T> {
  * Loads a list while connected and again after the host's events of `kind` or a container's that
  * changes what uses it; the latest answer wins.
  */
-export function useDockerList<T>({ client, connId, note, kind, load }: { client: MightyClient; connId: string | null; note(e: unknown): DescribedError; kind: "image" | "volume" | "network"; load(connId: string): Promise<T> }): DockerList<T> {
+export function useDockerList<T>({ client, connId, note, kind, load, count }: { client: MightyClient; connId: string | null; note(e: unknown): DescribedError; kind: "image" | "volume" | "network"; load(connId: string): Promise<T>; count(data: T): number }): DockerList<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,6 +53,8 @@ export function useDockerList<T>({ client, connId, note, kind, load }: { client:
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loader = useRef(load);
   loader.current = load;
+  const counter = useRef(count);
+  counter.current = count;
 
   const reload = useCallback(async () => {
     if (connId === null) return;
@@ -60,6 +65,7 @@ export function useDockerList<T>({ client, connId, note, kind, load }: { client:
       if (mine !== generation.current) return;
       setData(next);
       setError(null);
+      setTreeCount(connId, TREE_COUNT[kind], counter.current(next));
     } catch (e) {
       if (mine === generation.current) setError(note(e));
     } finally {
