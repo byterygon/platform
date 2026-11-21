@@ -176,7 +176,7 @@ impl server::Handler for Host {
                         .uri()
                         .path_and_query()
                         .map_or(path.clone(), |p| p.to_string());
-                    paths.lock().unwrap().push(full);
+                    paths.lock().unwrap().push(full.clone());
                     if path == "/v1.47/exec/e1/start" {
                         let upgrade = hyper::upgrade::on(&mut request);
                         tokio::spawn(fake_process(upgrade));
@@ -188,6 +188,9 @@ impl server::Handler for Host {
                                 .body(Full::default())
                                 .unwrap(),
                         );
+                    }
+                    if path.ends_with("/archive") {
+                        return Ok::<_, Infallible>(archive(&full));
                     }
                     Ok::<_, Infallible>(engine(api, request.method(), &path))
                 }
@@ -271,6 +274,68 @@ fn conflict(message: &str) -> Response<Full<Bytes>> {
         .body(Full::new(Bytes::from(
             json!({ "message": message }).to_string(),
         )))
+        .unwrap()
+}
+
+/// A ustar entry of the fake archives.
+fn tar_entry(path: &str, kind: u8, data: &[u8]) -> Vec<u8> {
+    let mut h = vec![0u8; 512];
+    h[..path.len()].copy_from_slice(path.as_bytes());
+    h[100..107]
+        .copy_from_slice(format!("{:07o}", if kind == b'5' { 0o755 } else { 0o644 }).as_bytes());
+    h[124..135].copy_from_slice(format!("{:011o}", data.len()).as_bytes());
+    h[136..147].copy_from_slice(format!("{:011o}", 1_795_161_600u64).as_bytes());
+    h[156] = kind;
+    h[257..263].copy_from_slice(b"ustar\0");
+    h.extend_from_slice(data);
+    h.resize(h.len().div_ceil(512) * 512, 0);
+    h
+}
+
+/// `GET /containers/web/archive?path=…`: `/app` (a folder with a sub-folder), its files, or
+/// Docker's 404; the stat header as Docker sends it.
+fn archive(full: &str) -> Response<Full<Bytes>> {
+    use base64::Engine as _;
+    let path: String =
+        url::form_urlencoded::parse(full.split_once('?').map_or("", |(_, q)| q).as_bytes())
+            .find(|(k, _)| k == "path")
+            .map(|(_, v)| v.into_owned())
+            .unwrap_or_default();
+    let (stat, mut tar) = match path.as_str() {
+        "/app" => (
+            json!({ "name": "app", "size": 4096, "mode": 2_147_484_141u64, "linkTarget": "" }),
+            [
+                tar_entry("app/", b'5', b""),
+                tar_entry("app/robots.txt", b'0', b"User-agent: *\n"),
+                tar_entry("app/data.bin", b'0', &[0, 1, 2, 3]),
+                tar_entry("app/sub/", b'5', b""),
+                tar_entry("app/sub/deep.txt", b'0', b"deep"),
+            ]
+            .concat(),
+        ),
+        "/app/robots.txt" => (
+            json!({ "name": "robots.txt", "size": 14, "mode": 420, "linkTarget": "" }),
+            tar_entry("robots.txt", b'0', b"User-agent: *\n"),
+        ),
+        "/app/data.bin" => (
+            json!({ "name": "data.bin", "size": 4, "mode": 420, "linkTarget": "" }),
+            tar_entry("data.bin", b'0', &[0, 1, 2, 3]),
+        ),
+        _ => {
+            return Response::builder()
+                .status(404)
+                .body(Full::new(Bytes::from(
+                    json!({ "message": format!("Could not find the file {path} in container web") }).to_string(),
+                )))
+                .unwrap();
+        }
+    };
+    tar.extend_from_slice(&[0u8; 1024]);
+    let header = base64::engine::general_purpose::STANDARD.encode(stat.to_string());
+    Response::builder()
+        .header("content-type", "application/x-tar")
+        .header("x-docker-container-path-stat", header)
+        .body(Full::new(Bytes::from(tar)))
         .unwrap()
 }
 
@@ -1148,6 +1213,118 @@ async fn the_host_has_its_disk_usage_and_counts_and_a_container_its_processes() 
     .await;
     let err = tab.error(7, Code::InvalidArgument).await;
     assert_eq!(details(&err)["field"], "id");
+}
+
+#[tokio::test]
+async fn a_containers_files_are_listed_read_and_downloaded_from_its_archive() {
+    let (_t, lab, mut tab) = setup().await;
+    tab.call(
+        2,
+        "docker.connect",
+        json!({ "profile": lab.profile(json!({})) }),
+    )
+    .await;
+    let conn_id = tab.result(2).await["connId"].as_str().unwrap().to_owned();
+    tab.call(
+        3,
+        "docker.containers.files.list",
+        json!({ "connId": conn_id, "id": "web", "path": "/app" }),
+    )
+    .await;
+    let list = tab.result(3).await;
+    assert_eq!(list["kind"], "dir");
+    let names: Vec<&str> = list["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["sub", "data.bin", "robots.txt"]);
+    assert_eq!(
+        list["entries"][2],
+        json!({ "name": "robots.txt", "kind": "file", "size": 14, "mode": 420, "mtimeMs": 1_795_161_600_000u64 })
+    );
+    assert!(list.get("truncated").is_none());
+
+    tab.call(
+        4,
+        "docker.containers.files.read",
+        json!({ "connId": conn_id, "id": "web", "path": "/app/robots.txt" }),
+    )
+    .await;
+    assert_eq!(
+        tab.result(4).await,
+        json!({ "path": "/app/robots.txt", "size": 14, "text": "User-agent: *\n", "binary": false, "tooLarge": false })
+    );
+    tab.call(
+        5,
+        "docker.containers.files.read",
+        json!({ "connId": conn_id, "id": "web", "path": "/app/data.bin" }),
+    )
+    .await;
+    assert_eq!(tab.result(5).await["binary"], true);
+    tab.call(
+        6,
+        "docker.containers.files.read",
+        json!({ "connId": conn_id, "id": "web", "path": "/app" }),
+    )
+    .await;
+    assert_eq!(
+        details(&tab.error(6, Code::InvalidArgument).await)["field"],
+        "path"
+    );
+    tab.call(
+        7,
+        "docker.containers.files.list",
+        json!({ "connId": conn_id, "id": "web", "path": "/gone" }),
+    )
+    .await;
+    assert_eq!(
+        details(&tab.error(7, Code::NotFound).await)["kind"],
+        "NotFound"
+    );
+    tab.call(
+        8,
+        "docker.containers.files.list",
+        json!({ "connId": conn_id, "id": "web", "path": "app" }),
+    )
+    .await;
+    assert_eq!(
+        details(&tab.error(8, Code::InvalidArgument).await)["field"],
+        "path"
+    );
+    assert!(
+        lab.seen
+            .paths
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|p| !p.ends_with("path=app"))
+    );
+
+    tab.call(
+        9,
+        "docker.containers.files.download",
+        json!({ "connId": conn_id, "id": "web", "path": "/app", "streamId": "dl" }),
+    )
+    .await;
+    let mut tar = Vec::new();
+    let summary = loop {
+        let frame = tab.frame(9).await;
+        match frame.kind {
+            ambidex::Kind::Chunk => {
+                tar.extend_from_slice(&frame.payload);
+                tab.client.credit(9, 1).await;
+            }
+            ambidex::Kind::StreamEnd => {
+                break serde_json::from_slice::<Value>(&frame.payload).unwrap();
+            }
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(summary["bytes"].as_u64().unwrap() as usize, tar.len());
+    assert_eq!(tar.len(), 5 * 512 + 3 * 512 + 1024);
+    assert_eq!(&tar[..4], b"app/");
 }
 
 #[tokio::test]

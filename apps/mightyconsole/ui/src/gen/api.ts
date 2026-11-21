@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:5d78b3128406fd0fbdd51f8c24483f9e63fae5e1959d456a0077903a1d303cd8";
+export const SCHEMA_HASH = "sha256:261a66031618cdda9d47793f42c87ee7cb39a2e4d4c220bc2ecd4ca9336518cf";
 
 // ---- Types
 
@@ -912,6 +912,91 @@ thresholdBytes?: number | null,
  * The largest payload read or written (50 MiB, the Go driver's default).
  */
 maxPayloadBytes?: number | null, };
+
+/**
+ * One entry of a folder.
+ */
+export type FileEntry = { name: string, kind: FileKind, 
+/**
+ * Bytes; 0 for a folder.
+ */
+size: number, 
+/**
+ * The permission bits (`0o755`).
+ */
+mode: number, 
+/**
+ * Unix milliseconds.
+ */
+mtimeMs: number, 
+/**
+ * Where a symlink or a hard link points.
+ */
+linkTarget?: string, };
+
+/**
+ * What an entry is.
+ */
+export type FileKind = "file" | "dir" | "symlink" | "link" | "other";
+
+/**
+ * `docker.containers.files.read`.
+ */
+export type FileReadOutput = { path: string, size: number, 
+/**
+ * The text, when the file is UTF-8 without NUL bytes and at most [`MAX_PREVIEW`].
+ */
+text?: string, 
+/**
+ * Not text (invalid UTF-8 or a NUL byte).
+ */
+binary: boolean, 
+/**
+ * Larger than [`MAX_PREVIEW`]: not read.
+ */
+tooLarge: boolean, };
+
+export type FilesDownloadInput = { connId: string, id: string, path: string, streamId: string, };
+
+/**
+ * `docker.containers.files.download`'s summary.
+ */
+export type FilesDownloadSummary = { 
+/**
+ * The tar's bytes sent.
+ */
+bytes: number, };
+
+/**
+ * `docker.containers.files.list`.
+ */
+export type FilesListOutput = { 
+/**
+ * The path as asked.
+ */
+path: string, 
+/**
+ * What the path is (Docker's stat of it); a file or a symlink has no entries.
+ */
+kind: FileKind, 
+/**
+ * A symlink's target, when `path` is one.
+ */
+linkTarget?: string, 
+/**
+ * Folders first, then by name.
+ */
+entries: Array<FileEntry>, truncated?: Truncated, };
+
+export type FilesPathInput = { connId: string, 
+/**
+ * The container's name or id.
+ */
+id: string, 
+/**
+ * An absolute path in the container.
+ */
+path: string, };
 
 /**
  * The filter (spec §5.4).
@@ -3147,6 +3232,11 @@ id: string,
  */
 version: string, };
 
+/**
+ * Why a listing stopped early.
+ */
+export type Truncated = "entries" | "bytes";
+
 export type UpdateStateInput = { connId: string, threadId: string, 
 /**
  * The values to write, as a node's update.
@@ -3481,6 +3571,9 @@ export interface Procedures {
   readonly "docker.compose.projects": ProcedureDef<"query", DockerConnIdInput, Array<ComposeProject>, ToolError>;
   readonly "docker.connect": ProcedureDef<"mutation", DockerConnectInput, DockerConnectOutput, ToolError>;
   readonly "docker.containers.exec": ProcedureDef<"stream", ContainersExecInput, ContainersExecSummary, ToolError>;
+  readonly "docker.containers.files.download": ProcedureDef<"stream", FilesDownloadInput, FilesDownloadSummary, ToolError>;
+  readonly "docker.containers.files.list": ProcedureDef<"query", FilesPathInput, FilesListOutput, ToolError>;
+  readonly "docker.containers.files.read": ProcedureDef<"query", FilesPathInput, FileReadOutput, ToolError>;
   readonly "docker.containers.inspect": ProcedureDef<"query", ContainerIdInput, ContainerInspectOutput, ToolError>;
   readonly "docker.containers.list": ProcedureDef<"query", ContainersListInput, Array<ContainerRow>, ToolError>;
   readonly "docker.containers.logs": ProcedureDef<"stream", ContainersLogsInput, ContainersLogsSummary, ToolError>;
@@ -3648,6 +3741,11 @@ export interface Api {
     readonly connect: Procedures["docker.connect"];
     readonly containers: {
       readonly exec: Procedures["docker.containers.exec"];
+      readonly files: {
+        readonly download: Procedures["docker.containers.files.download"];
+        readonly list: Procedures["docker.containers.files.list"];
+        readonly read: Procedures["docker.containers.files.read"];
+      };
       readonly inspect: Procedures["docker.containers.inspect"];
       readonly list: Procedures["docker.containers.list"];
       readonly logs: Procedures["docker.containers.logs"];
@@ -3933,6 +4031,38 @@ export const procedures: Api = {
         deprecated: false,
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 43200000,
+      },
+      files: {
+        download: {
+          name: "docker.containers.files.download",
+          kind: "stream",
+          perm: "docker.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 43200000,
+        },
+        list: {
+          name: "docker.containers.files.list",
+          kind: "query",
+          perm: "docker.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 120000,
+          timeoutMaxMs: 300000,
+        },
+        read: {
+          name: "docker.containers.files.read",
+          kind: "query",
+          perm: "docker.read",
+          risk: "Read",
+          agent: "hidden",
+          deprecated: false,
+          timeoutDefaultMs: 30000,
+          timeoutMaxMs: 300000,
+        },
       },
       inspect: {
         name: "docker.containers.inspect",

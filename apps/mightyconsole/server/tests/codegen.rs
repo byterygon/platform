@@ -72,6 +72,30 @@ fn the_procedures_of_the_spec() {
             live,
         ),
         (
+            "docker.containers.files.download",
+            Stream,
+            "docker.read",
+            Risk::Read,
+            live,
+        ),
+        (
+            "docker.containers.files.list",
+            Query,
+            "docker.read",
+            Risk::Read,
+            (
+                Some(Duration::from_secs(120)),
+                Some(Duration::from_secs(300)),
+            ),
+        ),
+        (
+            "docker.containers.files.read",
+            Query,
+            "docker.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
             "docker.containers.inspect",
             Query,
             "docker.read",

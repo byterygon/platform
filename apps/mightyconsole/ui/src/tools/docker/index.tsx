@@ -25,7 +25,7 @@ import { PROJECT_VIEWS, ProjectTab } from "./ProjectTab";
 import { dockerTreeData, treeContainersOf, treeCountsOf } from "./tree-data";
 import { VolumesTab } from "./VolumesTab";
 
-const VIEW_LABELS: Record<(typeof CONTAINER_VIEWS)[number], string> = { overview: "Overview", logs: "Logs", stats: "Stats", terminal: "Terminal", inspect: "Inspect" };
+const VIEW_LABELS: Record<(typeof CONTAINER_VIEWS)[number], string> = { overview: "Overview", logs: "Logs", stats: "Stats", terminal: "Terminal", files: "Files", inspect: "Inspect" };
 const PROJECT_VIEW_LABELS: Record<(typeof PROJECT_VIEWS)[number], string> = { logs: "Logs", containers: "Containers" };
 
 /** A container's tree node: it opens the container's Overview. */
