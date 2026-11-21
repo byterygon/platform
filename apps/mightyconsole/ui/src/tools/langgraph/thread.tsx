@@ -41,6 +41,7 @@ import { ArrowClockwise, ArrowUndo, ChevronDown, ChevronRight, Delete, Edit, His
 import type { DescribedError, LiveState, TabProps } from "../types";
 import { EMPTY_RUN, type RunEvent, type RunInterrupt, type RunView, eventName, interruptsOf, parseChunk, reduceRun } from "./run-events";
 import { useActiveGate } from "@/app/while-active";
+import { CutValue, cutOf, loadCut } from "./cut-value";
 import { JsonField, StatusBadge, configSchema, parseJson, partialSchema, preview, schemaObject, shortId, toGraphView, useLoad } from "./shared";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
@@ -148,8 +149,8 @@ export function ThreadTab(props: TabProps) {
       setDeleteError(note(e));
     }
   };
-  const checkpoint = history.data?.[0]?.checkpointId ?? null;
-  const count = history.data ? (history.data.length >= HISTORY_PAGE ? `${HISTORY_PAGE}+` : String(history.data.length)) : null;
+  const checkpoint = history.data?.items[0]?.checkpointId ?? null;
+  const count = history.data ? `${history.data.items.length}${history.data.next ? "+" : ""}` : null;
   return (
     <Page>
       <PageHeader
@@ -788,8 +789,14 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onS
 
 // ---- State ------------------------------------------------------------------------------------
 
-function StateDetails({ state }: { state: api.ThreadState }) {
+/** Where a state's values were left out for their size (TSK-108): a note with Load, in place of the value. */
+function StateDetails({ state, connId, threadId, client, note }: { state: api.ThreadState; threadId: string } & Pick<PanelProps, "connId" | "client" | "note">) {
   const meta = (state.metadata ?? {}) as Record<string, unknown>;
+  const source = { connId: connId ?? "", threadId, checkpointId: state.checkpointId ?? null };
+  const cutValue = (label: string, cut: api.ValueCut, className?: string) => <CutValue key={cut.field} label={label} cut={cut} note={note} className={className} load={() => loadCut(client, source, cut)} />;
+  const valuesCut = cutOf(state.cuts, "values");
+  const metadataCut = cutOf(state.cuts, "metadata");
+  const otherCuts = state.cuts.filter((c) => c.field !== "values" && c.field !== "metadata");
   return (
     <div className="flex flex-col gap-stack-md">
       <DescriptionList>
@@ -839,9 +846,15 @@ function StateDetails({ state }: { state: api.ThreadState }) {
         </section>
       ) : null}
       <h3 className="text-subtitle-2 text-fg">Values</h3>
-      <JsonViewer value={state.values} aria-label="Values" defaultExpandDepth={2} className="h-panel-sm" />
+      {valuesCut ? cutValue("Values", valuesCut, "h-panel-sm") : <JsonViewer value={state.values} aria-label="Values" defaultExpandDepth={2} className="h-panel-sm" />}
       <h3 className="text-subtitle-2 text-fg">Metadata</h3>
-      <JsonViewer value={state.metadata} aria-label="Metadata" className="h-panel-xs" />
+      {metadataCut ? cutValue("Metadata", metadataCut, "h-panel-xs") : <JsonViewer value={state.metadata} aria-label="Metadata" className="h-panel-xs" />}
+      {otherCuts.length > 0 ? (
+        <section className="flex flex-col gap-stack-xs">
+          <h3 className="text-subtitle-2 text-fg">Also left out</h3>
+          {otherCuts.map((c) => cutValue(c.field, c, "h-panel-xs"))}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -926,7 +939,7 @@ function StatePanel({ threadId, connId, client, note, version, onChanged }: Pane
       {state.loading && !state.data ? <LoadingRows label="Loading the state" /> : null}
       {state.data ? (
         <div className="p-inset-sm">
-          <StateDetails state={state.data} />
+          <StateDetails state={state.data} connId={connId} threadId={threadId} client={client} note={note} />
         </div>
       ) : null}
       <UpdateStateDialog open={editing} title="Edit state" description="Writes a new checkpoint on top of the current one." initial="{}" nodes={state.data?.next ?? []} onCancel={() => setEditing(false)} onSubmit={save} />
@@ -936,23 +949,33 @@ function StatePanel({ threadId, connId, client, note, version, onChanged }: Pane
 
 // ---- History ----------------------------------------------------------------------------------
 
-function HistoryPanel({ threadId, connId, client, note, history, onChanged, onRunFrom }: PanelProps & { history: ReturnType<typeof useLoad<api.ThreadState[]>>; onChanged: () => void; onRunFrom: (checkpointId: string) => void }) {
+function HistoryPanel({ threadId, connId, client, note, history, onChanged, onRunFrom }: PanelProps & { history: ReturnType<typeof useLoad<api.ThreadHistoryPage>>; onChanged: () => void; onRunFrom: (checkpointId: string) => void }) {
   const toast = useToast();
   const [older, setOlder] = useState<api.ThreadState[]>([]);
-  useEffect(() => setOlder([]), [history.data]);
-  const all = useMemo(() => [...(history.data ?? []), ...older], [history.data, older]);
+  // Where the next page starts: the first page's, then each older page's (TSK-108: pages are cut by bytes).
+  const [olderNext, setOlderNext] = useState<{ token: string | null } | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  useEffect(() => {
+    setOlder([]);
+    setOlderNext(null);
+  }, [history.data]);
+  const all = useMemo(() => [...(history.data?.items ?? []), ...older], [history.data, older]);
+  const next = olderNext ? olderNext.token : (history.data?.next ?? null);
   const [selected, setSelected] = useState<string | null>(null);
   const [forking, setForking] = useState<api.ThreadState | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
   const current = all.find((s) => s.checkpointId === selected) ?? all[0] ?? null;
   const loadOlder = async () => {
-    const last = all[all.length - 1]?.checkpointId;
-    if (!connId || !last) return;
+    if (!connId || !next) return;
+    setLoadingOlder(true);
     try {
-      const more = await client.langgraph.threads.history({ connId, threadId, limit: 50, before: last });
-      setOlder((o) => [...o, ...more]);
+      const more = await client.langgraph.threads.history({ connId, threadId, limit: HISTORY_PAGE, before: next });
+      setOlder((o) => [...o, ...more.items]);
+      setOlderNext({ token: more.next ?? null });
     } catch (e) {
       setError(note(e));
+    } finally {
+      setLoadingOlder(false);
     }
   };
   const fork = async (values: api.JsonValue, asNode: string | null) => {
@@ -1024,16 +1047,18 @@ function HistoryPanel({ threadId, connId, client, note, history, onChanged, onRu
                   ))}
                 </TableBody>
               </Table>
-              <div className="p-inset-xs">
-                <Button size="small" onClick={() => void loadOlder()}>
-                  Load older checkpoints
-                </Button>
-              </div>
+              {next ? (
+                <div className="p-inset-xs">
+                  <Button size="small" loading={loadingOlder} onClick={() => void loadOlder()}>
+                    Load older checkpoints
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </ResizablePanel>
           <ResizableHandle />
           <ResizablePanel minSize={25}>
-            <div className="h-full overflow-auto p-inset-sm">{current ? <StateDetails state={current} /> : null}</div>
+            <div className="h-full overflow-auto p-inset-sm">{current ? <StateDetails state={current} connId={connId} threadId={threadId} client={client} note={note} /> : null}</div>
           </ResizablePanel>
         </Resizable>
       ) : null}

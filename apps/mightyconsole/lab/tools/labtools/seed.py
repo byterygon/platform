@@ -197,6 +197,7 @@ def seed_langgraph():
     assistants = requests.post(f"{base}/assistants/search", json={"graph_id": "agent", "limit": 50}, timeout=10).json()
     if not any(a.get("name") == "agent-strict" for a in assistants):
         requests.post(f"{base}/assistants", json={"graph_id": "agent", "name": "agent-strict", "config": {"configurable": {"require_approval": True}}, "metadata": {"lab": True}}, timeout=10).raise_for_status()
+    seed_langgraph_heavy(base)
     threads = requests.post(f"{base}/threads/search", json={"metadata": {"lab": "history"}, "limit": 5}, timeout=10).json()
     if threads:
         log("langgraph: assistants and the history thread are there")
@@ -208,6 +209,39 @@ def seed_langgraph():
     resume = {"assistant_id": "agent", "command": {"resume": "approved"}}
     requests.post(f"{base}/threads/{thread['thread_id']}/runs/wait", json=resume, timeout=60).raise_for_status()
     log(f"langgraph: assistant agent-strict, thread {thread['thread_id']} with history")
+
+
+def seed_langgraph_heavy(base):
+    """TSK-108: a thread with many runs and a thread with heavy checkpoints, to show that replies
+    stay under the frame limit (4 MiB a page, a value over 1 MiB left out with a note).
+
+    Sizes are what `langgraph dev` (in memory) and the lab VM bear: the whole thing is about 50 MiB
+    of checkpoints, not the tens of megabytes per checkpoint a production thread can reach (the
+    server's tests cover those against a stand-in server)."""
+    import requests
+
+    def thread(kind):
+        found = requests.post(f"{base}/threads/search", json={"metadata": {"lab": kind}, "limit": 1}, timeout=10).json()
+        return None if found else requests.post(f"{base}/threads", json={"metadata": {"lab": kind}}, timeout=10).json()["thread_id"]
+
+    def run(thread_id, text, metadata=None):
+        body = {"assistant_id": "agent", "input": {"messages": [{"role": "user", "content": text}]}, "metadata": metadata or {}}
+        requests.post(f"{base}/threads/{thread_id}/runs/wait", json=body, timeout=120).raise_for_status()
+
+    many = thread("many-runs")
+    if many:
+        # 40 runs of 128 KiB of metadata (5 MiB: two pages of 4 MiB), the 41st with 2 MiB (left out).
+        for i in range(40):
+            run(many, f"run {i}", {"index": i, "blob": "m" * (128 * 1024)})
+        run(many, "run 40", {"index": 40, "blob": "M" * (2 * 1024 * 1024)})
+        log(f"langgraph: thread {many} with 41 runs of big metadata")
+    heavy = thread("heavy-state")
+    if heavy:
+        # Two messages of 1.5 MiB: checkpoints of 1.5 to 6 MiB (their values are over the 1 MiB
+        # share in History and under the 8 MiB of one state).
+        for i in range(2):
+            run(heavy, f"heavy {i} " + chr(97 + i) * (3 * 512 * 1024))
+        log(f"langgraph: thread {heavy} with checkpoints of up to 6 MiB")
 
 
 SEEDS = {"nats": lambda: asyncio.run(seed_nats()), "kafka": seed_kafka, "langgraph": seed_langgraph}
