@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { RelativeTime } from "@/components/ui/relative-time";
 import { CopyButton, Page, PageBar, PageFooter, PageHeader, PageRegion, gutterTable, LinkButton } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { useActiveInterval } from "@/app/while-active";
 import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
 import type { WorkerRow, WorkersListOutput } from "@/gen/api";
@@ -102,12 +103,8 @@ export function WorkersTab({ tab, profile, connId, client, useTabActions, note, 
   useEffect(() => {
     void load();
   }, [load]);
-  // Refresh while the tab is shown; a hidden tab stops asking.
-  useEffect(() => {
-    if (!active || connId === null) return;
-    const timer = window.setInterval(() => void load(), REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [active, connId, load]);
+  // Refresh while the tab is shown; a hidden tab stops asking and asks once when shown again (TSK-107).
+  useActiveInterval(() => void load(), REFRESH_MS, active, connId !== null);
   useTabActions({ refresh: () => void load() });
 
   const filtered = useMemo(() => filterWorkers(out?.workers ?? [], queue, kind, filter), [out, queue, kind, filter]);

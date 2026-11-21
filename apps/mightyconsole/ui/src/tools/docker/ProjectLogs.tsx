@@ -15,6 +15,7 @@ import { ToggleButton } from "@/components/ui/toggle-button";
 import { liveTimeout } from "@/app/client";
 import { PageBar, chipClass } from "@/app/page";
 import { LiveBadge } from "@/app/states";
+import { useActiveGate, useActiveInterval } from "@/app/while-active";
 import * as api from "@/gen/api";
 import type { ContainerRow } from "@/gen/api";
 import { Play, Stop } from "@/lib/icons";
@@ -59,6 +60,7 @@ export interface ProjectLogsProps extends Pick<TabProps, "client" | "connId" | "
 }
 
 export function ProjectLogs({ client, connId, note, onLive, useTabActions, active, project, rows }: ProjectLogsProps) {
+  const gate = useActiveGate(active);
   const viewer = useRef<LogViewerHandle>(null);
   const [tail, setTail] = useState<Tail>("1000");
   const [timestamps, setTimestamps] = useState(true);
@@ -112,6 +114,8 @@ export function ProjectLogs({ client, connId, note, onLive, useTabActions, activ
       void (async () => {
         try {
           for await (const chunk of call.chunks()) {
+            // Hidden (TSK-107): lines wait in the streams' credits, nothing is merged or drawn.
+            await gate.idle();
             if (mine !== run.current) return;
             merger.current.push(name, label, parseLines<DockerLogLine>(chunk, decoder), first ? options.after : undefined);
             first = false;
@@ -132,7 +136,7 @@ export function ProjectLogs({ client, connId, note, onLive, useTabActions, activ
         }
       })();
     },
-    [client, connId, report],
+    [client, connId, report, gate],
   );
 
   /** Every container's log again from its tail. */
@@ -176,24 +180,23 @@ export function ProjectLogs({ client, connId, note, onLive, useTabActions, activ
 
   // Lines are handed to the viewer in order every MERGE_WINDOW_MS; the first ones wait for every
   // stream's backlog (or BACKLOG_WAIT_MS).
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (merger.current.size === 0) return;
-      if (waiting.current.size > 0 && Date.now() - startedAt.current < BACKLOG_WAIT_MS) return;
-      waiting.current.clear();
-      const lines = merger.current.take();
-      all.current.push(...lines);
-      if (all.current.length > MAX_PROJECT_LINES * 1.2) all.current = all.current.slice(-MAX_PROJECT_LINES);
-      const shown = lines.filter((l) => !hiddenRef.current.has(l.label));
-      if (shown.length > 0) viewer.current?.append(shown.map(toViewer));
-    }, MERGE_WINDOW_MS);
-    return () => clearInterval(timer);
-  }, []);
+  // Hidden (TSK-107), the viewer is not fed; it is fed at once when shown.
+  useActiveInterval(() => {
+    if (merger.current.size === 0) return;
+    if (waiting.current.size > 0 && Date.now() - startedAt.current < BACKLOG_WAIT_MS) return;
+    waiting.current.clear();
+    const lines = merger.current.take();
+    all.current.push(...lines);
+    if (all.current.length > MAX_PROJECT_LINES * 1.2) all.current = all.current.slice(-MAX_PROJECT_LINES);
+    const shown = lines.filter((l) => !hiddenRef.current.has(l.label));
+    if (shown.length > 0) viewer.current?.append(shown.map(toViewer));
+  }, MERGE_WINDOW_MS, active);
 
   // A container of the project that starts joins from its start; one that stops leaves a line.
   const events = useDockerEvents({
     client,
     connId,
+    active,
     types: ["container"],
     onEvent: (event) => {
       if (event.attributes[PROJECT_LABEL] !== project || !event.name) return;

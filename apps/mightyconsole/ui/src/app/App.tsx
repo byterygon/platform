@@ -1077,7 +1077,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                   ) : conn?.status === "failed" ? (
                     <span role="img" aria-label="error" className="size-inline-md shrink-0 rounded-full bg-danger" />
                   ) : live?.status === "live" ? (
-                    <span role="img" aria-label="live" className="size-inline-md shrink-0 rounded-full bg-success" />
+                    // A tab that is not the active one holds its live view (DOC-21 §3.2, TSK-107): the dot stays and says so.
+                    <span role="img" aria-label={t.id === state.activeTab ? "live" : BACKGROUND_LIVE} title={t.id === state.activeTab ? "Live" : BACKGROUND_LIVE} className="size-inline-md shrink-0 rounded-full bg-success" />
                   ) : null;
                 return (
                   <TabsTrigger key={t.id} value={t.id} icon={tabTool ? <Icon icon={toolIcon(tabTool)} /> : undefined} onClose={() => closeTab(t.id)} onAuxClick={(e) => e.button === 1 && closeTab(t.id)} className="ps-inline-md">
@@ -1408,6 +1409,9 @@ interface TabBodyProps {
 }
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */
+/** What the dot of a live tab in the background says. */
+const BACKGROUND_LIVE = "Live, paused in the background (catches up when shown)";
+
 function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, trust, tabProps, nav, guard }: TabBodyProps) {
   const t = toolById(tools, tab.tool);
   const kind = t?.tabKinds[tab.kind];

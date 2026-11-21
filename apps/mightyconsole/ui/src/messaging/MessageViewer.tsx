@@ -185,7 +185,7 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
               stream={projected.grid}
               aria-label={labels.items}
               follow
-              hold={tail.hold}
+              hold={tail.hold || tail.background}
               maxRows={maxMessages}
               maxBytes={maxBytes}
               onProgress={onProgress}

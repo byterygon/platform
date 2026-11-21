@@ -5,6 +5,7 @@
 // through `term.resize`, debounced by 100 ms. Disconnect ends the exec; the exit code shows in the
 // scrollback and the footer, and New session starts another in the same place.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useActiveGate } from "@/app/while-active";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
@@ -60,7 +61,7 @@ export function splitCommand(line: string): string[] | null {
 
 type Session = { state: "idle" } | { state: "connecting" } | { state: "open" } | { state: "ended"; exitCode?: number; reason: string };
 
-export interface TerminalPanelProps extends Pick<TabProps, "client" | "connId" | "note"> {
+export interface TerminalPanelProps extends Pick<TabProps, "client" | "connId" | "note" | "active"> {
   container: string;
   running: boolean;
   /** The container's user and working dir, as placeholders. */
@@ -68,7 +69,8 @@ export interface TerminalPanelProps extends Pick<TabProps, "client" | "connId" |
   defaultWorkdir: string;
 }
 
-export function TerminalPanel({ client, connId, note, container, running, defaultUser, defaultWorkdir }: TerminalPanelProps) {
+export function TerminalPanel({ client, connId, note, container, running, defaultUser, defaultWorkdir, active }: TerminalPanelProps) {
+  const gate = useActiveGate(active);
   const terminal = useRef<TerminalHandle>(null);
   const [command, setCommand] = useState("");
   const [user, setUser] = useState("");
@@ -124,6 +126,8 @@ export function TerminalPanel({ client, connId, note, container, running, defaul
       try {
         let first = true;
         for await (const chunk of call.chunks()) {
+          // Hidden (TSK-107): the session lives on, its output waits in the stream's credits.
+          await gate.idle();
           if (first) {
             first = false;
             setSession({ state: "open" });

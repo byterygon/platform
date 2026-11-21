@@ -2,7 +2,7 @@
 // header, the Timeline, the History table with its detail and filter, input and result, the
 // pending activities, the stack trace, and the history followed live until the run closes.
 import { RpcError } from "@byterygon/ambidex";
-import { act } from "react";
+import { act, useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { describeError } from "@/app/messages";
 import type { MightyClient } from "@/app/client";
@@ -119,8 +119,15 @@ function setup(options: Options = {}) {
     note: describeError,
     openTab: vi.fn(),
   };
-  const view = render(<WorkflowTab {...props} />);
-  return { describe, history, followHistory, query, stream, lives, openTab: props.openTab as ReturnType<typeof vi.fn>, ...view };
+  // The tab's `active` is set from the test (a tab in the background, TSK-107).
+  const host: { setActive(active: boolean): void } = { setActive: () => {} };
+  function Host() {
+    const [active, setActive] = useState(true);
+    host.setActive = setActive;
+    return <WorkflowTab {...props} active={active} />;
+  }
+  const view = render(<Host />);
+  return { describe, history, followHistory, query, stream, lives, setActive: (active: boolean) => act(async () => host.setActive(active)), openTab: props.openTab as ReturnType<typeof vi.fn>, ...view };
 }
 
 /** A view's tab; History and Pending carry their counts ("History 4"). */
@@ -244,6 +251,28 @@ describe("Workflow tab (spec §9.3)", () => {
     expect(byText("Following")).toBeNull();
     // The pending work and the status are asked again after the events.
     await waitFor(() => d.mock.calls.length > before, "a fresh describe");
+  });
+
+  test("a tab in the background keeps its stream and reads nothing; shown again it has every event (TSK-107)", async () => {
+    const { stream, setActive, followHistory } = setup();
+    await waitFor(() => byText("4 events") !== null && followHistory.mock.calls.length === 1, "the follow");
+    await setActive(false);
+    stream.push(ev(5, "ActivityTaskCompleted", 900, "Activity", { scheduledEventId: 3, result: ["charged"] }));
+    stream.push(ev(6, "WorkflowTaskScheduled", 950, "WorkflowTask", { taskQueue: { name: "lab" } }));
+    await settle(10);
+    await new Promise<void>((r) => setTimeout(r, 600));
+    // Still followed, not cancelled, and nothing was set for display.
+    expect(stream.cancelled).toBe(false);
+    expect(byText("Following")).not.toBeNull();
+    expect(byText("4 events")).not.toBeNull();
+    expect(followHistory).toHaveBeenCalledTimes(1);
+    await setActive(true);
+    await waitFor(() => byText("6 events") !== null, "the events that came while it was hidden");
+    // The stream goes on from where it was: more events arrive as if it had never been hidden.
+    stream.push(ev(7, "WorkflowExecutionCompleted", 1000, "Workflow", { result: ["done"] }));
+    stream.end();
+    await waitFor(() => byText("7 events") !== null, "the next event");
+    expect(followHistory).toHaveBeenCalledTimes(1);
   });
 
   test("History: the table with time since start, chips with counts, a search, Go to, and the chosen event's detail", async () => {

@@ -17,6 +17,11 @@ export interface LiveTail {
   stream: ArrowStream<TailSummary> | null;
   /** While true the grid holds: nothing is pulled. */
   hold: boolean;
+  /**
+   * The tab is not shown (TSK-107): the grid holds like Pause, without changing the status, so the
+   * run stays live and the stream is not cancelled; it catches up when the tab is shown.
+   */
+  background: boolean;
   progress: StreamProgressEvent | null;
   summary: TailSummary | null;
   error: DescribedError | null;
@@ -37,6 +42,8 @@ export function useLiveTail(
   open: ((streamId: string, resume: readonly LastPosition[] | null) => StreamCall<TailSummary, Uint8Array>) | null,
   note: (error: unknown) => DescribedError,
   onLive?: (live: LiveState | null) => void,
+  /** Whether the tab is shown (`TabProps.active`); a tab in the background holds its grid. */
+  active = true,
 ): LiveTail {
   const [status, setStatus] = useState<TailStatus>("idle");
   const [stream, setStream] = useState<ArrowStream<TailSummary> | null>(null);
@@ -48,9 +55,23 @@ export function useLiveTail(
   const last = useRef<readonly LastPosition[] | null>(null);
   const report = useRef(onLive);
   report.current = onLive;
+  // The server's counters (once a second) wait here while the tab is hidden: no state, no shell update.
+  const shown = useRef(active);
+  shown.current = active;
+  const pending = useRef<StreamProgressEvent | null>(null);
+  const showProgress = useCallback((p: StreamProgressEvent) => {
+    if (shown.current) setProgress(p);
+    else pending.current = p;
+  }, []);
+  useEffect(() => {
+    if (active && pending.current !== null) {
+      setProgress(pending.current);
+      pending.current = null;
+    }
+  }, [active]);
 
   useEffect(() => {
-    const p = progress;
+    const p = active ? progress : null;
     const live: LiveState | null =
       status === "idle"
         ? null
@@ -58,7 +79,7 @@ export function useLiveTail(
           ? { status: "ended", ...(summary ? { reason: summary.endReason } : error ? { reason: error.title } : {}) }
           : { status, ...(p ? { ratePerSec: p.ratePerSec, dropped: p.dropped } : {}) };
     report.current?.(live);
-  }, [status, progress, summary, error]);
+  }, [status, progress, summary, error, active]);
 
   const start = useCallback(
     (resume = false) => {
@@ -67,7 +88,7 @@ export function useLiveTail(
       const call = open(streamId, resume ? last.current : null);
       last.current = null;
       const decoded = decodeArrow(call, services.decoder);
-      const unsubscribe = services.progress.subscribe(streamId, setProgress);
+      const unsubscribe = services.progress.subscribe(streamId, showProgress);
       run.current = { stream: decoded, unsubscribe };
       setStream(decoded);
       setHold(false);
@@ -91,7 +112,7 @@ export function useLiveTail(
         setHold(false);
       });
     },
-    [open, services, note],
+    [open, services, note, showProgress],
   );
 
   const stop = useCallback(() => run.current?.stream.cancel(), []);
@@ -110,5 +131,5 @@ export function useLiveTail(
     last.current = positions;
   }, []);
 
-  return { status, stream, hold, progress, summary, error, start, stop, pause, remember };
+  return { status, stream, hold, background: !active, progress, summary, error, start, stop, pause, remember };
 }

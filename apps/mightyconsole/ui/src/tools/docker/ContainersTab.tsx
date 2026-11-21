@@ -7,6 +7,7 @@
 // its containers and asks once (§10.5), and its name opens the project's tab (batch 4b). Remove names what goes, says named volumes stay, and offers
 // the anonymous volumes and Force; failures stay selected with their reason.
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useActiveClock } from "@/app/while-active";
 import { AlertDialog, AlertDialogAction, AlertDialogBody, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,7 +82,7 @@ export interface ContainersTabProps extends TabProps {
   project?: string | undefined;
 }
 
-export function ContainersTab({ profile, connId, client, useTabActions, note, openTab, go: goProp, project }: ContainersTabProps) {
+export function ContainersTab({ profile, connId, client, useTabActions, note, openTab, go: goProp, project, active }: ContainersTabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
   const [rows, setRows] = useState<ContainerRow[] | null>(null);
@@ -127,6 +128,7 @@ export function ContainersTab({ profile, connId, client, useTabActions, note, op
   const events = useDockerEvents({
     client,
     connId,
+    active,
     types: ["container"],
     onEvent: (event) => {
       if (!changesRows(event)) return;
@@ -136,11 +138,7 @@ export function ContainersTab({ profile, connId, client, useTabActions, note, op
   });
 
   // The footer's "4 s ago" moves on by itself.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useActiveClock(active, true, 5000);
 
   const all = useMemo(() => (rows ?? []).filter((r) => project === undefined || r.project === project), [rows, project]);
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.id, all.filter((r) => matchesFilter(r, f.id)).length])) as Record<ContainerFilter, number>, [all]);

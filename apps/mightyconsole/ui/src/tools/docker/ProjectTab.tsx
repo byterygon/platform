@@ -25,7 +25,7 @@ type ProjectView = (typeof PROJECT_VIEWS)[number];
 const WORKING_DIR_LABEL = "com.docker.compose.project.working_dir";
 
 export function ProjectTab(props: TabProps) {
-  const { tab, profile, connId, client, note, onLive, useTabActions, navigate } = props;
+  const { tab, profile, connId, client, note, onLive, useTabActions, navigate, active } = props;
   const project = str(tab.params["project"]);
   const [view, setView] = useTabView({ tab, navigate }, PROJECT_VIEWS, "logs");
   const [rows, setRows] = useState<ContainerRow[] | null>(null);
@@ -63,6 +63,7 @@ export function ProjectTab(props: TabProps) {
   useDockerEvents({
     client,
     connId,
+    active,
     types: ["container"],
     onEvent: (event) => {
       if (event.attributes["com.docker.compose.project"] !== project || !changesRows(event)) return;
@@ -100,7 +101,7 @@ export function ProjectTab(props: TabProps) {
             <TabsTrigger value="logs">Logs</TabsTrigger>
           </TabsList>
           <TabsContent value="logs" keepMounted={logsSeen} className="flex min-h-0 flex-1 flex-col">
-            {logsSeen ? <ProjectLogs client={client} connId={connId} note={note} onLive={onLive} useTabActions={useTabActions} active={view === "logs"} project={project} rows={rows} /> : null}
+            {logsSeen ? <ProjectLogs client={client} connId={connId} note={note} onLive={onLive} useTabActions={useTabActions} active={active && view === "logs"} project={project} rows={rows} /> : null}
           </TabsContent>
           <TabsContent value="containers" className="flex min-h-0 flex-1 flex-col border-t border-border-subtle">
             {view === "containers" ? <ContainersTab {...props} project={project} /> : null}

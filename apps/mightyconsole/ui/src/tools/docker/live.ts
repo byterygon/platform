@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MightyClient } from "@/app/client";
 import { liveTimeout } from "@/app/client";
 import { describeError } from "@/app/messages";
+import { useActiveGate } from "@/app/while-active";
 import * as api from "@/gen/api";
 import { type DockerEvent, parseLines } from "./format";
 
@@ -25,12 +26,13 @@ export interface EventsState {
  * Runs `docker.events` (only `container`'s events when given) while `connId` is set, calling
  * `onEvent` for every event. `onEvent` may change between renders; the latest one is called.
  */
-export function useDockerEvents(options: { client: MightyClient; connId: string | null; container?: string; types?: readonly string[]; onEvent(event: DockerEvent): void }): EventsState {
+export function useDockerEvents(options: { client: MightyClient; connId: string | null; container?: string; types?: readonly string[]; onEvent(event: DockerEvent): void; /** The screen is shown (default true); hidden, events wait unread and come when it is shown (TSK-107). */ active?: boolean }): EventsState {
   const { client, connId, container } = options;
   const types = options.types?.join(",") ?? "";
   const onEvent = useRef(options.onEvent);
   onEvent.current = options.onEvent;
   const [state, setState] = useState<EventsState>({ last: null, live: false, error: null });
+  const gate = useActiveGate(options.active ?? true);
 
   useEffect(() => {
     if (connId === null) {
@@ -61,6 +63,8 @@ export function useDockerEvents(options: { client: MightyClient; connId: string 
       setState((s) => ({ ...s, live: true, error: null }));
       try {
         for await (const chunk of call.chunks()) {
+          await gate.idle();
+          if (stopped) return;
           for (const event of parseLines<DockerEvent>(chunk, decoder)) {
             const key = `${event.timeMs}|${event.kind}|${event.action}|${event.id}`;
             if (seen.has(key)) continue;

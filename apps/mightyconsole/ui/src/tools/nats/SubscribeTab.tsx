@@ -35,7 +35,7 @@ export function subjectsOf(params: Record<string, unknown>): string[] {
   return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string" && s !== "") : [];
 }
 
-export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLive, note, updateProfile, openTab }: TabProps) {
+export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLive, note, updateProfile, openTab, active }: TabProps) {
   const services = useServices();
   const { state } = useStore();
   const [subjects, setSubjects] = useState<string[]>(() => subjectsOf(tab.params));
@@ -54,7 +54,7 @@ export function SubscribeTab({ tab, profile, connId, client, useTabActions, onLi
             ),
     [client, connId, subjects, queueGroup, decode, filter],
   );
-  const tail = useLiveTail(services, open, note, onLive);
+  const tail = useLiveTail(services, open, note, onLive, active);
   // Core NATS cannot replay: Restart is a new subscription from now.
   useTabActions({ primary: () => tail.start(false), stop: tail.stop, pause: tail.pause });
   const check = useCallback((f: api.Filter) => client.messaging.filter.check({ filter: f }), [client]);

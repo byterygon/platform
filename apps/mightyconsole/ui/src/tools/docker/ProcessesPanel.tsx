@@ -15,11 +15,11 @@ export const TOP_INTERVAL_MS = 5000;
 
 const mono = "font-mono text-code";
 
-export interface ProcessesPanelProps extends Pick<TabProps, "client" | "connId" | "note"> {
+export interface ProcessesPanelProps extends Pick<TabProps, "client" | "connId" | "note" | "active"> {
   container: string;
 }
 
-export function ProcessesPanel({ client, connId, note, container }: ProcessesPanelProps) {
+export function ProcessesPanel({ client, connId, note, container, active }: ProcessesPanelProps) {
   const [top, setTop] = useState<ContainerTop | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
   const [retry, setRetry] = useState(0);
@@ -27,7 +27,8 @@ export function ProcessesPanel({ client, connId, note, container }: ProcessesPan
   noteRef.current = note;
 
   useEffect(() => {
-    if (connId === null) return undefined;
+    // The tab in the background does not ask (TSK-107); shown again, it asks at once.
+    if (connId === null || !active) return undefined;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
@@ -61,7 +62,7 @@ export function ProcessesPanel({ client, connId, note, container }: ProcessesPan
       if (timer !== null) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [client, connId, container, retry]);
+  }, [client, connId, container, retry, active]);
 
   const cols = top ? processColumns(top.titles) : null;
   const cell = (row: readonly string[], i: number) => (i < 0 ? "" : (row[i] ?? ""));

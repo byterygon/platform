@@ -22,7 +22,7 @@ const TARGET: api.Target = { kind: "topic", name: "echo" };
 type StartKind = "earliest" | "latest" | "latestN";
 
 /** `echo.messages`: the topic `echo` in a MessageViewer. */
-export function MessagesTab({ connId, client, useTabActions, onLive, note }: TabProps) {
+export function MessagesTab({ connId, client, useTabActions, onLive, note, active }: TabProps) {
   const services = useServices();
   const { state } = useStore();
   const [decode, setDecode] = useState<api.DecodeOptions>({ key: { codec: "auto" }, value: { codec: "auto" } });
@@ -56,7 +56,7 @@ export function MessagesTab({ connId, client, useTabActions, onLive, note }: Tab
             ),
     [client, connId, start, latestN, follow, push, decode, filter],
   );
-  const tail = useLiveTail(services, open, note, onLive);
+  const tail = useLiveTail(services, open, note, onLive, active);
   useTabActions({ primary: () => tail.start(tail.status === "ended"), stop: tail.stop, pause: tail.pause });
   const check = useCallback((f: api.Filter) => client.messaging.filter.check({ filter: f }), [client]);
   const loadFull = useCallback(

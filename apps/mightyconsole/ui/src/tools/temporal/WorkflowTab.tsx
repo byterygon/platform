@@ -3,6 +3,7 @@
 // and, while the run is open, follows live. Signal, cancel, terminate and reset are in the toolbar,
 // each behind its confirmation (ActionDialogs); Queries is the sixth view.
 import { linkTo } from "@/app/tab-view";
+import { useActiveClock } from "@/app/while-active";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,12 +95,12 @@ function stateLabel(value: unknown): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
 }
 
-export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab, navigate, go: goProp }: TabProps) {
+export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab, navigate, go: goProp, active }: TabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const namespace = text(tab.params["namespace"]) || "default";
   const workflowId = text(tab.params["workflowId"]);
   const runId = text(tab.params["runId"]) || undefined;
-  const state = useWorkflow({ client, connId, namespace, workflowId, runId, note, onLive });
+  const state = useWorkflow({ client, connId, namespace, workflowId, runId, note, onLive, active });
   const [section, setSection] = useTabView({ tab, navigate }, WORKFLOW_VIEWS, "timeline");
   const [selected, setSelected] = useState<number | null>(null);
   useTabActions({ refresh: state.refresh });
@@ -117,12 +118,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
   };
 
   // The clock for open items: once a second while the run is followed.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!state.following) return undefined;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [state.following]);
+  const now = useActiveClock(active, state.following);
 
   const { detail, events } = state;
   const closed = isClosed(events);
