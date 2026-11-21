@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:261a66031618cdda9d47793f42c87ee7cb39a2e4d4c220bc2ecd4ca9336518cf";
+export const SCHEMA_HASH = "sha256:e46ec9650455c2003a09d01d049686865f0705294bd22323ede0e34747e2a62c";
 
 // ---- Types
 
@@ -1108,7 +1108,11 @@ attributes: Record<string, unknown>,
  * The encodings of the event's payloads as stored, in order (`json/plain`, `binary/encrypted`);
  * absent when it has none.
  */
-encodings?: Array<string>, };
+encodings?: Array<string>, 
+/**
+ * The event's encoded size in the history, in bytes (TSK-92).
+ */
+size: number, };
 
 /**
  * `docker.host.counts`: what the tree shows beside Images, Volumes and Networks.
@@ -1316,6 +1320,15 @@ version?: string,
  * The server's feature flags (`assistants`, `crons`, `store`, ...).
  */
 flags: JsonValue, };
+
+/**
+ * An array of the payload with its size.
+ */
+export type LargeArray = { path: string, length: number, bytes: number, 
+/**
+ * Its size per entry, on average.
+ */
+entryBytes: number, };
 
 /**
  * Where a stream stopped, per source and partition: the last message read, so a restart
@@ -2175,6 +2188,31 @@ export type PartitionOffset = { partition: number,
 offset: string, };
 
 /**
+ * One child of a node.
+ */
+export type PayloadChild = { 
+/**
+ * The member's name, or the entry's index.
+ */
+key: string, 
+/**
+ * Its JSON pointer.
+ */
+path: string, kind: PayloadKind, 
+/**
+ * Members, entries or characters.
+ */
+length?: number, 
+/**
+ * Its compact JSON text, in bytes.
+ */
+bytes: number, 
+/**
+ * The start of its compact JSON text.
+ */
+preview: string, };
+
+/**
  * The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that
  * mightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header
  * comes beside it as `codecAuthorization`.
@@ -2204,6 +2242,93 @@ encodeInputs?: boolean | null,
  * Per call (10000 when empty).
  */
 timeoutMs?: number | null, };
+
+export type PayloadDownloadInput = { connId: string, payloadId: string, form: PayloadForm, };
+
+export type PayloadDownloadSummary = { bytes: number, };
+
+/**
+ * What `temporal.payload.download` sends.
+ */
+export type PayloadForm = "decoded" | "stored";
+
+/**
+ * What is known of the payload, given with the root.
+ */
+export type PayloadInfo = { 
+/**
+ * The data the encoding read, in bytes.
+ */
+bytes: number, decodedBytes: number, encoding: string, 
+/**
+ * The codec that decoded it.
+ */
+codec?: string, 
+/**
+ * What it was before the codec.
+ */
+codecFrom?: string, 
+/**
+ * The largest arrays, biggest first.
+ */
+largestArrays: Array<LargeArray>, };
+
+/**
+ * What a JSON node is.
+ */
+export type PayloadKind = "object" | "array" | "string" | "number" | "bool" | "null";
+
+export type PayloadNode = { path: string, kind: PayloadKind, length?: number, bytes: number, 
+/**
+ * The value of a number, a boolean, null or a string (its first 4,096 characters).
+ */
+value?: unknown, 
+/**
+ * A string longer than what `value` holds.
+ */
+cut: boolean, 
+/**
+ * The page of children of an object or an array.
+ */
+children: Array<PayloadChild>, offset: number, 
+/**
+ * Members or entries in all.
+ */
+total: number, 
+/**
+ * For the root only.
+ */
+info?: PayloadInfo, };
+
+export type PayloadNodeInput = { connId: string, payloadId: string, 
+/**
+ * A JSON pointer: `""` for the payload, `/items/3/sku` below it.
+ */
+path?: string | null, 
+/**
+ * The first child of the page.
+ */
+offset?: number | null, 
+/**
+ * Children per page: 50 when absent, at most 200.
+ */
+limit?: number | null, };
+
+export type PayloadQueryInput = { connId: string, payloadId: string, 
+/**
+ * A jq program, run by jaq.
+ */
+jq: string, };
+
+export type PayloadQueryOutput = { results: unknown[], 
+/**
+ * The results' JSON text, in bytes.
+ */
+bytes: number, 
+/**
+ * Results were left out: over 1 MiB, or past 10 seconds.
+ */
+truncated: boolean, ms: number, };
 
 export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond: number, };
 
@@ -3333,6 +3458,10 @@ truncated: boolean, };
  */
 export type WorkflowDetail = { workflow: WorkflowRow, 
 /**
+ * The history's size in bytes, as the server counts it (TSK-92; Temporal's limit is 50 MiB).
+ */
+historySizeBytes: number, 
+/**
  * `WorkflowExecutionConfig`: task queue, timeouts.
  */
 executionConfig: Record<string, unknown>, 
@@ -3696,6 +3825,9 @@ export interface Procedures {
   readonly "temporal.namespaces.describe": ProcedureDef<"query", NamespaceDescribeInput, NamespaceDetail, ToolError>;
   readonly "temporal.namespaces.list": ProcedureDef<"query", TemporalConnIdInput, Array<NamespaceSummary>, ToolError>;
   readonly "temporal.namespaces.searchAttributes": ProcedureDef<"query", SearchAttributesInput, SearchAttributesOutput, ToolError>;
+  readonly "temporal.payload.download": ProcedureDef<"stream", PayloadDownloadInput, PayloadDownloadSummary, ToolError>;
+  readonly "temporal.payload.node": ProcedureDef<"query", PayloadNodeInput, PayloadNode, ToolError>;
+  readonly "temporal.payload.query": ProcedureDef<"query", PayloadQueryInput, PayloadQueryOutput, ToolError>;
   readonly "temporal.schedules.backfill": ProcedureDef<"mutation", ScheduleBackfillInput, Empty, ToolError>;
   readonly "temporal.schedules.create": ProcedureDef<"mutation", ScheduleWriteInput, Empty, ToolError>;
   readonly "temporal.schedules.delete": ProcedureDef<"mutation", ScheduleRef, Empty, ToolError>;
@@ -3930,6 +4062,11 @@ export interface Api {
       readonly describe: Procedures["temporal.namespaces.describe"];
       readonly list: Procedures["temporal.namespaces.list"];
       readonly searchAttributes: Procedures["temporal.namespaces.searchAttributes"];
+    };
+    readonly payload: {
+      readonly download: Procedures["temporal.payload.download"];
+      readonly node: Procedures["temporal.payload.node"];
+      readonly query: Procedures["temporal.payload.query"];
     };
     readonly schedules: {
       readonly backfill: Procedures["temporal.schedules.backfill"];
@@ -5338,6 +5475,38 @@ export const procedures: Api = {
       },
       searchAttributes: {
         name: "temporal.namespaces.searchAttributes",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    payload: {
+      download: {
+        name: "temporal.payload.download",
+        kind: "stream",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 3600000,
+        timeoutMaxMs: 3600000,
+      },
+      node: {
+        name: "temporal.payload.node",
+        kind: "query",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      query: {
+        name: "temporal.payload.query",
         kind: "query",
         perm: "temporal.read",
         risk: "Read",

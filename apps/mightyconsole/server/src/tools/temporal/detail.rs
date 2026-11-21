@@ -10,7 +10,7 @@ use super::detail_types::{
     WorkflowQueryInput, WorkflowQueryOutput, WorkflowRawEventInput, WorkflowRawEventOutput,
     WorkflowRef,
 };
-use super::payloads::{decode_payloads, encode_json, payload_encodings, to_json_raw};
+use super::payloads::{decode_payloads_keeping, encode_json, payload_encodings, to_json_raw};
 use super::proto::temporal::api::common::v1::{Payloads, WorkflowExecution};
 use super::proto::temporal::api::history::v1::HistoryEvent as ProtoEvent;
 use super::proto::temporal::api::query::v1::WorkflowQuery;
@@ -100,7 +100,7 @@ pub async fn history_events<'a>(
     events
         .into_iter()
         .zip(raws)
-        .map(|(e, raw)| history_event_from(e, raw))
+        .map(|(e, raw)| history_event_from(e, raw, &client.large))
         .collect()
 }
 
@@ -114,16 +114,20 @@ pub async fn to_json_resolved<M: prost::Message>(
     let mut value = to_json_raw(full_name, message)?;
     super::extstore::resolve_json(client.external.as_deref(), namespace, &mut value).await;
     super::codec_client::decode_json(client.payload_codec.as_deref(), namespace, &mut value).await;
-    decode_payloads(&mut value);
+    decode_payloads_keeping(&mut value, Some(&client.large));
     Ok(value)
 }
 
 /// One event as the UI reads it, from its raw JSON (External Storage references already resolved):
 /// the envelope typed, the attributes as decoded protobuf JSON.
-fn history_event_from(event: &ProtoEvent, raw: Value) -> Result<HistoryEvent, ToolError> {
+fn history_event_from(
+    event: &ProtoEvent,
+    raw: Value,
+    large: &super::large::LargePayloads,
+) -> Result<HistoryEvent, ToolError> {
     let encodings = payload_encodings(&raw);
     let mut decoded = raw;
-    decode_payloads(&mut decoded);
+    decode_payloads_keeping(&mut decoded, Some(large));
     let Value::Object(mut json) = decoded else {
         return Err(ToolError::new(
             crate::core::ToolErrorKind::Remote,
@@ -145,6 +149,7 @@ fn history_event_from(event: &ProtoEvent, raw: Value) -> Result<HistoryEvent, To
         category,
         attributes,
         encodings: (!encodings.is_empty()).then_some(encodings),
+        size: prost::Message::encoded_len(event) as u64,
     })
 }
 
@@ -263,6 +268,7 @@ pub async fn describe(
         .map(object)
         .unwrap_or_default();
     Ok(WorkflowDetail {
+        history_size_bytes: info.history_size_bytes,
         workflow: row(&info),
         execution_config: json
             .remove("executionConfig")

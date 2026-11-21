@@ -65,6 +65,8 @@ pub struct TemporalClient {
     pub payload_codec: Option<std::sync::Arc<super::codec_client::PayloadCodec>>,
     /// The codec endpoint's settings, when the profile serves one.
     pub codec: Option<super::codec::CodecProfile>,
+    /// Payloads over 64 KiB of JSON, kept for `temporal.payload.*` (TSK-92).
+    pub large: super::large::LargePayloads,
 }
 
 impl TemporalClient {
@@ -199,6 +201,7 @@ pub async fn connect(profile: &ConnectTemporalProfile) -> Result<TemporalClient,
         address,
         namespace,
         external,
+        large: super::large::LargePayloads::default(),
     })
 }
 

@@ -9,7 +9,9 @@ the payload and relation tests read them. External Storage (TSK-103): payloads o
 SDK's S3 driver; `big-payload-1` has a 300 KiB input and result. A payload codec (TSK-92): a second
 worker on task queue `lab-encrypted` encrypts its payloads with the lab's AES-GCM codec;
 `encrypted-1` is stored encrypted. Standalone activities (TSK-92): `sa-charge-1`, a `charge` run without a
-workflow; `hold` heartbeats until it is cancelled, for the cancel test."""
+workflow; `hold` heartbeats until it is cancelled, for the cancel test. Large payloads (TSK-92): `large-1`
+has an input of about 1.5 MiB (12,480 inventory lines) kept in the history itself (started by a
+client without External Storage), under Temporal's 2 MiB limit."""
 
 import asyncio
 import dataclasses
@@ -179,6 +181,23 @@ class BigPayload:
 
 
 @workflow.defn
+class LargeInput:
+    @workflow.run
+    async def run(self, snapshot: dict) -> dict:
+        items = snapshot.get("items", [])
+        return {"items": len(items), "outOfStock": sum(1 for i in items if i.get("qty") == 0)}
+
+
+def large_snapshot() -> dict:
+    """About 1.5 MiB of JSON: 12,480 inventory lines, each with its recent history."""
+    items = [
+        {"sku": f"A-{i:05d}", "qty": 0 if i % 40 == 1 else 1 + (i * 7) % 23, "bin": f"BER-1/{i % 40:02d}/{i % 9}", "history": [{"at": f"2026-11-{1 + i % 18:02d}", "delta": (i % 5) - 2}] * 2}
+        for i in range(12_480)
+    ]
+    return {"warehouseIds": ["BER-1", "HAM-2"], "items": items, "snapshotAt": "2026-11-18T10:29:58Z", "debug": {"source": "lab", "note": "n" * 40_000, "rev": 7}}
+
+
+@workflow.defn
 class ProtoOrder:
     @workflow.run
     async def run(self, order: protos.Order) -> protos.Order:
@@ -240,7 +259,7 @@ async def main() -> None:
         except (OSError, RuntimeError):
             await asyncio.sleep(1)
     assert client is not None, "Temporal did not answer"
-    worker = Worker(client, task_queue=TASK_QUEUE, workflows=[Fulfilment, Completed, Failed, Retrying, Parent, ProtoOrder, BigPayload, FamilyRoot, FamilyOrder, FamilySupport], activities=[charge, flaky, hold])
+    worker = Worker(client, task_queue=TASK_QUEUE, workflows=[Fulfilment, Completed, Failed, Retrying, Parent, ProtoOrder, BigPayload, LargeInput, FamilyRoot, FamilyOrder, FamilySupport], activities=[charge, flaky, hold])
     # The encrypted side: the same converter with the lab's codec, its own task queue.
     import base64
 
@@ -254,6 +273,13 @@ async def main() -> None:
             if "already" not in str(e).lower():
                 raise
         await start_samples(client)
+        # Large payloads: started without External Storage, so the input stays in the history.
+        plain = await Client.connect("temporal:7233", namespace="lab")
+        try:
+            await plain.start_workflow(LargeInput.run, large_snapshot(), id="large-1", task_queue=TASK_QUEUE)
+        except Exception as e:  # noqa: BLE001 - already started on an earlier start
+            if "already" not in str(e).lower():
+                raise
         try:
             await client.start_activity(charge, "ord-sa-1", id="sa-charge-1", task_queue=TASK_QUEUE, start_to_close_timeout=timedelta(seconds=30), id_reuse_policy=ActivityIDReusePolicy.REJECT_DUPLICATE)
         except Exception as e:  # noqa: BLE001 - already run on an earlier start

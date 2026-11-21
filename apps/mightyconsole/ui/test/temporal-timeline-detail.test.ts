@@ -13,6 +13,7 @@ const ev = (eventType: string, atMs: number, attributes: Record<string, unknown>
   eventType,
   category,
   attributes,
+  size: 0,
 });
 
 const smtpFailure = {

@@ -12,6 +12,7 @@ import type { MightyClient } from "@/app/client";
 import { Play } from "@/lib/icons";
 import type { DescribedError } from "../types";
 import { ArgsField, parseArgs } from "./ActionDialogs";
+import { PayloadView, largeOf } from "./LargePayload";
 
 /** The query names a metadata answer lists (`definition.queryDefinitions[].name`), else none. */
 export function queryNamesOf(metadata: unknown): string[] {
@@ -96,7 +97,16 @@ export function QueriesPanel({ client, connId, namespace, workflowId, runId, act
         </Button>
       </div>
       {error ? <ErrorState error={error} onRetry={() => void run()} /> : null}
-      {result ? <JsonViewer value={result.value} defaultExpandDepth={3} aria-label="Query result" className="max-h-panel-md" /> : error ? null : <EmptyLine>The result shows here.</EmptyLine>}
+      {result && largeOf(result.value) && connId !== null ? (
+        // A result over 64 KiB of JSON stays on the server (TSK-92).
+        <div className="flex h-panel-xl min-h-0 rounded-md border border-border-subtle bg-layer">
+          <PayloadView client={client} connId={connId} stub={largeOf(result.value)!} label="Query result" fileName={`${workflowId}-query`} note={note} />
+        </div>
+      ) : result ? (
+        <JsonViewer value={result.value} defaultExpandDepth={3} aria-label="Query result" className="max-h-panel-md" />
+      ) : error ? null : (
+        <EmptyLine>The result shows here.</EmptyLine>
+      )}
     </form>
   );
 }

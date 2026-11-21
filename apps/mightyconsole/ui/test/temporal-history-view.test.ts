@@ -7,7 +7,7 @@ import { categoryCounts, groupSummary, historyJson, historyRows, historySummary,
 
 const T0 = Date.parse("2026-11-18T09:42:07.112Z");
 let id = 0;
-const ev = (eventType: string, atMs: number, category: EventCategory, attributes: Record<string, unknown> = {}): HistoryEvent => ({ eventId: ++id, eventTime: new Date(T0 + atMs).toISOString(), eventType, category, attributes });
+const ev = (eventType: string, atMs: number, category: EventCategory, attributes: Record<string, unknown> = {}): HistoryEvent => ({ eventId: ++id, eventTime: new Date(T0 + atMs).toISOString(), eventType, category, attributes, size: 0 });
 
 function order(): HistoryEvent[] {
   id = 0;

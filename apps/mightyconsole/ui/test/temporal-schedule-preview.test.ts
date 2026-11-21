@@ -209,6 +209,7 @@ describe("Start another like this", () => {
       eventTime: "2026-11-18T00:00:00Z",
       eventType: "WorkflowExecutionStarted",
       category: "Workflow" as const,
+      size: 0,
       attributes: { input: ["a", { n: 1 }], memo: { fields: { owner: "ops" } }, workflowExecutionTimeout: "3600s", workflowRunTimeout: "0s", workflowTaskTimeout: "10s", retryPolicy: { initialInterval: "1s", backoffCoefficient: 2, maximumAttempts: 3 } },
     };
     expect(prefillOf(w as never, [started])).toEqual({ workflowType: "Order", taskQueue: "lab", args: ["a", { n: 1 }], memo: { owner: "ops" }, executionTimeout: "1h", retryPolicy: { initialInterval: "1s", backoffCoefficient: 2, maximumAttempts: 3 } });

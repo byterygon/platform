@@ -17,7 +17,7 @@ import { byRole, byText, cleanup, click, dialogWith, editorArea, render, settle,
 afterEach(cleanup);
 
 const T0 = Date.parse("2026-11-18T01:00:00Z");
-const ev = (eventId: number, eventType: string, atMs: number, category: EventCategory, attributes: Record<string, unknown> = {}): HistoryEvent => ({ eventId, eventTime: new Date(T0 + atMs).toISOString(), eventType, category, attributes });
+const ev = (eventId: number, eventType: string, atMs: number, category: EventCategory, attributes: Record<string, unknown> = {}): HistoryEvent => ({ eventId, eventTime: new Date(T0 + atMs).toISOString(), eventType, category, attributes, size: 0 });
 
 const events: HistoryEvent[] = [
   ev(1, "WorkflowExecutionStarted", 0, "Workflow", { workflowType: { name: "Fulfilment" }, input: ["ord-1"] }),
@@ -32,6 +32,7 @@ const events: HistoryEvent[] = [
 
 const RUN = "0190aaaa-bbbb-cccc-dddd-000000000001";
 const detail = (status: WorkflowDetail["workflow"]["status"] = "Running"): WorkflowDetail => ({
+  historySizeBytes: 2048,
   workflow: { workflowId: "fulfilment-long-running", runId: RUN, workflowType: "Fulfilment", status, startTime: new Date(T0).toISOString(), taskQueue: "lab", historyLength: events.length },
   executionConfig: {},
   pendingActivities: [],

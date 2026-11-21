@@ -20,9 +20,18 @@ import { formatCount } from "@/app/messages";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/control";
 import type { EventCategory, HistoryEvent } from "@/gen/api";
-import { ArrowDownload, ArrowImport, ChevronDown, ChevronRight, Clock, Copy, ErrorCircle, CheckmarkCircle, Eye, EyeOff, Flash, Info, Link, NumberSymbol, Pin, Play, Search, SplitVertical, type IconDefinition } from "@/lib/icons";
+import { ArrowDownload, ArrowImport, ArrowSortDown, ChevronDown, ChevronRight, Clock, Copy, ErrorCircle, CheckmarkCircle, Eye, EyeOff, Flash, Info, Link, NumberSymbol, Pin, Play, Search, SplitVertical, type IconDefinition } from "@/lib/icons";
 import { clockText, eventMs } from "./history";
 import { HISTORY_CHIPS, categoryCounts, groupSummary, historyJson, historyRows, historySummary, isFailure, pairsOf, sinceStart, summaryContext, type HistoryRow } from "./history-view";
+import { LIMITS, LargeStubCard, largeStubs, withoutPreviews, type LargeStub } from "./LargePayload";
+import { formatBytes } from "./NamespacesTab";
+
+/** The rows as events only, largest first (folds opened). */
+export function bySizeRows(rows: readonly HistoryRow[]): HistoryRow[] {
+  return rows
+    .flatMap((r): HistoryRow[] => (r.kind === "group" ? r.events.map((event) => ({ kind: "event" as const, event })) : [{ kind: "event", event: r.event }]))
+    .sort((a, b) => (a.kind === "event" && b.kind === "event" ? b.event.size - a.event.size : 0));
+}
 
 const CATEGORY_ICON: Record<EventCategory, IconDefinition> = { Workflow: Link, WorkflowTask: Link, Activity: Flash, Timer: Clock, ChildWorkflow: SplitVertical, Signal: Play, Update: ArrowImport, Marker: Pin, Other: Info };
 
@@ -49,13 +58,17 @@ export interface HistoryPanelProps {
   onOpenPending(): void;
   /** An event's attributes as stored (`temporal.workflows.rawEvent`), for the Raw form. */
   loadRaw?: ((eventId: number) => Promise<Record<string, unknown>>) | undefined;
+  /** Opens a large payload of an event in its own tab (TSK-92). */
+  onOpenPayload?: ((stub: LargeStub, label: string) => void) | undefined;
 }
 
-export function HistoryPanel({ workflowId, runId, events, total, live, pending, selected, onSelect, hasMore, onLoadMore, onOpenPending, loadRaw }: HistoryPanelProps) {
+export function HistoryPanel({ workflowId, runId, events, total, live, pending, selected, onSelect, hasMore, onLoadMore, onOpenPending, loadRaw, onOpenPayload }: HistoryPanelProps) {
   const notify = useContext(NoticeContext);
   const [category, setCategory] = useState<EventCategory | "All">("All");
   const [query, setQuery] = useState("");
   const [fold, setFold] = useState(true);
+  // Sorted by size (TSK-92): the heavy events first, folds opened.
+  const [bySize, setBySize] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
   const [view, setView] = useState<"table" | "json">("table");
   const [goTo, setGoTo] = useState("");
@@ -65,7 +78,10 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
   const ctx = useMemo(() => summaryContext(events, pending), [events, pending]);
   const counts = useMemo(() => categoryCounts(events), [events]);
   const pairs = useMemo(() => pairsOf(events), [events]);
-  const rows = useMemo(() => historyRows(events, { category, fold, expanded, query, ctx }), [events, category, fold, expanded, query, ctx]);
+  const rows = useMemo(() => {
+    const shown = historyRows(events, { category, fold: fold && !bySize, expanded, query, ctx });
+    return bySize ? bySizeRows(shown) : shown;
+  }, [events, category, fold, expanded, query, ctx, bySize]);
   const start = events.length > 0 ? eventMs(events[0]!) : 0;
   const byId = useMemo(() => new Map(events.map((e) => [e.eventId, e])), [events]);
   const picked = selected === null ? undefined : byId.get(selected);
@@ -168,6 +184,9 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
             <span className="block truncate">{groupSummary(row.events)}</span>
           </TableCell>
           <TableCell />
+          <TableCell align="end" className="whitespace-nowrap text-fg-muted tabular-nums">
+            {formatBytes(row.events.reduce((n, x) => n + x.size, 0))}
+          </TableCell>
         </TableRow>
       );
     }
@@ -214,6 +233,9 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
               {pair.direction === "next" ? "→" : "←"} {pair.to}
             </Button>
           ) : null}
+        </TableCell>
+        <TableCell align="end" className={cn("whitespace-nowrap tabular-nums", e.size >= LIMITS.payloadWarn ? "text-warning-fg" : "text-fg-muted")}>
+          {formatBytes(e.size)}
         </TableCell>
       </TableRow>
     );
@@ -282,12 +304,18 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
                 <TableHead>Event</TableHead>
                 <TableHead>Summary</TableHead>
                 <TableHead>Pair</TableHead>
+                <TableHead align="end">
+                  <button type="button" aria-pressed={bySize} onClick={() => setBySize((b) => !b)} className={cn("inline-flex items-center gap-inline-xs rounded-sm", focusRing)} title={bySize ? "Back to event order" : "Sort by size, largest first"}>
+                    Size
+                    {bySize ? <Icon icon={ArrowSortDown} size="xs" /> : null}
+                  </button>
+                </TableHead>
               </TableRow>
             </TableHeader>
             {rows.length > 200 ? <TableVirtualBody count={rows.length} renderRow={(i) => renderRow(rows[i]!, i)} /> : <TableBody>{rows.map(renderRow)}</TableBody>}
           </Table>
         )}
-        <EventDetail event={picked} start={start} ctx={ctx} onSelect={reveal} onOpenPending={onOpenPending} loadRaw={loadRaw} />
+        <EventDetail event={picked} start={start} ctx={ctx} onSelect={reveal} onOpenPending={onOpenPending} loadRaw={loadRaw} onOpenPayload={onOpenPayload} />
       </div>
       <footer className="flex shrink-0 items-center gap-inline-md border-t border-border-subtle px-inset-lg py-stack-sm text-caption-1 text-fg-muted">
         {live ? (
@@ -315,7 +343,7 @@ export function payloadLabel(encodings: readonly string[] | undefined): string {
   return `${kinds} · ${encodings.length} payload${encodings.length === 1 ? "" : "s"}`;
 }
 
-function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw }: { event: HistoryEvent | undefined; start: number; ctx: ReturnType<typeof summaryContext>; onSelect(id: number): void; onOpenPending(): void; loadRaw?: ((eventId: number) => Promise<Record<string, unknown>>) | undefined }) {
+function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw, onOpenPayload }: { event: HistoryEvent | undefined; start: number; ctx: ReturnType<typeof summaryContext>; onSelect(id: number): void; onOpenPending(): void; loadRaw?: ((eventId: number) => Promise<Record<string, unknown>>) | undefined; onOpenPayload?: ((stub: LargeStub, label: string) => void) | undefined }) {
   const notify = useContext(NoticeContext);
   const [form, setForm] = useState<"decoded" | "raw">("decoded");
   // Raw forms already read, by event id (an error is kept as its message).
@@ -413,15 +441,20 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw }: { 
           </p>
         )
       ) : (
-        <CodeBlock code={JSON.stringify(a, null, 2)} language="json" appearance="inset" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
+        <>
+          {largeStubs(a).map(({ path, stub }) => (
+            <LargeStubCard key={stub.id + path} stub={stub} label={path} onOpen={() => onOpenPayload?.(stub, `Event ${event.eventId} · ${path}`)} />
+          ))}
+          <CodeBlock code={JSON.stringify(withoutPreviews(a), null, 2)} language="json" appearance="inset" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
+        </>
       )}
       <div className="flex flex-wrap items-center gap-inline-md">
-        {input !== undefined ? (
+        {input !== undefined && largeStubs(input).length === 0 ? (
           <Button size="small" appearance="subtle" onClick={() => void copy(JSON.stringify(input, null, 2), "the input")}>
             <Icon icon={Copy} /> Copy input
           </Button>
         ) : null}
-        <Button size="small" appearance="subtle" onClick={() => void copy(JSON.stringify(event, null, 2), "the event")}>
+        <Button size="small" appearance="subtle" onClick={() => void copy(JSON.stringify({ ...event, attributes: withoutPreviews(event.attributes) }, null, 2), "the event")}>
           <Icon icon={Copy} /> Copy event
         </Button>
       </div>

@@ -9,6 +9,7 @@ import { ActivitiesTab } from "./ActivitiesTab";
 import { ActivityTab } from "./ActivityTab";
 import { ConnectionForm } from "./ConnectionForm";
 import { NamespacesTab } from "./NamespacesTab";
+import { PayloadTab } from "./PayloadTab";
 import { ScheduleTab } from "./ScheduleTab";
 import { SchedulesTab } from "./SchedulesTab";
 import { TaskQueueTab } from "./TaskQueueTab";
@@ -149,6 +150,11 @@ export const temporalTool: ToolModule = {
       title: (params) => (typeof params["activityId"] === "string" ? params["activityId"] : "Activity"),
       Component: ActivityTab,
       href: temporalHrefs["temporal.activity"]!,
+    },
+    // A large payload kept on the server (TSK-92): no URL, its id lives 10 minutes.
+    "temporal.payload": {
+      title: (params) => (typeof params["label"] === "string" ? params["label"] : "Payload"),
+      Component: PayloadTab,
     },
     "temporal.schedules": {
       title: (params) => `Schedules · ${typeof params["namespace"] === "string" ? params["namespace"] : "default"}`,

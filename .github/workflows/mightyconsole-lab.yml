@@ -74,9 +74,8 @@ jobs:
         run: |
           # The checklists CI runs against the lab: foundation (every service), LangGraph, the
           # messaging core (TSK-80; the kafka profile's Confluent Schema Registry) and Temporal
-          # (TSK-83, TSK-92: the dev server and the lab worker). temporal-more runs only the items
-          # TSK-92 has wired so far (a not wired item fails the run); each batch adds its id here,
-          # and the --only goes when all seven are wired. NATS (TSK-85) runs the same way: each batch
+          # (TSK-83, TSK-92: the dev server and the lab worker), with every item of temporal-more
+          # (TSK-92 wired all eight). NATS (TSK-85) runs only the items wired so far: each batch
           # adds the ids it wired to nats_only, and TSK-104 to detail (temporal-detail).
           more=""
           detail=""
@@ -90,7 +89,7 @@ jobs:
               case " $LAB_TOOLS " in *" temporal "*) lists="${lists:+$lists }temporal" ;; esac
               ;;
           esac
-          case " $lists " in *" temporal "*) more="namespaces,workers,start-workflow,schedule-edit,external-storage,codec,activities"; detail="relations,schedule-detail" ;; esac
+          case " $lists " in *" temporal "*) more="all"; detail="relations,schedule-detail" ;; esac
           case " $LAB_TOOLS " in " all "|*" nats "*) nats_only="connect,core,streams,consumers,kv-objects,services,schemas" ;; esac
           echo "checklists: ${lists:-none}${more:+, temporal-more ($more)}${detail:+, temporal-detail ($detail)}${nats_only:+, nats ($nats_only)}"
           echo "lists=$lists" >> "$GITHUB_OUTPUT"
@@ -121,7 +120,7 @@ jobs:
         run: |
           status=0
           if [ -n "$LISTS" ]; then node apps/mightyconsole/acceptance/acceptance.mts $LISTS || status=$?; fi
-          if [ -n "$MORE" ]; then node apps/mightyconsole/acceptance/acceptance.mts temporal-more --only "$MORE" || status=$?; fi
+          if [ -n "$MORE" ]; then node apps/mightyconsole/acceptance/acceptance.mts temporal-more || status=$?; fi
           if [ -n "$DETAIL" ]; then node apps/mightyconsole/acceptance/acceptance.mts temporal-detail --only "$DETAIL" || status=$?; fi
           if [ -n "$NATS_ONLY" ]; then node apps/mightyconsole/acceptance/acceptance.mts nats --only "$NATS_ONLY" || status=$?; fi
           cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
