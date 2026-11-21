@@ -40,6 +40,7 @@ import { focusRing } from "@/lib/control";
 import { ArrowClockwise, ArrowUndo, ChevronDown, ChevronRight, Delete, Edit, History, MoreHorizontal, Play, Stop } from "@/lib/icons";
 import type { DescribedError, LiveState, TabProps } from "../types";
 import { EMPTY_RUN, type RunEvent, type RunInterrupt, type RunView, eventName, interruptsOf, parseChunk, reduceRun } from "./run-events";
+import { useActiveGate } from "@/app/while-active";
 import { JsonField, StatusBadge, configSchema, parseJson, partialSchema, preview, schemaObject, shortId, toGraphView, useLoad } from "./shared";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
@@ -222,7 +223,7 @@ export function ThreadTab(props: TabProps) {
           <TabsTrigger value="history">History {count !== null ? <span className="text-body-1 text-fg-muted">{count}</span> : null}</TabsTrigger>
         </TabsList>
         <TabsContent value="run" keepMounted className="flex min-h-0 flex-1 flex-col p-0">
-          <RunPanel {...props} threadId={threadId} thread={thread.data} actions={runActions} onStatus={setStatus} fromCheckpoint={fromCheckpoint} clearCheckpoint={() => setFromCheckpoint(null)} onRunEnded={changed} />
+          <RunPanel {...props} active={props.active && view === "run"} threadId={threadId} thread={thread.data} actions={runActions} onStatus={setStatus} fromCheckpoint={fromCheckpoint} clearCheckpoint={() => setFromCheckpoint(null)} onRunEnded={changed} />
         </TabsContent>
         <TabsContent value="state" className="flex min-h-0 flex-1 flex-col overflow-auto p-0">
           <StatePanel {...props} threadId={threadId} version={version} onChanged={changed} />
@@ -300,6 +301,8 @@ interface PanelProps extends TabProps {
 // ---- Run --------------------------------------------------------------------------------------
 
 interface RunPanelProps extends PanelProps {
+  /** The tab is shown and this is its view: a hidden run keeps its stream but reads no more of it (TSK-107). */
+  active: boolean;
   thread: api.Thread | null;
   actions: { current: Parameters<TabProps["useTabActions"]>[0] & { rollback?: () => void } };
   onStatus: (status: RunStatus) => void;
@@ -316,7 +319,8 @@ interface Running {
   paused(): boolean;
 }
 
-function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded }: RunPanelProps) {
+function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded, active }: RunPanelProps) {
+  const gate = useActiveGate(active);
   const toast = useToast();
   const assistants = useLoad(connId ? () => client.langgraph.assistants.search({ connId, graphId: null, metadata: null, limit: 1000, offset: null }) : null, [connId], note);
   const [assistantId, setAssistantId] = useState<string | null>(null);
@@ -398,6 +402,8 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onS
         for (;;) {
           if (paused) await new Promise<void>((r) => (resume = r));
           resume = null;
+          // Hidden: the run goes on at the server, its events wait in the stream's credits.
+          await gate.idle();
           const next = await iterator.next();
           if (next.done) break;
           const events = parseChunk(next.value, decoder);

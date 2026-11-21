@@ -45,7 +45,7 @@ export interface DockerList<T> {
  * Loads a list while connected and again after the host's events of `kind` or a container's that
  * changes what uses it; the latest answer wins.
  */
-export function useDockerList<T>({ client, connId, note, kind, load, count }: { client: MightyClient; connId: string | null; note(e: unknown): DescribedError; kind: "image" | "volume" | "network"; load(connId: string): Promise<T>; count(data: T): number }): DockerList<T> {
+export function useDockerList<T>({ client, connId, note, kind, load, count, active }: { /** The tab is shown (TSK-107). */ active: boolean; client: MightyClient; connId: string | null; note(e: unknown): DescribedError; kind: "image" | "volume" | "network"; load(connId: string): Promise<T>; count(data: T): number }): DockerList<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,6 +81,7 @@ export function useDockerList<T>({ client, connId, note, kind, load, count }: { 
   const events = useDockerEvents({
     client,
     connId,
+    active,
     types: [kind, "container"],
     onEvent: (event) => {
       if (event.kind !== kind && !changesUsers(event)) return;

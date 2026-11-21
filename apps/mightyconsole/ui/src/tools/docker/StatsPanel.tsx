@@ -6,6 +6,7 @@
 // running". The stream is push-only: the server drops samples a paused reader did not take, and
 // the count shows in the status bar. Beside them, the container's Processes (`docker top`, batch 4).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useActiveGate } from "@/app/while-active";
 import { Chart } from "@/components/ui/chart";
 import { Stat, StatDescription, StatLabel, StatValue } from "@/components/ui/stat";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -42,12 +43,13 @@ export function cpuBase(overview: Pick<ContainerOverview, "cpus">, sample: Pick<
   return overview.cpus !== undefined ? { cpus: overview.cpus, limit: true } : { cpus: sample.onlineCpus, limit: false };
 }
 
-export interface StatsPanelProps extends Pick<TabProps, "client" | "connId" | "note" | "onLive" | "useTabActions"> {
+export interface StatsPanelProps extends Pick<TabProps, "client" | "connId" | "note" | "onLive" | "useTabActions" | "active"> {
   container: string;
   overview: ContainerOverview;
 }
 
-export function StatsPanel({ client, connId, note, onLive, useTabActions, container, overview }: StatsPanelProps) {
+export function StatsPanel({ client, connId, note, onLive, useTabActions, container, overview, active }: StatsPanelProps) {
+  const gate = useActiveGate(active);
   const [points, setPoints] = useState<StatsPoint[]>([]);
   const [error, setError] = useState<DescribedError | null>(null);
   const [live, setLive] = useState<LiveState | null>(null);
@@ -70,6 +72,9 @@ export function StatsPanel({ client, connId, note, onLive, useTabActions, contai
     void (async () => {
       try {
         for await (const chunk of call.chunks()) {
+          // Hidden (TSK-107): the samples wait in the stream's credits; no chart state is set.
+          await gate.idle();
+          if (stopped) return;
           const samples = parseLines<StatsSample>(chunk, decoder);
           setPoints((list) => {
             const next = [...list];
@@ -97,7 +102,7 @@ export function StatsPanel({ client, connId, note, onLive, useTabActions, contai
       call.cancel();
       onLive(null);
     };
-  }, [client, connId, container, note, onLive, running, restart]);
+  }, [client, connId, container, note, onLive, running, restart, gate]);
 
   useTabActions({ refresh: () => setRestart((n) => n + 1) });
 
@@ -282,7 +287,7 @@ export function StatsPanel({ client, connId, note, onLive, useTabActions, contai
             </>
           )}
         </div>
-        <ProcessesPanel client={client} connId={connId} note={note} container={container} />
+        <ProcessesPanel client={client} connId={connId} note={note} container={container} active={active} />
       </div>
     </div>
   );

@@ -15,6 +15,7 @@
     "marks": "node scripts/marks.ts",
     "lint": "eslint . && stylelint \"**/*.css\"",
     "check:browser": "node scripts/browser-check.ts",
+    "bench:background": "node scripts/background-bench.ts",
     "lab": "node ../lab/lab.mts",
     "acceptance": "node ../acceptance/acceptance.mts"
   },

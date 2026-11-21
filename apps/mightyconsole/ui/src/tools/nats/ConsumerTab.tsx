@@ -10,6 +10,7 @@ import { DescriptionList } from "@/components/ui/description-list";
 import { Icon } from "@/components/ui/icon";
 import { CopyButton, NoticeContext, Page, PageHeader, PageRegion } from "@/app/page";
 import { DisconnectedState, ErrorState, LoadingRows } from "@/app/states";
+import { useActiveInterval } from "@/app/while-active";
 import { formatCount } from "@/app/messages";
 import type { NatsConsumerInfo, NatsStreamState } from "@/gen/api";
 import { Delete, Pause, Play } from "@/lib/icons";
@@ -122,12 +123,9 @@ export function ConsumerTab({ tab, profile, connId, client, active, useTabAction
   useEffect(() => {
     void load();
   }, [load]);
+  // While shown (TSK-107): a hidden tab stops, and asks once at once when shown again.
   const refreshing = active && !paused && !gone && error === null;
-  useEffect(() => {
-    if (!refreshing) return undefined;
-    const timer = setInterval(() => void load(), CONSUMER_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [refreshing, load]);
+  useActiveInterval(() => void load(), CONSUMER_REFRESH_MS, active, !paused && !gone && error === null);
   useTabActions({ refresh: () => void load(), pause: () => setPaused((p) => !p) });
 
   if (connId === null) return <DisconnectedState name={profile.name} onConnect={() => undefined} />;

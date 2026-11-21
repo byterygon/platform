@@ -6,6 +6,7 @@
 // (Shift+Escape) ends the stream and Resume continues after the last line, as after a lost
 // connection (spec §2.2).
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useActiveGate } from "@/app/while-active";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Icon } from "@/components/ui/icon";
@@ -51,14 +52,15 @@ export function newerThan(lines: readonly DockerLogLine[], lastTs: string, seenA
 
 const toViewer = (l: DockerLogLine): LogLine => ({ ts: l.ts, stream: l.stream, text: l.text });
 
-export interface LogsPanelProps extends Pick<TabProps, "client" | "connId" | "note" | "onLive" | "useTabActions"> {
+export interface LogsPanelProps extends Pick<TabProps, "client" | "connId" | "note" | "onLive" | "useTabActions" | "active"> {
   /** The container's name or id. */
   container: string;
   /** Whether it runs: a stopped container's log is read once. */
   running: boolean;
 }
 
-export function LogsPanel({ client, connId, note, onLive, useTabActions, container, running }: LogsPanelProps) {
+export function LogsPanel({ client, connId, note, onLive, useTabActions, container, running, active }: LogsPanelProps) {
+  const gate = useActiveGate(active);
   const viewer = useRef<LogViewerHandle>(null);
   const [tail, setTail] = useState<Tail>("1000");
   const [since, setSince] = useState<Since>("any");
@@ -126,6 +128,9 @@ export function LogsPanel({ client, connId, note, onLive, useTabActions, contain
           let since0 = Date.now();
           let backlog = true;
           for await (const chunk of call.chunks()) {
+            // Hidden (TSK-107): no parsing and no further credit until the tab is shown.
+            await gate.idle();
+            if (cancelled) return;
             let lines = parseLines<DockerLogLine>(chunk, decoder);
             if (first) {
               lines = newerThan(lines, resumeFrom!, seenAtLast);

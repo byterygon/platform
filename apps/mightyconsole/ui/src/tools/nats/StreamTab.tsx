@@ -225,7 +225,7 @@ function ConsumersView({ consumers, onOpen, onNew, disabled }: { consumers: Nats
 
 type Dialog = "edit" | "purge" | "delete" | "consumer" | null;
 
-export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, go: goProp, updateProfile }: TabProps) {
+export function StreamTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, go: goProp, updateProfile, active }: TabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const name = text(tab.params["stream"]);
   const place = useCallback((m: Parameters<typeof subjectPlace>[0]) => subjectPlace(m, name), [name]);
@@ -376,6 +376,7 @@ export function StreamTab({ tab, profile, connId, client, useTabActions, onLive,
               client={client}
               note={note}
               onLive={onLive}
+              active={active && section === "messages"}
               subject={subject.value}
               decoding={decoding}
               registerActions={(a) => {

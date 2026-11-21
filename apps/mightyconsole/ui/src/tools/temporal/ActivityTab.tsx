@@ -13,6 +13,7 @@ import { Icon } from "@/components/ui/icon";
 import { JsonViewer } from "@/components/ui/json-viewer";
 import { CopyButton, LinkButton, Page, PageHeader, PageRegion } from "@/app/page";
 import { DisconnectedState, EmptyLine, ErrorState, LoadingRows } from "@/app/states";
+import { useActiveInterval } from "@/app/while-active";
 import { linkTo } from "@/app/tab-view";
 import type { ActivityDetail } from "@/gen/api";
 import { ArrowClockwise, Dismiss, Stop } from "@/lib/icons";
@@ -120,11 +121,8 @@ export function ActivityTab(props: TabProps) {
     void load();
   }, [load]);
   const runningNow = detail?.activity.status === "Running";
-  useEffect(() => {
-    if (!active || !runningNow) return undefined;
-    const timer = setInterval(() => void load(), ACTIVITY_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [active, runningNow, load]);
+  // Refresh while shown (TSK-107): a hidden tab stops, and asks once at once when shown again.
+  useActiveInterval(() => void load(), ACTIVITY_REFRESH_MS, active, runningNow);
   useTabActions({ refresh: () => void load() });
 
   if (connId === null) return <DisconnectedState name={profile.name} onConnect={() => undefined} />;

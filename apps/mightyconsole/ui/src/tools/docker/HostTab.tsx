@@ -133,7 +133,7 @@ function DiskUsageTable({ usage }: { usage: DiskUsage }) {
   );
 }
 
-export function HostTab({ profile, connId, client, useTabActions, note }: TabProps) {
+export function HostTab({ profile, connId, client, useTabActions, note, active }: TabProps) {
   const [host, setHost] = useState<HostInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -189,6 +189,7 @@ export function HostTab({ profile, connId, client, useTabActions, note }: TabPro
   const live = useDockerEvents({
     client,
     connId,
+    active,
     onEvent: (event) => {
       setEvents((list) => [event, ...list].slice(0, HOST_EVENTS_KEPT));
       if (!changesRows(event)) return;

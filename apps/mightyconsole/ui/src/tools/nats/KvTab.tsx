@@ -379,7 +379,7 @@ function KeysView({ bucket, profile, connId, client, note, refreshKey, onPut }: 
   );
 }
 
-function WatchView({ bucket, connId, client, note, onLive, registerActions, decoding }: { bucket: string; connId: string; client: MightyClient; note(e: unknown): DescribedError; onLive(live: LiveState | null): void; registerActions(a: { primary: () => void; stop: () => void; pause: () => void }): void; decoding: ViewDecoding }) {
+function WatchView({ bucket, connId, client, note, onLive, registerActions, decoding, active }: { active: boolean; bucket: string; connId: string; client: MightyClient; note(e: unknown): DescribedError; onLive(live: LiveState | null): void; registerActions(a: { primary: () => void; stop: () => void; pause: () => void }): void; decoding: ViewDecoding }) {
   const services = useServices();
   const { state } = useStore();
   const [keys, setKeys] = useState(">");
@@ -400,7 +400,7 @@ function WatchView({ bucket, connId, client, note, onLive, registerActions, deco
           },
     [client, connId, bucket, keys, history, decode, filter, problem],
   );
-  const tail = useLiveTail(services, open, note, onLive);
+  const tail = useLiveTail(services, open, note, onLive, active);
   registerActions({ primary: () => tail.start(tail.status === "ended"), stop: tail.stop, pause: tail.pause });
   const check = useCallback((f: api.Filter) => client.messaging.filter.check({ filter: f }), [client]);
   const running = tail.status === "live" || tail.status === "paused";
@@ -433,7 +433,7 @@ function WatchView({ bucket, connId, client, note, onLive, registerActions, deco
   return <MessageViewer system="kv" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} {...(decoding.decodeAs ? { decodeAs: decoding.decodeAs } : {})} />;
 }
 
-export function KvTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, updateProfile }: TabProps) {
+export function KvTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, updateProfile, active }: TabProps) {
   const bucket = text(tab.params["bucket"]);
   const place = useCallback(() => bucketPlace(bucket), [bucket]);
   const decoding = useViewDecoding({ client, connId, profile, updateProfile, openTab }, place);
@@ -536,6 +536,7 @@ export function KvTab({ tab, profile, connId, client, useTabActions, onLive, not
           </TabsContent>
           <TabsContent value="watch" keepMounted className="flex min-h-0 flex-1 flex-col border-t border-border-subtle">
             <WatchView
+              active={active && section === "watch"}
               bucket={bucket}
               decoding={decoding}
               connId={connId}

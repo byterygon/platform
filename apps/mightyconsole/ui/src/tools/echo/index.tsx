@@ -13,6 +13,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
 import { liveTimeout } from "@/app/client";
 import { placeRoute } from "@/app/router";
+import { useActiveGate } from "@/app/while-active";
 import { EmptyLine, ErrorState, LiveBadge } from "@/app/states";
 import * as api from "@/gen/api";
 import { ArrowUp as Send, Braces, Edit, Flash, List, Pause, Play, Stop, Subtract } from "@/lib/icons";
@@ -120,7 +121,8 @@ interface EchoTick {
 const MAX_ROWS = 200;
 
 /** `echo.ticks`: a live view. Pausing stops pulling chunks, so the server stops at its credits. */
-function TicksTab({ tab, connId, client, useTabActions, onLive, note }: TabProps) {
+function TicksTab({ tab, connId, client, useTabActions, onLive, note, active }: TabProps) {
+  const gate = useActiveGate(active);
   const [rows, setRows] = useState<number[]>([]);
   const [live, setLive] = useState<LiveState | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
@@ -160,6 +162,8 @@ function TicksTab({ tab, connId, client, useTabActions, onLive, note }: TabProps
         for (;;) {
           if (paused) await new Promise<void>((r) => (resume = r));
           resume = null;
+          // Hidden (TSK-107): no further pull, so the server stops at its credits.
+          await gate.idle();
           const next = await iterator.next();
           if (next.done) break;
           for (const line of decoder.decode(next.value).split("\n")) {

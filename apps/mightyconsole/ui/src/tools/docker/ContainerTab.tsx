@@ -92,7 +92,7 @@ function Pair({ term, children }: { term: string; children: React.ReactNode }) {
 
 const mono = "font-mono text-code";
 
-export function ContainerTab({ tab, profile, connId, client, note, onLive, useTabActions, navigate }: TabProps) {
+export function ContainerTab({ tab, profile, connId, client, note, onLive, useTabActions, navigate, active }: TabProps) {
   const notify = useContext(NoticeContext);
   const id = typeof tab.params["id"] === "string" ? tab.params["id"] : "";
   const [view, setView] = useTabView({ tab, navigate }, CONTAINER_VIEWS, "overview");
@@ -137,6 +137,7 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
     client,
     connId,
     container: id,
+    active,
     types: ["container"],
     onEvent: (event) => {
       setRecent((r) => [event, ...r].slice(0, RECENT_EVENTS));
@@ -273,14 +274,14 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
             <Overview o={o} recent={recent} />
           </TabsContent>
           <TabsContent value="logs" className="flex min-h-0 flex-1 flex-col">
-            {view === "logs" ? <LogsPanel client={client} connId={connId} note={note} onLive={onLive} useTabActions={useTabActions} container={o.name || o.id} running={o.running || o.restarting} /> : null}
+            {view === "logs" ? <LogsPanel active={active} client={client} connId={connId} note={note} onLive={onLive} useTabActions={useTabActions} container={o.name || o.id} running={o.running || o.restarting} /> : null}
           </TabsContent>
           <TabsContent value="stats" className="flex min-h-0 flex-1 flex-col">
-            {view === "stats" ? <StatsPanel client={client} connId={connId} note={note} onLive={onLive} useTabActions={useTabActions} container={o.name || o.id} overview={o} /> : null}
+            {view === "stats" ? <StatsPanel active={active} client={client} connId={connId} note={note} onLive={onLive} useTabActions={useTabActions} container={o.name || o.id} overview={o} /> : null}
           </TabsContent>
           {/* Kept mounted once opened, so switching views does not end the exec. */}
           <TabsContent value="terminal" keepMounted={terminalSeen} className="flex min-h-0 flex-1 flex-col">
-            {terminalSeen ? <TerminalPanel client={client} connId={connId} note={note} container={o.name || o.id} running={o.running} defaultUser={o.user} defaultWorkdir={o.workingDir} /> : null}
+            {terminalSeen ? <TerminalPanel active={active && view === "terminal"} client={client} connId={connId} note={note} container={o.name || o.id} running={o.running} defaultUser={o.user} defaultWorkdir={o.workingDir} /> : null}
           </TabsContent>
           <TabsContent value="files" className="flex min-h-0 flex-1 flex-col">
             {view === "files" ? <FilesPanel client={client} connId={connId} note={note} useTabActions={useTabActions} container={o.name || o.id} /> : null}

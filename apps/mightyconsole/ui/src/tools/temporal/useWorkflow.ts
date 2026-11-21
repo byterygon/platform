@@ -4,6 +4,7 @@
 // stream. Not a component: the tab and its tests share it.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { liveTimeout, type MightyClient } from "@/app/client";
+import { useActiveGate } from "@/app/while-active";
 import * as api from "@/gen/api";
 import type { HistoryEvent, WorkflowDetail } from "@/gen/api";
 import type { DescribedError, LiveState } from "../types";
@@ -20,6 +21,11 @@ export interface WorkflowTarget {
   runId?: string | undefined;
   note(error: unknown): DescribedError;
   onLive(live: LiveState | null): void;
+  /**
+   * The tab is shown (default true). A followed history keeps its stream while hidden but reads no
+   * further chunk, so the server's credits run out and nothing is lost; it catches up when shown (TSK-107).
+   */
+  active?: boolean;
 }
 
 export interface WorkflowState {
@@ -44,6 +50,7 @@ export function splitLines(carry: string, chunk: string): { lines: string[]; car
 
 export function useWorkflow(target: WorkflowTarget): WorkflowState {
   const { client, connId, namespace, workflowId, runId, note, onLive } = target;
+  const gate = useActiveGate(target.active ?? true);
   const [detail, setDetail] = useState<WorkflowDetail | null>(null);
   const [events, setEvents] = useState<HistoryEvent[]>([]);
   const [token, setToken] = useState<string | null>(null);
@@ -92,6 +99,8 @@ export function useWorkflow(target: WorkflowTarget): WorkflowState {
         let carry = "";
         try {
           for await (const chunk of call.chunks()) {
+            // Hidden: leave the chunk and ask for no more until the tab is shown.
+            await gate.idle();
             if (mine !== generation.current) return;
             const split = splitLines(carry, decoder.decode(chunk));
             carry = split.carry;
@@ -121,7 +130,7 @@ export function useWorkflow(target: WorkflowTarget): WorkflowState {
         }
       })();
     },
-    [client, connId, namespace, workflowId, note, onLive, redescribe],
+    [client, connId, namespace, workflowId, note, onLive, redescribe, gate],
   );
 
   const load = useCallback(async () => {

@@ -37,10 +37,10 @@ export function volumeRefusal(row: VolumeRow): string | null {
   return row.usedBy.length > 0 ? `In use by ${namesText(row.usedBy)}` : null;
 }
 
-export function VolumesTab({ profile, connId, client, useTabActions, note, openTab, go: goProp }: TabProps) {
+export function VolumesTab({ profile, connId, client, useTabActions, note, openTab, go: goProp, active }: TabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
   const notify = useContext(NoticeContext);
-  const list = useDockerList({ client, connId, note, kind: "volume", load: (id) => client.docker.volumes.list({ connId: id }), count: (out) => out.volumes.length });
+  const list = useDockerList({ client, connId, note, active, kind: "volume", load: (id) => client.docker.volumes.list({ connId: id }), count: (out) => out.volumes.length });
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<VolumeFilter>("all");
   const [inspect, setInspect] = useState<InspectTarget | null>(null);

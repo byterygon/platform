@@ -66,6 +66,8 @@ export function browseStart(d: BrowseDraft): { start: api.NatsBrowseStart } | { 
 }
 
 export interface StreamMessagesProps {
+  /** The tab is shown and this is its view: a hidden one holds its live tail (TSK-107). */
+  active: boolean;
   stream: string;
   lastSequence: number | null;
   connId: string;
@@ -79,7 +81,7 @@ export interface StreamMessagesProps {
   decoding?: ViewDecoding;
 }
 
-export function StreamMessages({ stream, lastSequence, connId, client, note, onLive, subject: initialSubject, registerActions, decoding }: StreamMessagesProps) {
+export function StreamMessages({ stream, lastSequence, connId, client, note, onLive, subject: initialSubject, registerActions, decoding, active }: StreamMessagesProps) {
   const services = useServices();
   const { state } = useStore();
   const [draft, setDraft] = useState<BrowseDraft>({ ...DEFAULT_BROWSE, subject: initialSubject ?? "" });
@@ -112,7 +114,7 @@ export function StreamMessages({ stream, lastSequence, connId, client, note, onL
     // eslint-disable-next-line react-hooks/exhaustive-deps -- start follows draft
     [client, connId, stream, draft, decode, filter, subjectProblem],
   );
-  const tail = useLiveTail(services, open, note, onLive);
+  const tail = useLiveTail(services, open, note, onLive, active);
   registerActions({ primary: () => tail.start(tail.status === "ended"), stop: tail.stop, pause: tail.pause });
   const check = useCallback((f: api.Filter) => client.messaging.filter.check({ filter: f }), [client]);
   const loadFull = useCallback(
