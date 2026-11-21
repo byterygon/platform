@@ -342,7 +342,14 @@ export default {
           await run(`__mc.dblclick(__mc.item("lab-codec"))`);
           await until(itemOf("lab-codec", "Workers"), "temporal.connect with the codec");
           await run(`__mc.dblclick(${itemOf("lab-codec", "Workflows")})`);
-          await until(`__mc.has("encrypted-1")`, "the workflow list");
+          try {
+            await until(`__mc.has("encrypted-1")`, "the workflow list");
+          } catch (e) {
+            // Say what the list shows instead (which profile's tab, which workflows, any error).
+            await shot("workflow-list-without-encrypted-1");
+            const seen = await run<string>(`location.pathname + " · " + [...document.querySelectorAll("[role=tabpanel]:not([hidden])")].map((p) => p.innerText.replace(/\\s+/g, " ").slice(0, 600)).join(" | ")`);
+            throw new Error(`${(e as Error).message}; the page shows: ${seen}`);
+          }
           await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "encrypted-1"))`);
           await until(`[...document.querySelectorAll("[role=tab]")].some((t) => t.checkVisibility() && t.textContent.trim() === "Input and result")`, "the workflow tab");
           await run(`(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.checkVisibility() && x.textContent.trim() === "Input and result"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`);
