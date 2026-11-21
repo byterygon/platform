@@ -15,6 +15,7 @@ mod codec_client;
 mod detail;
 mod detail_types;
 mod extstore;
+mod large;
 mod namespaces;
 mod payloads;
 mod proto;
@@ -47,6 +48,10 @@ pub use self::activities::{
     ActivityStartInput, ActivityStartOutput, ActivityStatus, StandaloneActivitiesSupport,
 };
 pub use self::detail_types::*;
+pub use self::large::{
+    LargeArray, PayloadChild, PayloadDownloadInput, PayloadDownloadSummary, PayloadForm,
+    PayloadInfo, PayloadKind, PayloadNode, PayloadNodeInput, PayloadQueryInput, PayloadQueryOutput,
+};
 pub use self::namespaces::{Archival, NamespaceDescribeInput, NamespaceDetail, NamespaceLimits};
 pub use self::relations_types::*;
 pub use self::schedule_detail::{
@@ -88,6 +93,8 @@ pub struct TemporalTaskQueuesApi(pub Arc<Hub>);
 pub struct TemporalWorkersApi(pub Arc<Hub>);
 /// `temporal.activities.*` (standalone activities).
 pub struct TemporalActivitiesApi(pub Arc<Hub>);
+/// `temporal.payload.*` (large payloads kept on the server).
+pub struct TemporalPayloadApi(pub Arc<Hub>);
 
 /// RFC 3339 in UTC, `None` for an unset or out-of-range timestamp.
 fn rfc3339(timestamp: &prost_types::Timestamp) -> Option<String> {
@@ -733,6 +740,48 @@ impl TemporalActivitiesApi {
     }
 }
 
+#[rpc::router(namespace = "temporal.payload")]
+impl TemporalPayloadApi {
+    /// One node of a large payload kept on the server: its children a page at a time; the root
+    /// adds what the payload is and its largest arrays.
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn node(&self, ctx: Ctx, input: PayloadNodeInput) -> ToolResult<PayloadNode> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(large::node(&handle.value.large, &input)?)
+    }
+
+    /// A jq program on a large payload, run on the server; only its results travel (1 MiB, 10 s).
+    #[rpc::query(perm = "temporal.read", risk = Risk::Read)]
+    async fn query(&self, ctx: Ctx, input: PayloadQueryInput) -> ToolResult<PayloadQueryOutput> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        Ok(large::query(&handle.value.large, input).await?)
+    }
+
+    /// The decoded JSON (indented) or the stored bytes of a large payload, as a stream.
+    #[rpc::stream(
+        perm = "temporal.read",
+        risk = Risk::Read,
+        timeout_default = "1h",
+        timeout_max = "1h"
+    )]
+    async fn download(
+        &self,
+        ctx: Ctx,
+        input: PayloadDownloadInput,
+        sink: BinarySink,
+    ) -> ToolResult<PayloadDownloadSummary> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        let kept = handle.value.large.require(&input.payload_id)?;
+        let bytes = large::download_bytes(&kept, input.form);
+        for chunk in bytes.chunks(sink.max_chunk_bytes().clamp(1, 256 * 1024)) {
+            sink.send(chunk.to_vec()).await?;
+        }
+        Ok(PayloadDownloadSummary {
+            bytes: bytes.len() as u64,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -798,3 +847,6 @@ mod lab_schedule_detail_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_activity_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_large_tests;

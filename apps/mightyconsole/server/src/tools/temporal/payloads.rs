@@ -15,6 +15,9 @@
 //!
 //! Raw bytes are always kept in `base64` of an opaque value.
 //!
+//! Large payloads (TSK-92): with a connection's [`super::large::LargePayloads`], a payload whose
+//! decoded JSON is over 64 KiB becomes `{ "$large": … }` and its value stays on the server.
+//!
 //! External Storage (TSK-103): [`super::extstore::resolve_json`] runs first and swaps a reference for
 //! the payload it stands for, marked `$external`; that payload decodes as any other. A reference it
 //! could not read (or one never resolved) becomes `{ "$external": { driver, bucket, key, bytes,
@@ -119,7 +122,7 @@ fn collect_encodings(value: &Value, out: &mut Vec<String>) {
 
 /// The members of a payload object: protobuf's, and the marks External Storage and the payload
 /// codec leave (`$external`, `$codec`, `$codecError`).
-const PAYLOAD_KEYS: &[&str] = &[
+pub(super) const PAYLOAD_KEYS: &[&str] = &[
     "metadata",
     "data",
     "externalPayloads",
@@ -130,27 +133,38 @@ const PAYLOAD_KEYS: &[&str] = &[
 
 /// Replaces every payload in `value` by its decoded form, and `{ "payloads": [...] }` by the array.
 pub fn decode_payloads(value: &mut Value) {
+    decode_payloads_keeping(value, None);
+}
+
+/// As [`decode_payloads`]; with a store, payloads over 64 KiB of JSON are kept there and sent as
+/// `$large` stubs.
+pub fn decode_payloads_keeping(value: &mut Value, large: Option<&super::large::LargePayloads>) {
     match value {
         Value::Object(object) => {
-            if let Some(decoded) = payload_value(object) {
+            if let Some(decoded) = payload_value(object, large) {
                 *value = decoded;
                 return;
             }
             for child in object.values_mut() {
-                decode_payloads(child);
+                decode_payloads_keeping(child, large);
             }
             // `Payloads` is just a list.
             if object.len() == 1 && object.get("payloads").is_some_and(Value::is_array) {
                 *value = object.remove("payloads").unwrap_or(Value::Null);
             }
         }
-        Value::Array(items) => items.iter_mut().for_each(decode_payloads),
+        Value::Array(items) => items
+            .iter_mut()
+            .for_each(|item| decode_payloads_keeping(item, large)),
         _ => {}
     }
 }
 
 /// The decoded form of `object` if it is a payload (`metadata.encoding` is a string).
-fn payload_value(object: &Map<String, Value>) -> Option<Value> {
+fn payload_value(
+    object: &Map<String, Value>,
+    large: Option<&super::large::LargePayloads>,
+) -> Option<Value> {
     let metadata = object.get("metadata")?.as_object()?;
     if !object.keys().all(|k| PAYLOAD_KEYS.contains(&k.as_str())) {
         return None;
@@ -202,6 +216,20 @@ fn payload_value(object: &Map<String, Value>) -> Option<Value> {
             Value::String(format!("Codec failed: {error}")),
         );
         opaque.insert("codecError".into(), Value::String(error.to_owned()));
+    }
+    if let Some(store) = large {
+        let codec = object.get("$codec").map(|c| {
+            let text = |k: &str| {
+                c.get(k)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            (text("codec"), text("from"))
+        });
+        if let Some(stub) = super::large::stub_if_large(store, &decoded, &encoding, &data, codec) {
+            return Some(stub);
+        }
     }
     Some(decoded)
 }

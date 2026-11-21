@@ -23,6 +23,7 @@ const ev = (eventId: number, eventType: string, atMs: number, category: EventCat
   eventType,
   category,
   attributes,
+  size: 0,
 });
 
 const events: HistoryEvent[] = [
@@ -33,6 +34,7 @@ const events: HistoryEvent[] = [
 ];
 
 const detail = (patch: Partial<WorkflowDetail> = {}, status: WorkflowDetail["workflow"]["status"] = "Running"): WorkflowDetail => ({
+  historySizeBytes: 2048,
   workflow: { workflowId: "fulfilment-long-running", runId: "0190aaaa-bbbb-cccc-dddd-000000000001", workflowType: "Fulfilment", status, startTime: new Date(T0).toISOString(), taskQueue: "lab", historyLength: events.length },
   executionConfig: {},
   pendingActivities: [],

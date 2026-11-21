@@ -28,6 +28,8 @@ pub struct WorkflowRef {
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowDetail {
     pub workflow: WorkflowRow,
+    /// The history's size in bytes, as the server counts it (TSK-92; Temporal's limit is 50 MiB).
+    pub history_size_bytes: i64,
     /// `WorkflowExecutionConfig`: task queue, timeouts.
     #[ts(type = "Record<string, unknown>")]
     #[schemars(with = "Map<String, Value>")]
@@ -114,6 +116,8 @@ pub struct HistoryEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub encodings: Option<Vec<String>>,
+    /// The event's encoded size in the history, in bytes (TSK-92).
+    pub size: u64,
 }
 
 /// One event of a run, to read as stored.

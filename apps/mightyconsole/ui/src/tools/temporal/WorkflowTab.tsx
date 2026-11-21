@@ -37,6 +37,9 @@ import { KIND_ICON, TimelinePane } from "./TimelinePane";
 import { PendingPanel } from "./PendingPanel";
 import { statusLabel } from "./WorkflowsTab";
 import { useWorkflow } from "./useWorkflow";
+import { LIMITS, PayloadView, largeOf, largeStubs, type PayloadContext } from "./LargePayload";
+import { formatBytes } from "./NamespacesTab";
+import type { MightyClient } from "@/app/client";
 
 const STATUS_VARIANT = STATUS_TONE;
 
@@ -55,7 +58,8 @@ const obj = (value: unknown): Record<string, unknown> => (typeof value === "obje
 export function prefillOf(w: WorkflowDetail["workflow"], events: readonly HistoryEvent[]): StartPrefill {
   const out: StartPrefill = { workflowType: w.workflowType, taskQueue: w.taskQueue };
   const io = inputAndResult(events);
-  if (Array.isArray(io.input)) out.args = io.input;
+  // A large input stays on the server: the sheet cannot send it back, so it starts empty.
+  if (Array.isArray(io.input) && !io.input.some((a) => largeOf(a) !== null)) out.args = io.input;
   const memo = obj(io.memo);
   if (Object.keys(memo).length > 0) out.memo = memo;
   const started = events.find((e) => e.eventType === "WorkflowExecutionStarted")?.attributes ?? {};
@@ -193,7 +197,19 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               <CopyButton value={w.runId} what="run ID" />
             </Fact>
             <Fact label="Namespace">{namespace}</Fact>
-            <Fact label="History">{formatCount(events.length)} events</Fact>
+            <Fact label="History">{formatCount(Math.max(events.length, w.historyLength))} events</Fact>
+            {detail.historySizeBytes > 0 ? (
+              <Fact label="History size">
+                <span className="flex items-center gap-inline-xs">
+                  {formatBytes(detail.historySizeBytes)} of 50 MiB
+                  {detail.historySizeBytes >= LIMITS.historyWarn ? (
+                    <Badge appearance="tint" variant="warning">
+                      Over 10 MiB
+                    </Badge>
+                  ) : null}
+                </span>
+              </Fact>
+            ) : null}
             <Fact label="Pending">{pendingWords(detail)}</Fact>
             <Fact label="Parent">{w.parentWorkflowId ?? "None"}</Fact>
             {w.closeTime ? <Fact label="Closed">{formatTime(w.closeTime)}</Fact> : null}
@@ -266,6 +282,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
                   ? undefined
                   : async (eventId) => (await client.temporal.workflows.rawEvent({ connId, namespace, workflowId, runId: detail.workflow.runId, eventId })).attributes
               }
+              onOpenPayload={(stub, label) => openTab({ kind: "temporal.payload", params: { namespace, payloadId: stub.id, label, workflowId, runId: detail.workflow.runId }, title: label })}
             />
           </TabsContent>
           <TabsContent value="relations" className="flex min-h-0 flex-1 flex-col">
@@ -284,7 +301,19 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             />
           </TabsContent>
           <TabsContent value="input" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
-            <InputResultPanel events={events} detail={detail} />
+            <InputResultPanel
+              events={events}
+              detail={detail}
+              client={client}
+              connId={connId}
+              note={note}
+              workflowId={workflowId}
+              onReload={state.refresh}
+              onGoToEvent={(id) => {
+                setSelected(id);
+                setSection("history");
+              }}
+            />
           </TabsContent>
           <TabsContent value="pending" className="flex min-h-0 flex-1 flex-col">
             <PendingPanel detail={detail} now={now} onRefresh={state.refresh} onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 }, event)} />
@@ -482,15 +511,51 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function InputResultPanel({ events, detail }: { events: HistoryEvent[]; detail: WorkflowDetail }) {
+/** The run's largest payloads loaded: every `$large` stub of its events, biggest first. */
+export function largestPayloads(events: readonly HistoryEvent[]): { eventId: number; label: string; bytes: number }[] {
+  const what = (t: string) => t.replace(/^WorkflowExecution|^ActivityTask|EventAttributes$/g, "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  return events
+    .flatMap((e) => largeStubs(e.attributes).map(({ path, stub }) => ({ eventId: e.eventId, label: `${what(e.eventType)} ${path}`.trim(), bytes: stub.bytes })))
+    .sort((a, b) => b.bytes - a.bytes);
+}
+
+/** One argument or result: the payload view for a large one, else the JSON. */
+function Values({ values, what, client, connId, note, workflowId, context, onReload }: { values: unknown; what: "Input" | "Result"; client: MightyClient; connId: string | null; note(e: unknown): DescribedError; workflowId: string; context: PayloadContext; onReload(): void }) {
+  const list = Array.isArray(values) ? values : [values];
+  if (connId === null || !list.some((v) => largeOf(v) !== null)) {
+    return <JsonViewer value={values} defaultExpandDepth={3} aria-label={`Workflow ${what.toLowerCase()}`} className="max-h-panel-sm" />;
+  }
+  return (
+    <div className="flex flex-col gap-stack-md">
+      {list.map((v, i) => {
+        const stub = largeOf(v);
+        const label = `${what} · argument ${i + 1} of ${list.length}`;
+        return stub ? (
+          <div key={i} className="flex h-panel-xl min-h-0 rounded-md border border-border-subtle bg-layer">
+            <PayloadView client={client} connId={connId} stub={stub} label={label} fileName={`${workflowId}-${what.toLowerCase()}-${i + 1}`} context={context} note={note} onReload={onReload} />
+          </div>
+        ) : (
+          <JsonViewer key={i} value={v} defaultExpandDepth={3} aria-label={label} className="max-h-panel-sm" />
+        );
+      })}
+    </div>
+  );
+}
+
+function InputResultPanel({ events, detail, client, connId, note, workflowId, onReload, onGoToEvent }: { events: HistoryEvent[]; detail: WorkflowDetail; client: MightyClient; connId: string | null; note(e: unknown): DescribedError; workflowId: string; onReload(): void; onGoToEvent(id: number): void }) {
   const io = useMemo(() => inputAndResult(events), [events]);
+  const context: PayloadContext = useMemo(
+    () => ({ historyBytes: detail.historySizeBytes > 0 ? detail.historySizeBytes : undefined, events: Math.max(events.length, detail.workflow.historyLength), largest: largestPayloads(events), onGoToEvent }),
+    [events, detail, onGoToEvent],
+  );
+  const shared = { client, connId, note, workflowId, context, onReload };
   const chain = failureChain(io.failure);
   const hasMemo = Object.keys(detail.memo).length > 0;
   const hasSearch = Object.keys(detail.searchAttributes).length > 0;
   return (
     <div className="flex flex-col">
       <Section title="Input">
-        <JsonViewer value={io.input} defaultExpandDepth={3} aria-label="Workflow input" className="max-h-panel-sm" />
+        <Values values={io.input} what="Input" {...shared} />
       </Section>
       {io.closedBy === undefined ? (
         <Section title="Result">
@@ -512,7 +577,7 @@ function InputResultPanel({ events, detail }: { events: HistoryEvent[]; detail: 
         </Section>
       ) : "result" in io ? (
         <Section title="Result">
-          <JsonViewer value={io.result} defaultExpandDepth={3} aria-label="Workflow result" className="max-h-panel-sm" />
+          <Values values={io.result} what="Result" {...shared} />
         </Section>
       ) : (
         <Section title="Result">

@@ -3841,13 +3841,20 @@
         "eventType": {
           "description": "`WorkflowExecutionStarted`, `ActivityTaskScheduled`, ... (the enum name in CamelCase).",
           "type": "string"
+        },
+        "size": {
+          "description": "The event's encoded size in the history, in bytes (TSK-92).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
         "eventId",
         "eventType",
         "category",
-        "attributes"
+        "attributes",
+        "size"
       ],
       "type": "object"
     },
@@ -4449,6 +4456,37 @@
       },
       "required": [
         "flags"
+      ],
+      "type": "object"
+    },
+    "LargeArray": {
+      "description": "An array of the payload with its size.",
+      "properties": {
+        "bytes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "entryBytes": {
+          "description": "Its size per entry, on average.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "length": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "length",
+        "bytes",
+        "entryBytes"
       ],
       "type": "object"
     },
@@ -8168,6 +8206,49 @@
       ],
       "type": "object"
     },
+    "PayloadChild": {
+      "description": "One child of a node.",
+      "properties": {
+        "bytes": {
+          "description": "Its compact JSON text, in bytes.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "key": {
+          "description": "The member's name, or the entry's index.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/PayloadKind"
+        },
+        "length": {
+          "description": "Members, entries or characters.",
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Its JSON pointer.",
+          "type": "string"
+        },
+        "preview": {
+          "description": "The start of its compact JSON text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "path",
+        "kind",
+        "bytes",
+        "preview"
+      ],
+      "type": "object"
+    },
     "PayloadCodecOptions": {
       "description": "The profile's payload codec (TSK-92, spec §9.5): a codec server of the user's own that\nmightyconsole-server calls to decode payloads and encode inputs. Its `Authorization` header\ncomes beside it as `codecAuthorization`.",
       "properties": {
@@ -8231,6 +8312,274 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "PayloadDownloadInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "form": {
+          "$ref": "#/$defs/PayloadForm"
+        },
+        "payloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "payloadId",
+        "form"
+      ],
+      "type": "object"
+    },
+    "PayloadDownloadSummary": {
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "PayloadForm": {
+      "description": "What `temporal.payload.download` sends.",
+      "oneOf": [
+        {
+          "const": "decoded",
+          "description": "The decoded value as indented JSON.",
+          "type": "string"
+        },
+        {
+          "const": "stored",
+          "description": "The data the encoding read.",
+          "type": "string"
+        }
+      ]
+    },
+    "PayloadInfo": {
+      "description": "What is known of the payload, given with the root.",
+      "properties": {
+        "bytes": {
+          "description": "The data the encoding read, in bytes.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "codec": {
+          "description": "The codec that decoded it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "codecFrom": {
+          "description": "What it was before the codec.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "decodedBytes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "encoding": {
+          "type": "string"
+        },
+        "largestArrays": {
+          "description": "The largest arrays, biggest first.",
+          "items": {
+            "$ref": "#/$defs/LargeArray"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "bytes",
+        "decodedBytes",
+        "encoding",
+        "largestArrays"
+      ],
+      "type": "object"
+    },
+    "PayloadKind": {
+      "description": "What a JSON node is.",
+      "enum": [
+        "object",
+        "array",
+        "string",
+        "number",
+        "bool",
+        "null"
+      ],
+      "type": "string"
+    },
+    "PayloadNode": {
+      "properties": {
+        "bytes": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "children": {
+          "description": "The page of children of an object or an array.",
+          "items": {
+            "$ref": "#/$defs/PayloadChild"
+          },
+          "type": "array"
+        },
+        "cut": {
+          "description": "A string longer than what `value` holds.",
+          "type": "boolean"
+        },
+        "info": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PayloadInfo"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For the root only."
+        },
+        "kind": {
+          "$ref": "#/$defs/PayloadKind"
+        },
+        "length": {
+          "format": "uint",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "total": {
+          "description": "Members or entries in all.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "value": {
+          "description": "The value of a number, a boolean, null or a string (its first 4,096 characters)."
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "bytes",
+        "cut",
+        "children",
+        "offset",
+        "total"
+      ],
+      "type": "object"
+    },
+    "PayloadNodeInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "limit": {
+          "default": null,
+          "description": "Children per page: 50 when absent, at most 200.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "default": null,
+          "description": "The first child of the page.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "default": null,
+          "description": "A JSON pointer: `\"\"` for the payload, `/items/3/sku` below it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "payloadId"
+      ],
+      "type": "object"
+    },
+    "PayloadQueryInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "jq": {
+          "description": "A jq program, run by jaq.",
+          "type": "string"
+        },
+        "payloadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "payloadId",
+        "jq"
+      ],
+      "type": "object"
+    },
+    "PayloadQueryOutput": {
+      "properties": {
+        "bytes": {
+          "description": "The results' JSON text, in bytes.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "results": {
+          "items": true,
+          "type": "array"
+        },
+        "truncated": {
+          "description": "Results were left out: over 1 MiB, or past 10 seconds.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "results",
+        "bytes",
+        "truncated",
+        "ms"
+      ],
       "type": "object"
     },
     "Poller": {
@@ -11835,6 +12184,11 @@
           "description": "`WorkflowExecutionConfig`: task queue, timeouts.",
           "type": "object"
         },
+        "historySizeBytes": {
+          "description": "The history's size in bytes, as the server counts it (TSK-92; Temporal's limit is 50 MiB).",
+          "format": "int64",
+          "type": "integer"
+        },
         "memo": {
           "additionalProperties": true,
           "description": "The memo's fields by name, decoded.",
@@ -11875,6 +12229,7 @@
       },
       "required": [
         "workflow",
+        "historySizeBytes",
         "executionConfig",
         "pendingActivities",
         "pendingChildren",
@@ -15509,6 +15864,69 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/PayloadDownloadInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "temporal.payload.download",
+      "output": {
+        "$ref": "#/$defs/PayloadDownloadSummary"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 3600000,
+      "timeout_max_ms": 3600000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/PayloadNodeInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.payload.node",
+      "output": {
+        "$ref": "#/$defs/PayloadNode"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/PayloadQueryInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "temporal.payload.query",
+      "output": {
+        "$ref": "#/$defs/PayloadQueryOutput"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/ScheduleBackfillInput"
       },
       "kind": "mutation",
@@ -16146,5 +16564,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:261a66031618cdda9d47793f42c87ee7cb39a2e4d4c220bc2ecd4ca9336518cf"
+  "schema_hash": "sha256:e46ec9650455c2003a09d01d049686865f0705294bd22323ede0e34747e2a62c"
 }

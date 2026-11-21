@@ -67,11 +67,28 @@ async fn first_event(
     history.events.into_iter().next().expect("a first event")
 }
 
+/// A value as the UI reads it: a `$large` stub (over 64 KiB of JSON, TSK-92) is read from the
+/// connection's store.
+fn resolved(client: &TemporalClient, v: &Value) -> Value {
+    match v.get("$large") {
+        Some(stub) => client
+            .large
+            .require(stub["id"].as_str().unwrap())
+            .unwrap()
+            .value
+            .clone(),
+        None => v.clone(),
+    }
+}
+
 #[tokio::test]
 async fn a_stored_input_is_read_back_with_the_profiles_credentials() {
     let client = lab(Some(&s3())).await;
     let started = first_event(&client, "big-payload-1").await;
-    let input = &started.attributes["input"][0];
+    // 300 KiB: kept on the server, sent as a stub (TSK-92).
+    let stub = &started.attributes["input"][0]["$large"];
+    assert_eq!(stub["encoding"], "json/plain", "{stub}");
+    let input = &resolved(&client, &started.attributes["input"][0]);
     assert_eq!(input["kind"], "big");
     assert_eq!(input["text"].as_str().unwrap().len(), 300 * 1024);
     assert_eq!(
@@ -167,7 +184,7 @@ async fn a_large_input_is_stored_outside_and_the_worker_reads_it() {
             .iter()
             .find(|e| e.event_type == "WorkflowExecutionCompleted")
         {
-            result = done.attributes["result"][0].clone();
+            result = resolved(&client, &done.attributes["result"][0]);
             break;
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -182,7 +199,10 @@ async fn read_only_credentials_cannot_store_an_input() {
     let client = lab(Some(&s3["readOnly"])).await;
     // Reading works.
     let started = first_event(&client, "big-payload-1").await;
-    assert_eq!(started.attributes["input"][0]["kind"], "big");
+    assert_eq!(
+        resolved(&client, &started.attributes["input"][0])["kind"],
+        "big"
+    );
     // Writing is refused by the store, and nothing is sent inline.
     let id = format!("extstore-ro-{}", std::process::id());
     let e = start::start(

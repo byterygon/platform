@@ -395,6 +395,52 @@ impl CompiledFilter {
     }
 }
 
+/// What a jq program gave on one value ([`run_jq_value`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct JqResults {
+    /// The outputs, in order, until `max_bytes` of their JSON text.
+    pub results: Vec<serde_json::Value>,
+    /// The JSON text of the outputs kept.
+    pub bytes: usize,
+    /// Outputs were left out: over `max_bytes`, or past the deadline.
+    pub truncated: bool,
+}
+
+/// Runs a jq program on one JSON value (a large Temporal payload kept on the server). Outputs are
+/// kept until their JSON text passes `max_bytes`; the deadline is checked between outputs, so a
+/// single output that never ends is not cut. Errors name the part `jq` with the position.
+pub fn run_jq_value(
+    code: &str,
+    input: &serde_json::Value,
+    max_bytes: usize,
+    deadline: Option<std::time::Instant>,
+) -> Result<JqResults, Vec<FilterIssue>> {
+    let filter = compile_jq(code.trim())?;
+    let value: Val = Deserialize::deserialize(input)
+        .map_err(|e| vec![FilterIssue::new("jq", format!("jq input: {e}"))])?;
+    let ctx = Ctx::<data::JustLut<Val>>::new(&filter.lut, Vars::new([]));
+    let mut out = JqResults {
+        results: Vec::new(),
+        bytes: 0,
+        truncated: false,
+    };
+    for result in filter.id.run((ctx, value)).map(unwrap_valr) {
+        let v = result.map_err(|e| vec![FilterIssue::new("jq", format!("jq: {e}"))])?;
+        let text = v.to_string();
+        let json: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or_else(|_| serde_json::Value::String(text.clone()));
+        if out.bytes + text.len() > max_bytes
+            || deadline.is_some_and(|d| std::time::Instant::now() > d)
+        {
+            out.truncated = true;
+            break;
+        }
+        out.bytes += text.len();
+        out.results.push(json);
+    }
+    Ok(out)
+}
+
 /// Checks a filter (`messaging.filter.check`).
 pub fn check(filter: &Filter) -> Vec<FilterIssue> {
     CompiledFilter::compile(filter).err().unwrap_or_default()
@@ -823,5 +869,25 @@ mod tests {
             })
             .is_empty()
         );
+    }
+    #[test]
+    fn a_jq_program_runs_on_one_value_and_its_outputs_are_cut_at_the_limit() {
+        let value = json!({ "items": [{ "qty": 0 }, { "qty": 3 }, { "qty": 0 }] });
+        let out = run_jq_value(
+            ".items | map(select(.qty == 0)) | length",
+            &value,
+            1024,
+            None,
+        )
+        .unwrap();
+        assert_eq!(out.results, vec![json!(2)]);
+        assert!(!out.truncated);
+        let many = run_jq_value(".items[]", &value, 20, None).unwrap();
+        assert_eq!(many.results, vec![json!({ "qty": 0 }), json!({ "qty": 3 })]);
+        assert!(many.truncated);
+        let bad = run_jq_value(".items | nope", &value, 1024, None).unwrap_err();
+        assert_eq!(bad[0].part, "jq");
+        let failed = run_jq_value(".items + 1", &value, 1024, None).unwrap_err();
+        assert!(failed[0].message.starts_with("jq: "), "{:?}", failed);
     }
 }

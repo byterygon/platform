@@ -846,6 +846,31 @@ fn the_procedures_of_the_spec() {
             Risk::Read,
             defaults,
         ),
+        // Large payloads kept on the server (TSK-92): the download streams for up to an hour.
+        (
+            "temporal.payload.download",
+            Stream,
+            "temporal.read",
+            Risk::Read,
+            (
+                Some(Duration::from_secs(3600)),
+                Some(Duration::from_secs(3600)),
+            ),
+        ),
+        (
+            "temporal.payload.node",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "temporal.payload.query",
+            Query,
+            "temporal.read",
+            Risk::Read,
+            defaults,
+        ),
         (
             "temporal.schedules.backfill",
             Mutation,

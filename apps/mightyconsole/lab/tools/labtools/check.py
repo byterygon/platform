@@ -144,6 +144,12 @@ async def check_temporal():
     expect(status == "waiting for approval", f"temporal: fulfilment says {status!r}")
     schedules = [s.id async for s in await client.list_schedules()]
     expect("every-minute" in schedules, "temporal: schedule every-minute is missing")
+    # Large payloads (TSK-92): large-1's input is over 1 MiB and in the history itself.
+    expect("large-1" in ids, "temporal: workflow large-1 is missing")
+    if "large-1" in ids:
+        history = await client.get_workflow_handle("large-1").fetch_history()
+        payload = history.events[0].workflow_execution_started_event_attributes.input.payloads[0]
+        expect(payload.metadata.get("encoding") == b"json/plain" and len(payload.data) > 1024 * 1024, "temporal: large-1's input is not an inline payload over 1 MiB")
     # Standalone activities (TSK-92): sa-charge-1 ran without a workflow.
     try:
         described = await client.get_activity_handle("sa-charge-1").describe()

@@ -366,7 +366,51 @@ export default {
       id: "large-payloads",
       text: "Large payloads: a stub for the lab's large input; the payload tab loads nodes, pages a large array, runs jq on the server, shows the size breakdown and limits, downloads both forms; History has the Size column; CI green.",
       lab: true,
-      checks: [],
+      checks: [
+        ...lab(
+          "a_large_input_comes_as_a_stub_with_its_sizes_and_the_event_its_size",
+          "small_payloads_stay_inline",
+          "its_nodes_load_one_at_a_time_and_an_array_of_thousands_pages",
+          "jq_runs_on_the_server",
+          "both_forms_download",
+        ),
+        ...unit(
+          "json_len_is_the_compact_text_length",
+          "a_small_payload_stays_inline_and_a_large_one_becomes_a_stub",
+          "the_store_drops_the_least_recently_used_and_the_idle",
+          "nodes_come_one_at_a_time_with_pages_of_children_and_the_root_names_the_largest_arrays",
+          "jq_runs_on_the_server_and_reports_where_it_is_wrong",
+          "downloads_give_indented_json_or_the_stored_bytes",
+          "a_jq_program_runs_on_one_value_and_its_outputs_are_cut_at_the_limit",
+        ),
+        vitest("test/temporal-large-payload.test.tsx"),
+        browser("large-1's input in the payload view: the tree pages, jq on the server, the size pane, then History by size", async (ctx) => {
+          const { run, until, shot } = ctx;
+          await connectLab(ctx);
+          await run(`__mc.dblclick(__mc.item("Workflows"))`);
+          await until(`__mc.has("large-1")`, "the workflow list");
+          await run(`__mc.click(${shownButton("large-1")})`);
+          const tab = (name: string) => `[...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && t.textContent.trim().startsWith(${JSON.stringify(name)}))`;
+          const pick = (name: string) => `(() => { const t = ${tab(name)}; for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`;
+          await until(tab("Input and result"), "the workflow tab");
+          await run(pick("Input and result"));
+          await until(`__mc.has("What makes it big") && __mc.has("array[12,480]")`, "the payload view with the root's members", 30_000);
+          await run(`__mc.click([...document.querySelectorAll("[data-slot=payload-view] button[aria-expanded]")].find((b) => b.checkVisibility() && b.textContent.startsWith("items")))`);
+          await until(`__mc.has("showing 1–50")`, "the first page of items");
+          await run(`__mc.click(${shownButton("Load 50 more")})`);
+          await until(`__mc.has("showing 1–100")`, "the next page");
+          await typeInEditor(ctx, "jq", ".items | map(select(.qty == 0)) | length");
+          await run(`__mc.click(${shownButton("Run jq")})`);
+          await until(`__mc.has("on the server,") && [...document.querySelectorAll("[data-slot=payload-view] strong")].some((s) => s.textContent === "312")`, "jq's result from the server", 30_000);
+          await shot("payload-view");
+          await run(pick("History"));
+          await until(`[...document.querySelectorAll("th button")].some((b) => b.checkVisibility() && b.textContent.trim() === "Size")`, "History's Size column");
+          await run(`__mc.click([...document.querySelectorAll("th button")].find((b) => b.checkVisibility() && b.textContent.trim() === "Size"))`);
+          await run(`__mc.click([...document.querySelectorAll("tbody tr")].find((r) => r.checkVisibility() && r.querySelector("td")?.textContent === "1"))`);
+          await until(`__mc.has("Open input[0]")`, "the started event's stub card");
+          await shot("history-by-size");
+        }),
+      ],
     },
   ],
 } satisfies Checklist;
