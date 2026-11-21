@@ -21,10 +21,12 @@ import { HostTab } from "./HostTab";
 import { ImagesTab } from "./ImagesTab";
 import { NetworksTab } from "./NetworksTab";
 import { profile, targetOf, trustHostKey } from "./profile";
+import { PROJECT_VIEWS, ProjectTab } from "./ProjectTab";
 import { dockerTreeData, treeContainersOf, treeCountsOf } from "./tree-data";
 import { VolumesTab } from "./VolumesTab";
 
 const VIEW_LABELS: Record<(typeof CONTAINER_VIEWS)[number], string> = { overview: "Overview", logs: "Logs", stats: "Stats", terminal: "Terminal", inspect: "Inspect" };
+const PROJECT_VIEW_LABELS: Record<(typeof PROJECT_VIEWS)[number], string> = { logs: "Logs", containers: "Containers" };
 
 /** A container's tree node: it opens the container's Overview. */
 function containerNode(profileId: string, row: ContainerRow, label = row.name): ResourceNode {
@@ -49,6 +51,8 @@ export function containersTree(profileId: string, rows: readonly ContainerRow[])
         label: group.project,
         icon: <Icon icon={Stack} />,
         meta: <span className="text-caption-1 text-fg-muted">{up === group.rows.length ? up : `${up}/${group.rows.length}`}</span>,
+        // Double-click opens the project's merged logs (batch 4b).
+        open: { kind: "docker.project", params: { project: group.project, view: "logs" }, title: group.project },
         children: group.rows.map((r) => containerNode(profileId, r, r.service && group.rows.filter((o) => o.service === r.service).length === 1 ? r.service : r.name)),
       },
     ];
@@ -62,6 +66,17 @@ async function containerSiblings({ client, connId, profile: p }: SiblingContext)
   return {
     heading: `Containers on ${p.name}`,
     items: rows.map((r) => ({ label: r.name, description: stateLabel(r.state), params: { container: r.name } })),
+    all: { label: "All containers…", place: { kind: "docker.containers", params: {} } },
+  };
+}
+
+/** The project segment's siblings: the host's Compose projects. */
+async function projectSiblings({ client, connId, profile: p }: SiblingContext): Promise<SiblingList> {
+  if (!connId) throw new Error("Connect the profile to list them.");
+  const projects = await client.docker.compose.projects({ connId });
+  return {
+    heading: `Compose projects on ${p.name}`,
+    items: projects.map((pr) => ({ label: pr.project, description: `${pr.services.length} ${pr.services.length === 1 ? "service" : "services"}`, params: { project: pr.project } })),
     all: { label: "All containers…", place: { kind: "docker.containers", params: {} } },
   };
 }
@@ -121,8 +136,8 @@ export const dockerTool: ToolModule = {
     ];
   },
   sidebarData: dockerTreeData,
-  // DOC-21 §3.7: /docker/<profile>/containers, …/containers/<name>/<view>, …/images, …/volumes,
-  // …/networks, …/host.
+  // DOC-21 §3.7: /docker/<profile>/containers, …/containers/<name>/<view>,
+  // …/projects/<project>/<view>, …/images, …/volumes, …/networks, …/host.
   tabKinds: {
     "docker.containers": {
       title: () => "Containers",
@@ -133,6 +148,11 @@ export const dockerTool: ToolModule = {
       title: (params) => str(params["id"]) || "Container",
       Component: ContainerTab,
       href: (params) => (str(params["id"]) ? { path: path("containers", str(params["id"]), viewOf(params, CONTAINER_VIEWS, "overview")) } : null),
+    },
+    "docker.project": {
+      title: (params) => str(params["project"]) || "Project",
+      Component: ProjectTab,
+      href: (params) => (str(params["project"]) ? { path: path("projects", str(params["project"]), viewOf(params, PROJECT_VIEWS, "logs")) } : null),
     },
     "docker.images": {
       title: () => "Images",
@@ -164,6 +184,18 @@ export const dockerTool: ToolModule = {
           (p) => p["container"] ?? "",
           (container) => CONTAINER_VIEWS.map((view) => placeRoute(container, view, VIEW_LABELS[view], (p) => ({ kind: "docker.container", params: { id: p["container"] ?? "", view } }))),
           containerSiblings,
+        ),
+      ],
+    }),
+    // The Projects crumb opens the containers, grouped by project.
+    placeRoute(parent, "projects", "Projects", () => ({ kind: "docker.containers", params: {} }), {
+      children: (projects) => [
+        levelRoute(
+          projects,
+          "$project",
+          (p) => p["project"] ?? "",
+          (project) => PROJECT_VIEWS.map((view) => placeRoute(project, view, PROJECT_VIEW_LABELS[view], (p) => ({ kind: "docker.project", params: { project: p["project"] ?? "", view } }))),
+          projectSiblings,
         ),
       ],
     }),
