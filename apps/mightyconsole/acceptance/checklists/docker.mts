@@ -5,7 +5,8 @@
 // wired host-key and errors, batch 2b the containers and the logs, batch 2c stats and exec, batch 3
 // the images, volumes and networks (test/docker-resources.test.tsx), batch 4 the approved extras
 // (test/docker-host.test.tsx: disk usage and events on the Host page, Processes, the tree's
-// counts; test/docker-project.test.tsx: a Compose project's logs merged). Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
+// counts; test/docker-project.test.tsx: a Compose project's logs merged; test/docker-files.test.tsx:
+// the read-only Files). Run `pnpm --filter @byterygon/mightyconsole acceptance docker --lab-up --strict`.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -305,6 +306,36 @@ export default {
           await until(`location.pathname === "/docker/lab/projects/shop/logs" && ${logHas("[shop-worker-1 stopped")} && ${logHas("[shop-web-1 stopped")}`, "a line per stopped container", 30_000);
           await until(`[...document.querySelectorAll("[role=tabpanel]:not([hidden]) [role=log] *")].filter((el) => el.childElementCount === 0 && el.textContent === "web listening on :8080").length >= 2 && __mc.has("Following 2 of 2 containers")`, "both joined again after the restart", 30_000);
           await shot("project logs after a restart");
+        }),
+        cargo("a_containers_files_are_listed_read_and_downloaded_from_its_archive"),
+        lab("lab_a_containers_files_read_through_its_archive"),
+        vitest("test/docker-files.test.tsx"),
+        browser("the web container's files: the root, /www, index.html previewed read only; a stopped container's /etc", async ({ page, origin, lab: credentials, until, run, shot }) => {
+          // Only what is shown: the other container's tab keeps its Files mounted out of sight.
+          const entry = (name: string) => `[...document.querySelectorAll("table[aria-label=Files] tbody td button")].find((b) => b.offsetParent !== null && b.textContent.startsWith(${JSON.stringify(name)}))`;
+          const here = `[...document.querySelectorAll("nav[aria-label=Folder] [aria-current=location]")].find((el) => el.offsetParent !== null)?.textContent`;
+          const filesOf = async (name: string) => {
+            await run(`__mc.dblclick(__mc.item("Containers"))`);
+            await until(`${visible(name)}`, "the containers");
+            await run(`__mc.click(${visible(name)})`);
+            await until(`[...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === "Files" && t.offsetParent !== null)`, `${name}'s views`);
+            await run(`__mc.click([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent.trim() === "Files" && t.offsetParent !== null))`);
+            await until(`location.pathname.endsWith("/${name}/files") && ${entry("etc")}`, `${name}'s root`);
+          };
+          await page.navigate(`${origin}/`);
+          await labTree({ lab: credentials, until, run, shot });
+          await filesOf("shop-web-1");
+          await shot("files, root");
+          await run(`__mc.click(${entry("www")})`);
+          await until(`${here} === "www" && ${entry("index.html")}`, "/www");
+          await run(`__mc.click(${entry("index.html")})`);
+          await until(`document.querySelector("[role=tabpanel]:not([hidden]) aside[aria-label='Preview of index.html']") && __mc.has("5 B · text")`, "the preview");
+          await until(`(document.querySelector("[role=tabpanel]:not([hidden]) aside .monaco-editor")?.textContent ?? "").includes("shop")`, "the text in Monaco", 15_000);
+          await shot("files, preview");
+          await filesOf("stopped");
+          await run(`__mc.click(${entry("etc")})`);
+          await until(`${here} === "etc" && ${entry("passwd")}`, "a stopped container's /etc");
+          await shot("files, stopped container");
         }),
       ],
     },

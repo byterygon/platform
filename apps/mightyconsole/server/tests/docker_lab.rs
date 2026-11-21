@@ -782,3 +782,127 @@ async fn lab_a_projects_containers_log_apart() {
     tab.client.cancel(6).await;
     tab.error(6, Code::Cancelled).await;
 }
+
+#[tokio::test]
+async fn lab_a_containers_files_read_through_its_archive() {
+    let (_t, mut tab) = setup().await;
+    let trusted = presented_key(&mut tab, 2).await;
+    tab.call(
+        3,
+        "docker.connect",
+        json!({ "profile": profile(json!({ "hostKey": trusted })) }),
+    )
+    .await;
+    let conn_id = tab.result(3).await["connId"].as_str().unwrap().to_owned();
+    let names = |list: &Value| {
+        list["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["name"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+
+    // The root: its entries have no prefix in Docker's tar.
+    tab.call(
+        4,
+        "docker.containers.files.list",
+        json!({ "connId": conn_id, "id": "shop-web-1", "path": "/" }),
+    )
+    .await;
+    let root = tab.result(4).await;
+    assert_eq!(root["kind"], "dir");
+    for name in ["bin", "etc", "www"] {
+        assert!(names(&root).contains(&name.to_owned()), "{root}");
+    }
+    // Folders first.
+    assert_eq!(root["entries"][0]["kind"], "dir", "{root}");
+
+    // A folder: its direct entries only.
+    tab.call(
+        5,
+        "docker.containers.files.list",
+        json!({ "connId": conn_id, "id": "shop-web-1", "path": "/www" }),
+    )
+    .await;
+    let www = tab.result(5).await;
+    assert_eq!(names(&www), ["index.html"], "{www}");
+    assert_eq!(www["entries"][0]["size"], 5);
+
+    // A file: its kind, no entries; its text.
+    tab.call(
+        6,
+        "docker.containers.files.list",
+        json!({ "connId": conn_id, "id": "shop-web-1", "path": "/www/index.html" }),
+    )
+    .await;
+    assert_eq!(tab.result(6).await["kind"], "file");
+    tab.call(
+        7,
+        "docker.containers.files.read",
+        json!({ "connId": conn_id, "id": "shop-web-1", "path": "/www/index.html" }),
+    )
+    .await;
+    let read = tab.result(7).await;
+    assert_eq!(read["text"], "shop\n", "{read}");
+    assert_eq!(read["binary"], false);
+    // BusyBox's binary is over 1 MiB, or not text.
+    tab.call(
+        8,
+        "docker.containers.files.read",
+        json!({ "connId": conn_id, "id": "shop-web-1", "path": "/bin/busybox" }),
+    )
+    .await;
+    let busybox = tab.result(8).await;
+    assert!(
+        busybox["tooLarge"] == true || busybox["binary"] == true,
+        "{busybox}"
+    );
+    assert!(busybox.get("text").is_none());
+
+    // A stopped container's files.
+    tab.call(
+        9,
+        "docker.containers.files.list",
+        json!({ "connId": conn_id, "id": "stopped", "path": "/etc" }),
+    )
+    .await;
+    assert!(names(&tab.result(9).await).contains(&"passwd".to_owned()));
+
+    // A missing path is Docker's 404.
+    tab.call(
+        10,
+        "docker.containers.files.list",
+        json!({ "connId": conn_id, "id": "shop-web-1", "path": "/no/such/dir" }),
+    )
+    .await;
+    assert_eq!(
+        tab.error(10, Code::NotFound).await.details.unwrap()["kind"],
+        "NotFound"
+    );
+
+    // Download: the folder's tar as bytes.
+    tab.call(
+        11,
+        "docker.containers.files.download",
+        json!({ "connId": conn_id, "id": "shop-web-1", "path": "/www", "streamId": "dl-1" }),
+    )
+    .await;
+    let mut tar = Vec::new();
+    let summary = loop {
+        let frame = tab.frame(11).await;
+        match frame.kind {
+            ambidex::Kind::Chunk => {
+                tar.extend_from_slice(&frame.payload);
+                tab.client.credit(11, 1).await;
+            }
+            ambidex::Kind::StreamEnd => {
+                break serde_json::from_slice::<Value>(&frame.payload).unwrap();
+            }
+            other => panic!("{other:?}: {}", String::from_utf8_lossy(&frame.payload)),
+        }
+    };
+    assert_eq!(summary["bytes"].as_u64().unwrap() as usize, tar.len());
+    assert!(tar.len() >= 1536 && tar.len() % 512 == 0, "{}", tar.len());
+    assert_eq!(&tar[..4], b"www/");
+}

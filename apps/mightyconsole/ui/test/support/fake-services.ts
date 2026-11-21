@@ -94,6 +94,28 @@ export function fakeContainer(name: string, patch: Partial<api.ContainerRow> = {
   };
 }
 
+const fakeEntry = (name: string, kind: api.FileKind, size: number, mode: number, linkTarget?: string): api.FileEntry => ({ name, kind, size, mode, mtimeMs: Date.parse("2026-11-18T07:12:00Z"), ...(linkTarget ? { linkTarget } : {}) });
+
+/** A container's files as the fake host lists them (the same for every container). */
+export const FAKE_FILES: { dirs: Record<string, api.FileEntry[]>; files: Record<string, { kind: api.FileKind; size: number; text?: string; linkTarget?: string }> } = {
+  dirs: {
+    "/": [fakeEntry("app", "dir", 0, 0o755), fakeEntry("etc", "dir", 0, 0o755), fakeEntry("big", "dir", 0, 0o755)],
+    "/app": [fakeEntry("media", "dir", 0, 0o755), fakeEntry("config.json", "file", 17, 0o644)],
+    "/app/media": [fakeEntry("invoices", "dir", 0, 0o755), fakeEntry("logo.png", "file", 1800, 0o644), fakeEntry("robots.txt", "file", 68, 0o644), fakeEntry("exports", "symlink", 13, 0o777, "../exports"), fakeEntry("huge.log", "file", 5_000_000, 0o640)],
+    "/app/media/invoices": [],
+    "/app/exports": [fakeEntry("orders.csv", "file", 120, 0o644)],
+    "/etc": [fakeEntry("hostname", "file", 9, 0o644)],
+    "/big": [fakeEntry("f0", "file", 1, 0o644)],
+  },
+  files: {
+    "/app/config.json": { kind: "file", size: 17, text: '{ "debug": true }' },
+    "/app/media/robots.txt": { kind: "file", size: 68, text: "User-agent: *\nDisallow: /api/\n" },
+    "/app/media/logo.png": { kind: "file", size: 1800 },
+    "/app/media/huge.log": { kind: "file", size: 5_000_000 },
+    "/etc/hostname": { kind: "file", size: 9, text: "shop-web\n" },
+  },
+};
+
 /** The fake host's containers: the project shop, a stopped one, a TTY one. */
 export function fakeContainers(): api.ContainerRow[] {
   const shop = (service: string, patch: Partial<api.ContainerRow> = {}) =>
@@ -617,6 +639,41 @@ export function createFakeServices(storage: AppStorage = new MemoryStorage()) {
           const out = dockerAct("docker.containers.remove", input, (r) => removed.push(r.id));
           server.dockerContainers = server.dockerContainers.filter((r) => !removed.includes(r.id));
           return out;
+        },
+        files: {
+          list: async (input: api.FilesPathInput): Promise<api.FilesListOutput> => {
+            record("docker.containers.files.list", input);
+            dockerHandle(input.connId);
+            dockerRow(input.id);
+            const file = FAKE_FILES.files[input.path];
+            if (file) return { path: input.path, kind: file.kind, ...(file.linkTarget ? { linkTarget: file.linkTarget } : {}), entries: [] };
+            const entries = FAKE_FILES.dirs[input.path];
+            if (!entries) throw new RpcError("NotFound", `Could not find the file ${input.path} in container ${input.id}`, { details: { kind: "NotFound", system: "docker", message: `Could not find the file ${input.path}`, retryable: false, resource: "path" } });
+            return { path: input.path, kind: "dir", entries, ...(input.path === "/big" ? { truncated: "entries" as const } : {}) };
+          },
+          read: async (input: api.FilesPathInput): Promise<api.FileReadOutput> => {
+            record("docker.containers.files.read", input);
+            dockerHandle(input.connId);
+            const file = FAKE_FILES.files[input.path];
+            if (!file) throw new RpcError("InvalidArgument", `${input.path} is a folder`, { details: { kind: "Invalid", system: "docker", message: `${input.path} is a folder`, retryable: false, field: "path" } });
+            return { path: input.path, size: file.size, ...(file.text !== undefined ? { text: file.text } : {}), binary: file.text === undefined && file.size <= 1024 * 1024, tooLarge: file.size > 1024 * 1024 };
+          },
+          download: (input: api.FilesDownloadInput) => {
+            record("docker.containers.files.download", input);
+            const encoder = new TextEncoder();
+            const bytes = encoder.encode(`tar of ${input.path}`);
+            let given = false;
+            return {
+              result: Promise.resolve({ bytes: bytes.byteLength }),
+              cancel: () => undefined,
+              async *chunks() {
+                if (!given) {
+                  given = true;
+                  yield bytes;
+                }
+              },
+            } as unknown as ReturnType<MightyClient["docker"]["containers"]["files"]["download"]>;
+          },
         },
         top: async (input: api.ContainerIdInput): Promise<api.ContainerTop> => {
           record("docker.containers.top", input);

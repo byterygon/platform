@@ -3229,6 +3229,210 @@
       },
       "type": "object"
     },
+    "FileEntry": {
+      "description": "One entry of a folder.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/FileKind"
+        },
+        "linkTarget": {
+          "description": "Where a symlink or a hard link points.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "description": "The permission bits (`0o755`).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mtimeMs": {
+          "description": "Unix milliseconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "description": "Bytes; 0 for a folder.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "size",
+        "mode",
+        "mtimeMs"
+      ],
+      "type": "object"
+    },
+    "FileKind": {
+      "description": "What an entry is.",
+      "oneOf": [
+        {
+          "enum": [
+            "file",
+            "dir",
+            "symlink"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "link",
+          "description": "A hard link to another entry of the tar.",
+          "type": "string"
+        },
+        {
+          "const": "other",
+          "description": "A device, a FIFO, a socket.",
+          "type": "string"
+        }
+      ]
+    },
+    "FileReadOutput": {
+      "description": "`docker.containers.files.read`.",
+      "properties": {
+        "binary": {
+          "description": "Not text (invalid UTF-8 or a NUL byte).",
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "text": {
+          "description": "The text, when the file is UTF-8 without NUL bytes and at most [`MAX_PREVIEW`].",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tooLarge": {
+          "description": "Larger than [`MAX_PREVIEW`]: not read.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "binary",
+        "tooLarge"
+      ],
+      "type": "object"
+    },
+    "FilesDownloadInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "streamId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "id",
+        "path",
+        "streamId"
+      ],
+      "type": "object"
+    },
+    "FilesDownloadSummary": {
+      "description": "`docker.containers.files.download`'s summary.",
+      "properties": {
+        "bytes": {
+          "description": "The tar's bytes sent.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "FilesListOutput": {
+      "description": "`docker.containers.files.list`.",
+      "properties": {
+        "entries": {
+          "description": "Folders first, then by name.",
+          "items": {
+            "$ref": "#/$defs/FileEntry"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/FileKind",
+          "description": "What the path is (Docker's stat of it); a file or a symlink has no entries."
+        },
+        "linkTarget": {
+          "description": "A symlink's target, when `path` is one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "The path as asked.",
+          "type": "string"
+        },
+        "truncated": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Truncated"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "entries"
+      ],
+      "type": "object"
+    },
+    "FilesPathInput": {
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "id": {
+          "description": "The container's name or id.",
+          "type": "string"
+        },
+        "path": {
+          "description": "An absolute path in the container.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "id",
+        "path"
+      ],
+      "type": "object"
+    },
     "Filter": {
       "description": "The filter (spec §5.4).",
       "properties": {
@@ -11308,6 +11512,21 @@
       ],
       "type": "object"
     },
+    "Truncated": {
+      "description": "Why a listing stopped early.",
+      "oneOf": [
+        {
+          "const": "entries",
+          "description": "[`MAX_ENTRIES`] entries were listed.",
+          "type": "string"
+        },
+        {
+          "const": "bytes",
+          "description": "[`MAX_READ`] bytes were read (the folder holds large files).",
+          "type": "string"
+        }
+      ]
+    },
     "UpdateStateInput": {
       "properties": {
         "asNode": {
@@ -12542,6 +12761,69 @@
       "risk": "Write",
       "timeout_default_ms": 30000,
       "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/FilesDownloadInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "docker.containers.files.download",
+      "output": {
+        "$ref": "#/$defs/FilesDownloadSummary"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 43200000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/FilesPathInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.containers.files.list",
+      "output": {
+        "$ref": "#/$defs/FilesListOutput"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 120000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/FilesPathInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "docker.containers.files.read",
+      "output": {
+        "$ref": "#/$defs/FileReadOutput"
+      },
+      "perm": "docker.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
     },
     {
       "agent": "hidden",
@@ -15864,5 +16146,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:5d78b3128406fd0fbdd51f8c24483f9e63fae5e1959d456a0077903a1d303cd8"
+  "schema_hash": "sha256:261a66031618cdda9d47793f42c87ee7cb39a2e4d4c220bc2ecd4ca9336518cf"
 }

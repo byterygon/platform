@@ -12,6 +12,8 @@
 //!   what uses each item, inspect and remove (batch 3).
 //! - [`system`]: `docker.host.df` (disk usage), `docker.host.counts` (the tree's counts) and the
 //!   processes of `docker.containers.top` (batch 4).
+//! - [`files`]: `docker.containers.files.*`, a container's files read only through its archive
+//!   (batch 4c).
 //! - [`events`]: `docker.events`, the host's events that keep the lists live, and
 //!   `docker.compose.projects` from the containers' labels.
 //! - [`stream`]: the `jsonl` forwarding the logs and the events share.
@@ -24,6 +26,7 @@ pub mod containers;
 pub mod engine;
 pub mod events;
 pub mod exec;
+pub mod files;
 pub mod resources;
 pub mod ssh;
 pub mod stats;
@@ -382,6 +385,7 @@ pub fn mount(router: &ambidex::Router, hub: &Arc<Hub>) -> Result<(), ambidex::Re
     router.mount(DockerHostApi(Arc::clone(hub)))?;
     router.mount(containers::DockerContainersApi(Arc::clone(hub)))?;
     router.mount(events::DockerComposeApi(Arc::clone(hub)))?;
+    router.mount(files::DockerFilesApi(Arc::clone(hub)))?;
     router.mount(resources::DockerImagesApi(Arc::clone(hub)))?;
     router.mount(resources::DockerVolumesApi(Arc::clone(hub)))?;
     router.mount(resources::DockerNetworksApi(Arc::clone(hub)))?;

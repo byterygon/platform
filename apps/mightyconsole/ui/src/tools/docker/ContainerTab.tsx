@@ -4,8 +4,9 @@
 // Remove behind More. Views: Overview (facts, command, networks, ports, mounts, the environment
 // with values hidden until shown in the browser, labels folded; beside it the health check's last
 // results and the container's recent events), Logs (LogsPanel), Stats (StatsPanel), Terminal
-// (TerminalPanel, an exec) and Inspect (the JsonViewer of `docker inspect`). The header follows
-// the container's events, so a restart or a health change shows without a refresh.
+// (TerminalPanel, an exec), Files (FilesPanel, read only, batch 4c) and Inspect (the JsonViewer of
+// `docker inspect`). The header follows the container's events, so a restart or a health change
+// shows without a refresh.
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { AlertDialog, AlertDialogAction, AlertDialogBody, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +29,13 @@ import type { DescribedError, TabProps } from "../types";
 import { StateBadge } from "./ContainersTab";
 import { type DockerEvent, changesRows, commandLine, imageLabel, shortId, spanWords } from "./format";
 import { useDockerEvents } from "./live";
+import { FilesPanel } from "./FilesPanel";
 import { LogsPanel } from "./LogsPanel";
 import { StatsPanel } from "./StatsPanel";
 import { TerminalPanel } from "./TerminalPanel";
 
 /** The container's views, the last word of its URL (DOC-21 §3.7). */
-export const CONTAINER_VIEWS = ["overview", "logs", "stats", "terminal", "inspect"] as const;
+export const CONTAINER_VIEWS = ["overview", "logs", "stats", "terminal", "files", "inspect"] as const;
 export type ContainerView = (typeof CONTAINER_VIEWS)[number];
 
 /** Events kept for the Overview's "Recent events". */
@@ -124,7 +126,7 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
     void load();
   }, [load]);
   useEffect(() => () => void (reloadTimer.current && clearTimeout(reloadTimer.current)), []);
-  useTabActions(view === "logs" || view === "stats" ? {} : { refresh: () => void load() });
+  useTabActions(view === "logs" || view === "stats" || view === "files" ? {} : { refresh: () => void load() });
   // The terminal stays mounted once shown: its exec lives while the tab does.
   const [terminalSeen, setTerminalSeen] = useState(view === "terminal");
   useEffect(() => {
@@ -264,6 +266,7 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
             <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="stats">Stats</TabsTrigger>
             <TabsTrigger value="terminal">Terminal</TabsTrigger>
+            <TabsTrigger value="files">Files</TabsTrigger>
             <TabsTrigger value="inspect">Inspect</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="flex min-h-0 flex-1 flex-col border-t border-border-subtle">
@@ -278,6 +281,9 @@ export function ContainerTab({ tab, profile, connId, client, note, onLive, useTa
           {/* Kept mounted once opened, so switching views does not end the exec. */}
           <TabsContent value="terminal" keepMounted={terminalSeen} className="flex min-h-0 flex-1 flex-col">
             {terminalSeen ? <TerminalPanel client={client} connId={connId} note={note} container={o.name || o.id} running={o.running} defaultUser={o.user} defaultWorkdir={o.workingDir} /> : null}
+          </TabsContent>
+          <TabsContent value="files" className="flex min-h-0 flex-1 flex-col">
+            {view === "files" ? <FilesPanel client={client} connId={connId} note={note} useTabActions={useTabActions} container={o.name || o.id} /> : null}
           </TabsContent>
           <TabsContent value="inspect" className="flex min-h-0 flex-1 flex-col border-t border-border-subtle">
             <div className="flex items-center gap-inline-sm px-inset-lg py-stack-sm text-body-1 text-fg-muted">
