@@ -21,6 +21,8 @@ on:
 
 permissions:
   contents: read
+  # TSK-130: a push to main looks up the lab-pass marker of its tree (artifacts API).
+  actions: read
 
 env:
   # TSK-122: as in ci.yml, debug info is line tables only (smaller cache and faster links for the
@@ -61,11 +63,26 @@ jobs:
         id: tools
         env:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           node scripts/affected.mjs --event "$GITHUB_EVENT_NAME" ${BASE:+--base "$BASE"} --head HEAD --pretty > "$RUNNER_TEMP/affected.json"
           echo "affected: $(node -p 'const t = require(process.argv[1]).lab_tools; Array.isArray(t) ? t.join(" ") : t' "$RUNNER_TEMP/affected.json")"
-          tools=$(node scripts/lab-labels.mjs scope --event "$GITHUB_EVENT_NAME" --labels "$LABELS" --affected "$RUNNER_TEMP/affected.json" --github-output)
+          tools=$(node scripts/lab-labels.mjs scope --event "$GITHUB_EVENT_NAME" --labels "$LABELS" --affected "$RUNNER_TEMP/affected.json")
           echo "lab_tools: $tools (labels: $LABELS)"
+          # TSK-130: the tested tree. A pull request whose lab passed with every tool leaves a
+          # lab-pass-<tree> marker; squash-merging it (up to date with main, as the ruleset requires)
+          # gives main that same tree, so a push to main finding the marker skips the repeat. The
+          # weekly and manual runs always run.
+          tree=$(git rev-parse 'HEAD^{tree}')
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=lab-pass-$tree" --jq '[.artifacts[] | select(.expired | not)][0].workflow_run.id // empty' || true)
+            if [ -n "$passed" ]; then
+              tools=none
+              echo "This tree ($tree) passed the lab with every tool on a pull request: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$passed" | tee -a "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "lab_tools=$tools" >> "$GITHUB_OUTPUT"
           echo "### Lab tools: $tools" >> "$GITHUB_STEP_SUMMARY"
       - name: Images pinned and listed
         run: node apps/mightyconsole/lab/lab.mts images check
@@ -161,6 +178,16 @@ jobs:
           if [ -n "$NATS_ONLY" ]; then node apps/mightyconsole/acceptance/acceptance.mts nats --only "$NATS_ONLY" || status=$?; fi
           cat apps/mightyconsole/acceptance/evidence/*/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status
+      # TSK-130: the marker main looks for, only when every tool ran and every step passed.
+      - name: Lab-pass marker
+        if: ${{ success() && github.event_name == 'pull_request' && steps.tools.outputs.lab_tools == 'all' }}
+        run: echo "run $GITHUB_RUN_ID passed the lab with every tool on tree ${{ steps.tools.outputs.tree }}" > "$RUNNER_TEMP/lab-pass.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ success() && github.event_name == 'pull_request' && steps.tools.outputs.lab_tools == 'all' }}
+        with:
+          name: lab-pass-${{ steps.tools.outputs.tree }}
+          path: ${{ runner.temp }}/lab-pass.txt
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
