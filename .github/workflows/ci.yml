@@ -183,8 +183,10 @@ jobs:
       # session, upgrade checks, the tool contract on the echo sample) shows it opens no outbound
       # connection. The step above built every test with the same arguments and environment, so
       # nothing is fetched or built here (doc-tests are compiled here, offline). sudo clears the
-      # environment, so the cargo arguments and the debug setting (TSK-122) come in as arguments:
-      # another profile or feature set would rebuild every crate.
+      # environment, so the cargo arguments, the debug setting (TSK-122) and CARGO_INCREMENTAL
+      # (rust-cache sets it to 0 for the job) come in as arguments: another profile or feature set
+      # would rebuild every crate, and incremental builds rebuild the workspace's own crates (17 on
+      # PR #194).
       - name: Tests (network disconnected)
         run: |
           sudo unshare --net -- sh -c '
@@ -195,9 +197,10 @@ jobs:
             fi
             setpriv --reuid="$SUDO_UID" --regid="$SUDO_GID" --init-groups \
               env PATH="$1" HOME="$2" CARGO_TERM_COLOR=always ${4:+CARGO_PROFILE_DEV_DEBUG=$4} \
+              ${5:+CARGO_INCREMENTAL=$5} \
               BYTERYGON_REQUIRE_POSTGRES=1 BYTERYGON_REQUIRE_WRITER_GATE=1 \
               cargo test $3 --locked --offline
-          ' sh "$PATH" "$HOME" "$AFFECTED_CARGO_ARGS" "$CARGO_PROFILE_DEV_DEBUG"
+          ' sh "$PATH" "$HOME" "$AFFECTED_CARGO_ARGS" "$CARGO_PROFILE_DEV_DEBUG" "$CARGO_INCREMENTAL"
       # Mightyconsole spec §18 (TSK-79): the real server serving the built UI, in Chrome, in a
       # network namespace with only loopback: the page's session (cookie, CSRF meta, Origin) and
       # CSP hold, a profile added in the UI connects and streams, a reload restores its tab, and
