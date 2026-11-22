@@ -93,6 +93,8 @@ function fakeStream() {
 interface Options {
   detail?: WorkflowDetail;
   events?: HistoryEvent[];
+  /** A long history, read in pages of the size asked from either end; the token is where the next page starts (TSK-109). */
+  long?: HistoryEvent[];
   query?: () => Promise<{ result: unknown }>;
   connId?: string | null;
 }
@@ -100,11 +102,20 @@ interface Options {
 function setup(options: Options = {}) {
   const stream = fakeStream();
   const describe = vi.fn(async (_input: unknown) => options.detail ?? detail());
-  const history = vi.fn(async (_input: unknown) => ({ events: options.events ?? events }));
+  const history = vi.fn(async (input: { nextPageToken?: string | null; pageSize?: number | null; reverse?: boolean | null }) => {
+    const all = options.long;
+    if (!all) return { events: options.events ?? events };
+    const ordered = input.reverse ? [...all].reverse() : all;
+    const from = input.nextPageToken ? Number(input.nextPageToken) : 0;
+    const to = Math.min(from + (input.pageSize ?? 1000), ordered.length);
+    return { events: ordered.slice(from, to), ...(to < ordered.length ? { nextPageToken: String(to) } : {}) };
+  });
+  // The whole history as a stream of bytes (TSK-109).
+  const downloadHistory = vi.fn((_input: unknown, _options?: unknown) => ({ result: Promise.resolve({ bytes: 14, events: 0 }), cancel: () => {}, async *chunks() { yield new TextEncoder().encode('{"events":[]}\n'); } }));
   const followHistory = vi.fn((_input: unknown, _options?: unknown) => stream.call);
   const query = vi.fn((_input: unknown) => (options.query ?? (async () => ({ result: "goroutine 1 [running]:\nwait_condition" })))());
   const rawEvent = vi.fn(async (_input: unknown) => ({ attributes: { input: { payloads: [{ metadata: { encoding: "anNvbi9wbGFpbg==" }, data: "Im9yZC1sb25nIg==" }] } } }));
-  const client = { temporal: { workflows: { describe, history, followHistory, query, rawEvent } } } as unknown as MightyClient;
+  const client = { temporal: { workflows: { describe, history, followHistory, query, rawEvent, downloadHistory } } } as unknown as MightyClient;
   const profile: ProfileRecord = { id: "01T", tool: "temporal", version: 1, name: "lab", createdAt: "x", updatedAt: "x", ...schema.defaults() };
   const tab: TabView = { id: "t2", tool: "temporal", profileId: "01T", kind: "temporal.workflow", params: { namespace: "lab", workflowId: "fulfilment-long-running" }, title: "fulfilment-long-running", pinned: false };
   const lives: (LiveState | null)[] = [];
@@ -127,11 +138,11 @@ function setup(options: Options = {}) {
     return <WorkflowTab {...props} active={active} />;
   }
   const view = render(<Host />);
-  return { describe, history, followHistory, query, stream, lives, setActive: (active: boolean) => act(async () => host.setActive(active)), openTab: props.openTab as ReturnType<typeof vi.fn>, ...view };
+  return { describe, history, followHistory, query, downloadHistory, stream, lives, setActive: (active: boolean) => act(async () => host.setActive(active)), openTab: props.openTab as ReturnType<typeof vi.fn>, ...view };
 }
 
 /** A view's tab; History and Pending carry their counts ("History 4"). */
-const tabButton = (name: string) => byRole("tab", new RegExp(`^${name}( \\d+)?$`));
+const tabButton = (name: string) => byRole("tab", new RegExp(`^${name}( [\\d,]+)?$`));
 
 describe("splitLines", () => {
   test("keeps a partial line for the next chunk and drops blanks", () => {
@@ -229,7 +240,8 @@ describe("Workflow tab (spec §9.3)", () => {
     await waitFor(() => rows().length === 6, "the fold open");
     expect(rows()[1]!.querySelector("button[aria-expanded]")?.getAttribute("aria-expanded")).toBe("true");
     const kids = rows().filter((r) => r.hasAttribute("data-in-fold"));
-    expect(kids.map((r) => r.cells[3]?.textContent)).toEqual(["WorkflowTaskScheduled", "WorkflowTaskStarted", "WorkflowTaskCompleted"]);
+    // Newest first (TSK-109): the fold's events too, under its row.
+    expect(kids.map((r) => r.cells[3]?.textContent)).toEqual(["WorkflowTaskCompleted", "WorkflowTaskStarted", "WorkflowTaskScheduled"]);
     expect(rows().indexOf(kids[0]!)).toBe(2);
     expect(kids.every((r) => r.querySelector('[data-slot="fold-guide"]') !== null)).toBe(true);
     // Events outside the fold are not indented.
@@ -281,10 +293,12 @@ describe("Workflow tab (spec §9.3)", () => {
     await click(tabButton("History"));
     const rows = () => Array.from(container.querySelectorAll("table[aria-label='History events'] tbody tr:not([data-spacer])"));
     await waitFor(() => rows().length === 4, "four rows");
-    expect(rows()[2]!.textContent).toContain("ActivityTaskScheduled");
-    expect(rows()[2]!.textContent).toContain("+500 ms");
-    expect(rows()[2]!.textContent).toContain("charge");
-    expect(rows()[3]!.textContent).toContain("approve · 1 payload");
+    // Newest first (TSK-109): the signal on top, the start at the bottom.
+    expect(rows()[1]!.textContent).toContain("ActivityTaskScheduled");
+    expect(rows()[1]!.textContent).toContain("+500 ms");
+    expect(rows()[1]!.textContent).toContain("charge");
+    expect(rows()[0]!.textContent).toContain("approve · 1 payload");
+    expect(rows()[3]!.textContent).toContain("WorkflowExecutionStarted");
     // Chips name each category with its count; an empty one is disabled.
     const chip = (name: RegExp) => byRole("button", name, container.querySelector('[aria-label="Category"]')!);
     expect(chip(/^All 4$/)?.getAttribute("aria-pressed")).toBe("true");
@@ -400,5 +414,99 @@ describe("Workflow tab (spec §9.3)", () => {
     unmount();
     await settle(2);
     expect(stream.cancelled).toBe(true);
+  });
+});
+
+describe("Workflow tab: long histories (TSK-109, DOC-21 §9.6.1)", () => {
+  /** A closed run of `n` events: the start, search attribute upserts (not drawn on the Timeline), the completion. */
+  const long = (n: number) => [
+    ev(1, "WorkflowExecutionStarted", 0, "Workflow", { workflowType: { name: "Long" }, taskQueue: { name: "lab" }, input: ["x"] }),
+    ...Array.from({ length: n - 2 }, (_, i) => ev(i + 2, "UpsertWorkflowSearchAttributes", i + 2, "Other", { searchAttributes: { indexedFields: { Step: i } } })),
+    ev(n, "WorkflowExecutionCompleted", n, "Workflow", { result: ["done"] }),
+  ];
+
+  test("the newest page shows at once, the next ones load in the background up to 10,000 events, the rest as asked; the footer says how many", async () => {
+    const all = long(11_100);
+    const { history, container } = setup({ long: all, detail: { ...detail({}, "Completed"), workflow: { ...detail().workflow, status: "Completed", historyLength: all.length } } });
+    const pages = () => history.mock.calls.filter(([input]) => input.pageSize === 1000);
+    // The Timeline (the first view) says how many are loaded and offers the rest.
+    await waitFor(() => byText("10,000 of 11,100 events") !== null, "ten pages, then a stop");
+    await settle(5);
+    expect(pages().length).toBe(10);
+    expect(pages().every(([input]) => input.reverse === true)).toBe(true);
+    // The run's start is read on its own: the first page did not reach it.
+    expect(history.mock.calls.some(([input]) => input.pageSize === 1 && !input.reverse)).toBe(true);
+    expect(byRole("button", "Load more")).not.toBeNull();
+    await click(tabButton("History"));
+    await waitFor(() => /of 11,100 events loaded/.test(container.textContent ?? ""), "History's footer");
+    // The newest event is the first row.
+    const first = () => container.querySelector("table[aria-label='History events'] tbody tr:not([data-spacer]) td")?.textContent;
+    expect(first()).toBe("11100");
+    // Go to an event not loaded yet reads the pages up to it.
+    const goTo = container.querySelector<HTMLInputElement>('input[aria-label="Go to event"]')!;
+    await type(goTo, "50");
+    await act(async () => {
+      goTo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    await waitFor(() => container.textContent?.includes("Event 50 · UpsertWorkflowSearchAttributes") === true, "the event, read from the last pages");
+    await waitFor(() => (container.textContent ?? "").includes("11,100 of 11,100 events loaded"), "every event");
+    // Oldest first is one click away: read again from event 1.
+    await click(byRole("radio", "Oldest first") ?? byRole("button", "Oldest first"));
+    await waitFor(() => first() === "1", "the oldest on top");
+    expect(history.mock.calls.at(-1)![0]).toMatchObject({ reverse: false });
+  });
+
+  test("newest first, a followed event comes in at the top of History, and the Timeline's newest lane is under the workflow's", async () => {
+    const { stream, container } = setup();
+    await waitFor(() => tabButton("History") !== null, "the tabs");
+    // The Timeline: the workflow and its workflow tasks on top, then the newest lane first.
+    const lanes = () => Array.from(container.querySelectorAll('[data-slot="timeline-lane"]')).map((l) => l.textContent ?? "");
+    await waitFor(() => lanes().length >= 3, "the lanes");
+    expect(lanes()[0]).toContain("fulfilment-long-running");
+    expect(lanes()[1]).toContain("Workflow tasks");
+    expect(lanes()[2]).toContain("approve");
+    await click(tabButton("History"));
+    const ids = () => Array.from(container.querySelectorAll("table[aria-label='History events'] tbody tr:not([data-spacer])")).map((r) => r.querySelector("td")?.textContent);
+    await waitFor(() => ids().length === 4, "the rows");
+    expect(ids()).toEqual(["4", "3", "2", "1"]);
+    stream.push(ev(5, "ActivityTaskStarted", 900, "Activity", { scheduledEventId: 3, attempt: 1 }));
+    await waitFor(() => ids()[0] === "5", "the new event on top");
+    expect(ids()).toEqual(["5", "4", "3", "2", "1"]);
+  });
+
+  test("Download asks the server for the whole history, decoded or as stored", async () => {
+    const created = vi.fn((_blob: Blob) => "blob:x");
+    const createObjectURL = URL.createObjectURL;
+    const revokeObjectURL = URL.revokeObjectURL;
+    URL.createObjectURL = created as never;
+    URL.revokeObjectURL = () => {};
+    try {
+      const { downloadHistory } = setup();
+      await waitFor(() => tabButton("History") !== null, "the tabs");
+      await click(tabButton("History"));
+      await click(byRole("button", "Download the history"));
+      await waitFor(() => byRole("menuitem", "Download as stored (for replay)") !== null, "the menu");
+      await click(byRole("menuitem", "Download as stored (for replay)"));
+      await waitFor(() => created.mock.calls.length === 1, "the file saved");
+      expect(downloadHistory.mock.calls[0]![0]).toMatchObject({ connId: "conn-1", workflowId: "fulfilment-long-running", runId: "0190aaaa-bbbb-cccc-dddd-000000000001", form: "stored" });
+      expect(await created.mock.calls[0]![0].text()).toBe('{"events":[]}\n');
+    } finally {
+      URL.createObjectURL = createObjectURL;
+      URL.revokeObjectURL = revokeObjectURL;
+    }
+  });
+
+  test("an event the server cut says so and shows its start", async () => {
+    const cut = [...events, ev(5, "ActivityTaskFailed", 900, "Activity", { $cut: { bytes: 2_000_000, preview: '{"failure":{"message":"mmmm' } })];
+    const { container } = setup({ events: cut });
+    await waitFor(() => tabButton("History") !== null, "the tabs");
+    await click(tabButton("History"));
+    const goTo = container.querySelector<HTMLInputElement>('input[aria-label="Go to event"]')!;
+    await type(goTo, "5");
+    await act(async () => {
+      goTo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    await waitFor(() => container.textContent?.includes("Too big to send with the rest: 1.91 MiB of JSON") === true, "the note");
+    expect(container.textContent).toContain('{"failure":{"message":"mmmm');
   });
 });

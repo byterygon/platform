@@ -26,9 +26,11 @@ export interface Settings extends Appearance {
   logBuffer: number;
   /** Messages a consume reads by default. */
   consumeLimit: number;
+  /** The order of a Temporal workflow's History and Timeline (TSK-109): newest first unless changed. */
+  historyOrder: "newest" | "oldest";
 }
 
-export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_APPEARANCE, editorFontSize: 13, liveBuffer: 10_000, logBuffer: 50_000, consumeLimit: 500 };
+export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_APPEARANCE, editorFontSize: 13, liveBuffer: 10_000, logBuffer: 50_000, consumeLimit: 500, historyOrder: "newest" };
 
 export interface Layout {
   sidebarOpen: boolean;
@@ -301,6 +303,7 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
       liveBuffer: num(s.liveBuffer, DEFAULT_SETTINGS.liveBuffer, 100, 1_000_000),
       logBuffer: num(s.logBuffer, DEFAULT_SETTINGS.logBuffer, 1000, 1_000_000),
       consumeLimit: num(s.consumeLimit, DEFAULT_SETTINGS.consumeLimit, 1, 100_000),
+      historyOrder: s.historyOrder === "oldest" ? "oldest" : "newest",
     },
   };
 }
@@ -313,6 +316,11 @@ interface StoreValue {
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
+
+/** The store when there is one (a tab rendered on its own, as in a test, has none). */
+export function useStoreIfAny(): StoreValue | null {
+  return useContext(StoreContext);
+}
 
 export function useStore(): StoreValue {
   const value = useContext(StoreContext);

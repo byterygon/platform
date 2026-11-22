@@ -4,7 +4,7 @@
 // each behind its confirmation (ActionDialogs); Queries is the sixth view.
 import { linkTo } from "@/app/tab-view";
 import { useActiveClock } from "@/app/while-active";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -14,7 +14,8 @@ import { Select, SelectItem } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableVirtualBody } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
-import { CopyButton, Page, PageHeader, chipClass, gutterTable } from "@/app/page";
+import { CopyButton, NoticeContext, Page, PageHeader, chipClass, gutterTable } from "@/app/page";
+import { useStoreIfAny } from "@/app/store";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { useTabView } from "@/app/tab-view";
 import { cn } from "@/lib/cn";
@@ -29,7 +30,10 @@ import type { DescribedError, LinkEvent, TabProps } from "../types";
 import { STATUS_TONE, formatDuration, formatTime } from "./format";
 import { RelationsPanel } from "./RelationsPanel";
 import { formatDurationText } from "./schedule-preview";
-import { buildTimeline, eventMs, failureChain, inputAndResult, isClosed, itemEventId, spanText, type LaneKind } from "./history";
+import { eventMs, failureChain, inputAndResult, inputAndResultOf, itemEventId, spanText, type LaneKind } from "./history";
+import type { HistoryStore } from "./history-store";
+import { saveBlob } from "../nats/objects-io";
+import * as api from "@/gen/api";
 import { CancelDialog, ResetDialog, SignalDialog, TerminateDialog, useAction } from "./ActionDialogs";
 import { QueriesPanel } from "./QueriesPanel";
 import { StartWorkflowSheet, type StartPrefill } from "./StartWorkflowSheet";
@@ -37,12 +41,13 @@ import { HistoryPanel } from "./HistoryPanel";
 import { KIND_ICON, TimelinePane } from "./TimelinePane";
 import { PendingPanel } from "./PendingPanel";
 import { statusLabel } from "./WorkflowsTab";
-import { useWorkflow } from "./useWorkflow";
+import { useWorkflow, type HistoryOrder } from "./useWorkflow";
 import { LIMITS, PayloadView, largeOf, largeStubs, type PayloadContext } from "./LargePayload";
 import { formatBytes } from "./NamespacesTab";
 import type { MightyClient } from "@/app/client";
 
 const STATUS_VARIANT = STATUS_TONE;
+const NO_EVENTS: readonly HistoryEvent[] = [];
 
 /** The sections, and the view words ending a workflow's URL (DOC-21 §3.7). */
 export const WORKFLOW_VIEWS = ["timeline", "history", "relations", "input", "pending", "queries", "stack"] as const;
@@ -97,10 +102,16 @@ function stateLabel(value: unknown): string {
 
 export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTabActions, openTab, navigate, go: goProp, active }: TabProps) {
   const go = linkTo({ openTab, ...(goProp ? { go: goProp } : {}) });
+  const notify = useContext(NoticeContext);
   const namespace = text(tab.params["namespace"]) || "default";
   const workflowId = text(tab.params["workflowId"]);
   const runId = text(tab.params["runId"]) || undefined;
-  const state = useWorkflow({ client, connId, namespace, workflowId, runId, note, onLive, active });
+  // Newest first by default (Uy Son, 2026-11-20); the choice is a setting, kept in the workspace (TSK-109).
+  const app = useStoreIfAny();
+  const [localOrder, setLocalOrder] = useState<HistoryOrder>("newest");
+  const order: HistoryOrder = app?.state.settings.historyOrder ?? localOrder;
+  const setOrder = (next: HistoryOrder) => (app ? app.dispatch({ type: "settings", settings: { historyOrder: next } }) : setLocalOrder(next));
+  const state = useWorkflow({ client, connId, namespace, workflowId, runId, note, onLive, active, order });
   const [section, setSection] = useTabView({ tab, navigate }, WORKFLOW_VIEWS, "timeline");
   const [selected, setSelected] = useState<number | null>(null);
   useTabActions({ refresh: state.refresh });
@@ -120,17 +131,34 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
   // The clock for open items: once a second while the run is followed.
   const now = useActiveClock(active, state.following);
 
-  const { detail, events } = state;
-  const closed = isClosed(events);
+  const { detail, store } = state;
   const running = detail?.workflow.status === "Running";
-  const lastEventAt = events.length > 0 ? eventMs(events[events.length - 1]!) : now;
-  // A closed run ends at its last event; an open one grows to the clock.
-  const clock = closed ? lastEventAt : now;
+  // Closed by the history, or by describe when the closing event is not loaded yet (TSK-109).
+  const closed = store.facts.closing !== undefined || (detail !== null && !running);
+  const latest = store.latest;
+  const lastEventAt = latest ? eventMs(latest) : now;
+  const closeAt = detail?.workflow.closeTime ? Date.parse(detail.workflow.closeTime) : Number.NaN;
+  // A closed run ends at its close (or last event); an open one grows to the clock.
+  const clock = closed ? (Number.isNaN(closeAt) ? lastEventAt : Math.max(closeAt, lastEventAt)) : now;
 
   const w = detail?.workflow;
   const pending = detail ? detail.pendingActivities.length + detail.pendingChildren.length : 0;
   // Parent and children, known from the history before the Relations view loads.
-  const related = useMemo(() => (w?.parentWorkflowId ? 1 : 0) + new Set(events.filter((e) => e.eventType === "StartChildWorkflowExecutionInitiated").map((e) => text(e.attributes["workflowId"]))).size, [w?.parentWorkflowId, events]);
+  const related = (w?.parentWorkflowId ? 1 : 0) + store.facts.children.size;
+  /** Saves the whole history from the server (TSK-109): decoded, or as stored for a replayer. */
+  const downloadHistory = async (form: "decoded" | "stored") => {
+    if (connId === null || !detail) return;
+    try {
+      const call = client.temporal.workflows.downloadHistory({ connId, namespace, workflowId, runId: detail.workflow.runId, form }, { timeoutMs: 3_600_000 });
+      const parts: Uint8Array[] = [];
+      for await (const chunk of call.chunks()) parts.push(chunk);
+      await call.result;
+      saveBlob(new Blob(parts as BlobPart[], { type: "application/json" }), `${workflowId}_${detail.workflow.runId}_history${form === "stored" ? "_stored" : ""}.json`);
+    } catch (e) {
+      const d = note(e);
+      notify({ title: "Could not download the history", description: d.title, type: "warning" });
+    }
+  };
   return (
     <Page>
       <PageHeader
@@ -175,7 +203,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
                   <Icon icon={Add} /> Start another like this
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled={detail === null || events.length === 0} onClick={() => setDialog("reset")}>
+                <DropdownMenuItem disabled={detail === null || store.size === 0} onClick={() => setDialog("reset")}>
                   <Icon icon={ArrowCounterclockwise} /> Reset…
                 </DropdownMenuItem>
                 <DropdownMenuItem disabled={!running} onClick={() => setDialog("terminate")}>
@@ -193,7 +221,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               <CopyButton value={w.runId} what="run ID" />
             </Fact>
             <Fact label="Namespace">{namespace}</Fact>
-            <Fact label="History">{formatCount(Math.max(events.length, w.historyLength))} events</Fact>
+            <Fact label="History">{formatCount(Math.max(store.size, w.historyLength))} events</Fact>
             {detail.historySizeBytes > 0 ? (
               <Fact label="History size">
                 <span className="flex items-center gap-inline-xs">
@@ -236,7 +264,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           <TabsList aria-label="Workflow views" className="gap-inline-xs px-inset-lg [&_[data-slot=tabs-trigger]]:h-control-lg [&_[data-slot=tabs-trigger]]:px-inline-md [&_[data-slot=tabs-item]:first-child]:-ms-inline-md">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="history">
-              History <span className="text-body-1 text-fg-muted">{formatCount(events.length)}</span>
+              History <span className="text-body-1 text-fg-muted">{formatCount(Math.max(store.size, detail.workflow.historyLength))}</span>
             </TabsTrigger>
             <TabsTrigger value="relations">
               Relations {related > 0 ? <span className="text-body-1 text-fg-muted">{related}</span> : null}
@@ -250,7 +278,13 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           </TabsList>
           <TabsContent value="timeline" className="flex min-h-0 flex-1 flex-col">
             <TimelinePanel
-              events={events}
+              store={store}
+              total={detail.workflow.historyLength}
+              order={order}
+              onOrderChange={setOrder}
+              hasMore={state.hasMore}
+              loadingMore={state.loadingMore}
+              onLoadMore={state.loadMore}
               pending={detail.pendingActivities}
               now={clock}
               live={state.following}
@@ -264,8 +298,14 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <HistoryPanel
               workflowId={workflowId}
               runId={detail.workflow.runId}
-              events={events}
+              store={store}
               total={detail.workflow.historyLength}
+              startMs={detail.workflow.startTime ? Date.parse(detail.workflow.startTime) : undefined}
+              order={order}
+              onOrderChange={setOrder}
+              loadingMore={state.loadingMore}
+              loadUntil={state.loadUntil}
+              onDownload={connId === null ? undefined : downloadHistory}
               live={state.following}
               pending={detail.pendingActivities}
               selected={selected}
@@ -289,7 +329,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               workflowId={workflowId}
               runId={detail.workflow.runId}
               active={section === "relations"}
-              version={events.length}
+              version={store.size}
               now={now}
               note={note}
               onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, ...(runId2 ? { runId: runId2 } : {}) }, title: workflowId2 }, event)}
@@ -298,7 +338,8 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           </TabsContent>
           <TabsContent value="input" className="min-h-0 flex-1 overflow-auto px-inset-lg py-inset-md">
             <InputResultPanel
-              events={events}
+              store={store}
+              shown={section === "input"}
               detail={detail}
               client={client}
               connId={connId}
@@ -330,7 +371,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
           connId={connId}
           profile={profile}
           namespace={namespace}
-          prefill={prefillOf(w, events)}
+          prefill={prefillOf(w, store.first ? [store.first] : [])}
           note={note}
           onOpenWorkflow={(workflowId2, runId2, event) => go({ kind: "temporal.workflow", params: { namespace, workflowId: workflowId2, runId: runId2 }, title: workflowId2 }, event)}
         />
@@ -363,7 +404,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
         open={dialog === "reset"}
         onOpenChange={(o) => !o && close()}
         workflowId={workflowId}
-        events={events}
+        events={dialog === "reset" ? store.toArray() : NO_EVENTS}
         busy={action.busy}
         error={action.error}
         onReset={(eventId, reapply, reason) =>
@@ -412,8 +453,29 @@ const KIND_CHIPS: readonly { kind: LaneKind; label: string }[] = [
   { kind: "workflowTask", label: "Workflow tasks" },
 ];
 
+/**
+ * The Timeline's lanes in the views' order (TSK-109): newest first puts the lane whose first event
+ * is the latest at the top, the workflow and its workflow tasks pinned above (they span the run);
+ * the time axis still runs left to right.
+ */
+export function lanesInOrder<T extends { kind: LaneKind }>(lanes: readonly T[], order: HistoryOrder): T[] {
+  if (order === "oldest") return [...lanes];
+  const pinned = lanes.filter((l) => l.kind === "workflow" || l.kind === "workflowTask");
+  const rest = lanes.filter((l) => l.kind !== "workflow" && l.kind !== "workflowTask");
+  return [...pinned, ...rest.reverse()];
+}
+
 interface TimelinePanelProps {
-  events: HistoryEvent[];
+  /** The loaded events (TSK-109); the Timeline is built from them one event at a time. */
+  store: HistoryStore;
+  /** The history's length as describe reports it. */
+  total: number;
+  /** Newest lanes first (the workflow and its workflow tasks stay on top), or oldest first. */
+  order: HistoryOrder;
+  onOrderChange(order: HistoryOrder): void;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore(): void;
   pending: readonly Record<string, unknown>[];
   now: number;
   /** The run is followed live (open, its history streaming in). */
@@ -426,18 +488,32 @@ interface TimelinePanelProps {
   onOpenWorkflow(workflowId: string, runId?: string, event?: LinkEvent): void;
 }
 
-function TimelinePanel({ events, pending, now, live, workflowId, selected, onSelect, onOpenWorkflow }: TimelinePanelProps) {
-  const data = useMemo(() => buildTimeline(events, { workflowId, pending, now }), [events, workflowId, pending, now]);
+function TimelinePanel({ store, total, order, onOrderChange, hasMore, loadingMore, onLoadMore, pending, now, live, workflowId, selected, onSelect, onOpenWorkflow }: TimelinePanelProps) {
+  const version = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  // The open items' captions and states at this clock (the closed ones were set as they closed).
+  const data = store.timeline.view(now, pending);
   const [hidden, setHidden] = useState<ReadonlySet<LaneKind>>(() => new Set());
   const [follow, setFollow] = useState(true);
-  const lanes = useMemo(() => data.lanes.filter((l) => !hidden.has(l.kind)).map((l) => ({ id: l.id, label: l.label, detail: l.detail, icon: <Icon icon={KIND_ICON[l.kind]} /> })), [data.lanes, hidden]);
-  const items = useMemo(() => {
-    const shown = new Set(lanes.map((l) => l.id));
-    return data.items.filter((i) => shown.has(i.laneId));
-  }, [data.items, lanes]);
-  if (events.length === 0) return <EmptyLine>No history yet.</EmptyLine>;
+  // New arrays when the history or the filter changes, so the chart sees new lanes and items; the clock alone keeps them.
+  const lanes = useMemo(
+    () => lanesInOrder(data.lanes, order)
+      .filter((l) => !hidden.has(l.kind))
+      .map((l) => ({ id: l.id, label: l.label, detail: l.detail, icon: <Icon icon={KIND_ICON[l.kind]} /> })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.lanes, hidden, order, version],
+  );
+  const items = useMemo(
+    () => {
+      const shown = new Set(lanes.map((l) => l.id));
+      return data.items.filter((i) => shown.has(i.laneId));
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.items, lanes, version],
+  );
+  if (store.size === 0) return <EmptyLine>No history yet.</EmptyLine>;
   const selectedId = selected === null ? null : (data.itemOfEvent.get(selected) ?? null);
   const picked = selectedId ? data.info.get(selectedId) : undefined;
+  const whole = Math.max(total, store.size);
   const toggle = (kind: LaneKind, on: boolean) =>
     setHidden((h) => {
       const next = new Set(h);
@@ -460,8 +536,22 @@ function TimelinePanel({ events, pending, now, live, workflowId, selected, onSel
           );
         })}
       </div>
+      <div className="ms-auto flex items-center gap-inline-sm text-caption-1 text-fg-muted">
+        <ToggleButton size="small" appearance="outline" pressed={order === "oldest"} onPressedChange={(p) => onOrderChange(p ? "oldest" : "newest")} className={chipClass}>
+          {order === "oldest" ? <Icon icon={Checkmark} /> : null}
+          Oldest first
+        </ToggleButton>
+        <span>
+          {formatCount(store.size)} of {formatCount(whole)} events
+        </span>
+        {hasMore ? (
+          <Button size="small" appearance="subtle" loading={loadingMore} onClick={onLoadMore}>
+            Load more
+          </Button>
+        ) : null}
+      </div>
       {live ? (
-        <div className="ms-auto flex items-center gap-inline-sm">
+        <div className="flex items-center gap-inline-sm">
           <ToggleButton size="small" appearance="outline" pressed={follow} onPressedChange={setFollow} className={chipClass}>
             <span aria-hidden="true" className={cn("size-icon-xs rounded-full", follow ? "bg-success" : "bg-fg-muted")} /> Following
           </ToggleButton>
@@ -490,7 +580,7 @@ function TimelinePanel({ events, pending, now, live, workflowId, selected, onSel
         follow={live && follow}
         onFollowChange={setFollow}
         toolbar={toolbar}
-        aside={<TimelinePane info={picked} events={events} pending={pending} now={now} onOpenWorkflow={onOpenWorkflow} />}
+        aside={<TimelinePane info={picked} events={store} pending={pending} now={now} onOpenWorkflow={onOpenWorkflow} />}
         asideLabel={picked ? `${picked.name}, ${picked.what}` : "Selected item"}
         className="min-h-0 flex-1"
       />
@@ -538,11 +628,14 @@ function Values({ values, what, client, connId, note, workflowId, context, onRel
   );
 }
 
-function InputResultPanel({ events, detail, client, connId, note, workflowId, onReload, onGoToEvent }: { events: HistoryEvent[]; detail: WorkflowDetail; client: MightyClient; connId: string | null; note(e: unknown): DescribedError; workflowId: string; onReload(): void; onGoToEvent(id: number): void }) {
-  const io = useMemo(() => inputAndResult(events), [events]);
+function InputResultPanel({ store, shown, detail, client, connId, note, workflowId, onReload, onGoToEvent }: { store: HistoryStore; shown: boolean; detail: WorkflowDetail; client: MightyClient; connId: string | null; note(e: unknown): DescribedError; workflowId: string; onReload(): void; onGoToEvent(id: number): void }) {
+  const version = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const io = inputAndResultOf(store.first, store.facts.closing);
+  // The largest payloads walk every loaded event: only while this view is shown.
   const context: PayloadContext = useMemo(
-    () => ({ historyBytes: detail.historySizeBytes > 0 ? detail.historySizeBytes : undefined, events: Math.max(events.length, detail.workflow.historyLength), largest: largestPayloads(events), onGoToEvent }),
-    [events, detail, onGoToEvent],
+    () => ({ historyBytes: detail.historySizeBytes > 0 ? detail.historySizeBytes : undefined, events: Math.max(store.size, detail.workflow.historyLength), largest: shown ? largestPayloads(store.toArray()) : [], onGoToEvent }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [store, shown, version, detail, onGoToEvent],
   );
   const shared = { client, connId, note, workflowId, context, onReload };
   const chain = failureChain(io.failure);
