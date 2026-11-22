@@ -11,7 +11,7 @@ import type { MightyClient } from "@/app/client";
 import { describeError } from "@/app/messages";
 import type * as api from "@/gen/api";
 import type { ProfileRecord } from "@/profiles/record";
-import { AssistantTab } from "@/tools/langgraph/assistants";
+import { AssistantTab, AssistantsTab } from "@/tools/langgraph/assistants";
 import { DEFAULT_URL, parseHeaderLines, profile } from "@/tools/langgraph/index";
 import { EMPTY_RUN, eventName, parseChunk, reduceRun, type RunEvent } from "@/tools/langgraph/run-events";
 import { JsonField, schemaProblems, toGraphView } from "@/tools/langgraph/shared";
@@ -25,6 +25,7 @@ import { eventRows, modeCounts, sinceStart } from "@/tools/langgraph/event-rows"
 import { interruptOptions, optionsSchema } from "@/tools/langgraph/resume-sheet";
 import { foldSame, diffLines } from "@/lib/diff";
 import { sideBySide, versionChange } from "@/tools/langgraph/versions";
+import { example, schemaFacts, schemaProperties, schemaSummary } from "@/tools/langgraph/schema-view";
 import type { LiveState, TabProps, TabView } from "@/tools/types";
 import { axeViolations, cleanup, render, settle } from "./support/render";
 
@@ -962,5 +963,90 @@ describe("assistant additions (TSK-96)", () => {
     await click(buttonNamed("New thread"));
     expect(fake.last("threads.create")).toMatchObject({ metadata: { assistant_id: "a1", graph_id: "agent" } });
     expect(opened.at(-1)).toMatchObject({ kind: "langgraph.thread", params: { threadId: "22222222-2222-2222-2222-222222222222" } });
+  });
+});
+
+describe("assistants and schemas to the mockup (TSK-96)", () => {
+  const INPUT = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    properties: {
+      messages: { type: "array", items: { $ref: "#/$defs/Message" }, description: "The conversation so far" },
+      customer_id: { type: "string", description: "Used by classify to look up payments" },
+      channel: { enum: ["email", "chat"], default: "chat" },
+      priority: { anyOf: [{ type: "integer" }, { type: "null" }] },
+    },
+    required: ["messages", "customer_id"],
+    $defs: { Message: { type: "object", properties: { content: { type: "string" } } } },
+  };
+
+  test("a schema's properties, facts, summary and an example input made from it", () => {
+    expect(schemaProperties(INPUT)).toEqual([
+      { name: "messages", type: "array of Message", required: true, description: "The conversation so far" },
+      { name: "customer_id", type: "string", required: true, description: "Used by classify to look up payments" },
+      { name: "channel", type: '"email" | "chat"', required: false, description: 'Default "chat"' },
+      { name: "priority", type: "integer | null", required: false, description: "" },
+    ]);
+    expect(schemaFacts(INPUT)).toBe("JSON Schema draft 2020-12 · 4 properties, 2 required");
+    expect(schemaSummary(INPUT)).toBe("4 keys");
+    expect(schemaSummary({ properties: { a: {}, b: {} } })).toBe("a, b");
+    expect(example(INPUT)).toEqual({ messages: [{ type: "human", content: "" }], customer_id: "", channel: "chat" });
+  });
+
+  test("Assistants: grouped by graph, filtered by graph and by text", async () => {
+    const fake = fakeClient();
+    const many: api.Assistant[] = [
+      { ...ASSISTANT, assistantId: "a1", name: "support-agent", graphId: "support", description: "Answers billing questions" },
+      { ...ASSISTANT, assistantId: "a2", name: "support-strict", graphId: "support", description: "Every reply reviewed" },
+      { ...ASSISTANT, assistantId: "a3", name: "research-agent", graphId: "research", description: "Cites sources" },
+    ];
+    (fake.client.langgraph.assistants as { search: unknown }).search = async () => many;
+    render(<AssistantsTab {...tabProps(fake.client, "langgraph.assistants", {})} />);
+    await settle();
+    expect(document.querySelector("header")?.textContent).toContain("3 assistants on 2 graphs");
+    const names = () => [...document.querySelectorAll("table[aria-label=Assistants] tbody tr")].map((r) => (r.hasAttribute("data-group") ? `# ${r.textContent}` : r.querySelector("td")?.textContent));
+    expect(names()).toEqual(["# graph research", "research-agent", "# graph support", "support-agent", "support-strict"]);
+    const search = $("input[aria-label='Filter by name or description']") as HTMLInputElement;
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      set.call(search, "reviewed");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await settle();
+    expect(names()).toEqual(["# graph support", "support-strict"]);
+    expect(await axeViolations()).toEqual([]);
+  });
+
+  test("Schemas: the list, the properties, the example input, and Start a thread with it", async () => {
+    const fake = fakeClient();
+    (fake.client.langgraph.assistants as { schemas: unknown }).schemas = async () => ({ graphId: "agent", inputSchema: INPUT, outputSchema: {}, stateSchema: { properties: { a: {}, b: {}, c: {}, d: {} } }, configSchema: { properties: { model: {} } } });
+    const opened: { params: Record<string, unknown> }[] = [];
+    render(
+      <Toast>
+        <AssistantTab {...tabProps(fake.client, "langgraph.assistant", { assistantId: "a1", name: "agent", view: "schemas" }, { openTab: (p) => opened.push(p as { params: Record<string, unknown> }) })} />
+      </Toast>,
+    );
+    await settle();
+    const list = $("nav[aria-label=Schemas]");
+    expect([...(list?.querySelectorAll("button") ?? [])].map((b) => b.textContent)).toEqual(["Input4 keys", "Outputnone", "State4 keys", "Configmodel", "Contextnone"]);
+    expect($("[aria-label='Input schema']")?.textContent).toContain("4 properties, 2 required");
+    expect([...document.querySelectorAll("table[aria-label=\"Input schema's properties\"] tbody tr")]).toHaveLength(4);
+    expect(await axeViolations()).toEqual([]);
+    await click(buttonNamed("Start a thread with it"));
+    expect(fake.last("threads.create")).toMatchObject({ metadata: { assistant_id: "a1", graph_id: "agent" } });
+    const input = opened.at(-1)!.params["input"] as string;
+    expect(JSON.parse(input)).toEqual({ messages: [{ type: "human", content: "" }], customer_id: "", channel: "chat" });
+    // The thread's Run form starts with it.
+    cleanup();
+    const thread = fakeClient();
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(thread.client, "langgraph.thread", { threadId: THREAD, input: '{"customer_id": "c-1"}' })} />
+      </Toast>,
+    );
+    await settle();
+    thread.script.chunks = [];
+    await click(runBar("Run"));
+    expect(thread.last("runs.stream")).toMatchObject({ input: { customer_id: "c-1" } });
   });
 });

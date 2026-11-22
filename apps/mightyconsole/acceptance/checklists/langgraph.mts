@@ -350,7 +350,7 @@ export default {
     },
     {
       id: "assistant-graph-versions",
-      text: "TSK-96 (DOC-21 §11.2.1, Open question 45 (n)): an assistant's Graph has xray at a depth and a node pane (edges in and out, metadata, visits, median and p95 time and errors over the assistant's last 50 runs, read from their checkpoints on the server, with the threads that passed through it); its Versions tab lists every version with what changed and the diff of config, context and metadata against the one before, side by side or unified, read only; New thread starts a thread with the assistant.",
+      text: "TSK-96 (DOC-21 §11.2.1, Open question 45 (n)): an assistant's Graph has xray at a depth and a node pane (edges in and out, metadata, visits, median and p95 time and errors over the assistant's last 50 runs, read from their checkpoints on the server, with the threads that passed through it); its Versions tab lists every version with what changed and the diff of config, context and metadata against the one before, side by side or unified, read only; New thread starts a thread with the assistant. Assistants are grouped by graph with a graph and a text filter; Schemas lists the five schemas, shows one as a table of properties or as JSON, and makes an example input from the input schema with Start a thread with it; Config copies config, context and metadata.",
       lab: true,
       checks: [
         cargo("steps_name_their_nodes_from_the_parent_s_next_and_time_from_the_parent"),
@@ -361,6 +361,9 @@ export default {
         vitest("test/langgraph.test.tsx", "what a version changed, in a line"),
         vitest("test/langgraph.test.tsx", "Versions: the list with what changed"),
         vitest("test/langgraph.test.tsx", "Graph: a node's edges and its statistics"),
+        vitest("test/langgraph.test.tsx", "a schema's properties, facts, summary and an example input"),
+        vitest("test/langgraph.test.tsx", "Assistants: grouped by graph, filtered by graph and by text"),
+        vitest("test/langgraph.test.tsx", "Schemas: the list, the properties, the example input"),
         browser("an assistant's node pane and Versions (TSK-96)", async ({ page, origin, until, run, shot }) => {
           const found = (await (await fetch("http://127.0.0.1:2024/assistants/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ graph_id: "agent", limit: 1 }) })).json()) as { assistant_id: string }[];
           if (!found[0]) throw new Error("the lab has no assistant of graph agent");
