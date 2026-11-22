@@ -33,7 +33,8 @@ describe("acceptance checklists", () => {
       ["nats", "TSK-85", 7],
       ["kafka", "TSK-86", 7],
       ["k8s", "TSK-82", 7],
-      ["temporal", "TSK-83", 6],
+      // TSK-109 added long-histories.
+      ["temporal", "TSK-83", 7],
       ["temporal-more", "TSK-92", 8],
       ["temporal-detail", "TSK-104", 2],
       // Section 18's five, then the additions Uy Son approved (DOC-21 Open question 45 q).

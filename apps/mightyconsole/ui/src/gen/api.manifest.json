@@ -2674,6 +2674,61 @@
       ],
       "type": "object"
     },
+    "DownloadHistoryInput": {
+      "description": "The whole history to save, as a stream (TSK-109).",
+      "properties": {
+        "connId": {
+          "type": "string"
+        },
+        "form": {
+          "$ref": "#/$defs/PayloadForm",
+          "description": "Payloads decoded in full, or as stored (what `temporal workflow show --output json` writes)."
+        },
+        "namespace": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workflowId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "connId",
+        "workflowId",
+        "form"
+      ],
+      "type": "object"
+    },
+    "DownloadHistorySummary": {
+      "description": "The end of `downloadHistory`.",
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "events": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bytes",
+        "events"
+      ],
+      "type": "object"
+    },
     "EchoConnIdInput": {
       "properties": {
         "connId": {
@@ -12707,11 +12762,19 @@
         },
         "pageSize": {
           "default": null,
-          "description": "1 to 1,000; 1,000 when absent.",
+          "description": "At most this many events, 1 to 1,000; 1,000 when absent. A page also stops at 4 MiB of\nreply (TSK-109).",
           "format": "uint32",
           "minimum": 0,
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "reverse": {
+          "default": null,
+          "description": "Newest first (`GetWorkflowExecutionHistoryReverse`); oldest first when absent.",
+          "type": [
+            "boolean",
             "null"
           ]
         },
@@ -16903,6 +16966,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/DownloadHistoryInput"
+      },
+      "kind": "stream",
+      "log_input": false,
+      "name": "temporal.workflows.downloadHistory",
+      "output": {
+        "$ref": "#/$defs/DownloadHistorySummary"
+      },
+      "perm": "temporal.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 3600000,
+      "timeout_max_ms": 3600000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/FollowHistoryInput"
       },
       "kind": "stream",
@@ -17173,5 +17257,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:f9e3c355152ca58dc4e302327274fb72bf67266cdceef01d35799e060c5bcfc3"
+  "schema_hash": "sha256:5e9ee5ee1126bc4c490ae0e08ae43b5ed625fe55cb7ebc25163e85c0f80e10cb"
 }

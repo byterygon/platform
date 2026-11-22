@@ -139,6 +139,15 @@ pub fn decode_payloads(value: &mut Value) {
 /// As [`decode_payloads`]; with a store, payloads over 64 KiB of JSON are kept there and sent as
 /// `$large` stubs.
 pub fn decode_payloads_keeping(value: &mut Value, large: Option<&super::large::LargePayloads>) {
+    decode_payloads_at(value, large.map(|l| (l, super::large::StubAt::LARGE)));
+}
+
+/// As [`decode_payloads_keeping`], stubbing what `at` says (TSK-109: every payload of an event
+/// over its share of a reply).
+pub fn decode_payloads_at(
+    value: &mut Value,
+    large: Option<(&super::large::LargePayloads, super::large::StubAt)>,
+) {
     match value {
         Value::Object(object) => {
             if let Some(decoded) = payload_value(object, large) {
@@ -146,7 +155,7 @@ pub fn decode_payloads_keeping(value: &mut Value, large: Option<&super::large::L
                 return;
             }
             for child in object.values_mut() {
-                decode_payloads_keeping(child, large);
+                decode_payloads_at(child, large);
             }
             // `Payloads` is just a list.
             if object.len() == 1 && object.get("payloads").is_some_and(Value::is_array) {
@@ -155,7 +164,7 @@ pub fn decode_payloads_keeping(value: &mut Value, large: Option<&super::large::L
         }
         Value::Array(items) => items
             .iter_mut()
-            .for_each(|item| decode_payloads_keeping(item, large)),
+            .for_each(|item| decode_payloads_at(item, large)),
         _ => {}
     }
 }
@@ -163,7 +172,7 @@ pub fn decode_payloads_keeping(value: &mut Value, large: Option<&super::large::L
 /// The decoded form of `object` if it is a payload (`metadata.encoding` is a string).
 fn payload_value(
     object: &Map<String, Value>,
-    large: Option<&super::large::LargePayloads>,
+    large: Option<(&super::large::LargePayloads, super::large::StubAt)>,
 ) -> Option<Value> {
     let metadata = object.get("metadata")?.as_object()?;
     if !object.keys().all(|k| PAYLOAD_KEYS.contains(&k.as_str())) {
@@ -217,7 +226,7 @@ fn payload_value(
         );
         opaque.insert("codecError".into(), Value::String(error.to_owned()));
     }
-    if let Some(store) = large {
+    if let Some((store, at)) = large {
         let codec = object.get("$codec").map(|c| {
             let text = |k: &str| {
                 c.get(k)
@@ -227,7 +236,7 @@ fn payload_value(
             };
             (text("codec"), text("from"))
         });
-        if let Some(stub) = super::large::stub_if_large(store, &decoded, &encoding, &data, codec) {
+        if let Some(stub) = super::large::stub_at(store, &decoded, &encoding, &data, codec, at) {
             return Some(stub);
         }
     }
