@@ -76,12 +76,14 @@ export default {
             await run(`__mc.type(${sc(label!)}, ${JSON.stringify(value)})`);
           }
           await run(`__mc.click(document.querySelector('button[form="schedule-form"]'))`);
-          await until(`__mc.has(${JSON.stringify(id)}) && __mc.has("Computed by the server") && __mc.has("TemporalScheduledById")`, "the schedule's tab");
+          await until(`__mc.has(${JSON.stringify(id)}) && __mc.has("Computed by the server") && __mc.has("TemporalScheduledById")`, "the schedule's tab", 45_000);
           // Trigger now: the run appears in Runs (from the recent actions until visibility has it).
           await run(`__mc.click(${shownButton("Trigger now")})`);
           await until(dialogButton("Trigger now"), "the trigger dialog");
           await run(`__mc.click(${dialogButton("Trigger now")})`);
-          await until(`!document.querySelector("[role=dialog]") && __mc.has(${JSON.stringify(`${id}-20`)})`, "the triggered run in Runs");
+          // 60 s: the run shows once the server has it in recent actions or visibility (TSK-121: 2
+          // timeouts at 20 s on a busy runner).
+          await until(`!document.querySelector("[role=dialog]") && __mc.has(${JSON.stringify(`${id}-20`)})`, "the triggered run in Runs", 60_000);
           await shot("schedule-detail");
           // Pause with a note, then Unpause.
           await run(`__mc.click(${shownButton("Pause…")})`);

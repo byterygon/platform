@@ -354,7 +354,9 @@ export default {
           await until(`__mc.has("every-minute") && __mc.has("Every 1 minute")`, "the seeded schedule");
           await shot("schedules");
           await run(click("every-minute"));
-          await until(`__mc.has("Computed by the server") && __mc.has("TemporalScheduledById")`, "the schedule's detail");
+          // 45 s: the detail waits on the server's describe (TSK-121: 2 timeouts at 20 s, on a runner
+          // whose load stays above its 4 CPUs a third of the time, Temporal among the busiest).
+          await until(`__mc.has("Computed by the server") && __mc.has("TemporalScheduledById")`, "the schedule's detail", 45_000);
           await shot("schedule detail");
           await run(`__mc.dblclick(__mc.item("Task queues"))`);
           await until(`__mc.field("Task queue")`, "the task queue form");
