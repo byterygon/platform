@@ -40,7 +40,9 @@ const PlusIcon = () => <Icon icon={Add} />;
 
 /**
  * DBee's query tabs: enclosed and small, each closable (the button, or Delete) and reorderable
- * (drag, or Alt+Shift+Arrow), with a status before the title and a disabled tab.
+ * (drag, or Alt+Shift+Arrow), with a status before the title and a disabled tab; below them the
+ * results' tabs, each with its count in its own badge (`count`): neutral by default, a tone for
+ * what needs attention, a count of 0 hidden unless asked for, a large one shortened (48k).
  */
 export function TabsRealistic() {
   const [tabs, setTabs] = useState<QueryTab[]>([
@@ -91,10 +93,49 @@ export function TabsRealistic() {
         </IconButton>
       </div>
       {tabs.map((tab) => (
-        <TabsContent key={tab.id} value={tab.id} className="font-mono text-code text-fg">
+        <TabsContent key={tab.id} value={tab.id} className="flex flex-col gap-stack-sm font-mono text-code text-fg">
           {tab.title}
+          <ResultTabs />
         </TabsContent>
       ))}
+    </Tabs>
+  );
+}
+
+/** The results of a query: row count, messages, errors (a tone, and 0 hidden) and the plan. */
+function ResultTabs() {
+  return (
+    <Tabs defaultValue="rows" className="w-full font-sans">
+      <TabsList aria-label="Results">
+        <TabsTrigger value="rows" count={48_002} countLabel="rows">
+          Results
+        </TabsTrigger>
+        <TabsTrigger value="messages" count={2} countLabel="messages">
+          Messages
+        </TabsTrigger>
+        <TabsTrigger value="errors" count={3} countLabel="errors" countTone="danger">
+          Errors
+        </TabsTrigger>
+        <TabsTrigger value="warnings" count={0} countLabel="warnings" countTone="warning">
+          Warnings
+        </TabsTrigger>
+        <TabsTrigger value="plan">Plan</TabsTrigger>
+      </TabsList>
+      <TabsContent value="rows" className="text-body text-fg">
+        48,002 rows, first 1,000 shown.
+      </TabsContent>
+      <TabsContent value="messages" className="text-body text-fg">
+        Two notices from the server.
+      </TabsContent>
+      <TabsContent value="errors" className="text-body text-fg">
+        Three statements failed.
+      </TabsContent>
+      <TabsContent value="warnings" className="text-body text-fg">
+        None: a count of 0 is hidden.
+      </TabsContent>
+      <TabsContent value="plan" className="text-body text-fg">
+        The query plan.
+      </TabsContent>
     </Tabs>
   );
 }

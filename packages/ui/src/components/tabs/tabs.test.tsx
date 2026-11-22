@@ -2,7 +2,7 @@ import { act, useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { $, $$, click, focus, honoursReducedMotion, key, waitFor } from "../../../test/interact.ts";
 import { axeViolations, cleanup, render } from "../../../test/render.tsx";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger, formatTabCount } from "./tabs";
 
 afterEach(cleanup);
 
@@ -219,7 +219,7 @@ describe("Tabs: a strip that overflows (Fluent's overflow menu)", () => {
     stripWidth = 400;
   });
 
-  function ManyTabs({ initial = "a", names = ["a", "b", "c", "d", "e", "f"] }: { initial?: string; names?: string[] }) {
+  function ManyTabs({ initial = "a", names = ["a", "b", "c", "d", "e", "f"], counts = {} }: { initial?: string; names?: string[]; counts?: Record<string, number> }) {
     const [tabs, setTabs] = useState(names);
     const [active, setActive] = useState(initial);
     const close = (id: string) => setTabs((current) => current.filter((t) => t !== id));
@@ -227,7 +227,7 @@ describe("Tabs: a strip that overflows (Fluent's overflow menu)", () => {
       <Tabs value={active} onValueChange={(value) => setActive(value as string)}>
         <TabsList aria-label="Query tabs">
           {tabs.map((t) => (
-            <TabsTrigger key={t} value={t} onClose={() => close(t)}>
+            <TabsTrigger key={t} value={t} count={counts[t]} onClose={() => close(t)}>
               Query {t}
             </TabsTrigger>
           ))}
@@ -271,6 +271,16 @@ describe("Tabs: a strip that overflows (Fluent's overflow menu)", () => {
     await click(more());
     await waitFor(() => expect($$('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Query d", "Query e", "Query f"]));
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  test("the More tabs menu lists a hidden tab by its title, with its count after it", async () => {
+    stub();
+    stripWidth = 350;
+    render(<ManyTabs counts={{ d: 1234, e: 48_002 }} />);
+    await click(more());
+    await waitFor(() => expect($$('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Query d1,234", "Query e48k", "Query f"]));
+    // The title alone, not the count's visually hidden reading, names the item.
+    expect($$('[role="menuitem"]')[1]!.firstChild!.textContent).toBe("Query e");
   });
 
   test("a wider strip shows the hidden tabs again", async () => {
@@ -328,5 +338,186 @@ describe("Tabs: a strip that overflows (Fluent's overflow menu)", () => {
     await focus(tab("b"));
     await key("Delete");
     await waitFor(() => expect(overflowing()).toEqual(["Query e", "Query f"]));
+  });
+});
+
+describe("TabsTrigger count: a number in its own badge", () => {
+  /** The name a screen reader gives the tab: its text, less what is aria-hidden. */
+  const nameOf = (element: Node): string =>
+    [...element.childNodes].map((node) => (node instanceof HTMLElement ? (node.getAttribute("aria-hidden") === "true" ? "" : nameOf(node)) : (node.textContent ?? ""))).join("");
+  const badgeOf = (tabElement: Element) => tabElement.querySelector<HTMLElement>('[data-slot="tabs-count"]');
+  type CountProps = { count?: number | null | undefined; countLabel?: string; countTone?: "danger" | "warning"; showZero?: boolean };
+  const history = (props: CountProps, appearance: "transparent" | "subtle" | "enclosed" = "transparent") =>
+    render(
+      <Tabs defaultValue="history" appearance={appearance}>
+        <TabsList aria-label="Workflow">
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="history" {...props}>
+            History
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="history">Events</TabsContent>
+        <TabsContent value="timeline">Lanes</TabsContent>
+      </Tabs>,
+    );
+  const historyTab = () => $$<HTMLButtonElement>('[role="tab"]').find((element) => element.querySelector('[data-slot="tabs-label"]')?.textContent === "History")!;
+
+  test("the count is a badge after the title, and the title stays the title", () => {
+    history({ count: 1234, countLabel: "events" });
+    const element = historyTab();
+    const label = element.querySelector('[data-slot="tabs-label"]')!;
+    const badge = badgeOf(element)!;
+    expect(label.textContent).toBe("History");
+    expect(badge.textContent).toBe("1,234");
+    expect(label.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(label.textContent).not.toMatch(/\d/);
+  });
+
+  test("the tab keeps one accessible name with the count: History, 1,234 events", () => {
+    history({ count: 1234, countLabel: "events" });
+    const element = historyTab();
+    expect(badgeOf(element)!.getAttribute("aria-hidden")).toBe("true");
+    expect(element.querySelector(".sr-only")!.textContent).toBe(", 1,234 events");
+    expect(nameOf(element)).toBe("History, 1,234 events");
+  });
+
+  test("a countLabel pair says one for 1 and the plural otherwise", () => {
+    const named = (count: number, countMore = false) => {
+      const { unmount } = render(
+        <Tabs defaultValue="a">
+          <TabsList aria-label="Tabs">
+            <TabsTrigger value="a" count={count} countMore={countMore} countLabel={["event", "events"]}>
+              History
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="a">Panel</TabsContent>
+        </Tabs>,
+      );
+      const name = nameOf($('[role="tab"]')!);
+      unmount();
+      return name;
+    };
+    expect(named(1)).toBe("History, 1 event");
+    expect(named(2)).toBe("History, 2 events");
+    expect(named(1, true)).toBe("History, at least 1 event");
+  });
+
+  test("without a countLabel the name is the title and the number", () => {
+    history({ count: 7 });
+    expect(nameOf(historyTab())).toBe("History, 7");
+  });
+
+  test("a large count is shortened; the badge's title and the name keep the full number", () => {
+    history({ count: 12_400, countLabel: "events" });
+    const element = historyTab();
+    expect(badgeOf(element)!.textContent).toBe("12.4k");
+    expect(badgeOf(element)!.getAttribute("title")).toBe("12,400 events");
+    expect(nameOf(element)).toBe("History, 12,400 events");
+  });
+
+  test("a first page of a longer list reads 50+ and is named at least 50 runs", () => {
+    render(
+      <Tabs defaultValue="runs">
+        <TabsList aria-label="Thread">
+          <TabsTrigger value="runs" count={50} countMore countLabel="runs">
+            Runs
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="runs">Panel</TabsContent>
+      </Tabs>,
+    );
+    const element = $('[role="tab"]')!;
+    expect(badgeOf(element)!.textContent).toBe("50+");
+    expect(badgeOf(element)!.getAttribute("title")).toBe("at least 50 runs");
+    expect(nameOf(element)).toBe("Runs, at least 50 runs");
+  });
+
+  test("formatTabCount: in full below 10,000, then one decimal, cut and never rounded up", () => {
+    const cases: [number, string][] = [
+      [0, "0"],
+      [9, "9"],
+      [1234, "1,234"],
+      [9999, "9,999"],
+      [10_000, "10k"],
+      [12_400, "12.4k"],
+      [12_499, "12.4k"],
+      [48_002, "48k"],
+      [999_999, "999.9k"],
+      [1_000_000, "1M"],
+      [1_234_567, "1.2M"],
+      [2_500_000_000, "2.5B"],
+      [-5, "0"],
+      [12.9, "12"],
+    ];
+    for (const [count, shown] of cases) expect(formatTabCount(count), String(count)).toBe(shown);
+  });
+
+  test("zero is hidden unless the tab asks to show it; so are null, undefined and NaN", () => {
+    for (const count of [0, null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const { unmount } = history({ count, countLabel: "events" });
+      expect(badgeOf(historyTab()), String(count)).toBeNull();
+      expect(nameOf(historyTab())).toBe("History");
+      unmount();
+    }
+    history({ count: 0, countLabel: "consumers", showZero: true });
+    expect(badgeOf(historyTab())!.textContent).toBe("0");
+    expect(nameOf(historyTab())).toBe("History, 0 consumers");
+  });
+
+  test("neutral by default, a tone for what needs attention", () => {
+    const { unmount } = history({ count: 3 });
+    expect(badgeOf(historyTab())!.getAttribute("data-variant")).toBe("neutral");
+    unmount();
+    history({ count: 3, countTone: "danger", countLabel: "failures" });
+    expect(badgeOf(historyTab())!.getAttribute("data-variant")).toBe("danger");
+    // The tone is never the only signal: the number and what it counts are in the name.
+    expect(nameOf(historyTab())).toBe("History, 3 failures");
+  });
+
+  test("the badge has its own fill and text pair, so its contrast does not depend on the tab behind it", () => {
+    for (const appearance of ["transparent", "subtle", "enclosed"] as const) {
+      const { unmount } = history({ count: 5 }, appearance);
+      const badge = badgeOf(historyTab())!;
+      const classes = (badge.getAttribute("class") ?? "").split(/\s+/);
+      // The subtle appearance paints the pair the token engine checks (color.neutral.subtle-fg on
+      // color.neutral.subtle-bg), not a wash of the tab's, whichever appearance the tab has.
+      expect(badge.getAttribute("data-appearance")).toBe("subtle");
+      expect(classes).toContain("data-[appearance=subtle]:bg-neutral-subtle");
+      expect(classes).toContain("data-[appearance=subtle]:text-neutral-subtle-fg");
+      unmount();
+    }
+  });
+
+  test("the count never squeezes the title: it keeps its size and the title truncates", () => {
+    history({ count: 5 });
+    const badge = badgeOf(historyTab())!;
+    expect(badge.className).toContain("shrink-0");
+    expect(badge.className).toContain("tabular-nums");
+    expect(historyTab().querySelector('[data-slot="tabs-label"]')!.className).toContain("truncate");
+  });
+
+  test("a closable tab with a count keeps one name and a working close button", async () => {
+    const onClose = vi.fn();
+    render(
+      <Tabs defaultValue="a">
+        <TabsList aria-label="Tabs">
+          <TabsTrigger value="a" count={4} countLabel="rows" onClose={onClose}>
+            Orders
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="a">Panel</TabsContent>
+      </Tabs>,
+    );
+    expect(nameOf($('[role="tab"]')!)).toBe("Orders, 4 rows");
+    await click($('[data-slot="tabs-close"]')!);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test("passes axe with counts, in every appearance", async () => {
+    for (const appearance of ["transparent", "subtle", "enclosed"] as const) {
+      const { container, unmount } = history({ count: 48_002, countLabel: "events", countTone: "danger" }, appearance);
+      expect(await axeViolations(container), appearance).toEqual([]);
+      unmount();
+    }
   });
 });

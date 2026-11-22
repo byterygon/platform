@@ -169,7 +169,6 @@ export function AssistantTab({ tab, profile, connId, client, useTabActions, note
     }
   };
   const schemaCount = schemas.data ? [schemas.data.inputSchema, schemas.data.outputSchema, schemas.data.stateSchema, schemas.data.configSchema, schemas.data.contextSchema].filter((x) => x !== undefined && x !== null).length : null;
-  const versionCount = versions.data ? `${versions.data.items.length}${versions.data.next !== undefined && versions.data.next !== null ? "+" : ""}` : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
@@ -220,9 +219,13 @@ export function AssistantTab({ tab, profile, connId, client, useTabActions, note
       <Tabs value={section} onValueChange={(v) => setSection(v as typeof section)} className="mt-stack-md flex min-h-0 flex-1 flex-col">
         <TabsList aria-label="Assistant views" className="px-inset-lg">
           <TabsTrigger value="graph">Graph</TabsTrigger>
-          <TabsTrigger value="schemas">Schemas {schemaCount !== null ? <span className="text-body-1 text-fg-muted">{schemaCount}</span> : null}</TabsTrigger>
+          <TabsTrigger value="schemas" count={schemaCount} countLabel={["schema", "schemas"]}>
+            Schemas
+          </TabsTrigger>
           <TabsTrigger value="config">Config</TabsTrigger>
-          <TabsTrigger value="versions">Versions {versionCount !== null ? <span className="text-body-1 text-fg-muted">{versionCount}</span> : null}</TabsTrigger>
+          <TabsTrigger value="versions" count={versions.data?.items.length} countMore={versions.data?.next !== undefined && versions.data.next !== null} countLabel={["version", "versions"]}>
+            Versions
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="graph" className="flex min-h-0 flex-1 flex-col p-0">
           <GraphPanel name={a?.name ?? assistantId} graph={graph} stats={stats} xray={xray} onXray={setXray} selected={selected} onSelect={setSelected} onThread={openThread} />

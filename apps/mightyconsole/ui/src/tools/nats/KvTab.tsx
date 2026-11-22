@@ -121,8 +121,8 @@ function KeyPane({ bucket, keyName, profile, connId, client, note, onChanged, on
         <Tabs value={section} onValueChange={(v) => setSection(v as "entry" | "history")} className="flex min-h-0 flex-col">
           <TabsList aria-label="Key views">
             <TabsTrigger value="entry">Entry</TabsTrigger>
-            <TabsTrigger value="history">
-              History <span className="text-body-1 text-fg-muted">{history.length}</span>
+            <TabsTrigger value="history" count={history.length} countLabel={["revision", "revisions"]}>
+              History
             </TabsTrigger>
           </TabsList>
           <TabsContent value="entry" className="flex flex-col gap-stack-sm pt-stack-sm">

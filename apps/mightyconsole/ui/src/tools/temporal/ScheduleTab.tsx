@@ -287,8 +287,8 @@ export function ScheduleTab({ tab, profile, connId, client, useTabActions, note,
       {detail && s && form ? (
         <Tabs value={view} onValueChange={(v) => setView(v as View)} className="mt-stack-md flex min-h-0 flex-1 flex-col gap-0">
           <TabsList aria-label="Schedule views" className="gap-inline-xs px-inset-lg [&_[data-slot=tabs-trigger]]:h-control-lg [&_[data-slot=tabs-trigger]]:px-inline-md [&_[data-slot=tabs-item]:first-child]:-ms-inline-md">
-            <TabsTrigger value="runs">
-              Runs <span className="text-body-1 text-fg-muted">{formatCount(num(detail.info["actionCount"]))}</span>
+            <TabsTrigger value="runs" count={num(detail.info["actionCount"])} countLabel={["run", "runs"]}>
+              Runs
             </TabsTrigger>
             <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
             <TabsTrigger value="spec">Spec and action</TabsTrigger>

@@ -360,8 +360,8 @@ export function StreamTab({ tab, profile, connId, client, useTabActions, onLive,
           <TabsList aria-label="Stream views" className="gap-inline-xs px-inset-lg [&_[data-slot=tabs-trigger]]:h-control-lg [&_[data-slot=tabs-trigger]]:px-inline-md [&_[data-slot=tabs-item]:first-child]:-ms-inline-md">
             <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="messages">Messages</TabsTrigger>
-            <TabsTrigger value="consumers">
-              Consumers <span className="text-body-1 text-fg-muted">{consumers?.length ?? info.state.consumers}</span>
+            <TabsTrigger value="consumers" count={consumers?.length ?? info.state.consumers} countLabel={["consumer", "consumers"]} showZero>
+              Consumers
             </TabsTrigger>
           </TabsList>
           <TabsContent value="info" className="flex min-h-0 flex-1 flex-col border-t border-border-subtle">

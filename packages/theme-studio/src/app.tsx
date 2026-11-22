@@ -218,8 +218,12 @@ export function App({ initial, save = saveState }: AppProps) {
             <TabsList className="px-inset-lg">
               <TabsTrigger value="components">Components</TabsTrigger>
               <TabsTrigger value="swatches">Swatches</TabsTrigger>
-              <TabsTrigger value="contrast">Contrast ({derived.contrast.filter((m) => !m.pass).length})</TabsTrigger>
-              <TabsTrigger value="problems">Problems ({derived.diagnostics.length})</TabsTrigger>
+              <TabsTrigger value="contrast" count={derived.contrast.filter((m) => !m.pass).length} countLabel={["failing pair", "failing pairs"]} countTone="danger">
+                Contrast
+              </TabsTrigger>
+              <TabsTrigger value="problems" count={derived.diagnostics.length} countLabel={["problem", "problems"]} countTone="warning">
+                Problems
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="components" className="min-h-0 flex-1">
               <ScrollArea className="h-full" aria-label="Component preview">

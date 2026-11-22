@@ -27,7 +27,7 @@ import { foldSame, diffLines } from "@/lib/diff";
 import { sideBySide, versionChange } from "@/tools/langgraph/versions";
 import { example, schemaFacts, schemaProperties, schemaSummary } from "@/tools/langgraph/schema-view";
 import type { LiveState, TabProps, TabView } from "@/tools/types";
-import { axeViolations, cleanup, render, settle } from "./support/render";
+import { axeViolations, cleanup, render, settle, tabCount, tabName } from "./support/render";
 
 afterEach(cleanup);
 
@@ -446,7 +446,8 @@ describe("screens", () => {
     await settle();
     // The History tab carries the count of checkpoints (TSK-95), as the header does.
     const historyTab = [...document.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.textContent?.startsWith("History"));
-    expect(historyTab?.textContent).toMatch(/^History \d+$/);
+    expect(tabCount(historyTab ?? null)).toMatch(/^\d+$/);
+    expect(tabName(historyTab ?? null)).toMatch(/^History, \d+ checkpoints$/);
     expect(document.querySelector("header")?.textContent).toMatch(/checkpoint c2.*\d+ checkpoints?/);
     await click(historyTab);
     expect(fake.last("threads.history")).toMatchObject({ threadId: THREAD, limit: 50 });
@@ -478,7 +479,8 @@ describe("screens", () => {
     await settle();
     const historyTab = [...document.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.textContent?.startsWith("History"));
     // More than the first page holds: the count says so.
-    expect(historyTab?.textContent).toBe("History 2+");
+    expect(tabCount(historyTab ?? null)).toBe("2+");
+    expect(tabName(historyTab ?? null)).toBe("History, at least 2 checkpoints");
     await click(historyTab);
     // The newest checkpoint is selected; its diff says the values were left out (TSK-96), and
     // its full state shows the note with the size, not a viewer.
@@ -735,7 +737,8 @@ describe("thread additions (TSK-96)", () => {
     );
     await settle();
     const runsTab = [...document.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.textContent?.startsWith("Runs"));
-    expect(runsTab?.textContent).toBe("Runs 2");
+    expect(tabCount(runsTab ?? null)).toBe("2");
+    expect(tabName(runsTab ?? null)).toBe("Runs, 2 runs");
     expect(document.querySelector("header")?.textContent).toContain("2 runs");
     const rows = [...document.querySelectorAll("table[aria-label=Runs] tbody tr")];
     expect(rows[0]?.textContent).toContain("waiting at approve");
@@ -944,7 +947,9 @@ describe("assistant additions (TSK-96)", () => {
       </Toast>,
     );
     await settle();
-    expect([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent?.startsWith("Versions"))?.textContent).toBe("Versions 3");
+    const versionsTab = [...document.querySelectorAll("[role=tab]")].find((t) => t.textContent?.startsWith("Versions")) ?? null;
+    expect(tabCount(versionsTab)).toBe("3");
+    expect(tabName(versionsTab)).toBe("Versions, 3 versions");
     const rows = [...document.querySelectorAll("table[aria-label=Versions] tbody tr")];
     expect(rows.map((r) => r.querySelector("td:nth-child(3)")?.textContent)).toEqual(["model small → large", "model small", "created"]);
     // The fixture's current version is 1.

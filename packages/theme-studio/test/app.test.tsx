@@ -294,7 +294,10 @@ describe("Theme Studio", () => {
     const faded = { ...startingTheme(), overrides: { "color.neutral.11": "oklch(0.7 0.012 275)" } };
     const saved = mount(faded);
     const tab = () => $$('[role="tab"]').find((t) => t.textContent?.startsWith("Contrast"))!;
-    expect(tab().textContent).toBe("Contrast (32)");
+    // The failing pairs are a badge after the title (TSK-110); none is hidden, not drawn as "0".
+    const failing = () => tab().querySelector('[data-slot="tabs-count"]')?.textContent ?? null;
+    expect(failing()).toBe("32");
+    expect(tab().querySelector('[data-slot="tabs-label"]')!.textContent).toBe("Contrast");
     click(tab());
     await waitFor(() => expect($('ul[aria-label="Contrast pairs, light · comfortable"]')).toBeTruthy());
     // Colour never depends on density: both light combinations fail the same 32 (the three
@@ -312,22 +315,22 @@ describe("Theme Studio", () => {
 
     // The primary fix nudges the primitive's lightness within its step.
     click(byText("button", "Apply fix")!);
-    await waitFor(() => expect(tab().textContent).toBe("Contrast (0)"));
+    await waitFor(() => expect(failing()).toBeNull());
     await lastSavedTheme(saved, (state) => expect(state.theme["overrides"]).toEqual({ "color.neutral.11": "oklch(0.49 0.012 275)" }));
     expect(document.body.textContent).toContain("Applied: Change the lightness of color.neutral.11");
 
     click(byText("button", "Undo")!);
-    await waitFor(() => expect(tab().textContent).toBe("Contrast (32)"));
+    await waitFor(() => expect(failing()).toBe("32"));
 
     // An alternative: alias the role to another step of the same ramp.
     click(byText("button", "Apply")!);
-    await waitFor(() => expect((tab().textContent ?? "").startsWith("Contrast (32)")).toBe(false));
+    await waitFor(() => expect(failing()).not.toBe("32"));
     await lastSavedTheme(saved, (state) => expect((state.theme["overrides"] as Record<string, unknown>)["color.fg.muted"]).toEqual({ light: "{color.neutral.12}" }));
 
     click(byText("button", "Undo")!);
-    await waitFor(() => expect(tab().textContent).toBe("Contrast (32)"));
+    await waitFor(() => expect(failing()).toBe("32"));
     click(byText("button", "Fix all")!);
-    await waitFor(() => expect(tab().textContent).toBe("Contrast (0)"));
+    await waitFor(() => expect(failing()).toBeNull());
     expect(document.body.textContent).toContain("Applied 1 fix.");
 
     click(byText('[aria-label="Mode combination"] button', "dark · compact")!);
@@ -356,7 +359,11 @@ describe("Theme Studio", () => {
     await waitFor(() => expect(styleText()).toContain('theme "neutral"'));
     expect(styleText()).toContain("--by-radius-md: 10px;");
     // Stock shadcn colours miss some contrast pairs: the report opens with the engine's fixes.
-    await waitFor(() => expect($('main [role="tab"][aria-selected="true"]')!.textContent).toMatch(/^Contrast \(\d+\)$/));
+    await waitFor(() => {
+      const selected = $('main [role="tab"][aria-selected="true"]')!;
+      expect(selected.querySelector('[data-slot="tabs-label"]')!.textContent).toBe("Contrast");
+      expect(selected.querySelector('[data-slot="tabs-count"]')!.textContent).toMatch(/^\d+$/);
+    });
     await lastSavedTheme(saved, (state) => expect(state.theme["name"]).toBe("neutral"));
   });
 });

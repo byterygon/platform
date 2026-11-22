@@ -12,7 +12,7 @@ import { WorkflowTab } from "@/tools/temporal/WorkflowTab";
 import { splitLines } from "@/tools/temporal/useWorkflow";
 import { profile as schema } from "@/tools/temporal/profile";
 import type { LiveState, TabProps, TabView } from "@/tools/types";
-import { axeViolations, byRole, byText, cleanup, click, render, settle, type, waitFor } from "./support/render";
+import { axeViolations, byRole, byText, cleanup, click, render, settle, tabByTitle, tabCount, tabName, type, waitFor } from "./support/render";
 
 afterEach(cleanup);
 
@@ -141,8 +141,8 @@ function setup(options: Options = {}) {
   return { describe, history, followHistory, query, downloadHistory, stream, lives, setActive: (active: boolean) => act(async () => host.setActive(active)), openTab: props.openTab as ReturnType<typeof vi.fn>, ...view };
 }
 
-/** A view's tab; History and Pending carry their counts ("History 4"). */
-const tabButton = (name: string) => byRole("tab", new RegExp(`^${name}( [\\d,]+)?$`));
+/** A view's tab by its title; History, Relations and Pending carry their counts in a badge after it (TSK-110): see `tabCount`. */
+const tabButton = (name: string) => tabByTitle(name);
 
 describe("splitLines", () => {
   test("keeps a partial line for the next chunk and drops blanks", () => {
@@ -201,6 +201,22 @@ describe("Workflow tab (spec §9.3)", () => {
     expect(aside().textContent).toContain("1 payload");
     // No key hint drawn on any button of the tab (DOC-21 §3.4).
     expect(container.querySelectorAll("button kbd").length).toBe(0);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  test("History, Relations and Pending carry their counts in a badge after the title, with one accessible name (TSK-110)", async () => {
+    const { container } = setup({ events });
+    await waitFor(() => tabButton("History") !== null, "the tabs");
+    const history = tabButton("History")!;
+    expect(history.querySelector('[data-slot="tabs-label"]')!.textContent).toBe("History");
+    expect(tabCount(history)).toMatch(/^[\d,]+$/);
+    expect(tabName(history)).toMatch(/^History, [\d,]+ events$/);
+    // No count sits in any tab's title any more; a count that is there is a badge.
+    for (const tab of container.querySelectorAll<HTMLElement>('[role="tab"]')) {
+      expect(tab.querySelector('[data-slot="tabs-label"]')!.textContent).not.toMatch(/\d/);
+      const count = tabCount(tab);
+      if (count !== null) expect(tabName(tab)).toContain(", ");
+    }
     expect(await axeViolations(container)).toEqual([]);
   });
 

@@ -255,8 +255,12 @@ export function ThreadTab(props: TabProps) {
         <TabsList aria-label="Thread views" className="px-inset-lg">
           <TabsTrigger value="run">Run</TabsTrigger>
           <TabsTrigger value="state">State</TabsTrigger>
-          <TabsTrigger value="history">History {count !== null ? <span className="text-body-1 text-fg-muted">{count}</span> : null}</TabsTrigger>
-          <TabsTrigger value="runs">Runs {runCount !== null ? <span className="text-body-1 text-fg-muted">{runCount}</span> : null}</TabsTrigger>
+          <TabsTrigger value="history" count={history.data?.items.length} countMore={Boolean(history.data?.next)} countLabel={["checkpoint", "checkpoints"]}>
+            History
+          </TabsTrigger>
+          <TabsTrigger value="runs" count={runs.data?.items.length} countMore={runs.data?.next !== undefined && runs.data.next !== null} countLabel={["run", "runs"]}>
+            Runs
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="run" keepMounted className="flex min-h-0 flex-1 flex-col p-0">
           <RunPanel
@@ -804,11 +808,11 @@ function RunPanel({ tab, threadId, connId, client, note, onLive, actions, onStat
           {/* Events opens the full-width events view (TSK-96, the mockup's langgraph-run-events). */}
           <Tabs value="messages" onValueChange={(v) => v === "events" && setEventsView("events")} size="small" className="flex min-h-0 flex-1 flex-col">
             <TabsList aria-label="Run output">
-              <TabsTrigger value="messages">
-                Messages <span className="text-fg-muted">{run.messages.length}</span>
+              <TabsTrigger value="messages" count={run.messages.length} countLabel={["message", "messages"]}>
+                Messages
               </TabsTrigger>
-              <TabsTrigger value="events">
-                Events <span className="text-fg-muted">{run.count}</span>
+              <TabsTrigger value="events" count={run.count} countLabel={["event", "events"]}>
+                Events
               </TabsTrigger>
             </TabsList>
             <TabsContent value="messages" className="min-h-0 flex-1 overflow-auto">
