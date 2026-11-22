@@ -242,8 +242,10 @@ export default {
           await run(`__mc.dblclick(__mc.item("lab-s3"))`);
           await until(itemOf("lab-s3", "Workers"), "temporal.connect with External Storage");
           // Mightyconsole reads the stored input with the profile's keys.
-          await run(`__mc.dblclick(${itemOf("lab-s3", "Workflows")})`);
-          await until(`__mc.has("big-payload-1")`, "the workflow list");
+          // Listed by its ID: the newest workflows (the long histories of TSK-109, a minute's
+          // scheduled runs) can fill the first page of the whole list.
+          await page.navigate(`${origin}/temporal/lab-s3/lab/workflows?q=${encodeURIComponent('WorkflowId = "big-payload-1"')}`);
+          await until(shownButton("big-payload-1"), "the workflow list", 30_000);
           await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "big-payload-1"))`);
           await until(`[...document.querySelectorAll("[role=tab]")].some((t) => t.checkVisibility() && t.textContent.trim() === "Input and result")`, "the workflow tab");
           await run(`(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.checkVisibility() && x.textContent.trim() === "Input and result"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`);
@@ -391,8 +393,9 @@ export default {
         browser("large-1's input in the payload view: the tree pages, jq on the server, the size pane, then History by size", async (ctx) => {
           const { run, until, shot } = ctx;
           await connectLab(ctx);
-          await run(`__mc.dblclick(__mc.item("Workflows"))`);
-          await until(`__mc.has("large-1")`, "the workflow list");
+          // Listed by its ID, as big-payload-1 above.
+          await ctx.page.navigate(`${ctx.origin}/temporal/lab-temporal/lab/workflows?q=${encodeURIComponent('WorkflowId = "large-1"')}`);
+          await until(shownButton("large-1"), "the workflow list", 30_000);
           await run(`__mc.click(${shownButton("large-1")})`);
           const tab = (name: string) => `[...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && t.textContent.trim().startsWith(${JSON.stringify(name)}))`;
           const pick = (name: string) => `(() => { const t = ${tab(name)}; for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`;
