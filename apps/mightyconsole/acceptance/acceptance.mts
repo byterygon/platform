@@ -145,6 +145,14 @@ export function countTests(raw: string): { passed: number; failed: number } {
   return { passed, failed };
 }
 
+/**
+ * Command checks already run in this evidence run (TSK-121): the same command (argv, folder and
+ * environment) runs once, and a later check naming it again takes its verdict and points to its log.
+ * browser-check is one command named by three items (foundation/shell, foundation/csp-offline,
+ * messaging/arrow): it ran three times a lab run, about 50 s each, and each run could fail alone.
+ */
+const commandsRun = new Map<string, { verdict: Verdict; detail: string; log: string; item: string }>();
+
 async function runCheck(check: Check, item: string, n: number, run: Run): Promise<CheckResult> {
   const started = Date.now();
   const log = join(run.logs, `${item}-${n}.log`);
@@ -181,12 +189,19 @@ async function runCheck(check: Check, item: string, n: number, run: Run): Promis
     case "command": {
       const missing = (check.requires ?? []).filter((p) => !onPath(p));
       if (missing.length > 0) return done("skipped", `needs ${missing.join(", ")} on PATH`, []);
-      const { code } = execute(check.argv.map(substitute), {
-        cwd: check.cwd ? resolve(REPO, check.cwd) : REPO,
-        env: Object.fromEntries(Object.entries(check.env ?? {}).map(([k, v]) => [k, substitute(v)])),
-        log,
-      });
-      return done(code === 0 ? "pass" : "fail", `exit ${code}`);
+      const argv = check.argv.map(substitute);
+      const cwd = check.cwd ? resolve(REPO, check.cwd) : REPO;
+      const env = Object.fromEntries(Object.entries(check.env ?? {}).map(([k, v]) => [k, substitute(v)]));
+      const key = JSON.stringify([run.dir, argv, cwd, env]);
+      const earlier = commandsRun.get(key);
+      if (earlier) {
+        writeFileSync(log, `$ ${argv.join(" ")}\nThe same command already ran for ${earlier.item} in this run: ${earlier.log}\n`);
+        return done(earlier.verdict, `${earlier.detail}, the same run as ${earlier.item}`, [earlier.log, relative(run.dir, log)]);
+      }
+      const { code } = execute(argv, { cwd, env, log });
+      const verdict: Verdict = code === 0 ? "pass" : "fail";
+      commandsRun.set(key, { verdict, detail: `exit ${code}`, log: relative(run.dir, log), item });
+      return done(verdict, `exit ${code}`);
     }
     case "server": {
       if (!run.serverPath) return done("skipped", "no server binary", []);

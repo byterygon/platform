@@ -73,8 +73,10 @@ export default {
         cargo("a_large_payload_is_cut_and_not_decoded"),
         vitest("test/messaging.test.tsx", "rows from the Arrow batches"),
         vitest("test/messaging.test.tsx", "a cut payload offers Load full payload"),
-        command("the real server and UI in Chrome: the Arrow Worker decodes the tail into the data grid", ["pnpm", "--filter", "@byterygon/mightyconsole", "check:browser"], {
-          env: { BYTERYGON_REQUIRE_BROWSER: "1" },
+        // The same command as foundation's two browser-check items, so one run serves all three (TSK-121).
+        command("the real server and UI in Chrome: the Arrow Worker decodes the tail into the data grid", ["node", "scripts/browser-check.ts"], {
+          cwd: "apps/mightyconsole/ui",
+          env: { MIGHTYCONSOLE_SERVER: "{server}", BYTERYGON_REQUIRE_BROWSER: "1", MIGHTYCONSOLE_FAILURE_SHOTS: "{evidence}/screenshots" },
         }),
       ],
     },

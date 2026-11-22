@@ -58,6 +58,19 @@ jobs:
           echo "### Lab tools: $tools" >> "$GITHUB_STEP_SUMMARY"
       - name: Images pinned and listed
         run: node apps/mightyconsole/lab/lab.mts images check
+      # TSK-121: the runner's load every 15 s until the job ends (uptime, memory, the lab's
+      # containers by CPU), kept with the evidence: do the browser checks that time out run on a
+      # starved machine?
+      - name: Load sampler
+        run: |
+          mkdir -p apps/mightyconsole/acceptance/evidence
+          out="$PWD/apps/mightyconsole/acceptance/evidence/runner-load.log"
+          echo "nproc $(nproc); $(free -m | sed -n 2p)" > "$out"
+          nohup sh -c 'while true; do
+            echo "== $(date -u +%T) $(cut -d" " -f1-3 /proc/loadavg) mem-used-MiB $(free -m | awk "/^Mem:/ {print \$3}")"
+            docker stats --no-stream --format "{{.Name}} {{.CPUPerc}} {{.MemUsage}}" 2>/dev/null | sort -k2 -rn | head -5
+            sleep 15
+          done' >> "$out" 2>&1 &
       # The tools as arguments ("all": none, which lab.mts reads as every tool).
       - name: Up
         if: ${{ steps.tools.outputs.lab_tools != 'none' }}
