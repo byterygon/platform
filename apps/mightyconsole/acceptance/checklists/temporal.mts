@@ -427,6 +427,33 @@ export default {
         vitest("test/temporal-history-store.test.ts"),
         vitest("test/temporal-workflow.test.tsx", "long histories"),
         command("the Timeline draws one instant per 2 px of a dense lane in packages/ui", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/timeline", "-t", "thousands of instants"]),
+        browser("the lab's long histories: newest first with the run's length in the footer, Oldest first one click away, the heavy one without a frame error", async (ctx) => {
+          const { page, origin, run, until, shot } = ctx;
+          await connectLab(ctx);
+          const table = `[...document.querySelectorAll("table[aria-label='History events']")].find((t) => t.checkVisibility())`;
+          const firstId = `${table}?.querySelector("tbody tr:not([data-spacer]) td")?.textContent`;
+          const footer = `/([\\d,]+) of ([\\d,]+) events loaded/.exec(document.body.innerText)`;
+          const order = (label: string) => `__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === ${JSON.stringify(label)}))`;
+          await page.navigate(`${origin}/temporal/lab-temporal/lab/workflows/history-many-1/history`);
+          await until(firstId, "History's first rows", 30_000);
+          await until(`${footer} && Number(${footer}[2].replace(/,/g, "")) >= 40000`, "the footer with the run's length");
+          const total = await run<number>(`Number(${footer}[2].replace(/,/g, ""))`);
+          const top = await run<string>(firstId);
+          if (Number(top) !== total) throw new Error(`the first row is event ${top}, not the newest, ${total}`);
+          await shot("history-many-1 newest first");
+          await run(order("Oldest first"));
+          await until(`${firstId} === "1"`, "Oldest first, from event 1", 30_000);
+          await shot("history-many-1 oldest first");
+          // Back to the default, as the setting is kept.
+          await run(order("Newest first"));
+          await until(`${firstId} === ${JSON.stringify(String(total))}`, "Newest first again", 30_000);
+          await page.navigate(`${origin}/temporal/lab-temporal/lab/workflows/history-heavy-1/history`);
+          await until(firstId, "the heavy history's first rows", 30_000);
+          const alerts = await run<string[]>(`[...document.querySelectorAll("[role=alert]")].filter((e) => e.checkVisibility()).map((e) => e.textContent.trim())`);
+          if (alerts.length > 0) throw new Error(`the heavy history shows ${alerts.join(" | ")}`);
+          await shot("history-heavy-1");
+        }),
+        manual("bench:history before and after on the task page (DOC-21 9.6.1)"),
       ],
     },
     {

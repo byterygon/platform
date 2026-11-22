@@ -93,8 +93,8 @@ function fakeStream() {
 interface Options {
   detail?: WorkflowDetail;
   events?: HistoryEvent[];
-  /** The history in pages, the token naming the next page's index (TSK-109). */
-  pages?: HistoryEvent[][];
+  /** A long history, read in pages of the size asked from either end; the token is where the next page starts (TSK-109). */
+  long?: HistoryEvent[];
   query?: () => Promise<{ result: unknown }>;
   connId?: string | null;
 }
@@ -102,11 +102,13 @@ interface Options {
 function setup(options: Options = {}) {
   const stream = fakeStream();
   const describe = vi.fn(async (_input: unknown) => options.detail ?? detail());
-  const history = vi.fn(async (input: { nextPageToken?: string | null }) => {
-    const pages = options.pages;
-    if (!pages) return { events: options.events ?? events };
-    const i = input.nextPageToken ? Number(input.nextPageToken) : 0;
-    return { events: pages[i]!, ...(i + 1 < pages.length ? { nextPageToken: String(i + 1) } : {}) };
+  const history = vi.fn(async (input: { nextPageToken?: string | null; pageSize?: number | null; reverse?: boolean | null }) => {
+    const all = options.long;
+    if (!all) return { events: options.events ?? events };
+    const ordered = input.reverse ? [...all].reverse() : all;
+    const from = input.nextPageToken ? Number(input.nextPageToken) : 0;
+    const to = Math.min(from + (input.pageSize ?? 1000), ordered.length);
+    return { events: ordered.slice(from, to), ...(to < ordered.length ? { nextPageToken: String(to) } : {}) };
   });
   // The whole history as a stream of bytes (TSK-109).
   const downloadHistory = vi.fn((_input: unknown, _options?: unknown) => ({ result: Promise.resolve({ bytes: 14, events: 0 }), cancel: () => {}, async *chunks() { yield new TextEncoder().encode('{"events":[]}\n'); } }));
@@ -238,7 +240,8 @@ describe("Workflow tab (spec §9.3)", () => {
     await waitFor(() => rows().length === 6, "the fold open");
     expect(rows()[1]!.querySelector("button[aria-expanded]")?.getAttribute("aria-expanded")).toBe("true");
     const kids = rows().filter((r) => r.hasAttribute("data-in-fold"));
-    expect(kids.map((r) => r.cells[3]?.textContent)).toEqual(["WorkflowTaskScheduled", "WorkflowTaskStarted", "WorkflowTaskCompleted"]);
+    // Newest first (TSK-109): the fold's events too, under its row.
+    expect(kids.map((r) => r.cells[3]?.textContent)).toEqual(["WorkflowTaskCompleted", "WorkflowTaskStarted", "WorkflowTaskScheduled"]);
     expect(rows().indexOf(kids[0]!)).toBe(2);
     expect(kids.every((r) => r.querySelector('[data-slot="fold-guide"]') !== null)).toBe(true);
     // Events outside the fold are not indented.
@@ -290,10 +293,12 @@ describe("Workflow tab (spec §9.3)", () => {
     await click(tabButton("History"));
     const rows = () => Array.from(container.querySelectorAll("table[aria-label='History events'] tbody tr:not([data-spacer])"));
     await waitFor(() => rows().length === 4, "four rows");
-    expect(rows()[2]!.textContent).toContain("ActivityTaskScheduled");
-    expect(rows()[2]!.textContent).toContain("+500 ms");
-    expect(rows()[2]!.textContent).toContain("charge");
-    expect(rows()[3]!.textContent).toContain("approve · 1 payload");
+    // Newest first (TSK-109): the signal on top, the start at the bottom.
+    expect(rows()[1]!.textContent).toContain("ActivityTaskScheduled");
+    expect(rows()[1]!.textContent).toContain("+500 ms");
+    expect(rows()[1]!.textContent).toContain("charge");
+    expect(rows()[0]!.textContent).toContain("approve · 1 payload");
+    expect(rows()[3]!.textContent).toContain("WorkflowExecutionStarted");
     // Chips name each category with its count; an empty one is disabled.
     const chip = (name: RegExp) => byRole("button", name, container.querySelector('[aria-label="Category"]')!);
     expect(chip(/^All 4$/)?.getAttribute("aria-pressed")).toBe("true");
@@ -420,26 +425,53 @@ describe("Workflow tab: long histories (TSK-109, DOC-21 §9.6.1)", () => {
     ev(n, "WorkflowExecutionCompleted", n, "Workflow", { result: ["done"] }),
   ];
 
-  test("the first page shows at once, the next ones load in the background up to 10,000 events, the rest as asked; the footer says how many", async () => {
+  test("the newest page shows at once, the next ones load in the background up to 10,000 events, the rest as asked; the footer says how many", async () => {
     const all = long(11_100);
-    const pages = [all.slice(0, 6000), all.slice(6000, 11_000), all.slice(11_000)];
-    const { history, container } = setup({ pages, detail: { ...detail({}, "Completed"), workflow: { ...detail().workflow, status: "Completed", historyLength: all.length } } });
+    const { history, container } = setup({ long: all, detail: { ...detail({}, "Completed"), workflow: { ...detail().workflow, status: "Completed", historyLength: all.length } } });
+    const pages = () => history.mock.calls.filter(([input]) => input.pageSize === 1000);
     // The Timeline (the first view) says how many are loaded and offers the rest.
-    await waitFor(() => byText("11,000 of 11,100 events") !== null, "two pages, then a stop");
+    await waitFor(() => byText("10,000 of 11,100 events") !== null, "ten pages, then a stop");
     await settle(5);
-    expect(history).toHaveBeenCalledTimes(2);
+    expect(pages().length).toBe(10);
+    expect(pages().every(([input]) => input.reverse === true)).toBe(true);
+    // The run's start is read on its own: the first page did not reach it.
+    expect(history.mock.calls.some(([input]) => input.pageSize === 1 && !input.reverse)).toBe(true);
     expect(byRole("button", "Load more")).not.toBeNull();
     await click(tabButton("History"));
     await waitFor(() => /of 11,100 events loaded/.test(container.textContent ?? ""), "History's footer");
+    // The newest event is the first row.
+    const first = () => container.querySelector("table[aria-label='History events'] tbody tr:not([data-spacer]) td")?.textContent;
+    expect(first()).toBe("11100");
     // Go to an event not loaded yet reads the pages up to it.
     const goTo = container.querySelector<HTMLInputElement>('input[aria-label="Go to event"]')!;
-    await type(goTo, "11050");
+    await type(goTo, "50");
     await act(async () => {
       goTo.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     });
-    await waitFor(() => container.textContent?.includes("Event 11050 · UpsertWorkflowSearchAttributes") === true, "the event, read from the last page");
+    await waitFor(() => container.textContent?.includes("Event 50 · UpsertWorkflowSearchAttributes") === true, "the event, read from the last pages");
     await waitFor(() => (container.textContent ?? "").includes("11,100 of 11,100 events loaded"), "every event");
-    expect(history).toHaveBeenCalledTimes(3);
+    // Oldest first is one click away: read again from event 1.
+    await click(byRole("radio", "Oldest first") ?? byRole("button", "Oldest first"));
+    await waitFor(() => first() === "1", "the oldest on top");
+    expect(history.mock.calls.at(-1)![0]).toMatchObject({ reverse: false });
+  });
+
+  test("newest first, a followed event comes in at the top of History, and the Timeline's newest lane is under the workflow's", async () => {
+    const { stream, container } = setup();
+    await waitFor(() => tabButton("History") !== null, "the tabs");
+    // The Timeline: the workflow and its workflow tasks on top, then the newest lane first.
+    const lanes = () => Array.from(container.querySelectorAll('[data-slot="timeline-lane"]')).map((l) => l.textContent ?? "");
+    await waitFor(() => lanes().length >= 3, "the lanes");
+    expect(lanes()[0]).toContain("fulfilment-long-running");
+    expect(lanes()[1]).toContain("Workflow tasks");
+    expect(lanes()[2]).toContain("approve");
+    await click(tabButton("History"));
+    const ids = () => Array.from(container.querySelectorAll("table[aria-label='History events'] tbody tr:not([data-spacer])")).map((r) => r.querySelector("td")?.textContent);
+    await waitFor(() => ids().length === 4, "the rows");
+    expect(ids()).toEqual(["4", "3", "2", "1"]);
+    stream.push(ev(5, "ActivityTaskStarted", 900, "Activity", { scheduledEventId: 3, attempt: 1 }));
+    await waitFor(() => ids()[0] === "5", "the new event on top");
+    expect(ids()).toEqual(["5", "4", "3", "2", "1"]);
   });
 
   test("Download asks the server for the whole history, decoded or as stored", async () => {

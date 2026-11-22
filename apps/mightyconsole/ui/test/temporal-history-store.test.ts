@@ -7,6 +7,7 @@ import type { EventCategory, HistoryEvent } from "@/gen/api";
 import { buildTimeline } from "@/tools/temporal/history";
 import { allRows, flatRows, foldedRows, historyRows, summaryContext } from "@/tools/temporal/history-view";
 import { HistoryStore } from "@/tools/temporal/history-store";
+import { lanesInOrder } from "@/tools/temporal/WorkflowTab";
 
 const T0 = Date.parse("2026-11-22T01:00:00Z");
 const ev = (eventId: number, eventType: string, category: EventCategory, attributes: Record<string, unknown> = {}): HistoryEvent => ({ eventId, eventTime: new Date(T0 + eventId * 10).toISOString(), eventType, category, attributes, size: 100 + (eventId % 7) * 50 });
@@ -181,5 +182,19 @@ describe("the row models (TSK-109)", () => {
       expect(flat.row(flat.find(42)!.index)).toEqual({ kind: "event", event: all[41] });
       expect(flat.find(all.length + 1)).toBeNull();
     }
+  });
+});
+
+describe("the Timeline's order (TSK-109)", () => {
+  test("newest first keeps the workflow and its workflow tasks on top, the other lanes newest first", () => {
+    const lanes = [
+      { id: "workflow", kind: "workflow" as const },
+      { id: "workflowTask", kind: "workflowTask" as const },
+      { id: "activity:5", kind: "activity" as const },
+      { id: "timer:9", kind: "timer" as const },
+      { id: "signal:approve", kind: "signal" as const },
+    ];
+    expect(lanesInOrder(lanes, "newest").map((l) => l.id)).toEqual(["workflow", "workflowTask", "signal:approve", "timer:9", "activity:5"]);
+    expect(lanesInOrder(lanes, "oldest").map((l) => l.id)).toEqual(lanes.map((l) => l.id));
   });
 });

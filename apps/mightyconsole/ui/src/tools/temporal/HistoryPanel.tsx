@@ -8,7 +8,7 @@
 // state; the rows come from a row model by index (only the drawn ones are built), counts and pairs
 // are kept up to date by the store, a filter or a search keeps its matches and adds the newer
 // events only, and Download is a stream from the server.
-import { useContext, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useContext, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -110,6 +110,8 @@ export interface HistoryPanelProps {
   loadUntil?: ((eventId: number) => Promise<boolean>) | undefined;
   /** Newest first (the default of the tab) or oldest first; oldest first when absent. */
   order?: HistoryOrder | undefined;
+  /** Switches the order (the tab reads the history again from that end). */
+  onOrderChange?: ((order: HistoryOrder) => void) | undefined;
   /** Saves the whole history from the server, decoded or as stored (`workflows.downloadHistory`). */
   onDownload?: ((form: "decoded" | "stored") => Promise<void>) | undefined;
   onOpenPending(): void;
@@ -119,7 +121,7 @@ export interface HistoryPanelProps {
   onOpenPayload?: ((stub: LargeStub, label: string) => void) | undefined;
 }
 
-export function HistoryPanel({ workflowId, runId, store, total, startMs, live, pending, selected, onSelect, hasMore, loadingMore = false, onLoadMore, loadUntil, order = "oldest", onDownload, onOpenPending, loadRaw, onOpenPayload }: HistoryPanelProps) {
+export function HistoryPanel({ workflowId, runId, store, total, startMs, live, pending, selected, onSelect, hasMore, loadingMore = false, onLoadMore, loadUntil, order = "oldest", onOrderChange, onDownload, onOpenPending, loadRaw, onOpenPayload }: HistoryPanelProps) {
   const notify = useContext(NoticeContext);
   const version = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const newestFirst = order === "newest";
@@ -166,6 +168,18 @@ export function HistoryPanel({ workflowId, runId, store, total, startMs, live, p
     el.addEventListener("scroll", check, { passive: true });
     return () => el.removeEventListener("scroll", check);
   }, [hasMore, onLoadMore, model.count, view]);
+
+  // Newest first, a followed event comes in at the top: with the list scrolled away from the
+  // top, the rows in view stay where they are; at the top, the new rows show (TSK-109).
+  const seen = useRef({ hi: store.hi, lo: store.lo, count: model.count });
+  useLayoutEffect(() => {
+    const before = seen.current;
+    seen.current = { hi: store.hi, lo: store.lo, count: model.count };
+    const el = scroller.current;
+    if (!newestFirst || !el || el.scrollTop === 0 || store.lo !== before.lo || store.hi <= before.hi) return;
+    const row = el.querySelector<HTMLElement>("tbody tr:not([data-spacer])");
+    if (row) el.scrollTop += (model.count - before.count) * row.offsetHeight;
+  }, [model, store, newestFirst]);
 
   // An event to scroll to once its fold is open.
   const revealing = useRef<number | null>(null);
@@ -378,6 +392,12 @@ export function HistoryPanel({ workflowId, runId, store, total, startMs, live, p
               }}
             />
           </InputGroup>
+          {onOrderChange ? (
+            <ToggleGroup aria-label="Order" size="small" value={[order]} onValueChange={(v) => v[0] && onOrderChange(v[0] as HistoryOrder)}>
+              <ToggleGroupItem value="newest">Newest first</ToggleGroupItem>
+              <ToggleGroupItem value="oldest">Oldest first</ToggleGroupItem>
+            </ToggleGroup>
+          ) : null}
           <ToggleGroup aria-label="View" size="small" value={[view]} onValueChange={(v) => v[0] && setView(v[0] as "table" | "json")}>
             <ToggleGroupItem value="table">Table</ToggleGroupItem>
             <ToggleGroupItem value="json">JSON</ToggleGroupItem>

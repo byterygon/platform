@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableVir
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Timeline } from "@/components/ui/timeline";
 import { CopyButton, NoticeContext, Page, PageHeader, chipClass, gutterTable } from "@/app/page";
+import { useStoreIfAny } from "@/app/store";
 import { EmptyLine, ErrorState, LoadingRows } from "@/app/states";
 import { useTabView } from "@/app/tab-view";
 import { cn } from "@/lib/cn";
@@ -105,7 +106,11 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
   const namespace = text(tab.params["namespace"]) || "default";
   const workflowId = text(tab.params["workflowId"]);
   const runId = text(tab.params["runId"]) || undefined;
-  const order: HistoryOrder = "oldest";
+  // Newest first by default (Uy Son, 2026-11-20); the choice is a setting, kept in the workspace (TSK-109).
+  const app = useStoreIfAny();
+  const [localOrder, setLocalOrder] = useState<HistoryOrder>("newest");
+  const order: HistoryOrder = app?.state.settings.historyOrder ?? localOrder;
+  const setOrder = (next: HistoryOrder) => (app ? app.dispatch({ type: "settings", settings: { historyOrder: next } }) : setLocalOrder(next));
   const state = useWorkflow({ client, connId, namespace, workflowId, runId, note, onLive, active, order });
   const [section, setSection] = useTabView({ tab, navigate }, WORKFLOW_VIEWS, "timeline");
   const [selected, setSelected] = useState<number | null>(null);
@@ -275,6 +280,8 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
             <TimelinePanel
               store={store}
               total={detail.workflow.historyLength}
+              order={order}
+              onOrderChange={setOrder}
               hasMore={state.hasMore}
               loadingMore={state.loadingMore}
               onLoadMore={state.loadMore}
@@ -295,6 +302,7 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
               total={detail.workflow.historyLength}
               startMs={detail.workflow.startTime ? Date.parse(detail.workflow.startTime) : undefined}
               order={order}
+              onOrderChange={setOrder}
               loadingMore={state.loadingMore}
               loadUntil={state.loadUntil}
               onDownload={connId === null ? undefined : downloadHistory}
@@ -445,11 +453,26 @@ const KIND_CHIPS: readonly { kind: LaneKind; label: string }[] = [
   { kind: "workflowTask", label: "Workflow tasks" },
 ];
 
+/**
+ * The Timeline's lanes in the views' order (TSK-109): newest first puts the lane whose first event
+ * is the latest at the top, the workflow and its workflow tasks pinned above (they span the run);
+ * the time axis still runs left to right.
+ */
+export function lanesInOrder<T extends { kind: LaneKind }>(lanes: readonly T[], order: HistoryOrder): T[] {
+  if (order === "oldest") return [...lanes];
+  const pinned = lanes.filter((l) => l.kind === "workflow" || l.kind === "workflowTask");
+  const rest = lanes.filter((l) => l.kind !== "workflow" && l.kind !== "workflowTask");
+  return [...pinned, ...rest.reverse()];
+}
+
 interface TimelinePanelProps {
   /** The loaded events (TSK-109); the Timeline is built from them one event at a time. */
   store: HistoryStore;
   /** The history's length as describe reports it. */
   total: number;
+  /** Newest lanes first (the workflow and its workflow tasks stay on top), or oldest first. */
+  order: HistoryOrder;
+  onOrderChange(order: HistoryOrder): void;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore(): void;
@@ -465,7 +488,7 @@ interface TimelinePanelProps {
   onOpenWorkflow(workflowId: string, runId?: string, event?: LinkEvent): void;
 }
 
-function TimelinePanel({ store, total, hasMore, loadingMore, onLoadMore, pending, now, live, workflowId, selected, onSelect, onOpenWorkflow }: TimelinePanelProps) {
+function TimelinePanel({ store, total, order, onOrderChange, hasMore, loadingMore, onLoadMore, pending, now, live, workflowId, selected, onSelect, onOpenWorkflow }: TimelinePanelProps) {
   const version = useSyncExternalStore(store.subscribe, store.getSnapshot);
   // The open items' captions and states at this clock (the closed ones were set as they closed).
   const data = store.timeline.view(now, pending);
@@ -473,9 +496,11 @@ function TimelinePanel({ store, total, hasMore, loadingMore, onLoadMore, pending
   const [follow, setFollow] = useState(true);
   // New arrays when the history or the filter changes, so the chart sees new lanes and items; the clock alone keeps them.
   const lanes = useMemo(
-    () => data.lanes.filter((l) => !hidden.has(l.kind)).map((l) => ({ id: l.id, label: l.label, detail: l.detail, icon: <Icon icon={KIND_ICON[l.kind]} /> })),
+    () => lanesInOrder(data.lanes, order)
+      .filter((l) => !hidden.has(l.kind))
+      .map((l) => ({ id: l.id, label: l.label, detail: l.detail, icon: <Icon icon={KIND_ICON[l.kind]} /> })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data.lanes, hidden, version],
+    [data.lanes, hidden, order, version],
   );
   const items = useMemo(
     () => {
@@ -512,6 +537,10 @@ function TimelinePanel({ store, total, hasMore, loadingMore, onLoadMore, pending
         })}
       </div>
       <div className="ms-auto flex items-center gap-inline-sm text-caption-1 text-fg-muted">
+        <ToggleButton size="small" appearance="outline" pressed={order === "oldest"} onPressedChange={(p) => onOrderChange(p ? "oldest" : "newest")} className={chipClass}>
+          {order === "oldest" ? <Icon icon={Checkmark} /> : null}
+          Oldest first
+        </ToggleButton>
         <span>
           {formatCount(store.size)} of {formatCount(whole)} events
         </span>
