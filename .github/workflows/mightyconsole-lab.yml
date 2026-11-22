@@ -6,25 +6,21 @@ name: Mightyconsole lab
 # packages stay pullable), and by hand. Tool tasks add their integration tests against it here.
 # TSK-87: the acceptance harness runs the foundation's checklist against the running lab and
 # uploads its evidence (summary.md, logs, screenshots); TSK-84 adds LangGraph's.
+# TSK-129: on a pull request the lab runs only with a lab label (scripts/lab-labels.mjs: `lab`,
+# `lab:<tool>`, `lab:all`; `lab:none` runs nothing), when it is added and on each push while it
+# stays. The "Lab decision" workflow fails a pull request that needs the lab and has no lab label.
 on:
   pull_request:
-    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", "crates/message-codecs/**", ".github/workflows/mightyconsole-lab.yml", "scripts/affected*.mjs"]
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
-    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", "crates/message-codecs/**", ".github/workflows/mightyconsole-lab.yml", "scripts/affected*.mjs"]
+    paths: ["apps/mightyconsole/lab/**", "apps/mightyconsole/acceptance/**", "crates/message-codecs/**", ".github/workflows/mightyconsole-lab.yml", "scripts/affected*.mjs", "scripts/lab-labels.mjs"]
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
-
-# TSK-124: a newer push to the same pull request (or a newer main) cancels the run in progress,
-# like ci.yml. 7 lab runs in the week to 2026-11-22 (175 min) went on testing a head that a
-# newer push had already replaced.
-concurrency:
-  group: lab-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   # TSK-122: as in ci.yml, debug info is line tables only (smaller cache and faster links for the
@@ -40,6 +36,18 @@ jobs:
     # (scripts/affected.mjs, LAB_TOOL_FILES in scripts/affected-rules.mjs); any other Mightyconsole
     # change, a push, the weekly run and a manual run bring up every tool. The foundation checklist
     # needs every service, so it runs with every tool; a tool's checklist runs with its tool.
+    # TSK-129: on a pull request, only when it carries a lab label (lab:none starts the job, which
+    # then brings up nothing), and a label event only when the label added is a lab label.
+    if: >-
+      github.event_name != 'pull_request' ||
+      ((github.event.action != 'labeled' || startsWith(github.event.label.name, 'lab')) &&
+       (contains(github.event.pull_request.labels.*.name, 'lab') || contains(join(github.event.pull_request.labels.*.name, ' '), 'lab:')))
+    # TSK-124: a newer push to the same pull request (or a newer main) cancels the run in progress,
+    # like ci.yml. TSK-129: on the job, so a run that skips this job (a label that is not a lab
+    # label, a push to a pull request without one) never cancels a lab run.
+    concurrency:
+      group: lab-${{ github.ref }}
+      cancel-in-progress: true
     env:
       BASE: ${{ github.event.pull_request.base.sha }}
     steps:
@@ -51,10 +59,13 @@ jobs:
           node-version: 24
       - name: Affected tools
         id: tools
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
-          node scripts/affected.mjs --event "$GITHUB_EVENT_NAME" ${BASE:+--base "$BASE"} --head HEAD --github-output --pretty > "$RUNNER_TEMP/affected.json"
-          tools=$(node -p 'const t = require(process.argv[1]).lab_tools; Array.isArray(t) ? t.join(" ") : t' "$RUNNER_TEMP/affected.json")
-          echo "lab_tools: $tools"
+          node scripts/affected.mjs --event "$GITHUB_EVENT_NAME" ${BASE:+--base "$BASE"} --head HEAD --pretty > "$RUNNER_TEMP/affected.json"
+          echo "affected: $(node -p 'const t = require(process.argv[1]).lab_tools; Array.isArray(t) ? t.join(" ") : t' "$RUNNER_TEMP/affected.json")"
+          tools=$(node scripts/lab-labels.mjs scope --event "$GITHUB_EVENT_NAME" --labels "$LABELS" --affected "$RUNNER_TEMP/affected.json" --github-output)
+          echo "lab_tools: $tools (labels: $LABELS)"
           echo "### Lab tools: $tools" >> "$GITHUB_STEP_SUMMARY"
       - name: Images pinned and listed
         run: node apps/mightyconsole/lab/lab.mts images check

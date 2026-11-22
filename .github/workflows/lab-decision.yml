@@ -1,0 +1,38 @@
+name: Lab decision
+
+# TSK-129: a pull request whose change needs the Mightyconsole lab (scripts/affected.mjs's
+# lab_tools is not "none") must say what it does about it with a label: `lab`, `lab:<tool>`,
+# `lab:all` or `lab:none` (scripts/lab-labels.mjs). The lab itself runs only with such a label
+# (mightyconsole-lab.yml). This job is separate from ci.yml so that adding a label re-runs this
+# check alone, not the whole CI.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab-decision-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  decide:
+    name: Lab decision
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: The pull request has a lab label when its change needs the lab
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          node scripts/affected.mjs --event pull_request --base "$BASE" --head HEAD > "$RUNNER_TEMP/affected.json"
+          node scripts/lab-labels.mjs decide --labels "$LABELS" --affected "$RUNNER_TEMP/affected.json" 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"

@@ -22,3 +22,12 @@ the change, with the same `cargo -p` and `pnpm --filter` arguments (`--dry-run` 
 `--keep-going` runs past a failure), and names what only CI runs: the network namespace, the
 browser checks, the lab, the Windows and macOS jobs. `node --test scripts/pre-pr.test.mjs` tests
 its plan; CI's Affected job runs that test.
+
+The Mightyconsole lab on pull requests (TSK-129) runs only with a label, read by
+`scripts/lab-labels.mjs`: `lab` (the scope `scripts/affected.mjs` gives as `lab_tools`),
+`lab:<tool>` (several add up; `lab:all` for every tool) or `lab:none` (no run). Adding the label
+starts it; later pushes run it again while the label stays, and a newer push cancels the run in
+progress (job-level concurrency, so a label that is not a lab label never cancels one). The "Lab
+decision" workflow (`lab-decision.yml`, seconds, separate from ci.yml so a label change does not
+re-run CI) fails a pull request whose change needs the lab and that has no lab label. Pushes to
+main, the weekly run and manual runs bring up every tool.
