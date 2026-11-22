@@ -2,7 +2,8 @@
 //! `langgraph.assistants.nodeStats`, Open question 62). The LangGraph server keeps no per-node
 //! numbers, so they are read from the runs' checkpoints:
 //!
-//! - the assistant's threads are found by their metadata (`assistant_id`), newest updated first;
+//! - the assistant's threads are found by their metadata (`assistant_id`), newest updated first,
+//!   or, on a server that does not write it there, every thread newest first;
 //! - their runs of this assistant, newest first, until `runs` of them;
 //! - each counted run's own checkpoints (`POST /threads/{id}/history` filtered by `run_id`).
 //!
@@ -290,18 +291,39 @@ pub async fn gather(
         bytes: 0,
         reason: None,
     };
+    // A run names its assistant by id, or by its graph's id when it was started with that.
+    let about = client
+        .get(&format!("/assistants/{assistant}"), &[], "assistant")
+        .await?;
+    reads.add(&about);
+    let graph = about
+        .get("graph_id")
+        .and_then(Value::as_str)
+        .unwrap_or(assistant)
+        .to_owned();
+    let names = [assistant.to_owned(), graph];
     let mut found: Vec<CountedRun> = Vec::new();
     let mut threads_read = 0usize;
     let mut skipped = 0usize;
     let mut offset = 0usize;
+    // Threads that name the assistant in their metadata; a server that does not write it there
+    // (`langgraph dev`) gets every thread, newest first, within the same limits.
+    let mut by_metadata = true;
     'threads: loop {
-        let body = json!({ "metadata": { "assistant_id": assistant }, "limit": THREADS_PAGE,
-                           "offset": offset, "sort_by": "updated_at", "sort_order": "desc" });
+        let mut body = json!({ "limit": THREADS_PAGE, "offset": offset,
+                               "sort_by": "updated_at", "sort_order": "desc" });
+        if by_metadata {
+            body["metadata"] = json!({ "assistant_id": assistant });
+        }
         let page = client.post("/threads/search", &body, "thread").await?;
         reads.add(&page);
         let ids: Vec<String> = items(&page, "threads")
             .filter_map(|t| t.get("thread_id")?.as_str().map(str::to_owned))
             .collect();
+        if by_metadata && offset == 0 && ids.is_empty() {
+            by_metadata = false;
+            continue;
+        }
         for thread in &ids {
             if found.len() >= want || reads.done() {
                 break 'threads;
@@ -311,7 +333,7 @@ pub async fn gather(
                 break 'threads;
             }
             threads_read += 1;
-            match thread_runs(client, thread, assistant, want - found.len(), &mut reads).await {
+            match thread_runs(client, thread, &names, want - found.len(), &mut reads).await {
                 Ok(runs) => found.extend(runs),
                 Err(_) => skipped += 1,
             }
@@ -365,7 +387,7 @@ pub async fn gather(
 async fn thread_runs(
     client: &LangGraphClient,
     thread: &str,
-    assistant: &str,
+    names: &[String],
     most: usize,
     reads: &mut Reads,
 ) -> Result<Vec<CountedRun>, ToolError> {
@@ -382,7 +404,11 @@ async fn thread_runs(
     };
     reads.add(&page);
     Ok(items(&page, "runs")
-        .filter(|r| r.get("assistant_id").and_then(Value::as_str) == Some(assistant))
+        .filter(|r| {
+            r.get("assistant_id")
+                .and_then(Value::as_str)
+                .is_some_and(|a| names.iter().any(|n| n == a))
+        })
         .filter_map(|r| {
             Some(CountedRun {
                 thread_id: thread.to_owned(),

@@ -165,6 +165,14 @@ async fn answer(method: &Method, path: &str, headers: &HeaderMap, body: &Value) 
             StatusCode::NOT_FOUND,
             json!({ "detail": "Assistant not found" }),
         ),
+        // As `langgraph dev`: no thread names its assistant in its metadata (TSK-96's node statistics).
+        ("POST", "/threads/search") if body["metadata"].get("assistant_id").is_some() => {
+            json_response(StatusCode::OK, json!([]))
+        }
+        ("GET", "/assistants/a1") => json_response(
+            StatusCode::OK,
+            json!({ "assistant_id": "a1", "graph_id": "agent", "name": "agent", "version": 2 }),
+        ),
         ("POST", "/threads/search") => json_response(
             StatusCode::OK,
             json!([{ "thread_id": THREAD, "status": "interrupted", "created_at": "c", "updated_at": "u",
@@ -1034,11 +1042,14 @@ async fn an_assistant_s_versions_and_node_statistics() {
     )
     .await;
     let stats = tab.result(4).await;
-    // The thread search names the assistant; the other assistant's run is not counted.
+    // No thread names the assistant in its metadata: every thread is read, newest first; the
+    // other assistant's run is not counted.
+    let searches = mock.requests("/threads/search");
     assert_eq!(
-        mock.last("/threads/search").body["metadata"],
+        searches[searches.len() - 2].body["metadata"],
         json!({ "assistant_id": "a1" })
     );
+    assert!(searches[searches.len() - 1].body.get("metadata").is_none());
     assert_eq!(stats["runs"], 1);
     assert_eq!(stats["threads"], 1);
     assert_eq!(stats["partial"], false);

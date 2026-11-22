@@ -143,8 +143,9 @@ export default {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await run(`__mc.dblclick(__mc.item("Threads"))`);
-          await until(`__mc.button("New thread")`, "the Threads tab");
-          await run(`__mc.click(__mc.button("New thread"))`);
+          await until(visibleButton("New thread"), "the Threads tab");
+          // The Threads tab's own: an assistant tab left open (hidden) has a New thread too (TSK-96).
+          await run(`__mc.click(${visibleButton("New thread")})`);
           await until(`${runBar("Run")} && !${runBar("Run")}.hasAttribute("data-disabled") && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
           await run(`__mc.click(${runBar("Run")})`);
           await shot("run started");
@@ -170,7 +171,7 @@ export default {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await run(`__mc.dblclick(__mc.item("Threads"))`);
-          await until(`__mc.button("New thread")`, "the Threads tab");
+          await until(visibleButton("New thread"), "the Threads tab");
           // The metadata filter's suggestions (the keys seen) paint over the threads table's header.
           await until(`document.querySelector('[aria-label="Threads"] thead')`, "the threads table");
           await typeInEditor(ctx, "Metadata (JSON)", '{ "');
@@ -178,7 +179,8 @@ export default {
           if (!(await suggestionsOnTop(ctx))) throw new Error("a metadata suggestion row is covered by the threads table");
           await shot("metadata suggestions over the threads table");
           await typeInEditor(ctx, "Metadata (JSON)", "");
-          await run(`__mc.click(__mc.button("New thread"))`);
+          // The Threads tab's own: an assistant tab left open (hidden) has a New thread too (TSK-96).
+          await run(`__mc.click(${visibleButton("New thread")})`);
           await until(`${runBar("Run")} && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
           // Context sits in the Advanced fold (TSK-95).
           await until(advancedRow, "the Advanced row");
@@ -211,8 +213,9 @@ export default {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await run(`__mc.dblclick(__mc.item("Threads"))`);
-          await until(`__mc.button("New thread")`, "the Threads tab");
-          await run(`__mc.click(__mc.button("New thread"))`);
+          await until(visibleButton("New thread"), "the Threads tab");
+          // The Threads tab's own: an assistant tab left open (hidden) has a New thread too (TSK-96).
+          await run(`__mc.click(${visibleButton("New thread")})`);
           await until(`${runBar("Run")} && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
           const summary = await run<string>(`${advancedRow}.textContent.trim()`);
           if (summary !== "Advanced · values, updates, messages · subgraphs on · no interrupts") throw new Error(`the Advanced row says ${JSON.stringify(summary)}`);
