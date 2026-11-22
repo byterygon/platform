@@ -337,6 +337,8 @@ fn the_procedures_of_the_spec() {
             Risk::Write,
             defaults,
         ),
+        // Replies stay under the frame (TSK-108): `get` loads one run's metadata whole.
+        ("langgraph.runs.get", Query, LG_READ, Risk::Read, defaults),
         ("langgraph.runs.join", Stream, LG_READ, Risk::Read, live),
         ("langgraph.runs.list", Query, LG_READ, Risk::Read, defaults),
         (
@@ -403,6 +405,17 @@ fn the_procedures_of_the_spec() {
             LG_READ,
             Risk::Read,
             defaults,
+        ),
+        // One value of a checkpoint or a run as a stream, for what is over one reply (TSK-108).
+        (
+            "langgraph.threads.readValue",
+            Stream,
+            LG_READ,
+            Risk::Read,
+            (
+                Some(Duration::from_secs(600)),
+                Some(Duration::from_secs(3600)),
+            ),
         ),
         (
             "langgraph.threads.search",

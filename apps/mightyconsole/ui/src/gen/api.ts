@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:e46ec9650455c2003a09d01d049686865f0705294bd22323ede0e34747e2a62c";
+export const SCHEMA_HASH = "sha256:6202b4c16a7d6df1637f7cf513db19ae220752a80d1ab9932eed8451a4368c94";
 
 // ---- Types
 
@@ -2351,6 +2351,33 @@ published: Array<string>, };
 export type PositionRange = { from?: string | null, to?: string | null, };
 
 /**
+ * What `langgraph.threads.readValue` reads: one value of a checkpoint or of a run, whole.
+ */
+export type ReadValueInput = { connId: string, threadId: string, 
+/**
+ * A run's value (`metadata`); when absent, a checkpoint's.
+ */
+runId?: string | null, 
+/**
+ * The checkpoint (the current state when absent).
+ */
+checkpointId?: string | null, 
+/**
+ * A `field` of a `cut`: `values`, `metadata`, `tasks.<n>.state`, `tasks.<n>.result`,
+ * `interrupts.<n>` or `tasks.<n>.interrupts.<m>`.
+ */
+field: string, };
+
+/**
+ * The end of `langgraph.threads.readValue`.
+ */
+export type ReadValueSummary = { 
+/**
+ * The JSON text sent.
+ */
+bytes: number, };
+
+/**
  * One header of a [`MessageRecord`]; names repeat when the system allows several values.
  */
 export type RecordHeader = { name: string, value: string, encoding: RecordHeaderEncoding, };
@@ -2594,7 +2621,11 @@ export type Run = { runId: string, threadId: string, assistantId: string,
 /**
  * `pending`, `running`, `success`, `error`, `timeout`, `interrupted`.
  */
-status: string, createdAt: string, updatedAt: string, metadata: JsonValue, multitaskStrategy?: string, };
+status: string, createdAt: string, updatedAt: string, metadata: JsonValue, multitaskStrategy?: string, 
+/**
+ * The values this reply left out (`metadata`), each over its share (TSK-108).
+ */
+cuts: Array<ValueCut>, };
 
 /**
  * `Command` of a run: resume an interrupt, update the state, go to a node.
@@ -2648,7 +2679,24 @@ export type RunsListInput = { connId: string, threadId: string,
 /**
  * 1 to 1000; 20 when absent. Newest first.
  */
-limit?: number | null, };
+limit?: number | null, 
+/**
+ * The runs to skip: the `next` of the previous page.
+ */
+offset?: number | null, };
+
+/**
+ * A page of a thread's runs: at most about 4 MiB, whatever `limit` says (TSK-108).
+ */
+export type RunsPage = { 
+/**
+ * Newest first. A run's metadata over its share is `null` with a note in its `cuts`.
+ */
+items: Array<Run>, 
+/**
+ * Pass it as `offset` for the next page; absent when the runs end here.
+ */
+next?: number, };
 
 export type RunsStreamInput = { connId: string, 
 /**
@@ -3230,6 +3278,19 @@ limit?: number | null,
  */
 before?: string | null, };
 
+/**
+ * A page of the history: at most about 4 MiB, whatever `limit` says (TSK-108).
+ */
+export type ThreadHistoryPage = { 
+/**
+ * Newest first. A value over its share is `null` with a note in the item's `cuts`.
+ */
+items: Array<ThreadState>, 
+/**
+ * Pass it as `before` for the next page; absent when the history ends here.
+ */
+next?: string, };
+
 export type ThreadIdInput = { connId: string, threadId: string, };
 
 /**
@@ -3251,7 +3312,12 @@ metadata: JsonValue, createdAt?: string,
 /**
  * Every pending interrupt of the state, its tasks' included.
  */
-interrupts: Array<Interrupt>, };
+interrupts: Array<Interrupt>, 
+/**
+ * The values this reply left out, each over its share of the reply's bytes (TSK-108): the
+ * field is `null` here and the cut says what it was. Empty when nothing was cut.
+ */
+cuts: Array<ValueCut>, };
 
 export type ThreadStateInput = { connId: string, threadId: string, 
 /**
@@ -3261,7 +3327,12 @@ checkpointId?: string | null,
 /**
  * Include the subgraphs' states in the tasks.
  */
-subgraphs?: boolean | null, };
+subgraphs?: boolean | null, 
+/**
+ * Allow the reply to weigh up to 12 MiB instead of 8 MiB, to load a value that came back
+ * cut (`cuts`); over that, `threads.readValue` streams it.
+ */
+full?: boolean | null, };
 
 export type ThreadsCreateInput = { connId: string, metadata?: JsonValue | null, };
 
@@ -3381,6 +3452,28 @@ export type UpdateStateOutput = {
  * The new checkpoint.
  */
 checkpointId?: string, checkpoint: JsonValue, };
+
+/**
+ * A value that was left out of a reply because it was over its share.
+ */
+export type ValueCut = { 
+/**
+ * Where it was: `values`, `metadata`, `tasks.<n>.state`, `tasks.<n>.result`,
+ * `interrupts.<n>` or `tasks.<n>.interrupts.<m>`.
+ */
+field: string, 
+/**
+ * Its size as compact JSON text.
+ */
+bytes: number, 
+/**
+ * `object`, `array`, `string`, `number`, `boolean` or `null`.
+ */
+kind: string, 
+/**
+ * The first characters of its JSON text.
+ */
+preview: string, };
 
 export type VolumeNameInput = { connId: string, name: string, };
 
@@ -3741,8 +3834,9 @@ export interface Procedures {
   readonly "langgraph.connect": ProcedureDef<"mutation", LanggraphConnectInput, LanggraphConnectOutput, ToolError>;
   readonly "langgraph.disconnect": ProcedureDef<"mutation", LanggraphConnIdInput, Empty, ToolError>;
   readonly "langgraph.runs.cancel": ProcedureDef<"mutation", RunIdInput, Empty, ToolError>;
+  readonly "langgraph.runs.get": ProcedureDef<"query", RunIdInput, Run, ToolError>;
   readonly "langgraph.runs.join": ProcedureDef<"stream", RunsJoinInput, RunStreamSummary, ToolError>;
-  readonly "langgraph.runs.list": ProcedureDef<"query", RunsListInput, Array<Run>, ToolError>;
+  readonly "langgraph.runs.list": ProcedureDef<"query", RunsListInput, RunsPage, ToolError>;
   readonly "langgraph.runs.rollback": ProcedureDef<"mutation", RunIdInput, Empty, ToolError>;
   readonly "langgraph.runs.stream": ProcedureDef<"stream", RunsStreamInput, RunStreamSummary, ToolError>;
   readonly "langgraph.store.delete": ProcedureDef<"mutation", StoreKeyInput, Empty, ToolError>;
@@ -3753,7 +3847,8 @@ export interface Procedures {
   readonly "langgraph.threads.create": ProcedureDef<"mutation", ThreadsCreateInput, Thread, ToolError>;
   readonly "langgraph.threads.delete": ProcedureDef<"mutation", ThreadIdInput, Empty, ToolError>;
   readonly "langgraph.threads.get": ProcedureDef<"query", ThreadIdInput, Thread, ToolError>;
-  readonly "langgraph.threads.history": ProcedureDef<"query", ThreadHistoryInput, Array<ThreadState>, ToolError>;
+  readonly "langgraph.threads.history": ProcedureDef<"query", ThreadHistoryInput, ThreadHistoryPage, ToolError>;
+  readonly "langgraph.threads.readValue": ProcedureDef<"stream", ReadValueInput, ReadValueSummary, ToolError>;
   readonly "langgraph.threads.search": ProcedureDef<"query", ThreadsSearchInput, Array<Thread>, ToolError>;
   readonly "langgraph.threads.state": ProcedureDef<"query", ThreadStateInput, ThreadState, ToolError>;
   readonly "langgraph.threads.updateState": ProcedureDef<"mutation", UpdateStateInput, UpdateStateOutput, ToolError>;
@@ -3934,6 +4029,7 @@ export interface Api {
     readonly disconnect: Procedures["langgraph.disconnect"];
     readonly runs: {
       readonly cancel: Procedures["langgraph.runs.cancel"];
+      readonly get: Procedures["langgraph.runs.get"];
       readonly join: Procedures["langgraph.runs.join"];
       readonly list: Procedures["langgraph.runs.list"];
       readonly rollback: Procedures["langgraph.runs.rollback"];
@@ -3951,6 +4047,7 @@ export interface Api {
       readonly delete: Procedures["langgraph.threads.delete"];
       readonly get: Procedures["langgraph.threads.get"];
       readonly history: Procedures["langgraph.threads.history"];
+      readonly readValue: Procedures["langgraph.threads.readValue"];
       readonly search: Procedures["langgraph.threads.search"];
       readonly state: Procedures["langgraph.threads.state"];
       readonly updateState: Procedures["langgraph.threads.updateState"];
@@ -4599,6 +4696,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+      get: {
+        name: "langgraph.runs.get",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
       join: {
         name: "langgraph.runs.join",
         kind: "stream",
@@ -4732,6 +4839,16 @@ export const procedures: Api = {
         deprecated: false,
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
+      },
+      readValue: {
+        name: "langgraph.threads.readValue",
+        kind: "stream",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 600000,
+        timeoutMaxMs: 3600000,
       },
       search: {
         name: "langgraph.threads.search",

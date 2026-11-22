@@ -251,6 +251,46 @@ export default {
       checks: [lab("lab_fork_and_time_travel_make_new_checkpoints"), vitest("test/langgraph.test.tsx", "history: fork from a checkpoint and run from it")],
     },
     {
+      id: "frame-limit",
+      text: "TSK-108 (DOC-21 §9, replies and the frame limit): a thread with many runs or heavy states never fails with a frame-size error. History and the runs of a thread come in pages of at most 4 MiB with a token for the next; a value over its share (1 MiB in a list, 8 MiB for one state) is left out with a note (its size, type and start) that loads on request, from a reply of up to 12 MiB or from a stream; a run event over 4 MiB is a note too.",
+      lab: true,
+      checks: [
+        cargo("json_len_matches_the_compact_text"),
+        cargo("shrink_cuts_the_biggest_first_and_stops_at_the_share"),
+        cargo("shrink_counts_the_rest_and_keeps_small_values"),
+        cargo("a_page_takes_items_up_to_the_budget_and_always_the_first"),
+        cargo("the_upstream_page_follows_the_weight"),
+        cargo("runs_come_in_pages_of_bytes_and_the_pages_add_up_to_every_run"),
+        cargo("a_run_with_big_metadata_is_cut_and_loaded_on_request"),
+        cargo("the_history_of_heavy_checkpoints_comes_in_pages_with_notes"),
+        cargo("a_heavy_page_is_asked_again_for_fewer_checkpoints"),
+        cargo("a_small_history_is_one_page_with_nothing_left"),
+        cargo("a_state_over_its_share_is_cut_then_loaded_then_streamed"),
+        cargo("a_run_event_over_its_share_is_forwarded_as_a_note"),
+        lab("lab_a_thread_with_many_heavy_runs_is_paged_by_bytes"),
+        lab("lab_heavy_checkpoints_are_left_out_of_history_and_load_on_request"),
+        vitest("test/langgraph.test.tsx", "history: pages follow the server's token"),
+        vitest("test/langgraph.test.tsx", "a value over what one reply can carry is read as a stream"),
+        browser("the heavy thread's History: a checkpoint's values left out with their size, then loaded (TSK-108)", async ({ page, origin, until, run, shot }) => {
+          // The thread the lab seeds with checkpoints of up to 6 MiB (`lab seed langgraph`).
+          const found = (await (await fetch("http://127.0.0.1:2024/threads/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ metadata: { lab: "heavy-state" }, limit: 1 }) })).json()) as { thread_id: string }[];
+          if (!found[0]) throw new Error("the lab has no heavy-state thread: run `lab seed langgraph`");
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await page.navigate(`${origin}/langgraph/lab/threads/${found[0].thread_id}/history`);
+          const note = `[...document.querySelectorAll("[role=group]")].find((g) => g.checkVisibility() && g.getAttribute("aria-label") === "Values, left out")`;
+          await until(note, "the newest checkpoint's values left out", 30_000);
+          const text = await run<string>(`${note}.textContent`);
+          if (!/Values is an object of \d+(\.\d)? MiB/.test(text)) throw new Error(`the note says ${JSON.stringify(text)}`);
+          await shot("a checkpoint's values left out, with their size");
+          const load = `[...document.querySelectorAll("button")].find((b) => b.checkVisibility() && /^Load \\d/.test(b.textContent.trim()))`;
+          await run(`${load}.click()`);
+          await until(`!(${note}) && [...document.querySelectorAll("[aria-label=Values]")].some((v) => v.checkVisibility())`, "the values loaded", 60_000);
+          await shot("the values loaded");
+        }),
+      ],
+    },
+    {
       id: "reconnect-store",
       text: "A run survives a server reconnect by joining it; the store browser lists, searches, puts and deletes items.",
       lab: true,

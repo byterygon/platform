@@ -9,6 +9,8 @@ use serde::Serialize;
 use serde_json::Value;
 use ts_rs::TS;
 
+use super::budget::{self, ValueCut};
+
 fn text(v: &Value, key: &str) -> Option<String> {
     match v.get(key) {
         Some(Value::String(s)) => Some(s.clone()),
@@ -307,6 +309,9 @@ pub struct ThreadState {
     pub created_at: Option<String>,
     /// Every pending interrupt of the state, its tasks' included.
     pub interrupts: Vec<Interrupt>,
+    /// The values this reply left out, each over its share of the reply's bytes (TSK-108): the
+    /// field is `null` here and the cut says what it was. Empty when nothing was cut.
+    pub cuts: Vec<ValueCut>,
 }
 
 impl ThreadState {
@@ -345,7 +350,66 @@ impl ThreadState {
             created_at: text(v, "created_at"),
             tasks,
             interrupts,
+            cuts: Vec::new(),
         }
+    }
+
+    /// What the state weighs in a reply, as compact JSON text: close, not exact (the names, ids and
+    /// the cut notes are counted at a flat rate), which the budget's room under the frame covers.
+    pub fn weight(&self) -> usize {
+        let task_values: usize = self
+            .tasks
+            .iter()
+            .map(|t| {
+                256 + t.error.as_ref().map_or(0, String::len)
+                    + t.state.as_ref().map_or(0, budget::json_len)
+                    + t.result.as_ref().map_or(0, budget::json_len)
+                    + t.interrupts
+                        .iter()
+                        .map(|i| 64 + budget::json_len(&i.value))
+                        .sum::<usize>()
+            })
+            .sum();
+        let interrupts: usize = self
+            .interrupts
+            .iter()
+            .map(|i| 64 + budget::json_len(&i.value))
+            .sum();
+        1024 + budget::json_len(&self.values)
+            + budget::json_len(&self.metadata)
+            + budget::json_len(&self.checkpoint)
+            + task_values
+            + interrupts
+            + self.next.iter().map(|n| n.len() + 3).sum::<usize>()
+            + self.cuts.len() * (2 * budget::PREVIEW_CHARS + 128)
+    }
+
+    /// Cuts the biggest values (`values`, `metadata`, the tasks' `state` and `result`, the
+    /// interrupts' values) until the state weighs `share` bytes or less, and records each cut.
+    pub fn within(mut self, share: usize) -> ThreadState {
+        let before = self.weight();
+        let mut slots: Vec<(String, &mut Value)> = vec![
+            ("values".into(), &mut self.values),
+            ("metadata".into(), &mut self.metadata),
+        ];
+        for (n, task) in self.tasks.iter_mut().enumerate() {
+            if let Some(v) = task.state.as_mut() {
+                slots.push((format!("tasks.{n}.state"), v));
+            }
+            if let Some(v) = task.result.as_mut() {
+                slots.push((format!("tasks.{n}.result"), v));
+            }
+            for (m, i) in task.interrupts.iter_mut().enumerate() {
+                slots.push((format!("tasks.{n}.interrupts.{m}"), &mut i.value));
+            }
+        }
+        for (n, i) in self.interrupts.iter_mut().enumerate() {
+            slots.push((format!("interrupts.{n}"), &mut i.value));
+        }
+        let in_slots: usize = slots.iter().map(|(_, v)| budget::json_len(v)).sum();
+        let cuts = budget::shrink(before.saturating_sub(in_slots), slots, share);
+        self.cuts = cuts;
+        self
     }
 }
 
@@ -363,6 +427,8 @@ pub struct Run {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub multitask_strategy: Option<String>,
+    /// The values this reply left out (`metadata`), each over its share (TSK-108).
+    pub cuts: Vec<ValueCut>,
 }
 
 impl Run {
@@ -376,7 +442,21 @@ impl Run {
             updated_at: text_or_empty(v, "updated_at"),
             metadata: json(v, "metadata"),
             multitask_strategy: text(v, "multitask_strategy"),
+            cuts: Vec::new(),
         }
+    }
+
+    /// What the run weighs in a reply, close, not exact.
+    pub fn weight(&self) -> usize {
+        512 + budget::json_len(&self.metadata) + self.cuts.len() * (2 * budget::PREVIEW_CHARS + 128)
+    }
+
+    /// Cuts the metadata when it is over `share` (the run's one open value).
+    pub fn within(mut self, share: usize) -> Run {
+        let rest = self.weight() - budget::json_len(&self.metadata);
+        let cuts = budget::shrink(rest, vec![("metadata".into(), &mut self.metadata)], share);
+        self.cuts = cuts;
+        self
     }
 }
 

@@ -180,6 +180,15 @@ def check_langgraph():
     if expect(len(threads) == 1, f"langgraph: {len(threads)} history threads"):
         history = requests.post(f"{base}/threads/{threads[0]['thread_id']}/history", json={"limit": 50}, timeout=10).json()
         expect(len(history) >= 4, f"langgraph: the history thread has {len(history)} checkpoints")
+    # The heavy threads of TSK-108: 41 runs with big metadata, checkpoints of up to 6 MiB.
+    many = requests.post(f"{base}/threads/search", json={"metadata": {"lab": "many-runs"}, "limit": 2}, timeout=10).json()
+    if expect(len(many) == 1, f"langgraph: {len(many)} many-runs threads"):
+        runs = requests.get(f"{base}/threads/{many[0]['thread_id']}/runs", params={"limit": 100}, timeout=30).json()
+        expect(len(runs) == 41, f"langgraph: the many-runs thread has {len(runs)} runs, not 41")
+    heavy = requests.post(f"{base}/threads/search", json={"metadata": {"lab": "heavy-state"}, "limit": 2}, timeout=10).json()
+    if expect(len(heavy) == 1, f"langgraph: {len(heavy)} heavy-state threads"):
+        state = requests.get(f"{base}/threads/{heavy[0]['thread_id']}/state", timeout=30)
+        expect(len(state.content) > 4 * 1024 * 1024, f"langgraph: the heavy-state thread's state is {len(state.content)} bytes")
     graph = requests.get(f"{base}/assistants/{assistants[0]['assistant_id']}/graph", params={"xray": "true"}, timeout=10).json()
     expect(len(graph.get("nodes", [])) >= 5, "langgraph: the graph has fewer than 5 nodes")
     # The context schema (TSK-94), for the Run form's Context field.
