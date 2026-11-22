@@ -278,6 +278,9 @@ export default {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await page.navigate(`${origin}/langgraph/lab/threads/${found[0].thread_id}/history`);
+          // History opens on the selected checkpoint's diff (TSK-96); its full state has the note.
+          await until(visibleButton("Full state"), "the checkpoint's pane", 30_000);
+          await run(press(visibleButton("Full state")));
           const note = `[...document.querySelectorAll("[role=group]")].find((g) => g.checkVisibility() && g.getAttribute("aria-label") === "Values, left out")`;
           await until(note, "the newest checkpoint's values left out", 30_000);
           const text = await run<string>(`${note}.textContent`);
@@ -287,6 +290,42 @@ export default {
           await run(`${load}.click()`);
           await until(`!(${note}) && [...document.querySelectorAll("[aria-label=Values]")].some((v) => v.checkVisibility())`, "the values loaded", 60_000);
           await shot("the values loaded");
+        }),
+      ],
+    },
+    {
+      id: "runs-history-edit",
+      text: "TSK-96 (DOC-21 §11.2.1, Open question 45 (n)): a thread's Runs tab lists its runs (status, assistant, start, duration, multitask strategy, a failed run's error, where an interrupted one waits) with Resume, Cancel and Run again with the same input; History shows a checkpoint against its parent (Diff, Full state, Graph) with a Source filter and the count of branches; Edit state is a sheet with As node, the checkpoint to start from, and What changes before it is sent, then Update state or Update and continue the run.",
+      lab: true,
+      checks: [
+        cargo("threads_state_history_and_fork"),
+        cargo("a_run_stream_follows_the_credits_and_joins_from_the_last_event"),
+        cargo("a_run_s_big_input_is_cut_in_get_and_streamed_whole"),
+        lab("lab_a_run_s_request_and_its_own_checkpoints"),
+        vitest("test/langgraph.test.tsx", "What changes: messages are appended"),
+        vitest("test/langgraph.test.tsx", "a step's nodes: its writes, else its parent's next"),
+        vitest("test/langgraph.test.tsx", "a run's duration, note and last checkpoint"),
+        vitest("test/langgraph.test.tsx", "Runs: the table, a failed run's error"),
+        vitest("test/langgraph.test.tsx", "History: a checkpoint against its parent"),
+        vitest("test/langgraph.test.tsx", "Edit state: what changes before it is sent"),
+        browser("a thread's Runs, History's diff and Edit state's preview (TSK-96)", async ({ page, origin, until, run, shot }) => {
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          // A thread of its own, run to the approval interrupt, so it has runs and checkpoints.
+          const made = (await (await fetch("http://127.0.0.1:2024/threads", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ metadata: { lab: "tsk-96" } }) })).json()) as { thread_id: string };
+          await fetch(`http://127.0.0.1:2024/threads/${made.thread_id}/runs/wait`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assistant_id: "agent", input: { messages: [{ type: "human", content: "What is 6 times 7?" }] } }) });
+          await page.navigate(`${origin}/langgraph/lab/threads/${made.thread_id}/runs`);
+          await until(`[...document.querySelectorAll("table[aria-label=Runs] tbody tr")].some((r) => r.checkVisibility() && r.textContent.includes("waiting at"))`, "the interrupted run with its note", 30_000);
+          await shot("Runs");
+          await run(press(`document.querySelector("table[aria-label=Runs] tbody tr button")`));
+          await until(`[...document.querySelectorAll("[aria-label=Input]")].some((v) => v.checkVisibility())`, "the run's input");
+          await shot("a run's detail");
+          await page.navigate(`${origin}/langgraph/lab/threads/${made.thread_id}/history`);
+          await until(`[...document.querySelectorAll("section[aria-label^='Step']")].some((p) => p.checkVisibility() && /What changed since step|first checkpoint/.test(p.textContent))`, "the newest checkpoint against its parent", 30_000);
+          await shot("History with a diff");
+          await run(press(visibleButton("Fork from here")));
+          await until(`[...document.querySelectorAll("[role=dialog]")].some((d) => d.textContent.includes("What changes"))`, "the Edit state sheet");
+          await shot("Edit state");
         }),
       ],
     },

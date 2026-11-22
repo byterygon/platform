@@ -324,6 +324,39 @@ async fn a_run_with_big_metadata_is_cut_and_loaded_on_request() {
     assert_eq!(whole.1["bytes"].as_u64().unwrap(), whole.0.len() as u64);
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_s_big_input_is_cut_in_get_and_streamed_whole() {
+    // TSK-96: `runs.get` carries the run's request; an input over the share is a note like metadata.
+    let mut big = run(0, 100);
+    big["kwargs"] = json!({ "input": { "doc": "z".repeat(13 * MIB) }, "stream_mode": "values" });
+    let data = Data {
+        runs: Arc::new(vec![big]),
+        ..Data::default()
+    };
+    let (_t, mut tab, conn) = setup(data).await;
+    let (got, bytes) = sized(
+        &mut tab,
+        10,
+        "langgraph.runs.get",
+        json!({ "connId": conn, "threadId": THREAD, "runId": "r0" }),
+    )
+    .await;
+    assert!(bytes < MIB, "the input is a note: {bytes}");
+    assert_eq!(got["request"]["input"], Value::Null);
+    assert_eq!(got["request"]["streamMode"], json!(["values"]));
+    assert_eq!(got["cuts"][0]["field"], "request.input");
+    assert_eq!(got["metadata"]["n"], 0, "the small metadata stays");
+    let (bytes, summary) = read_value(
+        &mut tab,
+        11,
+        json!({ "connId": conn, "threadId": THREAD, "runId": "r0", "field": "request.input" }),
+    )
+    .await;
+    let input: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(input["doc"].as_str().unwrap().len(), 13 * MIB);
+    assert_eq!(summary["bytes"].as_u64().unwrap(), bytes.len() as u64);
+}
+
 /// The bytes of `langgraph.threads.readValue` and its summary.
 async fn read_value(tab: &mut Tab, id: u32, input: Value) -> (Vec<u8>, Value) {
     tab.call(id, "langgraph.threads.readValue", input).await;

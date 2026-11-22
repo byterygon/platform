@@ -17,7 +17,7 @@ import { natsTool } from "@/tools/nats";
 import { bucketConfigOf, bucketErrors, EMPTY_BUCKET, KvBucketsTab } from "@/tools/nats/KvBuckets";
 import { validateKey } from "@/tools/nats/KvPutSheet";
 import { KvTab, valueText } from "@/tools/nats/KvTab";
-import { diffLines } from "@/tools/nats/diff";
+import { diffLines } from "@/lib/diff";
 import { profile as schema } from "@/tools/nats/profile";
 import { natsTreeData, resetTreeData } from "@/tools/nats/tree-data";
 import type { TabProps } from "@/tools/types";

@@ -8665,7 +8665,7 @@
         },
         "runId": {
           "default": null,
-          "description": "A run's value (`metadata`); when absent, a checkpoint's.",
+          "description": "A run's value (`metadata`, `request.input`); when absent, a checkpoint's.",
           "type": [
             "string",
             "null"
@@ -9382,7 +9382,7 @@
           "type": "string"
         },
         "cuts": {
-          "description": "The values this reply left out (`metadata`), each over its share (TSK-108).",
+          "description": "The values this reply left out (`metadata`, `request.input`), each over its share (TSK-108).",
           "items": {
             "$ref": "#/$defs/ValueCut"
           },
@@ -9394,6 +9394,17 @@
             "string",
             "null"
           ]
+        },
+        "request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the run was asked to do, from its `kwargs`: only `runs.get` sends it (TSK-96), so a\nlist of runs stays light."
         },
         "runId": {
           "type": "string"
@@ -9473,6 +9484,36 @@
       },
       "required": [
         "runId"
+      ],
+      "type": "object"
+    },
+    "RunRequest": {
+      "description": "A run's request as the server keeps it in the run's `kwargs` (TSK-96: \"Run again with the same\ninput\"). Each part is absent when the server did not keep it.",
+      "properties": {
+        "command": true,
+        "config": true,
+        "context": true,
+        "input": {
+          "description": "The graph's input; `null` for a run that resumed or continued without one."
+        },
+        "interruptAfter": true,
+        "interruptBefore": true,
+        "multitaskStrategy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "streamMode": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "input",
+        "streamMode"
       ],
       "type": "object"
     },
@@ -11564,6 +11605,10 @@
             "integer",
             "null"
           ]
+        },
+        "metadata": {
+          "default": null,
+          "description": "Only the checkpoints whose metadata holds these pairs, e.g. `{ \"run_id\": … }` for one run's\nsteps (TSK-96). An object."
         },
         "threadId": {
           "type": "string"
@@ -16764,5 +16809,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:6202b4c16a7d6df1637f7cf513db19ae220752a80d1ab9932eed8451a4368c94"
+  "schema_hash": "sha256:c6abe015fc1ecc73c446381fddec1da01ba6faa20ed8ddc48ae4e5b049d0a8f5"
 }

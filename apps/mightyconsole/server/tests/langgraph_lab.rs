@@ -479,6 +479,55 @@ async fn lab_fork_and_time_travel_make_new_checkpoints() {
 }
 
 #[tokio::test]
+async fn lab_a_run_s_request_and_its_own_checkpoints() {
+    // TSK-96: the Runs tab's "Run again with the same input" and a run's error read the run's
+    // request from `runs.get` and its checkpoints from History filtered by `run_id`.
+    let (_t, mut tab, conn) = setup().await;
+    let thread = new_thread(&mut tab, 3, &conn).await;
+    run_to_interrupt(&mut tab, 4, &conn, &thread).await;
+    let runs = call(
+        &mut tab,
+        5,
+        "langgraph.runs.list",
+        json!({ "connId": conn, "threadId": thread }),
+    )
+    .await;
+    let run = runs["items"][0]["runId"].as_str().unwrap().to_owned();
+    assert!(runs["items"][0].get("request").is_none());
+    let got = call(
+        &mut tab,
+        6,
+        "langgraph.runs.get",
+        json!({ "connId": conn, "threadId": thread, "runId": run }),
+    )
+    .await;
+    assert_eq!(
+        got["request"]["input"]["messages"][0]["content"],
+        "What is 6 times 7?"
+    );
+    assert!(
+        got["request"]["streamMode"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("values"))
+    );
+    let steps = call(
+        &mut tab,
+        7,
+        "langgraph.threads.history",
+        json!({ "connId": conn, "threadId": thread, "metadata": { "run_id": run } }),
+    )
+    .await;
+    let steps = steps["items"].as_array().unwrap();
+    assert!(!steps.is_empty(), "the run wrote checkpoints");
+    assert!(
+        steps
+            .iter()
+            .all(|s| s["metadata"]["run_id"] == run.as_str())
+    );
+}
+
+#[tokio::test]
 async fn lab_a_run_is_joined_after_a_reconnect() {
     let t = start().await;
     let browser = t.browser().await;

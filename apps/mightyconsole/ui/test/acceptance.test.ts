@@ -38,7 +38,8 @@ describe("acceptance checklists", () => {
       ["temporal-detail", "TSK-104", 2],
       // Section 18's five, then the additions Uy Son approved (DOC-21 Open question 45 q).
       ["docker", "TSK-81", 6],
-      ["langgraph", "TSK-84", 7],
+      // TSK-108 added frame-limit, TSK-96 runs-history-edit.
+      ["langgraph", "TSK-84", 8],
       ["packaging", "TSK-87", 2],
     ]);
   });
