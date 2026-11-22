@@ -275,7 +275,9 @@ async function startServer(binary: string, args: string[]): Promise<{ output: st
 async function runItem(list: Checklist, item: Item, run: Run, labUp: boolean, labReason: string): Promise<ItemResult> {
   const base = { checklist: list.id, id: item.id, text: item.text };
   if (item.checks.length === 0) return { ...base, verdict: "not-wired", reason: `no check yet: ${list.task} wires it in checklists/${list.id}.mts`, checks: [] };
-  if (item.lab && !labUp) return { ...base, verdict: "skipped", reason: labReason, checks: [] };
+  // MIGHTYCONSOLE_LAB_REQUIRED=1 (the lab workflow, which brought the lab up and checked it): a lab
+  // that no longer answers fails its items instead of skipping them (TSK-121).
+  if (item.lab && !labUp) return { ...base, verdict: process.env.MIGHTYCONSOLE_LAB_REQUIRED === "1" ? "fail" : "skipped", reason: labReason, checks: [] };
   const checks: CheckResult[] = [];
   for (const [n, check] of item.checks.entries()) {
     const result = await runCheck(check, `${list.id}-${item.id}`, n + 1, run);
@@ -302,8 +304,13 @@ const tag = (v: Verdict) => TAGS[v];
 // ---------------------------------------------------------------------------------------------
 // The lab, the server and the browser
 
+/**
+ * `lab check` for the profiles, once more when it fails (TSK-121: the tools container once crashed
+ * with exit 139 after printing that its checks passed, and all 8 temporal-more items were skipped).
+ */
 function labCheck(profiles: string[], log: string): boolean {
-  return execute(["node", join(LAB, "lab.mts"), "check", ...profiles], { log }).code === 0;
+  const argv = ["node", join(LAB, "lab.mts"), "check", ...profiles];
+  return execute(argv, { log }).code === 0 || execute(argv, { log: log.replace(/\.log$/, "-again.log") }).code === 0;
 }
 
 function labCredentials(): Record<string, unknown> | null {
@@ -346,7 +353,13 @@ async function openBrowser(run: Run): Promise<BrowserSession | { skipped: string
         lab: run.lab,
         run: <T,>(expression: string) => cdpModule.run(page, expression) as Promise<T>,
         async until(expression, what, timeoutMs) {
-          if (!(await cdpModule.waitUntil(page, expression, timeoutMs))) throw new Error(`timed out waiting for ${what}`);
+          if (await cdpModule.waitUntil(page, expression, timeoutMs)) return;
+          // What the page showed and a screenshot, so a timeout in CI says more than its name (TSK-121).
+          const shown = await page.evaluate<string>(`location.pathname + location.search + " | " + document.body.innerText.replace(/\\s+/g, " ").slice(0, 400)`).catch(() => "");
+          shots += 1;
+          const file = join(run.shots, `${item}-${String(shots).padStart(2, "0")}-timeout-${slug(what)}.png`);
+          await page.screenshot(file).then(() => record(file), () => {});
+          throw new Error(`timed out waiting for ${what}; the page: ${shown}`);
         },
         async shot(name) {
           // Let finite transitions (a theme switch, a sheet opening) settle; never wait on a spinner.
