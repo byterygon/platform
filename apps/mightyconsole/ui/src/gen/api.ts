@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:66b1672a1633a885779553c232f98f5b599165f517b314835c1f746ce9588152";
+export const SCHEMA_HASH = "sha256:f9e3c355152ca58dc4e302327274fb72bf67266cdceef01d35799e060c5bcfc3";
 
 // ---- Types
 
@@ -3575,6 +3575,21 @@ kind: string,
  */
 preview: string, };
 
+/**
+ * Mounts the tool's APIs.
+ * A value read whole and kept on the server for the large-state tree (TSK-96): what the UI's
+ * payload view reads (Temporal's large-payload stub, with `json/plain` as its encoding).
+ */
+export type ValueStub = { id: string, 
+/**
+ * Its compact JSON text, in bytes.
+ */
+bytes: number, decodedBytes: number, encoding: string, 
+/**
+ * The first 64 KiB of its indented JSON text.
+ */
+preview: string, };
+
 export type VolumeNameInput = { connId: string, name: string, };
 
 /**
@@ -3954,6 +3969,10 @@ export interface Procedures {
   readonly "langgraph.threads.search": ProcedureDef<"query", ThreadsSearchInput, Array<Thread>, ToolError>;
   readonly "langgraph.threads.state": ProcedureDef<"query", ThreadStateInput, ThreadState, ToolError>;
   readonly "langgraph.threads.updateState": ProcedureDef<"mutation", UpdateStateInput, UpdateStateOutput, ToolError>;
+  readonly "langgraph.values.download": ProcedureDef<"stream", PayloadDownloadInput, PayloadDownloadSummary, ToolError>;
+  readonly "langgraph.values.node": ProcedureDef<"query", PayloadNodeInput, PayloadNode, ToolError>;
+  readonly "langgraph.values.open": ProcedureDef<"query", ReadValueInput, ValueStub, ToolError>;
+  readonly "langgraph.values.query": ProcedureDef<"query", PayloadQueryInput, PayloadQueryOutput, ToolError>;
   readonly "messaging.codecs.list": ProcedureDef<"query", Empty, Array<CodecInfo>, never>;
   readonly "messaging.decode": ProcedureDef<"query", DecodeInput, DecodeOutput, ToolError>;
   readonly "messaging.encode": ProcedureDef<"query", EncodeInput, EncodeOutput, ToolError>;
@@ -4155,6 +4174,12 @@ export interface Api {
       readonly search: Procedures["langgraph.threads.search"];
       readonly state: Procedures["langgraph.threads.state"];
       readonly updateState: Procedures["langgraph.threads.updateState"];
+    };
+    readonly values: {
+      readonly download: Procedures["langgraph.values.download"];
+      readonly node: Procedures["langgraph.values.node"];
+      readonly open: Procedures["langgraph.values.open"];
+      readonly query: Procedures["langgraph.values.query"];
     };
   };
   readonly messaging: {
@@ -4999,6 +5024,48 @@ export const procedures: Api = {
         kind: "mutation",
         perm: "langgraph.write",
         risk: "Write",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+    },
+    values: {
+      download: {
+        name: "langgraph.values.download",
+        kind: "stream",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 3600000,
+        timeoutMaxMs: 3600000,
+      },
+      node: {
+        name: "langgraph.values.node",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      open: {
+        name: "langgraph.values.open",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 120000,
+        timeoutMaxMs: 300000,
+      },
+      query: {
+        name: "langgraph.values.query",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
         agent: "hidden",
         deprecated: false,
         timeoutDefaultMs: 30000,

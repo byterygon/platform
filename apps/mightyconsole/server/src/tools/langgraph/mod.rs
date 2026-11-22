@@ -45,6 +45,7 @@ use self::model::{
 use self::stats::{NodeStats, NodeStatsInput};
 use crate::core::tls::TlsOptions;
 use crate::core::{Empty, Handle, Hub, Progress, ToolError, ToolErrorKind, ToolResult};
+use crate::tools::temporal::large;
 
 /// The tool's id and namespace.
 pub const TOOL: &str = "langgraph";
@@ -587,6 +588,36 @@ fn resolve_field<'a>(v: &'a Value, field: &str) -> Option<&'a Value> {
     Some(cur)
 }
 
+/// One value of a checkpoint or a run, read whole from upstream (`readValue`, `values.open`).
+async fn read_field(client: &LangGraphClient, input: &ReadValueInput) -> Result<Value, ToolError> {
+    let thread = id("threadId", &input.thread_id)?;
+    let path = match (&input.run_id, &input.checkpoint_id) {
+        (Some(run), _) => format!("/threads/{thread}/runs/{}", id("runId", run)?),
+        (None, Some(c)) if !c.is_empty() => {
+            format!("/threads/{thread}/state/{}", id("checkpointId", c)?)
+        }
+        _ => format!("/threads/{thread}/state"),
+    };
+    let query = if input.run_id.is_none() && input.field.starts_with("tasks.") {
+        vec![("subgraphs", "true".to_owned())]
+    } else {
+        vec![]
+    };
+    let v = client.get(&path, &query, "thread").await?;
+    // A run's request is its `kwargs` upstream (TSK-96).
+    let field = match input.field.strip_prefix("request.") {
+        Some(rest) if input.run_id.is_some() => format!("kwargs.{rest}"),
+        _ => input.field.clone(),
+    };
+    resolve_field(&v, &field).cloned().ok_or_else(|| {
+        ToolError::new(
+            ToolErrorKind::NotFound,
+            TOOL,
+            format!("{} has no {}", path, input.field),
+        )
+    })
+}
+
 fn limit(field: &str, value: Option<u32>, default: u32) -> Result<u32, ToolError> {
     match value.unwrap_or(default) {
         n @ 1..=1000 => Ok(n),
@@ -1071,32 +1102,8 @@ impl ThreadsApi {
         sink: BinarySink,
     ) -> ToolResult<ReadValueSummary> {
         let handle = client(&self.0, &ctx, &input.conn_id)?;
-        let thread = id("threadId", &input.thread_id)?;
-        let path = match (&input.run_id, &input.checkpoint_id) {
-            (Some(run), _) => format!("/threads/{thread}/runs/{}", id("runId", run)?),
-            (None, Some(c)) if !c.is_empty() => {
-                format!("/threads/{thread}/state/{}", id("checkpointId", c)?)
-            }
-            _ => format!("/threads/{thread}/state"),
-        };
-        let query = if input.run_id.is_none() && input.field.starts_with("tasks.") {
-            vec![("subgraphs", "true".to_owned())]
-        } else {
-            vec![]
-        };
-        let v = handle.value.get(&path, &query, "thread").await?;
-        // A run's request is its `kwargs` upstream (TSK-96).
-        let field = match input.field.strip_prefix("request.") {
-            Some(rest) if input.run_id.is_some() => format!("kwargs.{rest}"),
-            _ => input.field.clone(),
-        };
-        let value = resolve_field(&v, &field).ok_or_else(|| {
-            ToolError::new(
-                ToolErrorKind::NotFound,
-                TOOL,
-                format!("{} has no {}", path, input.field),
-            )
-        })?;
+        let value = read_field(&handle.value, &input).await?;
+        let value = &value;
         let bytes = serde_json::to_vec(value).expect("a JSON value serializes");
         for chunk in bytes.chunks(sink.max_chunk_bytes().clamp(1, CHUNK_BYTES)) {
             sink.send(chunk.to_vec()).await?;
@@ -1620,11 +1627,126 @@ impl StoreApi {
 }
 
 /// Mounts the tool's APIs.
+/// A value read whole and kept on the server for the large-state tree (TSK-96): what the UI's
+/// payload view reads (Temporal's large-payload stub, with `json/plain` as its encoding).
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ValueStub {
+    pub id: String,
+    /// Its compact JSON text, in bytes.
+    pub bytes: u64,
+    pub decoded_bytes: u64,
+    pub encoding: String,
+    /// The first 64 KiB of its indented JSON text.
+    pub preview: String,
+}
+
+/// `langgraph.values.*`: one value of a checkpoint or a run kept on the server, read node by
+/// node, queried with jq, downloaded (TSK-96, DOC-21 §11.2.1 "Large state"); the store and the
+/// node, query and download code are Temporal's large payloads (TSK-92).
+pub struct ValuesApi(pub Arc<Hub>);
+
+impl ValuesApi {
+    fn kept(
+        &self,
+        ctx: &Ctx,
+        conn_id: &str,
+        id: &str,
+    ) -> Result<Handle<LangGraphClient>, ToolError> {
+        let handle = client(&self.0, ctx, conn_id)?;
+        if handle.value.values.get(id).is_none() {
+            return Err(ToolError::not_found(
+                TOOL,
+                "payloadId",
+                "this value is no longer kept on the server (10 minutes unused, or the connection was opened again): open it again",
+            ));
+        }
+        Ok(handle)
+    }
+}
+
+#[rpc::router(namespace = "langgraph.values")]
+impl ValuesApi {
+    /// Reads one value whole (the state's `values` when `field` is `values`) and keeps it for
+    /// `node`, `query` and `download`.
+    #[rpc::query(perm = "langgraph.read", risk = Risk::Read, timeout_default = "2m")]
+    async fn open(&self, ctx: Ctx, input: ReadValueInput) -> ToolResult<ValueStub> {
+        let handle = client(&self.0, &ctx, &input.conn_id)?;
+        let value = read_field(&handle.value, &input).await?;
+        let stored = serde_json::to_vec(&value).expect("a JSON value serializes");
+        let decoded_bytes = stored.len();
+        let preview = serde_json::to_string_pretty(&value).unwrap_or_default();
+        let preview = large::cut_bytes(&preview, large::STUB_OVER).to_owned();
+        let bytes = stored.len() as u64;
+        let id = handle.value.values.keep(large::Kept {
+            value,
+            stored,
+            encoding: "json/plain".into(),
+            codec: None,
+            decoded_bytes,
+        });
+        Ok(ValueStub {
+            id,
+            bytes,
+            decoded_bytes: decoded_bytes as u64,
+            encoding: "json/plain".into(),
+            preview,
+        })
+    }
+
+    /// One node of a kept value: its children a page at a time, as Temporal's `payload.node`.
+    #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
+    async fn node(
+        &self,
+        ctx: Ctx,
+        input: large::PayloadNodeInput,
+    ) -> ToolResult<large::PayloadNode> {
+        let handle = self.kept(&ctx, &input.conn_id, &input.payload_id)?;
+        Ok(large::node(&handle.value.values, &input)?)
+    }
+
+    /// A jq program on a kept value, run on the server; only its results travel (1 MiB, 10 s).
+    #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
+    async fn query(
+        &self,
+        ctx: Ctx,
+        input: large::PayloadQueryInput,
+    ) -> ToolResult<large::PayloadQueryOutput> {
+        let handle = self.kept(&ctx, &input.conn_id, &input.payload_id)?;
+        Ok(large::query(&handle.value.values, input).await?)
+    }
+
+    /// The kept value's JSON (indented, or compact as `stored`), as a stream.
+    #[rpc::stream(
+        perm = "langgraph.read",
+        risk = Risk::Read,
+        timeout_default = "1h",
+        timeout_max = "1h"
+    )]
+    async fn download(
+        &self,
+        ctx: Ctx,
+        input: large::PayloadDownloadInput,
+        sink: BinarySink,
+    ) -> ToolResult<large::PayloadDownloadSummary> {
+        let handle = self.kept(&ctx, &input.conn_id, &input.payload_id)?;
+        let kept = handle.value.values.require(&input.payload_id)?;
+        let bytes = large::download_bytes(&kept, input.form);
+        for chunk in bytes.chunks(sink.max_chunk_bytes().clamp(1, CHUNK_BYTES)) {
+            sink.send(chunk.to_vec()).await?;
+        }
+        Ok(large::PayloadDownloadSummary {
+            bytes: bytes.len() as u64,
+        })
+    }
+}
+
 pub fn mount(router: &ambidex::Router, hub: &Arc<Hub>) -> Result<(), ambidex::RegistryError> {
     router.mount(LanggraphApi(Arc::clone(hub)))?;
     router.mount(AssistantsApi(Arc::clone(hub)))?;
     router.mount(ThreadsApi(Arc::clone(hub)))?;
     router.mount(RunsApi(Arc::clone(hub)))?;
     router.mount(StoreApi(Arc::clone(hub)))?;
+    router.mount(ValuesApi(Arc::clone(hub)))?;
     Ok(())
 }

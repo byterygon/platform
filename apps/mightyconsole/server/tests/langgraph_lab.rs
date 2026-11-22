@@ -570,6 +570,46 @@ async fn lab_an_assistant_s_versions_and_node_statistics() {
 }
 
 #[tokio::test]
+async fn lab_a_state_s_values_are_kept_and_read_node_by_node() {
+    // TSK-96: the State tab's large-state tree through langgraph.values.*.
+    let (_t, mut tab, conn) = setup().await;
+    let thread = new_thread(&mut tab, 3, &conn).await;
+    run_to_interrupt(&mut tab, 4, &conn, &thread).await;
+    let stub = call(
+        &mut tab,
+        5,
+        "langgraph.values.open",
+        json!({ "connId": conn, "threadId": thread, "field": "values" }),
+    )
+    .await;
+    let id = stub["id"].as_str().unwrap().to_owned();
+    let root = call(
+        &mut tab,
+        6,
+        "langgraph.values.node",
+        json!({ "connId": conn, "payloadId": id, "path": "" }),
+    )
+    .await;
+    assert_eq!(root["kind"], "object");
+    assert!(
+        root["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["key"] == "messages"),
+        "{root}"
+    );
+    let found = call(
+        &mut tab,
+        7,
+        "langgraph.values.query",
+        json!({ "connId": conn, "payloadId": id, "jq": ".messages | length" }),
+    )
+    .await;
+    assert!(found["results"][0].as_u64().unwrap() >= 1, "{found}");
+}
+
+#[tokio::test]
 async fn lab_a_run_is_joined_after_a_reconnect() {
     let t = start().await;
     let browser = t.browser().await;

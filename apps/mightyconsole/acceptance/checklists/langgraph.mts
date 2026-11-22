@@ -302,7 +302,7 @@ export default {
     },
     {
       id: "runs-history-edit",
-      text: "TSK-96 (DOC-21 §11.2.1, Open question 45 (n)): a thread's Runs tab lists its runs (status, assistant, start, duration, multitask strategy, a failed run's error, where an interrupted one waits) with Resume, Cancel and Run again with the same input; History shows a checkpoint against its parent (Diff, Full state, Graph) with a Source filter and the count of branches; Edit state is a sheet with As node, the checkpoint to start from, and What changes before it is sent, then Update state or Update and continue the run.",
+      text: "TSK-96 (DOC-21 §11.2.1, Open question 45 (n)): a thread's Runs tab lists its runs (status, assistant, start, duration, multitask strategy, a failed run's error, where an interrupted one waits) with Resume, Cancel and Run again with the same input; History shows a checkpoint against its parent (Diff, Full state, Graph) with a Source filter and the count of branches; Edit state is a sheet with As node, the checkpoint to start from, and What changes before it is sent, then Update state or Update and continue the run. The State tab shows the values as the large-state tree (langgraph.values.*, Temporal's large payloads: node by node, jq on the server) or as JSON, with the tasks and the checkpoint beside.",
       lab: true,
       checks: [
         cargo("threads_state_history_and_fork"),
@@ -315,6 +315,9 @@ export default {
         vitest("test/langgraph.test.tsx", "Runs: the table, a failed run's error"),
         vitest("test/langgraph.test.tsx", "History: a checkpoint against its parent"),
         vitest("test/langgraph.test.tsx", "Edit state: what changes before it is sent"),
+        cargo("a_value_is_kept_and_read_node_by_node_with_jq_and_downloaded"),
+        lab("lab_a_state_s_values_are_kept_and_read_node_by_node"),
+        vitest("test/langgraph.test.tsx", "the values as the large-state tree read through langgraph.values"),
         browser("a thread's Runs, History's diff and Edit state's preview (TSK-96)", async ({ page, origin, until, run, shot }) => {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
@@ -395,12 +398,14 @@ export default {
         cargo("the_store_lists_searches_puts_and_deletes"),
         lab("lab_the_store_lists_searches_puts_and_deletes"),
         vitest("test/langgraph.test.tsx", "the store lists namespaces and items"),
+        vitest("test/langgraph.test.tsx", "namespaces nest by label with the items counted under each"),
         browser("the store browser", async ({ page, origin, until, run, shot }) => {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await run(`__mc.dblclick(__mc.item("Store"))`);
-          await until(`__mc.button("lab.answers")`, "the namespaces (the lab's runs write lab.answers)");
-          await run(`__mc.click(__mc.button("lab.answers"))`);
+          // The namespaces as a tree (TSK-96): lab › answers.
+          await until(`__mc.item("answers")`, "the namespaces (the lab's runs write lab.answers)");
+          await run(`__mc.click(__mc.item("answers"))`);
           await until(`[...document.querySelectorAll("button")].some((b) => b.textContent.startsWith("answer-"))`, "the items of lab.answers");
           await shot("store");
         }),
