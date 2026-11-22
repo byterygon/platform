@@ -21,6 +21,8 @@ import { ThreadTab, advancedSummary, defaultInput, interruptQuestion } from "@/t
 import { DEFAULT_ORDER, ThreadsTab, orderSummary } from "@/tools/langgraph/threads";
 import { appendKeys, branchCount, formatDuration, runDuration, runNote, stepNodes, updatePreview, wroteLabel } from "@/tools/langgraph/state-diff";
 import { lastCheckpoints } from "@/tools/langgraph/thread-runs";
+import { eventRows, modeCounts, sinceStart } from "@/tools/langgraph/event-rows";
+import { interruptOptions, optionsSchema } from "@/tools/langgraph/resume-sheet";
 import { foldSame, diffLines } from "@/lib/diff";
 import type { LiveState, TabProps, TabView } from "@/tools/types";
 import { axeViolations, cleanup, render, settle } from "./support/render";
@@ -769,5 +771,117 @@ describe("thread additions (TSK-96)", () => {
     await click(buttonNamed("Update and continue the run"));
     expect(fake.last("threads.updateState")).toMatchObject({ threadId: THREAD, values: { refund: { approved: true } }, asNode: "plan", checkpointId: null });
     expect(fake.last("runs.stream")).toMatchObject({ input: null, checkpointId: "c3" });
+  });
+});
+
+// ---- TSK-96: the run's events, Resume as a sheet ----------------------------------------------------
+
+describe("run events view (TSK-96)", () => {
+  const timed = (events: RunEvent[], start = 1_000): RunEvent[] => events.map((e, i) => ({ ...e, at: start + i * 100 }));
+
+  test("rows: tokens fold per message with the model and tokens, the interrupt is marked, counts per mode", () => {
+    const events = timed([
+      { event: "metadata", data: { run_id: "1ef9c0d4-aaaa" } },
+      { event: "values", data: { messages: [{}], customer_id: "c-1" } },
+      { event: "updates", data: { classify: { intent: "billing" } } },
+      { event: "messages", data: [{ type: "AIMessageChunk", id: "m1", content: "I can " }, { langgraph_node: "draft_reply" }] },
+      { event: "messages", data: [{ type: "AIMessageChunk", id: "m1", content: "see two charges", usage_metadata: { input_tokens: 1204, output_tokens: 118 }, response_metadata: { model_name: "claude-sonnet-5-5" } }, { langgraph_node: "draft_reply" }] },
+      { event: "updates", data: { draft_reply: { messages: [{}], refund: {} } } },
+      { event: "updates", data: { __interrupt__: [{ value: { question: "Refund 129.90 EUR?" }, id: "i1" }] } },
+    ]);
+    const rows = eventRows(events);
+    expect(rows.map((r) => [r.index, r.mode, r.node, r.summary])).toEqual([
+      [1, "metadata", "", "run 1ef9c0d4"],
+      [2, "values", "", "messages 1, customer_id: c-1"],
+      [3, "updates", "classify", "intent: billing"],
+      [4, "messages", "draft_reply", '2 tokens · "I can see two charges"'],
+      [6, "updates", "draft_reply", "messages +1, refund"],
+      [7, "updates", "__interrupt__", "Refund 129.90 EUR?"],
+    ]);
+    expect(rows[3]!.message).toEqual({ text: "I can see two charges", model: "claude-sonnet-5-5", tokensIn: 1204, tokensOut: 118, lastAt: 400 });
+    expect(rows[5]!.interrupt).toBe(true);
+    expect(rows.map((r) => sinceStart(r.at))).toEqual(["+0 ms", "+100 ms", "+200 ms", "+300 ms", "+500 ms", "+600 ms"]);
+    expect(eventRows(events, false)).toHaveLength(7);
+    expect(modeCounts(events)).toEqual({ values: 1, updates: 3, messages: 2, custom: 0, debug: 0, errors: 0 });
+    expect(sinceStart(125_000)).toBe("+2 min 5 s");
+  });
+
+  test("an interrupt's options are suggested for the resume value", () => {
+    expect(interruptOptions({ question: "Refund?", options: ["approve", "reject", "edit"] })).toEqual(["approve", "reject", "edit"]);
+    expect(interruptOptions("Send?")).toEqual([]);
+    expect(optionsSchema([])).toBeUndefined();
+    expect(JSON.stringify(optionsSchema(["approve"]))).toContain('"enum":["approve"]');
+  });
+
+  test("Events: the run picker, chips that filter, a message row's detail; a finished run lists its checkpoints", async () => {
+    const fake = fakeClient();
+    fake.state.runs = [RUN("r0", "success")];
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD })} />
+      </Toast>,
+    );
+    await settle();
+    fake.script.chunks = [
+      lines([
+        { event: "metadata", data: { run_id: "r1" }, id: "1" },
+        { event: "messages", data: [{ type: "AIMessageChunk", id: "m1", content: "Hel" }, { langgraph_node: "plan" }], id: "2" },
+        { event: "messages", data: [{ type: "AIMessageChunk", id: "m1", content: "lo" }, { langgraph_node: "plan" }], id: "3" },
+        { event: "updates", data: { plan: { steps: ["plan"] } }, id: "4" },
+      ]),
+    ];
+    await click(runBar("Run"));
+    await act(async () => fake.script.release!());
+    await settle();
+    // Events opens the full-width view (the mockup's langgraph-run-events).
+    await click([...document.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.textContent?.startsWith("Events")));
+    const table = $("table[aria-label=Events]");
+    expect([...(table?.querySelectorAll("tbody tr") ?? [])].map((r) => r.querySelector("td:nth-child(5)")?.textContent)).toEqual(["run r1", '2 tokens · "Hello"', "steps 1"]);
+    expect(document.body.textContent).toContain("(2 chunks → 1)");
+    expect(buttonNamed("messages 2")).toBeDefined();
+    await click(buttonNamed("updates 1"));
+    expect(table?.querySelectorAll("tbody tr")).toHaveLength(1);
+    await click(buttonNamed("All 4"));
+    await click([...(table?.querySelectorAll("tbody tr button") ?? [])][1]);
+    expect($("[aria-label='Event 2 · messages · plan']")?.textContent).toContain("Hello");
+    expect(await axeViolations()).toEqual([]);
+    // A finished run of the thread: its checkpoints, since the server keeps no events.
+    const picker = $("[aria-label=Run]");
+    expect(picker?.textContent).toContain("Run r1");
+    await act(async () => {
+      picker?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle();
+    const option = [...document.querySelectorAll<HTMLElement>("[role=option]")].find((o) => o.textContent?.startsWith("Run r0"));
+    await click(option);
+    expect(fake.last("threads.history")).toMatchObject({ metadata: { run_id: "r0" } });
+    expect(document.body.textContent).toContain("The server keeps a run's events only while it streams");
+    // Back to Messages.
+    await click(buttonNamed("Messages"));
+    expect($("table[aria-label=Events]")).toBeNull();
+  });
+
+  test("Resume is a sheet: the interrupt's value first, its options suggested, the run options in a line", async () => {
+    const fake = fakeClient();
+    fake.state.interrupted = true;
+    fake.state.stateFor = () => STATE("c2", [{ id: "i1", value: { question: "Refund?", options: ["approve", "reject"] } }]);
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD })} />
+      </Toast>,
+    );
+    await settle();
+    await click(buttonNamed("Resume…"));
+    const sheet = document.querySelector("[role=dialog]");
+    expect(sheet?.textContent).toContain("The graph asked");
+    expect(sheet?.textContent).toContain("interrupted at approve");
+    expect(sheet?.textContent).toContain("The options the graph listed are suggested: approve, reject.");
+    expect(sheet?.textContent).toContain("Run options · assistant agent · stream values, updates, messages");
+    expect(await axeViolations()).toEqual([]);
+    await click(buttonNamed("Go to node"));
+    expect(buttonNamed("Resume")?.disabled).toBe(true);
+    await click(buttonNamed("Resume with a value"));
+    await click(buttonNamed("Resume"));
+    expect(fake.last("runs.stream")).toMatchObject({ command: { resume: "approved", update: null, goto: null } });
   });
 });

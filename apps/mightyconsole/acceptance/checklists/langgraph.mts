@@ -126,7 +126,7 @@ export default {
     },
     {
       id: "runs",
-      text: "A run streams values, updates and messages, highlights the active node, stops at the interrupt, and resumes with a value; stop and rollback work.",
+      text: "A run streams values, updates and messages, highlights the active node, stops at the interrupt, and resumes with a value; stop and rollback work. TSK-96: the events view (a run picker, chips per stream mode, times since the start, tokens folded per message with the model and tokens, the interrupt marked; a finished run lists its checkpoints) and Resume as a sheet (the interrupt's value first, its options suggested, the run options in a line).",
       lab: true,
       checks: [
         cargo("a_run_streams_its_events_as_json_lines"),
@@ -135,6 +135,10 @@ export default {
         lab("lab_stop_and_rollback_a_run"),
         vitest("test/langgraph.test.tsx", "run events"),
         vitest("test/langgraph.test.tsx", "a run streams to the interrupt"),
+        vitest("test/langgraph.test.tsx", "rows: tokens fold per message"),
+        vitest("test/langgraph.test.tsx", "an interrupt's options are suggested"),
+        vitest("test/langgraph.test.tsx", "Events: the run picker, chips that filter"),
+        vitest("test/langgraph.test.tsx", "Resume is a sheet"),
         browser("a run to the interrupt, the graph lit, resumed", async ({ page, origin, until, run, shot }) => {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
@@ -147,7 +151,7 @@ export default {
           await until(`__mc.has("Waiting at ") && __mc.has("The graph asks:")`, "the run stopped at approve's interrupt");
           await until(`document.querySelector('[data-graph-node="plan"][data-visited]')`, "the nodes that ran, lit in the graph");
           await shot("run at the interrupt");
-          // Resume… opens the form in a dialog (TSK-95); its Resume sends the value.
+          // Resume… opens the form in a sheet (TSK-95, TSK-96); its Resume sends the value.
           await run(`__mc.click(${visibleButton("Resume…")})`);
           await until(`document.querySelector("[role=dialog]") && [...document.querySelectorAll("[role=dialog] button")].some((b) => b.textContent.trim() === "Resume")`, "the Resume dialog");
           await shot("the Resume dialog");
@@ -313,10 +317,25 @@ export default {
           await labTree({ until, run, shot });
           // A thread of its own, run to the approval interrupt, so it has runs and checkpoints.
           const made = (await (await fetch("http://127.0.0.1:2024/threads", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ metadata: { lab: "tsk-96" } }) })).json()) as { thread_id: string };
-          await fetch(`http://127.0.0.1:2024/threads/${made.thread_id}/runs/wait`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assistant_id: "agent", input: { messages: [{ type: "human", content: "What is 6 times 7?" }] } }) });
-          await page.navigate(`${origin}/langgraph/lab/threads/${made.thread_id}/runs`);
-          await until(`[...document.querySelectorAll("table[aria-label=Runs] tbody tr")].some((r) => r.checkVisibility() && r.textContent.includes("waiting at"))`, "the interrupted run with its note", 30_000);
+          const waited = await fetch(`http://127.0.0.1:2024/threads/${made.thread_id}/runs/wait`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assistant_id: "agent", input: { messages: [{ type: "human", content: "What is 6 times 7?" }] } }) });
+          if (!waited.ok) throw new Error(`the lab's run did not finish: ${waited.status} ${await waited.text()}`);
+          const runsUrl = `${origin}/langgraph/lab/threads/${made.thread_id}/runs`;
+          const rows = `[...document.querySelectorAll("table[aria-label=Runs] tbody tr")].filter((r) => r.checkVisibility())`;
+          const noted = `${rows}.some((r) => r.textContent.includes("waiting at"))`;
+          await page.navigate(runsUrl);
+          await until(`${rows}.length > 0`, "the thread's runs", 30_000);
           await shot("Runs");
+          // The note reads the run's last checkpoint; a lab still writing it gets one more look.
+          try {
+            await until(noted, "the interrupted run with its note", 15_000);
+          } catch {
+            await page.navigate(runsUrl);
+            try {
+              await until(noted, "the interrupted run with its note, after a reload", 15_000);
+            } catch {
+              throw new Error(`no "waiting at" note; the rows say: ${await run<string>(`${rows}.map((r) => r.textContent).join(" | ")`)}`);
+            }
+          }
           await run(press(`document.querySelector("table[aria-label=Runs] tbody tr button")`));
           await until(`[...document.querySelectorAll("[aria-label=Input]")].some((v) => v.checkVisibility())`, "the run's input");
           await shot("a run's detail");

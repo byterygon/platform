@@ -12,6 +12,8 @@ export interface RunEvent {
   event: string;
   data: unknown;
   id?: string;
+  /** When the event arrived (ms since the epoch), stamped by the screen (TSK-96). */
+  at?: number;
 }
 
 /** A chat message as the Messages view shows it. */

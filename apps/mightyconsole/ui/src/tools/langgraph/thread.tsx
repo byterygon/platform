@@ -11,7 +11,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { GraphView } from "@/components/ui/graph-view";
@@ -24,7 +23,6 @@ import { Select, SelectItem } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { liveTimeout } from "@/app/client";
 import { CopyButton, Page, PageHeader } from "@/app/page";
@@ -36,12 +34,14 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/control";
 import { ArrowUndo, ChevronDown, ChevronRight, Delete, MoreHorizontal, Play, Stop } from "@/lib/icons";
 import type { DescribedError, LiveState, TabProps } from "../types";
-import { EMPTY_RUN, type RunEvent, type RunInterrupt, type RunView, eventName, interruptsOf, parseChunk, reduceRun } from "./run-events";
+import { EMPTY_RUN, type RunEvent, type RunView, eventName, interruptsOf, parseChunk, reduceRun } from "./run-events";
 import { useActiveGate } from "@/app/while-active";
-import { JsonField, StatusBadge, configSchema, parseJson, partialSchema, preview, schemaObject, shortId, toGraphView, useLoad } from "./shared";
+import { JsonField, StatusBadge, configSchema, parseJson, preview, schemaObject, shortId, toGraphView, useLoad } from "./shared";
 import { HISTORY_PAGE, HistoryPanel } from "./thread-history";
 import { RUNS_PAGE, RunsPanel } from "./thread-runs";
 import { EditStateSheet, StatePanel } from "./thread-state";
+import { ResumeSheet } from "./resume-sheet";
+import { EventsView, THIS_RUN } from "./run-events-view";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 const pretty = (v: unknown) => (v === undefined ? "" : JSON.stringify(v, null, 2));
@@ -275,6 +275,7 @@ export function ThreadTab(props: TabProps) {
             graph={graph}
             graphView={graphView}
             schemas={schemas}
+            runs={runs.data?.items ?? []}
           />
         </TabsContent>
         <TabsContent value="state" className="flex min-h-0 flex-1 flex-col overflow-auto p-0">
@@ -404,9 +405,10 @@ interface RunPanelProps extends PanelProps {
   graph: ReturnType<typeof useLoad<api.AssistantGraph>>;
   graphView: ReturnType<typeof toGraphView> | null;
   schemas: ReturnType<typeof useLoad<api.AssistantSchemas>>;
+  /** The thread's runs (the Runs tab's first page), for the events view's run picker. */
+  runs: readonly api.Run[];
 }
 
-type ResumeMode = "resume" | "update" | "goto";
 
 interface Running {
   cancel(): void;
@@ -414,7 +416,7 @@ interface Running {
   paused(): boolean;
 }
 
-function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded, active, assistants, assistantId, onAssistant: setAssistantId, graph, graphView, schemas }: RunPanelProps) {
+function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded, active, assistants, assistantId, onAssistant: setAssistantId, graph, graphView, schemas, runs }: RunPanelProps) {
   const gate = useActiveGate(active);
   const toast = useToast();
 
@@ -432,13 +434,12 @@ function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, f
   const [live, setLive] = useState<LiveState | null>(null);
   const [error, setError] = useState<DescribedError | null>(null);
   const [rollingBack, setRollingBack] = useState(false);
-  const [resumeMode, setResumeMode] = useState<ResumeMode>("resume");
-  const [resumeText, setResumeText] = useState('"approved"');
   // The run's config and context (TSK-93): optional JSON, checked against the assistant's schemas.
   const [configText, setConfigText] = useState("");
   const [contextText, setContextText] = useState("");
-  const [gotoNode, setGotoNode] = useState<string | null>(null);
   const [eventsView, setEventsView] = useState<"messages" | "events">("messages");
+  // The run the events view shows: this tab's run, or one of the thread's (its checkpoints).
+  const [picked, setPicked] = useState<string>(THIS_RUN);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [resuming, setResuming] = useState(false);
   // The nodes the thread waits at (the state's `next`), for the interrupt callout.
@@ -490,6 +491,9 @@ function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, f
           const next = await iterator.next();
           if (next.done) break;
           const events = parseChunk(next.value, decoder);
+          // When each event arrived, for the events view's times since the start (TSK-96).
+          const now = Date.now();
+          for (const e of events) e.at = now;
           received += events.length;
           apply(events);
           const elapsed = (Date.now() - since) / 1000;
@@ -554,6 +558,7 @@ function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, f
     viewRef.current = EMPTY_RUN;
     setRun(EMPTY_RUN);
     setWaitingAt([]);
+    setPicked(THIS_RUN);
     lost.current = null;
     const streamMode = [...new Set([...MODES.filter((m) => modes.includes(m.id)).map((m) => m.server), "tasks"])];
     const call = client.langgraph.runs.stream(
@@ -620,13 +625,6 @@ function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, f
     }
   };
 
-  const resumeCommand = (): api.RunCommand | null => {
-    if (resumeMode === "goto") return gotoNode ? { resume: null, update: null, goto: gotoNode } : null;
-    const parsed = parseJson(resumeText);
-    if (!parsed.ok || parsed.value === undefined) return null;
-    return resumeMode === "resume" ? { resume: parsed.value as api.JsonValue, update: null, goto: null } : { resume: null, update: parsed.value as api.JsonValue, goto: null };
-  };
-
   actions.current = {
     primary: () => start(null),
     stop: () => void stop(),
@@ -671,7 +669,38 @@ function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, f
   }, [onStatus, isRunning, runnable, runId, assistantName, live]);
   const waiting = run.interrupts.length > 0 && !isRunning;
 
+  const nodes = (graphView?.nodes ?? []).filter((n) => !n.kind || n.kind === "node").map((n) => n.id);
+  const multitask = runs.find((r) => r.runId === runId)?.multitaskStrategy ?? runs[0]?.multitaskStrategy;
+  const resumeOptions = [assistantName ? `assistant ${assistantName}` : "the form's assistant", modes.length > 0 ? `stream ${MODES.filter((m) => modes.includes(m.id)).map((m) => m.label).join(", ")}` : "no stream modes", ...(multitask ? [`multitask ${multitask}`] : [])].join(" · ");
+  const sheets = (
+    <>
+      <ResumeSheet open={resuming && waiting} onClose={() => setResuming(false)} threadId={threadId} interrupts={run.interrupts} waitingAt={waitingAt} nodes={nodes} stateSchema={schemas.data?.stateSchema} options={resumeOptions} onResume={(command) => start(command)} />
+      <AlertDialog open={rollingBack} onOpenChange={(o) => !o && setRollingBack(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Roll back run {run.runId ? shortId(run.runId) : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>The run is stopped and deleted with the checkpoints it wrote. Stop keeps them.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction appearance="danger" onClick={() => void rollback()}>
+              Roll back
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+  if (eventsView === "events") {
+    return (
+      <>
+        <EventsView threadId={threadId} events={shownEvents} runId={runId} running={isRunning} runs={runs} picked={picked} onPick={setPicked} onMessages={() => setEventsView("messages")} connId={connId} client={client} note={note} />
+        {sheets}
+      </>
+    );
+  }
   return (
+    <>
     <Resizable orientation="horizontal" className="min-h-0 flex-1">
       <ResizablePanel defaultSize={38} minSize={24}>
         <div className="flex h-full min-h-0 flex-col overflow-auto">
@@ -764,55 +793,10 @@ function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, f
               <AlertDescription>{run.error}</AlertDescription>
             </Alert>
           ) : null}
-          <Dialog open={resuming && waiting} onOpenChange={(o) => !o && setResuming(false)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Resume the run</DialogTitle>
-                <DialogDescription>{waitingAt.length > 0 ? `The graph waits at ${waitingAt.join(", ")}.` : "The graph waits at an interrupt."}</DialogDescription>
-              </DialogHeader>
-              <DialogBody className="flex flex-col gap-stack-md">
-                {run.interrupts.map((i: RunInterrupt, n) => (
-                  <pre key={i.id ?? n} aria-label="Interrupt value" className="max-h-panel-xs overflow-auto rounded-md bg-layer-alt p-inset-xs font-mono text-code whitespace-pre-wrap text-fg">
-                    {pretty(i.value)}
-                  </pre>
-                ))}
-                <ToggleGroup aria-label="How to continue" value={[resumeMode]} onValueChange={(v) => v[0] && setResumeMode(v[0] as ResumeMode)}>
-                  <ToggleGroupItem value="resume">Resume with a value</ToggleGroupItem>
-                  <ToggleGroupItem value="update">Update state and continue</ToggleGroupItem>
-                  <ToggleGroupItem value="goto">Go to node</ToggleGroupItem>
-                </ToggleGroup>
-                {resumeMode === "goto" ? (
-                  <Select aria-label="Node" value={gotoNode} onValueChange={(v) => setGotoNode(v as string)} placeholder="Choose a node">
-                    {(graphView?.nodes ?? [])
-                      .filter((n) => !n.kind || n.kind === "node")
-                      .map((n) => (
-                        <SelectItem key={n.id} value={n.id}>
-                          {n.id}
-                        </SelectItem>
-                      ))}
-                  </Select>
-                ) : (
-                  <JsonField label={resumeMode === "resume" ? "Value for interrupt()" : "State update"} value={resumeText} onChange={setResumeText} rows={3} schema={resumeMode === "update" ? partialSchema(schemas.data?.stateSchema) : undefined} />
-                )}
-              </DialogBody>
-              <DialogFooter>
-                <Button onClick={() => setResuming(false)}>Cancel</Button>
-                <Button
-                  appearance="primary"
-                  disabled={resumeCommand() === null}
-                  onClick={() => {
-                    setResuming(false);
-                    start(resumeCommand());
-                  }}
-                >
-                  Resume
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
           {graph.error ? <ErrorState error={graph.error} onRetry={() => void graph.reload()} /> : null}
           {graphView && graphView.nodes.length > 0 ? <GraphView aria-label="Run graph" nodes={graphView.nodes} edges={graphView.edges} groups={graphView.groups} activeIds={run.active} visitedIds={run.visited} className="h-panel-sm shrink-0" /> : null}
-          <Tabs value={eventsView} onValueChange={(v) => setEventsView(v as typeof eventsView)} size="small" className="flex min-h-0 flex-1 flex-col">
+          {/* Events opens the full-width events view (TSK-96, the mockup's langgraph-run-events). */}
+          <Tabs value="messages" onValueChange={(v) => v === "events" && setEventsView("events")} size="small" className="flex min-h-0 flex-1 flex-col">
             <TabsList aria-label="Run output">
               <TabsTrigger value="messages">
                 Messages <span className="text-fg-muted">{run.messages.length}</span>
@@ -843,42 +827,11 @@ function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, f
                 </ol>
               )}
             </TabsContent>
-            <TabsContent value="events" className="min-h-0 flex-1 overflow-auto">
-              {shownEvents.length === 0 ? (
-                <EmptyLine>No events yet.</EmptyLine>
-              ) : (
-                <ol aria-label="Events" className="flex flex-col p-inset-xs">
-                  {shownEvents.slice(-500).map((e, i) => (
-                    <li key={`${e.id ?? ""}-${i}`} className="border-b border-border-subtle py-stack-xs">
-                      <details>
-                        <summary className="flex cursor-pointer items-center gap-inline-sm text-body-1 text-fg">
-                          <Badge appearance="tint" variant={eventName(e.event).mode === "error" ? "danger" : "info"}>{e.event}</Badge>
-                          <span className="min-w-0 flex-1 truncate font-mono text-code text-fg-muted">{preview(e.data)}</span>
-                        </summary>
-                        <pre className="max-h-panel-sm overflow-auto font-mono text-code whitespace-pre-wrap text-fg">{pretty(e.data)}</pre>
-                      </details>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </TabsContent>
           </Tabs>
         </div>
       </ResizablePanel>
-      <AlertDialog open={rollingBack} onOpenChange={(o) => !o && setRollingBack(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Roll back run {run.runId ? shortId(run.runId) : ""}?</AlertDialogTitle>
-            <AlertDialogDescription>The run is stopped and deleted with the checkpoints it wrote. Stop keeps them.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction appearance="danger" onClick={() => void rollback()}>
-              Roll back
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Resizable>
+    {sheets}
+    </>
   );
 }
