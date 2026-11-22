@@ -21,7 +21,7 @@ export interface BrowserContext {
 }
 
 export type Check =
-  /** `cargo test -p mightyconsole-server -- <filter>`: passes when at least one test ran and none failed. */
+  /** `cargo test -p mightyconsole-server --tests -- <filter>`: passes when at least one test ran and none failed. */
   | { kind: "cargo"; filter: string; features?: string[]; label?: string }
   /** One UI test file, or the tests in it whose name contains `name`. */
   | { kind: "vitest"; file: string; name?: string; label?: string }

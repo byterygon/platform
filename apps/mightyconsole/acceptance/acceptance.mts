@@ -164,9 +164,13 @@ async function runCheck(check: Check, item: string, n: number, run: Run): Promis
       return done("manual", "a person checks this and links it in the PR", []);
     case "cargo":
     case "vitest": {
+      // `--tests`: the library's unit tests and every integration test, no doc-tests. Without it
+      // cargo also runs rustdoc for the doc-tests (none in this crate), about 3 s of every check
+      // (TSK-120: 185 single-test checks cost 1,047 s in one lab run). A check that names a
+      // doc-test would need `--doc` instead, and fails with "no test matched" until it has it.
       const argv =
         check.kind === "cargo"
-          ? ["cargo", "test", "-p", "mightyconsole-server", "--locked", ...(check.features?.length ? ["--features", check.features.join(",")] : []), "--", check.filter]
+          ? ["cargo", "test", "-p", "mightyconsole-server", "--locked", "--tests", ...(check.features?.length ? ["--features", check.features.join(",")] : []), "--", check.filter]
           : ["pnpm", "exec", "vitest", "run", check.file, ...(check.name ? ["-t", check.name] : [])];
       const { code, output } = execute(argv, { cwd: check.kind === "vitest" ? UI : REPO, log });
       const { passed, failed } = countTests(output);
