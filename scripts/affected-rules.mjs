@@ -107,4 +107,7 @@ export const NO_TARGETS = [
   // TSK-128: runs on a developer's machine; its tests run in the Affected job.
   "scripts/pre-pr.mjs",
   "scripts/pre-pr.test.mjs",
+  // TSK-129: read by the lab workflows (a change to them runs the lab on main); tested in Affected.
+  "scripts/lab-labels.mjs",
+  "scripts/lab-labels.test.mjs",
 ];

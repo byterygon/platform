@@ -19,6 +19,10 @@ summarises what a session needs when Notion is unavailable.
 - Before every push to a PR branch, run `node scripts/pre-pr.mjs` (what CI will run for your
   change: fmt, clippy, docs, tests, typecheck, build, lint, licences) and fix what fails; it lists
   what only CI can check.
+- A PR whose change needs the Mightyconsole lab gets a lab label once `pre-pr` passes: `lab`
+  (the scope `node scripts/affected.mjs` prints as `lab_tools`), `lab:<tool>` (a scope you choose;
+  `lab:all` for every tool) or `lab:none` (say why in the description). The lab runs on a PR only
+  with a label, and the "Lab decision" check fails a PR that needs it and has none.
 - Rebase on `main` before opening the PR. Keep edits to shared files (`Cargo.toml`, lockfiles,
   CI) minimal and list them in the PR description.
 - Put the task link in the PR, the PR link in the task, and add a **Work Log** entry when done.
