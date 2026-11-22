@@ -395,12 +395,14 @@ export default {
         cargo("the_store_lists_searches_puts_and_deletes"),
         lab("lab_the_store_lists_searches_puts_and_deletes"),
         vitest("test/langgraph.test.tsx", "the store lists namespaces and items"),
+        vitest("test/langgraph.test.tsx", "namespaces nest by label with the items counted under each"),
         browser("the store browser", async ({ page, origin, until, run, shot }) => {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await run(`__mc.dblclick(__mc.item("Store"))`);
-          await until(`__mc.button("lab.answers")`, "the namespaces (the lab's runs write lab.answers)");
-          await run(`__mc.click(__mc.button("lab.answers"))`);
+          // The namespaces as a tree (TSK-96): lab › answers.
+          await until(`__mc.item("answers")`, "the namespaces (the lab's runs write lab.answers)");
+          await run(`__mc.click(__mc.item("answers"))`);
           await until(`[...document.querySelectorAll("button")].some((b) => b.textContent.startsWith("answer-"))`, "the items of lab.answers");
           await shot("store");
         }),

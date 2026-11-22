@@ -16,7 +16,7 @@ import { DEFAULT_URL, parseHeaderLines, profile } from "@/tools/langgraph/index"
 import { EMPTY_RUN, eventName, parseChunk, reduceRun, type RunEvent } from "@/tools/langgraph/run-events";
 import { JsonField, schemaProblems, toGraphView } from "@/tools/langgraph/shared";
 import { fake as monacoFake } from "../../../../packages/ui/test/fakes/monaco.ts";
-import { StoreTab } from "@/tools/langgraph/store";
+import { StoreTab, namespaceTree } from "@/tools/langgraph/store";
 import { ThreadTab, advancedSummary, defaultInput, interruptQuestion } from "@/tools/langgraph/thread";
 import { DEFAULT_ORDER, ThreadsTab, orderSummary } from "@/tools/langgraph/threads";
 import { appendKeys, branchCount, formatDuration, runDuration, runNote, stepNodes, updatePreview, wroteLabel } from "@/tools/langgraph/state-diff";
@@ -511,11 +511,19 @@ describe("screens", () => {
       </Toast>,
     );
     await settle();
-    expect(document.body.textContent).toContain("lab.answers");
+    // The namespaces as a tree, with the items counted under each (TSK-96).
+    const treeItem = (label: string) => [...document.querySelectorAll<HTMLElement>("[role=treeitem]")].find((el) => el.textContent?.startsWith(label));
+    expect(treeItem("lab")?.textContent).toBe("lab1");
+    expect(treeItem("answers")?.textContent).toBe("answers1");
     expect(document.body.textContent).toContain("answer-5");
-    await click(buttonNamed("lab.answers"));
+    await click(treeItem("answers"));
     expect(fake.last("store.search")).toMatchObject({ namespacePrefix: ["lab", "answers"] });
-    await click(buttonNamed("Delete answer-5"));
+    expect(document.querySelector("header")?.textContent).toContain("namespace lab › answers · 1 item");
+    expect(document.querySelector("table[aria-label=Items] tbody tr")?.textContent).toContain("13 B");
+    // The item's pane: its value, Edit, Copy value, Delete.
+    await click(buttonNamed("answer-5"));
+    expect($("[aria-label='Value of answer-5']")?.textContent).toContain('"text": "42"');
+    await click(buttonNamed("Delete…"));
     await click(buttonNamed("Delete item"));
     expect(fake.last("store.delete")).toMatchObject({ namespace: ["lab", "answers"], key: "answer-5" });
     await click(buttonNamed("Put item"));
@@ -1048,5 +1056,17 @@ describe("assistants and schemas to the mockup (TSK-96)", () => {
     thread.script.chunks = [];
     await click(runBar("Run"));
     expect(thread.last("runs.stream")).toMatchObject({ input: { customer_id: "c-1" } });
+  });
+});
+
+describe("store tree (TSK-96)", () => {
+  test("namespaces nest by label with the items counted under each", () => {
+    const counts = new Map([["users.ana", 3], ["users.minh", 1], ["kb.support", 12]]);
+    const tree = namespaceTree([["kb", "support"], ["users", "ana"], ["users", "minh"]], counts, false);
+    expect(tree.map((n) => [n.id, n.meta, n.children?.map((c) => [c.label, c.meta])])).toEqual([
+      ["kb", "12", [["support", "12"]]],
+      ["users", "4", [["ana", "3"], ["minh", "1"]]],
+    ]);
+    expect(namespaceTree([["a"]], new Map([["a", 100]]), true)[0]!.meta).toBe("100+");
   });
 });
