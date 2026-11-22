@@ -90,9 +90,39 @@ pub struct Assistant {
     pub metadata: Value,
     pub created_at: String,
     pub updated_at: String,
+    /// The values a list of versions left out (`config`, `context`, `metadata`), each over its
+    /// share (TSK-96, as TSK-108's lists); empty elsewhere.
+    pub cuts: Vec<ValueCut>,
 }
 
 impl Assistant {
+    /// What the assistant weighs in a reply, close, not exact.
+    pub fn weight(&self) -> usize {
+        512 + budget::json_len(&self.config)
+            + budget::json_len(&self.context)
+            + budget::json_len(&self.metadata)
+            + self.cuts.len() * (2 * budget::PREVIEW_CHARS + 128)
+    }
+
+    /// Cuts its biggest values until it fits `share`.
+    pub fn within(mut self, share: usize) -> Assistant {
+        let open = budget::json_len(&self.config)
+            + budget::json_len(&self.context)
+            + budget::json_len(&self.metadata);
+        let rest = self.weight() - open;
+        let cuts = budget::shrink(
+            rest,
+            vec![
+                ("config".to_owned(), &mut self.config),
+                ("context".to_owned(), &mut self.context),
+                ("metadata".to_owned(), &mut self.metadata),
+            ],
+            share,
+        );
+        self.cuts = cuts;
+        self
+    }
+
     pub fn from_json(v: &Value) -> Assistant {
         let assistant_id = text_or_empty(v, "assistant_id");
         Assistant {
@@ -106,6 +136,7 @@ impl Assistant {
             metadata: json(v, "metadata"),
             created_at: text_or_empty(v, "created_at"),
             updated_at: text_or_empty(v, "updated_at"),
+            cuts: Vec::new(),
         }
     }
 }

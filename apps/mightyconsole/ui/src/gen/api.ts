@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:c6abe015fc1ecc73c446381fddec1da01ba6faa20ed8ddc48ae4e5b049d0a8f5";
+export const SCHEMA_HASH = "sha256:66b1672a1633a885779553c232f98f5b599165f517b314835c1f746ce9588152";
 
 // ---- Types
 
@@ -176,7 +176,12 @@ export type Archival = { enabled: boolean,
  */
 uri: string, };
 
-export type Assistant = { assistantId: string, graphId: string, name: string, description?: string, version?: number, config: JsonValue, context: JsonValue, metadata: JsonValue, createdAt: string, updatedAt: string, };
+export type Assistant = { assistantId: string, graphId: string, name: string, description?: string, version?: number, config: JsonValue, context: JsonValue, metadata: JsonValue, createdAt: string, updatedAt: string, 
+/**
+ * The values a list of versions left out (`config`, `context`, `metadata`), each over its
+ * share (TSK-96, as TSK-108's lists); empty elsewhere.
+ */
+cuts: Array<ValueCut>, };
 
 /**
  * `GET /assistants/{id}/graph`.
@@ -191,6 +196,28 @@ export type AssistantIdInput = { connId: string, assistantId: string, };
  * `GET /assistants/{id}/schemas`.
  */
 export type AssistantSchemas = { graphId: string, inputSchema: JsonValue, outputSchema: JsonValue, stateSchema: JsonValue, configSchema: JsonValue, contextSchema?: JsonValue, };
+
+/**
+ * `langgraph.assistants.versions`.
+ */
+export type AssistantVersionsInput = { connId: string, assistantId: string, 
+/**
+ * 1 to 1000; 20 when absent. Newest first.
+ */
+limit?: number | null, offset?: number | null, };
+
+/**
+ * A page of an assistant's versions: at most about 4 MiB, whatever `limit` says.
+ */
+export type AssistantVersionsPage = { 
+/**
+ * Newest first; each is the assistant at that version.
+ */
+items: Array<Assistant>, 
+/**
+ * Pass it as `offset` for the next page; absent when the versions end here.
+ */
+next?: number, };
 
 export type AssistantsSearchInput = { connId: string, graphId?: string | null, 
 /**
@@ -2174,6 +2201,59 @@ export type NetworksListInput = { connId: string, };
 export type NetworksRemoveInput = { connId: string, ids: Array<string>, };
 
 /**
+ * One node of the graph over the runs counted.
+ */
+export type NodeStat = { node: string, 
+/**
+ * Steps that ran it (a node that runs twice in a run counts twice).
+ */
+visits: number, 
+/**
+ * Runs that passed through it.
+ */
+runs: number, 
+/**
+ * The median and 95th percentile of its steps' times; absent without times.
+ */
+medianMs?: number, p95Ms?: number, 
+/**
+ * Failed runs whose error was in this node.
+ */
+errors: number, 
+/**
+ * Up to five threads that passed through it, newest run first.
+ */
+threadIds: Array<string>, };
+
+export type NodeStats = { 
+/**
+ * The runs counted (at most what was asked).
+ */
+runs: number, 
+/**
+ * The threads they belong to.
+ */
+threads: number, 
+/**
+ * The oldest and newest counted run's start.
+ */
+from?: string, to?: string, 
+/**
+ * Most visited first.
+ */
+nodes: Array<NodeStat>, 
+/**
+ * The reads stopped before all runs asked for were counted: `reason` says why.
+ */
+partial: boolean, reason?: string, };
+
+export type NodeStatsInput = { connId: string, assistantId: string, 
+/**
+ * How many of the latest runs to count: 1 to 200, 50 when absent.
+ */
+runs?: number | null, };
+
+/**
  * Which part of a message a codec reads or writes.
  */
 export type Part = "key" | "value";
@@ -3849,8 +3929,10 @@ export interface Procedures {
   readonly "echo.ticks": ProcedureDef<"stream", EchoTicksInput, EchoTicksSummary, ToolError>;
   readonly "langgraph.assistants.get": ProcedureDef<"query", AssistantIdInput, Assistant, ToolError>;
   readonly "langgraph.assistants.graph": ProcedureDef<"query", AssistantGraphInput, AssistantGraph, ToolError>;
+  readonly "langgraph.assistants.nodeStats": ProcedureDef<"query", NodeStatsInput, NodeStats, ToolError>;
   readonly "langgraph.assistants.schemas": ProcedureDef<"query", AssistantIdInput, AssistantSchemas, ToolError>;
   readonly "langgraph.assistants.search": ProcedureDef<"query", AssistantsSearchInput, Array<Assistant>, ToolError>;
+  readonly "langgraph.assistants.versions": ProcedureDef<"query", AssistantVersionsInput, AssistantVersionsPage, ToolError>;
   readonly "langgraph.connect": ProcedureDef<"mutation", LanggraphConnectInput, LanggraphConnectOutput, ToolError>;
   readonly "langgraph.disconnect": ProcedureDef<"mutation", LanggraphConnIdInput, Empty, ToolError>;
   readonly "langgraph.runs.cancel": ProcedureDef<"mutation", RunIdInput, Empty, ToolError>;
@@ -4042,8 +4124,10 @@ export interface Api {
     readonly assistants: {
       readonly get: Procedures["langgraph.assistants.get"];
       readonly graph: Procedures["langgraph.assistants.graph"];
+      readonly nodeStats: Procedures["langgraph.assistants.nodeStats"];
       readonly schemas: Procedures["langgraph.assistants.schemas"];
       readonly search: Procedures["langgraph.assistants.search"];
+      readonly versions: Procedures["langgraph.assistants.versions"];
     };
     readonly connect: Procedures["langgraph.connect"];
     readonly disconnect: Procedures["langgraph.disconnect"];
@@ -4664,6 +4748,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+      nodeStats: {
+        name: "langgraph.assistants.nodeStats",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 60000,
+        timeoutMaxMs: 300000,
+      },
       schemas: {
         name: "langgraph.assistants.schemas",
         kind: "query",
@@ -4676,6 +4770,16 @@ export const procedures: Api = {
       },
       search: {
         name: "langgraph.assistants.search",
+        kind: "query",
+        perm: "langgraph.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 30000,
+        timeoutMaxMs: 300000,
+      },
+      versions: {
+        name: "langgraph.assistants.versions",
         kind: "query",
         perm: "langgraph.read",
         risk: "Read",

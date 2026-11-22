@@ -19,6 +19,7 @@
 pub mod budget;
 mod client;
 pub mod model;
+pub mod stats;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -41,6 +42,7 @@ use self::model::{
     Assistant, AssistantGraph, AssistantSchemas, LanggraphInfo, Run, StoreItem, Thread,
     ThreadState, items,
 };
+use self::stats::{NodeStats, NodeStatsInput};
 use crate::core::tls::TlsOptions;
 use crate::core::{Empty, Handle, Hub, Progress, ToolError, ToolErrorKind, ToolResult};
 
@@ -146,6 +148,33 @@ pub struct AssistantsSearchInput {
 pub struct AssistantIdInput {
     pub conn_id: String,
     pub assistant_id: String,
+}
+
+/// `langgraph.assistants.versions`.
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantVersionsInput {
+    pub conn_id: String,
+    pub assistant_id: String,
+    /// 1 to 1000; 20 when absent. Newest first.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub limit: Option<u32>,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub offset: Option<u32>,
+}
+
+/// A page of an assistant's versions: at most about 4 MiB, whatever `limit` says.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantVersionsPage {
+    /// Newest first; each is the assistant at that version.
+    pub items: Vec<Assistant>,
+    /// Pass it as `offset` for the next page; absent when the versions end here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub next: Option<u32>,
 }
 
 /// How deep to draw subgraphs: `true` all the way, a number that many levels, `false` none.
@@ -845,6 +874,66 @@ impl AssistantsApi {
             )
             .await?;
         Ok(AssistantGraph::from_json(&v))
+    }
+
+    /// The assistant's versions, newest first, a page of at most about 4 MiB (TSK-96): fewer than
+    /// `limit` when their config is big, with `next` (an offset) for the rest.
+    #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
+    async fn versions(
+        &self,
+        ctx: Ctx,
+        input: AssistantVersionsInput,
+    ) -> ToolResult<AssistantVersionsPage> {
+        let handle = client(&self.0, &ctx, &input.conn_id)?;
+        let assistant = id("assistantId", &input.assistant_id)?;
+        let want = limit("limit", input.limit, 20)? as usize;
+        let offset = input.offset.unwrap_or(0) as usize;
+        let body = json!({ "limit": want, "offset": offset });
+        let v = handle
+            .value
+            .post(
+                &format!("/assistants/{assistant}/versions"),
+                &body,
+                "assistant",
+            )
+            .await?;
+        let raw: Vec<&Value> = items(&v, "versions").collect();
+        let got = raw.len();
+        let mut page: Page<Assistant> = Page::new(REPLY_BUDGET);
+        for item in raw {
+            let version = Assistant::from_json(item).within(ITEM_SHARE);
+            let weight = version.weight();
+            if !page.fits(weight) {
+                break;
+            }
+            page.add(version, weight);
+        }
+        let consumed = offset + page.items.len();
+        let next = (page.items.len() < got || got == want)
+            .then_some(consumed)
+            .and_then(|n| u32::try_from(n).ok());
+        Ok(AssistantVersionsPage {
+            items: page.items,
+            next,
+        })
+    }
+
+    /// Visits, times and errors per node over the assistant's latest runs (TSK-96): read from the
+    /// runs' checkpoints on the server, so only the table travels.
+    #[rpc::query(
+        perm = "langgraph.read",
+        risk = Risk::Read,
+        name = "nodeStats",
+        timeout_default = "60s"
+    )]
+    async fn node_stats(&self, ctx: Ctx, input: NodeStatsInput) -> ToolResult<NodeStats> {
+        let handle = client(&self.0, &ctx, &input.conn_id)?;
+        let assistant = id("assistantId", &input.assistant_id)?;
+        let want = match input.runs.unwrap_or(50) {
+            n @ 1..=200 => n as usize,
+            _ => return Err(ToolError::invalid(TOOL, "runs", "between 1 and 200").into()),
+        };
+        Ok(stats::gather(&handle.value, assistant, want).await?)
     }
 
     /// Input, output, state, config and context JSON Schemas of the assistant's graph.

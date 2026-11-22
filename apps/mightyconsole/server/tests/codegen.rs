@@ -308,6 +308,17 @@ fn the_procedures_of_the_spec() {
             Risk::Read,
             defaults,
         ),
+        // Node statistics read many runs' checkpoints (TSK-96): a minute by default.
+        (
+            "langgraph.assistants.nodeStats",
+            Query,
+            LG_READ,
+            Risk::Read,
+            (
+                Some(Duration::from_secs(60)),
+                Some(Duration::from_secs(300)),
+            ),
+        ),
         (
             "langgraph.assistants.schemas",
             Query,
@@ -317,6 +328,14 @@ fn the_procedures_of_the_spec() {
         ),
         (
             "langgraph.assistants.search",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        // An assistant's versions, a page of bytes (TSK-96).
+        (
+            "langgraph.assistants.versions",
             Query,
             LG_READ,
             Risk::Read,

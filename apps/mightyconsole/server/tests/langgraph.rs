@@ -150,9 +150,28 @@ async fn answer(method: &Method, path: &str, headers: &HeaderMap, body: &Value) 
             json!({ "graph_id": "agent", "input_schema": { "type": "object" }, "output_schema": {},
                     "state_schema": {}, "config_schema": {} }),
         ),
+        ("POST", "/assistants/a1/versions") => json_response(
+            StatusCode::OK,
+            json!([
+                { "assistant_id": "a1", "graph_id": "agent", "name": "agent", "version": 2,
+                  "config": { "configurable": { "model": "large" } }, "context": null, "metadata": {},
+                  "created_at": "2026-11-18T00:00:00Z" },
+                { "assistant_id": "a1", "graph_id": "agent", "name": "agent", "version": 1,
+                  "config": { "configurable": { "model": "small" } }, "context": null, "metadata": {},
+                  "created_at": "2026-11-17T00:00:00Z" },
+            ]),
+        ),
         ("GET", "/assistants/missing") => json_response(
             StatusCode::NOT_FOUND,
             json!({ "detail": "Assistant not found" }),
+        ),
+        // As `langgraph dev`: no thread names its assistant in its metadata (TSK-96's node statistics).
+        ("POST", "/threads/search") if body["metadata"].get("assistant_id").is_some() => {
+            json_response(StatusCode::OK, json!([]))
+        }
+        ("GET", "/assistants/a1") => json_response(
+            StatusCode::OK,
+            json!({ "assistant_id": "a1", "graph_id": "agent", "name": "agent", "version": 2 }),
         ),
         ("POST", "/threads/search") => json_response(
             StatusCode::OK,
@@ -166,6 +185,29 @@ async fn answer(method: &Method, path: &str, headers: &HeaderMap, body: &Value) 
         ("DELETE", p) if p == thread => StatusCode::NO_CONTENT.into_response(),
         ("GET", p) if p == format!("{thread}/state") || p == format!("{thread}/state/c1") => {
             json_response(StatusCode::OK, state("c2"))
+        }
+        // One run's steps (TSK-96's node statistics): input, then plan (1.5 s), then approve (0.5 s).
+        ("POST", p) if p == format!("{thread}/history") && body["metadata"]["run_id"] == RUN => {
+            let at = |id: &str, parent: Option<&str>, source: &str, next: &[&str], time: &str| {
+                json!({ "values": {}, "next": next, "tasks": [], "created_at": time,
+                        "checkpoint": { "checkpoint_id": id },
+                        "parent_checkpoint": parent.map(|p| json!({ "checkpoint_id": p })),
+                        "metadata": { "source": source, "run_id": RUN } })
+            };
+            json_response(
+                StatusCode::OK,
+                json!([
+                    at("s3", Some("s2"), "loop", &[], "2026-11-18T00:00:02Z"),
+                    at(
+                        "s2",
+                        Some("s1"),
+                        "loop",
+                        &["approve"],
+                        "2026-11-18T00:00:01.500Z"
+                    ),
+                    at("s1", None, "input", &["plan"], "2026-11-18T00:00:00Z"),
+                ]),
+            )
         }
         ("POST", p) if p == format!("{thread}/history") => {
             json_response(StatusCode::OK, json!([state("c2"), state("c1")]))
@@ -231,7 +273,9 @@ async fn answer(method: &Method, path: &str, headers: &HeaderMap, body: &Value) 
         ("GET", p) if p == format!("{thread}/runs") => json_response(
             StatusCode::OK,
             json!([{ "run_id": RUN, "thread_id": THREAD, "assistant_id": "a1", "status": "success",
-                     "created_at": "c", "updated_at": "u", "metadata": {}, "multitask_strategy": "reject" }]),
+                     "created_at": "c", "updated_at": "u", "metadata": {}, "multitask_strategy": "reject" },
+                   { "run_id": "other", "thread_id": THREAD, "assistant_id": "a2", "status": "success",
+                     "created_at": "b", "updated_at": "u", "metadata": {} }]),
         ),
         ("POST", p) if p == format!("{thread}/runs/{RUN}/cancel") => {
             StatusCode::NO_CONTENT.into_response()
@@ -965,6 +1009,70 @@ async fn the_store_lists_searches_puts_and_deletes() {
 }
 
 /// A one-answer HTTPS server with a certificate for `name`, signed by the returned CA.
+#[tokio::test]
+async fn an_assistant_s_versions_and_node_statistics() {
+    // TSK-96: the Versions tab and the Graph's node statistics.
+    let (_t, mock, addr, mut tab) = setup().await;
+    let conn = connect(
+        &mut tab,
+        2,
+        json!({ "name": "lab", "url": format!("http://{addr}") }),
+    )
+    .await;
+    tab.call(
+        3,
+        "langgraph.assistants.versions",
+        json!({ "connId": conn, "assistantId": "a1" }),
+    )
+    .await;
+    let page = tab.result(3).await;
+    assert_eq!(page["items"][0]["version"], 2);
+    assert_eq!(page["items"][1]["config"]["configurable"]["model"], "small");
+    assert_eq!(page["items"][0]["cuts"], json!([]));
+    assert!(page.get("next").is_none(), "fewer than asked for");
+    assert_eq!(
+        mock.last("/assistants/a1/versions").body,
+        json!({ "limit": 20, "offset": 0 })
+    );
+
+    tab.call(
+        4,
+        "langgraph.assistants.nodeStats",
+        json!({ "connId": conn, "assistantId": "a1" }),
+    )
+    .await;
+    let stats = tab.result(4).await;
+    // No thread names the assistant in its metadata: every thread is read, newest first; the
+    // other assistant's run is not counted.
+    let searches = mock.requests("/threads/search");
+    assert_eq!(
+        searches[searches.len() - 2].body["metadata"],
+        json!({ "assistant_id": "a1" })
+    );
+    assert!(searches[searches.len() - 1].body.get("metadata").is_none());
+    assert_eq!(stats["runs"], 1);
+    assert_eq!(stats["threads"], 1);
+    assert_eq!(stats["partial"], false);
+    assert_eq!(
+        stats["nodes"],
+        json!([
+            { "node": "approve", "visits": 1, "runs": 1, "medianMs": 500, "p95Ms": 500, "errors": 0, "threadIds": [THREAD] },
+            { "node": "plan", "visits": 1, "runs": 1, "medianMs": 1500, "p95Ms": 1500, "errors": 0, "threadIds": [THREAD] },
+        ])
+    );
+    assert_eq!(
+        mock.last(&format!("/threads/{THREAD}/history")).body["metadata"],
+        json!({ "run_id": RUN })
+    );
+    tab.call(
+        5,
+        "langgraph.assistants.nodeStats",
+        json!({ "connId": conn, "assistantId": "a1", "runs": 500 }),
+    )
+    .await;
+    tab.error(5, Code::InvalidArgument).await;
+}
+
 async fn https_info(name: &str) -> (SocketAddr, String) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let ca_key = rcgen::KeyPair::generate().unwrap();

@@ -143,8 +143,9 @@ export default {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await run(`__mc.dblclick(__mc.item("Threads"))`);
-          await until(`__mc.button("New thread")`, "the Threads tab");
-          await run(`__mc.click(__mc.button("New thread"))`);
+          await until(visibleButton("New thread"), "the Threads tab");
+          // The Threads tab's own: an assistant tab left open (hidden) has a New thread too (TSK-96).
+          await run(`__mc.click(${visibleButton("New thread")})`);
           await until(`${runBar("Run")} && !${runBar("Run")}.hasAttribute("data-disabled") && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
           await run(`__mc.click(${runBar("Run")})`);
           await shot("run started");
@@ -170,7 +171,7 @@ export default {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await run(`__mc.dblclick(__mc.item("Threads"))`);
-          await until(`__mc.button("New thread")`, "the Threads tab");
+          await until(visibleButton("New thread"), "the Threads tab");
           // The metadata filter's suggestions (the keys seen) paint over the threads table's header.
           await until(`document.querySelector('[aria-label="Threads"] thead')`, "the threads table");
           await typeInEditor(ctx, "Metadata (JSON)", '{ "');
@@ -178,7 +179,8 @@ export default {
           if (!(await suggestionsOnTop(ctx))) throw new Error("a metadata suggestion row is covered by the threads table");
           await shot("metadata suggestions over the threads table");
           await typeInEditor(ctx, "Metadata (JSON)", "");
-          await run(`__mc.click(__mc.button("New thread"))`);
+          // The Threads tab's own: an assistant tab left open (hidden) has a New thread too (TSK-96).
+          await run(`__mc.click(${visibleButton("New thread")})`);
           await until(`${runBar("Run")} && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
           // Context sits in the Advanced fold (TSK-95).
           await until(advancedRow, "the Advanced row");
@@ -211,8 +213,9 @@ export default {
           await page.navigate(`${origin}/`);
           await labTree({ until, run, shot });
           await run(`__mc.dblclick(__mc.item("Threads"))`);
-          await until(`__mc.button("New thread")`, "the Threads tab");
-          await run(`__mc.click(__mc.button("New thread"))`);
+          await until(visibleButton("New thread"), "the Threads tab");
+          // The Threads tab's own: an assistant tab left open (hidden) has a New thread too (TSK-96).
+          await run(`__mc.click(${visibleButton("New thread")})`);
           await until(`${runBar("Run")} && !${runBar("Run")}.disabled`, "the new thread's Run form with an assistant");
           const summary = await run<string>(`${advancedRow}.textContent.trim()`);
           if (summary !== "Advanced · values, updates, messages · subgraphs on · no interrupts") throw new Error(`the Advanced row says ${JSON.stringify(summary)}`);
@@ -345,6 +348,39 @@ export default {
           await run(press(visibleButton("Fork from here")));
           await until(`[...document.querySelectorAll("[role=dialog]")].some((d) => d.textContent.includes("What changes"))`, "the Edit state sheet");
           await shot("Edit state");
+        }),
+      ],
+    },
+    {
+      id: "assistant-graph-versions",
+      text: "TSK-96 (DOC-21 §11.2.1, Open question 45 (n)): an assistant's Graph has xray at a depth and a node pane (edges in and out, metadata, visits, median and p95 time and errors over the assistant's last 50 runs, read from their checkpoints on the server, with the threads that passed through it); its Versions tab lists every version with what changed and the diff of config, context and metadata against the one before, side by side or unified, read only; New thread starts a thread with the assistant. Assistants are grouped by graph with a graph and a text filter; Schemas lists the five schemas, shows one as a table of properties or as JSON, and makes an example input from the input schema with Start a thread with it; Config copies config, context and metadata.",
+      lab: true,
+      checks: [
+        cargo("steps_name_their_nodes_from_the_parent_s_next_and_time_from_the_parent"),
+        cargo("writes_win_over_next_and_errors_count_against_their_node"),
+        cargo("quantiles_take_the_nearest_rank_and_threads_stop_at_five"),
+        cargo("an_assistant_s_versions_and_node_statistics"),
+        lab("lab_an_assistant_s_versions_and_node_statistics"),
+        vitest("test/langgraph.test.tsx", "what a version changed, in a line"),
+        vitest("test/langgraph.test.tsx", "Versions: the list with what changed"),
+        vitest("test/langgraph.test.tsx", "Graph: a node's edges and its statistics"),
+        vitest("test/langgraph.test.tsx", "a schema's properties, facts, summary and an example input"),
+        vitest("test/langgraph.test.tsx", "Assistants: grouped by graph, filtered by graph and by text"),
+        vitest("test/langgraph.test.tsx", "Schemas: the list, the properties, the example input"),
+        browser("an assistant's node pane and Versions (TSK-96)", async ({ page, origin, until, run, shot }) => {
+          const found = (await (await fetch("http://127.0.0.1:2024/assistants/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ graph_id: "agent", limit: 1 }) })).json()) as { assistant_id: string }[];
+          if (!found[0]) throw new Error("the lab has no assistant of graph agent");
+          await page.navigate(`${origin}/`);
+          await labTree({ until, run, shot });
+          await page.navigate(`${origin}/langgraph/lab/assistants/${found[0].assistant_id}/graph`);
+          const node = `[...document.querySelectorAll('[data-slot="graph-view-node"]')].find((n) => n.checkVisibility() && !/start|end/.test(n.textContent))`;
+          await until(node, "the graph's nodes", 30_000);
+          await run(press(node));
+          await until(`[...document.querySelectorAll("section[aria-label^='Node ']")].some((p) => p.checkVisibility() && /In the last/.test(p.textContent) && !/Reading the last runs/.test(p.textContent))`, "the node's statistics", 60_000);
+          await shot("Graph with a node's pane");
+          await page.navigate(`${origin}/langgraph/lab/assistants/${found[0].assistant_id}/versions`);
+          await until(`[...document.querySelectorAll("table[aria-label=Versions] tbody tr")].some((r) => r.checkVisibility())`, "the versions", 30_000);
+          await shot("Versions");
         }),
       ],
     },

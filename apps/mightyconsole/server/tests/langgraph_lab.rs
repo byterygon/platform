@@ -528,6 +528,48 @@ async fn lab_a_run_s_request_and_its_own_checkpoints() {
 }
 
 #[tokio::test]
+async fn lab_an_assistant_s_versions_and_node_statistics() {
+    // TSK-96: Versions, and node statistics over the latest runs, read from their checkpoints.
+    let (_t, mut tab, conn) = setup().await;
+    let found = call(
+        &mut tab,
+        3,
+        "langgraph.assistants.search",
+        json!({ "connId": conn, "graphId": "agent" }),
+    )
+    .await;
+    let assistant = found[0]["assistantId"].as_str().unwrap().to_owned();
+    let thread = new_thread(&mut tab, 4, &conn).await;
+    run_to_interrupt(&mut tab, 5, &conn, &thread).await;
+    let versions = call(
+        &mut tab,
+        6,
+        "langgraph.assistants.versions",
+        json!({ "connId": conn, "assistantId": assistant }),
+    )
+    .await;
+    assert!(versions["items"][0]["version"].as_i64().unwrap() >= 1);
+    let stats = call(
+        &mut tab,
+        7,
+        "langgraph.assistants.nodeStats",
+        json!({ "connId": conn, "assistantId": assistant, "runs": 5 }),
+    )
+    .await;
+    assert!(stats["runs"].as_u64().unwrap() >= 1, "{stats}");
+    let nodes = stats["nodes"].as_array().unwrap();
+    assert!(
+        nodes.iter().any(|n| n["visits"].as_u64().unwrap() >= 1),
+        "{stats}"
+    );
+    assert!(
+        nodes
+            .iter()
+            .all(|n| !n["node"].as_str().unwrap().starts_with("__"))
+    );
+}
+
+#[tokio::test]
 async fn lab_a_run_is_joined_after_a_reconnect() {
     let t = start().await;
     let browser = t.browser().await;

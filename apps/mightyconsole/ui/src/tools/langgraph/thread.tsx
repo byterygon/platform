@@ -416,11 +416,12 @@ interface Running {
   paused(): boolean;
 }
 
-function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded, active, assistants, assistantId, onAssistant: setAssistantId, graph, graphView, schemas, runs }: RunPanelProps) {
+function RunPanel({ tab, threadId, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded, active, assistants, assistantId, onAssistant: setAssistantId, graph, graphView, schemas, runs }: RunPanelProps) {
   const gate = useActiveGate(active);
   const toast = useToast();
 
-  const [input, setInput] = useState<string | null>(null);
+  // An input handed over by the tab ("Start a thread with it", TSK-96), else the schema's default.
+  const [input, setInput] = useState<string | null>(typeof tab.params["input"] === "string" ? tab.params["input"] : null);
   useEffect(() => {
     if (input !== null) return;
     if (schemas.data) setInput(defaultInput(schemas.data.inputSchema));
