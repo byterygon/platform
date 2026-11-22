@@ -49,6 +49,9 @@ struct Data {
     asked: Arc<Mutex<Vec<String>>>,
     /// The size of the one `values` event a run stream sends after its `metadata`.
     event_bytes: usize,
+    /// An answer to a history call for more than one checkpoint is over the client's 64 MiB cap
+    /// (streamed as it is read, never built).
+    over_cap: bool,
 }
 
 fn json_response(body: &Value) -> Response {
@@ -141,6 +144,17 @@ async fn start_mock(data: Data) -> SocketAddr {
                 }
                 (Method::POST, p) if p.ends_with("/history") => {
                     let limit = body["limit"].as_u64().unwrap_or(10) as usize;
+                    if data.over_cap && limit > 1 {
+                        let chunks = futures_util::stream::iter((0..70).map(|_| {
+                            Ok::<_, std::io::Error>(axum::body::Bytes::from(vec![b' '; MIB]))
+                        }));
+                        return (
+                            StatusCode::OK,
+                            [("content-type", "application/json")],
+                            axum::body::Body::from_stream(chunks),
+                        )
+                            .into_response();
+                    }
                     let after = body["before"]["configurable"]["checkpoint_id"]
                         .as_str()
                         .and_then(|b| {
@@ -403,10 +417,11 @@ async fn the_history_of_heavy_checkpoints_comes_in_pages_with_notes() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_heavy_page_is_asked_again_for_fewer_checkpoints() {
-    // Checkpoints of 22 MiB: three at once is over the client's 64 MiB cap ("length limit
-    // exceeded" before); the tool asks for fewer.
+    // More than one checkpoint at once is over the client's 64 MiB cap ("length limit exceeded"
+    // before): the tool asks for half as many, down to one.
     let data = Data {
-        history: Arc::new((0..3).map(|n| checkpoint(n, 22 * MIB)).collect()),
+        history: Arc::new((0..3).map(|n| checkpoint(n, 2 * MIB)).collect()),
+        over_cap: true,
         ..Data::default()
     };
     let (_t, mut tab, conn) = setup(data.clone()).await;
@@ -417,13 +432,18 @@ async fn a_heavy_page_is_asked_again_for_fewer_checkpoints() {
         json!({ "connId": conn, "threadId": THREAD, "limit": 50 }),
     )
     .await;
-    assert!(!page["items"].as_array().unwrap().is_empty());
-    assert!(page["items"][0]["cuts"][0]["bytes"].as_u64().unwrap() > 22 * MIB as u64);
-    assert_eq!(
-        page["items"].as_array().unwrap().len(),
-        3,
-        "all three, one at a time"
-    );
+    let ids: Vec<&str> = page["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["checkpointId"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["c0", "c1", "c2"], "all three, one at a time");
+    assert!(page["items"][0]["cuts"][0]["bytes"].as_u64().unwrap() > 2 * MIB as u64);
+    let asked = data.asked.lock().unwrap().clone();
+    let history: Vec<&String> = asked.iter().filter(|a| a.contains("/history")).collect();
+    assert!(history[0].contains("\"limit\":3"), "{history:?}");
+    assert!(history[1].contains("\"limit\":1"), "{history:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
