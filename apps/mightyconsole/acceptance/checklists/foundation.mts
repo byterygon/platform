@@ -102,7 +102,7 @@ export default {
         command("the Breadcrumb's overflow in packages/ui", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/breadcrumb"]),
         command("browser-check: the row, Back's list, siblings, the fold, the blocker and the missing-profile page", ["node", "scripts/browser-check.ts"], {
           cwd: "apps/mightyconsole/ui",
-          env: { MIGHTYCONSOLE_SERVER: "{server}", BYTERYGON_REQUIRE_BROWSER: "1" },
+          env: { MIGHTYCONSOLE_SERVER: "{server}", BYTERYGON_REQUIRE_BROWSER: "1", MIGHTYCONSOLE_FAILURE_SHOTS: "{evidence}/screenshots" },
         }),
       ],
     },
@@ -118,7 +118,7 @@ export default {
         cargo("the_ui_directory_is_served_with_the_session_in_its_page"),
         command("browser-check: CSP, session and no request outside the server", ["node", "scripts/browser-check.ts"], {
           cwd: "apps/mightyconsole/ui",
-          env: { MIGHTYCONSOLE_SERVER: "{server}", BYTERYGON_REQUIRE_BROWSER: "1" },
+          env: { MIGHTYCONSOLE_SERVER: "{server}", BYTERYGON_REQUIRE_BROWSER: "1", MIGHTYCONSOLE_FAILURE_SHOTS: "{evidence}/screenshots" },
         }),
         manual("the same check with no network at all: the CI step \"Mightyconsole in Chrome (network disconnected)\" of the PR"),
       ],

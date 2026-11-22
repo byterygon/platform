@@ -28,6 +28,18 @@ const sw = (label: string) => sheetField("start-workflow", label);
 const sc = (label: string) => sheetField("schedule-form", label);
 const ra = (label: string) => sheetField("run-activity", label);
 
+/**
+ * Opens a seeded workflow of namespace `lab` from the list by its link, with a query for its ID
+ * (TSK-121). Unfiltered, the newest workflows (a minute's scheduled runs, the long histories of
+ * TSK-109) push the seeded ones down, past the rendered rows on a slow run: large-1 failed this way
+ * in 4 lab runs of the week to 2026-11-22, as encrypted-1 had before the codec item used its link.
+ */
+export async function openSeededWorkflow({ page, origin, until, run }: Pick<Ctx, "page" | "origin" | "until" | "run">, profile: string, id: string): Promise<void> {
+  await page.navigate(`${origin}/temporal/${profile}/lab/workflows?q=${encodeURIComponent(`WorkflowId = "${id}"`)}`);
+  await until(shownButton(id), "the workflow list", 30_000);
+  await run(`__mc.click(${shownButton(id)})`);
+}
+
 /** Opens the page and connects the lab's Temporal profile (made by the TSK-83 checklist or here). */
 export async function connectLab({ page, origin, until, run }: Ctx): Promise<void> {
   await page.navigate(`${origin}/`);
@@ -242,11 +254,7 @@ export default {
           await run(`__mc.dblclick(__mc.item("lab-s3"))`);
           await until(itemOf("lab-s3", "Workers"), "temporal.connect with External Storage");
           // Mightyconsole reads the stored input with the profile's keys.
-          // Listed by its ID: the newest workflows (the long histories of TSK-109, a minute's
-          // scheduled runs) can fill the first page of the whole list.
-          await page.navigate(`${origin}/temporal/lab-s3/lab/workflows?q=${encodeURIComponent('WorkflowId = "big-payload-1"')}`);
-          await until(shownButton("big-payload-1"), "the workflow list", 30_000);
-          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "big-payload-1"))`);
+          await openSeededWorkflow({ page, origin, until, run }, "lab-s3", "big-payload-1");
           await until(`[...document.querySelectorAll("[role=tab]")].some((t) => t.checkVisibility() && t.textContent.trim() === "Input and result")`, "the workflow tab");
           await run(`(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.checkVisibility() && x.textContent.trim() === "Input and result"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`);
           await until(`document.body.innerText.includes("received")`, "the decoded result (received, echo)");
@@ -393,10 +401,7 @@ export default {
         browser("large-1's input in the payload view: the tree pages, jq on the server, the size pane, then History by size", async (ctx) => {
           const { run, until, shot } = ctx;
           await connectLab(ctx);
-          // Listed by its ID, as big-payload-1 above.
-          await ctx.page.navigate(`${ctx.origin}/temporal/lab-temporal/lab/workflows?q=${encodeURIComponent('WorkflowId = "large-1"')}`);
-          await until(shownButton("large-1"), "the workflow list", 30_000);
-          await run(`__mc.click(${shownButton("large-1")})`);
+          await openSeededWorkflow(ctx, "lab-temporal", "large-1");
           const tab = (name: string) => `[...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && t.textContent.trim().startsWith(${JSON.stringify(name)}))`;
           const pick = (name: string) => `(() => { const t = ${tab(name)}; for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`;
           await until(tab("Input and result"), "the workflow tab");

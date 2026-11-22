@@ -33,7 +33,7 @@
 // MIGHTYCONSOLE_EMBEDDED_UI=1 checks a release binary (TSK-87) instead: no Vite build and no
 // --ui, so the page and every asset come from the UI compiled into the binary.
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -51,12 +51,52 @@ const check = (ok: boolean, message: string) => {
   if (!ok) failures.push(message);
   return ok;
 };
+let failureShots = 0;
 const until = async (page: Page, expression: string, what: string, timeoutMs = 20_000) => {
   if (await waitUntil(page, expression, timeoutMs)) return true;
-  // What the page showed, so a failure in CI says more than its name.
-  const shown = await page.evaluate<string>(`document.body.innerText.replace(/\\s+/g, " ").slice(0, 600)`).catch(() => "");
-  return check(false, `timed out waiting for ${what}; the page showed: ${shown}`);
+  // What the page showed, so a failure in CI says more than its name (TSK-121: the URL, the visible
+  // tabs with the selected one starred, the page's last errors, and a screenshot when
+  // MIGHTYCONSOLE_FAILURE_SHOTS names a folder, as the acceptance harness does).
+  const shown = await page
+    .evaluate<string>(
+      `JSON.stringify({ url: location.pathname + location.search + location.hash, tabs: [...document.querySelectorAll("[role=tab]")].filter((t) => t.checkVisibility()).slice(0, 12).map((t) => (t.getAttribute("aria-selected") === "true" ? "*" : "") + t.textContent.trim()), text: document.body.innerText.replace(/\\s+/g, " ").slice(0, 600) })`,
+    )
+    .catch(() => "");
+  let shot = "";
+  const dir = process.env.MIGHTYCONSOLE_FAILURE_SHOTS;
+  if (dir) {
+    failureShots += 1;
+    const file = join(dir, `browser-check-failure-${failureShots}.png`);
+    mkdirSync(dir, { recursive: true });
+    await page.screenshot(file).then(() => (shot = `; screenshot ${file}`), () => {});
+  }
+  return check(false, `timed out waiting for ${what}; the page: ${shown}; errors: ${page.errors.slice(-3).join(" | ") || "none"}${shot}`);
 };
+
+/** A click on `el` as a pointer does it: pointer and mouse down, up, then click. */
+const press = (el: string) =>
+  `(() => { const t = ${el}; if (!t) throw new Error("nothing to press"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`;
+
+/**
+ * Presses `el` until `expression` holds, at most three times, and says on stderr when one press was
+ * not enough (TSK-121). In CI a press on a tab or the tool rail right after a load or a history move
+ * sometimes left the page as it was (13 of about 30 lab failures in the week to 2026-11-22); only
+ * presses that change nothing when repeated (picking a tab, picking a tool) go through here, and the
+ * evidence keeps the count, so a lost press is seen rather than hidden.
+ */
+const pressUntil = async (page: Page, el: string, expression: string, what: string) => {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await run(page, press(el));
+    if (await waitUntil(page, expression, attempt === 3 ? 20_000 : 5_000)) {
+      if (attempt > 1) console.error(`browser-check: ${what} needed ${attempt} presses`);
+      return true;
+    }
+  }
+  return until(page, expression, what, 1);
+};
+/** The visible element of `selector` whose text is `label` (or contains it, with `contains`). */
+const visible = (selector: string, label: string, contains = false) =>
+  `[...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.checkVisibility() && (${contains ? `e.textContent.includes(${JSON.stringify(label)})` : `e.textContent.trim() === ${JSON.stringify(label)} || e.getAttribute("aria-label") === ${JSON.stringify(label)}`}))`;
 
 /** Monaco's share of the built UI: its chunks, workers and CSS, and whether the page loads any of it up front. */
 function monacoBundle(dist: string) {
@@ -233,23 +273,17 @@ async function main(): Promise<number> {
     await until(page, `location.pathname === "/echo/smoke/ticks" && ${selected("Ticks · smoke")}`, "Back to the Ticks tab");
     await run(page, `history.forward()`);
     await until(page, `location.pathname === "/echo/smoke/compose" && ${selected("Composer")}`, "Forward to the Composer tab");
-    await run(
-      page,
-      `(() => { const t = [...document.querySelectorAll("[role=tab]")].find((x) => x.textContent.includes("Ticks · smoke")); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`,
-    );
-    await until(page, `location.pathname === "/echo/smoke/ticks"`, "the URL following a clicked tab");
+    await pressUntil(page, visible("[role=tab]", "Ticks · smoke", true), `location.pathname === "/echo/smoke/ticks"`, "the URL following a clicked tab");
     await page.navigate(`${origin}/echo/smoke/ticks`);
-    await until(page, `${selected("Ticks · smoke")} && location.pathname === "/echo/smoke/ticks"`, "the place after a reload");
+    // Settled: the restored tab is connected again (its Start button), as after the reload of step 3.
+    await until(page, `${selected("Ticks · smoke")} && location.pathname === "/echo/smoke/ticks" && __mc.button("Start")`, "the place after a reload");
     // 3b. The navigation row (TSK-105) on a Temporal profile that never connects (no Temporal here):
     // the row sits above the tab's states, so its crumbs, Back list, siblings and link all work.
     const row = `document.querySelector("[role=tabpanel]:not([hidden]) [role=toolbar][aria-label=Location]")`;
     const crumbs = `[...${row}.querySelectorAll("[data-slot=breadcrumb-item]")].map((el) => el.textContent.trim()).join(" / ")`;
     const rowButton = (label: string) => `[...${row}.querySelectorAll("button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)})`;
-    const press = (el: string) =>
-      `(() => { const t = ${el}; if (!t) throw new Error("nothing to press"); for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`;
     const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((el) => el.textContent.trim() === ${JSON.stringify(label)})`;
-    await run(page, `__mc.click(__mc.button("Temporal"))`);
-    await until(page, `__mc.has("No Temporal connections yet")`, "the Temporal connection list");
+    await pressUntil(page, visible("button", "Temporal"), `__mc.has("No Temporal connections yet")`, "the Temporal connection list");
     await run(page, `__mc.click(__mc.button("Add connection"))`);
     await until(page, `__mc.field("Name")`, "the Temporal profile sheet");
     await run(page, `__mc.type(__mc.field("Name"), "lab")`);

@@ -3,7 +3,7 @@
 // children, one failed, and family-support signalling the order) and the schedule detail tab,
 // against the lab. Each batch of the task wires its item.
 import { browser, cargo, type Checklist, vitest } from "../checklist.mts";
-import { connectLab, shownButton } from "./temporal-more.mts";
+import { connectLab, openSeededWorkflow, shownButton } from "./temporal-more.mts";
 
 /** One cargo check per test function, against the lab. */
 const lab = (...names: string[]) => names.map((name) => cargo(name, { features: ["lab-tests"] }));
@@ -39,9 +39,7 @@ export default {
         browser("the order's Relations: the whole family, Direct only, and a child opened by double-click", async (ctx) => {
           const { run, until, shot } = ctx;
           await connectLab(ctx);
-          await run(`__mc.dblclick(__mc.item("Workflows"))`);
-          await until(`__mc.has("family-order")`, "the workflow list");
-          await run(`__mc.click([...document.querySelectorAll("button")].find((b) => b.checkVisibility() && b.textContent.trim() === "family-order"))`);
+          await openSeededWorkflow(ctx, "lab-temporal", "family-order");
           const relationsTab = `[...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && /^Relations( \\d+)?$/.test(t.textContent.trim()))`;
           await until(relationsTab, "the workflow tab");
           await run(`(() => { const t = ${relationsTab}; for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`);
