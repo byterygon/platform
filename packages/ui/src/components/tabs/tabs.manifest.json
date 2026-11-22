@@ -3,8 +3,8 @@
   "schemaVersion": 1,
   "name": "tabs",
   "title": "Tabs",
-  "description": "Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, and be reordered by drag or Alt+Shift+Arrow.",
-  "usage": "Use Tabs to switch between views of the same place: the sections of a Settings dialog (appearance transparent), or DBee's query tabs (appearance enclosed, size small). Compose it as Tabs (value, onValueChange) > TabsList > TabsTrigger per tab (value, icon for a status, children for the title) + TabsContent per tab. For closable tabs pass onClose on each TabsTrigger and keep the tabs in state (Tabs controlled): when the active tab closes, choose the next one. For reorderable tabs pass onReorder(value, index) on TabsList and move the tab in your array. For navigation between pages use NavigationMenu or Sidebar; for a choice that filters content in place, ToggleGroup. The old variant prop (line is transparent) and the sm/md sizes still work for one release.",
+  "description": "Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, be reordered by drag or Alt+Shift+Arrow, and carry a count in its own badge.",
+  "usage": "Use Tabs to switch between views of the same place: the sections of a Settings dialog (appearance transparent), or DBee's query tabs (appearance enclosed, size small). Compose it as Tabs (value, onValueChange) > TabsList > TabsTrigger per tab (value, icon for a status, children for the title) + TabsContent per tab. For closable tabs pass onClose on each TabsTrigger and keep the tabs in state (Tabs controlled): when the active tab closes, choose the next one. For a number that belongs to a tab (History 1,234, Errors 3) pass count on its TabsTrigger, never in the title: it is drawn in a Badge after the title, neutral unless countTone says it needs attention (danger, warning), hidden at 0 unless showZero, shortened from 10,000 (12.4k) with its full number in a title, and read with the title as one name (countLabel says what it counts: \"History, 1,234 events\"). For reorderable tabs pass onReorder(value, index) on TabsList and move the tab in your array. For navigation between pages use NavigationMenu or Sidebar; for a choice that filters content in place, ToggleGroup. The old variant prop (line is transparent) and the sm/md sizes still work for one release.",
   "status": "experimental",
   "base": "@base-ui/react/tabs",
   "dependencies": [
@@ -68,6 +68,34 @@
       "description": "TabsTrigger: a leading status (running spinner, modified dot); give it a text alternative."
     },
     {
+      "name": "count",
+      "type": "number | null",
+      "description": "TabsTrigger: a number in its own badge after the title. Hidden when 0 (unless showZero), null or undefined; from 10,000 it is shortened (12.4k, 48k, 1.2M, cut and never rounded up) and the badge's title holds the full number."
+    },
+    {
+      "name": "countLabel",
+      "type": "string | [one: string, other: string]",
+      "description": "TabsTrigger: what the count counts, read after it in the tab's one accessible name (\"events\" gives \"History, 1,234 events\") and in the badge's title; a pair, [\"event\", \"events\"], says \"1 event\" for one."
+    },
+    {
+      "name": "countMore",
+      "type": "boolean",
+      "default": false,
+      "description": "TabsTrigger: there are more than count (the first page of a longer list): the badge reads \"50+\" and the name and title \"at least 50 runs\"."
+    },
+    {
+      "name": "countTone",
+      "type": "\"neutral\" | \"accent\" | \"danger\" | \"warning\" | \"success\" | \"info\"",
+      "default": "neutral",
+      "description": "TabsTrigger: the count's tone, a Badge variant; use danger or warning for what needs attention, such as failures."
+    },
+    {
+      "name": "showZero",
+      "type": "boolean",
+      "default": false,
+      "description": "TabsTrigger: show a count of 0 (for a tab where none is itself the news, such as Consumers 0)."
+    },
+    {
       "name": "onClose",
       "type": "() => void",
       "description": "TabsTrigger: makes the tab closable (close button and Delete); focus moves to the neighbouring tab."
@@ -123,6 +151,11 @@
       "name": "close",
       "element": "button",
       "description": "The close button at a closable tab's end, out of the tab order and aria-hidden; data-slot=\"tabs-close\"."
+    },
+    {
+      "name": "count",
+      "element": "span",
+      "description": "The count's Badge after the title, aria-hidden (the number is read in the tab's name); data-slot=\"tabs-count\"."
     }
   ],
   "parts": [
@@ -185,14 +218,24 @@
     "color.bg.inset",
     "color.bg.layer",
     "color.bg.layer-alt",
+    "color.border.default",
     "color.border.subtle",
     "color.fg.default",
     "color.fg.disabled",
     "color.fg.muted",
     "color.interactive.active",
     "color.interactive.hover",
+    "color.neutral.bg",
+    "color.neutral.fg",
+    "color.neutral.subtle-bg",
+    "color.neutral.subtle-fg",
     "color.ring",
     "color.ring-inner",
+    "color.status.danger.bg",
+    "color.status.danger.border",
+    "color.status.danger.fg",
+    "color.status.danger.solid",
+    "color.status.danger.solid-fg",
     "font.mono",
     "font.sans",
     "motion.duration.faster",
@@ -203,12 +246,14 @@
     "ring.width",
     "size.control.md",
     "size.control.sm",
+    "size.control.xs",
     "size.icon.md",
     "size.icon.xs",
     "size.panel.xs",
     "space.control.x",
     "space.inline.md",
     "space.inline.sm",
+    "space.inline.xs",
     "space.inset.sm",
     "space.stack.sm",
     "text.body-1-strong.leading",
@@ -223,6 +268,10 @@
     "text.body.size",
     "text.body.tracking",
     "text.body.weight",
+    "text.caption.leading",
+    "text.caption.size",
+    "text.caption.tracking",
+    "text.caption.weight",
     "text.code.leading",
     "text.code.size",
     "text.code.tracking",
@@ -239,6 +288,7 @@
     "A closable tab closes with Delete when focused (aria-keyshortcuts=\"Delete\"); its close button is for the pointer, out of the tab order and hidden from assistive technology so the tablist holds only tabs. Focus moves to the neighbouring tab.",
     "A reorderable tab moves with Alt+Shift+ArrowLeft and Alt+Shift+ArrowRight (Up and Down when vertical), announced through aria-keyshortcuts, as well as by drag, so reordering does not need a pointer.",
     "A status icon needs a text alternative (role=\"img\" with aria-label, or visually hidden text), since a coloured dot alone carries no meaning.",
-    "Only colours transition; nothing moves, so reduced motion needs no change."
+    "Only colours transition; nothing moves, so reduced motion needs no change.",
+    "A count is a Badge hidden from assistive technology, and its number is read as part of the tab's one name through visually hidden text (\"History, 1,234 events\", the full number, with countLabel after it), so it is never read as a separate stop. The badge keeps its own fill and text pair on the selected, hovered and pressed tab, so its contrast does not depend on the tab behind it; its tone is never the only signal, since the number and its label say it."
   ]
 }

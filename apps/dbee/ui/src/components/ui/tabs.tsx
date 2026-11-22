@@ -1,5 +1,6 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
@@ -13,6 +14,10 @@ import { Dismiss, MoreHorizontal } from "@/lib/icons";
 // Alt+Shift+Arrow on the focused one), and it takes a leading status icon (a spinner, a dot).
 // A horizontal strip never scrolls: tabs that do not fit are hidden behind a "More tabs" menu at
 // its end, as Fluent's TabList overflow, and the selected tab always stays in view.
+// A tab can carry a count (TabsTrigger count): a Badge after the title, as Fluent 2's counter
+// badge. The badge has its own fill and text pair, so it keeps its contrast on a selected, hovered
+// or pressed tab; it is hidden from assistive technology and the number is read as part of the
+// tab's one name ("History, 1,234 events") through visually hidden text.
 
 /** Classes per variant prop. The manifest's `variants` lists the same keys; a test compares them. */
 export const tabsVariants = {
@@ -41,6 +46,26 @@ const VARIANT_ALIASES = { line: "transparent", enclosed: "enclosed" } as const;
 export type TabsVariant = keyof typeof VARIANT_ALIASES;
 type TabValue = string | number;
 
+/** Counts below this are drawn in full; from here on they are shortened (12.4k, 1.2M). */
+const COUNT_FULL_BELOW = 10_000;
+const COUNT_UNITS = [
+  [1_000_000_000, "B"],
+  [1_000_000, "M"],
+  [1_000, "k"],
+] as const;
+
+/**
+ * A tab's count as drawn in its badge: in full below 10,000 ("9,999"), then shortened to one
+ * decimal and cut, never rounded up ("12.4k", "48k", "1.2M"). The full number goes in the badge's
+ * title and in the tab's accessible name.
+ */
+export function formatTabCount(count: number): string {
+  const n = Math.max(0, Math.trunc(count));
+  if (n < COUNT_FULL_BELOW) return n.toLocaleString("en");
+  const [size, suffix] = COUNT_UNITS.find(([unit]) => n >= unit)!;
+  return `${Math.floor(n / (size / 10)) / 10}${suffix}`;
+}
+
 const listVariants = {
   transparent: "border-b border-border-subtle data-[orientation=vertical]:border-b-0 data-[orientation=vertical]:border-e",
   subtle: "gap-inline-xs",
@@ -68,6 +93,8 @@ const classes = {
     "data-closable:pe-inline-sm [&_svg]:size-icon-md [&_svg]:shrink-0",
   ],
   label: "min-w-0 truncate",
+  // After the title, never squeezed: a long title truncates first.
+  count: "shrink-0 tabular-nums",
   close: [
     "absolute top-1/2 right-inline-sm flex size-icon-md -translate-y-1/2 items-center justify-center rounded-sm text-fg-muted opacity-70 hover:opacity-100",
     "hover:bg-hover hover:text-fg active:bg-pressed [&_svg]:size-icon-xs",
@@ -168,6 +195,8 @@ export interface TabsListProps extends Omit<TabsPrimitive.List.Props, "className
 interface HiddenTab {
   value: string;
   label: string;
+  /** The count as drawn in the tab's badge, or "". */
+  count: string;
 }
 
 const itemsOf = (list: HTMLElement) => [...list.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.dataset["slot"] === "tabs-item");
@@ -211,12 +240,15 @@ function fitTabs(strip: HTMLElement, list: HTMLElement, more: HTMLElement | null
   items.forEach((item, index) => {
     if (shown.has(index)) return;
     item.setAttribute("data-overflow", "");
-    hidden.push({ value: item.dataset["value"]!, label: triggerOf(item)?.textContent?.trim() ?? item.dataset["value"]! });
+    const trigger = triggerOf(item);
+    // The title alone: the tab's text also holds its count and the count's visually hidden reading.
+    const label = trigger?.querySelector('[data-slot="tabs-label"]')?.textContent?.trim() ?? trigger?.textContent?.trim() ?? item.dataset["value"]!;
+    hidden.push({ value: item.dataset["value"]!, label, count: trigger?.querySelector('[data-slot="tabs-count"]')?.textContent?.trim() ?? "" });
   });
   return hidden;
 }
 
-const sameTabs = (a: readonly HiddenTab[], b: readonly HiddenTab[]) => a.length === b.length && a.every((tab, index) => tab.value === b[index]!.value && tab.label === b[index]!.label);
+const sameTabs = (a: readonly HiddenTab[], b: readonly HiddenTab[]) => a.length === b.length && a.every((tab, index) => tab.value === b[index]!.value && tab.label === b[index]!.label && tab.count === b[index]!.count);
 
 /**
  * The tab strip (role="tablist"). Horizontal tabs that do not fit are listed in a "More tabs" menu
@@ -315,6 +347,7 @@ export function TabsList({ onReorder, moreLabel = "More tabs", className, ref, .
             {hidden.map((tab) => (
               <DropdownMenuItem key={tab.value} onClick={() => choose(tab.value)}>
                 {tab.label}
+                {tab.count ? <span className="ms-inline-sm text-fg-muted tabular-nums">{tab.count}</span> : null}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -331,6 +364,23 @@ export interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, "classNa
   children?: ReactNode;
   /** A leading status: a Spinner while running, a dot when modified. */
   icon?: ReactNode;
+  /**
+   * A number after the title, in its own badge (a count of events, rows or failures). Hidden when
+   * it is 0 (unless `showZero`), `null` or `undefined`; from 10,000 it is shortened (12.4k) with
+   * the full number in its title. It is not part of the title: do not also write it in `children`.
+   */
+  count?: number | null | undefined;
+  /**
+   * What the count counts, read after it in the tab's name: "events" gives "History, 1,234 events".
+   * Pass `["event", "events"]` to say "1 event" for one.
+   */
+  countLabel?: string | readonly [one: string, other: string];
+  /** There are more than `count` (a first page of a list): the badge reads "50+" and the name "at least 50 runs". */
+  countMore?: boolean;
+  /** The count's tone: neutral by default; `danger` or `warning` for what needs attention (failures). */
+  countTone?: BadgeProps["variant"];
+  /** Shows a count of 0 (for a tab where none is itself the news, such as "Consumers 0"). */
+  showZero?: boolean;
   /** Makes the tab closable: a close button at its end, and Delete on the focused tab. */
   onClose?: () => void;
   /** The close button's tooltip text. */
@@ -339,12 +389,17 @@ export interface TabsTriggerProps extends Omit<TabsPrimitive.Tab.Props, "classNa
   className?: string;
 }
 
-/** A tab (role="tab"): its icon, its title and, when closable, a close button. */
-export function TabsTrigger({ value, icon, children, onClose, closeLabel = "Close tab", className, onKeyDown, ...props }: TabsTriggerProps) {
+/** A tab (role="tab"): its icon, its title, its count and, when closable, a close button. */
+export function TabsTrigger({ value, icon, children, count, countLabel, countMore = false, countTone = "neutral", showZero = false, onClose, closeLabel = "Close tab", className, onKeyDown, ...props }: TabsTriggerProps) {
   const { appearance, size, orientation, reorder, order, dragging, setDragging, drop, setDrop } = useContext(TabsContext);
   const registry = useContext(RegistryContext);
   registry?.values.set(String(value), value);
   const itemRef = useRef<HTMLDivElement | null>(null);
+  const whole = count != null && Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : null;
+  const shownCount = whole !== null && (whole >= 1 || showZero) ? whole : null;
+  // What the badge's title and the tab's name say: "1,234 events", or "at least 50 runs" for a first page.
+  const noun = typeof countLabel === "string" || countLabel === undefined ? countLabel : shownCount === 1 ? countLabel[0] : countLabel[1];
+  const counts = shownCount === null ? "" : [countMore ? "at least" : "", shownCount.toLocaleString("en"), noun ?? ""].filter(Boolean).join(" ");
 
   const tabs = () => [...(itemRef.current?.parentElement?.querySelectorAll<HTMLElement>('[data-slot="tabs-trigger"]') ?? [])];
 
@@ -455,7 +510,19 @@ export function TabsTrigger({ value, icon, children, onClose, closeLabel = "Clos
         {...props}
       >
         {icon}
-        <span className={classes.label}>{children}</span>
+        <span data-slot="tabs-label" className={classes.label}>
+          {children}
+        </span>
+        {shownCount !== null ? (
+          <>
+            {/* One name for the tab: "History, 1,234 events". The badge is only for the eyes. */}
+            <span className="sr-only">, {counts}</span>
+            <Badge aria-hidden="true" data-slot="tabs-count" variant={countTone} title={counts} className={classes.count}>
+              {formatTabCount(shownCount)}
+              {countMore ? "+" : ""}
+            </Badge>
+          </>
+        ) : null}
         {/* The close mark's room: the button (outside the tab, for assistive technology) sits over it. */}
         {onClose ? <span aria-hidden="true" data-slot="tabs-close-room" className="size-icon-md shrink-0" /> : null}
       </TabsPrimitive.Tab>

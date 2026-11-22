@@ -211,6 +211,11 @@ async function until<T>(page: Page, expression: string, what: string, timeout = 
 // In-page helpers: find a button by its text and click it (React and Base UI handle the event).
 const CLICK = (selector: string, text: string) =>
   `(() => { const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.textContent.trim() === ${JSON.stringify(text)}); if (!el) return false; el.click(); return true; })()`;
+// A tab by its title, and the count in its badge after the title (TSK-110): "" when it has none (a
+// count of 0 is hidden), null when there is no such tab.
+const TAB = (title: string) => `[...document.querySelectorAll('[role="tab"]')].find((e) => e.querySelector('[data-slot="tabs-label"]')?.textContent === ${JSON.stringify(title)})`;
+const TAB_COUNT = (title: string) => `(() => { const t = ${TAB(title)}; return t ? (t.querySelector('[data-slot="tabs-count"]')?.textContent ?? "") : null; })()`;
+const CLICK_TAB = (title: string) => `(() => { const t = ${TAB(title)}; if (!t) return false; t.click(); return true; })()`;
 const READY = `document.querySelector('[role="status"]') !== null && document.documentElement.dataset.theme !== undefined`;
 const VAR = (name: string) => `getComputedStyle(document.documentElement).getPropertyValue(${JSON.stringify(name)}).trim()`;
 const EXPORT_DIALOG = `[...document.querySelectorAll('[role="dialog"]')].find((d) => d.textContent.includes("Copy or download the theme"))`;
@@ -377,7 +382,7 @@ async function main(argv: string[]): Promise<number> {
       await until(page, READY, "the faded theme to render");
       // 32: the 28 of the layered look, the three text-on-backdrop pairs of TSK-64 and
       // terminal.ansi.bright-black on terminal.bg (TSK-81).
-      check(await page.evaluate<boolean>(CLICK('[role="tab"]', "Contrast (32)")), `contrast (${mode}): the tab counts 32 failing measurements`);
+      check((await page.evaluate<string | null>(TAB_COUNT("Contrast"))) === "32" && (await page.evaluate<boolean>(CLICK_TAB("Contrast"))), `contrast (${mode}): the tab counts 32 failing measurements`);
       await until(page, `document.querySelector('ul[aria-label^="Contrast pairs"]') !== null || document.body.textContent.includes("No pair fails")`, "the contrast report");
       if (shots) {
         await sleep(300);
@@ -389,7 +394,7 @@ async function main(argv: string[]): Promise<number> {
     await until(page, `document.querySelector('ul[aria-label="Contrast pairs, light · comfortable"] > li[aria-label="color.fg.muted"]') !== null`, "the light failures of color.fg.muted");
     const unfixed = await page.evaluate<string>(`location.hash`);
     check(await page.evaluate<boolean>(CLICK("button", "Apply fix")), "contrast: the Apply fix button");
-    await until(page, `[...document.querySelectorAll('[role="tab"]')].some((t) => t.textContent === "Contrast (0)")`, "the fix to clear every failure");
+    await until(page, `${TAB_COUNT("Contrast")} === ""`, "the fix to clear every failure");
     await until(page, `location.hash !== ${JSON.stringify(unfixed)} && localStorage.getItem("byterygon.theme-studio.state") === location.hash`, "the fixed theme to be saved");
     const fixedHash = await page.evaluate<string>(`location.hash`);
     const { decodeState } = await import("@byterygon/design-tokens");
@@ -418,7 +423,11 @@ async function main(argv: string[]): Promise<number> {
     }
     await page.evaluate(CLICK('[role="dialog"] button', "Open this theme"));
     await until(page, `${VAR("--by-radius-md")} === "10px"`, "the imported theme (radius 0.625rem) to apply");
-    await until(page, `document.querySelector('main [role="tab"][aria-selected="true"]')?.textContent.startsWith("Contrast (")`, "the contrast report to open after an import that breaks a rule");
+    await until(
+      page,
+      `(() => { const t = document.querySelector('main [role="tab"][aria-selected="true"]'); return t?.querySelector('[data-slot="tabs-label"]')?.textContent === "Contrast" && /^\\d+$/.test(t.querySelector('[data-slot="tabs-count"]')?.textContent ?? ""); })()`,
+      "the contrast report to open after an import that breaks a rule",
+    );
 
     // 3. Every preset from its hash, every export through the dialog, against by-tokens.
     const exportsChecked: string[] = [];

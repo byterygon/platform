@@ -95,8 +95,8 @@ export function ProjectTab(props: TabProps) {
       {rows !== null && rows.length > 0 ? (
         <Tabs value={view} onValueChange={(v) => setView(v as ProjectView)} className="mt-stack-md flex min-h-0 flex-1 flex-col gap-0">
           <TabsList aria-label="Project views" className="gap-inline-xs px-inset-lg [&_[data-slot=tabs-trigger]]:h-control-lg [&_[data-slot=tabs-trigger]]:px-inline-md [&_[data-slot=tabs-item]:first-child]:-ms-inline-md">
-            <TabsTrigger value="containers">
-              Containers <span className="text-fg-muted tabular-nums">{rows.length}</span>
+            <TabsTrigger value="containers" count={rows.length} countLabel={["container", "containers"]} showZero>
+              Containers
             </TabsTrigger>
             <TabsTrigger value="logs">Logs</TabsTrigger>
           </TabsList>

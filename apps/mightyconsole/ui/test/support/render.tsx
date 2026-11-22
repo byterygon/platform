@@ -147,6 +147,17 @@ export const byRole = (role: string, name?: string | RegExp, root: ParentNode = 
   return null;
 };
 
+/** A tab by its title: the tab's own label, not its count (TSK-110: the count is a badge after the title). */
+export const tabByTitle = (title: string, root: ParentNode = document.body): HTMLElement | null =>
+  [...root.querySelectorAll<HTMLElement>('[role="tab"]')].find((tab) => tab.querySelector('[data-slot="tabs-label"]')?.textContent?.trim() === title) ?? null;
+
+/** The count in a tab's badge as drawn ("1,234", "12.4k", "50+"), or null when the tab has none. */
+export const tabCount = (tab: Element | null): string | null => tab?.querySelector('[data-slot="tabs-count"]')?.textContent ?? null;
+
+/** The tab's accessible name: its text less what is aria-hidden ("History, 1,234 events"). */
+export const tabName = (node: Node | null): string =>
+  node === null ? "" : [...node.childNodes].map((child) => (child instanceof HTMLElement ? (child.getAttribute("aria-hidden") === "true" ? "" : tabName(child)) : (child.textContent ?? ""))).join("");
+
 /** A dialog (or alertdialog) whose text includes `text`; toasts are dialogs too, so look by content. */
 export const dialogWith = (text: string): HTMLElement | null =>
   Array.from(document.querySelectorAll<HTMLElement>("[role=dialog], [role=alertdialog]")).find((d) => d.textContent?.includes(text)) ?? null;

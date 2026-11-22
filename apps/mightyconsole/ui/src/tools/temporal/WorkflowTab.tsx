@@ -263,15 +263,15 @@ export function WorkflowTab({ tab, profile, connId, client, note, onLive, useTab
         <Tabs value={section} onValueChange={(v) => setSection(v as Section)} className="mt-stack-md flex min-h-0 flex-1 flex-col gap-0">
           <TabsList aria-label="Workflow views" className="gap-inline-xs px-inset-lg [&_[data-slot=tabs-trigger]]:h-control-lg [&_[data-slot=tabs-trigger]]:px-inline-md [&_[data-slot=tabs-item]:first-child]:-ms-inline-md">
             <TabsTrigger value="timeline">Timeline</TabsTrigger>
-            <TabsTrigger value="history">
-              History <span className="text-body-1 text-fg-muted">{formatCount(Math.max(store.size, detail.workflow.historyLength))}</span>
+            <TabsTrigger value="history" count={Math.max(store.size, detail.workflow.historyLength)} countLabel={["event", "events"]}>
+              History
             </TabsTrigger>
-            <TabsTrigger value="relations">
-              Relations {related > 0 ? <span className="text-body-1 text-fg-muted">{related}</span> : null}
+            <TabsTrigger value="relations" count={related} countLabel={["workflow", "workflows"]}>
+              Relations
             </TabsTrigger>
             <TabsTrigger value="input">Input and result</TabsTrigger>
-            <TabsTrigger value="pending">
-              Pending {pending > 0 ? <span className="text-body-1 text-fg-muted">{pending}</span> : null}
+            <TabsTrigger value="pending" count={pending} countLabel={["item", "items"]}>
+              Pending
             </TabsTrigger>
             <TabsTrigger value="queries">Queries</TabsTrigger>
             <TabsTrigger value="stack">Stack trace</TabsTrigger>
