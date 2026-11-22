@@ -26,7 +26,7 @@ import { appendFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { ALL_RUST, EDGES, LAB_TOOL_EXTRA, LAB_TOOL_FILES, NO_TARGETS, RUN_ALL } from "./affected-rules.mjs";
+import { ALL_RUST, EDGES, LAB_NEUTRAL_FILES, LAB_TOOL_EXTRA, LAB_TOOL_FILES, NO_TARGETS, RUN_ALL } from "./affected-rules.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -495,14 +495,16 @@ export function readLabTools(root = ROOT) {
 
 /**
  * The lab profiles a change needs: "all", "none", or the tools whose own files alone changed
- * (LAB_TOOL_FILES, LAB_TOOL_EXTRA). Any other file that affects Mightyconsole needs every tool.
+ * (LAB_TOOL_FILES, LAB_TOOL_EXTRA). LAB_NEUTRAL_FILES follow the tools they come with (alone,
+ * they need every tool). Any other file that affects Mightyconsole needs every tool.
  * Takes computeAffected's input.
  */
-export function labTools(input, tools, rules = { LAB_TOOL_FILES, LAB_TOOL_EXTRA }) {
+export function labTools(input, tools, rules = { LAB_TOOL_FILES, LAB_TOOL_EXTRA, LAB_NEUTRAL_FILES }) {
   const whole = computeAffected(input);
   if (whole.all) return "all";
   if (!whole.jobs.mightyconsole) return "none";
   const out = new Set();
+  let neutral = false;
   for (const file of input.files) {
     const tool =
       tools.find((t) => matches(file, rules.LAB_TOOL_FILES.map((g) => g.replaceAll("<tool>", t)))) ??
@@ -511,10 +513,15 @@ export function labTools(input, tools, rules = { LAB_TOOL_FILES, LAB_TOOL_EXTRA 
       out.add(tool);
       continue;
     }
+    if (matches(file, rules.LAB_NEUTRAL_FILES ?? [])) {
+      neutral = true;
+      continue;
+    }
     const one = computeAffected({ ...input, files: [file] });
     if (one.all || one.jobs.mightyconsole) return "all";
   }
-  return out.size ? [...out].sort() : "none";
+  if (out.size) return [...out].sort();
+  return neutral ? "all" : "none";
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -225,6 +225,27 @@ test("the Mightyconsole lab brings up only the tools whose own files changed", (
   assert.deepEqual(lab(["apps/mightyconsole/ui/src/tools/langgraph/thread.tsx"]), ["langgraph"]);
   assert.deepEqual(lab(["apps/mightyconsole/server/src/tools/temporal/mod.rs", "apps/mightyconsole/ui/test/temporal-actions.test.tsx", "apps/mightyconsole/acceptance/checklists/temporal.mts"]), ["temporal"]);
   assert.deepEqual(lab(["apps/mightyconsole/lab/docker-host/seed.sh", "apps/mightyconsole/lab/langgraph/agent.py"]), ["docker", "langgraph"]);
+  // TSK-124: PR #189's files (a LangGraph batch) bring up LangGraph only: the tool's server tests
+  // and the generated API, its drift test and the checklist-name test follow the tool.
+  assert.deepEqual(
+    lab([
+      "apps/mightyconsole/acceptance/checklists/langgraph.mts",
+      "apps/mightyconsole/server/src/tools/langgraph/assistants.rs",
+      "apps/mightyconsole/server/tests/codegen.rs",
+      "apps/mightyconsole/server/tests/langgraph.rs",
+      "apps/mightyconsole/server/tests/langgraph_lab.rs",
+      "apps/mightyconsole/ui/src/gen/api.manifest.json",
+      "apps/mightyconsole/ui/src/gen/api.ts",
+      "apps/mightyconsole/ui/src/tools/langgraph/assistants.tsx",
+      "apps/mightyconsole/ui/test/acceptance.test.ts",
+      "apps/mightyconsole/ui/test/langgraph.test.tsx",
+    ]),
+    ["langgraph"],
+  );
+  assert.deepEqual(lab(["apps/mightyconsole/acceptance/checklists/temporal-more.mts", "apps/mightyconsole/server/tests/nats_lab.rs"]), ["nats", "temporal"]);
+  // Alone, the neutral files still need every tool; a core test still does too.
+  assert.equal(lab(["apps/mightyconsole/ui/src/gen/api.ts"]), "all");
+  assert.equal(lab(["apps/mightyconsole/server/tests/e2e.rs", "apps/mightyconsole/server/tests/langgraph.rs"]), "all");
   // The shell, the server core, the sample tool, shared packages: every tool.
   for (const file of ["apps/mightyconsole/server/src/lib.rs", "apps/mightyconsole/ui/src/tools/echo/index.tsx", "apps/mightyconsole/lab/compose.yaml", "packages/ui/src/index.ts"]) assert.equal(lab([file]), "all", file);
   assert.equal(lab(["apps/mightyconsole/ui/src/tools/langgraph/thread.tsx", "apps/mightyconsole/server/src/api.rs"]), "all");
