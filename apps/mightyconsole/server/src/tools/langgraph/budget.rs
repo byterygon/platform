@@ -100,14 +100,15 @@ pub fn json_len(value: &Value) -> usize {
     }
 }
 
-/// A JSON string's size with its quotes and escapes.
+/// A JSON string's size with its quotes and escapes. Counted by bytes: a multi-byte character
+/// has no byte that needs an escape, so its UTF-8 length is its JSON length.
 fn string_len(s: &str) -> usize {
     2 + s
-        .chars()
-        .map(|c| match c {
-            '"' | '\\' | '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' => 2,
-            c if (c as u32) < 0x20 => 6,
-            c => c.len_utf8(),
+        .bytes()
+        .map(|b| match b {
+            b'"' | b'\\' | b'\n' | b'\r' | b'\t' | 0x08 | 0x0c => 2,
+            0..=0x1f => 6,
+            _ => 1,
         })
         .sum::<usize>()
 }
@@ -147,7 +148,7 @@ pub fn cut(slot: &mut Value, field: impl Into<String>) -> ValueCut {
 }
 
 /// Cuts the biggest of `slots` (name, value) while their total is over `share`, never one under
-/// [`KEEP_UNDER`]. `rest` is what the item weighs besides these values.
+/// `KEEP_UNDER` (16 KiB). `rest` is what the item weighs besides these values.
 pub fn shrink(rest: usize, mut slots: Vec<(String, &mut Value)>, share: usize) -> Vec<ValueCut> {
     let mut sizes: Vec<usize> = slots.iter().map(|(_, v)| json_len(v)).collect();
     let mut total = rest + sizes.iter().sum::<usize>();
@@ -169,7 +170,7 @@ pub fn shrink(rest: usize, mut slots: Vec<(String, &mut Value)>, share: usize) -
 }
 
 /// How many items the next upstream call asks for, given the last page's weight: about
-/// [`UPSTREAM_TARGET`] bytes, between 1 and `most`.
+/// `UPSTREAM_TARGET` (16 MiB) bytes, between 1 and `most`.
 pub fn next_page_size(page_bytes: usize, page_items: usize, most: usize) -> usize {
     if page_items == 0 {
         return most.max(1);

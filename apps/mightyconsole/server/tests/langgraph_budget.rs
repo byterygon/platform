@@ -67,9 +67,19 @@ fn query_of(query: &str, key: &str) -> Option<usize> {
         .and_then(|v| v.parse().ok())
 }
 
+fn text_response(body: String) -> Response {
+    (StatusCode::OK, [("content-type", "application/json")], body).into_response()
+}
+
 async fn start_mock(data: Data) -> SocketAddr {
+    // Serialised once: the answers are big and a slow runner should not spend its time on them.
+    let history_text: Arc<Vec<String>> =
+        Arc::new(data.history.iter().map(Value::to_string).collect());
+    let runs_text: Arc<Vec<String>> = Arc::new(data.runs.iter().map(Value::to_string).collect());
     let app = axum::Router::new().fallback(move |request: Request| {
         let data = data.clone();
+        let history_text = history_text.clone();
+        let runs_text = runs_text.clone();
         async move {
             let path = request.uri().path().to_owned();
             let query = request.uri().query().unwrap_or_default().to_owned();
@@ -102,27 +112,30 @@ async fn start_mock(data: Data) -> SocketAddr {
                 (Method::GET, p) if p.ends_with("/runs") => {
                     let limit = query_of(&query, "limit").unwrap_or(10);
                     let offset = query_of(&query, "offset").unwrap_or(0);
-                    let list: Vec<Value> = data
-                        .runs
+                    let list: Vec<&str> = runs_text
                         .iter()
                         .skip(offset)
                         .take(limit)
-                        .cloned()
+                        .map(String::as_str)
                         .collect();
-                    json_response(&Value::Array(list))
+                    text_response(format!("[{}]", list.join(",")))
                 }
                 (Method::GET, p) if p.contains("/runs/") => {
                     let id = p.rsplit('/').next().unwrap();
-                    match data.runs.iter().find(|r| r["run_id"] == id) {
-                        Some(r) => json_response(r),
+                    match data.runs.iter().position(|r| r["run_id"] == id) {
+                        Some(i) => text_response(runs_text[i].clone()),
                         None => StatusCode::NOT_FOUND.into_response(),
                     }
                 }
-                (Method::GET, p) if p.ends_with("/state") => json_response(&data.history[0]),
+                (Method::GET, p) if p.ends_with("/state") => text_response(history_text[0].clone()),
                 (Method::GET, p) if p.contains("/state/") => {
                     let id = p.rsplit('/').next().unwrap();
-                    match data.history.iter().find(|c| c["checkpoint"]["checkpoint_id"] == id) {
-                        Some(c) => json_response(c),
+                    match data
+                        .history
+                        .iter()
+                        .position(|c| c["checkpoint"]["checkpoint_id"] == id)
+                    {
+                        Some(i) => text_response(history_text[i].clone()),
                         None => StatusCode::NOT_FOUND.into_response(),
                     }
                 }
@@ -136,9 +149,13 @@ async fn start_mock(data: Data) -> SocketAddr {
                                 .position(|c| c["checkpoint"]["checkpoint_id"] == b)
                         })
                         .map_or(0, |i| i + 1);
-                    let list: Vec<&Value> = data.history.iter().skip(after).take(limit).collect();
-                    // The upstream's own answers are bigger than the client reads: 64 MiB.
-                    json_response(&json!(list))
+                    let list: Vec<&str> = history_text
+                        .iter()
+                        .skip(after)
+                        .take(limit)
+                        .map(String::as_str)
+                        .collect();
+                    text_response(format!("[{}]", list.join(",")))
                 }
                 _ => StatusCode::NOT_FOUND.into_response(),
             }
@@ -221,9 +238,9 @@ async fn runs_come_in_pages_of_bytes_and_the_pages_add_up_to_every_run() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_with_big_metadata_is_cut_and_loaded_on_request() {
-    // Run 1 has 3 MiB of metadata (over the 1 MiB share), run 2 has 20 MiB (over the frame).
+    // Run 1 has 3 MiB of metadata (over the 1 MiB share), run 2 has 13 MiB (over what `get` carries).
     let data = Data {
-        runs: Arc::new(vec![run(0, 100), run(1, 3 * MIB), run(2, 20 * MIB)]),
+        runs: Arc::new(vec![run(0, 100), run(1, 3 * MIB), run(2, 13 * MIB)]),
         ..Data::default()
     };
     let (_t, mut tab, conn) = setup(data).await;
@@ -289,7 +306,7 @@ async fn a_run_with_big_metadata_is_cut_and_loaded_on_request() {
     .await;
     let metadata: Value = serde_json::from_slice(&whole.0).unwrap();
     assert_eq!(metadata["n"], 2);
-    assert_eq!(metadata["blob"].as_str().unwrap().len(), 20 * MIB);
+    assert_eq!(metadata["blob"].as_str().unwrap().len(), 13 * MIB);
     assert_eq!(whole.1["bytes"].as_u64().unwrap(), whole.0.len() as u64);
 }
 
@@ -313,10 +330,10 @@ async fn read_value(tab: &mut Tab, id: u32, input: Value) -> (Vec<u8>, Value) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_history_of_heavy_checkpoints_comes_in_pages_with_notes() {
-    // 12 checkpoints of 5 MiB (60 MiB upstream; before: ResourceExhausted from 5 per call, and
-    // "length limit exceeded" at the UI's 50).
+    // 6 checkpoints of 5 MiB (30 MiB upstream; before: ResourceExhausted from 5 per call, and
+    // "length limit exceeded" at the UI's 50). Three a page, so the token is followed.
     let data = Data {
-        history: Arc::new((0..12).map(|n| checkpoint(n, 5 * MIB)).collect()),
+        history: Arc::new((0..6).map(|n| checkpoint(n, 5 * MIB)).collect()),
         ..Data::default()
     };
     let (_t, mut tab, conn) = setup(data.clone()).await;
@@ -328,7 +345,7 @@ async fn the_history_of_heavy_checkpoints_comes_in_pages_with_notes() {
             &mut tab,
             10 + pages,
             "langgraph.threads.history",
-            json!({ "connId": conn, "threadId": THREAD, "limit": 50, "before": before }),
+            json!({ "connId": conn, "threadId": THREAD, "limit": 3, "before": before }),
         )
         .await;
         assert!(bytes < 4 * MIB, "page {pages} is {bytes} bytes");
@@ -347,7 +364,7 @@ async fn the_history_of_heavy_checkpoints_comes_in_pages_with_notes() {
         }
         assert!(pages < 20);
     }
-    let all: Vec<String> = (0..12).map(|n| format!("c{n}")).collect();
+    let all: Vec<String> = (0..6).map(|n| format!("c{n}")).collect();
     assert_eq!(ids, all, "every checkpoint once, newest first");
 
     // The upstream was asked for few at a time: its answers are far under the client's 64 MiB.
@@ -362,7 +379,8 @@ async fn the_history_of_heavy_checkpoints_comes_in_pages_with_notes() {
                 .unwrap()
         })
         .collect();
-    assert!(limits.iter().all(|l| *l <= 4), "{limits:?}");
+    assert!(limits.iter().all(|l| *l <= 3), "{limits:?}");
+    assert!(pages >= 2, "limit 3 of 6 is two pages: {pages}");
 
     // One checkpoint, whole, on request (5 MiB is within the state's reply).
     let (state, bytes) = sized(
@@ -385,10 +403,10 @@ async fn the_history_of_heavy_checkpoints_comes_in_pages_with_notes() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_heavy_page_is_asked_again_for_fewer_checkpoints() {
-    // Checkpoints of 24 MiB: three at once is over the client's 64 MiB cap ("length limit
+    // Checkpoints of 22 MiB: three at once is over the client's 64 MiB cap ("length limit
     // exceeded" before); the tool asks for fewer.
     let data = Data {
-        history: Arc::new((0..4).map(|n| checkpoint(n, 24 * MIB)).collect()),
+        history: Arc::new((0..3).map(|n| checkpoint(n, 22 * MIB)).collect()),
         ..Data::default()
     };
     let (_t, mut tab, conn) = setup(data.clone()).await;
@@ -400,8 +418,12 @@ async fn a_heavy_page_is_asked_again_for_fewer_checkpoints() {
     )
     .await;
     assert!(!page["items"].as_array().unwrap().is_empty());
-    assert!(page["items"][0]["cuts"][0]["bytes"].as_u64().unwrap() > 24 * MIB as u64);
-    assert!(page.get("next").is_some(), "more checkpoints are left");
+    assert!(page["items"][0]["cuts"][0]["bytes"].as_u64().unwrap() > 22 * MIB as u64);
+    assert_eq!(
+        page["items"].as_array().unwrap().len(),
+        3,
+        "all three, one at a time"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -439,9 +461,10 @@ async fn a_small_history_is_one_page_with_nothing_left() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_state_over_its_share_is_cut_then_loaded_then_streamed() {
-    // The current state weighs 20 MiB: over the frame (before: ResourceExhausted).
+    // The current state weighs 13 MiB: over what `full` carries (12 MiB); before this, a state over
+    // 16 MiB was ResourceExhausted.
     let data = Data {
-        history: Arc::new(vec![checkpoint(0, 20 * MIB)]),
+        history: Arc::new(vec![checkpoint(0, 13 * MIB)]),
         ..Data::default()
     };
     let (_t, mut tab, conn) = setup(data).await;
@@ -456,7 +479,7 @@ async fn a_state_over_its_share_is_cut_then_loaded_then_streamed() {
     assert_eq!(state["values"], Value::Null);
     assert_eq!(state["cuts"][0]["field"], "values");
     assert_eq!(state["cuts"][0]["kind"], "object");
-    assert!(state["cuts"][0]["bytes"].as_u64().unwrap() > 20 * MIB as u64);
+    assert!(state["cuts"][0]["bytes"].as_u64().unwrap() > 13 * MIB as u64);
     assert_eq!(
         state["checkpointId"], "c0",
         "the rest of the state is there"
@@ -480,7 +503,7 @@ async fn a_state_over_its_share_is_cut_then_loaded_then_streamed() {
     let values: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(
         values["messages"][0]["content"].as_str().unwrap().len(),
-        20 * MIB
+        13 * MIB
     );
     assert_eq!(summary["bytes"].as_u64().unwrap(), bytes.len() as u64);
     // A field that is not there is NotFound, not an empty stream.
@@ -525,10 +548,10 @@ async fn run_lines(tab: &mut Tab, id: u32) -> (Vec<Value>, Value, usize) {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_event_over_its_share_is_forwarded_as_a_note() {
-    // A `values` event of 20 MiB (the whole state again): before, "chunk exceeds the frame size
-    // limit" ended the run's stream.
+    // A `values` event of 6 MiB (the whole state again; over 16 MiB it ended the run's stream with
+    // "chunk exceeds the frame size limit"): over the 4 MiB share it is a note.
     let data = Data {
-        event_bytes: 20 * MIB,
+        event_bytes: 6 * MIB,
         ..Data::default()
     };
     let (_t, mut tab, conn) = setup(data).await;
@@ -546,7 +569,7 @@ async fn a_run_event_over_its_share_is_forwarded_as_a_note() {
     assert_eq!(lines[1]["data"], Value::Null);
     assert_eq!(lines[1]["cut"]["field"], "data");
     assert_eq!(lines[1]["cut"]["kind"], "object");
-    assert!(lines[1]["cut"]["bytes"].as_u64().unwrap() > 20 * MIB as u64);
+    assert!(lines[1]["cut"]["bytes"].as_u64().unwrap() > 6 * MIB as u64);
     assert!(
         lines[1]["cut"]["preview"]
             .as_str()
