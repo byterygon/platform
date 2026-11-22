@@ -449,7 +449,8 @@ export default {
           await until(`${firstId} === ${JSON.stringify(String(total))}`, "Newest first again", 30_000);
           await page.navigate(`${origin}/temporal/lab-temporal/lab/workflows/history-heavy-1/history`);
           await until(firstId, "the heavy history's first rows", 30_000);
-          const alerts = await run<string[]>(`[...document.querySelectorAll("[role=alert]")].filter((e) => e.checkVisibility()).map((e) => e.textContent.trim())`);
+          // An alert that says something (the toast region is an empty alert until it shows one).
+          const alerts = await run<string[]>(`[...document.querySelectorAll("[role=alert]")].filter((e) => e.checkVisibility()).map((e) => e.textContent.trim()).filter(Boolean)`);
           if (alerts.length > 0) throw new Error(`the heavy history shows ${alerts.join(" | ")}`);
           await shot("history-heavy-1");
         }),
