@@ -60,10 +60,25 @@ export const LAB_TOOL_FILES = [
   "apps/mightyconsole/server/src/tools/<tool>/**",
   "apps/mightyconsole/lab/<tool>/**",
   "apps/mightyconsole/acceptance/checklists/<tool>.mts",
+  // TSK-124: a tool's further checklists (temporal-more, temporal-detail) and server tests.
+  "apps/mightyconsole/acceptance/checklists/<tool>-*.mts",
+  "apps/mightyconsole/server/tests/<tool>.rs",
+  "apps/mightyconsole/server/tests/<tool>_*.rs",
   "apps/mightyconsole/ui/test/<tool>.test.ts",
   "apps/mightyconsole/ui/test/<tool>.test.tsx",
   "apps/mightyconsole/ui/test/<tool>-*.test.ts",
   "apps/mightyconsole/ui/test/<tool>-*.test.tsx",
+];
+/**
+ * TSK-124: files that change along with any tool's procedures or checklists and say nothing of
+ * their own about which tools a change needs: the generated API (written by rpc-gen from the
+ * server's routes), its drift test and the test that every checklist name still exists. They do
+ * not bring up every tool when they come with a tool's own files; alone, they still do.
+ */
+export const LAB_NEUTRAL_FILES = [
+  "apps/mightyconsole/ui/src/gen/**",
+  "apps/mightyconsole/server/tests/codegen.rs",
+  "apps/mightyconsole/ui/test/acceptance.test.ts",
 ];
 /** Lab folders named after something other than their tool. */
 export const LAB_TOOL_EXTRA = [

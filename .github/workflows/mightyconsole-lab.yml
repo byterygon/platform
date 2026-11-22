@@ -19,6 +19,13 @@ on:
 permissions:
   contents: read
 
+# TSK-124: a newer push to the same pull request (or a newer main) cancels the run in progress,
+# like ci.yml. 7 lab runs in the week to 2026-11-22 (175 min) went on testing a head that a
+# newer push had already replaced.
+concurrency:
+  group: lab-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # TSK-122: as in ci.yml, debug info is line tables only (smaller cache and faster links for the
   # acceptance harness's own `cargo build` and `cargo test`).
