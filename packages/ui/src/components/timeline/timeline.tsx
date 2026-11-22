@@ -258,6 +258,8 @@ const ROW = 36;
 const GUTTER = 240;
 /** About how wide a caption-1 character is, to tell whether a caption fits inside its bar. */
 const CHAR_PX = 6.5;
+/** Instants of one lane closer than this many px to the one drawn before are not drawn (the selected one always is). */
+const INSTANT_GAP = 2;
 /** Overview marks drawn at most (the rest are skipped evenly). */
 const OVERVIEW_MARKS = 400;
 const SPANS: ReadonlySet<TimelineShape> = new Set(["bar", "hatched", "dashed"]);
@@ -302,7 +304,12 @@ export function Timeline({
   const hintId = useId();
   const fitted = useMemo(() => fitRange(items, now), [items, now]);
   const running = useMemo(() => items.some((i) => i.end === null), [items]);
-  const first0 = useMemo(() => (items.length > 0 ? Math.min(...items.map((i) => i.start)) : fitted.start), [items, fitted.start]);
+  // A loop, not a spread: a long history's thousands of items are too many arguments for Math.min.
+  const first0 = useMemo(() => {
+    let start = Infinity;
+    for (const item of items) start = Math.min(start, item.start);
+    return items.length > 0 ? start : fitted.start;
+  }, [items, fitted.start]);
   const zero = origin ?? first0;
 
   // Following slides a zoomed view so now sits near its right edge; the fitted view holds now already.
@@ -404,11 +411,32 @@ export function Timeline({
   const nowAt = percent(now);
 
   const describe = describeItem ?? ((item: TimelineItem, end: number) => `${item.label}, ${item.status}, ${formatOffset(end - item.start)}`);
-  const extentEnd = items.length > 0 ? Math.max(...items.map((i) => i.end ?? now)) : now;
+  let extentEnd = items.length > 0 ? -Infinity : now;
+  for (const item of items) extentEnd = Math.max(extentEnd, item.end ?? now);
   const overviewMarks = items.length <= OVERVIEW_MARKS ? items : items.filter((_, i) => i % Math.ceil(items.length / OVERVIEW_MARKS) === 0);
   const fitSpan = fitted.end - fitted.start;
   const windowLeft = Math.max(0, ((view.start - fitted.start) / fitSpan) * 100);
   const windowRight = Math.min(100, ((view.end - fitted.start) / fitSpan) * 100);
+
+  /**
+   * A lane's items. Instants (ticks, diamonds, pins) that would land on the pixel of the one drawn
+   * before are left out, so a lane of thousands (a long history's workflow tasks) draws a few
+   * hundred marks; zooming in shows them all. Items come in order of their start.
+   */
+  const drawLane = (list: readonly TimelineItem[]) => {
+    if (trackPx <= 0) return list.map(renderItem);
+    const out: ReactNode[] = [];
+    let drawnAt = -Infinity;
+    for (const item of list) {
+      if (!SPANS.has(item.shape ?? "bar") && item.id !== selectedId) {
+        const px = (percent(item.start) / 100) * trackPx;
+        if (px - drawnAt < INSTANT_GAP) continue;
+        drawnAt = px;
+      }
+      out.push(renderItem(item));
+    }
+    return out;
+  };
 
   const lanesRef = (el: HTMLDivElement | null) => {
     observer.current?.disconnect();
@@ -579,7 +607,7 @@ export function Timeline({
                       {ticks.map((t) => (
                         <span key={t} aria-hidden="true" className={cn(classes.grid)} style={{ left: `${percent(t)}%` }} />
                       ))}
-                      {(byLane.get(lane.id) ?? []).map(renderItem)}
+                      {drawLane(byLane.get(lane.id) ?? [])}
                       {nowAt >= 0 && nowAt <= 100 ? <span aria-hidden="true" data-slot="timeline-now" className={cn(classes.now)} style={{ left: `${nowAt}%` }} /> : null}
                     </div>
                   </div>

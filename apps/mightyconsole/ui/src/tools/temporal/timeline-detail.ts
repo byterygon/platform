@@ -116,7 +116,7 @@ export function failureText(failure: Attributes): string {
  * child's run), its failure (from its closing event, else the pending activity's last failure) and
  * its events. `pending` is `WorkflowDetail.pendingActivities`; `now` closes what is still open.
  */
-export function itemDetail(info: ItemInfo, byId: ReadonlyMap<number, HistoryEvent>, pending: readonly Record<string, unknown>[], now: number): ItemDetail {
+export function itemDetail(info: ItemInfo, byId: { get(id: number): HistoryEvent | undefined }, pending: readonly Record<string, unknown>[], now: number): ItemDetail {
   const events = info.eventIds.map((id) => byId.get(id)).filter((e): e is HistoryEvent => e !== undefined);
   const first = events[0];
   const a = first?.attributes ?? {};

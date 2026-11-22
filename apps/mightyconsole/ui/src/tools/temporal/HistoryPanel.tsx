@@ -3,10 +3,16 @@
 // K step), Table or JSON, Download; a virtual table with the time since the start, an icon per
 // category, red failures, workflow tasks folded and each event's pair; the chosen event's detail;
 // a footer that says what is loaded and whether new events are followed.
-import { useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+//
+// Long histories (TSK-109, §9.6.1): the events are read from a HistoryStore, not copied into React
+// state; the rows come from a row model by index (only the drawn ones are built), counts and pairs
+// are kept up to date by the store, a filter or a search keeps its matches and adds the newer
+// events only, and Download is a stream from the server.
+import { useContext, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -22,15 +28,55 @@ import { focusRing } from "@/lib/control";
 import type { EventCategory, HistoryEvent } from "@/gen/api";
 import { ArrowDownload, ArrowImport, ArrowSortDown, ChevronDown, ChevronRight, Clock, Copy, ErrorCircle, CheckmarkCircle, Eye, EyeOff, Flash, Info, Link, NumberSymbol, Pin, Play, Search, SplitVertical, type IconDefinition } from "@/lib/icons";
 import { clockText, eventMs } from "./history";
-import { HISTORY_CHIPS, categoryCounts, groupSummary, historyJson, historyRows, historySummary, isFailure, pairsOf, sinceStart, summaryContext, type HistoryRow } from "./history-view";
+import { HISTORY_CHIPS, flatRows, foldedRows, groupSummary, historyJson, historySummary, isFailure, sinceStart, type HistoryRow, type RowModel, type SummaryContext } from "./history-view";
+import { JSON_VIEW_EVENTS, type HistoryStore } from "./history-store";
 import { LIMITS, LargeStubCard, largeStubs, withoutPreviews, type LargeStub } from "./LargePayload";
 import { formatBytes } from "./NamespacesTab";
+import type { HistoryOrder } from "./useWorkflow";
 
 /** The rows as events only, largest first (folds opened). */
 export function bySizeRows(rows: readonly HistoryRow[]): HistoryRow[] {
   return rows
     .flatMap((r): HistoryRow[] => (r.kind === "group" ? r.events.map((event) => ({ kind: "event" as const, event })) : [{ kind: "event", event: r.event }]))
     .sort((a, b) => (a.kind === "event" && b.kind === "event" ? b.event.size - a.event.size : 0));
+}
+
+/** Rows from a list in no particular order (by size). */
+function listRows(events: readonly HistoryEvent[]): RowModel {
+  return {
+    count: events.length,
+    row: (i) => ({ kind: "event", event: events[i]! }),
+    find: (id) => {
+      const index = events.findIndex((e) => e.eventId === id);
+      return index < 0 ? null : { index };
+    },
+  };
+}
+
+/**
+ * The events a filter or a search keeps, in time order (TSK-109): made once for a filter, then
+ * only the newer events are tested; an older page (the store's generation) makes it anew.
+ */
+class Matches {
+  private key = "";
+  private generation = -1;
+  private seen = 0;
+  events: HistoryEvent[] = [];
+
+  update(store: HistoryStore, key: string, keep: (e: HistoryEvent) => boolean): HistoryEvent[] {
+    if (key !== this.key || store.generation !== this.generation) {
+      this.key = key;
+      this.generation = store.generation;
+      this.seen = 0;
+      this.events = [];
+    }
+    for (let i = this.seen; i < store.size; i += 1) {
+      const e = store.at(i)!;
+      if (keep(e)) this.events.push(e);
+    }
+    this.seen = store.size;
+    return this.events;
+  }
 }
 
 const CATEGORY_ICON: Record<EventCategory, IconDefinition> = { Workflow: Link, WorkflowTask: Link, Activity: Flash, Timer: Clock, ChildWorkflow: SplitVertical, Signal: Play, Update: ArrowImport, Marker: Pin, Other: Info };
@@ -45,16 +91,27 @@ export function EventIcon({ event }: { event: HistoryEvent }) {
 export interface HistoryPanelProps {
   workflowId: string;
   runId: string;
-  events: HistoryEvent[];
+  /** The loaded events (TSK-109). */
+  store: HistoryStore;
   /** The history's length as describe reports it (the events may be loaded in part). */
   total: number;
+  /** When the run started, for "since start" while its first event is not loaded. */
+  startMs?: number | undefined;
   /** The run is followed live. */
   live: boolean;
   pending: readonly Record<string, unknown>[];
   selected: number | null;
   onSelect(id: number): void;
   hasMore: boolean;
+  /** A page beyond the first is being read. */
+  loadingMore?: boolean | undefined;
   onLoadMore(): void;
+  /** Reads pages until an event is loaded (Go to an event not loaded yet). */
+  loadUntil?: ((eventId: number) => Promise<boolean>) | undefined;
+  /** Newest first (the default of the tab) or oldest first; oldest first when absent. */
+  order?: HistoryOrder | undefined;
+  /** Saves the whole history from the server, decoded or as stored (`workflows.downloadHistory`). */
+  onDownload?: ((form: "decoded" | "stored") => Promise<void>) | undefined;
   onOpenPending(): void;
   /** An event's attributes as stored (`temporal.workflows.rawEvent`), for the Raw form. */
   loadRaw?: ((eventId: number) => Promise<Record<string, unknown>>) | undefined;
@@ -62,29 +119,41 @@ export interface HistoryPanelProps {
   onOpenPayload?: ((stub: LargeStub, label: string) => void) | undefined;
 }
 
-export function HistoryPanel({ workflowId, runId, events, total, live, pending, selected, onSelect, hasMore, onLoadMore, onOpenPending, loadRaw, onOpenPayload }: HistoryPanelProps) {
+export function HistoryPanel({ workflowId, runId, store, total, startMs, live, pending, selected, onSelect, hasMore, loadingMore = false, onLoadMore, loadUntil, order = "oldest", onDownload, onOpenPending, loadRaw, onOpenPayload }: HistoryPanelProps) {
   const notify = useContext(NoticeContext);
+  const version = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const newestFirst = order === "newest";
+  const facts = store.facts;
   const [category, setCategory] = useState<EventCategory | "All">("All");
   const [query, setQuery] = useState("");
+  // The search follows the typing a step behind, so typing stays quick over a long history.
+  const q = useDeferredValue(query).trim().toLowerCase();
   const [fold, setFold] = useState(true);
   // Sorted by size (TSK-92): the heavy events first, folds opened.
   const [bySize, setBySize] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
   const [view, setView] = useState<"table" | "json">("table");
   const [goTo, setGoTo] = useState("");
+  const [downloading, setDownloading] = useState<"decoded" | "stored" | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
   const findRef = useRef<HTMLInputElement | null>(null);
+  const matches = useRef(new Matches());
 
-  const ctx = useMemo(() => summaryContext(events, pending), [events, pending]);
-  const counts = useMemo(() => categoryCounts(events), [events]);
-  const pairs = useMemo(() => pairsOf(events), [events]);
-  const rows = useMemo(() => {
-    const shown = historyRows(events, { category, fold: fold && !bySize, expanded, query, ctx });
-    return bySize ? bySizeRows(shown) : shown;
-  }, [events, category, fold, expanded, query, ctx, bySize]);
-  const start = events.length > 0 ? eventMs(events[0]!) : 0;
-  const byId = useMemo(() => new Map(events.map((e) => [e.eventId, e])), [events]);
-  const picked = selected === null ? undefined : byId.get(selected);
+  const ctx = useMemo(() => facts.context(pending), [facts, pending]);
+  const counts = facts.counts;
+  const flat = category !== "All" || q !== "" || !fold || bySize;
+  const list = flat ? matches.current.update(store, `${category}\u0000${q}`, (e) => (category === "All" || e.category === category) && (!q || facts.searchText(e, ctx).includes(q))) : null;
+  const listLength = list?.length ?? 0;
+  const model = useMemo<RowModel>(() => {
+    if (list && bySize) return listRows([...list].sort((a, b) => b.size - a.size));
+    if (list) return flatRows(list, newestFirst);
+    return foldedRows(facts.units, expanded, newestFirst);
+    // `list` and the units grow in place: their length and the store's version say when.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, listLength, bySize, newestFirst, facts, expanded, version]);
+  const first = store.first ?? store.at(0);
+  const start = store.first ? eventMs(store.first) : (startMs ?? (first ? eventMs(first) : 0));
+  const picked = selected === null ? undefined : store.get(selected);
 
   // More pages load as the table nears its end.
   useEffect(() => {
@@ -96,28 +165,38 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
     check();
     el.addEventListener("scroll", check, { passive: true });
     return () => el.removeEventListener("scroll", check);
-  }, [hasMore, onLoadMore, rows.length, view]);
+  }, [hasMore, onLoadMore, model.count, view]);
 
-  /** Selects an event and scrolls its row into view, opening its folded group. */
-  const reveal = (id: number) => {
-    const event = byId.get(id);
-    if (!event) {
-      notify({ title: `No event ${id} loaded`, description: hasMore ? "Scroll to load more of the history, then try again." : `The history has ${formatCount(events.length)} events.`, type: "warning" });
+  // An event to scroll to once its fold is open.
+  const revealing = useRef<number | null>(null);
+  const [revealTick, setRevealTick] = useState(0);
+  useEffect(() => {
+    const id = revealing.current;
+    if (id === null) return;
+    const found = model.find(id);
+    if (found?.fold !== undefined && !expanded.has(found.fold)) {
+      setExpanded((s) => new Set(s).add(found.fold!));
+      return;
+    }
+    revealing.current = null;
+    const el = scroller.current;
+    const row = el?.querySelector<HTMLElement>("tbody tr:not([data-spacer])");
+    if (found && el && row) el.scrollTop = Math.max(found.index * row.offsetHeight - el.clientHeight / 3, 0);
+  }, [model, expanded, revealTick]);
+
+  /** Selects an event and scrolls its row into view, opening its folded group; reads pages up to it when it is not loaded yet. */
+  const reveal = async (id: number) => {
+    if (!store.get(id) && loadUntil && hasMore) await loadUntil(id);
+    if (!store.get(id)) {
+      notify({ title: `No event ${id}`, description: id > 0 && id <= total ? "Scroll to load more of the history, then try again." : `The history has ${formatCount(Math.max(total, store.size))} events.`, type: "warning" });
       return;
     }
     onSelect(id);
-    let index = rows.findIndex((r) => r.kind === "event" && r.event.eventId === id);
-    if (index < 0) {
-      const group = rows.find((r) => r.kind === "group" && r.first <= id && id <= r.last);
-      if (group && group.kind === "group") setExpanded((s) => new Set(s).add(group.first));
-      index = rows.findIndex((r) => r.kind === "group" && r.first <= id && id <= r.last) + 1 + (group && group.kind === "group" ? group.events.findIndex((e) => e.eventId === id) : 0);
-    }
-    const el = scroller.current;
-    const row = el?.querySelector<HTMLElement>("tbody tr:not([data-spacer])");
-    if (el && row) el.scrollTop = Math.max(index * row.offsetHeight - el.clientHeight / 3, 0);
+    revealing.current = id;
+    setRevealTick((t) => t + 1);
   };
 
-  /** J and K step through the shown events; Ctrl+F finds. */
+  /** J moves down the list and K up, over the events shown; Ctrl+F finds. */
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
       findRef.current?.focus();
@@ -127,23 +206,45 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
     const target = e.target as HTMLElement;
     if (target.closest("input, textarea, [contenteditable=true]")) return;
     if (e.key !== "j" && e.key !== "k") return;
-    const ids = rows.flatMap((r) => (r.kind === "event" ? [r.event.eventId] : []));
-    if (ids.length === 0) return;
-    const at = selected === null ? -1 : ids.indexOf(selected);
-    const next = e.key === "j" ? ids[Math.min(at + 1, ids.length - 1)] : ids[Math.max(at - 1, 0)];
-    if (next !== undefined) reveal(next);
+    const step = e.key === "j" ? 1 : -1;
+    const at = selected === null ? null : model.find(selected);
+    for (let i = at ? at.index + step : 0; i >= 0 && i < model.count; i += at ? step : 1) {
+      const row = model.row(i);
+      if (row.kind === "event") {
+        void reveal(row.event.eventId);
+        break;
+      }
+    }
     e.preventDefault();
   };
 
-  const download = () => {
-    const blob = new Blob([historyJson(events)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${workflowId}_${runId}_history.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const download = async (form: "decoded" | "stored") => {
+    if (!onDownload) return;
+    setDownloading(form);
+    try {
+      await onDownload(form);
+    } finally {
+      setDownloading(null);
+    }
   };
+
+  // The JSON view: the events shown, at most JSON_VIEW_EVENTS of them.
+  const json = useMemo(() => {
+    if (view !== "json") return null;
+    const out: HistoryEvent[] = [];
+    const seen = new Set<number>();
+    for (let i = 0; i < model.count && out.length < JSON_VIEW_EVENTS; i += 1) {
+      const row = model.row(i);
+      for (const e of row.kind === "group" ? row.events : [row.event]) {
+        if (!seen.has(e.eventId) && out.length < JSON_VIEW_EVENTS) {
+          seen.add(e.eventId);
+          out.push(e);
+        }
+      }
+    }
+    return { text: historyJson(out), shown: out.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, model, version]);
 
   const renderRow = (row: HistoryRow, i: number) => {
     if (row.kind === "group") {
@@ -191,7 +292,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
       );
     }
     const e = row.event;
-    const pair = pairs.get(e.eventId);
+    const pair = facts.pairs.get(e.eventId);
     const failed = isFailure(e);
     return (
       <TableRow
@@ -227,7 +328,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
               aria-label={`Go to event ${pair.to}`}
               onClick={(ev) => {
                 ev.stopPropagation();
-                reveal(pair.to);
+                void reveal(pair.to);
               }}
             >
               {pair.direction === "next" ? "→" : "←"} {pair.to}
@@ -241,6 +342,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
     );
   };
 
+  const whole = Math.max(total, store.size);
   return (
     <div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       <div role="toolbar" aria-label="History filter" className="flex shrink-0 flex-wrap items-center gap-inline-md border-b border-border-subtle px-inset-lg py-stack-sm">
@@ -256,7 +358,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
             <InputGroupAddon>
               <Icon icon={Search} />
             </InputGroupAddon>
-            <InputGroupInput ref={findRef} aria-label="Find in events" placeholder="Find in events" value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
+            <InputGroupInput ref={findRef} aria-label="Find in events" placeholder={store.size < whole ? `Find in ${formatCount(store.size)} loaded` : "Find in events"} value={query} onChange={(e) => setQuery(e.currentTarget.value)} />
             <InputGroupAddon>
               <Kbd>Ctrl+F</Kbd>
             </InputGroupAddon>
@@ -272,7 +374,7 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
               value={goTo}
               onChange={(e) => setGoTo(e.currentTarget.value.replace(/\D/g, ""))}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && goTo) reveal(Number(goTo));
+                if (e.key === "Enter" && goTo) void reveal(Number(goTo));
               }}
             />
           </InputGroup>
@@ -280,19 +382,32 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
             <ToggleGroupItem value="table">Table</ToggleGroupItem>
             <ToggleGroupItem value="json">JSON</ToggleGroupItem>
           </ToggleGroup>
-          <IconButton size="small" aria-label={hasMore ? `Download the ${formatCount(events.length)} loaded events as JSON` : "Download the history as JSON"} onClick={download}>
-            <Icon icon={ArrowDownload} />
-          </IconButton>
+          {onDownload ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<IconButton size="small" aria-label="Download the history" disabled={downloading !== null} />}>
+                <Icon icon={ArrowDownload} />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void download("decoded")}>Download, payloads decoded (JSON)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void download("stored")}>Download as stored (for replay)</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
         {view === "json" ? (
-          <div className="min-h-0 min-w-0 flex-1 overflow-auto p-inset-md">
-            <CodeBlock code={historyJson(rows.flatMap((r) => (r.kind === "group" ? r.events : [r.event])).filter((e, i, all) => all.indexOf(e) === i))} language="json" lineNumbers copyable aria-label="History as JSON" virtualizeAfter={2000} />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-stack-sm overflow-auto p-inset-md">
+            {json && json.shown < model.count ? (
+              <p className="text-caption-1 text-fg-muted">
+                The first {formatCount(json.shown)} events shown; Download has the whole history.
+              </p>
+            ) : null}
+            <CodeBlock code={json?.text ?? ""} language="json" lineNumbers copyable aria-label="History as JSON" virtualizeAfter={2000} />
           </div>
-        ) : rows.length === 0 ? (
+        ) : model.count === 0 ? (
           <div className="min-w-0 flex-1">
-            <EmptyLine>{query ? `No event matches "${query}".` : "No events of this kind."}</EmptyLine>
+            <EmptyLine>{q ? `No event matches "${query.trim()}"${store.size < whole ? ` in the ${formatCount(store.size)} events loaded` : ""}.` : store.size === 0 ? "No history yet." : "No events of this kind."}</EmptyLine>
           </div>
         ) : (
           <Table ref={scroller} aria-label="History events" className={cn("min-h-0 min-w-0 flex-1", gutterTable)}>
@@ -312,10 +427,14 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
                 </TableHead>
               </TableRow>
             </TableHeader>
-            {rows.length > 200 ? <TableVirtualBody count={rows.length} renderRow={(i) => renderRow(rows[i]!, i)} /> : <TableBody>{rows.map(renderRow)}</TableBody>}
+            {model.count > 200 ? (
+              <TableVirtualBody count={model.count} renderRow={(i) => renderRow(model.row(i), i)} />
+            ) : (
+              <TableBody>{Array.from({ length: model.count }, (_, i) => renderRow(model.row(i), i))}</TableBody>
+            )}
           </Table>
         )}
-        <EventDetail event={picked} start={start} ctx={ctx} onSelect={reveal} onOpenPending={onOpenPending} loadRaw={loadRaw} onOpenPayload={onOpenPayload} />
+        <EventDetail event={picked} start={start} ctx={ctx} onSelect={(id) => void reveal(id)} onOpenPending={onOpenPending} loadRaw={loadRaw} onOpenPayload={onOpenPayload} />
       </div>
       <footer className="flex shrink-0 items-center gap-inline-md border-t border-border-subtle px-inset-lg py-stack-sm text-caption-1 text-fg-muted">
         {live ? (
@@ -324,7 +443,8 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
           </span>
         ) : null}
         <span>
-          {formatCount(events.length)} of {formatCount(Math.max(total, events.length))} events loaded{hasMore ? ", more load as you scroll" : ""}
+          {formatCount(store.size)} of {formatCount(whole)} events loaded
+          {loadingMore ? ", loading more…" : hasMore ? ", more load as you scroll" : ""}
         </span>
         <span className="ms-auto">{fold ? "Workflow tasks folded" : "Every event shown"}</span>
         <Button size="small" appearance="subtle" className="text-caption-1" onClick={() => setFold((f) => !f)}>
@@ -335,6 +455,14 @@ export function HistoryPanel({ workflowId, runId, events, total, live, pending, 
   );
 }
 
+/** An event's attributes cut by the server, too big to send with the rest (DOC-21 §9.6.1): their size and start. */
+export function cutOf(attributes: Record<string, unknown>): { bytes: number; preview: string } | null {
+  const cut = attributes["$cut"];
+  if (typeof cut !== "object" || cut === null) return null;
+  const c = cut as { bytes?: unknown; preview?: unknown };
+  return { bytes: typeof c.bytes === "number" ? c.bytes : 0, preview: typeof c.preview === "string" ? c.preview : "" };
+}
+
 /** The chosen event: its time, its activity's other events and pending attempt, its attributes as JSON, Copy input and Copy event. */
 /** "json/plain · 1 payload", "binary/encrypted, json/plain · 3 payloads": the forms of an event's payloads as stored. */
 export function payloadLabel(encodings: readonly string[] | undefined): string {
@@ -343,7 +471,7 @@ export function payloadLabel(encodings: readonly string[] | undefined): string {
   return `${kinds} · ${encodings.length} payload${encodings.length === 1 ? "" : "s"}`;
 }
 
-function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw, onOpenPayload }: { event: HistoryEvent | undefined; start: number; ctx: ReturnType<typeof summaryContext>; onSelect(id: number): void; onOpenPending(): void; loadRaw?: ((eventId: number) => Promise<Record<string, unknown>>) | undefined; onOpenPayload?: ((stub: LargeStub, label: string) => void) | undefined }) {
+function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw, onOpenPayload }: { event: HistoryEvent | undefined; start: number; ctx: SummaryContext; onSelect(id: number): void; onOpenPending(): void; loadRaw?: ((eventId: number) => Promise<Record<string, unknown>>) | undefined; onOpenPayload?: ((stub: LargeStub, label: string) => void) | undefined }) {
   const notify = useContext(NoticeContext);
   const [form, setForm] = useState<"decoded" | "raw">("decoded");
   // Raw forms already read, by event id (an error is kept as its message).
@@ -442,10 +570,16 @@ function EventDetail({ event, start, ctx, onSelect, onOpenPending, loadRaw, onOp
         )
       ) : (
         <>
+          {cutOf(a) ? (
+            <div role="note" className="flex flex-col gap-stack-xs rounded-md border border-border-subtle bg-layer px-inset-md py-inset-sm text-body-1">
+              <p className="text-fg">Too big to send with the rest: {formatBytes(cutOf(a)!.bytes)} of JSON. Raw shows it as stored.</p>
+              <p className="text-caption-1 text-fg-muted">The start of it:</p>
+            </div>
+          ) : null}
           {largeStubs(a).map(({ path, stub }) => (
             <LargeStubCard key={stub.id + path} stub={stub} label={path} onOpen={() => onOpenPayload?.(stub, `Event ${event.eventId} · ${path}`)} />
           ))}
-          <CodeBlock code={JSON.stringify(withoutPreviews(a), null, 2)} language="json" appearance="inset" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
+          <CodeBlock code={cutOf(a) ? cutOf(a)!.preview : JSON.stringify(withoutPreviews(a), null, 2)} language="json" wrap={cutOf(a) !== null} appearance="inset" aria-label={`Attributes of event ${event.eventId}`} className="min-h-0" />
         </>
       )}
       <div className="flex flex-wrap items-center gap-inline-md">

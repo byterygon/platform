@@ -165,6 +165,37 @@ describe("Timeline", () => {
     expect(container.querySelectorAll('[data-slot="timeline-lane"]').length).toBeLessThanOrEqual(60);
   });
 
+  test("a lane of thousands of instants draws one per 2 px, the selected one always (TSK-109)", async () => {
+    // A track 1,000 px wide (the label gutter is 240): the browser's ResizeObserver reports it.
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1240);
+    const observers: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+        }
+        observe() {
+          observers.push(this.callback);
+        }
+        disconnect() {}
+      },
+    );
+    try {
+      const ticks: TimelineItem[] = Array.from({ length: 5000 }, (_, i) => ({ id: `t${i}`, laneId: "wt", start: 1000 + i, end: 1000 + i, status: "neutral", label: `Workflow task ${i}`, shape: "tick" }));
+      const { container } = render(<Timeline aria-label="Ticks" lanes={[{ id: "wt", label: "Workflow tasks" }]} items={ticks} selectedId="t2501" controls={false} />);
+      await act(async () => observers.forEach((o) => o()));
+      const drawn = bars(container);
+      expect(drawn.length).toBeLessThanOrEqual(520);
+      expect(drawn.length).toBeGreaterThan(400);
+      expect(drawn.some((b) => b.getAttribute("aria-label")?.startsWith("Workflow task 2501,"))).toBe(true);
+    } finally {
+      width.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("no lanes shows the empty label", () => {
     const { container } = render(<Timeline aria-label="a" lanes={[]} items={[]} now={1} emptyLabel="No history" />);
     expect(container.textContent).toContain("No history");

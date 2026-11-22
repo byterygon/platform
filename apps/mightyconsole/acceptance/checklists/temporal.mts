@@ -20,7 +20,7 @@ type Ctx = Parameters<Parameters<typeof browser>[1]>[0];
  */
 // A view's tab may carry a count after its name ("History 214", "Pending 1").
 const panelButton = (label: string) =>
-  `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)} || (b.getAttribute("role") === "tab" && /^${label} \\d+$/.test(b.textContent.trim())))`;
+  `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)} || (b.getAttribute("role") === "tab" && /^${label} [\\d,]+$/.test(b.textContent.trim())))`;
 const click = (label: string) => `__mc.click(${panelButton(label)})`;
 /** An item of the open menu, by the start of its text ("Terminate…"). */
 const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.trim().startsWith(${JSON.stringify(label)}))`;
@@ -424,6 +424,9 @@ export default {
           "an_event_over_its_share_has_its_payloads_kept_on_the_server",
           "an_event_still_over_its_share_is_cut_with_a_preview",
         ),
+        vitest("test/temporal-history-store.test.ts"),
+        vitest("test/temporal-workflow.test.tsx", "long histories"),
+        command("the Timeline draws one instant per 2 px of a dense lane in packages/ui", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/timeline", "-t", "thousands of instants"]),
       ],
     },
     {

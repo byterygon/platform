@@ -1,7 +1,7 @@
 // The confirmations of Temporal's actions (Mightyconsole spec §9.4). Each one names the workflow
 // it acts on; the destructive ones (terminate, reset, delete a schedule) need their reason or the
 // typed id before the button works; every one shows the server's error in place and stays open.
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -220,7 +220,8 @@ const REAPPLY: Record<ResetReapply, string> = {
 };
 
 export function ResetDialog({ open, onOpenChange, workflowId, events, busy, error, onReset }: { open: boolean; onOpenChange(open: boolean): void; workflowId: string; events: readonly HistoryEvent[]; busy: boolean; error: DescribedError | null; onReset(eventId: number, reapply: ResetReapply, reason: string): void }) {
-  const points = resetPoints(events);
+  // Only while the dialog is open: a long history is not walked on every render (TSK-109).
+  const points = useMemo(() => (open ? resetPoints(events) : []), [open, events]);
   const [eventId, setEventId] = useState<number | null>(null);
   const [reapply, setReapply] = useState<ResetReapply>("all");
   const [reason, setReason] = useState("");

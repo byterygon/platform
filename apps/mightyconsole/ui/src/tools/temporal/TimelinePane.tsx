@@ -4,7 +4,7 @@
 // policy, the failure with Copy, and its own events, each unfolding to its attributes with the
 // payloads decoded. The facts come from `itemDetail` (timeline-detail.ts).
 import type { LinkEvent } from "../types";
-import { useContext, useMemo, useState } from "react";
+import { useContext, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -35,7 +35,8 @@ function ItemIcon({ info }: { info: ItemInfo }) {
 export interface TimelinePaneProps {
   /** The selected item, or undefined when nothing is selected. */
   info: ItemInfo | undefined;
-  events: readonly HistoryEvent[];
+  /** The loaded events by id (the HistoryStore, TSK-109). */
+  events: { get(id: number): HistoryEvent | undefined };
   pending: readonly Record<string, unknown>[];
   now: number;
   /** Opens a child workflow in its own tab. */
@@ -44,7 +45,6 @@ export interface TimelinePaneProps {
 
 /** The pane's content; the Timeline puts it in its `aside`. Keyed by the item, so its folds reset. */
 export function TimelinePane({ info, events, pending, now, onOpenWorkflow }: TimelinePaneProps) {
-  const byId = useMemo(() => new Map(events.map((e) => [e.eventId, e])), [events]);
   if (!info) {
     return (
       <div className="px-inset-md py-inset-sm">
@@ -52,10 +52,10 @@ export function TimelinePane({ info, events, pending, now, onOpenWorkflow }: Tim
       </div>
     );
   }
-  return <ItemPane key={info.firstEventId} info={info} byId={byId} pending={pending} now={now} onOpenWorkflow={onOpenWorkflow} />;
+  return <ItemPane key={info.firstEventId} info={info} byId={events} pending={pending} now={now} onOpenWorkflow={onOpenWorkflow} />;
 }
 
-function ItemPane({ info, byId, pending, now, onOpenWorkflow }: { info: ItemInfo; byId: ReadonlyMap<number, HistoryEvent>; pending: readonly Record<string, unknown>[]; now: number; onOpenWorkflow?: ((workflowId: string, runId?: string, event?: LinkEvent) => void) | undefined }) {
+function ItemPane({ info, byId, pending, now, onOpenWorkflow }: { info: ItemInfo; byId: { get(id: number): HistoryEvent | undefined }; pending: readonly Record<string, unknown>[]; now: number; onOpenWorkflow?: ((workflowId: string, runId?: string, event?: LinkEvent) => void) | undefined }) {
   const notify = useContext(NoticeContext);
   const detail = itemDetail(info, byId, pending, now);
   // The first event starts open, as the mockup draws it; the others unfold on a click.

@@ -7,6 +7,7 @@ import { describeError } from "@/app/messages";
 import type { MightyClient } from "@/app/client";
 import type { HistoryEvent, PayloadChild, PayloadNode } from "@/gen/api";
 import { HistoryPanel, bySizeRows } from "@/tools/temporal/HistoryPanel";
+import { HistoryStore } from "@/tools/temporal/history-store";
 import { PayloadView, jqPath, largeOf, largeStubs, sizeVerdict, withoutPreviews, type LargeStub } from "@/tools/temporal/LargePayload";
 import { largestPayloads } from "@/tools/temporal/WorkflowTab";
 import { historyRows, summaryContext } from "@/tools/temporal/history-view";
@@ -136,6 +137,13 @@ describe("the payload view", () => {
   });
 });
 
+/** A store holding the events, as the workflow tab's (TSK-109). */
+function storeOf(events: HistoryEvent[]): HistoryStore {
+  const store = new HistoryStore();
+  store.append(events);
+  return store;
+}
+
 describe("History", () => {
   const ev = (eventId: number, eventType: string, size: number, attributes: Record<string, unknown> = {}): HistoryEvent => ({ eventId, eventTime: new Date(Date.UTC(2026, 10, 18, 10, 0, eventId)).toISOString(), eventType, category: eventType.startsWith("WorkflowTask") ? "WorkflowTask" : "Workflow", attributes, size });
   const events = [ev(1, "WorkflowExecutionStarted", 1_700_100, { input: [{ $large: stub }] }), ev(2, "WorkflowTaskScheduled", 90), ev(3, "WorkflowTaskStarted", 300), ev(4, "WorkflowTaskCompleted", 120), ev(5, "WorkflowExecutionSignaled", 4_000, { signalName: "go", input: ["x"] })];
@@ -147,7 +155,7 @@ describe("History", () => {
 
   test("has a Size column, sorts by it, and a large input is a card that opens its tab", async () => {
     const open = vi.fn();
-    const { container } = render(<HistoryPanel workflowId="large-1" runId="r" events={events} total={5} live={false} pending={[]} selected={1} onSelect={() => undefined} hasMore={false} onLoadMore={() => undefined} onOpenPending={() => undefined} onOpenPayload={open} />);
+    const { container } = render(<HistoryPanel workflowId="large-1" runId="r" store={storeOf(events)} total={5} live={false} pending={[]} selected={1} onSelect={() => undefined} hasMore={false} onLoadMore={() => undefined} onOpenPending={() => undefined} onOpenPayload={open} />);
     expect(Array.from(container.querySelectorAll("th")).map((t) => t.textContent)).toContain("Size");
     expect(container.textContent).toContain("1.62 MiB");
     await click(byRole("button", "Size"));
