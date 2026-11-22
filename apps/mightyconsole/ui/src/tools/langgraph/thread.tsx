@@ -1,16 +1,16 @@
-// A thread (spec §11.2), laid out as the TSK-91 mockup's langgraph-thread frame (TSK-95): a header
-// with the thread, its status, assistant and checkpoint, and Stop, "…" (Roll back, Delete thread)
-// and Run; then Run (assistant and input, the other options in one Advanced fold; the interrupt
-// callout first, then the GraphView with the running node lit, chat messages and events; joining
-// the run again after a reconnect), State (current values, next nodes, tasks; Edit state) and
-// History (checkpoints; Fork from here, Run from here).
+// A thread (spec §11.2, §11.2.1), laid out as the TSK-91 mockup (TSK-95, TSK-96): a header with
+// the thread, its status, profile, assistant, checkpoint and the counts of checkpoints and runs,
+// and Stop, "…" (Roll back, Delete thread) and Run; then Run (assistant and input, the other
+// options in one Advanced fold; the interrupt callout first, then the GraphView with the running
+// node lit, chat messages and events; joining the run again after a reconnect), State
+// (thread-state.tsx), History (thread-history.tsx) and Runs (thread-runs.tsx). The assistant, its
+// graph and schemas are loaded here for all of them and for the Edit state sheet.
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DescriptionList, DescriptionListDetails, DescriptionListItem, DescriptionListTerm } from "@/components/ui/description-list";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -18,31 +18,30 @@ import { GraphView } from "@/components/ui/graph-view";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
-import { JsonViewer } from "@/components/ui/json-viewer";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "@/components/ui/toolbar";
 import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
 import { liveTimeout } from "@/app/client";
 import { CopyButton, Page, PageHeader } from "@/app/page";
 import { ariaBindingOf, bindingOf } from "@/app/shortcuts";
-import { EmptyLine, ErrorState, LiveBadge, LoadingRows } from "@/app/states";
+import { EmptyLine, ErrorState, LiveBadge } from "@/app/states";
 import { useTabView } from "@/app/tab-view";
 import * as api from "@/gen/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/control";
-import { ArrowClockwise, ArrowUndo, ChevronDown, ChevronRight, Delete, Edit, History, MoreHorizontal, Play, Stop } from "@/lib/icons";
+import { ArrowUndo, ChevronDown, ChevronRight, Delete, MoreHorizontal, Play, Stop } from "@/lib/icons";
 import type { DescribedError, LiveState, TabProps } from "../types";
 import { EMPTY_RUN, type RunEvent, type RunInterrupt, type RunView, eventName, interruptsOf, parseChunk, reduceRun } from "./run-events";
 import { useActiveGate } from "@/app/while-active";
-import { CutValue, cutOf, loadCut } from "./cut-value";
 import { JsonField, StatusBadge, configSchema, parseJson, partialSchema, preview, schemaObject, shortId, toGraphView, useLoad } from "./shared";
+import { HISTORY_PAGE, HistoryPanel } from "./thread-history";
+import { RUNS_PAGE, RunsPanel } from "./thread-runs";
+import { EditStateSheet, StatePanel } from "./thread-state";
 
 const text = (v: unknown) => (typeof v === "string" ? v : "");
 const pretty = (v: unknown) => (v === undefined ? "" : JSON.stringify(v, null, 2));
@@ -56,6 +55,9 @@ const MODES = [
   { id: "debug", label: "debug", server: "debug" },
 ] as const;
 type ModeId = (typeof MODES)[number]["id"];
+
+/** Keys the LangGraph server writes into a run's `configurable` itself; not part of what was asked. */
+const SERVER_CONFIG_KEYS = new Set(["thread_id", "run_id", "assistant_id", "graph_id", "user_id", "checkpoint_id", "checkpoint_ns", "langgraph_auth_user", "langgraph_auth_user_id", "langgraph_auth_permissions", "langgraph_request_id", "x-request-id"]);
 
 /** "a, b" → ["a", "b"]; empty → null. */
 const nodeList = (s: string) => {
@@ -71,10 +73,7 @@ export function defaultInput(schema: unknown): string {
 }
 
 /** The thread's sections, the view words of its URL (DOC-21 §3.7). */
-export const THREAD_VIEWS = ["run", "state", "history"] as const;
-
-/** Checkpoints per page of History; the header's count says "50+" past one page. */
-const HISTORY_PAGE = 50;
+export const THREAD_VIEWS = ["run", "state", "history", "runs"] as const;
 
 /** The run options folded under Advanced. */
 export interface AdvancedOptions {
@@ -111,6 +110,17 @@ interface RunStatus {
 }
 const NO_RUN: RunStatus = { running: false, canRun: false, runId: null, assistantName: null, live: null };
 
+/** What the Run screen does for the tab, the Runs tab and the Edit state sheet. */
+type RunActions = Parameters<TabProps["useTabActions"]>[0] & {
+  rollback?: () => void;
+  /** Opens Resume for the interrupt the thread waits at. */
+  resume?: () => void;
+  /** Runs on from a checkpoint with no input (Update and continue the run). */
+  continueFrom?: (checkpointId: string | null) => void;
+  /** Fills the form with a run's assistant, input, config and context (Run again with the same input). */
+  prefill?: (run: api.Run, request: api.RunRequest) => void;
+};
+
 export function ThreadTab(props: TabProps) {
   const { tab, connId, client, note, useTabActions, profile } = props;
   const toast = useToast();
@@ -121,12 +131,30 @@ export function ThreadTab(props: TabProps) {
   const thread = useLoad(connId ? () => client.langgraph.threads.get({ connId, threadId }) : null, [connId, threadId, version], note);
   // The latest checkpoints, for the header's checkpoint and count and for History.
   const history = useLoad(connId ? () => client.langgraph.threads.history({ connId, threadId, limit: HISTORY_PAGE, before: null }) : null, [connId, threadId, version], note);
+  // The latest runs, for the header's count and the Runs tab (TSK-96).
+  const runs = useLoad(connId ? () => client.langgraph.runs.list({ connId, threadId, limit: RUNS_PAGE, offset: null }) : null, [connId, threadId, version], note);
+  // The assistant the Run form uses, its graph and schemas: shared by Run, State, History and Edit state.
+  const assistants = useLoad(connId ? () => client.langgraph.assistants.search({ connId, graphId: null, metadata: null, limit: 1000, offset: null }) : null, [connId], note);
+  const [assistantId, setAssistantId] = useState<string | null>(null);
+  // Default: the thread's assistant, else one of its graph, else the first.
+  useEffect(() => {
+    if (assistantId || !assistants.data || assistants.data.length === 0) return;
+    const meta = (thread.data?.metadata ?? {}) as Record<string, unknown>;
+    const pick = assistants.data.find((a) => a.assistantId === meta["assistant_id"]) ?? assistants.data.find((a) => a.graphId === meta["graph_id"]) ?? assistants.data[0]!;
+    setAssistantId(pick.assistantId);
+  }, [assistants.data, thread.data, assistantId]);
+  const graph = useLoad(connId && assistantId ? () => client.langgraph.assistants.graph({ connId, assistantId, xray: true }) : null, [connId, assistantId], note);
+  const schemas = useLoad(connId && assistantId ? () => client.langgraph.assistants.schemas({ connId, assistantId }) : null, [connId, assistantId], note);
+  const graphView = useMemo(() => (graph.data ? toGraphView(graph.data) : null), [graph.data]);
+  const nodes = useMemo(() => (graphView?.nodes ?? []).filter((n) => !n.kind || n.kind === "node").map((n) => n.id), [graphView]);
+  const assistantNames = useMemo(() => new Map((assistants.data ?? []).map((a) => [a.assistantId, a.name])), [assistants.data]);
   const changed = () => setVersion((v) => v + 1);
   const [status, setStatus] = useState<RunStatus>(NO_RUN);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<DescribedError | null>(null);
+  const [editAt, setEditAt] = useState<{ checkpointId: string | null } | null>(null);
   // The Run screen registers the tab's actions; State and History reload with `version`.
-  const runActions = useRef<Parameters<TabProps["useTabActions"]>[0] & { rollback?: () => void }>({});
+  const runActions = useRef<RunActions>({});
   useTabActions({
     primary: () => runActions.current.primary?.(),
     stop: () => runActions.current.stop?.(),
@@ -151,6 +179,8 @@ export function ThreadTab(props: TabProps) {
   };
   const checkpoint = history.data?.items[0]?.checkpointId ?? null;
   const count = history.data ? `${history.data.items.length}${history.data.next ? "+" : ""}` : null;
+  const runCount = runs.data ? `${runs.data.items.length}${runs.data.next !== undefined && runs.data.next !== null ? "+" : ""}` : null;
+  const assistantName = status.assistantName ?? (assistantId ? (assistantNames.get(assistantId) ?? null) : null);
   return (
     <Page>
       <PageHeader
@@ -165,17 +195,21 @@ export function ThreadTab(props: TabProps) {
         }
         subtitle={
           <>
-            {status.assistantName ? (
+            {profile.name}
+            {assistantName ? (
               <>
-                Assistant <span className="text-body-1-strong text-fg">{status.assistantName}</span> ·{" "}
+                {" "}
+                · assistant <span className="text-body-1-strong text-fg">{assistantName}</span>
               </>
             ) : null}
             {checkpoint ? (
               <>
-                checkpoint <span className="font-mono">{shortId(checkpoint)}</span> <CopyButton value={checkpoint} what="checkpoint ID" /> ·{" "}
+                {" "}
+                · checkpoint <span className="font-mono">{shortId(checkpoint)}</span> <CopyButton value={checkpoint} what="checkpoint ID" />
               </>
             ) : null}
-            {count !== null ? `${count} checkpoint${count === "1" ? "" : "s"}` : null}
+            {count !== null ? ` · ${count} checkpoint${count === "1" ? "" : "s"}` : null}
+            {runCount !== null ? ` · ${runCount} run${runCount === "1" ? "" : "s"}` : null}
             {thread.data?.updatedAt ? (
               <>
                 {" "}
@@ -222,26 +256,80 @@ export function ThreadTab(props: TabProps) {
           <TabsTrigger value="run">Run</TabsTrigger>
           <TabsTrigger value="state">State</TabsTrigger>
           <TabsTrigger value="history">History {count !== null ? <span className="text-body-1 text-fg-muted">{count}</span> : null}</TabsTrigger>
+          <TabsTrigger value="runs">Runs {runCount !== null ? <span className="text-body-1 text-fg-muted">{runCount}</span> : null}</TabsTrigger>
         </TabsList>
         <TabsContent value="run" keepMounted className="flex min-h-0 flex-1 flex-col p-0">
-          <RunPanel {...props} active={props.active && view === "run"} threadId={threadId} thread={thread.data} actions={runActions} onStatus={setStatus} fromCheckpoint={fromCheckpoint} clearCheckpoint={() => setFromCheckpoint(null)} onRunEnded={changed} />
+          <RunPanel
+            {...props}
+            active={props.active && view === "run"}
+            threadId={threadId}
+            thread={thread.data}
+            actions={runActions}
+            onStatus={setStatus}
+            fromCheckpoint={fromCheckpoint}
+            clearCheckpoint={() => setFromCheckpoint(null)}
+            onRunEnded={changed}
+            assistants={assistants}
+            assistantId={assistantId}
+            onAssistant={setAssistantId}
+            graph={graph}
+            graphView={graphView}
+            schemas={schemas}
+          />
         </TabsContent>
         <TabsContent value="state" className="flex min-h-0 flex-1 flex-col overflow-auto p-0">
-          <StatePanel {...props} threadId={threadId} version={version} onChanged={changed} />
+          <StatePanel {...props} threadId={threadId} version={version} onEdit={() => setEditAt({ checkpointId: null })} />
         </TabsContent>
         <TabsContent value="history" className="flex min-h-0 flex-1 flex-col p-0">
           <HistoryPanel
             {...props}
             threadId={threadId}
             history={history}
-            onChanged={changed}
+            graph={graphView}
+            onFork={(checkpointId) => setEditAt({ checkpointId })}
             onRunFrom={(checkpointId) => {
               setFromCheckpoint(checkpointId);
               setView("run");
             }}
           />
         </TabsContent>
+        <TabsContent value="runs" className="flex min-h-0 flex-1 flex-col p-0">
+          <RunsPanel
+            {...props}
+            threadId={threadId}
+            first={runs}
+            checkpoints={history.data?.items ?? []}
+            assistantNames={assistantNames}
+            onChanged={changed}
+            onResume={() => {
+              setView("run");
+              runActions.current.resume?.();
+            }}
+            onRunAgain={(run, request) => {
+              setView("run");
+              runActions.current.prefill?.(run, request);
+            }}
+          />
+        </TabsContent>
       </Tabs>
+      <EditStateSheet
+        at={editAt}
+        onClose={() => setEditAt(null)}
+        threadId={threadId}
+        connId={connId}
+        client={client}
+        note={note}
+        checkpoints={history.data?.items ?? []}
+        nodes={nodes}
+        stateSchema={schemas.data?.stateSchema}
+        onSaved={(checkpointId, continueRun) => {
+          changed();
+          if (continueRun) {
+            setView("run");
+            runActions.current.continueFrom?.(checkpointId);
+          }
+        }}
+      />
       <AlertDialog open={deleting} onOpenChange={(o) => !o && setDeleting(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -305,11 +393,17 @@ interface RunPanelProps extends PanelProps {
   /** The tab is shown and this is its view: a hidden run keeps its stream but reads no more of it (TSK-107). */
   active: boolean;
   thread: api.Thread | null;
-  actions: { current: Parameters<TabProps["useTabActions"]>[0] & { rollback?: () => void } };
+  actions: { current: RunActions };
   onStatus: (status: RunStatus) => void;
   fromCheckpoint: string | null;
   clearCheckpoint: () => void;
   onRunEnded: () => void;
+  assistants: ReturnType<typeof useLoad<api.Assistant[]>>;
+  assistantId: string | null;
+  onAssistant: (assistantId: string) => void;
+  graph: ReturnType<typeof useLoad<api.AssistantGraph>>;
+  graphView: ReturnType<typeof toGraphView> | null;
+  schemas: ReturnType<typeof useLoad<api.AssistantSchemas>>;
 }
 
 type ResumeMode = "resume" | "update" | "goto";
@@ -320,21 +414,9 @@ interface Running {
   paused(): boolean;
 }
 
-function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded, active }: RunPanelProps) {
+function RunPanel({ threadId, connId, client, note, onLive, actions, onStatus, fromCheckpoint, clearCheckpoint, onRunEnded, active, assistants, assistantId, onAssistant: setAssistantId, graph, graphView, schemas }: RunPanelProps) {
   const gate = useActiveGate(active);
   const toast = useToast();
-  const assistants = useLoad(connId ? () => client.langgraph.assistants.search({ connId, graphId: null, metadata: null, limit: 1000, offset: null }) : null, [connId], note);
-  const [assistantId, setAssistantId] = useState<string | null>(null);
-  // Default: the thread's assistant, else one of its graph, else the first.
-  useEffect(() => {
-    if (assistantId || !assistants.data || assistants.data.length === 0) return;
-    const meta = (thread?.metadata ?? {}) as Record<string, unknown>;
-    const pick = assistants.data.find((a) => a.assistantId === meta["assistant_id"]) ?? assistants.data.find((a) => a.graphId === meta["graph_id"]) ?? assistants.data[0]!;
-    setAssistantId(pick.assistantId);
-  }, [assistants.data, thread, assistantId]);
-  const graph = useLoad(connId && assistantId ? () => client.langgraph.assistants.graph({ connId, assistantId, xray: true }) : null, [connId, assistantId], note);
-  const schemas = useLoad(connId && assistantId ? () => client.langgraph.assistants.schemas({ connId, assistantId }) : null, [connId, assistantId], note);
-  const graphView = useMemo(() => (graph.data ? toGraphView(graph.data) : null), [graph.data]);
 
   const [input, setInput] = useState<string | null>(null);
   useEffect(() => {
@@ -463,10 +545,11 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onS
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per thread and connection
   }, [connId, threadId]);
 
-  const start = (command: api.RunCommand | null) => {
+  /** Starts a run: a new one from the form, a command (resume), or `from` a checkpoint with no input. */
+  const start = (command: api.RunCommand | null, from?: { checkpointId: string | null }) => {
     if (!connId || !assistantId || running.current) return;
     const parsed = parseJson(input ?? "");
-    if (!command && !canRun) return;
+    if (!command && !from && !canRun) return;
     setError(null);
     viewRef.current = EMPTY_RUN;
     setRun(EMPTY_RUN);
@@ -478,11 +561,11 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onS
         connId,
         threadId,
         assistantId,
-        input: command ? null : ((parsed.ok ? (parsed.value ?? null) : null) as api.JsonValue | null),
+        input: command || from ? null : ((parsed.ok ? (parsed.value ?? null) : null) as api.JsonValue | null),
         command,
         config: (configParsed.ok ? (configParsed.value ?? null) : null) as api.JsonValue | null,
         context: (contextParsed.ok ? (contextParsed.value ?? null) : null) as api.JsonValue | null,
-        checkpointId: command ? null : fromCheckpoint,
+        checkpointId: from ? from.checkpointId : command ? null : fromCheckpoint,
         streamMode,
         streamSubgraphs: subgraphs,
         interruptBefore: nodeList(before),
@@ -492,7 +575,7 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onS
       },
       liveTimeout(api.procedures.langgraph.runs.stream),
     );
-    if (!command && fromCheckpoint) clearCheckpoint();
+    if (!command && !from && fromCheckpoint) clearCheckpoint();
     consume(call);
   };
 
@@ -553,6 +636,19 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onS
       setRun(EMPTY_RUN);
     },
     rollback: () => setRollingBack(true),
+    resume: () => setResuming(true),
+    continueFrom: (checkpointId) => start(null, { checkpointId }),
+    prefill: (r, request) => {
+      setAssistantId(r.assistantId);
+      setInput(request.input === null || request.input === undefined ? "" : pretty(request.input));
+      const config = request.config && typeof request.config === "object" ? (request.config as Record<string, unknown>) : null;
+      // The server adds its own keys to a run's config; the form keeps what was asked for.
+      const configurable = config?.["configurable"] && typeof config["configurable"] === "object" ? Object.fromEntries(Object.entries(config["configurable"] as Record<string, unknown>).filter(([k]) => !k.startsWith("__") && !SERVER_CONFIG_KEYS.has(k))) : null;
+      setConfigText(configurable && Object.keys(configurable).length > 0 ? pretty({ configurable }) : "");
+      setContextText(request.context ? pretty(request.context) : "");
+      if (request.streamMode.length > 0) setModes(MODES.filter((m) => request.streamMode.includes(m.server)).map((m) => m.id));
+      toast.add({ title: `The form has run ${shortId(r.runId)}'s input`, description: "Check it, then Run.", type: "info" });
+    },
   };
 
   const isRunning = live?.status === "live" || live?.status === "paused";
@@ -784,293 +880,5 @@ function RunPanel({ threadId, thread, connId, client, note, onLive, actions, onS
         </AlertDialogContent>
       </AlertDialog>
     </Resizable>
-  );
-}
-
-// ---- State ------------------------------------------------------------------------------------
-
-/** Where a state's values were left out for their size (TSK-108): a note with Load, in place of the value. */
-function StateDetails({ state, connId, threadId, client, note }: { state: api.ThreadState; threadId: string } & Pick<PanelProps, "connId" | "client" | "note">) {
-  const meta = (state.metadata ?? {}) as Record<string, unknown>;
-  const source = { connId: connId ?? "", threadId, checkpointId: state.checkpointId ?? null };
-  const cutValue = (label: string, cut: api.ValueCut, className?: string) => <CutValue key={cut.field} label={label} cut={cut} note={note} className={className} load={() => loadCut(client, source, cut)} />;
-  const valuesCut = cutOf(state.cuts, "values");
-  const metadataCut = cutOf(state.cuts, "metadata");
-  const otherCuts = state.cuts.filter((c) => c.field !== "values" && c.field !== "metadata");
-  return (
-    <div className="flex flex-col gap-stack-md">
-      <DescriptionList>
-        <DescriptionListItem>
-          <DescriptionListTerm>Checkpoint</DescriptionListTerm>
-          <DescriptionListDetails className="font-mono text-code">{state.checkpointId ?? "—"}</DescriptionListDetails>
-        </DescriptionListItem>
-        <DescriptionListItem>
-          <DescriptionListTerm>Parent</DescriptionListTerm>
-          <DescriptionListDetails className="font-mono text-code">{state.parentCheckpointId ?? "—"}</DescriptionListDetails>
-        </DescriptionListItem>
-        <DescriptionListItem>
-          <DescriptionListTerm>Next</DescriptionListTerm>
-          <DescriptionListDetails>{state.next.length > 0 ? state.next.join(", ") : "nothing (the graph ended)"}</DescriptionListDetails>
-        </DescriptionListItem>
-        <DescriptionListItem>
-          <DescriptionListTerm>Step, source</DescriptionListTerm>
-          <DescriptionListDetails>
-            {String(meta["step"] ?? "—")}, {String(meta["source"] ?? "—")}
-          </DescriptionListDetails>
-        </DescriptionListItem>
-        {state.createdAt ? (
-          <DescriptionListItem>
-            <DescriptionListTerm>Created</DescriptionListTerm>
-            <DescriptionListDetails>
-              <RelativeTime date={state.createdAt} />
-            </DescriptionListDetails>
-          </DescriptionListItem>
-        ) : null}
-      </DescriptionList>
-      {state.tasks.length > 0 ? (
-        <section className="flex flex-col gap-stack-xs">
-          <h3 className="text-subtitle-2 text-fg">Tasks</h3>
-          <ul className="flex flex-col gap-stack-xs">
-            {state.tasks.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center gap-inline-sm text-body-1 text-fg">
-                <Badge appearance="tint" variant="neutral">{t.name}</Badge>
-                {t.error ? <span className="text-danger-fg">{t.error}</span> : null}
-                {t.interrupts.map((i, n) => (
-                  <span key={i.id ?? n} className="font-mono text-code text-warning-fg">
-                    interrupt {preview(i.value)}
-                  </span>
-                ))}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      <h3 className="text-subtitle-2 text-fg">Values</h3>
-      {valuesCut ? cutValue("Values", valuesCut, "h-panel-sm") : <JsonViewer value={state.values} aria-label="Values" defaultExpandDepth={2} className="h-panel-sm" />}
-      <h3 className="text-subtitle-2 text-fg">Metadata</h3>
-      {metadataCut ? cutValue("Metadata", metadataCut, "h-panel-xs") : <JsonViewer value={state.metadata} aria-label="Metadata" className="h-panel-xs" />}
-      {otherCuts.length > 0 ? (
-        <section className="flex flex-col gap-stack-xs">
-          <h3 className="text-subtitle-2 text-fg">Also left out</h3>
-          {otherCuts.map((c) => cutValue(c.field, c, "h-panel-xs"))}
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
-/** Values and the node to write them as: Edit state, and Fork from a checkpoint. */
-function UpdateStateDialog({ open, title, description, initial, nodes, onCancel, onSubmit }: { open: boolean; title: string; description: string; initial: string; nodes: readonly string[]; onCancel: () => void; onSubmit: (values: api.JsonValue, asNode: string | null) => Promise<void> }) {
-  const [values, setValues] = useState(initial);
-  const [asNode, setAsNode] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (open) {
-      setValues(initial);
-      setAsNode("");
-    }
-  }, [open, initial]);
-  const parsed = parseJson(values);
-  const submit = async () => {
-    if (!parsed.ok || parsed.value === undefined) return;
-    setBusy(true);
-    try {
-      await onSubmit(parsed.value as api.JsonValue, asNode.trim() || null);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        <DialogBody className="flex flex-col gap-stack-md">
-          <JsonField label="Values" value={values} onChange={setValues} rows={10} description="Written as the node's update: reducers apply (messages are appended)." />
-          <Field>
-            <FieldLabel>As node</FieldLabel>
-            <Input value={asNode} onValueChange={setAsNode} placeholder="The node the update comes from (optional)" />
-            <FieldDescription>{nodes.length > 0 ? `The graph continues from its edges. Nodes: ${nodes.join(", ")}` : "The graph continues from its edges."}</FieldDescription>
-          </Field>
-        </DialogBody>
-        <DialogFooter>
-          <Button onClick={onCancel}>Cancel</Button>
-          <Button appearance="primary" loading={busy} disabled={!parsed.ok || parsed.value === undefined} onClick={() => void submit()}>
-            Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function StatePanel({ threadId, connId, client, note, version, onChanged }: PanelProps & { version: number; onChanged: () => void }) {
-  const toast = useToast();
-  const state = useLoad(connId ? () => client.langgraph.threads.state({ connId, threadId, checkpointId: null, subgraphs: true }) : null, [connId, threadId, version], note);
-  const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<DescribedError | null>(null);
-  const save = async (values: api.JsonValue, asNode: string | null) => {
-    if (!connId) return;
-    try {
-      const out = await client.langgraph.threads.updateState({ connId, threadId, values, asNode, checkpointId: null });
-      setEditing(false);
-      toast.add({ title: "State updated", description: out.checkpointId ? `New checkpoint ${shortId(out.checkpointId)}` : undefined, type: "success" });
-      onChanged();
-    } catch (e) {
-      setError(note(e));
-    }
-  };
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="State actions">
-        <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="subtle" loading={state.loading} />} onClick={() => void state.reload()}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </ToolbarButton>
-          <ToolbarButton render={<Button appearance="subtle" disabled={!state.data} />} onClick={() => setEditing(true)}>
-            <Icon icon={Edit} /> Edit state
-          </ToolbarButton>
-        </ToolbarGroup>
-      </Toolbar>
-      {error ? <ErrorState error={error} onRetry={() => setError(null)} /> : null}
-      {state.error ? <ErrorState error={state.error} onRetry={() => void state.reload()} onRefresh={() => void state.reload()} /> : null}
-      {state.loading && !state.data ? <LoadingRows label="Loading the state" /> : null}
-      {state.data ? (
-        <div className="p-inset-sm">
-          <StateDetails state={state.data} connId={connId} threadId={threadId} client={client} note={note} />
-        </div>
-      ) : null}
-      <UpdateStateDialog open={editing} title="Edit state" description="Writes a new checkpoint on top of the current one." initial="{}" nodes={state.data?.next ?? []} onCancel={() => setEditing(false)} onSubmit={save} />
-    </div>
-  );
-}
-
-// ---- History ----------------------------------------------------------------------------------
-
-function HistoryPanel({ threadId, connId, client, note, history, onChanged, onRunFrom }: PanelProps & { history: ReturnType<typeof useLoad<api.ThreadHistoryPage>>; onChanged: () => void; onRunFrom: (checkpointId: string) => void }) {
-  const toast = useToast();
-  const [older, setOlder] = useState<api.ThreadState[]>([]);
-  // Where the next page starts: the first page's, then each older page's (TSK-108: pages are cut by bytes).
-  const [olderNext, setOlderNext] = useState<{ token: string | null } | null>(null);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  useEffect(() => {
-    setOlder([]);
-    setOlderNext(null);
-  }, [history.data]);
-  const all = useMemo(() => [...(history.data?.items ?? []), ...older], [history.data, older]);
-  const next = olderNext ? olderNext.token : (history.data?.next ?? null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [forking, setForking] = useState<api.ThreadState | null>(null);
-  const [error, setError] = useState<DescribedError | null>(null);
-  const current = all.find((s) => s.checkpointId === selected) ?? all[0] ?? null;
-  const loadOlder = async () => {
-    if (!connId || !next) return;
-    setLoadingOlder(true);
-    try {
-      const more = await client.langgraph.threads.history({ connId, threadId, limit: HISTORY_PAGE, before: next });
-      setOlder((o) => [...o, ...more.items]);
-      setOlderNext({ token: more.next ?? null });
-    } catch (e) {
-      setError(note(e));
-    } finally {
-      setLoadingOlder(false);
-    }
-  };
-  const fork = async (values: api.JsonValue, asNode: string | null) => {
-    if (!connId || !forking?.checkpointId) return;
-    try {
-      const out = await client.langgraph.threads.updateState({ connId, threadId, values, asNode, checkpointId: forking.checkpointId });
-      setForking(null);
-      toast.add({ title: "Forked", description: out.checkpointId ? `New checkpoint ${shortId(out.checkpointId)}: Run from here to continue the branch.` : undefined, type: "success" });
-      onChanged();
-      if (out.checkpointId) setSelected(out.checkpointId);
-    } catch (e) {
-      setError(note(e));
-    }
-  };
-  const meta = (s: api.ThreadState) => (s.metadata ?? {}) as Record<string, unknown>;
-  const writes = (s: api.ThreadState) => {
-    const w = meta(s)["writes"];
-    return w && typeof w === "object" ? Object.keys(w).join(", ") : "";
-  };
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="History actions">
-        <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="subtle" loading={history.loading} />} onClick={() => void history.reload()}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </ToolbarButton>
-          <ToolbarSeparator />
-          <ToolbarButton render={<Button appearance="subtle" disabled={!current?.checkpointId} />} onClick={() => current && setForking(current)}>
-            <Icon icon={Edit} /> Fork from here
-          </ToolbarButton>
-          <ToolbarButton render={<Button appearance="subtle" disabled={!current?.checkpointId} />} onClick={() => current?.checkpointId && onRunFrom(current.checkpointId)}>
-            <Icon icon={History} /> Run from here
-          </ToolbarButton>
-        </ToolbarGroup>
-      </Toolbar>
-      {error ? <ErrorState error={error} onRetry={() => setError(null)} /> : null}
-      {history.error ? <ErrorState error={history.error} onRetry={() => void history.reload()} onRefresh={() => void history.reload()} /> : null}
-      {history.loading && !history.data ? <LoadingRows label="Loading the history" /> : null}
-      {history.data && all.length === 0 ? <EmptyLine>No checkpoints yet: run the thread.</EmptyLine> : null}
-      {all.length > 0 ? (
-        <Resizable orientation="horizontal" className="min-h-0 flex-1">
-          <ResizablePanel defaultSize={50} minSize={25}>
-            <div className="flex h-full min-h-0 flex-col">
-              <Table aria-label="Checkpoints" className="min-h-0 flex-1">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Step</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Writes</TableHead>
-                    <TableHead>Next</TableHead>
-                    <TableHead>Checkpoint</TableHead>
-                    <TableHead>Created</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {all.map((s, i) => (
-                    <TableRow key={s.checkpointId ?? i} data-selected={s === current ? "" : undefined} aria-selected={s === current} onClick={() => s.checkpointId && setSelected(s.checkpointId)}>
-                      <TableCell>{String(meta(s)["step"] ?? "")}</TableCell>
-                      <TableCell>{String(meta(s)["source"] ?? "")}</TableCell>
-                      <TableCell>{writes(s)}</TableCell>
-                      <TableCell>{s.next.join(", ")}</TableCell>
-                      <TableCell>
-                        <Button appearance="transparent" size="small" className="font-mono" onClick={() => s.checkpointId && setSelected(s.checkpointId)} title={s.checkpointId}>
-                          {s.checkpointId ? shortId(s.checkpointId) : "—"}
-                        </Button>
-                      </TableCell>
-                      <TableCell>{s.createdAt ? <RelativeTime date={s.createdAt} /> : null}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {next ? (
-                <div className="p-inset-xs">
-                  <Button size="small" loading={loadingOlder} onClick={() => void loadOlder()}>
-                    Load older checkpoints
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          </ResizablePanel>
-          <ResizableHandle />
-          <ResizablePanel minSize={25}>
-            <div className="h-full overflow-auto p-inset-sm">{current ? <StateDetails state={current} connId={connId} threadId={threadId} client={client} note={note} /> : null}</div>
-          </ResizablePanel>
-        </Resizable>
-      ) : null}
-      <UpdateStateDialog
-        open={forking !== null}
-        title={`Fork from checkpoint ${forking?.checkpointId ? shortId(forking.checkpointId) : ""}`}
-        description="Writes these values on top of that checkpoint: a new branch of the history. Run from here then continues it."
-        initial="{}"
-        nodes={forking?.next ?? []}
-        onCancel={() => setForking(null)}
-        onSubmit={fork}
-      />
-    </div>
   );
 }

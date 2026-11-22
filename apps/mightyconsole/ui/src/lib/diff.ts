@@ -1,4 +1,4 @@
-// Two revisions of a value compared line by line (the KV History's "38 → 42", DOC-21 Open question
+// Two values compared line by line (NATS KV History's "38 → 42", DOC-21 Open question
 // 45 (o)): JSON is pretty-printed first so a change to one field is one line; a longest common
 // subsequence keeps the unchanged lines in place. Large values are compared as text up to a limit.
 
@@ -49,4 +49,52 @@ export function diffLines(before: string, after: string): DiffLine[] {
   while (i < a.length) out.push({ kind: "removed", text: a[i++]! });
   while (j < b.length) out.push({ kind: "added", text: b[j++]! });
   return out;
+}
+
+/** A diff with long runs of unchanged lines folded: `context` lines kept beside each change. */
+export type FoldedLine = DiffLine | { kind: "folded"; count: number };
+
+export function foldSame(lines: readonly DiffLine[], context = 2): FoldedLine[] {
+  const keep = lines.map(() => false);
+  lines.forEach((l, i) => {
+    if (l.kind === "same") return;
+    for (let k = Math.max(0, i - context); k <= Math.min(lines.length - 1, i + context); k++) keep[k] = true;
+  });
+  const out: FoldedLine[] = [];
+  let start = -1;
+  const close = (end: number) => {
+    // A fold of one line hides nothing worth hiding: the line stays.
+    if (end - start === 1) out.push(lines[start]!);
+    else out.push({ kind: "folded", count: end - start });
+    start = -1;
+  };
+  lines.forEach((l, i) => {
+    if (keep[i]) {
+      if (start >= 0) close(i);
+      out.push(l);
+    } else if (start < 0) start = i;
+  });
+  if (start >= 0) close(lines.length);
+  return out;
+}
+
+/** JSON with its object keys sorted, pretty-printed: two equal values print the same. */
+export function stableJson(value: unknown): string {
+  const sort = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(sort);
+    if (v && typeof v === "object") return Object.fromEntries(Object.keys(v).sort().map((k) => [k, sort((v as Record<string, unknown>)[k])]));
+    return v;
+  };
+  return JSON.stringify(sort(value), null, 2) ?? "null";
+}
+
+/** How many lines were added and removed. */
+export function diffCounts(lines: readonly DiffLine[]): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const l of lines) {
+    if (l.kind === "added") added += 1;
+    else if (l.kind === "removed") removed += 1;
+  }
+  return { added, removed };
 }

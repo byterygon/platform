@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:6202b4c16a7d6df1637f7cf513db19ae220752a80d1ab9932eed8451a4368c94";
+export const SCHEMA_HASH = "sha256:c6abe015fc1ecc73c446381fddec1da01ba6faa20ed8ddc48ae4e5b049d0a8f5";
 
 // ---- Types
 
@@ -2355,7 +2355,7 @@ export type PositionRange = { from?: string | null, to?: string | null, };
  */
 export type ReadValueInput = { connId: string, threadId: string, 
 /**
- * A run's value (`metadata`); when absent, a checkpoint's.
+ * A run's value (`metadata`, `request.input`); when absent, a checkpoint's.
  */
 runId?: string | null, 
 /**
@@ -2623,7 +2623,12 @@ export type Run = { runId: string, threadId: string, assistantId: string,
  */
 status: string, createdAt: string, updatedAt: string, metadata: JsonValue, multitaskStrategy?: string, 
 /**
- * The values this reply left out (`metadata`), each over its share (TSK-108).
+ * What the run was asked to do, from its `kwargs`: only `runs.get` sends it (TSK-96), so a
+ * list of runs stays light.
+ */
+request?: RunRequest, 
+/**
+ * The values this reply left out (`metadata`, `request.input`), each over its share (TSK-108).
  */
 cuts: Array<ValueCut>, };
 
@@ -2650,6 +2655,16 @@ export type RunLink = { runId: string,
  * `Workflow` (continue-as-new), `Retry` or `CronSchedule`; absent for a reset.
  */
 initiator?: string, };
+
+/**
+ * A run's request as the server keeps it in the run's `kwargs` (TSK-96: "Run again with the same
+ * input"). Each part is absent when the server did not keep it.
+ */
+export type RunRequest = { 
+/**
+ * The graph's input; `null` for a run that resumed or continued without one.
+ */
+input: JsonValue, command?: JsonValue, config?: JsonValue, context?: JsonValue, streamMode: Array<string>, interruptBefore?: JsonValue, interruptAfter?: JsonValue, multitaskStrategy?: string, };
 
 /**
  * The end of `langgraph.runs.stream` and `langgraph.runs.join`.
@@ -3276,7 +3291,12 @@ limit?: number | null,
 /**
  * Checkpoints older than this one (the next page).
  */
-before?: string | null, };
+before?: string | null, 
+/**
+ * Only the checkpoints whose metadata holds these pairs, e.g. `{ "run_id": … }` for one run's
+ * steps (TSK-96). An object.
+ */
+metadata?: JsonValue | null, };
 
 /**
  * A page of the history: at most about 4 MiB, whatever `limit` says (TSK-108).

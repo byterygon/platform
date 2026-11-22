@@ -243,6 +243,11 @@ pub struct ThreadHistoryInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub before: Option<String>,
+    /// Only the checkpoints whose metadata holds these pairs, e.g. `{ "run_id": … }` for one run's
+    /// steps (TSK-96). An object.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub metadata: Option<Value>,
 }
 
 /// A page of the history: at most about 4 MiB, whatever `limit` says (TSK-108).
@@ -275,7 +280,7 @@ pub struct RunsPage {
 pub struct ReadValueInput {
     pub conn_id: String,
     pub thread_id: String,
-    /// A run's value (`metadata`); when absent, a checkpoint's.
+    /// A run's value (`metadata`, `request.input`); when absent, a checkpoint's.
     #[serde(default)]
     #[ts(optional = nullable)]
     pub run_id: Option<String>,
@@ -991,7 +996,12 @@ impl ThreadsApi {
             vec![]
         };
         let v = handle.value.get(&path, &query, "thread").await?;
-        let value = resolve_field(&v, &input.field).ok_or_else(|| {
+        // A run's request is its `kwargs` upstream (TSK-96).
+        let field = match input.field.strip_prefix("request.") {
+            Some(rest) if input.run_id.is_some() => format!("kwargs.{rest}"),
+            _ => input.field.clone(),
+        };
+        let value = resolve_field(&v, &field).ok_or_else(|| {
             ToolError::new(
                 ToolErrorKind::NotFound,
                 TOOL,
@@ -1019,6 +1029,7 @@ impl ThreadsApi {
         if let Some(b) = &before {
             id("before", b)?;
         }
+        let metadata = object("metadata", input.metadata)?;
         let mut page: Page<ThreadState> = Page::new(REPLY_BUDGET);
         let mut ask = budget::FIRST_PAGE;
         let mut fetched = 0;
@@ -1026,6 +1037,9 @@ impl ThreadsApi {
             let take = ask.min(want - page.items.len()).max(1);
             let mut body = Map::new();
             body.insert("limit".into(), take.into());
+            if let Some(metadata) = &metadata {
+                body.insert("metadata".into(), metadata.clone());
+            }
             if let Some(before) = &before {
                 body.insert(
                     "before".into(),
@@ -1362,7 +1376,8 @@ impl RunsApi {
         })
     }
 
-    /// One run, with its metadata whole when it weighs up to 12 MiB (more: `threads.readValue`).
+    /// One run with its request (TSK-96), its metadata and input whole when the run weighs up to
+    /// 12 MiB (more: `threads.readValue`).
     #[rpc::query(perm = "langgraph.read", risk = Risk::Read)]
     async fn get(&self, ctx: Ctx, input: RunIdInput) -> ToolResult<Run> {
         let handle = client(&self.0, &ctx, &input.conn_id)?;
@@ -1372,7 +1387,7 @@ impl RunsApi {
             .value
             .get(&format!("/threads/{thread}/runs/{run}"), &[], "run")
             .await?;
-        Ok(Run::from_json(&v).within(FULL_SHARE))
+        Ok(Run::from_json(&v).with_request(&v).within(FULL_SHARE))
     }
 
     /// Stops the run where it is (the thread keeps its checkpoints).

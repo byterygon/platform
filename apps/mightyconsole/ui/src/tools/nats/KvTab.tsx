@@ -40,7 +40,7 @@ import type { ProfileRecord } from "@/profiles/record";
 import type { DescribedError, LiveState, TabProps } from "../types";
 import { ConfirmDialog, useAction } from "./JetStreamDialogs";
 import { KvPutSheet } from "./KvPutSheet";
-import { diffLines } from "./diff";
+import { diffLines } from "@/lib/diff";
 import { formatAgo, formatDuration, formatSize } from "./format";
 import { validatePattern } from "./profile";
 import { reloadStreams } from "./tree-data";

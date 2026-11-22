@@ -222,7 +222,11 @@ async fn answer(method: &Method, path: &str, headers: &HeaderMap, body: &Value) 
         }
         ("GET", p) if p == format!("{thread}/runs/{RUN}") => json_response(
             StatusCode::OK,
-            json!({ "run_id": RUN, "thread_id": THREAD, "status": "success" }),
+            json!({ "run_id": RUN, "thread_id": THREAD, "status": "success",
+                     "kwargs": { "input": { "messages": [{ "type": "human", "content": "Hi" }] },
+                                 "config": { "configurable": { "model": "small" } }, "command": null,
+                                 "stream_mode": ["values", "updates"], "interrupt_before": ["approve"],
+                                 "multitask_strategy": "reject" } }),
         ),
         ("GET", p) if p == format!("{thread}/runs") => json_response(
             StatusCode::OK,
@@ -529,63 +533,83 @@ async fn threads_state_history_and_fork() {
         json!({ "limit": 3, "before": { "configurable": { "checkpoint_id": "c3" } } })
     );
 
-    // Fork: update the state at a checkpoint.
+    // One run's steps (TSK-96): the metadata filter goes upstream as it is.
     tab.call(
         9,
+        "langgraph.threads.history",
+        json!({ "connId": conn, "threadId": THREAD, "limit": 1, "metadata": { "run_id": RUN } }),
+    )
+    .await;
+    tab.result(9).await;
+    assert_eq!(
+        mock.last(&format!("{thread}/history")).body,
+        json!({ "limit": 1, "metadata": { "run_id": RUN } })
+    );
+    tab.call(
+        10,
+        "langgraph.threads.history",
+        json!({ "connId": conn, "threadId": THREAD, "metadata": ["run_id"] }),
+    )
+    .await;
+    tab.error(10, Code::InvalidArgument).await;
+
+    // Fork: update the state at a checkpoint.
+    tab.call(
+        11,
         "langgraph.threads.updateState",
         json!({ "connId": conn, "threadId": THREAD, "values": { "approved": true }, "asNode": "approve", "checkpointId": "c1" }),
     )
     .await;
-    assert_eq!(tab.result(9).await["checkpointId"], "c3");
+    assert_eq!(tab.result(11).await["checkpointId"], "c3");
     let body = mock.last(&format!("{thread}/state")).body;
     assert_eq!(body["values"], json!({ "approved": true }));
     assert_eq!(body["as_node"], "approve");
     assert_eq!(body["checkpoint"]["checkpoint_id"], "c1");
 
     tab.call(
-        10,
+        12,
         "langgraph.threads.delete",
         json!({ "connId": conn, "threadId": THREAD }),
     )
     .await;
-    tab.result(10).await;
+    tab.result(12).await;
     assert_eq!(mock.last(&thread).method, Method::DELETE);
 
     tab.call(
-        11,
+        13,
         "langgraph.threads.state",
         json!({ "connId": conn, "threadId": "33333333-3333-3333-3333-333333333333" }),
     )
     .await;
-    let err = tab.error(11, Code::NotFound).await;
+    let err = tab.error(13, Code::NotFound).await;
     assert_eq!(details(&err)["resource"], "thread");
 
     // Sort and limit from the list's Advanced menu (TSK-95); an unknown order is refused.
     tab.call(
-        12,
+        14,
         "langgraph.threads.search",
         json!({ "connId": conn, "limit": 200, "sortBy": "created_at", "sortOrder": "asc" }),
     )
     .await;
-    tab.result(12).await;
+    tab.result(14).await;
     assert_eq!(
         mock.last("/threads/search").body,
         json!({ "limit": 200, "offset": 0, "sort_by": "created_at", "sort_order": "asc" })
     );
     tab.call(
-        13,
+        15,
         "langgraph.threads.search",
         json!({ "connId": conn, "sortBy": "name" }),
     )
     .await;
-    tab.error(13, Code::InvalidArgument).await;
+    tab.error(15, Code::InvalidArgument).await;
     tab.call(
-        14,
+        16,
         "langgraph.threads.search",
         json!({ "connId": conn, "sortOrder": "up" }),
     )
     .await;
-    tab.error(14, Code::InvalidArgument).await;
+    tab.error(16, Code::InvalidArgument).await;
 }
 
 /// The `jsonl` lines of every chunk of call `id` until its end, and the summary.
@@ -774,22 +798,40 @@ async fn a_run_stream_follows_the_credits_and_joins_from_the_last_event() {
         "limit=10&offset=0"
     );
 
-    let cancel = format!("/threads/{THREAD}/runs/{RUN}/cancel");
+    // A list leaves the request out; one run carries it, from its kwargs (TSK-96).
+    assert!(runs["items"][0].get("request").is_none());
     tab.call(
         6,
+        "langgraph.runs.get",
+        json!({ "connId": conn, "threadId": THREAD, "runId": RUN }),
+    )
+    .await;
+    let run = tab.result(6).await;
+    assert_eq!(
+        run["request"],
+        json!({ "input": { "messages": [{ "type": "human", "content": "Hi" }] },
+                "config": { "configurable": { "model": "small" } },
+                "streamMode": ["values", "updates"], "interruptBefore": ["approve"],
+                "multitaskStrategy": "reject" })
+    );
+    assert_eq!(run["cuts"], json!([]));
+
+    let cancel = format!("/threads/{THREAD}/runs/{RUN}/cancel");
+    tab.call(
+        7,
         "langgraph.runs.cancel",
         json!({ "connId": conn, "threadId": THREAD, "runId": RUN }),
     )
     .await;
-    tab.result(6).await;
+    tab.result(7).await;
     assert_eq!(mock.last(&cancel).query, "action=interrupt&wait=true");
     tab.call(
-        7,
+        8,
         "langgraph.runs.rollback",
         json!({ "connId": conn, "threadId": THREAD, "runId": RUN }),
     )
     .await;
-    tab.result(7).await;
+    tab.result(8).await;
     assert_eq!(mock.last(&cancel).query, "action=rollback&wait=true");
 }
 

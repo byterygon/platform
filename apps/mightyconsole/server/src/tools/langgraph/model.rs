@@ -427,8 +427,62 @@ pub struct Run {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub multitask_strategy: Option<String>,
-    /// The values this reply left out (`metadata`), each over its share (TSK-108).
+    /// What the run was asked to do, from its `kwargs`: only `runs.get` sends it (TSK-96), so a
+    /// list of runs stays light.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub request: Option<RunRequest>,
+    /// The values this reply left out (`metadata`, `request.input`), each over its share (TSK-108).
     pub cuts: Vec<ValueCut>,
+}
+
+/// A run's request as the server keeps it in the run's `kwargs` (TSK-96: "Run again with the same
+/// input"). Each part is absent when the server did not keep it.
+#[derive(Debug, Clone, Default, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RunRequest {
+    /// The graph's input; `null` for a run that resumed or continued without one.
+    pub input: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub command: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub config: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context: Option<Value>,
+    pub stream_mode: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub interrupt_before: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub interrupt_after: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub multitask_strategy: Option<String>,
+}
+
+impl RunRequest {
+    /// From a run's `kwargs`; `stream_mode` is a string or a list there.
+    pub fn from_kwargs(k: &Value) -> RunRequest {
+        let stream_mode = match k.get("stream_mode") {
+            Some(Value::String(s)) => vec![s.clone()],
+            Some(Value::Array(_)) => strings(k, "stream_mode"),
+            _ => Vec::new(),
+        };
+        RunRequest {
+            input: k.get("input").cloned().unwrap_or(Value::Null),
+            command: opt_json(k, "command"),
+            config: opt_json(k, "config"),
+            context: opt_json(k, "context"),
+            stream_mode,
+            interrupt_before: opt_json(k, "interrupt_before"),
+            interrupt_after: opt_json(k, "interrupt_after"),
+            multitask_strategy: text(k, "multitask_strategy"),
+        }
+    }
 }
 
 impl Run {
@@ -442,19 +496,57 @@ impl Run {
             updated_at: text_or_empty(v, "updated_at"),
             metadata: json(v, "metadata"),
             multitask_strategy: text(v, "multitask_strategy"),
+            request: None,
             cuts: Vec::new(),
         }
     }
 
-    /// What the run weighs in a reply, close, not exact.
-    pub fn weight(&self) -> usize {
-        512 + budget::json_len(&self.metadata) + self.cuts.len() * (2 * budget::PREVIEW_CHARS + 128)
+    /// The run with its request read from `kwargs` (`runs.get`).
+    pub fn with_request(mut self, v: &Value) -> Run {
+        self.request = Some(
+            v.get("kwargs")
+                .map(RunRequest::from_kwargs)
+                .unwrap_or_default(),
+        );
+        self
     }
 
-    /// Cuts the metadata when it is over `share` (the run's one open value).
+    fn request_len(&self) -> usize {
+        self.request.as_ref().map_or(0, |r| {
+            budget::json_len(&r.input)
+                + [
+                    &r.command,
+                    &r.config,
+                    &r.context,
+                    &r.interrupt_before,
+                    &r.interrupt_after,
+                ]
+                .iter()
+                .filter_map(|v| v.as_ref())
+                .map(budget::json_len)
+                .sum::<usize>()
+        })
+    }
+
+    /// What the run weighs in a reply, close, not exact.
+    pub fn weight(&self) -> usize {
+        512 + budget::json_len(&self.metadata)
+            + self.request_len()
+            + self.cuts.len() * (2 * budget::PREVIEW_CHARS + 128)
+    }
+
+    /// Cuts the metadata, and the request's input, biggest first, until the run fits `share`.
     pub fn within(mut self, share: usize) -> Run {
-        let rest = self.weight() - budget::json_len(&self.metadata);
-        let cuts = budget::shrink(rest, vec![("metadata".into(), &mut self.metadata)], share);
+        let input_len = self
+            .request
+            .as_ref()
+            .map_or(0, |r| budget::json_len(&r.input));
+        let rest = self.weight() - budget::json_len(&self.metadata) - input_len;
+        let mut slots = vec![("metadata".to_owned(), &mut self.metadata)];
+        if let Some(r) = self.request.as_mut() {
+            slots.push(("request.input".to_owned(), &mut r.input));
+        }
+        let cuts = budget::shrink(rest, slots, share);
         self.cuts = cuts;
         self
     }

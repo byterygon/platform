@@ -2,7 +2,7 @@
 // profile helpers, and the screens against a scripted client: assistants with the xray graph,
 // threads (search, create, delete), a run that streams to an interrupt and resumes, Stop,
 // Rollback, joining a run after the connection came back, state and history with fork and time
-// travel, and the store.
+// travel, and the store; TSK-96's Runs tab, History's diff and the Edit state sheet.
 import { RpcError, type StreamCall } from "@byterygon/ambidex";
 import { act, useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -19,6 +19,9 @@ import { fake as monacoFake } from "../../../../packages/ui/test/fakes/monaco.ts
 import { StoreTab } from "@/tools/langgraph/store";
 import { ThreadTab, advancedSummary, defaultInput, interruptQuestion } from "@/tools/langgraph/thread";
 import { DEFAULT_ORDER, ThreadsTab, orderSummary } from "@/tools/langgraph/threads";
+import { appendKeys, branchCount, formatDuration, runDuration, runNote, stepNodes, updatePreview, wroteLabel } from "@/tools/langgraph/state-diff";
+import { lastCheckpoints } from "@/tools/langgraph/thread-runs";
+import { foldSame, diffLines } from "@/lib/diff";
 import type { LiveState, TabProps, TabView } from "@/tools/types";
 import { axeViolations, cleanup, render, settle } from "./support/render";
 
@@ -199,6 +202,9 @@ function fakeClient() {
     /** What `threads.readValue` sends, as JSON text. */
     readValue: "",
     threads: [{ threadId: THREAD, status: "idle", createdAt: "2026-11-18T00:00:00Z", updatedAt: "2026-11-18T00:00:00Z", metadata: { lab: "x" } }] as api.Thread[],
+    /** The thread's runs (TSK-96), and what `runs.get` adds to each. */
+    runs: [] as api.Run[],
+    request: null as api.RunRequest | null,
   };
   const client = {
     langgraph: {
@@ -223,7 +229,7 @@ function fakeClient() {
           return {};
         },
         state: async (i: { checkpointId?: string | null; full?: boolean | null }) => (rec("threads.state")(i), state.stateFor ? state.stateFor(i) : STATE("c2", state.interrupted ? [{ id: "i1", value: { question: "Send?" } }] : [])),
-        history: async (i: { before?: string | null }) => (rec("threads.history")(i), state.pages.get(i.before ?? null) ?? { items: [STATE("c2"), STATE("c1")] }),
+        history: async (i: { before?: string | null; metadata?: unknown }) => (rec("threads.history")(i), i.metadata ? { items: [] } : (state.pages.get(i.before ?? null) ?? { items: [STATE("c2"), STATE("c1")] })),
         readValue: (i: unknown) => {
           rec("threads.readValue")(i);
           const bytes = enc.encode(state.readValue);
@@ -242,7 +248,12 @@ function fakeClient() {
         join: stream("runs.join"),
         cancel: async (i: unknown) => (rec("runs.cancel")(i), {}),
         rollback: async (i: unknown) => (rec("runs.rollback")(i), {}),
-        list: async () => ({ items: [] }),
+        list: async (i: unknown) => (rec("runs.list")(i), { items: state.runs }),
+        get: async (i: { runId: string }) => {
+          rec("runs.get")(i);
+          const run = state.runs.find((r) => r.runId === i.runId)!;
+          return { ...run, ...(state.request ? { request: state.request } : {}) };
+        },
       },
       store: {
         namespaces: async (i: unknown) => (rec("store.namespaces")(i), [["lab", "answers"]]),
@@ -416,15 +427,18 @@ describe("screens", () => {
     expect(document.querySelector("header")?.textContent).toMatch(/checkpoint c2.*\d+ checkpoints?/);
     await click(historyTab);
     expect(fake.last("threads.history")).toMatchObject({ threadId: THREAD, limit: 50 });
+    // An older checkpoint: Fork opens the Edit state sheet on it, which writes a new branch.
+    await click([...document.querySelectorAll("tbody tr")][1]);
     await click(buttonNamed("Fork from here"));
-    expect(document.body.textContent).toContain("Fork from checkpoint c2");
-    await click(buttonNamed("Save"));
-    expect(fake.last("threads.updateState")).toMatchObject({ threadId: THREAD, checkpointId: "c2", values: {} });
+    expect(document.body.textContent).toContain("Fork from a checkpoint");
+    expect(document.body.textContent).toContain("writes a new branch after c1");
+    await click(buttonNamed("Update state"));
+    expect(fake.last("threads.updateState")).toMatchObject({ threadId: THREAD, checkpointId: "c1", values: {} });
     await click(buttonNamed("Run from here"));
     expect(document.body.textContent).toContain("Run from checkpoint");
     fake.script.chunks = [];
     await click(runBar("Run"));
-    expect(fake.last("runs.stream")).toMatchObject({ checkpointId: "c2", input: { messages: [{ type: "human", content: "" }] } });
+    expect(fake.last("runs.stream")).toMatchObject({ checkpointId: "c1", input: { messages: [{ type: "human", content: "" }] } });
   });
 
   test("history: pages follow the server's token, and a value left out is a note that loads on request (TSK-108)", async () => {
@@ -443,7 +457,10 @@ describe("screens", () => {
     // More than the first page holds: the count says so.
     expect(historyTab?.textContent).toBe("History 2+");
     await click(historyTab);
-    // The newest checkpoint is selected; its values are a note with the size, not a viewer.
+    // The newest checkpoint is selected; its diff says the values were left out (TSK-96), and
+    // its full state shows the note with the size, not a viewer.
+    expect(document.querySelector("[aria-label^='Step']")?.textContent).toContain("left out for their size");
+    await click(buttonNamed("Full state"));
     const note = document.querySelector("[role=group][aria-label='Values, left out']");
     expect(note?.textContent).toContain("Values is an object of 3.0 MiB");
     expect(note?.textContent).toContain('{"messages":[{"content":"xxxx');
@@ -576,7 +593,8 @@ describe("thread and threads on the mockup", () => {
     expect([...document.querySelectorAll("label")].some((l) => l.textContent === "Config")).toBe(true);
     // The header: the thread's short ID, the assistant, Stop, More actions and Run.
     const header = document.querySelector("header")!;
-    expect(header.textContent).toMatch(/Assistant agent · checkpoint c2.* · \d+ checkpoints?/);
+    // The profile, the assistant, the checkpoint and the counts (TSK-96: runs too).
+    expect(header.textContent).toMatch(/· assistant agent · checkpoint c2.* · \d+ checkpoints? · \d+ runs?/);
     expect(runBar("Stop")!.disabled).toBe(true);
     expect(runBar("Run")!.getAttribute("aria-keyshortcuts")).toBe("Control+Enter");
     expect(await axeViolations()).toEqual([]);
@@ -615,5 +633,138 @@ describe("thread and threads on the mockup", () => {
     expect(fake.last("threads.search")).toMatchObject({ limit: 50, sortBy: "updated_at", sortOrder: "desc" });
     expect(buttonNamed("Advanced")).toBeDefined();
     expect(document.querySelector('[aria-label="Status"]')!.textContent).toContain("Status: Any");
+  });
+});
+
+// ---- TSK-96: Runs, History's diff, Edit state's preview ------------------------------------------
+
+const RUN = (runId: string, status: string, extra: Partial<api.Run> = {}): api.Run => ({ runId, threadId: THREAD, assistantId: "a1", status, createdAt: "2026-11-18T10:21:40Z", updatedAt: "2026-11-18T10:21:54.800Z", metadata: {}, multitaskStrategy: "reject", cuts: [], ...extra });
+const CHECKPOINT = (id: string, parent: string | null, extra: Partial<api.ThreadState> & { meta?: Record<string, unknown> } = {}): api.ThreadState => {
+  const { meta, ...rest } = extra;
+  const { parentCheckpointId: _parent, ...base } = STATE(id);
+  return { ...base, ...(parent ? { parentCheckpointId: parent } : {}), metadata: { step: 1, source: "loop", ...meta }, ...rest };
+};
+
+describe("thread additions (TSK-96)", () => {
+  test("What changes: messages are appended (an id replaces), other keys replaced; only changed keys are compared", () => {
+    const appended = appendKeys({ properties: { notes: { description: "Annotated[list, add_messages]" }, refund: {} } });
+    expect([...appended].sort()).toEqual(["messages", "notes"]);
+    const current = { messages: [{ id: "m1", content: "hi" }], refund: { approved: null }, intent: "billing" };
+    const out = updatePreview(current, { messages: [{ id: "m2", content: "yes" }], refund: { approved: true }, intent: "billing" }, appended);
+    expect(out.keys).toEqual(["messages", "refund"]);
+    expect(out.lines.filter((l) => l.kind === "added").map((l) => l.text.trim())).toEqual(expect.arrayContaining(['"approved": true', '"content": "yes",']));
+    expect(out.lines.some((l) => l.text.includes("intent"))).toBe(false);
+    // A message with a known id replaces the old one.
+    const replaced = updatePreview(current, { messages: { id: "m1", content: "edited" } }, appended);
+    expect(replaced.lines.filter((l) => l.kind === "removed").map((l) => l.text.trim())).toEqual(['"content": "hi",']);
+    expect(updatePreview(current, { intent: "billing" }, appended).keys).toEqual([]);
+  });
+
+  test("a step's nodes: its writes, else its parent's next; the Wrote column; branches; folded diffs", () => {
+    const parent = CHECKPOINT("p", null, { next: ["retrieve"] });
+    expect(stepNodes(CHECKPOINT("c", "p", { meta: { writes: { draft: {} } } }), parent)).toEqual(["draft"]);
+    expect(stepNodes(CHECKPOINT("c", "p"), parent)).toEqual(["retrieve"]);
+    const byId = new Map([["p", { ...parent, metadata: { step: 6, source: "loop" } }]]);
+    expect(wroteLabel(CHECKPOINT("u", "p", { meta: { source: "update", writes: { human_review: {} } } }), parent, byId)).toBe("(by a person) as human_review");
+    expect(wroteLabel(CHECKPOINT("f", "p", { meta: { source: "fork" } }), parent, byId)).toBe("from step 6");
+    expect(wroteLabel(CHECKPOINT("i", null, { meta: { source: "input" } }), undefined, byId)).toBe("—");
+    expect(branchCount([CHECKPOINT("a", "p"), CHECKPOINT("b", "p"), CHECKPOINT("c", "a"), parent])).toBe(2);
+    expect(branchCount([CHECKPOINT("a", "p"), parent])).toBe(1);
+    const lines = diffLines(["a", "b", "c", "d", "e", "f", "g", "h"].join("\n"), ["a", "b", "c", "d", "e", "f", "g", "X"].join("\n"));
+    expect(foldSame(lines)).toEqual([{ kind: "folded", count: 5 }, { kind: "same", text: "f" }, { kind: "same", text: "g" }, { kind: "removed", text: "h" }, { kind: "added", text: "X" }]);
+  });
+
+  test("a run's duration, note and last checkpoint", () => {
+    expect(formatDuration(runDuration(RUN("r", "error")))).toBe("14.8 s");
+    expect(formatDuration(runDuration(RUN("r", "running"), Date.parse("2026-11-18T10:23:44Z")))).toBe("2 min 4 s");
+    expect(formatDuration(null)).toBe("—");
+    const failed = CHECKPOINT("c3", "c2", { meta: { run_id: "r1", step: 3 }, tasks: [{ id: "t", name: "retrieve", error: "TimeoutError: retrieve took longer than 10 s\n  at search_kb", interrupts: [], state: null, result: null }] });
+    expect(runNote(RUN("r1", "error"), failed)).toBe("TimeoutError: retrieve took longer than 10 s");
+    expect(runNote(RUN("r2", "interrupted"), CHECKPOINT("c9", "c8", { next: ["human_review"] }))).toBe("waiting at human_review");
+    expect(runNote(RUN("r3", "success"), failed)).toBe("");
+    const lasts = lastCheckpoints([CHECKPOINT("c4", "c3", { meta: { run_id: "r1" } }), failed, CHECKPOINT("c1", null, { meta: { run_id: "r0" } })]);
+    expect(lasts.get("r1")?.checkpointId).toBe("c4");
+    expect(lasts.get("r0")?.checkpointId).toBe("c1");
+  });
+
+  test("Runs: the table, a failed run's error, Run again with the same input fills the form", async () => {
+    const fake = fakeClient();
+    fake.state.runs = [RUN("r2", "interrupted", { createdAt: "2026-11-18T10:44:02Z", updatedAt: "2026-11-18T10:44:05.600Z" }), RUN("r1", "error")];
+    fake.state.pages.set(null, { items: [CHECKPOINT("c9", "c8", { next: ["approve"], meta: { run_id: "r2", step: 4 } }), CHECKPOINT("c3", "c2", { meta: { run_id: "r1", step: 3 }, tasks: [{ id: "t", name: "retrieve", error: "TimeoutError: too slow", interrupts: [], state: null, result: null }] })] });
+    fake.state.request = { input: { messages: [{ type: "human", content: "again" }] }, config: { configurable: { model: "small", thread_id: THREAD } }, streamMode: ["values"] };
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD, view: "runs" })} />
+      </Toast>,
+    );
+    await settle();
+    const runsTab = [...document.querySelectorAll<HTMLElement>("[role=tab]")].find((t) => t.textContent?.startsWith("Runs"));
+    expect(runsTab?.textContent).toBe("Runs 2");
+    expect(document.querySelector("header")?.textContent).toContain("2 runs");
+    const rows = [...document.querySelectorAll("table[aria-label=Runs] tbody tr")];
+    expect(rows[0]?.textContent).toContain("waiting at approve");
+    expect(rows[0]?.textContent).toContain("3.6 s");
+    expect(rows[0]?.querySelector("button")?.textContent).toBe("r2");
+    expect(rows[1]?.textContent).toContain("TimeoutError: too slow");
+    expect(rows[1]?.textContent).toContain("agent");
+    await click(rows[1]?.querySelector("button"));
+    expect(fake.last("runs.get")).toMatchObject({ threadId: THREAD, runId: "r1" });
+    expect($("[aria-label=\"The run's error\"]")?.textContent).toContain("during node retrieve, step 3, checkpoint c3");
+    expect(await axeViolations()).toEqual([]);
+    await click(buttonNamed("Run again with the same input"));
+    // The Run tab shows the run's input and the config it asked for (the server's own keys left out).
+    expect(document.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("Run");
+    fake.script.chunks = [];
+    await click(runBar("Run"));
+    expect(fake.last("runs.stream")).toMatchObject({ input: { messages: [{ type: "human", content: "again" }] }, config: { configurable: { model: "small" } }, streamMode: expect.arrayContaining(["values"]) });
+  });
+
+  test("History: a checkpoint against its parent, read when it is older than the page", async () => {
+    const fake = fakeClient();
+    fake.state.pages.set(null, { items: [CHECKPOINT("c2", "c1", { values: { messages: ["a", "b"], refund: { approved: true } } }), CHECKPOINT("c1", "c0", { values: { messages: ["a"], refund: { approved: null } } })] });
+    fake.state.stateFor = (i) => CHECKPOINT(i.checkpointId ?? "c2", null, { values: { messages: [] } });
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD, view: "history" })} />
+      </Toast>,
+    );
+    await settle();
+    expect(document.body.textContent).toContain("2 checkpoints · 1 branch");
+    const diff = $("[aria-label='What changed']");
+    const kind = (k: string) => [...(diff?.querySelectorAll(`[data-kind=${k}]`) ?? [])].map((l) => l.textContent).join("\n");
+    expect(kind("removed")).toContain('"approved": null');
+    expect(kind("added")).toContain('"approved": true');
+    expect(kind("added")).toContain('"b"');
+    expect(await axeViolations()).toEqual([]);
+    // The oldest loaded one's parent is read from the server.
+    await click([...document.querySelectorAll("tbody tr")][1]);
+    expect(fake.last("threads.state")).toMatchObject({ checkpointId: "c0" });
+    expect($("[aria-label='What changed']")?.textContent).toContain('"a"');
+    await click(buttonNamed("Graph"));
+    expect($("[aria-label^='The graph at step']")).not.toBeNull();
+  });
+
+  test("Edit state: what changes before it is sent, then Update and continue the run", async () => {
+    const fake = fakeClient();
+    fake.state.pages.set(null, { items: [CHECKPOINT("c2", "c1", { values: { messages: [{ id: "m1", content: "hi" }], refund: { approved: null } }, meta: { writes: { plan: {} } } })] });
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD, view: "state" })} />
+      </Toast>,
+    );
+    await settle();
+    await click(buttonNamed("Edit state"));
+    expect(document.body.textContent).toContain("makes a new checkpoint after c2");
+    const editor = monacoFake.editors.at(-1)!;
+    await act(async () => editor.model.setValue('{"refund": {"approved": true}}'));
+    await settle();
+    const changes = $("[aria-label='What changes']");
+    expect(changes?.textContent).toContain("1 key");
+    expect(changes?.querySelector("[data-kind=added]")?.textContent).toContain('"approved": true');
+    expect(await axeViolations()).toEqual([]);
+    fake.script.chunks = [];
+    await click(buttonNamed("Update and continue the run"));
+    expect(fake.last("threads.updateState")).toMatchObject({ threadId: THREAD, values: { refund: { approved: true } }, asNode: "plan", checkpointId: null });
+    expect(fake.last("runs.stream")).toMatchObject({ input: null, checkpointId: "c3" });
   });
 });
