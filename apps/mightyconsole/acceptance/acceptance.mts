@@ -153,6 +153,37 @@ export function countTests(raw: string): { passed: number; failed: number } {
  */
 const commandsRun = new Map<string, { verdict: Verdict; detail: string; log: string; item: string }>();
 
+/** The part of Vitest's JSON report (`--reporter=json`) a check reads. */
+export type VitestReport = {
+  testResults: { status: string; message?: string; assertionResults: { ancestorTitles: string[]; title: string; status: string }[] }[];
+};
+
+/**
+ * A vitest check's verdict from its file's report: the tests whose full name (describe titles and
+ * title, joined by spaces) matches `name` as Vitest's `-t` does (a regular expression), or every
+ * test without a name. A file that did not run (an import error) fails every check that names it.
+ */
+export function vitestVerdict(report: VitestReport | null, name: string | undefined): { verdict: "pass" | "fail"; detail: string } {
+  if (!report) return { verdict: "fail", detail: "no report from vitest" };
+  const broken = report.testResults.find((s) => s.status === "failed" && s.assertionResults.length === 0);
+  if (broken) return { verdict: "fail", detail: `the file did not run: ${(broken.message ?? "").split("\n")[0]}` };
+  const pattern = name ? new RegExp(name) : null;
+  const tests = report.testResults.flatMap((s) => s.assertionResults).filter((t) => !pattern || pattern.test([...t.ancestorTitles, t.title].join(" ")));
+  const passed = tests.filter((t) => t.status === "passed").length;
+  const failed = tests.filter((t) => t.status === "failed").length;
+  if (failed > 0) return { verdict: "fail", detail: `${failed} failed` };
+  if (passed === 0) return { verdict: "fail", detail: "no test matched" };
+  return { verdict: "pass", detail: `${passed} passed` };
+}
+
+/**
+ * Vitest files already run in this evidence run (TSK-123): a file runs once, whole, with the JSON
+ * reporter, and every check naming it reads its tests from that report. 130 vitest checks name 38
+ * files; each run of `vitest run <file> -t <name>` cost about 2.2 s, mostly start-up (252 s for
+ * 116 checks in one lab run). CI's TypeScript job runs whole files too.
+ */
+const vitestRuns = new Map<string, { item: string; log: string; json: string; report: VitestReport | null }>();
+
 async function runCheck(check: Check, item: string, n: number, run: Run): Promise<CheckResult> {
   const started = Date.now();
   const log = join(run.logs, `${item}-${n}.log`);
@@ -170,21 +201,39 @@ async function runCheck(check: Check, item: string, n: number, run: Run): Promis
   switch (check.kind) {
     case "manual":
       return done("manual", "a person checks this and links it in the PR", []);
-    case "cargo":
-    case "vitest": {
+    case "cargo": {
       // `--tests`: the library's unit tests and every integration test, no doc-tests. Without it
       // cargo also runs rustdoc for the doc-tests (none in this crate), about 3 s of every check
       // (TSK-120: 185 single-test checks cost 1,047 s in one lab run). A check that names a
       // doc-test would need `--doc` instead, and fails with "no test matched" until it has it.
-      const argv =
-        check.kind === "cargo"
-          ? ["cargo", "test", "-p", "mightyconsole-server", "--locked", "--tests", ...(check.features?.length ? ["--features", check.features.join(",")] : []), "--", check.filter]
-          : ["pnpm", "exec", "vitest", "run", check.file, ...(check.name ? ["-t", check.name] : [])];
-      const { code, output } = execute(argv, { cwd: check.kind === "vitest" ? UI : REPO, log });
+      const argv = ["cargo", "test", "-p", "mightyconsole-server", "--locked", "--tests", ...(check.features?.length ? ["--features", check.features.join(",")] : []), "--", check.filter];
+      const { code, output } = execute(argv, { cwd: REPO, log });
       const { passed, failed } = countTests(output);
       if (code !== 0 || failed > 0) return done("fail", `${failed} failed${code !== 0 ? `, exit ${code}` : ""}`);
       if (passed === 0) return done("fail", "no test matched");
       return done("pass", `${passed} passed`);
+    }
+    case "vitest": {
+      const key = JSON.stringify([run.dir, check.file]);
+      let file = vitestRuns.get(key);
+      if (file) {
+        writeFileSync(log, `vitest run ${check.file}: the same run as ${file.item} (${file.log})\n`);
+      } else {
+        const json = join(run.logs, `${item}-${n}.vitest.json`);
+        execute(["pnpm", "exec", "vitest", "run", check.file, "--reporter=default", "--reporter=json", `--outputFile.json=${json}`], { cwd: UI, log });
+        let report: VitestReport | null = null;
+        try {
+          report = JSON.parse(readFileSync(json, "utf8")) as VitestReport;
+        } catch {
+          // no report: vitest did not start; vitestVerdict says so
+        }
+        file = { item, log: relative(run.dir, log), json: relative(run.dir, json), report };
+        vitestRuns.set(key, file);
+        const { verdict, detail } = vitestVerdict(report, check.name);
+        return done(verdict, detail, [file.log, file.json]);
+      }
+      const { verdict, detail } = vitestVerdict(file.report, check.name);
+      return done(verdict, `${detail}, the same run as ${file.item}`, [file.log, file.json, relative(run.dir, log)]);
     }
     case "command": {
       const missing = (check.requires ?? []).filter((p) => !onPath(p));
