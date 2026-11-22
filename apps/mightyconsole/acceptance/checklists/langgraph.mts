@@ -317,10 +317,25 @@ export default {
           await labTree({ until, run, shot });
           // A thread of its own, run to the approval interrupt, so it has runs and checkpoints.
           const made = (await (await fetch("http://127.0.0.1:2024/threads", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ metadata: { lab: "tsk-96" } }) })).json()) as { thread_id: string };
-          await fetch(`http://127.0.0.1:2024/threads/${made.thread_id}/runs/wait`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assistant_id: "agent", input: { messages: [{ type: "human", content: "What is 6 times 7?" }] } }) });
-          await page.navigate(`${origin}/langgraph/lab/threads/${made.thread_id}/runs`);
-          await until(`[...document.querySelectorAll("table[aria-label=Runs] tbody tr")].some((r) => r.checkVisibility() && r.textContent.includes("waiting at"))`, "the interrupted run with its note", 30_000);
+          const waited = await fetch(`http://127.0.0.1:2024/threads/${made.thread_id}/runs/wait`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assistant_id: "agent", input: { messages: [{ type: "human", content: "What is 6 times 7?" }] } }) });
+          if (!waited.ok) throw new Error(`the lab's run did not finish: ${waited.status} ${await waited.text()}`);
+          const runsUrl = `${origin}/langgraph/lab/threads/${made.thread_id}/runs`;
+          const rows = `[...document.querySelectorAll("table[aria-label=Runs] tbody tr")].filter((r) => r.checkVisibility())`;
+          const noted = `${rows}.some((r) => r.textContent.includes("waiting at"))`;
+          await page.navigate(runsUrl);
+          await until(`${rows}.length > 0`, "the thread's runs", 30_000);
           await shot("Runs");
+          // The note reads the run's last checkpoint; a lab still writing it gets one more look.
+          try {
+            await until(noted, "the interrupted run with its note", 15_000);
+          } catch {
+            await page.navigate(runsUrl);
+            try {
+              await until(noted, "the interrupted run with its note, after a reload", 15_000);
+            } catch {
+              throw new Error(`no "waiting at" note; the rows say: ${await run<string>(`${rows}.map((r) => r.textContent).join(" | ")`)}`);
+            }
+          }
           await run(press(`document.querySelector("table[aria-label=Runs] tbody tr button")`));
           await until(`[...document.querySelectorAll("[aria-label=Input]")].some((v) => v.checkVisibility())`, "the run's input");
           await shot("a run's detail");
