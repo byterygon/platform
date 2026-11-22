@@ -632,6 +632,13 @@
         "createdAt": {
           "type": "string"
         },
+        "cuts": {
+          "description": "The values a list of versions left out (`config`, `context`, `metadata`), each over its\nshare (TSK-96, as TSK-108's lists); empty elsewhere.",
+          "items": {
+            "$ref": "#/$defs/ValueCut"
+          },
+          "type": "array"
+        },
         "description": {
           "type": [
             "string",
@@ -664,7 +671,8 @@
         "context",
         "metadata",
         "createdAt",
-        "updatedAt"
+        "updatedAt",
+        "cuts"
       ],
       "type": "object"
     },
@@ -748,6 +756,66 @@
         "outputSchema",
         "stateSchema",
         "configSchema"
+      ],
+      "type": "object"
+    },
+    "AssistantVersionsInput": {
+      "description": "`langgraph.assistants.versions`.",
+      "properties": {
+        "assistantId": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "limit": {
+          "default": null,
+          "description": "1 to 1000; 20 when absent. Newest first.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "assistantId"
+      ],
+      "type": "object"
+    },
+    "AssistantVersionsPage": {
+      "description": "A page of an assistant's versions: at most about 4 MiB, whatever `limit` says.",
+      "properties": {
+        "items": {
+          "description": "Newest first; each is the assistant at that version.",
+          "items": {
+            "$ref": "#/$defs/Assistant"
+          },
+          "type": "array"
+        },
+        "next": {
+          "description": "Pass it as `offset` for the next page; absent when the versions end here.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "items"
       ],
       "type": "object"
     },
@@ -8180,6 +8248,142 @@
       ],
       "type": "object"
     },
+    "NodeStat": {
+      "description": "One node of the graph over the runs counted.",
+      "properties": {
+        "errors": {
+          "description": "Failed runs whose error was in this node.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "medianMs": {
+          "description": "The median and 95th percentile of its steps' times; absent without times.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "node": {
+          "type": "string"
+        },
+        "p95Ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "runs": {
+          "description": "Runs that passed through it.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "threadIds": {
+          "description": "Up to five threads that passed through it, newest run first.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "visits": {
+          "description": "Steps that ran it (a node that runs twice in a run counts twice).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "node",
+        "visits",
+        "runs",
+        "errors",
+        "threadIds"
+      ],
+      "type": "object"
+    },
+    "NodeStats": {
+      "properties": {
+        "from": {
+          "description": "The oldest and newest counted run's start.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nodes": {
+          "description": "Most visited first.",
+          "items": {
+            "$ref": "#/$defs/NodeStat"
+          },
+          "type": "array"
+        },
+        "partial": {
+          "description": "The reads stopped before all runs asked for were counted: `reason` says why.",
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runs": {
+          "description": "The runs counted (at most what was asked).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "threads": {
+          "description": "The threads they belong to.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "runs",
+        "threads",
+        "nodes",
+        "partial"
+      ],
+      "type": "object"
+    },
+    "NodeStatsInput": {
+      "properties": {
+        "assistantId": {
+          "type": "string"
+        },
+        "connId": {
+          "type": "string"
+        },
+        "runs": {
+          "default": null,
+          "description": "How many of the latest runs to count: 1 to 200, 50 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "connId",
+        "assistantId"
+      ],
+      "type": "object"
+    },
     "Part": {
       "description": "Which part of a message a codec reads or writes.",
       "enum": [
@@ -14121,6 +14325,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/NodeStatsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.assistants.nodeStats",
+      "output": {
+        "$ref": "#/$defs/NodeStats"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 60000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/AssistantIdInput"
       },
       "kind": "query",
@@ -14152,6 +14377,27 @@
           "$ref": "#/$defs/Assistant"
         },
         "type": "array"
+      },
+      "perm": "langgraph.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 30000,
+      "timeout_max_ms": 300000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
+        "$ref": "#/$defs/AssistantVersionsInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "langgraph.assistants.versions",
+      "output": {
+        "$ref": "#/$defs/AssistantVersionsPage"
       },
       "perm": "langgraph.read",
       "redact": [],
@@ -16809,5 +17055,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:c6abe015fc1ecc73c446381fddec1da01ba6faa20ed8ddc48ae4e5b049d0a8f5"
+  "schema_hash": "sha256:66b1672a1633a885779553c232f98f5b599165f517b314835c1f746ce9588152"
 }

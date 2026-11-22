@@ -24,6 +24,7 @@ import { lastCheckpoints } from "@/tools/langgraph/thread-runs";
 import { eventRows, modeCounts, sinceStart } from "@/tools/langgraph/event-rows";
 import { interruptOptions, optionsSchema } from "@/tools/langgraph/resume-sheet";
 import { foldSame, diffLines } from "@/lib/diff";
+import { sideBySide, versionChange } from "@/tools/langgraph/versions";
 import type { LiveState, TabProps, TabView } from "@/tools/types";
 import { axeViolations, cleanup, render, settle } from "./support/render";
 
@@ -117,7 +118,7 @@ describe("profile", () => {
 // ---- Screens against a scripted client -------------------------------------------------------
 
 const THREAD = "11111111-1111-1111-1111-111111111111";
-const ASSISTANT: api.Assistant = { assistantId: "a1", graphId: "agent", name: "agent", version: 1, config: {}, context: {}, metadata: {}, createdAt: "2026-11-18T00:00:00Z", updatedAt: "2026-11-18T00:00:00Z" };
+const ASSISTANT: api.Assistant = { assistantId: "a1", graphId: "agent", name: "agent", version: 1, config: {}, context: {}, metadata: {}, createdAt: "2026-11-18T00:00:00Z", updatedAt: "2026-11-18T00:00:00Z", cuts: [] };
 const GRAPH: api.AssistantGraph = {
   nodes: [
     { id: "__start__", name: "__start__", kind: "start" },
@@ -206,6 +207,9 @@ function fakeClient() {
     threads: [{ threadId: THREAD, status: "idle", createdAt: "2026-11-18T00:00:00Z", updatedAt: "2026-11-18T00:00:00Z", metadata: { lab: "x" } }] as api.Thread[],
     /** The thread's runs (TSK-96), and what `runs.get` adds to each. */
     runs: [] as api.Run[],
+    /** An assistant's versions and node statistics (TSK-96). */
+    versions: [ASSISTANT] as api.Assistant[],
+    nodeStats: { runs: 0, threads: 0, nodes: [], partial: false } as api.NodeStats,
     request: null as api.RunRequest | null,
   };
   const client = {
@@ -215,6 +219,8 @@ function fakeClient() {
         get: async (i: unknown) => (rec("assistants.get")(i), ASSISTANT),
         graph: async (i: unknown) => (rec("assistants.graph")(i), GRAPH),
         schemas: async (i: unknown) => (rec("assistants.schemas")(i), { graphId: "agent", inputSchema: { properties: { messages: {} } }, outputSchema: {}, stateSchema: {}, configSchema: {} }),
+        versions: async (i: unknown) => (rec("assistants.versions")(i), { items: state.versions }),
+        nodeStats: async (i: unknown) => (rec("assistants.nodeStats")(i), state.nodeStats),
       },
       threads: {
         search: async (i: unknown) => (rec("threads.search")(i), state.threads),
@@ -307,7 +313,8 @@ describe("screens", () => {
       </Toast>,
     );
     await settle();
-    expect(fake.last("assistants.graph")).toMatchObject({ assistantId: "a1", xray: true });
+    // Subgraphs one level deep by default (the mockup's "Depth: 1").
+    expect(fake.last("assistants.graph")).toMatchObject({ assistantId: "a1", xray: 1 });
     expect(document.querySelectorAll('[data-slot="graph-view-node"]')).toHaveLength(4);
     expect(await axeViolations()).toEqual([]);
   });
@@ -883,5 +890,77 @@ describe("run events view (TSK-96)", () => {
     await click(buttonNamed("Resume with a value"));
     await click(buttonNamed("Resume"));
     expect(fake.last("runs.stream")).toMatchObject({ command: { resume: "approved", update: null, goto: null } });
+  });
+});
+
+describe("assistant additions (TSK-96)", () => {
+  const version = (n: number, configurable: Record<string, api.JsonValue>, extra: Partial<api.Assistant> = {}): api.Assistant => ({ ...ASSISTANT, version: n, config: { configurable }, createdAt: `2026-11-${10 + n}T00:00:00Z`, ...extra });
+
+  test("what a version changed, in a line; side by side rows pair removed and added lines", () => {
+    expect(versionChange(undefined, version(1, {}))).toBe("created");
+    expect(versionChange(version(2, { model: "gpt-4.1", temperature: 0.7 }), version(3, { model: "claude-sonnet-5-5", temperature: 0.2 }))).toBe("model gpt-4.1 → claude-sonnet-5-5, temperature 0.7 → 0.2");
+    expect(versionChange(version(1, {}), version(2, {}, { config: { configurable: {}, interrupt_before: ["human_review"] } }))).toBe("interrupt_before human_review");
+    expect(versionChange(version(1, { a: 1 }), version(2, {}))).toBe("a removed");
+    expect(versionChange(version(1, {}), version(2, {}))).toBe("no change to the settings");
+    const rows = sideBySide(diffLines("a\nb\nc", "a\nB\nc\nd"));
+    expect(rows.map((r) => [r.left?.text ?? null, r.right?.text ?? null])).toEqual([
+      ["a", "a"],
+      ["b", "B"],
+      ["c", "c"],
+      [null, "d"],
+    ]);
+  });
+
+  test("Versions: the list with what changed, the diff against the version before, side by side or unified", async () => {
+    const fake = fakeClient();
+    fake.state.versions = [version(3, { model: "large" }), version(2, { model: "small" }), version(1, {})];
+    render(
+      <Toast>
+        <AssistantTab {...tabProps(fake.client, "langgraph.assistant", { assistantId: "a1", name: "agent", view: "versions" })} />
+      </Toast>,
+    );
+    await settle();
+    expect([...document.querySelectorAll("[role=tab]")].find((t) => t.textContent?.startsWith("Versions"))?.textContent).toBe("Versions 3");
+    const rows = [...document.querySelectorAll("table[aria-label=Versions] tbody tr")];
+    expect(rows.map((r) => r.querySelector("td:nth-child(3)")?.textContent)).toEqual(["model small → large", "model small", "created"]);
+    // The fixture's current version is 1.
+    expect(rows[2]?.textContent).toContain("current");
+    const side = $("[aria-label='Version diff, side by side']");
+    expect(side?.querySelector("[data-kind=removed]")?.textContent).toContain('"model": "small"');
+    expect(side?.querySelector("[data-kind=added]")?.textContent).toContain('"model": "large"');
+    expect(await axeViolations()).toEqual([]);
+    await click(buttonNamed("Unified"));
+    expect($("[aria-label='Version diff']")).not.toBeNull();
+    await click(rows[2]?.querySelector("button"));
+    expect(document.body.textContent).toContain("The first version: nothing before it to compare.");
+    expect(buttonNamed(/Make v\d current/)?.disabled).toBe(true);
+  });
+
+  test("Graph: a node's edges and its statistics over the last runs, threads that passed open; New thread names the assistant", async () => {
+    const fake = fakeClient();
+    fake.state.nodeStats = { runs: 12, threads: 3, nodes: [{ node: "plan", visits: 14, runs: 12, medianMs: 1800, p95Ms: 4200, errors: 2, threadIds: [THREAD] }], partial: false };
+    const opened: unknown[] = [];
+    render(
+      <Toast>
+        <AssistantTab {...tabProps(fake.client, "langgraph.assistant", { assistantId: "a1", name: "agent" }, { openTab: (p) => opened.push(p) })} />
+      </Toast>,
+    );
+    await settle();
+    expect(fake.last("assistants.nodeStats")).toMatchObject({ assistantId: "a1", runs: 50 });
+    const plan = [...document.querySelectorAll<HTMLElement>('[data-slot="graph-view-node"]')].find((n) => n.textContent?.includes("plan"));
+    await click(plan);
+    const pane = $("[aria-label='Node plan']");
+    expect(pane?.textContent).toContain("To");
+    expect(pane?.textContent).toContain("approve (conditional)");
+    expect(pane?.textContent).toContain("In the last 12 runs");
+    expect(pane?.textContent).toContain("Only 12 runs of this assistant exist on 3 threads.");
+    expect(pane?.textContent).toContain("12 runs (14 steps)");
+    expect(pane?.textContent).toContain("1.8 s");
+    expect(await axeViolations()).toEqual([]);
+    await click(pane?.querySelector("button[title]"));
+    expect(opened.at(-1)).toMatchObject({ kind: "langgraph.thread", params: { threadId: THREAD } });
+    await click(buttonNamed("New thread"));
+    expect(fake.last("threads.create")).toMatchObject({ metadata: { assistant_id: "a1", graph_id: "agent" } });
+    expect(opened.at(-1)).toMatchObject({ kind: "langgraph.thread", params: { threadId: "22222222-2222-2222-2222-222222222222" } });
   });
 });
