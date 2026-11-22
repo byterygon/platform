@@ -104,4 +104,7 @@ export const NO_TARGETS = [
   "scripts/ci-measure.mjs",
   // Runs in the Affected job on every pull request.
   "scripts/affected.test.mjs",
+  // TSK-128: runs on a developer's machine; its tests run in the Affected job.
+  "scripts/pre-pr.mjs",
+  "scripts/pre-pr.test.mjs",
 ];

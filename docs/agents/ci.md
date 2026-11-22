@@ -16,3 +16,9 @@ prints it for your working tree against `origin/main` (crates, packages, jobs, `
 dependency (Rust reading or embedding a JS package's files, or the reverse) needs a line in
 `scripts/affected-rules.mjs`. Pushes to main run everything; "CI result" sums up the run. The
 Linux Rust jobs run in the CI image (`.github/ci-image/`, see its README).
+
+Before a push (TSK-128): `node scripts/pre-pr.mjs` runs on your machine the steps CI will run for
+the change, with the same `cargo -p` and `pnpm --filter` arguments (`--dry-run` lists them,
+`--keep-going` runs past a failure), and names what only CI runs: the network namespace, the
+browser checks, the lab, the Windows and macOS jobs. `node --test scripts/pre-pr.test.mjs` tests
+its plan; CI's Affected job runs that test.
