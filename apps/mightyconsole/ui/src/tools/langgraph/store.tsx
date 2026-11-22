@@ -182,7 +182,7 @@ export function StoreTab({ profile, connId, client, useTabActions, note }: TabPr
                 search();
               }}
             >
-              <SearchInput aria-label="Semantic query" placeholder='Semantic query, e.g. "refund preferences"' value={query} onValueChange={setQuery} className="min-w-panel-xs flex-[2]" />
+              <SearchInput aria-label="Semantic query" placeholder='Semantic query, e.g. "refund preferences"' value={query} onValueChange={setQuery} className="min-w-panel-xs flex-1" />
               <CodeEditor
                 singleLine
                 language="json"
