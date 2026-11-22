@@ -272,7 +272,7 @@ fn cut(text: &str, chars: usize) -> (String, bool) {
 }
 
 /// The first `bytes` of `text`, on a character boundary.
-fn cut_bytes(text: &str, bytes: usize) -> &str {
+pub fn cut_bytes(text: &str, bytes: usize) -> &str {
     if text.len() <= bytes {
         return text;
     }

@@ -1073,6 +1073,65 @@ async fn an_assistant_s_versions_and_node_statistics() {
     tab.error(5, Code::InvalidArgument).await;
 }
 
+#[tokio::test]
+async fn a_value_is_kept_and_read_node_by_node_with_jq_and_downloaded() {
+    // TSK-96: the large-state tree reads a checkpoint's values through langgraph.values.*.
+    let (_t, mock, addr, mut tab) = setup().await;
+    let conn = connect(
+        &mut tab,
+        2,
+        json!({ "name": "lab", "url": format!("http://{addr}") }),
+    )
+    .await;
+    let thread = format!("/threads/{THREAD}");
+    tab.call(
+        3,
+        "langgraph.values.open",
+        json!({ "connId": conn, "threadId": THREAD, "checkpointId": "c1", "field": "values" }),
+    )
+    .await;
+    let stub = tab.result(3).await;
+    assert_eq!(mock.requests(&format!("{thread}/state/c1")).len(), 1);
+    assert_eq!(stub["encoding"], "json/plain");
+    let id = stub["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        stub["bytes"].as_u64().unwrap(),
+        r#"{"messages":[],"steps":["plan"]}"#.len() as u64
+    );
+    tab.call(
+        4,
+        "langgraph.values.node",
+        json!({ "connId": conn, "payloadId": id, "path": "" }),
+    )
+    .await;
+    let root = tab.result(4).await;
+    assert_eq!(root["kind"], "object");
+    assert_eq!(root["children"][1]["key"], "steps");
+    assert_eq!(root["children"][1]["path"], "/steps");
+    tab.call(
+        5,
+        "langgraph.values.query",
+        json!({ "connId": conn, "payloadId": id, "jq": ".steps[0]" }),
+    )
+    .await;
+    assert_eq!(tab.result(5).await["results"], json!(["plan"]));
+    tab.call(
+        6,
+        "langgraph.values.node",
+        json!({ "connId": conn, "payloadId": "0123", "path": "" }),
+    )
+    .await;
+    let err = tab.error(6, Code::NotFound).await;
+    assert!(err.message.contains("no longer kept"), "{}", err.message);
+    tab.call(
+        7,
+        "langgraph.values.open",
+        json!({ "connId": conn, "threadId": THREAD, "field": "nothing" }),
+    )
+    .await;
+    tab.error(7, Code::NotFound).await;
+}
+
 async fn https_info(name: &str) -> (SocketAddr, String) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let ca_key = rcgen::KeyPair::generate().unwrap();

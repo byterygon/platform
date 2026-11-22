@@ -279,7 +279,12 @@ export function ThreadTab(props: TabProps) {
           />
         </TabsContent>
         <TabsContent value="state" className="flex min-h-0 flex-1 flex-col overflow-auto p-0">
-          <StatePanel {...props} threadId={threadId} version={version} onEdit={() => setEditAt({ checkpointId: null })} />
+          <StatePanel {...props} threadId={threadId} version={version} onEdit={() => setEditAt({ checkpointId: null })}
+            onResume={() => {
+              setView("run");
+              runActions.current.resume?.();
+            }}
+          />
         </TabsContent>
         <TabsContent value="history" className="flex min-h-0 flex-1 flex-col p-0">
           <HistoryPanel

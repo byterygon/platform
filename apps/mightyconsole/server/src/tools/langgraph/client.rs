@@ -28,6 +28,7 @@ use url::Url;
 use super::{ConnectLanggraphProfile, TOOL};
 use crate::core::tls::{client_config, plain_config};
 use crate::core::{RemoteError, ToolError, ToolErrorKind};
+use crate::tools::temporal::large::LargePayloads;
 
 /// Time to open a TCP connection to the server.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -57,6 +58,8 @@ pub struct LangGraphClient {
     address: String,
     /// `x-api-key` and the profile's extra headers, marked sensitive.
     headers: HeaderMap,
+    /// Values read whole for the large-state tree (TSK-96), kept as Temporal's large payloads are.
+    pub values: LargePayloads,
 }
 
 fn header_value(field: &str, text: &str, what: &str) -> Result<HeaderValue, ToolError> {
@@ -135,6 +138,7 @@ impl LangGraphClient {
             base: url.as_str().trim_end_matches('/').to_owned(),
             address,
             headers,
+            values: LargePayloads::default(),
         })
     }
 

@@ -264,6 +264,19 @@ function fakeClient() {
           return { ...run, ...(state.request ? { request: state.request } : {}) };
         },
       },
+      values: {
+        open: async (i: unknown) => (rec("values.open")(i), { id: "v1", bytes: 34, decodedBytes: 34, encoding: "json/plain", preview: '{"messages": [], "steps": ["plan"]}' }),
+        node: async (i: { path?: string | null }) => {
+          rec("values.node")(i);
+          const children = [
+            { key: "messages", path: "/messages", kind: "array", length: 0, bytes: 2, preview: "[]" },
+            { key: "steps", path: "/steps", kind: "array", length: 1, bytes: 8, preview: '["plan"]' },
+          ];
+          return { path: i.path ?? "", kind: "object", length: 2, bytes: 34, cut: false, children: i.path ? [] : children, offset: 0, total: i.path ? 0 : 2, ...(i.path ? {} : { info: { bytes: 34, decodedBytes: 34, encoding: "json/plain", largestArrays: [] } }) };
+        },
+        query: async (i: unknown) => (rec("values.query")(i), { results: ["plan"], bytes: 6, truncated: false, ms: 1 }),
+        download: () => ({ result: Promise.resolve({ bytes: 0 }), async *chunks() {} }),
+      },
       store: {
         namespaces: async (i: unknown) => (rec("store.namespaces")(i), [["lab", "answers"]]),
         search: async (i: unknown) => (rec("store.search")(i), [{ namespace: ["lab", "answers"], key: "answer-5", value: { text: "42" }, updatedAt: "2026-11-18T00:00:00Z" }]),
@@ -496,6 +509,8 @@ describe("screens", () => {
       </Toast>,
     );
     await settle();
+    // The State tab opens on the tree (TSK-96); its JSON view has the note.
+    await click(buttonNamed("JSON"));
     expect(document.body.textContent).toContain("Values is an object of 30.0 MiB");
     await click(buttonNamed("Load 30.0 MiB"));
     expect(fake.last("threads.state")).toMatchObject({ full: true });
@@ -1068,5 +1083,30 @@ describe("store tree (TSK-96)", () => {
       ["users", "4", [["ana", "3"], ["minh", "1"]]],
     ]);
     expect(namespaceTree([["a"]], new Map([["a", 100]]), true)[0]!.meta).toBe("100+");
+  });
+});
+
+describe("State to the mockup (TSK-96)", () => {
+  test("the values as the large-state tree read through langgraph.values, the tasks and the checkpoint beside", async () => {
+    const fake = fakeClient();
+    fake.state.interrupted = true;
+    render(
+      <Toast>
+        <ThreadTab {...tabProps(fake.client, "langgraph.thread", { threadId: THREAD, view: "state" })} />
+      </Toast>,
+    );
+    await settle();
+    expect(fake.last("values.open")).toMatchObject({ threadId: THREAD, checkpointId: "c2", field: "values" });
+    expect(fake.last("values.node")).toMatchObject({ payloadId: "v1", path: "" });
+    expect(document.body.textContent).toContain("steps");
+    const bar = $("[role=group][aria-label=State]");
+    expect(bar?.textContent).toContain("At checkpoint c2");
+    expect(bar?.textContent).toContain("approve");
+    const tasks = $("section[aria-label=Tasks]");
+    expect(tasks?.textContent).toContain("approve is interrupted");
+    expect($("section[aria-label=Checkpoint]")?.textContent).toContain("2 · source loop");
+    expect(await axeViolations()).toEqual([]);
+    await click(tasks?.querySelector("button"));
+    expect(document.querySelector("[role=tab][aria-selected=true]")?.textContent).toBe("Run");
   });
 });

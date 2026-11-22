@@ -15,7 +15,7 @@ mod codec_client;
 mod detail;
 mod detail_types;
 mod extstore;
-mod large;
+pub mod large;
 mod namespaces;
 mod payloads;
 mod proto;

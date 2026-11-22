@@ -160,6 +160,11 @@ export interface PayloadViewProps {
   note(e: unknown): DescribedError;
   /** The stub is gone from the server: read the event again. */
   onReload?: (() => void) | undefined;
+  /**
+   * Where the payload is kept: Temporal's `payload.*` by default; LangGraph's large-state tree
+   * passes `langgraph.values` (TSK-96), whose procedures take the same inputs.
+   */
+  calls?: Pick<MightyClient["temporal"]["payload"], "node" | "query" | "download"> | undefined;
 }
 
 type View = "tree" | "text" | "stored";
@@ -170,7 +175,8 @@ interface Loaded {
   children: PayloadChild[];
 }
 
-export function PayloadView({ client, connId, stub, label, fileName, context, note, onReload }: PayloadViewProps) {
+export function PayloadView({ client, connId, stub, label, fileName, context, note, onReload, calls }: PayloadViewProps) {
+  const api = calls ?? client.temporal.payload;
   const [view, setView] = useState<View>("tree");
   const [nodes, setNodes] = useState<ReadonlyMap<string, Loaded>>(new Map());
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set([""]));
@@ -195,7 +201,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
   const load = useCallback(
     async (path: string, offset = 0) => {
       try {
-        const node = await client.temporal.payload.node({ connId, payloadId: stub.id, path, offset, limit: null });
+        const node = await api.node({ connId, payloadId: stub.id, path, offset, limit: null });
         if (!live.current) return;
         setNodes((m) => {
           const next = new Map(m);
@@ -210,7 +216,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
         if (live.current) setError(note(e));
       }
     },
-    [client, connId, stub.id, note],
+    [api, connId, stub.id, note],
   );
 
   useEffect(() => {
@@ -243,7 +249,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
     setRunning(true);
     setJqError(null);
     try {
-      setResult(await client.temporal.payload.query({ connId, payloadId: stub.id, jq }));
+      setResult(await api.query({ connId, payloadId: stub.id, jq }));
     } catch (e) {
       const d = note(e);
       setResult(null);
@@ -256,7 +262,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
 
   const download = async (form: "decoded" | "stored", limit?: number) => {
     const controller = new AbortController();
-    const stream = client.temporal.payload.download({ connId, payloadId: stub.id, form }, { timeoutMs: 3_600_000, signal: controller.signal });
+    const stream = api.download({ connId, payloadId: stub.id, form }, { timeoutMs: 3_600_000, signal: controller.signal });
     const parts: Uint8Array[] = [];
     let received = 0;
     try {

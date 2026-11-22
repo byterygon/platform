@@ -457,6 +457,41 @@ fn the_procedures_of_the_spec() {
             Risk::Write,
             defaults,
         ),
+        // The large-state tree (TSK-96): a value kept on the server, as Temporal's payloads.
+        (
+            "langgraph.values.download",
+            Stream,
+            LG_READ,
+            Risk::Read,
+            (
+                Some(Duration::from_secs(3600)),
+                Some(Duration::from_secs(3600)),
+            ),
+        ),
+        (
+            "langgraph.values.node",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
+        (
+            "langgraph.values.open",
+            Query,
+            LG_READ,
+            Risk::Read,
+            (
+                Some(Duration::from_secs(120)),
+                Some(Duration::from_secs(300)),
+            ),
+        ),
+        (
+            "langgraph.values.query",
+            Query,
+            LG_READ,
+            Risk::Read,
+            defaults,
+        ),
         // The messaging core, spec §5.8.
         (
             "messaging.codecs.list",

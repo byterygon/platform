@@ -13,7 +13,11 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { Select, SelectItem } from "@/components/ui/select";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
-import { Toolbar, ToolbarButton, ToolbarGroup } from "@/components/ui/toolbar";
+import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Resizable, ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { CopyButton, PageBar } from "@/app/page";
+import { PayloadView } from "../temporal/LargePayload";
 import { ErrorState, LoadingRows } from "@/app/states";
 import type * as api from "@/gen/api";
 import { ArrowClockwise, ChevronDown, ChevronRight, Edit, Save } from "@/lib/icons";
@@ -99,27 +103,165 @@ export function StateDetails({ state, connId, threadId, client, note }: { state:
   );
 }
 
-export function StatePanel({ threadId, connId, client, note, version, onEdit }: PanelProps & { version: number; onEdit: () => void }) {
+/** The current state (DOC-21 §11.2.1, the mockup's langgraph-thread-state): its values as the large-state tree or JSON, its tasks and checkpoint beside. */
+export function StatePanel({ threadId, connId, client, note, version, onEdit, onResume }: PanelProps & { version: number; onEdit: () => void; onResume: () => void }) {
   const state = useLoad(connId ? () => client.langgraph.threads.state({ connId, threadId, checkpointId: null, subgraphs: true }) : null, [connId, threadId, version], note);
+  const [as, setAs] = useState<"tree" | "json">("tree");
+  const s = state.data;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Toolbar aria-label="State actions">
-        <ToolbarGroup>
-          <ToolbarButton render={<Button appearance="subtle" loading={state.loading} />} onClick={() => void state.reload()}>
-            <Icon icon={ArrowClockwise} /> Refresh
-          </ToolbarButton>
-          <ToolbarButton render={<Button appearance="subtle" disabled={!state.data} />} onClick={onEdit}>
-            <Icon icon={Edit} /> Edit state
-          </ToolbarButton>
-        </ToolbarGroup>
-      </Toolbar>
+      <PageBar aria-label="State" className="pb-stack-sm">
+        {s?.checkpointId ? (
+          <span className="flex items-center gap-inline-xs text-body-1 text-fg-muted">
+            At checkpoint <span className="font-mono text-fg">{shortId(s.checkpointId)}</span> <CopyButton value={s.checkpointId} what="checkpoint ID" />
+          </span>
+        ) : null}
+        {s ? (
+          <span className="flex flex-wrap items-center gap-inline-xs text-body-1 text-fg-muted">
+            Next
+            {s.next.length > 0
+              ? s.next.map((n) => (
+                  <Badge key={n} appearance="tint" variant={s.interrupts.length > 0 ? "warning" : "neutral"}>
+                    {n}
+                  </Badge>
+                ))
+              : " nothing (the graph ended)"}
+          </span>
+        ) : null}
+        <span className="flex-1" />
+        <ToggleGroup aria-label="Show the values as" size="small" value={[as]} onValueChange={(v) => v[0] && setAs(v[0] as typeof as)}>
+          <ToggleGroupItem value="tree">Tree</ToggleGroupItem>
+          <ToggleGroupItem value="json">JSON</ToggleGroupItem>
+        </ToggleGroup>
+        <Button appearance="subtle" loading={state.loading} onClick={() => void state.reload()}>
+          <Icon icon={ArrowClockwise} /> Refresh
+        </Button>
+        <Button disabled={!s} onClick={onEdit}>
+          <Icon icon={Edit} /> Edit state
+        </Button>
+      </PageBar>
       {state.error ? <ErrorState error={state.error} onRetry={() => void state.reload()} onRefresh={() => void state.reload()} /> : null}
-      {state.loading && !state.data ? <LoadingRows label="Loading the state" /> : null}
-      {state.data ? (
-        <div className="p-inset-sm">
-          <StateDetails state={state.data} connId={connId} threadId={threadId} client={client} note={note} />
-        </div>
+      {state.loading && !s ? <LoadingRows label="Loading the state" /> : null}
+      {s ? (
+        <Resizable orientation="horizontal" className="min-h-0 flex-1 border-t border-border-subtle">
+          <ResizablePanel defaultSize={68} minSize={40}>
+            <div className="flex h-full min-h-0 flex-col overflow-auto px-inset-lg py-inset-md">
+              {as === "tree" ? <ValuesTree state={s} threadId={threadId} connId={connId} client={client} note={note} /> : cutOf(s.cuts, "values") ? <CutValue label="Values" cut={cutOf(s.cuts, "values")!} note={note} load={() => loadCut(client, { connId: connId ?? "", threadId, checkpointId: s.checkpointId ?? null }, cutOf(s.cuts, "values")!)} className="h-panel-md" /> : <JsonViewer value={s.values} aria-label="Values" defaultExpandDepth={2} className="min-h-0 flex-1" />}
+            </div>
+          </ResizablePanel>
+          <ResizableHandle />
+          <ResizablePanel minSize={22}>
+            <div className="h-full overflow-auto px-inset-lg py-inset-md">
+              <StateSide state={s} onResume={onResume} />
+            </div>
+          </ResizablePanel>
+        </Resizable>
       ) : null}
+    </div>
+  );
+}
+
+/** The values as Temporal's large-payload tree, read node by node from the server (`langgraph.values`). */
+function ValuesTree({ state, threadId, connId, client, note }: { state: api.ThreadState; threadId: string } & Pick<TabProps, "connId" | "client" | "note">) {
+  const checkpointId = state.checkpointId ?? null;
+  const stub = useLoad(connId ? () => client.langgraph.values.open({ connId, threadId, checkpointId, runId: null, field: "values" }) : null, [connId, threadId, checkpointId], note);
+  if (stub.error) return <ErrorState error={stub.error} onRetry={() => void stub.reload()} />;
+  if (!stub.data || !connId) return <LoadingRows label="Reading the values" />;
+  return <PayloadView client={client} connId={connId} stub={stub.data} label="Values" fileName={`thread-${shortId(threadId)}-values`} note={note} onReload={() => void stub.reload()} calls={client.langgraph.values} />;
+}
+
+/** Beside the values: what runs next with its interrupts and errors, and the checkpoint. */
+function StateSide({ state, onResume }: { state: api.ThreadState; onResume: () => void }) {
+  const meta = (state.metadata ?? {}) as Record<string, unknown>;
+  const writes = meta["writes"] && typeof meta["writes"] === "object" ? Object.keys(meta["writes"] as object) : [];
+  return (
+    <div className="flex flex-col gap-stack-lg">
+      <section aria-label="Tasks" className="flex flex-col gap-stack-sm">
+        <div>
+          <h3 className="text-body-1-strong text-fg">Tasks</h3>
+          <p className="text-body-1 text-fg-muted">What runs next</p>
+        </div>
+        {state.tasks.length === 0 && state.interrupts.length === 0 ? <p className="text-body-1 text-fg-muted">{state.next.length > 0 ? `${state.next.join(", ")} next.` : "Nothing: the graph ended here."}</p> : null}
+        {/* Interrupts the server gives on the state rather than on a task. */}
+        {state.interrupts.length > 0 && !state.tasks.some((t) => t.interrupts.length > 0) ? (
+          <Alert intent="warning">
+            <AlertTitle>{state.next.length > 0 ? `${state.next.join(", ")} is interrupted` : "Interrupted"}</AlertTitle>
+            <AlertDescription>
+              <pre className="font-mono text-code whitespace-pre-wrap text-fg">{state.interrupts.map((i) => JSON.stringify(i.value)).join("\n")}</pre>
+            </AlertDescription>
+            <AlertActions>
+              <Button size="small" onClick={onResume}>
+                Resume…
+              </Button>
+            </AlertActions>
+          </Alert>
+        ) : null}
+        {state.tasks.map((t) =>
+          t.interrupts.length > 0 ? (
+            <Alert key={t.id} intent="warning">
+              <AlertTitle>
+                {t.name} is interrupted
+              </AlertTitle>
+              <AlertDescription>
+                <pre className="font-mono text-code whitespace-pre-wrap text-fg">{t.interrupts.map((i) => JSON.stringify(i.value)).join("\n")}</pre>
+              </AlertDescription>
+              <AlertActions>
+                <Button size="small" onClick={onResume}>
+                  Resume…
+                </Button>
+              </AlertActions>
+            </Alert>
+          ) : t.error ? (
+            <Alert key={t.id} intent="danger">
+              <AlertTitle>{t.name} failed</AlertTitle>
+              <AlertDescription>{t.error}</AlertDescription>
+            </Alert>
+          ) : (
+            <p key={t.id} className="flex items-center gap-inline-sm text-body-1 text-fg">
+              <Badge appearance="tint" variant="neutral">
+                {t.name}
+              </Badge>
+              waits to run
+            </p>
+          ),
+        )}
+      </section>
+      <section aria-label="Checkpoint" className="flex flex-col gap-stack-sm">
+        <h3 className="text-body-1-strong text-fg">Checkpoint</h3>
+        <DescriptionList>
+          <DescriptionListItem>
+            <DescriptionListTerm>ID</DescriptionListTerm>
+            <DescriptionListDetails className="flex items-center gap-inline-xs font-mono text-code">
+              {state.checkpointId ? shortId(state.checkpointId) : "—"}
+              {state.checkpointId ? <CopyButton value={state.checkpointId} what="checkpoint ID" /> : null}
+            </DescriptionListDetails>
+          </DescriptionListItem>
+          <DescriptionListItem>
+            <DescriptionListTerm>Parent</DescriptionListTerm>
+            <DescriptionListDetails className="font-mono text-code">{state.parentCheckpointId ? shortId(state.parentCheckpointId) : "—"}</DescriptionListDetails>
+          </DescriptionListItem>
+          <DescriptionListItem>
+            <DescriptionListTerm>Step</DescriptionListTerm>
+            <DescriptionListDetails>
+              {String(meta["step"] ?? "—")} · source {String(meta["source"] ?? "—")}
+            </DescriptionListDetails>
+          </DescriptionListItem>
+          {writes.length > 0 ? (
+            <DescriptionListItem>
+              <DescriptionListTerm>Writes</DescriptionListTerm>
+              <DescriptionListDetails className="font-mono text-code">{writes.join(", ")}</DescriptionListDetails>
+            </DescriptionListItem>
+          ) : null}
+          {state.createdAt ? (
+            <DescriptionListItem>
+              <DescriptionListTerm>Created</DescriptionListTerm>
+              <DescriptionListDetails>
+                <RelativeTime date={state.createdAt} />
+              </DescriptionListDetails>
+            </DescriptionListItem>
+          ) : null}
+        </DescriptionList>
+      </section>
     </div>
   );
 }
