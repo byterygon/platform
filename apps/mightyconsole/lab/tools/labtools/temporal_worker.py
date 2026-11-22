@@ -11,7 +11,9 @@ worker on task queue `lab-encrypted` encrypts its payloads with the lab's AES-GC
 `encrypted-1` is stored encrypted. Standalone activities (TSK-92): `sa-charge-1`, a `charge` run without a
 workflow; `hold` heartbeats until it is cancelled, for the cancel test. Large payloads (TSK-92): `large-1`
 has an input of about 1.5 MiB (12,480 inventory lines) kept in the history itself (started by a
-client without External Storage), under Temporal's 2 MiB limit."""
+client without External Storage), under Temporal's 2 MiB limit. Long histories (TSK-109): the
+`LongHistory` runs of LONG_PLANS on task queue `lab-long`, started by `lab seed temporal`, near
+Temporal's own limits of a run (51,200 events, 50 MiB)."""
 
 import asyncio
 import dataclasses
@@ -33,6 +35,7 @@ with workflow.unsafe.imports_passed_through():
     from .s3 import LabS3, lab_s3
 
 TASK_QUEUE = "lab"
+LONG_QUEUE = "lab-long"
 # The custom search attribute compose.yaml registers (`--search-attribute OrderId=Keyword`).
 ORDER_ID = SearchAttributeKey.for_keyword("OrderId")
 
@@ -161,6 +164,67 @@ class FamilySupport:
         await workflow.wait_condition(lambda: False)
 
 
+# Long histories (TSK-109). Temporal terminates a run past 51,200 events or 50 MiB of history, so
+# these stop short of both: `history-many-1` is the event limit (payloads of 512 bytes),
+# `history-heavy-1` the size limit (payloads of 40 KiB, about 1,700 events: a page of 1,000 of
+# them is over Ambidex's 16 MiB frame), `history-follow-1` a running run with a long history that
+# grows by an activity every 2 seconds (it continues as new before a limit).
+LONG_PLANS = {
+    "history-many-1": {"events": 48_000, "bytes": 45 * 1024 * 1024, "payload": 512},
+    "history-heavy-1": {"events": 48_000, "bytes": 46 * 1024 * 1024, "payload": 40 * 1024},
+    "history-follow-1": {"events": 30_000, "bytes": 20 * 1024 * 1024, "payload": 512, "buildTo": 20_000, "trickleSeconds": 2},
+}
+# Activities started at once while a history is built.
+LONG_BATCH = 100
+
+
+def filler(line: int, size: int) -> str:
+    """A line's text of `size` characters, the same on every replay."""
+    head = f"{line:06d} "
+    return head + ("abcdefghijklmnopqrstuvwxyz0123456789" * (size // 36 + 1))[: max(size - len(head), 0)]
+
+
+@activity.defn
+async def echo_line(line: dict) -> dict:
+    """Returns the line's text (a result as big as the input), after `delay` seconds."""
+    if line.get("delay"):
+        await asyncio.sleep(line["delay"])
+    return {"line": line["line"], "echo": line["text"]}
+
+
+@workflow.defn
+class LongHistory:
+    """Builds a history to `buildTo` (else `events`) events or `bytes` bytes, whichever comes
+    first, with activities whose input and result carry `payload` characters each; with
+    `trickleSeconds`, then adds one activity that long at a time up to `events` and continues as
+    new, so the run stays open."""
+
+    @workflow.run
+    async def run(self, plan: dict) -> dict:
+        info = workflow.info()
+        per_activity = 2 * plan["payload"] + 1024
+        timeout = timedelta(seconds=120)
+        line = 0
+
+        def call(n: int, delay: float = 0) -> object:
+            return workflow.execute_activity(echo_line, {"line": n, "text": filler(n, plan["payload"]), "delay": delay}, task_queue=LONG_QUEUE, start_to_close_timeout=timeout)
+
+        build_to = plan.get("buildTo", plan["events"])
+        while True:
+            # About 5 events an activity (its 3 and its share of workflow tasks): never past a limit.
+            n = min(LONG_BATCH, (build_to - info.get_current_history_length()) // 5, (plan["bytes"] - info.get_current_history_size()) // per_activity)
+            if n < 1:
+                break
+            await asyncio.gather(*(call(line + i) for i in range(n)))
+            line += n
+        if plan.get("trickleSeconds"):
+            while plan["events"] - info.get_current_history_length() > 50 and plan["bytes"] - info.get_current_history_size() > 4 * per_activity:
+                await call(line, plan["trickleSeconds"])
+                line += 1
+            workflow.continue_as_new(plan)
+        return {"lines": line, "events": info.get_current_history_length(), "bytes": info.get_current_history_size()}
+
+
 def big_text(seed: str, size: int = 300 * 1024) -> str:
     line = f"{seed} " + "x" * 100 + "\n"
     return (line * (size // len(line) + 1))[:size]
@@ -266,7 +330,9 @@ async def main() -> None:
     codec = lab_codec()
     encrypted_client = await Client.connect("temporal:7233", namespace="lab", data_converter=dataclasses.replace(converter, payload_codec=LabEncryption(base64.b64decode(codec["key"]))))
     encrypted_worker = Worker(encrypted_client, task_queue=codec["taskQueue"], workflows=[Encrypted])
-    async with worker, encrypted_worker:
+    # Long histories on their own task queue, so building them does not hold up the samples.
+    long_worker = Worker(client, task_queue=LONG_QUEUE, workflows=[LongHistory], activities=[echo_line])
+    async with worker, encrypted_worker, long_worker:
         try:
             await encrypted_client.start_workflow(Encrypted.run, {"card": "4111111111111111", "amount": 42, "name": "Ana"}, id="encrypted-1", task_queue=codec["taskQueue"])
         except Exception as e:  # noqa: BLE001 - already started on an earlier start

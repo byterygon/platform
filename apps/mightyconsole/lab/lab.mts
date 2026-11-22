@@ -57,7 +57,8 @@ function generate(): void {
 }
 
 function seed(tools: readonly Tool[]): void {
-  const python = tools.filter((t) => t === "nats" || t === "kafka" || t === "langgraph");
+  // Temporal: the worker starts its samples; the seed starts the long histories (TSK-109) and waits for them.
+  const python = tools.filter((t) => t === "nats" || t === "kafka" || t === "temporal" || t === "langgraph");
   if (python.length > 0) compose(["run", "--rm", "--no-deps", "tools", "seed", ...python]);
   if (tools.includes("k8s")) {
     compose(["cp", "k3s:/output/kubeconfig.yaml", join(GENERATED, "kubeconfig")]);

@@ -186,6 +186,46 @@ def seed_kafka():
 
 
 # --------------------------------------------------------------------------------------------
+# Temporal: the worker starts the samples; the seed starts the long histories (TSK-109) and waits
+# for them, as they take a minute or two to build.
+
+
+async def seed_temporal_long(timeout=900):
+    from temporalio.client import Client, WorkflowExecutionStatus
+
+    from .temporal_worker import LONG_PLANS, LONG_QUEUE
+
+    client = None
+    for _ in range(120):
+        try:
+            client = await Client.connect("temporal:7233", namespace="lab")
+            break
+        except Exception:  # noqa: BLE001 - the server is starting
+            await asyncio.sleep(1)
+    assert client is not None, "Temporal did not answer"
+    for workflow_id, plan in LONG_PLANS.items():
+        try:
+            await client.start_workflow("LongHistory", plan, id=workflow_id, task_queue=LONG_QUEUE)
+        except Exception as e:  # noqa: BLE001 - already started on an earlier seed
+            if "already" not in str(e).lower():
+                raise
+    deadline = time.monotonic() + timeout
+    for workflow_id, plan in LONG_PLANS.items():
+        while True:
+            described = await client.get_workflow_handle(workflow_id).describe()
+            built = described.history_length >= plan["buildTo"] if "buildTo" in plan else described.status == WorkflowExecutionStatus.COMPLETED
+            if built:
+                size = described.raw_description.workflow_execution_info.history_size_bytes
+                log(f"temporal: {workflow_id} has {described.history_length:,} events, {size / 1048576:.1f} MiB")
+                break
+            if described.status not in (WorkflowExecutionStatus.RUNNING, WorkflowExecutionStatus.COMPLETED):
+                raise RuntimeError(f"temporal: {workflow_id} ended {described.status.name}")
+            if time.monotonic() > deadline:
+                raise RuntimeError(f"temporal: {workflow_id} has only {described.history_length:,} events after {timeout} s")
+            await asyncio.sleep(3)
+
+
+# --------------------------------------------------------------------------------------------
 # LangGraph
 
 
@@ -244,7 +284,7 @@ def seed_langgraph_heavy(base):
         log(f"langgraph: thread {heavy} with checkpoints of up to 6 MiB")
 
 
-SEEDS = {"nats": lambda: asyncio.run(seed_nats()), "kafka": seed_kafka, "langgraph": seed_langgraph}
+SEEDS = {"nats": lambda: asyncio.run(seed_nats()), "kafka": seed_kafka, "temporal": lambda: asyncio.run(seed_temporal_long()), "langgraph": seed_langgraph}
 
 
 def main(argv):

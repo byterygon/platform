@@ -16,6 +16,7 @@
     "lint": "eslint . && stylelint \"**/*.css\"",
     "check:browser": "node scripts/browser-check.ts",
     "bench:background": "node scripts/background-bench.ts",
+    "bench:history": "node scripts/history-bench.ts",
     "lab": "node ../lab/lab.mts",
     "acceptance": "node ../acceptance/acceptance.mts"
   },

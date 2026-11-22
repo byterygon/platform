@@ -168,6 +168,14 @@ async def check_temporal():
         history = await client.get_workflow_handle("big-payload-1").fetch_history()
         payload = history.events[0].workflow_execution_started_event_attributes.input.payloads[0]
         expect(payload.metadata.get("messageType") == b"temporal.api.sdk.v1.ExternalStorageReference", "temporal: big-payload-1's input is not stored outside")
+    # The long histories of TSK-109, near Temporal's limits of a run.
+    for workflow_id, at_least_events, at_least_mib in [("history-many-1", 40_000, 0), ("history-heavy-1", 0, 40), ("history-follow-1", 20_000, 0)]:
+        try:
+            described = await client.get_workflow_handle(workflow_id).describe()
+            size = described.raw_description.workflow_execution_info.history_size_bytes
+            expect(described.history_length >= at_least_events and size >= at_least_mib * 1048576, f"temporal: {workflow_id} has {described.history_length} events, {size} bytes")
+        except Exception as e:  # noqa: BLE001
+            expect(False, f"temporal: workflow {workflow_id} is missing: {e}")
 
 
 def check_langgraph():
