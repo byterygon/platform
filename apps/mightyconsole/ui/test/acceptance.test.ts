@@ -6,7 +6,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { APP, countTests, loadChecklists, parseArgs, validate } from "../../acceptance/acceptance.mts";
+import { APP, countTests, loadChecklists, parseArgs, validate, vitestVerdict } from "../../acceptance/acceptance.mts";
 import type { Checklist } from "../../acceptance/checklist.mts";
 
 const lists = await loadChecklists();
@@ -105,6 +105,26 @@ describe("the harness", () => {
     expect(countTests("No test files found")).toEqual({ passed: 0, failed: 0 });
     // As CI prints it, with colours forced on.
     expect(countTests("\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m5 passed\u001b[39m\u001b[22m\u001b[90m (5)\u001b[39m")).toEqual({ passed: 5, failed: 0 });
+  });
+
+  test("reads a vitest check's verdict from its file's report, matching -t as Vitest does (TSK-123)", () => {
+    const t = (ancestorTitles: string[], title: string, status = "passed") => ({ ancestorTitles, title, status });
+    const report = {
+      testResults: [
+        { status: "failed", assertionResults: [t(["shell"], "profiles through the shell"), t(["shell"], "keyboard, palette, dialogs", "failed"), t(["shell", "accessibility"], "axe in both themes")] },
+      ],
+    };
+    expect(vitestVerdict(report, "profiles through the shell")).toEqual({ verdict: "pass", detail: "1 passed" });
+    expect(vitestVerdict(report, "keyboard, palette, dialogs")).toEqual({ verdict: "fail", detail: "1 failed" });
+    // The describe titles are part of the name, as with -t.
+    expect(vitestVerdict(report, "accessibility")).toEqual({ verdict: "pass", detail: "1 passed" });
+    expect(vitestVerdict(report, "no such test")).toEqual({ verdict: "fail", detail: "no test matched" });
+    expect(vitestVerdict(report, undefined)).toEqual({ verdict: "fail", detail: "1 failed" });
+    expect(vitestVerdict({ testResults: [{ status: "failed", message: "Failed to load url ./missing\nat x", assertionResults: [] }] }, "anything")).toEqual({
+      verdict: "fail",
+      detail: "the file did not run: Failed to load url ./missing",
+    });
+    expect(vitestVerdict(null, "x").verdict).toBe("fail");
   });
 
   test("reads its options", () => {
