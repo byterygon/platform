@@ -14,6 +14,12 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # TSK-122: debug info of the dev and test profiles is line tables only (file and line in
+  # backtraces; no local variables for a debugger). The Rust cache was 4.4 GB and took 125 s at the
+  # median to restore (TSK-120); full debug info is most of that and of the link time. A constant,
+  # so rust-cache's key (which hashes CARGO_* variables) does not change from run to run, only once
+  # when this line is added or changed. Release builds are not affected.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 # TSK-89: rust-cache saves on main only (`save-if`). Each Rust cache is 0.5 to 2.2 GB and the
 # repository's cache is 10 GB, so caches saved by pull requests (usable by that pull request only)

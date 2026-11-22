@@ -19,6 +19,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # TSK-122: as in ci.yml, debug info is line tables only (smaller cache and faster links for the
+  # acceptance harness's own `cargo build` and `cargo test`).
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
 jobs:
   lab:
     name: Mightyconsole lab

@@ -68,7 +68,8 @@ import { browser, cargo, command, manual, vitest } from "../checklist.mts";
 }
 ```
 
-- `cargo(filter)` runs `cargo test -p mightyconsole-server -- <filter>`; `vitest(file, name?)` one
+- `cargo(filter)` runs `cargo test -p mightyconsole-server --tests -- <filter>` (`--tests` leaves out
+  the doc-tests, which the crate has none of and which cost about 3 s a check); `vitest(file, name?)` one
   UI test file or the tests whose name contains `name`. Each must match at least one test;
   `test/acceptance.test.ts` checks that every name still exists.
 - `browser(label, fn)` gets a fresh page on a running server (the UI built in, or `ui/dist`), the
