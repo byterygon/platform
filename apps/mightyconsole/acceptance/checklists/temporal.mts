@@ -402,6 +402,29 @@ export default {
       ],
     },
     {
+      id: "long-histories",
+      text: "TSK-109 (DOC-21 9.6.1): long histories near Temporal's limits (the lab's history-many-1, history-heavy-1 and history-follow-1) page by bytes under the frame, newest first or oldest first, an event over its share kept on the server, the download a stream; History and the Timeline open on the newest events, stay smooth while scrolled and followed, and Oldest first is one click away.",
+      lab: true,
+      checks: [
+        ...lab(
+          "the_longest_history_pages_newest_first_without_gaps",
+          "the_heaviest_history_pages_under_the_frame_both_ways",
+          "a_running_long_history_is_followed_from_its_newest_event",
+          "an_event_reads_as_stored_from_either_end",
+          "the_heavy_history_downloads_a_page_at_a_time_in_both_forms",
+        ),
+        ...unit(
+          "pages_stop_at_the_budget_and_join_without_gaps_or_repeats",
+          "a_page_that_goes_over_is_cut_and_resumed_after_the_last_event_sent",
+          "the_first_event_always_goes_and_the_count_is_a_maximum",
+          "an_answer_too_large_to_read_is_asked_again_for_fewer",
+          "cursors_round_trip_and_reject_other_tokens",
+          "an_event_over_its_share_has_its_payloads_kept_on_the_server",
+          "an_event_still_over_its_share_is_cut_with_a_preview",
+        ),
+      ],
+    },
+    {
       id: "components",
       text: "Timeline is in packages/ui; CI green.",
       checks: [

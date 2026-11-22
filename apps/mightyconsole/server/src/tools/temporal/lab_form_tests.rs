@@ -67,6 +67,7 @@ async fn a_started_workflow_runs_on_the_lab_worker_with_its_input_and_memo() {
                 run_id: Some(out.run_id.clone()),
                 page_size: None,
                 next_page_token: None,
+                reverse: None,
             },
         )
         .await

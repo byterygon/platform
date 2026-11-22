@@ -143,6 +143,9 @@ fn row(info: &proto::temporal::api::workflow::v1::WorkflowExecutionInfo) -> Work
 }
 
 /// The token of a page as the UI holds it; the empty token is "no more pages".
+/// A history download's chunks (spec 2.5: 1 MiB for downloads).
+const DOWNLOAD_CHUNK: usize = 1024 * 1024;
+
 fn encode_token(token: &[u8]) -> Option<String> {
     (!token.is_empty()).then(|| BASE64.encode(token))
 }
@@ -568,6 +571,62 @@ impl TemporalWorkflowsApi {
             token = step.token;
         }
     }
+
+    /// The whole history to save (TSK-109): `{ "events": [...] }` as `temporal workflow show
+    /// --output json` writes it, payloads decoded in full or as stored, read a page at a time and
+    /// sent in chunks of 1 MiB.
+    #[rpc::stream(
+        name = "downloadHistory",
+        perm = "temporal.read",
+        risk = Risk::Read,
+        timeout_default = "1h",
+        timeout_max = "1h"
+    )]
+    async fn download_history(
+        &self,
+        ctx: Ctx,
+        input: DownloadHistoryInput,
+        sink: BinarySink,
+    ) -> ToolResult<DownloadHistorySummary> {
+        let handle = client_of(&self.0, &ctx, &input.conn_id)?;
+        let client = &handle.value;
+        let namespace = client.namespace_or_default(input.namespace.as_deref());
+        let execution = detail::execution(&input.workflow_id, input.run_id.as_deref())?;
+        let decoded = input.form == large::PayloadForm::Decoded;
+        let mut pages = detail::HistoryDownload::new(client, &namespace, execution, decoded);
+        let chunk = sink.max_chunk_bytes().clamp(1, DOWNLOAD_CHUNK);
+        let mut buffer = b"{\"events\":[".to_vec();
+        let mut bytes = 0u64;
+        let mut events = 0u64;
+        let gone = || RpcError::new(Code::Cancelled, "the connection was closed");
+        loop {
+            let page = tokio::select! {
+                biased;
+                () = handle.token.cancelled() => return Err(gone()),
+                page = pages.next_page() => page?,
+            };
+            let Some(page) = page else { break };
+            for value in page {
+                if events > 0 {
+                    buffer.push(b',');
+                }
+                buffer.push(b'\n');
+                serde_json::to_writer(&mut buffer, &value).expect("an event serializes");
+                events += 1;
+                while buffer.len() >= chunk {
+                    let rest = buffer.split_off(chunk);
+                    bytes += chunk as u64;
+                    sink.send(std::mem::replace(&mut buffer, rest)).await?;
+                }
+            }
+        }
+        buffer.extend_from_slice(b"\n]}\n");
+        for part in buffer.chunks(chunk) {
+            bytes += part.len() as u64;
+            sink.send(part.to_vec()).await?;
+        }
+        Ok(DownloadHistorySummary { bytes, events })
+    }
 }
 
 #[rpc::router(namespace = "temporal.schedules")]
@@ -844,6 +903,9 @@ mod lab_relations_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_schedule_detail_tests;
+
+#[cfg(all(test, feature = "lab-tests"))]
+mod lab_long_tests;
 
 #[cfg(all(test, feature = "lab-tests"))]
 mod lab_activity_tests;

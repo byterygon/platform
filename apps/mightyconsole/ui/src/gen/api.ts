@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:f9e3c355152ca58dc4e302327274fb72bf67266cdceef01d35799e060c5bcfc3";
+export const SCHEMA_HASH = "sha256:5e9ee5ee1126bc4c490ae0e08ae43b5ed625fe55cb7ebc25163e85c0f80e10cb";
 
 // ---- Types
 
@@ -796,6 +796,20 @@ container?: string | null,
  * new ones when absent.
  */
 since?: string | null, };
+
+/**
+ * The whole history to save, as a stream (TSK-109).
+ */
+export type DownloadHistoryInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, 
+/**
+ * Payloads decoded in full, or as stored (what `temporal workflow show --output json` writes).
+ */
+form: PayloadForm, };
+
+/**
+ * The end of `downloadHistory`.
+ */
+export type DownloadHistorySummary = { bytes: number, events: number, };
 
 export type EchoConnIdInput = { connId: string, };
 
@@ -3700,9 +3714,14 @@ autoResetPoints: Record<string, unknown>[], };
 
 export type WorkflowHistoryInput = { connId: string, namespace?: string | null, workflowId: string, runId?: string | null, 
 /**
- * 1 to 1,000; 1,000 when absent.
+ * At most this many events, 1 to 1,000; 1,000 when absent. A page also stops at 4 MiB of
+ * reply (TSK-109).
  */
-pageSize?: number | null, nextPageToken?: string | null, };
+pageSize?: number | null, nextPageToken?: string | null, 
+/**
+ * Newest first (`GetWorkflowExecutionHistoryReverse`); oldest first when absent.
+ */
+reverse?: boolean | null, };
 
 export type WorkflowHistoryOutput = { events: Array<HistoryEvent>, 
 /**
@@ -4061,6 +4080,7 @@ export interface Procedures {
   readonly "temporal.workflows.cancel": ProcedureDef<"mutation", WorkflowReasonInput, Empty, ToolError>;
   readonly "temporal.workflows.count": ProcedureDef<"query", WorkflowsCountInput, WorkflowsCountOutput, ToolError>;
   readonly "temporal.workflows.describe": ProcedureDef<"query", WorkflowRef, WorkflowDetail, ToolError>;
+  readonly "temporal.workflows.downloadHistory": ProcedureDef<"stream", DownloadHistoryInput, DownloadHistorySummary, ToolError>;
   readonly "temporal.workflows.followHistory": ProcedureDef<"stream", FollowHistoryInput, FollowHistorySummary, ToolError>;
   readonly "temporal.workflows.history": ProcedureDef<"query", WorkflowHistoryInput, WorkflowHistoryOutput, ToolError>;
   readonly "temporal.workflows.list": ProcedureDef<"query", WorkflowsListInput, WorkflowsListOutput, ToolError>;
@@ -4318,6 +4338,7 @@ export interface Api {
       readonly cancel: Procedures["temporal.workflows.cancel"];
       readonly count: Procedures["temporal.workflows.count"];
       readonly describe: Procedures["temporal.workflows.describe"];
+      readonly downloadHistory: Procedures["temporal.workflows.downloadHistory"];
       readonly followHistory: Procedures["temporal.workflows.followHistory"];
       readonly history: Procedures["temporal.workflows.history"];
       readonly list: Procedures["temporal.workflows.list"];
@@ -6000,6 +6021,16 @@ export const procedures: Api = {
         deprecated: false,
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
+      },
+      downloadHistory: {
+        name: "temporal.workflows.downloadHistory",
+        kind: "stream",
+        perm: "temporal.read",
+        risk: "Read",
+        agent: "hidden",
+        deprecated: false,
+        timeoutDefaultMs: 3600000,
+        timeoutMaxMs: 3600000,
       },
       followHistory: {
         name: "temporal.workflows.followHistory",

@@ -72,13 +72,18 @@ pub struct WorkflowHistoryInput {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub run_id: Option<String>,
-    /// 1 to 1,000; 1,000 when absent.
+    /// At most this many events, 1 to 1,000; 1,000 when absent. A page also stops at 4 MiB of
+    /// reply (TSK-109).
     #[serde(default)]
     #[ts(optional = nullable)]
     pub page_size: Option<u32>,
     #[serde(default)]
     #[ts(optional = nullable)]
     pub next_page_token: Option<String>,
+    /// Newest first (`GetWorkflowExecutionHistoryReverse`); oldest first when absent.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub reverse: Option<bool>,
 }
 
 /// What an event is about, for the History filter and the Timeline's lanes.
@@ -166,6 +171,30 @@ pub struct FollowHistoryInput {
     /// The last event the screen has; only later events are sent.
     pub from_event_id: u64,
     pub stream_id: String,
+}
+
+/// The whole history to save, as a stream (TSK-109).
+#[derive(Debug, Clone, Deserialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadHistoryInput {
+    pub conn_id: String,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub namespace: Option<String>,
+    pub workflow_id: String,
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub run_id: Option<String>,
+    /// Payloads decoded in full, or as stored (what `temporal workflow show --output json` writes).
+    pub form: super::large::PayloadForm,
+}
+
+/// The end of `downloadHistory`.
+#[derive(Debug, Clone, Serialize, TS, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadHistorySummary {
+    pub bytes: u64,
+    pub events: u64,
 }
 
 /// The end of `followHistory`.

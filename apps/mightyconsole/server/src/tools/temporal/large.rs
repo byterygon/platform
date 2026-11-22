@@ -37,6 +37,26 @@ pub const MAX_PAGE: usize = 200;
 /// jq's results are cut at this much JSON text, and its run at this time.
 pub const QUERY_BYTES: usize = 1024 * 1024;
 pub const QUERY_TIME: Duration = Duration::from_secs(10);
+/// What is stubbed and how much of it is previewed (TSK-109): payloads over `over` bytes of
+/// decoded JSON, with their first `preview` bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StubAt {
+    pub over: usize,
+    pub preview: usize,
+}
+
+impl StubAt {
+    /// A payload over 64 KiB, anywhere (TSK-92).
+    pub const LARGE: StubAt = StubAt {
+        over: STUB_OVER,
+        preview: STUB_OVER,
+    };
+    /// Every payload over 1 KiB of an event over its share of a reply, with a short preview.
+    pub const TIGHT: StubAt = StubAt {
+        over: 1024,
+        preview: 2 * 1024,
+    };
+}
 /// A child's preview, and a string node's value, in characters.
 const PREVIEW_CHARS: usize = 120;
 const STRING_CHARS: usize = 4096;
@@ -189,6 +209,15 @@ fn sweep(inner: &mut Inner, now: Instant) {
 
 // --- Sizes ------------------------------------------------------------------------------------
 
+/// The length of an object's compact JSON text.
+pub fn map_len(map: &serde_json::Map<String, Value>) -> usize {
+    2 + map
+        .iter()
+        .map(|(k, v)| string_len(k) + 1 + json_len(v))
+        .sum::<usize>()
+        + map.len().saturating_sub(1)
+}
+
 /// The length of `value`'s compact JSON text (as `serde_json::to_vec` writes it).
 pub fn json_len(value: &Value) -> usize {
     match value {
@@ -200,13 +229,7 @@ pub fn json_len(value: &Value) -> usize {
         Value::Array(items) => {
             2 + items.iter().map(json_len).sum::<usize>() + items.len().saturating_sub(1)
         }
-        Value::Object(map) => {
-            2 + map
-                .iter()
-                .map(|(k, v)| string_len(k) + 1 + json_len(v))
-                .sum::<usize>()
-                + map.len().saturating_sub(1)
-        }
+        Value::Object(map) => map_len(map),
     }
 }
 
@@ -294,16 +317,28 @@ pub fn stub_if_large(
     stored: &[u8],
     codec: Option<(String, String)>,
 ) -> Option<Value> {
+    stub_at(store, value, encoding, stored, codec, StubAt::LARGE)
+}
+
+/// As [`stub_if_large`], over `at.over` bytes with a preview of `at.preview` bytes.
+pub fn stub_at(
+    store: &LargePayloads,
+    value: &Value,
+    encoding: &str,
+    stored: &[u8],
+    codec: Option<(String, String)>,
+    at: StubAt,
+) -> Option<Value> {
     // A payload's JSON is never much smaller than its data: skip measuring the small ones.
-    if stored.len() < STUB_OVER / 4 && !matches!(value, Value::Object(_) | Value::Array(_)) {
+    if stored.len() < at.over / 4 && !matches!(value, Value::Object(_) | Value::Array(_)) {
         return None;
     }
     let decoded_bytes = json_len(value);
-    if decoded_bytes <= STUB_OVER {
+    if decoded_bytes <= at.over {
         return None;
     }
     let text = serde_json::to_string_pretty(value).unwrap_or_default();
-    let preview = cut_bytes(&text, STUB_OVER).to_owned();
+    let preview = cut_bytes(&text, at.preview).to_owned();
     let id = store.keep(Kept {
         value: value.clone(),
         stored: stored.to_vec(),

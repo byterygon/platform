@@ -46,6 +46,7 @@ fn page(workflow_id: &str, page_size: Option<u32>, token: Option<String>) -> Wor
         run_id: None,
         page_size,
         next_page_token: token,
+        reverse: None,
     }
 }
 

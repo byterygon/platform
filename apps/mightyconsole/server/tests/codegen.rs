@@ -1058,6 +1058,16 @@ fn the_procedures_of_the_spec() {
             defaults,
         ),
         (
+            "temporal.workflows.downloadHistory",
+            Stream,
+            "temporal.read",
+            Risk::Read,
+            (
+                Some(Duration::from_secs(3600)),
+                Some(Duration::from_secs(3600)),
+            ),
+        ),
+        (
             "temporal.workflows.followHistory",
             Stream,
             "temporal.read",

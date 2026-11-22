@@ -96,6 +96,7 @@ async fn events_of(client: &TemporalClient, id: &str) -> Vec<HistoryEvent> {
             run_id: None,
             page_size: None,
             next_page_token: None,
+            reverse: None,
         },
     )
     .await
@@ -347,6 +348,7 @@ async fn reset_starts_a_new_run_from_the_event_and_ends_the_old_one() {
             run_id: Some(out.run_id.clone()),
             page_size: None,
             next_page_token: None,
+            reverse: None,
         },
     )
     .await
@@ -363,6 +365,7 @@ async fn reset_starts_a_new_run_from_the_event_and_ends_the_old_one() {
             run_id: Some(old_run),
             page_size: None,
             next_page_token: None,
+            reverse: None,
         },
     )
     .await
