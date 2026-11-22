@@ -59,7 +59,7 @@ jobs:
       # uses the runner's stable cargo (no toolchain install here); the pnpm one needs an install
       # and skips.
       - name: Test scripts/affected.mjs
-        run: node --test scripts/affected.test.mjs
+        run: node --test scripts/affected.test.mjs scripts/pre-pr.test.mjs
         env:
           RUSTUP_TOOLCHAIN: stable
       - name: Affected crates, packages and jobs

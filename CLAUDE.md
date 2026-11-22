@@ -16,6 +16,9 @@ summarises what a session needs when Notion is unavailable.
 - The task's **Related docs** are the spec. If a spec is silent or wrong, don't invent the
   decision: add it to the spec's Open questions, tick **Needs human**, and continue with the rest.
 - Security work (auth, grants, secrets, TLS, audit) follows the spec exactly, or stops and asks.
+- Before every push to a PR branch, run `node scripts/pre-pr.mjs` (what CI will run for your
+  change: fmt, clippy, docs, tests, typecheck, build, lint, licences) and fix what fails; it lists
+  what only CI can check.
 - Rebase on `main` before opening the PR. Keep edits to shared files (`Cargo.toml`, lockfiles,
   CI) minimal and list them in the PR description.
 - Put the task link in the PR, the PR link in the task, and add a **Work Log** entry when done.
