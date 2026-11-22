@@ -17,7 +17,7 @@ import { formatShortTime, formatTime } from "@/lib/time";
 import { Play } from "@/lib/icons";
 import type { DescribedError, TabProps } from "../types";
 import { CutValue, cutOf, loadCut } from "./cut-value";
-import { formatDuration, metaOf, runDuration, runNote, stepOf, taskError } from "./state-diff";
+import { formatDuration, metaOf, runDuration, runNote, stepOf, taskError, waitsAtInterrupt } from "./state-diff";
 import { StatusBadge, shortId, useLoad } from "./shared";
 
 /** Runs asked for per page; a page is cut sooner by its bytes. */
@@ -130,7 +130,7 @@ export function RunsPanel({ threadId, connId, client, note, first, checkpoints, 
                   {runNote(r, lasts.get(r.runId))}
                 </TableCell>
                 <TableCell className="text-end">
-                  {r.status === "interrupted" && r === runs[0] ? (
+                  {r === runs[0] && waitsAtInterrupt(r, lasts.get(r.runId)) ? (
                     <Button size="small" onClick={onResume}>
                       Resume…
                     </Button>
@@ -173,7 +173,7 @@ export function RunsPanel({ threadId, connId, client, note, first, checkpoints, 
 function RunDetail({ run, last, threadId, connId, client, note, onRunAgain }: { run: api.Run; last: api.ThreadState | null; threadId: string; onRunAgain: RunsPanelProps["onRunAgain"] } & Pick<TabProps, "connId" | "client" | "note">) {
   const full = useLoad(connId ? () => client.langgraph.runs.get({ connId, threadId, runId: run.runId }) : null, [connId, threadId, run.runId], note);
   // The run's last checkpoint, when History's first page does not have it.
-  const found = useLoad(connId && !last && (run.status === "error" || run.status === "interrupted") ? () => client.langgraph.threads.history({ connId, threadId, limit: 1, metadata: { run_id: run.runId } }) : null, [connId, threadId, run.runId, Boolean(last)], note);
+  const found = useLoad(connId && !last && run.status !== "running" && run.status !== "pending" ? () => client.langgraph.threads.history({ connId, threadId, limit: 1, metadata: { run_id: run.runId } }) : null, [connId, threadId, run.runId, Boolean(last)], note);
   const end = last ?? found.data?.items[0] ?? null;
   const failure = end ? taskError(end) : null;
   const request = full.data?.request;
@@ -203,7 +203,7 @@ function RunDetail({ run, last, threadId, connId, client, note, onRunAgain }: { 
             <p className="text-body-1 text-fg-muted">The server keeps no error for this run in its checkpoints.</p>
           )
         ) : null}
-        {run.status === "interrupted" && end && end.next.length > 0 ? <p className="text-body-1 text-fg">Waiting at {end.next.join(", ")}.</p> : null}
+        {waitsAtInterrupt(run, end) && end ? <p className="text-body-1 text-fg">Waiting at {end.next.join(", ")}.</p> : null}
         <h4 className="text-body-1-strong text-fg">Input</h4>
         {full.loading && !full.data ? <LoadingRows label="Loading the run" /> : null}
         {inputCut ? (

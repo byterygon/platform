@@ -125,6 +125,16 @@ export function taskError(s: api.ThreadState): { node: string; error: string } |
   return t?.error ? { node: t.name, error: t.error } : null;
 }
 
+/**
+ * Whether a run stopped at an interrupt: its status says so (interrupt before or after a node),
+ * or its last checkpoint has nodes to run and an interrupt pending (`interrupt()` inside a node,
+ * after which the server may call the run a success).
+ */
+export function waitsAtInterrupt(run: api.Run, last: api.ThreadState | null | undefined): boolean {
+  if (!last || last.next.length === 0) return false;
+  return run.status === "interrupted" || last.interrupts.length > 0 || last.tasks.some((t) => t.interrupts.length > 0);
+}
+
 /** The Runs table's note: the error of a failed run with its node, where an interrupted one waits. */
 export function runNote(run: api.Run, last: api.ThreadState | null | undefined): string {
   if (!last) return "";
@@ -132,6 +142,6 @@ export function runNote(run: api.Run, last: api.ThreadState | null | undefined):
     const e = taskError(last);
     return e ? e.error.split("\n")[0]! : "";
   }
-  if (run.status === "interrupted" && last.next.length > 0) return `waiting at ${last.next.join(", ")}`;
+  if (waitsAtInterrupt(run, last)) return `waiting at ${last.next.join(", ")}`;
   return "";
 }

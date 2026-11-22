@@ -682,6 +682,9 @@ describe("thread additions (TSK-96)", () => {
     expect(runNote(RUN("r1", "error"), failed)).toBe("TimeoutError: retrieve took longer than 10 s");
     expect(runNote(RUN("r2", "interrupted"), CHECKPOINT("c9", "c8", { next: ["human_review"] }))).toBe("waiting at human_review");
     expect(runNote(RUN("r3", "success"), failed)).toBe("");
+    // interrupt() inside a node: the server may call the run a success; the checkpoint says it waits.
+    expect(runNote(RUN("r4", "success"), CHECKPOINT("c9", "c8", { next: ["approve"], interrupts: [{ id: "i1", value: "Send?" }] }))).toBe("waiting at approve");
+    expect(runNote(RUN("r5", "success"), CHECKPOINT("c9", "c8", { next: ["approve"] }))).toBe("");
     const lasts = lastCheckpoints([CHECKPOINT("c4", "c3", { meta: { run_id: "r1" } }), failed, CHECKPOINT("c1", null, { meta: { run_id: "r0" } })]);
     expect(lasts.get("r1")?.checkpointId).toBe("c4");
     expect(lasts.get("r0")?.checkpointId).toBe("c1");
