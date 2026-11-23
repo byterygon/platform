@@ -706,14 +706,24 @@
       "name": "json-viewer",
       "type": "registry:ui",
       "title": "JsonViewer",
-      "description": "A JSON value as a keyboard-navigable, virtualized tree in the editor's syntax colours; objects and arrays expand and collapse.",
-      "dependencies": [],
+      "description": "A JSON value as a keyboard-navigable, virtualized tree or as text, in the editor's syntax colours, with a toolbar (Copy, Expand all, Collapse all, Expand to depth, Find, Tree | Text) and a context menu on every row.",
+      "dependencies": [
+        "@base-ui/react"
+      ],
       "registryDependencies": [
+        "@byterygon/button",
         "@byterygon/cn",
+        "@byterygon/code-block",
+        "@byterygon/context-menu",
         "@byterygon/control",
+        "@byterygon/dropdown-menu",
         "@byterygon/icon",
+        "@byterygon/icon-button",
         "@byterygon/icons",
-        "@byterygon/theme-scope"
+        "@byterygon/search-input",
+        "@byterygon/theme-scope",
+        "@byterygon/toggle-group",
+        "@byterygon/toolbar"
       ],
       "files": [
         {
