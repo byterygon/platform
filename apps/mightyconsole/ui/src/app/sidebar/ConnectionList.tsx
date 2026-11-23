@@ -12,7 +12,7 @@ import { Icon } from "@/components/ui/icon";
 import { SearchInput } from "@/components/ui/search-input";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipShortcut, TooltipTrigger } from "@/components/ui/tooltip";
-import { Tree, type TreeNode } from "@/components/ui/tree";
+import { Tree, type TreeNode, type TreeSelectDetails } from "@/components/ui/tree";
 import { Add, ArrowImport, CheckmarkCircle, Circle, Clock, ErrorCircle, Warning } from "@/lib/icons";
 import type { RecordState } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
@@ -96,7 +96,8 @@ export interface ConnectionListProps {
   onSelect: (nodeId: string) => void;
   onConnect: (profileId: string) => Promise<boolean>;
   onDisconnect: (profileId: string) => void;
-  onOpenResource: (profileId: string, node: ResourceNode) => void;
+  /** Opens a resource's tab: a click or Space as a preview (DOC-21 §3.2.1), Enter, a double click or Ctrl/Cmd + click for good. */
+  onOpenResource: (profileId: string, node: ResourceNode, options?: { preview?: boolean }) => void;
   onAdd: () => void;
   onImport: () => void;
   onEdit: (profileId: string) => void;
@@ -217,6 +218,20 @@ export function ConnectionList(props: ConnectionListProps) {
     if (resource?.open) props.onOpenResource(p.id, resource);
   };
 
+  // A click or Space on a resource opens it in the tool's preview tab; Ctrl or Cmd + click opens it for good.
+  const preview = (id: string, details: TreeSelectDetails) => {
+    if (details.reason !== "click" && details.reason !== "space") return;
+    const parsed = parseNode(id);
+    if (!parsed || parsed.resource === null) return;
+    const p = profiles?.find((x) => x.id === parsed.profileId);
+    const conn = p ? conns[p.id] : undefined;
+    if (!p || !conn?.connId) return;
+    const resource = findResource(tool.sidebarTree({ profile: p, connId: conn.connId }), parsed.resource);
+    if (!resource?.open) return;
+    const forGood = details.modifiers?.ctrlKey === true || details.modifiers?.metaKey === true;
+    props.onOpenResource(p.id, resource, forGood ? {} : { preview: true });
+  };
+
   if (profiles === null) return <LoadingRows label="Loading profiles" />;
   if (profiles.length === 0) {
     return (
@@ -260,7 +275,10 @@ export function ConnectionList(props: ConnectionListProps) {
             expanded={expanded}
             onExpandedChange={expand}
             selected={selected}
-            onSelectedChange={(id) => props.onSelect(id)}
+            onSelectedChange={(id, _node, details) => {
+              props.onSelect(id);
+              preview(id, details);
+            }}
             onAction={action}
             onRetry={(node) => {
               const parsed = parseNode(node.id);

@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { AppEvent, HostKeyDetails, HostKeyFingerprint } from "@/gen/api";
 import { cn } from "@/lib/cn";
 import { layerSurface } from "@/lib/control";
-import { Add, ArrowImport, Info, Options, QuestionCircle, Search, Server, Settings as SettingsIcon, Window } from "@/lib/icons";
+import { Add, ArrowImport, Eye, Info, Options, Pin, QuestionCircle, Search, Server, Settings as SettingsIcon, Window } from "@/lib/icons";
 import { loadProfiles } from "@/profiles/migrate";
 import type { ProfileRecord } from "@/profiles/record";
 import { applyImport, exportFile, exportFileName, type ImportPlan, planImport } from "@/profiles/transfer";
@@ -39,7 +39,7 @@ import { ACTIONS, type ActionId, actionFor, bindingOf, inTextControl } from "./s
 import { ToolNav, type ToolState, navOrder } from "./nav/ToolNav";
 import { type Notice, NoticeContext } from "./page";
 import { ConnectionList, parseNode, profileNodeId } from "./sidebar/ConnectionList";
-import { LeaveGuardContext, type LeaveGuardSetter } from "./leave-guard";
+import { KeepTabContext, LeaveGuardContext, type LeaveGuardSetter } from "./leave-guard";
 import { MissingProfilePage } from "./missing-profile";
 import { type NavCrumb, NavRow, type NavRowProps, type SiblingMenu, wantsNewTab } from "./nav-row";
 import { type EntryState, type RouteCrumb, type RouterConfig, createAppRouter, crumbsOf, placeHref, segment, targetOf, targetOfHref, withParams } from "./router";
@@ -470,12 +470,13 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
   // --- Tabs -------------------------------------------------------------------------------------
 
-  const openResource = (profileId: string, node: ResourceNode) => {
+  /** Opens (or focuses) a resource's tab; `preview` puts it in the tool's preview tab (DOC-21 §3.2.1). */
+  const openResource = (profileId: string, node: ResourceNode, options: { preview?: boolean } = {}) => {
     const profile = profileById(profileId);
     if (!profile || !node.open) return;
     const id = tabIdOf(profile.tool, profileId, node.open.kind, node.open.params);
     const place: TabPlace = { kind: node.open.kind, params: node.open.params, title: node.open.title };
-    dispatch({ type: "openTab", tab: { id, tool: profile.tool, profileId, ...place, pinned: false, history: initialHistory(place) } });
+    dispatch({ type: "openTab", tab: { id, tool: profile.tool, profileId, ...place, pinned: false, history: initialHistory(place) }, ...(options.preview ? { preview: true } : {}) });
   };
 
   // --- Routing (DOC-21 §3.7) --------------------------------------------------------------------
@@ -615,6 +616,8 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
         const keys = guards.current.get(tabId) ?? new Set<object>();
         if (dirty) keys.add(key);
         else keys.delete(key);
+        // Unsaved changes are state to lose: the preview tab is kept (DOC-21 §3.2.1).
+        if (dirty && tabId !== SHELL_GUARD) dispatch({ type: "keepTab", id: tabId });
         if (keys.size > 0) guards.current.set(tabId, keys);
         else guards.current.delete(tabId);
       };
@@ -737,6 +740,15 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
     return hook;
   };
   const liveSetters = useRef(new Map<string, (live: LiveState | null) => void>());
+  const keepSetters = useRef(new Map<string, () => void>());
+  const keepFor = (tabId: string) => {
+    let keep = keepSetters.current.get(tabId);
+    if (!keep) {
+      keep = () => dispatch({ type: "keepTab", id: tabId });
+      keepSetters.current.set(tabId, keep);
+    }
+    return keep;
+  };
   const liveFor = (tabId: string) => {
     let set = liveSetters.current.get(tabId);
     if (!set) {
@@ -908,7 +920,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
       if (!t || conn?.status !== "connected" || !conn.connId) continue;
       const walk = (nodes: readonly ResourceNode[]) => {
         for (const n of nodes) {
-          if (n.open) goTo.push({ id: `res:${p.id}/${n.id}`, label: n.open.title, keywords: [p.name, t.label], onSelect: () => openResource(p.id, n) });
+          if (n.open) goTo.push({ id: `res:${p.id}/${n.id}`, label: n.open.title, keywords: [p.name, t.label], onSelect: () => openResource(p.id, n, { preview: true }) });
           if (n.children) walk(n.children);
         }
       };
@@ -1098,6 +1110,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
               onMoveTab={(id, index) => dispatch({ type: "moveTab", id, index })}
               onMoveGroup={(tool, index) => dispatch({ type: "moveGroup", tool, index })}
               onOpenGroup={(tool) => dispatch({ type: "openGroup", tool })}
+              onKeep={(id) => dispatch({ type: "keepTab", id })}
               onCopyLink={(id) => {
                 const t = state.tabs.find((x) => x.id === id);
                 const tabTool = t ? toolById(tools, t.tool) : undefined;
@@ -1248,6 +1261,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                           editProfile={() => dispatch({ type: "dialog", dialog: { kind: "profile", tool: t.tool, editId: t.profileId } })}
                           nav={navOf(t, profiles.find((p) => p.id === t.profileId))}
                           guard={guardFor(t.id)}
+                          keep={keepFor(t.id)}
                           trust={() => {
                             const details = state.conns[t.profileId]?.error?.hostKey;
                             if (details) setHostKeyPrompt({ profileId: t.profileId, details });
@@ -1416,12 +1430,14 @@ interface TabBodyProps {
   nav: NavRowProps | null;
   /** Where the tab's sheets report unsaved changes. */
   guard: LeaveGuardSetter;
+  /** Keeps a preview tab (DOC-21 §3.2.1): its screen calls it through useKeepTab. */
+  keep: () => void;
 }
 
 /** A tab's states around the tool's screen: profile gone, Disconnected, Loading, Error (spec §3.5). */
 /** What the dot of a live tab in the background says. */
 
-function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, trust, tabProps, nav, guard }: TabBodyProps) {
+function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, editProfile, trust, tabProps, nav, guard, keep }: TabBodyProps) {
   const t = toolById(tools, tab.tool);
   const kind = t?.tabKinds[tab.kind];
   let overlay: ReactNode = null;
@@ -1446,10 +1462,23 @@ function TabBody({ tab, tools, profile, conn, active, connect, cancelConnect, ed
   return (
     <>
     {nav ? <NavRow {...nav} /> : null}
+    {tab.preview ? (
+      <div role="note" data-testid="preview-note" className="mx-inset-lg mt-stack-sm flex items-center gap-inline-md rounded-md border border-border-subtle bg-inset px-inset-sm py-inset-xs text-caption-1 text-fg-muted">
+        <Icon icon={Eye} />
+        <span className="min-w-0 flex-1">
+          <span className="text-fg">Preview tab.</span> The next resource you open from the {t.label} tree replaces it. Double-click the tab, or the node, to keep it.
+        </span>
+        <Button size="small" onClick={keep}>
+          <Icon icon={Pin} /> Keep open
+        </Button>
+      </div>
+    ) : null}
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className={cn("flex min-h-0 flex-1 flex-col", overlay ? "pointer-events-none opacity-40" : "")} inert={overlay ? true : undefined} aria-hidden={overlay ? true : undefined}>
         <LeaveGuardContext value={guard}>
-          <Component tab={tab} profile={profile} connId={conn.status === "connected" ? conn.connId : null} active={active} {...tabProps} />
+          <KeepTabContext value={keep}>
+            <Component tab={tab} profile={profile} connId={conn.status === "connected" ? conn.connId : null} active={active} {...tabProps} />
+          </KeepTabContext>
         </LeaveGuardContext>
       </div>
       {overlay ? <div className="absolute inset-0 flex flex-col overflow-auto">{overlay}</div> : null}

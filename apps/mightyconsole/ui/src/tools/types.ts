@@ -196,6 +196,11 @@ export interface TabRecord {
   params: Record<string, unknown>;
   title: string;
   pinned: boolean;
+  /**
+   * A preview tab (DOC-21 §3.2.1): opened by a single click in the tree and replaced by the next
+   * one, its title in italics, until something keeps it (a double click, Keep open, state to lose).
+   */
+  preview?: boolean;
   history: TabHistory;
 }
 

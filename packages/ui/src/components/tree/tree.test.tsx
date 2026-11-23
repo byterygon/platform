@@ -85,7 +85,7 @@ describe("Tree", () => {
     await focus(tree());
     await key("ArrowDown");
     await key(" ");
-    expect(onSelectedChange).toHaveBeenLastCalledWith("orders", expect.objectContaining({ id: "orders" }));
+    expect(onSelectedChange).toHaveBeenLastCalledWith("orders", expect.objectContaining({ id: "orders" }), { reason: "space" });
     expect(items()[1]!.getAttribute("aria-selected")).toBe("true");
     await key("Enter");
     expect(onAction).toHaveBeenLastCalledWith(expect.objectContaining({ id: "orders" }));
@@ -95,6 +95,26 @@ describe("Tree", () => {
     expect(labels()).toEqual(["public", "orders", "idbigint", "customers", "audit"]);
   });
 
+  test("onSelectedChange says how the node was selected: a click (with its modifiers), Space, Enter or the context menu", async () => {
+    const onSelectedChange = vi.fn();
+    render(<Tree nodes={nodes} defaultExpanded={["public"]} onSelectedChange={onSelectedChange} aria-label="Schema" />);
+    const reason = () => onSelectedChange.mock.lastCall?.[2] as { reason: string; modifiers?: { ctrlKey: boolean; metaKey: boolean } };
+    await focus(tree());
+    await key("ArrowDown");
+    // Arrows move without selecting.
+    expect(onSelectedChange).not.toHaveBeenCalled();
+    await key(" ");
+    expect(reason()).toEqual({ reason: "space" });
+    await key("Enter");
+    expect(reason()).toEqual({ reason: "enter" });
+    await click(items()[2]!);
+    expect(reason()).toMatchObject({ reason: "click", modifiers: { ctrlKey: false, metaKey: false } });
+    await act(async () => void items()[3]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true })));
+    expect(reason()).toMatchObject({ reason: "click", modifiers: { ctrlKey: true } });
+    await act(async () => void items()[1]!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 })));
+    expect(reason()).toEqual({ reason: "contextmenu" });
+  });
+
   test("a right click selects its row first, so a context menu acts on that row", async () => {
     const onSelectedChange = vi.fn();
     render(<Tree nodes={nodes} defaultExpanded={["public"]} defaultSelected="orders" onSelectedChange={onSelectedChange} aria-label="Schema" />);
@@ -102,7 +122,7 @@ describe("Tree", () => {
     // A right click fires contextmenu, never click.
     const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
     await act(async () => void customers.dispatchEvent(event));
-    expect(onSelectedChange).toHaveBeenLastCalledWith("customers", expect.objectContaining({ id: "customers" }));
+    expect(onSelectedChange).toHaveBeenLastCalledWith("customers", expect.objectContaining({ id: "customers" }), { reason: "contextmenu" });
     expect(items().find((i) => i.textContent === "customers")!.getAttribute("aria-selected")).toBe("true");
     expect(event.defaultPrevented).toBe(false);
   });

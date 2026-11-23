@@ -40,6 +40,8 @@ export interface TabStripProps {
   onMoveGroup: (tool: string, index: number) => void;
   onOpenGroup: (tool: string) => void;
   onCopyLink: (id: string) => void;
+  /** Keeps a preview tab: a normal tab from now on. */
+  onKeep: (id: string) => void;
 }
 
 /**
@@ -128,12 +130,16 @@ export function TabStrip(props: TabStripProps) {
           value={t.id}
           onClose={() => props.onClose(t.id)}
           onAuxClick={(e) => e.button === 1 && props.onClose(t.id)}
-          title={`${t.title} · ${props.profileName(t.profileId)}`}
+          // A double click keeps a preview tab (DOC-21 §3.2.1).
+          onDoubleClick={() => t.preview && props.onKeep(t.id)}
+          title={`${t.title} · ${props.profileName(t.profileId)}${t.preview ? " · preview (double-click to keep it open)" : ""}`}
+          data-preview={t.preview ? "" : undefined}
           className={cn("bg-neutral-subtle ps-inline-md", i === mine.length - 1 && "rounded-e-lg")}
         >
           <span className="flex min-w-0 items-center gap-inline-sm">
-            <span className="truncate">
+            <span className={cn("truncate", t.preview && "italic")}>
               {t.title}
+              {t.preview ? <span className="sr-only">, preview</span> : null}
               {ambiguous(t) ? <span className="text-fg-subtle"> · {props.profileName(t.profileId)}</span> : null}
             </span>
             {tabState(t)}
@@ -193,6 +199,14 @@ export function TabStrip(props: TabStripProps) {
       <ContextMenuContent aria-label={menuTab ? menuTab.title : menuGroup ? `${toolById(tools, menuGroup)?.label ?? menuGroup} group` : "Tabs"}>
         {menuTab ? (
           <>
+            {menuTab.preview ? (
+              <>
+                <ContextMenuItem onClick={() => props.onKeep(menuTab.id)}>
+                  Keep open <ContextMenuShortcut>Double-click</ContextMenuShortcut>
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+              </>
+            ) : null}
             <ContextMenuItem onClick={() => props.onClose(menuTab.id)}>
               Close <ContextMenuShortcut>Alt+Shift+W</ContextMenuShortcut>
             </ContextMenuItem>

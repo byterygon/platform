@@ -50,3 +50,20 @@ export function useDraftChanged(open: boolean, value: unknown): boolean {
 export function useSheetGuard(open: boolean, draft: unknown): () => void {
   return useLeaveGuard(useDraftChanged(open, draft));
 }
+
+/**
+ * Keeps the tab open (DOC-21 §3.2.1, TSK-111): a preview tab that comes to hold something the
+ * person would lose (a draft, an applied filter, a running terminal) becomes a normal tab, so the
+ * next resource opened from the tree does not replace it. The shell gives each tab a
+ * KeepTabContext; outside the shell nothing happens. Live streams and guarded sheets keep their tab
+ * through the shell already (the tab's live state, useLeaveGuard).
+ */
+export const KeepTabContext = createContext<(() => void) | null>(null);
+
+/** Keeps the tab once `holds` is true. Calling it again changes nothing: a kept tab stays kept. */
+export function useKeepTab(holds: boolean): void {
+  const keep = useContext(KeepTabContext);
+  useEffect(() => {
+    if (holds) keep?.();
+  }, [keep, holds]);
+}
