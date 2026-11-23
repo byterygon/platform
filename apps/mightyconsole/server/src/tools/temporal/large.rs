@@ -799,7 +799,8 @@ mod tests {
             conn_id: String::new(),
             payload_id: id.clone(),
             jq: jq.into(),
-            timeout_ms: None,
+            // Long: the runaway tests beside it hold cores, and this one is about the result.
+            timeout_ms: Some(20_000),
         };
         let out = query(&store, q(".items | map(select(.qty == 0)) | length"))
             .await

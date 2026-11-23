@@ -29,7 +29,7 @@ describe("acceptance checklists", () => {
     expect(validate(lists)).toEqual([]);
     expect(lists.map((l) => [l.id, l.task, l.items.length])).toEqual([
       ["foundation", "TSK-79", 12],
-      ["messaging", "TSK-80", 9],
+      ["messaging", "TSK-80", 10],
       ["nats", "TSK-85", 7],
       ["kafka", "TSK-86", 7],
       ["k8s", "TSK-82", 7],
