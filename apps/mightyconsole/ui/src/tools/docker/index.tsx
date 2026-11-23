@@ -138,6 +138,29 @@ export const dockerTool: ToolModule = {
   sidebarData: dockerTreeData,
   // DOC-21 §3.7: /docker/<profile>/containers, …/containers/<name>/<view>,
   // …/projects/<project>/<view>, …/images, …/volumes, …/networks, …/host.
+  // The tree that follows the tab (DOC-21 §3.2.1): a container wherever the tree draws it (under
+  // its Compose project or not; the shell finds it), a project under Containers.
+  nodeOfTab: ({ kind, params }, p) => {
+    const name = (key: string) => (typeof params[key] === "string" ? (params[key] as string) : "");
+    switch (kind) {
+      case "docker.container":
+        return [`${p.id}/containers`, `${p.id}/containers/${name("id")}`];
+      case "docker.project":
+        return [`${p.id}/containers`, `${p.id}/projects/${name("project")}`];
+      case "docker.containers":
+        return [`${p.id}/containers`];
+      case "docker.images":
+        return [`${p.id}/images`];
+      case "docker.volumes":
+        return [`${p.id}/volumes`];
+      case "docker.networks":
+        return [`${p.id}/networks`];
+      case "docker.host":
+        return [`${p.id}/host`];
+      default:
+        return [];
+    }
+  },
   tabKinds: {
     "docker.containers": {
       title: () => "Containers",

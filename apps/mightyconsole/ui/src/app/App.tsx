@@ -481,6 +481,31 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
 
   // --- Routing (DOC-21 §3.7) --------------------------------------------------------------------
 
+  // --- The tree follows the focused tab (DOC-21 §3.2.1) ----------------------------------------
+  // Activating a tab (a click, the keyboard, the URL, Back and Forward, a link, the palette) shows
+  // its node: its tool in the navigation, its tree, its ancestors open, the node selected and
+  // scrolled to. Keyboard focus stays where it is. A tool picked by hand holds until the next one.
+  const [revealAgain, setRevealAgain] = useState(0);
+  const focusedTab = state.missingLink ? undefined : state.tabs.find((t) => t.id === state.activeTab);
+  const focusedPlace = focusedTab ? `${focusedTab.id}\n${focusedTab.kind}\n${JSON.stringify(focusedTab.params)}` : "";
+  const profilesLoaded = state.profiles !== null;
+  // The focus a reveal answers, and the tool shown when it came: when only the profiles arrive
+  // (after a reload) and a tool was picked by hand meanwhile, that pick holds until the next focus.
+  const revealFor = useRef<{ key: string; tool: string } | null>(null);
+  useEffect(() => {
+    const key = `${focusedPlace}\n${revealAgain}`;
+    if (revealFor.current?.key !== key) revealFor.current = { key, tool: stateRef.current.layout.tool };
+    else if (stateRef.current.layout.tool !== revealFor.current.tool) return;
+    const tab = stateRef.current.tabs.find((t) => t.id === stateRef.current.activeTab);
+    if (!tab || stateRef.current.missingLink || !profilesLoaded) return;
+    const tabTool = toolById(tools, tab.tool);
+    const profile = profileById(tab.profileId);
+    if (!tabTool || !profile) return;
+    const root = profileNodeId(profile.id);
+    dispatch({ type: "reveal", tool: tabTool.id, profileId: profile.id, path: [root, ...tabTool.nodeOfTab(tab, profile).map((id) => `${root}/${id}`)] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new focused tab or place, or the focused tab clicked again
+  }, [focusedPlace, revealAgain, profilesLoaded]);
+
   const routes = useRouteSync({
     router,
     config: routerConfig,
@@ -1111,6 +1136,7 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
               onMoveGroup={(tool, index) => dispatch({ type: "moveGroup", tool, index })}
               onOpenGroup={(tool) => dispatch({ type: "openGroup", tool })}
               onKeep={(id) => dispatch({ type: "keepTab", id })}
+              onRevealAgain={() => setRevealAgain((n) => n + 1)}
               onCopyLink={(id) => {
                 const t = state.tabs.find((x) => x.id === id);
                 const tabTool = t ? toolById(tools, t.tool) : undefined;
@@ -1170,6 +1196,12 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                         return n === 0 ? "No connections" : `${n} connection${n === 1 ? "" : "s"} · ${toolState(tool).connected} connected`;
                       })()}
                     </span>
+                    {focusedTab && focusedTab.tool !== tool.id ? (
+                      // A tool picked by hand (DOC-21 §3.2.1): the tree goes back to the tab's tool on the next tab focus.
+                      <span className="text-caption-1 text-fg-muted" data-testid="tree-by-hand">
+                        The tree returns to {toolById(tools, focusedTab.tool)?.label ?? focusedTab.tool} when you focus a tab.
+                      </span>
+                    ) : null}
                   </span>
                   <span className="flex items-center gap-inline-md">
                     <Tooltip>
@@ -1203,6 +1235,10 @@ function Shell({ tools, routerConfig }: { tools: readonly ToolModule[]; routerCo
                     onDuplicate={(id) => dispatch({ type: "dialog", dialog: { kind: "profile", tool: tool.id, duplicateOf: id } })}
                     onExport={(id) => exportIds([id])}
                     onDelete={(id) => dispatch({ type: "dialog", dialog: { kind: "deleteProfile", id } })}
+                    expanded={state.treeExpanded}
+                    onExpandedChange={(profileId, ids) => dispatch({ type: "treeExpanded", profileId, ids })}
+                    reveal={state.reveal}
+                    onRevealed={(seq, nodeId, done) => dispatch({ type: "revealed", seq, nodeId, done })}
                     onUpdateProfile={async (id, change) => {
                       const record = profileById(id);
                       if (record) await saveProfile({ ...change(record), updatedAt: new Date().toISOString() });

@@ -28,7 +28,7 @@ describe("acceptance checklists", () => {
   test("one per build task of section 18, valid", () => {
     expect(validate(lists)).toEqual([]);
     expect(lists.map((l) => [l.id, l.task, l.items.length])).toEqual([
-      ["foundation", "TSK-79", 11],
+      ["foundation", "TSK-79", 12],
       ["messaging", "TSK-80", 9],
       ["nats", "TSK-85", 7],
       ["kafka", "TSK-86", 7],

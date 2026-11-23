@@ -10,7 +10,8 @@ export const DB_NAME = "mightyconsole";
 export const DB_VERSION = 1;
 export const CHANNEL = "mightyconsole";
 
-export type WorkspaceKey = "tabs" | "layout";
+/** `tree`: the expanded tree nodes per profile (DOC-21 §3.2.1). */
+export type WorkspaceKey = "tabs" | "layout" | "tree";
 
 export interface AppStorage {
   readonly kind: "indexeddb" | "memory";

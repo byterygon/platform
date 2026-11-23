@@ -3,7 +3,7 @@
 // other group is folded to a chip, a tab of its own that opens the group on its last focused tab.
 // Chips and headings never go into "More tabs". Tabs move inside their group only, groups move as
 // a whole; a context menu on a tab or a chip closes and moves them.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Icon } from "@/components/ui/icon";
@@ -42,6 +42,8 @@ export interface TabStripProps {
   onCopyLink: (id: string) => void;
   /** Keeps a preview tab: a normal tab from now on. */
   onKeep: (id: string) => void;
+  /** The focused tab clicked again: the tree shows its node again (DOC-21 §3.2.1). */
+  onRevealAgain: () => void;
 }
 
 /**
@@ -88,6 +90,16 @@ export function TabStrip(props: TabStripProps) {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const lastMenu = useRef<string | null>(null);
   const order = stripOrder(tabs, groups, openTool, props.missingLink ? props.linkTab : null);
+  // A chip activated by a click or the keyboard is gone once its group opens: focus moves to the
+  // group's selected tab instead of falling to the page (only when it did fall).
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const focusOpened = useRef(false);
+  useEffect(() => {
+    if (!focusOpened.current) return;
+    focusOpened.current = false;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    stripRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+  }, [activeTab]);
 
   const tabState = (t: TabRecord) => {
     const conn = conns[t.profileId];
@@ -110,7 +122,7 @@ export function TabStrip(props: TabStripProps) {
       const liveCount = mine.filter((t) => live[t.id]?.status === "live").length;
       const summary = [tool.label, plural(mine.length, "tab", "tabs"), liveCount > 0 ? `${liveCount} live` : ""].filter(Boolean).join(" · ");
       return [
-        <TabsTrigger key={groupValue(g)} value={groupValue(g)} keepVisible icon={mark} count={mine.length} countLabel={["tab", "tabs"]} title={`${summary}\n${mine.map((t) => t.title).join(", ")}`} className="ps-inline-md" data-group={g}>
+        <TabsTrigger key={groupValue(g)} value={groupValue(g)} onClick={() => (focusOpened.current = true)} keepVisible icon={mark} count={mine.length} countLabel={["tab", "tabs"]} title={`${summary}\n${mine.map((t) => t.title).join(", ")}`} className="ps-inline-md" data-group={g}>
           <span className="sr-only">{tool.label}</span>
           {liveCount > 0 ? <span aria-hidden="true" data-testid="group-live" className="size-inline-sm shrink-0 rounded-full bg-success" /> : null}
         </TabsTrigger>,
@@ -130,6 +142,7 @@ export function TabStrip(props: TabStripProps) {
           value={t.id}
           onClose={() => props.onClose(t.id)}
           onAuxClick={(e) => e.button === 1 && props.onClose(t.id)}
+          onClick={() => t.id === activeTab && props.onRevealAgain()}
           // A double click keeps a preview tab (DOC-21 §3.2.1).
           onDoubleClick={() => t.preview && props.onKeep(t.id)}
           title={`${t.title} · ${props.profileName(t.profileId)}${t.preview ? " · preview (double-click to keep it open)" : ""}`}
@@ -157,6 +170,7 @@ export function TabStrip(props: TabStripProps) {
   return (
     <ContextMenu onOpenChange={(open) => !open && setMenuFor(null)}>
       <ContextMenuTrigger
+        ref={stripRef}
         className="flex min-w-0"
         onContextMenuCapture={(e) => {
           const item = (e.target as HTMLElement).closest<HTMLElement>('[data-slot="tabs-item"]');

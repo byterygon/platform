@@ -176,6 +176,9 @@ export const langgraphTool: ToolModule = {
   ],
   // DOC-21 §3.7: /langgraph/<profile>/assistants, …/assistants/<id>/<graph|schemas|config>,
   // …/threads, …/threads/<id>/<run|state|history>, …/store.
+  // The tree that follows the tab (DOC-21 §3.2.1): an assistant or a thread under its list.
+  nodeOfTab: ({ kind }, p) =>
+    kind === "langgraph.assistants" || kind === "langgraph.assistant" ? [`${p.id}/assistants`] : kind === "langgraph.threads" || kind === "langgraph.thread" ? [`${p.id}/threads`] : kind === "langgraph.store" ? [`${p.id}/store`] : [],
   tabKinds: {
     "langgraph.assistants": { title: () => "Assistants", Component: AssistantsTab, href: () => ({ path: "assistants" }) },
     "langgraph.assistant": {

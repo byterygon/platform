@@ -21,7 +21,7 @@ import type { ResourceAction, ResourceNode, ToolModule } from "@/tools/types";
 import { COLOR_CLASS } from "../dialogs/ProfileDialogs";
 import { ariaBindingOf, bindingOf } from "../shortcuts";
 import { LoadingRows } from "../states";
-import type { ConnState } from "../store";
+import type { ConnState, Reveal, TreeExpanded } from "../store";
 import { ResourceActionDialog } from "./ResourceActionDialog";
 
 const GLYPH = {
@@ -106,12 +106,43 @@ export interface ConnectionListProps {
   onDelete: (profileId: string) => void;
   /** Changes a profile (a resource's menu item, as a saved query's Rename). */
   onUpdateProfile: (profileId: string, change: (record: ProfileRecord) => ProfileRecord) => Promise<void>;
+  /** The expanded nodes per profile: the store's (DOC-21 §3.2.1). */
+  expanded?: TreeExpanded;
+  onExpandedChange?: (profileId: string, ids: string[]) => void;
+  /** The focused tab's node to show (DOC-21 §3.2.1), and where the tree reports what it selected. */
+  reveal?: Reveal | null;
+  onRevealed?: (seq: number, nodeId: string, done: boolean) => void;
+}
+
+/** The ids from a top node down to `id`, or null when the tree does not draw it. */
+function pathTo(nodes: readonly TreeNode[], id: string): string[] | null {
+  for (const n of nodes) {
+    if (n.id === id) return [n.id];
+    const inner = n.children ? pathTo(n.children, id) : null;
+    if (inner) return [n.id, ...inner];
+  }
+  return null;
 }
 
 export function ConnectionList(props: ConnectionListProps) {
   const { tool, profiles, conns, selected } = props;
   const [filter, setFilter] = useState("");
-  const [expanded, setExpanded] = useState<string[]>([]);
+  // The expanded nodes of this tool's profiles live in the store, per profile (DOC-21 §3.2.1).
+  // Without a store (a test of the list alone) the list keeps them itself.
+  const [own, setOwn] = useState<TreeExpanded>({});
+  const store = props.expanded ?? own;
+  const onExpandedChange = props.onExpandedChange ?? ((id: string, ids: string[]) => setOwn((o) => ({ ...o, [id]: ids })));
+  const expanded = useMemo(() => (profiles ?? []).flatMap((p) => store[p.id] ?? []), [profiles, store]);
+  const latest = useRef({ expanded, profiles, onExpandedChange });
+  latest.current = { expanded, profiles, onExpandedChange };
+  const setExpanded = (next: string[] | ((current: string[]) => string[])) => {
+    const now = latest.current;
+    const ids = typeof next === "function" ? next(now.expanded) : next;
+    // Two changes in one commit (a node's first showing and the profile a double click opened) build
+    // on each other, as a state updater's would: the next one starts from this one, not the render's.
+    now.expanded = ids;
+    for (const p of now.profiles ?? []) now.onExpandedChange(p.id, ids.filter((id) => parseNode(id)?.profileId === p.id));
+  };
   // The tool's tree data (counts, namespaces), loaded for each connected profile; a change redraws the tree.
   const services = useContext(ServicesContext);
   const dataVersion = useSyncExternalStore(tool.sidebarData?.subscribe ?? NO_SUBSCRIBE, tool.sidebarData?.version ?? NO_VERSION);
@@ -218,6 +249,28 @@ export function ConnectionList(props: ConnectionListProps) {
     if (resource?.open) props.onOpenResource(p.id, resource);
   };
 
+  // The focused tab's node (DOC-21 §3.2.1): its deepest node the tree draws is selected and scrolled
+  // to, without focus; the tab's own node once it shows (a list still loading).
+  const [scrollTo, setScrollTo] = useState<{ id: string; seq: number } | null>(null);
+  const reveal = props.reveal ?? null;
+  useEffect(() => {
+    if (!reveal || !profiles?.some((p) => p.id === reveal.profileId)) return;
+    const target = reveal.path[reveal.path.length - 1]!;
+    const found = pathTo(nodes, target);
+    if (found) {
+      const missing = found.slice(0, -1).filter((id) => !expanded.includes(id));
+      if (missing.length > 0) setExpanded((e) => [...e, ...missing]);
+      setScrollTo({ id: target, seq: reveal.seq * 2 + 1 });
+      props.onRevealed?.(reveal.seq, target, true);
+      return;
+    }
+    const nearest = [...reveal.path].reverse().find((id) => pathTo(nodes, id) !== null);
+    if (!nearest || nearest === selected) return;
+    setScrollTo({ id: nearest, seq: reveal.seq * 2 });
+    props.onRevealed?.(reveal.seq, nearest, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs for a new reveal and when the tree's nodes change
+  }, [reveal, nodes]);
+
   // A click or Space on a resource opens it in the tool's preview tab; Ctrl or Cmd + click opens it for good.
   const preview = (id: string, details: TreeSelectDetails) => {
     if (details.reason !== "click" && details.reason !== "space") return;
@@ -285,6 +338,7 @@ export function ConnectionList(props: ConnectionListProps) {
               if (parsed) void props.onConnect(parsed.profileId);
             }}
             filter={filter}
+            scrollTo={scrollTo}
             emptyText="No matches"
           />
         </ContextMenuTrigger>
