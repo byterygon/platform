@@ -5043,17 +5043,17 @@ export function TableRealistic() {
 
 ### Tabs
 
-[tabs.json](tabs.json): Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, be reordered by drag or Alt+Shift+Arrow, and carry a count in its own badge.
+[tabs.json](tabs.json): Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, be reordered by drag or Alt+Shift+Arrow, and carry a count in its own badge, and be grouped behind headings that never overflow.
 
-Usage: Use Tabs to switch between views of the same place: the sections of a Settings dialog (appearance transparent), or DBee's query tabs (appearance enclosed, size small). Compose it as Tabs (value, onValueChange) > TabsList > TabsTrigger per tab (value, icon for a status, children for the title) + TabsContent per tab. For closable tabs pass onClose on each TabsTrigger and keep the tabs in state (Tabs controlled): when the active tab closes, choose the next one. For a number that belongs to a tab (History 1,234, Errors 3) pass count on its TabsTrigger, never in the title: it is drawn in a Badge after the title, neutral unless countTone says it needs attention (danger, warning), hidden at 0 unless showZero, shortened from 10,000 (12.4k) with its full number in a title, and read with the title as one name (countLabel says what it counts: "History, 1,234 events"). For reorderable tabs pass onReorder(value, index) on TabsList and move the tab in your array. For navigation between pages use NavigationMenu or Sidebar; for a choice that filters content in place, ToggleGroup. The old variant prop (line is transparent) and the sm/md sizes still work for one release.
+Usage: Use Tabs to switch between views of the same place: the sections of a Settings dialog (appearance transparent), or DBee's query tabs (appearance enclosed, size small). Compose it as Tabs (value, onValueChange) > TabsList > TabsTrigger per tab (value, icon for a status, children for the title) + TabsContent per tab. For closable tabs pass onClose on each TabsTrigger and keep the tabs in state (Tabs controlled): when the active tab closes, choose the next one. For a number that belongs to a tab (History 1,234, Errors 3) pass count on its TabsTrigger, never in the title: it is drawn in a Badge after the title, neutral unless countTone says it needs attention (danger, warning), hidden at 0 unless showZero, shortened from 10,000 (12.4k) with its full number in a title, and read with the title as one name (countLabel says what it counts: "History, 1,234 events"). For reorderable tabs pass onReorder(value, index) on TabsList and move the tab in your array. For navigation between pages use NavigationMenu or Sidebar; for a choice that filters content in place, ToggleGroup. The old variant prop (line is transparent) and the sm/md sizes still work for one release. For a strip grouped by something (Mightyconsole groups its tabs by tool), put a TabsLabel (value, icon, children) before each open group's tabs and a keepVisible TabsTrigger for each folded group; give the label the words a heading needs ("NATS, 4 tabs").
 
 - Wraps: @base-ui/react/tabs
-- Parts: TabsList (data-slot tabs-list): role="tablist" in a strip (data-slot="tabs-strip") that never scrolls: tabs that do not fit go to a "More tabs" menu at its end (Fluent's TabList overflow), the selected one always stays visible; onReorder makes the tabs movable; moreLabel names the menu button.; TabsTrigger (data-slot tabs-trigger): role="tab" with aria-selected and aria-controls: icon, truncated title, and a close button when closable.; TabsContent (data-slot tabs-content): role="tabpanel", labelled by its tab.
+- Parts: TabsList (data-slot tabs-list): role="tablist" in a strip (data-slot="tabs-strip") that never scrolls: tabs that do not fit go to a "More tabs" menu at its end (Fluent's TabList overflow), the selected one always stays visible; onReorder makes the tabs movable; moreLabel names the menu button.; TabsTrigger (data-slot tabs-trigger): role="tab" with aria-selected and aria-controls: icon, truncated title, and a close button when closable.; TabsLabel (data-slot tabs-label-item): An item of the strip that is not a tab (a group's heading before its tabs, Mightyconsole's tab groups): never selected, passed by the arrow keys, always kept out of More tabs; its value takes part in onReorder, so it is draggable when the tabs are.; TabsContent (data-slot tabs-content): role="tabpanel", labelled by its tab.
 - appearance: transparent, subtle, enclosed
 - size: small, medium, large
-- Props: value (string | number); onValueChange ((value, details) => void); appearance ("transparent" | "subtle" | "enclosed", default "transparent"); variant ("line" | "enclosed", deprecated: use appearance); size ("small" | "medium" | "large", default "medium"); orientation ("horizontal" | "vertical", default "horizontal"); onReorder ((value, index: number) => void); moreLabel (string, default "More tabs"); activateOnFocus (boolean, default false); icon (ReactNode); count (number | null); countLabel (string | [one: string, other: string]); countMore (boolean, default false); countTone ("neutral" | "accent" | "danger" | "warning" | "success" | "info", default "neutral"); showZero (boolean, default false); onClose (() => void); closeLabel (string, default "Close tab"); disabled (boolean, default false); keepMounted (boolean, default false); className (string)
+- Props: value (string | number); onValueChange ((value, details) => void); appearance ("transparent" | "subtle" | "enclosed", default "transparent"); variant ("line" | "enclosed", deprecated: use appearance); size ("small" | "medium" | "large", default "medium"); orientation ("horizontal" | "vertical", default "horizontal"); onReorder ((value, index: number) => void); moreLabel (string, default "More tabs"); activateOnFocus (boolean, default false); icon (ReactNode); count (number | null); countLabel (string | [one: string, other: string]); countMore (boolean, default false); countTone ("neutral" | "accent" | "danger" | "warning" | "success" | "info", default "neutral"); showZero (boolean, default false); keepVisible (boolean, default "false"); onClose (() => void); closeLabel (string, default "Close tab"); disabled (boolean, default false); keepMounted (boolean, default false); className (string)
 - States: active (data-active), hover (hover), focus-visible (focus-visible), disabled (data-disabled), closable (data-closable), dragging (data-dragging), drop-target (data-[drop=before])
-- Tokens: border.width.3, color.accent.compound, color.bg.inset, color.bg.layer, color.bg.layer-alt, color.border.default, color.border.subtle, color.fg.default, color.fg.disabled, color.fg.muted, color.interactive.active, color.interactive.hover, color.neutral.bg, color.neutral.fg, color.neutral.subtle-bg, color.neutral.subtle-fg, color.ring, color.ring-inner, color.status.danger.bg, color.status.danger.border, color.status.danger.fg, color.status.danger.solid, color.status.danger.solid-fg, font.mono, font.sans, motion.duration.faster, motion.easing.easy-ease, opacity.disabled, radius.sm, ring.inner-width, ring.width, size.control.md, size.control.sm, size.control.xs, size.icon.md, size.icon.xs, size.panel.xs, space.control.x, space.inline.md, space.inline.sm, space.inline.xs, space.inset.sm, space.stack.sm, text.body-1-strong.leading, text.body-1-strong.size, text.body-1-strong.tracking, text.body-1-strong.weight, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight, z.sticky
+- Tokens: border.width.3, color.accent.compound, color.bg.inset, color.bg.layer, color.bg.layer-alt, color.border.default, color.border.subtle, color.fg.default, color.fg.disabled, color.fg.muted, color.interactive.active, color.interactive.hover, color.neutral.bg, color.neutral.fg, color.neutral.subtle-bg, color.neutral.subtle-fg, color.ring, color.ring-inner, color.status.danger.bg, color.status.danger.border, color.status.danger.fg, color.status.danger.solid, color.status.danger.solid-fg, font.mono, font.sans, motion.duration.faster, motion.easing.easy-ease, opacity.disabled, radius.lg, radius.sm, ring.inner-width, ring.width, size.control.md, size.control.sm, size.control.xs, size.icon.md, size.icon.xs, size.panel.xs, space.control.x, space.inline.md, space.inline.sm, space.inline.xs, space.inset.sm, space.stack.sm, text.body-1-strong.leading, text.body-1-strong.size, text.body-1-strong.tracking, text.body-1-strong.weight, text.body-1.leading, text.body-1.size, text.body-1.tracking, text.body-1.weight, text.body.leading, text.body.size, text.body.tracking, text.body.weight, text.caption.leading, text.caption.size, text.caption.tracking, text.caption.weight, text.code.leading, text.code.size, text.code.tracking, text.code.weight, z.sticky
 - Accessibility: The strip is role="tablist" of role="tab" elements with aria-selected and aria-controls; each panel is role="tabpanel" labelled by its tab. Only the active tab is in the tab order. ArrowLeft and ArrowRight (ArrowUp and ArrowDown when vertical), Home and End move between tabs; Enter or Space activates the focused tab (or focus activates it with activateOnFocus). A closable tab closes with Delete when focused (aria-keyshortcuts="Delete"); its close button is for the pointer, out of the tab order and hidden from assistive technology so the tablist holds only tabs. Focus moves to the neighbouring tab. A reorderable tab moves with Alt+Shift+ArrowLeft and Alt+Shift+ArrowRight (Up and Down when vertical), announced through aria-keyshortcuts, as well as by drag, so reordering does not need a pointer. A status icon needs a text alternative (role="img" with aria-label, or visually hidden text), since a coloured dot alone carries no meaning. Only colours transition; nothing moves, so reduced motion needs no change. A count is a Badge hidden from assistive technology, and its number is read as part of the tab's one name through visually hidden text ("History, 1,234 events", the full number, with countLabel after it), so it is never read as a separate stop. The badge keeps its own fill and text pair on the selected, hovered and pressed tab, so its contrast does not depend on the tab behind it; its tone is never the only signal, since the number and its label say it.
 
 Examples (TabsMinimal, TabsRealistic):
@@ -5062,8 +5062,9 @@ Examples (TabsMinimal, TabsRealistic):
 import { Icon } from "@/components/ui/icon";
 import { useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Add } from "@/lib/icons";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsLabel, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Add, Clock, Flash } from "@/lib/icons";
 
 /** The smallest useful Tabs: the sections of the Settings dialog. */
 export function TabsMinimal() {
@@ -5103,9 +5104,20 @@ const PlusIcon = () => <Icon icon={Add} />;
  * DBee's query tabs: enclosed and small, each closable (the button, or Delete) and reorderable
  * (drag, or Alt+Shift+Arrow), with a status before the title and a disabled tab; below them the
  * results' tabs, each with its count in its own badge (`count`): neutral by default, a tone for
- * what needs attention, a count of 0 hidden unless asked for, a large one shortened (48k).
+ * what needs attention, a count of 0 hidden unless asked for, a large one shortened (48k). Then a
+ * strip grouped by tool, as Mightyconsole's: the open group's heading (TabsLabel) and tabs, and a
+ * folded group's chip that never goes into "More tabs" (keepVisible).
  */
 export function TabsRealistic() {
+  return (
+    <div className="flex w-full flex-col gap-stack-lg">
+      <QueryTabs />
+      <GroupedTabs />
+    </div>
+  );
+}
+
+function QueryTabs() {
   const [tabs, setTabs] = useState<QueryTab[]>([
     { id: "q1", title: "select * from orders limit 1000;", running: true },
     { id: "q2", title: "Orders by region", modified: true },
@@ -5197,6 +5209,55 @@ function ResultTabs() {
       <TabsContent value="plan" className="text-body text-fg">
         The query plan.
       </TabsContent>
+    </Tabs>
+  );
+}
+
+/** Mightyconsole's strip grouped by tool: NATS open behind its heading, Temporal folded to a chip. */
+function GroupedTabs() {
+  const [active, setActive] = useState("orders");
+  const nats = ["orders", "payments"];
+  return (
+    <Tabs value={active} onValueChange={(value) => setActive(value === "group:temporal" ? "workflows" : (value as string))} className="w-full">
+      <TabsList aria-label="Tabs" className="border-b-0">
+        {nats.includes(active) ? (
+          <TabsLabel value="group:nats" icon={<Icon icon={Flash} />} className="rounded-s-lg bg-neutral-subtle text-body-1-strong">
+            NATS<span className="sr-only">, 2 tabs</span>
+            <Badge aria-hidden="true">2</Badge>
+          </TabsLabel>
+        ) : (
+          <TabsTrigger value="orders" keepVisible icon={<Icon icon={Flash} />} count={2} countLabel={["tab", "tabs"]}>
+            <span className="sr-only">NATS</span>
+          </TabsTrigger>
+        )}
+        {nats.includes(active)
+          ? nats.map((id, i) => (
+              <TabsTrigger key={id} value={id} className={i === nats.length - 1 ? "rounded-e-lg bg-neutral-subtle" : "bg-neutral-subtle"}>
+                {id === "orders" ? "ORDERS" : "PAYMENTS"}
+              </TabsTrigger>
+            ))
+          : null}
+        {active === "workflows" ? (
+          <>
+            <TabsLabel value="group:temporal" icon={<Icon icon={Clock} />} className="rounded-s-lg bg-neutral-subtle text-body-1-strong">
+              Temporal<span className="sr-only">, 1 tab</span>
+              <Badge aria-hidden="true">1</Badge>
+            </TabsLabel>
+            <TabsTrigger value="workflows" className="rounded-e-lg bg-neutral-subtle">
+              Workflows
+            </TabsTrigger>
+          </>
+        ) : (
+          <TabsTrigger value="group:temporal" keepVisible icon={<Icon icon={Clock} />} count={1} countLabel={["tab", "tabs"]}>
+            <span className="sr-only">Temporal</span>
+          </TabsTrigger>
+        )}
+      </TabsList>
+      {[...nats, "workflows"].map((id) => (
+        <TabsContent key={id} value={id} className="text-body text-fg">
+          The {id} tab.
+        </TabsContent>
+      ))}
     </Tabs>
   );
 }

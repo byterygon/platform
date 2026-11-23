@@ -1,7 +1,8 @@
 // The app's state (Mightyconsole spec §3, §4): profiles and their live connections, tabs, the
 // selected tool, layout, settings, dialogs and the server's status. Tabs and layout persist in the
 // `workspace` store, settings in `settings` (spec §4.1), written shortly after each change. Each
-// tab keeps its own back and forward history (DOC-21 §3.7), saved with it.
+// tab keeps its own back and forward history (DOC-21 §3.7), saved with it. Tabs are grouped by tool
+// (DOC-21 §3.2.1, TSK-111): `tabs` is kept in group order, each group's tabs together.
 import { type Dispatch, type ReactNode, createContext, useContext, useEffect, useReducer, useRef } from "react";
 import type { AppInfo } from "@/gen/api";
 import type { RecordState } from "@/profiles/migrate";
@@ -13,8 +14,11 @@ import type { ServerStatus } from "./supervisor";
 import { goTab, migrateTab, placeHas, placeOf, pushPlace, replacePlace, stepTab } from "./tab-history";
 
 export const SETTINGS_VERSION = 1;
-/** The `tabs` workspace document: version 2 adds each tab's history (DOC-21 §3.7). */
-export const TABS_VERSION = 2;
+/**
+ * The `tabs` workspace document: version 2 added each tab's history (DOC-21 §3.7), version 3 the
+ * groups' order and each group's last focused tab (DOC-21 §3.2.1).
+ */
+export const TABS_VERSION = 3;
 /** Closed tabs kept with their history while the page lives, so a browser step back reopens one. */
 export const CLOSED_TABS_KEPT = 20;
 
@@ -52,6 +56,10 @@ export interface Layout {
 export interface Persisted {
   tabs: TabRecord[];
   activeTab: string | null;
+  /** The tab groups' order: tool ids (DOC-21 §3.2.1). */
+  groups: string[];
+  /** Each group's last focused tab, by tool. */
+  lastActive: Record<string, string>;
   layout: Layout;
   settings: Settings;
 }
@@ -83,8 +91,13 @@ export interface State {
   recordStates: Record<string, RecordState>;
   storageKind: "indexeddb" | "memory";
   conns: Record<string, ConnState>;
+  /** In group order: each tool's tabs together, the groups as `groups` says. */
   tabs: TabRecord[];
   activeTab: string | null;
+  /** The tab groups' order, one per tool with tabs (DOC-21 §3.2.1). */
+  groups: string[];
+  /** Each group's last focused tab, by tool: a folded group opens on it. */
+  lastActive: Record<string, string>;
   /** The last closed tabs, newest first (memory only). */
   closedTabs: TabRecord[];
   /** Live state per tab, from the tab components. */
@@ -128,7 +141,12 @@ export type Action =
   | { type: "reopenTab"; id: string; step: number }
   | { type: "closeTab"; id: string }
   | { type: "activateTab"; id: string }
-  | { type: "reorderTab"; id: string; index: number }
+  /** A tab moved inside its group, to `index` among the group's tabs. */
+  | { type: "moveTab"; id: string; index: number }
+  /** A group moved to `index` among the groups. */
+  | { type: "moveGroup"; tool: string; index: number }
+  /** A group opened on its last focused tab. */
+  | { type: "openGroup"; tool: string }
   | { type: "live"; id: string; live: LiveState | null }
   | { type: "layout"; layout: Partial<Layout> }
   | { type: "settings"; settings: Partial<Settings> }
@@ -147,7 +165,7 @@ export function initialState(persisted: Persisted, storageKind: "indexeddb" | "m
     recordStates: {},
     storageKind,
     conns: {},
-    tabs: persisted.tabs,
+    ...arrange(persisted.tabs, persisted.groups, persisted.lastActive, persisted.activeTab),
     activeTab: persisted.activeTab,
     closedTabs: [],
     live: {},
@@ -163,7 +181,57 @@ export function initialState(persisted: Persisted, storageKind: "indexeddb" | "m
   };
 }
 
+/**
+ * Puts each tool's tabs together in the groups' order (a tool not in `groups` goes last, a group
+ * without tabs goes away) and keeps each group's last focused tab pointing at one of its tabs.
+ */
+export function arrange(tabs: readonly TabRecord[], groups: readonly string[], lastActive: Readonly<Record<string, string>>, activeTab: string | null): { tabs: TabRecord[]; groups: string[]; lastActive: Record<string, string> } {
+  const order = groups.filter((g, i) => groups.indexOf(g) === i && tabs.some((t) => t.tool === g));
+  for (const t of tabs) if (!order.includes(t.tool)) order.push(t.tool);
+  const arranged = order.flatMap((g) => tabs.filter((t) => t.tool === g));
+  const last: Record<string, string> = {};
+  for (const g of order) {
+    const mine = arranged.filter((t) => t.tool === g);
+    const kept = lastActive[g];
+    last[g] = kept && mine.some((t) => t.id === kept) ? kept : mine[0]!.id;
+  }
+  const active = activeTab ? arranged.find((t) => t.id === activeTab) : undefined;
+  if (active) last[active.tool] = active.id;
+  return { tabs: arranged, groups: order, lastActive: last };
+}
+
+/** The tool whose group is open: the focused tab's. */
+export function openGroupOf(state: Pick<State, "tabs" | "activeTab">): string | null {
+  return state.tabs.find((t) => t.id === state.activeTab)?.tool ?? null;
+}
+
+/**
+ * The tab to focus when the focused tab closes (DOC-21 §3.2.1): its right neighbour in its group,
+ * else its left one, else the last focused tab of the next group, then of the groups before.
+ */
+function nextAfterClose(state: State, closing: TabRecord): string | null {
+  const mine = state.tabs.filter((t) => t.tool === closing.tool);
+  const i = mine.indexOf(closing);
+  const neighbour = mine[i + 1] ?? mine[i - 1];
+  if (neighbour) return neighbour.id;
+  const at = state.groups.indexOf(closing.tool);
+  for (const g of [...state.groups.slice(at + 1), ...state.groups.slice(0, Math.max(0, at)).reverse()]) {
+    const id = state.lastActive[g];
+    if (id && state.tabs.some((t) => t.id === id)) return id;
+    const first = state.tabs.find((t) => t.tool === g);
+    if (first) return first.id;
+  }
+  return null;
+}
+
 export function reducer(state: State, action: Action): State {
+  const next = reduce(state, action);
+  if (next === state) return next;
+  if (next.tabs === state.tabs && next.groups === state.groups && next.activeTab === state.activeTab) return next;
+  return { ...next, ...arrange(next.tabs, next.groups, next.lastActive, next.activeTab) };
+}
+
+function reduce(state: State, action: Action): State {
   switch (action.type) {
     case "profiles":
       return { ...state, profiles: action.profiles, recordStates: action.recordStates ?? state.recordStates };
@@ -204,19 +272,30 @@ export function reducer(state: State, action: Action): State {
       const i = state.tabs.findIndex((t) => t.id === action.id);
       if (i < 0) return state;
       const tabs = state.tabs.filter((t) => t.id !== action.id);
-      const activeTab = state.activeTab === action.id ? (tabs[Math.min(i, tabs.length - 1)]?.id ?? null) : state.activeTab;
+      const activeTab = state.activeTab === action.id ? nextAfterClose(state, state.tabs[i]!) : state.activeTab;
       const { [action.id]: _, ...live } = state.live;
       const closedTabs = [state.tabs[i]!, ...state.closedTabs.filter((t) => t.id !== action.id)].slice(0, CLOSED_TABS_KEPT);
       return { ...state, tabs, activeTab, live, closedTabs, dialog: state.dialog.kind === "closeTab" ? { kind: "none" } : state.dialog };
     }
     case "activateTab":
       return state.tabs.some((t) => t.id === action.id) ? { ...state, activeTab: action.id, missingLink: null } : state;
-    case "reorderTab": {
+    case "moveTab": {
       const tab = state.tabs.find((t) => t.id === action.id);
       if (!tab) return state;
-      const tabs = state.tabs.filter((t) => t.id !== action.id);
-      tabs.splice(Math.max(0, Math.min(action.index, tabs.length)), 0, tab);
-      return { ...state, tabs };
+      const mine = state.tabs.filter((t) => t.tool === tab.tool && t.id !== tab.id);
+      mine.splice(Math.max(0, Math.min(action.index, mine.length)), 0, tab);
+      const tabs = state.tabs.filter((t) => t.tool !== tab.tool);
+      return { ...state, tabs: [...tabs, ...mine] };
+    }
+    case "moveGroup": {
+      if (!state.groups.includes(action.tool)) return state;
+      const groups = state.groups.filter((g) => g !== action.tool);
+      groups.splice(Math.max(0, Math.min(action.index, groups.length)), 0, action.tool);
+      return groups.every((g, i) => g === state.groups[i]) ? state : { ...state, groups };
+    }
+    case "openGroup": {
+      const id = state.lastActive[action.tool] ?? state.tabs.find((t) => t.tool === action.tool)?.id;
+      return id && state.tabs.some((t) => t.id === id) ? { ...state, activeTab: id, missingLink: null } : state;
     }
     case "live":
       return { ...state, live: { ...state.live, [action.id]: action.live } };
@@ -269,7 +348,7 @@ const num = (v: unknown, fallback: number, min: number, max: number) => (typeof 
 /** Reads the persisted tabs, layout and settings; anything missing or malformed takes its default. */
 export async function loadPersisted(storage: AppStorage, tools: readonly string[]): Promise<Persisted> {
   const [tabsDoc, layoutDoc, settingsDoc] = await Promise.all([
-    storage.getWorkspace<{ version?: unknown; tabs?: unknown; activeTab?: unknown }>("tabs").catch(() => undefined),
+    storage.getWorkspace<{ version?: unknown; tabs?: unknown; activeTab?: unknown; groups?: unknown; lastActive?: unknown }>("tabs").catch(() => undefined),
     storage.getWorkspace<Partial<Layout>>("layout").catch(() => undefined),
     storage.getSettings<{ version?: unknown; settings?: Partial<Settings> }>().catch(() => undefined),
   ]);
@@ -281,12 +360,20 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
         // Version 1 tabs (TSK-79) have no history: each gets its one step (DOC-21 §3.7).
         .map((t) => migrateTab({ ...t, pinned: t.pinned === true }))
     : [];
-  const activeTab = typeof tabsDoc?.activeTab === "string" && tabs.some((t) => t.id === tabsDoc.activeTab) ? tabsDoc.activeTab : (tabs[0]?.id ?? null);
+  // Version 2 has no groups: they come in the order of each tool's first tab, the tabs keeping
+  // their order inside a group (DOC-21 §3.2.1). Nothing is dropped.
+  const saved = tabsDoc?.lastActive;
+  const lastActive = typeof saved === "object" && saved !== null ? Object.fromEntries(Object.entries(saved).filter((e): e is [string, string] => typeof e[1] === "string")) : {};
+  const requested = typeof tabsDoc?.activeTab === "string" && tabs.some((t) => t.id === tabsDoc.activeTab) ? tabsDoc.activeTab : null;
+  const grouped = arrange(tabs, strings(tabsDoc?.groups).filter((g) => tools.includes(g)), lastActive, requested);
+  const activeTab = requested ?? grouped.tabs[0]?.id ?? null;
   const s = settingsDoc?.settings ?? {};
   const sizes = layoutDoc?.shellSizes;
   return {
-    tabs,
+    tabs: grouped.tabs,
     activeTab,
+    groups: grouped.groups,
+    lastActive: grouped.lastActive,
     layout: {
       sidebarOpen: layoutDoc?.sidebarOpen !== false,
       shellSizes: Array.isArray(sizes) && sizes.length === 2 && sizes.every((n) => typeof n === "number") ? sizes : [24.45, 75.55],
@@ -338,11 +425,11 @@ export function StoreProvider({ persisted, storage, children, saveDelayMs = 200 
       return;
     }
     const timer = setTimeout(() => {
-      void storage.putWorkspace("tabs", { version: TABS_VERSION, tabs: state.tabs, activeTab: state.activeTab }).catch(() => {});
+      void storage.putWorkspace("tabs", { version: TABS_VERSION, tabs: state.tabs, activeTab: state.activeTab, groups: state.groups, lastActive: state.lastActive }).catch(() => {});
       void storage.putWorkspace("layout", state.layout).catch(() => {});
       void storage.putSettings({ version: SETTINGS_VERSION, settings: state.settings }).catch(() => {});
     }, saveDelayMs);
     return () => clearTimeout(timer);
-  }, [state.tabs, state.activeTab, state.layout, state.settings, storage, saveDelayMs]);
+  }, [state.tabs, state.activeTab, state.groups, state.lastActive, state.layout, state.settings, storage, saveDelayMs]);
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }

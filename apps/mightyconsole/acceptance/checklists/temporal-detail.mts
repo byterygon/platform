@@ -40,7 +40,7 @@ export default {
           const { run, until, shot } = ctx;
           await connectLab(ctx);
           await openSeededWorkflow(ctx, "lab-temporal", "family-order");
-          const relationsTab = `[...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && /^Relations( \\d+)?$/.test(t.textContent.trim()))`;
+          const relationsTab = `[...document.querySelectorAll("[role=tab]")].find((t) => t.checkVisibility() && t.querySelector("[data-slot=tabs-label]")?.textContent.trim() === "Relations")`;
           await until(relationsTab, "the workflow tab");
           await run(`(() => { const t = ${relationsTab}; for (const k of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) t.dispatchEvent(new (k.startsWith("pointer") ? PointerEvent : MouseEvent)(k, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); })()`);
           const node = (id: string) => `[...document.querySelectorAll('[data-graph-node="${id}"]')].find((n) => n.checkVisibility())`;

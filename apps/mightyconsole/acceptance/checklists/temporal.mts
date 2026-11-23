@@ -18,9 +18,10 @@ type Ctx = Parameters<Parameters<typeof browser>[1]>[0];
  * A button of the tab on screen. Tabs stay mounted when they are not shown (and an earlier check's
  * tabs come back after a reload), so `__mc.button` could find the same button of a hidden tab.
  */
-// A view's tab may carry a count after its name ("History 214", "Pending 1").
+// A view's tab may carry a count in its own badge (TSK-110: "History 214", "Pending 1"): a tab is
+// found by its title, the tabs-label slot, not by its text, which also reads the count.
 const panelButton = (label: string) =>
-  `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)} || (b.getAttribute("role") === "tab" && /^${label} [\\d,]+$/.test(b.textContent.trim())))`;
+  `[...document.querySelectorAll("[role=tabpanel]:not([hidden]) button")].find((b) => b.textContent.trim() === ${JSON.stringify(label)} || b.getAttribute("aria-label") === ${JSON.stringify(label)} || (b.getAttribute("role") === "tab" && b.querySelector("[data-slot=tabs-label]")?.textContent.trim() === ${JSON.stringify(label)}))`;
 const click = (label: string) => `__mc.click(${panelButton(label)})`;
 /** An item of the open menu, by the start of its text ("Terminate…"). */
 const menuItem = (label: string) => `[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.trim().startsWith(${JSON.stringify(label)}))`;

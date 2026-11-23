@@ -3,8 +3,8 @@
   "schemaVersion": 1,
   "name": "tabs",
   "title": "Tabs",
-  "description": "Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, be reordered by drag or Alt+Shift+Arrow, and carry a count in its own badge.",
-  "usage": "Use Tabs to switch between views of the same place: the sections of a Settings dialog (appearance transparent), or DBee's query tabs (appearance enclosed, size small). Compose it as Tabs (value, onValueChange) > TabsList > TabsTrigger per tab (value, icon for a status, children for the title) + TabsContent per tab. For closable tabs pass onClose on each TabsTrigger and keep the tabs in state (Tabs controlled): when the active tab closes, choose the next one. For a number that belongs to a tab (History 1,234, Errors 3) pass count on its TabsTrigger, never in the title: it is drawn in a Badge after the title, neutral unless countTone says it needs attention (danger, warning), hidden at 0 unless showZero, shortened from 10,000 (12.4k) with its full number in a title, and read with the title as one name (countLabel says what it counts: \"History, 1,234 events\"). For reorderable tabs pass onReorder(value, index) on TabsList and move the tab in your array. For navigation between pages use NavigationMenu or Sidebar; for a choice that filters content in place, ToggleGroup. The old variant prop (line is transparent) and the sm/md sizes still work for one release.",
+  "description": "Tabs on Base UI's Tabs with Fluent 2's appearances (transparent underline, subtle wash, Byterygon's enclosed editor tabs) in small, medium and large, horizontal or vertical, with panels; tabs can carry a status icon, be closed with a button or Delete, be reordered by drag or Alt+Shift+Arrow, and carry a count in its own badge, and be grouped behind headings that never overflow.",
+  "usage": "Use Tabs to switch between views of the same place: the sections of a Settings dialog (appearance transparent), or DBee's query tabs (appearance enclosed, size small). Compose it as Tabs (value, onValueChange) > TabsList > TabsTrigger per tab (value, icon for a status, children for the title) + TabsContent per tab. For closable tabs pass onClose on each TabsTrigger and keep the tabs in state (Tabs controlled): when the active tab closes, choose the next one. For a number that belongs to a tab (History 1,234, Errors 3) pass count on its TabsTrigger, never in the title: it is drawn in a Badge after the title, neutral unless countTone says it needs attention (danger, warning), hidden at 0 unless showZero, shortened from 10,000 (12.4k) with its full number in a title, and read with the title as one name (countLabel says what it counts: \"History, 1,234 events\"). For reorderable tabs pass onReorder(value, index) on TabsList and move the tab in your array. For navigation between pages use NavigationMenu or Sidebar; for a choice that filters content in place, ToggleGroup. The old variant prop (line is transparent) and the sm/md sizes still work for one release. For a strip grouped by something (Mightyconsole groups its tabs by tool), put a TabsLabel (value, icon, children) before each open group's tabs and a keepVisible TabsTrigger for each folded group; give the label the words a heading needs (\"NATS, 4 tabs\").",
   "status": "experimental",
   "base": "@base-ui/react/tabs",
   "dependencies": [
@@ -96,6 +96,12 @@
       "description": "TabsTrigger: show a count of 0 (for a tab where none is itself the news, such as Consumers 0)."
     },
     {
+      "name": "keepVisible",
+      "type": "boolean",
+      "default": "false",
+      "description": "TabsTrigger: keeps the tab in the strip when it is too narrow, as the selected tab is (a group's chip); the other tabs go into More tabs first."
+    },
+    {
       "name": "onClose",
       "type": "() => void",
       "description": "TabsTrigger: makes the tab closable (close button and Delete); focus moves to the neighbouring tab."
@@ -170,6 +176,11 @@
       "description": "role=\"tab\" with aria-selected and aria-controls: icon, truncated title, and a close button when closable."
     },
     {
+      "name": "TabsLabel",
+      "slot": "tabs-label-item",
+      "description": "An item of the strip that is not a tab (a group's heading before its tabs, Mightyconsole's tab groups): never selected, passed by the arrow keys, always kept out of More tabs; its value takes part in onReorder, so it is draggable when the tabs are."
+    },
+    {
       "name": "TabsContent",
       "slot": "tabs-content",
       "description": "role=\"tabpanel\", labelled by its tab."
@@ -241,6 +252,7 @@
     "motion.duration.faster",
     "motion.easing.easy-ease",
     "opacity.disabled",
+    "radius.lg",
     "radius.sm",
     "ring.inner-width",
     "ring.width",
