@@ -514,15 +514,18 @@ fn limit_self(_memory: u64, _cpu: u64) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
+    /// A query whose result matters, not its limits: an engine of its own and a long deadline,
+    /// so the runaway tests running beside it (each holding a core) never make it time out.
     async fn q(code: &str, value: &str) -> Result<Outputs, ToolError> {
-        run(
-            "test",
-            code,
-            value.as_bytes().to_vec(),
-            MAX_TEXT_INPUT_BYTES,
-            DEFAULT_TIMEOUT,
-        )
-        .await
+        JqEngine::new(1)
+            .run(
+                "test",
+                code,
+                value.as_bytes().to_vec(),
+                MAX_TEXT_INPUT_BYTES,
+                Duration::from_secs(20),
+            )
+            .await
     }
 
     /// An engine of its own, so a test that holds slots does not starve the others.

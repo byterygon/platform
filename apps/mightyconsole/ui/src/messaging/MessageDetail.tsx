@@ -16,7 +16,9 @@ import type { MessageRow } from "./arrow";
 import { timestampText } from "./arrow";
 import type { MessageLabels } from "./columns";
 import { parseSchemaRef } from "./schema-ref";
+import type { ValueQuery } from "./query";
 import { type DecodeAs, DecodeAsPanel } from "./schemas/DecodeAs";
+import { ValueExplorer } from "./ValueExplorer";
 
 /** Fetches a schema's text for the Schema tab (the tool's `messaging.schemas.inspect`). */
 export type SchemaLoader = (ref: NonNullable<ReturnType<typeof parseSchemaRef>>) => Promise<string>;
@@ -35,8 +37,22 @@ function SchemaText({ text }: { text: string }) {
   return json ? <JsonView modeKey="messaging.message.schema" defaultMode="text" value={json.value} aria-label="Schema" className="max-h-panel-md" /> : <CodeBlock code={text} language="text" aria-label="Schema" />;
 }
 
-function ValueView({ text, codec, raw, label }: { text: string | null; codec: string | null; raw: Uint8Array | null; label: string }) {
+/** A loaded full payload is UTF-8 text: JSON when it parses as JSON (it was cut, so it was not decoded). */
+function fullCodec(text: string): string {
+  const t = text.trimStart();
+  if (!t.startsWith("{") && !t.startsWith("[")) return "utf8";
+  try {
+    JSON.parse(text);
+    return "json";
+  } catch {
+    return "utf8";
+  }
+}
+
+function ValueView({ text, codec, raw, label, query }: { text: string | null; codec: string | null; raw: Uint8Array | null; label: string; query?: ValueQuery | undefined }) {
   if (raw === null && text === null) return <EmptyLine>No {label.toLowerCase()}.</EmptyLine>;
+  // The Query bar (TSK-113): jq on the value, run by the server.
+  if (text !== null && codec !== null && JSON_CODECS.has(codec) && query) return <ValueExplorer modeKey="messaging.message.value" label={label} text={text} query={query} className="min-h-0 flex-1" />;
   if (text !== null && codec !== null && JSON_CODECS.has(codec)) return <JsonView modeKey="messaging.message.value" aria-label={label} text={text} defaultExpandDepth={2} className="min-h-0 flex-1" />;
   // The Text view: read-only Monaco (TSK-93), with find, selection and line numbers.
   if (text !== null && codec !== "hex") return <CodeEditor language="plaintext" readOnly variant="ghost" aria-label={label} value={text} className="h-auto min-h-0 flex-1" />;
@@ -52,9 +68,11 @@ export interface MessageDetailProps {
   rowActions?: readonly { label: string; run(message: MessageRow): void }[] | undefined;
   /** "Decode as…" on a message that did not decode: the tool's codecs and its mapping targets. */
   decodeAs?: DecodeAs | undefined;
+  /** jq on the value, on the server (TSK-113): the Value tab's Query bar. */
+  query?: ValueQuery | undefined;
 }
 
-export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadSchema, rowActions, decodeAs }: MessageDetailProps) {
+export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadSchema, rowActions, decodeAs, query }: MessageDetailProps) {
   const [full, setFull] = useState<Uint8Array | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -143,7 +161,7 @@ export function MessageDetail({ message: m, labels, onCompose, onLoadFull, loadS
             )
           ) : null}
           {loadError ? <p className="text-caption-1 text-danger-fg">{loadError}</p> : null}
-          <ValueView text={fullText ?? m.payloadText} codec={full ? "utf8" : m.payloadCodec} raw={raw} label="Value" />
+          <ValueView text={fullText ?? m.payloadText} codec={fullText !== null ? fullCodec(fullText) : m.payloadCodec} raw={raw} label="Value" query={query} />
         </TabsContent>
         {m.keyRaw !== null ? (
           <TabsContent value="key" className="flex min-h-0 flex-1 flex-col overflow-auto p-inset-sm">

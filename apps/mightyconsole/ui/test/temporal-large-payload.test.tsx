@@ -122,7 +122,8 @@ describe("the payload view", () => {
     await waitFor(() => byText("array[12,480]") !== null, "the root");
     await type(byRole("textbox", "jq") as HTMLInputElement, ".items | map(select(.qty == 0)) | length");
     await click(byRole("button", "Run jq"));
-    expect(query).toHaveBeenCalledWith({ connId: "c", payloadId: "a1b2", jq: ".items | map(select(.qty == 0)) | length" });
+    // The user's time limit goes with it (TSK-113; 2 s by default), and the call waits a little longer.
+    expect(query).toHaveBeenCalledWith({ connId: "c", payloadId: "a1b2", jq: ".items | map(select(.qty == 0)) | length", timeoutMs: 2000 }, { timeoutMs: 35_000 });
     await waitFor(() => byText("on the server, 64 ms") !== null, "the result");
     expect(byText("312")).not.toBeNull();
   });

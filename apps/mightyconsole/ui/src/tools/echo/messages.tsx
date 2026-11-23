@@ -1,6 +1,7 @@
 // The messaging core on echo's test backend (TSK-80, Mightyconsole spec §5.8): a Messages tab (live
 // tail of the topic `echo` in the MessageViewer, with the codec selects and the filter bar) and a
 // Composer tab (echo.messages.produce). Every echo connection has its own topic with 3 partitions.
+import { useValueQuery } from "@/messaging/query";
 import { useCallback, useMemo, useState } from "react";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,8 @@ const TARGET: api.Target = { kind: "topic", name: "echo" };
 type StartKind = "earliest" | "latest" | "latestN";
 
 /** `echo.messages`: the topic `echo` in a MessageViewer. */
-export function MessagesTab({ connId, client, useTabActions, onLive, note, active }: TabProps) {
+export function MessagesTab({ profile, connId, client, useTabActions, onLive, note, active, updateProfile }: TabProps) {
+  const query = useValueQuery({ client, profile, updateProfile });
   const services = useServices();
   const { state } = useStore();
   const [decode, setDecode] = useState<api.DecodeOptions>({ key: { codec: "auto" }, value: { codec: "auto" } });
@@ -128,6 +130,7 @@ export function MessagesTab({ connId, client, useTabActions, onLive, note, activ
       controls={controls}
       onLoadFull={loadFull}
       loadSchema={loadSchema}
+      query={query}
     />
   );
 }

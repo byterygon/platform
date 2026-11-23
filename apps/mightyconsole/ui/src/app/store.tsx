@@ -36,6 +36,8 @@ export interface Settings extends Appearance {
   jsonModes: Record<string, "tree" | "text">;
   /** The message detail pane of each kind of tab that has one (TSK-112): its size, side and whether it fills the view. */
   detailPanes: Record<string, DetailPane>;
+  /** How long a jq query may run on the server, in ms (TSK-113, spec §5.4.1: 0.5 to 30 s). */
+  jqTimeoutMs: number;
 }
 
 /** A message view's detail pane. `size` is the detail's percent of the view; `side` null follows the view's width. */
@@ -48,7 +50,7 @@ export interface DetailPane {
 export const DETAIL_PANE_LIMITS = { min: 20, max: 80 } as const;
 export const DEFAULT_DETAIL_PANE: DetailPane = { size: 50, side: null, maximized: false };
 
-export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_APPEARANCE, editorFontSize: 13, liveBuffer: 10_000, logBuffer: 50_000, consumeLimit: 500, historyOrder: "newest", jsonModes: {}, detailPanes: {} };
+export const DEFAULT_SETTINGS: Settings = { ...DEFAULT_APPEARANCE, editorFontSize: 13, liveBuffer: 10_000, logBuffer: 50_000, consumeLimit: 500, historyOrder: "newest", jsonModes: {}, detailPanes: {}, jqTimeoutMs: 2000 };
 
 export interface Layout {
   sidebarOpen: boolean;
@@ -524,6 +526,7 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
       historyOrder: s.historyOrder === "oldest" ? "oldest" : "newest",
       jsonModes: jsonModes(s.jsonModes),
       detailPanes: detailPanes(s.detailPanes),
+      jqTimeoutMs: num(s.jqTimeoutMs, DEFAULT_SETTINGS.jqTimeoutMs, 500, 30_000),
     },
   };
 }
