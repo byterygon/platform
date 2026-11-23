@@ -392,11 +392,17 @@ export default {
           "jq_runs_on_the_server_and_reports_where_it_is_wrong",
           "downloads_give_indented_json_or_the_stored_bytes",
         ),
-        // The shared jq runner lives in message-codecs, which cargo() (mightyconsole-server) does not test.
-        command("message-codecs: a jq program runs on one value and its outputs are cut at the limit", [
+        // The jq engine (TSK-113, spec §5.4.1): the worker's lines in message-codecs, which cargo()
+        // (mightyconsole-server) does not test; the server's limits in core::jq.
+        command("message-codecs: the jq worker writes one line per result and stops at the output cap", [
           "cargo", "test", "-p", "message-codecs", "--locked", "--lib", "--", "--exact",
-          "filter::tests::a_jq_program_runs_on_one_value_and_its_outputs_are_cut_at_the_limit",
+          "jq::tests::the_worker_writes_one_line_per_result_and_ends_with_done",
         ]),
+        ...unit(
+          "a_program_that_never_ends_is_stopped_at_the_deadline",
+          "results_stop_at_the_output_cap",
+          "a_stack_overflow_ends_only_the_worker",
+        ),
         vitest("test/temporal-large-payload.test.tsx"),
         browser("large-1's input in the payload view: the tree pages, jq on the server, the size pane, then History by size", async (ctx) => {
           const { run, until, shot } = ctx;

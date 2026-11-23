@@ -95,8 +95,9 @@ pub fn set_worker_program(path: PathBuf) {
 }
 
 /// The program the server starts as a worker: itself, unless [`set_worker_program`] named
-/// another. Unit tests run inside the test harness, so they use the server binary Cargo builds
-/// next to it.
+/// another. On Linux that is `/proc/self/exe`, the running image, which still works after the
+/// file on disk was replaced (an upgrade in place, or a rebuild while it runs). Unit tests run
+/// inside the test harness, so they use the server binary Cargo builds next to it.
 fn worker_program() -> std::io::Result<PathBuf> {
     if let Some(path) = WORKER
         .read()
@@ -125,7 +126,12 @@ fn worker_program() -> std::io::Result<PathBuf> {
         }
         Ok(bin)
     }
-    #[cfg(not(test))]
+    #[cfg(all(not(test), target_os = "linux"))]
+    {
+        let image = PathBuf::from("/proc/self/exe");
+        Ok(if image.exists() { image } else { exe })
+    }
+    #[cfg(all(not(test), not(target_os = "linux")))]
     Ok(exe)
 }
 
