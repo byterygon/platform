@@ -125,6 +125,38 @@ export const temporalTool: ToolModule = {
   },
   sidebarData: temporalTreeData,
   routes: temporalRoutes,
+  // The tree that follows the tab (DOC-21 §3.2.1): a namespace's list nodes; a workflow, an
+  // activity or a schedule is under its list (the tree does not draw them), a saved query its node.
+  nodeOfTab: ({ kind, params }, p) => {
+    const mine = namespaceOf(p);
+    const ns = typeof params["namespace"] === "string" && params["namespace"] !== "" ? (params["namespace"] as string) : mine;
+    const folder = `${p.id}/ns/${ns}`;
+    const child = (part: string) => [folder, ns === mine ? `${p.id}/${part}` : `${p.id}/ns/${ns}/${part}`];
+    switch (kind) {
+      case "temporal.namespaces":
+        return [`${p.id}/namespaces`];
+      case "temporal.workflows": {
+        const query = typeof params["query"] === "string" ? params["query"] : "";
+        const saved = ns === mine && query !== "" ? savedQueriesOf(p.extras).find((s) => s.query === query) : undefined;
+        return saved ? [...child("workflows"), `${p.id}/workflows/${saved.name}`] : child("workflows");
+      }
+      case "temporal.workflow":
+        return child("workflows");
+      case "temporal.activities":
+      case "temporal.activity":
+        return child("activities");
+      case "temporal.schedules":
+      case "temporal.schedule":
+        return child("schedules");
+      case "temporal.taskQueue":
+        return child("task-queues");
+      case "temporal.workers":
+        return child("workers");
+      default:
+        // A payload opened from a workflow is under Workflows, as its workflow is.
+        return child("workflows");
+    }
+  },
   tabKinds: {
     "temporal.namespaces": {
       title: () => "Namespaces",

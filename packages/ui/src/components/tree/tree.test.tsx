@@ -115,6 +115,27 @@ describe("Tree", () => {
     expect(reason()).toEqual({ reason: "contextmenu" });
   });
 
+  test("scrollTo makes a node the active row without moving focus, once per seq, and waits for a node that is not shown yet", async () => {
+    type Props = { expanded: string[]; to: { id: string; seq: number } | null };
+    let set: (next: Props) => void = () => {};
+    function Host() {
+      const [props, setProps] = useState<Props>({ expanded: [], to: null });
+      set = setProps;
+      return <Tree nodes={nodes} expanded={props.expanded} scrollTo={props.to} aria-label="Schema" />;
+    }
+    render(<Host />);
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    outside.focus();
+    // orders is inside public, which is closed: nothing happens until it shows.
+    await act(async () => set({ expanded: [], to: { id: "orders", seq: 1 } }));
+    expect(active()!.textContent).toBe("public");
+    await act(async () => set({ expanded: ["public"], to: { id: "orders", seq: 1 } }));
+    expect(active()!.textContent).toBe("orders");
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
+
   test("a right click selects its row first, so a context menu acts on that row", async () => {
     const onSelectedChange = vi.fn();
     render(<Tree nodes={nodes} defaultExpanded={["public"]} defaultSelected="orders" onSelectedChange={onSelectedChange} aria-label="Schema" />);

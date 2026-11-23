@@ -53,6 +53,20 @@ export interface Layout {
   closedCategories: string[];
 }
 
+/** The expanded tree nodes of each profile (tree ids, `p:<profile id>` and below), saved as the workspace's `tree` (DOC-21 §3.2.1). */
+export type TreeExpanded = Record<string, string[]>;
+
+/**
+ * A reveal of the focused tab's node (DOC-21 §3.2.1): the tree selects `path`'s deepest node that
+ * it draws, and the last one once it shows. `seq` counts reveals, so one can be asked again.
+ */
+export interface Reveal {
+  profileId: string;
+  /** Tree ids from the profile node down; the last is the tab's node. */
+  path: string[];
+  seq: number;
+}
+
 export interface Persisted {
   tabs: TabRecord[];
   activeTab: string | null;
@@ -60,6 +74,8 @@ export interface Persisted {
   groups: string[];
   /** Each group's last focused tab, by tool. */
   lastActive: Record<string, string>;
+  /** The expanded tree nodes per profile. */
+  treeExpanded?: TreeExpanded;
   layout: Layout;
   settings: Settings;
 }
@@ -109,6 +125,12 @@ export interface State {
   dialog: Dialog;
   paletteOpen: boolean;
   selectedNode: string | null;
+  /** The expanded tree nodes per profile (DOC-21 §3.2.1): the store's, so a reveal works across tools. */
+  treeExpanded: TreeExpanded;
+  /** The focused tab's node, until the tree has selected it or the person picks another. */
+  reveal: Reveal | null;
+  /** The last reveal's seq: each reveal counts on from it. */
+  revealSeq: number;
   diagnostics: string[];
   /** A link naming a profile this browser lacks (DOC-21 §3.7): its page shows in a link tab. */
   missingLink: MissingLink | null;
@@ -160,7 +182,14 @@ export type Action =
   | { type: "info"; info: AppInfo }
   | { type: "dialog"; dialog: Dialog }
   | { type: "palette"; open: boolean }
+  /** A node picked by the person; it ends a reveal in progress. */
   | { type: "select"; nodeId: string | null }
+  /** A node selected by a reveal (the tree drew it); `done` when it is the tab's own node. */
+  | { type: "revealed"; seq: number; nodeId: string; done: boolean }
+  /** Shows the focused tab's node in the tree: its tool, its ancestors expanded, then selected. */
+  | { type: "reveal"; tool: string; profileId: string; path: string[] }
+  /** The expanded nodes of one profile's tree. */
+  | { type: "treeExpanded"; profileId: string; ids: string[] }
   | { type: "diagnostic"; line: string }
   /** The missing-profile page shown, or dropped. */
   | { type: "missingLink"; link: MissingLink | null };
@@ -182,6 +211,9 @@ export function initialState(persisted: Persisted, storageKind: "indexeddb" | "m
     dialog: { kind: "none" },
     paletteOpen: false,
     selectedNode: null,
+    treeExpanded: persisted.treeExpanded ?? {},
+    reveal: null,
+    revealSeq: 0,
     diagnostics: [],
     missingLink: null,
   };
@@ -239,8 +271,13 @@ export function reducer(state: State, action: Action): State {
 
 function reduce(state: State, action: Action): State {
   switch (action.type) {
-    case "profiles":
-      return { ...state, profiles: action.profiles, recordStates: action.recordStates ?? state.recordStates };
+    case "profiles": {
+      // A deleted profile's tree goes with it.
+      const ids = new Set(action.profiles.map((p) => p.id));
+      const gone = Object.keys(state.treeExpanded).filter((id) => !ids.has(id));
+      const treeExpanded = gone.length === 0 ? state.treeExpanded : Object.fromEntries(Object.entries(state.treeExpanded).filter(([id]) => ids.has(id)));
+      return { ...state, profiles: action.profiles, recordStates: action.recordStates ?? state.recordStates, treeExpanded };
+    }
     case "conn":
       return { ...state, conns: { ...state.conns, [action.profileId]: action.conn } };
     case "connsReset": {
@@ -333,7 +370,28 @@ function reduce(state: State, action: Action): State {
     case "palette":
       return { ...state, paletteOpen: action.open };
     case "select":
-      return { ...state, selectedNode: action.nodeId };
+      return { ...state, selectedNode: action.nodeId, reveal: null };
+    case "reveal": {
+      // The profile and the node's ancestors open now, also those still loading (they show open).
+      const ancestors = action.path.slice(0, -1);
+      const mine = state.treeExpanded[action.profileId] ?? [];
+      const missing = ancestors.filter((id) => !mine.includes(id));
+      return {
+        ...state,
+        layout: state.layout.tool === action.tool ? state.layout : { ...state.layout, tool: action.tool },
+        treeExpanded: missing.length > 0 ? { ...state.treeExpanded, [action.profileId]: [...mine, ...missing] } : state.treeExpanded,
+        reveal: { profileId: action.profileId, path: action.path, seq: state.revealSeq + 1 },
+        revealSeq: state.revealSeq + 1,
+      };
+    }
+    case "revealed":
+      if (state.reveal?.seq !== action.seq) return state;
+      return { ...state, selectedNode: action.nodeId, reveal: action.done ? null : state.reveal };
+    case "treeExpanded": {
+      const before = state.treeExpanded[action.profileId] ?? [];
+      if (before.length === action.ids.length && before.every((id, i) => id === action.ids[i])) return state;
+      return { ...state, treeExpanded: { ...state.treeExpanded, [action.profileId]: action.ids } };
+    }
     case "diagnostic":
       return { ...state, diagnostics: [action.line, ...state.diagnostics].slice(0, 100) };
     case "missingLink":
@@ -375,9 +433,10 @@ const num = (v: unknown, fallback: number, min: number, max: number) => (typeof 
 
 /** Reads the persisted tabs, layout and settings; anything missing or malformed takes its default. */
 export async function loadPersisted(storage: AppStorage, tools: readonly string[]): Promise<Persisted> {
-  const [tabsDoc, layoutDoc, settingsDoc] = await Promise.all([
+  const [tabsDoc, layoutDoc, treeDoc, settingsDoc] = await Promise.all([
     storage.getWorkspace<{ version?: unknown; tabs?: unknown; activeTab?: unknown; groups?: unknown; lastActive?: unknown }>("tabs").catch(() => undefined),
     storage.getWorkspace<Partial<Layout>>("layout").catch(() => undefined),
+    storage.getWorkspace<{ version?: unknown; profiles?: unknown }>("tree").catch(() => undefined),
     storage.getSettings<{ version?: unknown; settings?: Partial<Settings> }>().catch(() => undefined),
   ]);
   const tabs = Array.isArray(tabsDoc?.tabs)
@@ -407,6 +466,7 @@ export async function loadPersisted(storage: AppStorage, tools: readonly string[
     activeTab,
     groups: grouped.groups,
     lastActive: grouped.lastActive,
+    treeExpanded: Object.fromEntries(Object.entries(typeof treeDoc?.profiles === "object" && treeDoc.profiles !== null ? (treeDoc.profiles as Record<string, unknown>) : {}).map(([id, list]) => [id, strings(list)])),
     layout: {
       sidebarOpen: layoutDoc?.sidebarOpen !== false,
       shellSizes: Array.isArray(sizes) && sizes.length === 2 && sizes.every((n) => typeof n === "number") ? sizes : [24.45, 75.55],
@@ -460,9 +520,10 @@ export function StoreProvider({ persisted, storage, children, saveDelayMs = 200 
     const timer = setTimeout(() => {
       void storage.putWorkspace("tabs", { version: TABS_VERSION, tabs: state.tabs, activeTab: state.activeTab, groups: state.groups, lastActive: state.lastActive }).catch(() => {});
       void storage.putWorkspace("layout", state.layout).catch(() => {});
+      void storage.putWorkspace("tree", { version: 1, profiles: state.treeExpanded }).catch(() => {});
       void storage.putSettings({ version: SETTINGS_VERSION, settings: state.settings }).catch(() => {});
     }, saveDelayMs);
     return () => clearTimeout(timer);
-  }, [state.tabs, state.activeTab, state.groups, state.lastActive, state.layout, state.settings, storage, saveDelayMs]);
+  }, [state.tabs, state.activeTab, state.groups, state.lastActive, state.treeExpanded, state.layout, state.settings, storage, saveDelayMs]);
   return <StoreContext.Provider value={{ state, dispatch }}>{children}</StoreContext.Provider>;
 }

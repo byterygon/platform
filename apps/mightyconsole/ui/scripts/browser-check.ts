@@ -400,6 +400,14 @@ async function main(): Promise<number> {
     await sleep(600);
     await page.navigate(`${origin}/`);
     await until(page, `${selected("order-1")} && ${groupValues}.join() === "group:echo,group:temporal,group:nats,group:langgraph"`, "the groups and the focused tab after a reload");
+    // The tree follows the focused tab (TSK-111 batch 3): Temporal's navigation and tree after the
+    // reload; the Echo chip brings Echo's tree back with its last focused tab's node selected, once
+    // smoke has connected again (its resources show after the connect).
+    const navOn = (tool: string) => `document.querySelector("[data-nav-item][aria-current=page]")?.dataset.tool === ${JSON.stringify(tool)}`;
+    const rowSelected = (label: string) => `[...document.querySelectorAll("[role=treeitem][aria-selected=true]")].some((r) => r.textContent.includes(${JSON.stringify(label)}))`;
+    await until(page, navOn("temporal"), "the navigation on Temporal after the reload");
+    await pressUntil(page, chip("Echo"), `${navOn("echo")} && ${rowSelected("Messages")}`, "Echo's tree with Messages selected");
+    if (process.env["MIGHTYCONSOLE_SHOTS"]) await page.screenshot(join(process.env["MIGHTYCONSOLE_SHOTS"], "tree-follows-echo.png"));
     await page.send("Emulation.clearDeviceMetricsOverride", {});
     // The Messages tab focused again, as the cold loads below expect.
     await page.navigate(`${origin}/echo/smoke/messages`);

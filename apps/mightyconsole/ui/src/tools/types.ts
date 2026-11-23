@@ -247,6 +247,14 @@ export interface ToolModule {
   readonly sidebarData?: SidebarData;
   readonly tabKinds: Readonly<Record<string, TabKind>>;
   /**
+   * The tree node of a place (DOC-21 §3.2.1, TSK-111), for the tree that follows the focused tab:
+   * the resource node ids, as `sidebarTree` gives them, from the profile down to the node that opens
+   * the place; `[]` is the profile itself. Required, for every tab kind of the tool. A place the
+   * tree does not draw (one workflow) names its nearest drawn ancestor; a node of a list that is
+   * still loading is named all the same: the shell selects its nearest ancestor until it shows.
+   */
+  nodeOfTab(place: Pick<TabPlace, "kind" | "params">, profile: ProfileRecord): readonly string[];
+  /**
    * The tool's routes under `/<tool>/<profile name>` (DOC-21 §3.7), built with `createRoute` on the
    * given parent: each with `staticData.crumb`, the places with `staticData.place`. Optional: a
    * tool without routes keeps working, its tabs' URL staying at `/<tool>`.

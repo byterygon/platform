@@ -150,6 +150,43 @@ export const natsTool: ToolModule = {
   },
   sidebarData: natsTreeData,
   routes: natsRoutes,
+  // The tree that follows the tab (DOC-21 §3.2.1): streams, consumers and buckets under their
+  // groups (named while the lists load); a subscription to one bookmarked subject is its node.
+  nodeOfTab: ({ kind, params }, p) => {
+    const at = (...parts: string[]) => parts.map((_, i) => `${p.id}/${parts.slice(0, i + 1).join("/")}`);
+    const name = (key: string) => (typeof params[key] === "string" ? (params[key] as string) : "");
+    switch (kind) {
+      case "nats.server":
+        return at("server");
+      case "nats.subscribe": {
+        const subjects = Array.isArray(params["subjects"]) ? (params["subjects"] as unknown[]).filter((s): s is string => typeof s === "string") : [];
+        if (subjects.length === 0) return [`${p.id}/subjects`, `${p.id}/subjects/new`];
+        return subjects.length === 1 && bookmarksOf(p.extras).includes(subjects[0]!) ? [`${p.id}/subjects`, `${p.id}/subjects/${subjects[0]}`] : [`${p.id}/subjects`];
+      }
+      case "nats.publish":
+        return at("publish");
+      case "nats.streams":
+        return at("streams");
+      case "nats.stream":
+        return at("streams", name("stream"));
+      case "nats.consumer":
+        return at("streams", name("stream"), name("consumer"));
+      case "nats.kvs":
+        return at("kv");
+      case "nats.kv":
+        return at("kv", name("bucket"));
+      case "nats.objects":
+        return at("objects");
+      case "nats.object":
+        return at("objects", name("bucket"));
+      case "nats.services":
+        return at("services");
+      case "nats.schemas":
+        return at("schemas");
+      default:
+        return [];
+    }
+  },
   tabKinds: {
     "nats.server": { title: () => "Server", Component: ServerTab, href: natsHrefs["nats.server"]! },
     "nats.subscribe": { title: subscribeTitle, Component: SubscribeTab, href: natsHrefs["nats.subscribe"]! },

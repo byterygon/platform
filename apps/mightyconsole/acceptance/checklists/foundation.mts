@@ -107,6 +107,55 @@ export default {
       ],
     },
     {
+      id: "tab-groups",
+      text: "TSK-111 (DOC-21 §3.2.1): tabs grouped by tool, the focused tab's group open and the others folded to chips that open on their last focused tab, groups and their order kept after a reload (the tabs document version 3); a single click in the tree opens one preview tab per tool that the next click replaces, kept by a double click, Ctrl or Cmd + click, Keep open or state to lose; the tree follows the focused tab (its tool, its ancestors open, its node selected, focus left where it was), a tool picked by hand holding until the next tab focus.",
+      checks: [
+        vitest("test/tab-groups.test.tsx"),
+        vitest("test/preview-tabs.test.tsx"),
+        vitest("test/tree-follows.test.tsx"),
+        command("Tabs (keepVisible, TabsLabel) and Tree (selection details, scrollTo) in packages/ui", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/tabs", "src/components/tree"]),
+        browser("groups, a preview tab and the tree following the tab", async ({ page, origin, until, run, shot }) => {
+          const selected = (title: string) => `[...document.querySelectorAll("[role=tab][aria-selected=true]")].some((t) => t.textContent.includes(${JSON.stringify(title)}))`;
+          const rowSelected = (label: string) => `[...document.querySelectorAll("[role=treeitem][aria-selected=true]")].some((r) => r.textContent.includes(${JSON.stringify(label)}))`;
+          const navOn = (tool: string) => `document.querySelector("[data-nav-item][aria-current=page]")?.dataset.tool === ${JSON.stringify(tool)}`;
+          await page.navigate(`${origin}/`);
+          await until(`__mc.button("Echo")`, "the tool navigation");
+          await run(`__mc.click(__mc.button("Echo"))`);
+          await until(`__mc.has("No Echo connections yet") || __mc.item("acceptance")`, "the connection list");
+          if (!(await run<boolean>(`Boolean(__mc.item("acceptance"))`))) {
+            await run(`__mc.click(__mc.button("Add connection"))`);
+            await until(`__mc.field("Name")`, "the profile sheet");
+            await run(`__mc.type(__mc.field("Name"), "acceptance")`);
+            await run(`__mc.click(__mc.button("Save"))`);
+            await until(`__mc.item("acceptance")`, "the saved profile");
+          }
+          await run(`__mc.dblclick(__mc.item("acceptance"))`);
+          await until(`__mc.item("Ping")`, "the Echo tree");
+          // A single click: the preview tab, in italics, with its note.
+          await run(`__mc.click(__mc.item("Ping"))`);
+          await until(`${selected("Ping")} && document.querySelector("[role=tab][data-preview]") && __mc.has("Preview tab.")`, "the preview tab");
+          await shot("a preview tab");
+          await run(`__mc.click(__mc.item("Composer"))`);
+          await until(`${selected("Composer")} && document.querySelectorAll("[role=tab][data-preview]").length === 1 && ![...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ping"))`, "the preview replaced");
+          await run(`__mc.dblclick(__mc.item("Composer"))`);
+          await until(`${selected("Composer")} && !document.querySelector("[role=tab][data-preview]")`, "the preview kept by a double click");
+          // A second tool's tab through its URL: two groups, the tree on that tool.
+          await page.navigate(`${origin}/langgraph/acceptance-lg/threads`);
+          await until(`__mc.has("This link needs a LangGraph profile named acceptance-lg") || ${selected("Threads")}`, "the LangGraph link");
+          if (await run<boolean>(`Boolean(__mc.button("Create profile acceptance-lg"))`)) {
+            await run(`__mc.click(__mc.button("Create profile acceptance-lg"))`);
+            await until(`__mc.button("Save")`, "the LangGraph profile sheet");
+            await run(`__mc.click(__mc.button("Save"))`);
+          }
+          await until(`${selected("Threads")} && ${navOn("langgraph")}`, "the LangGraph tab and its tool in the navigation");
+          await shot("two groups, the tree on LangGraph");
+          await run(`__mc.click([...document.querySelectorAll("[role=tablist][aria-label=Tabs] [role=tab]")].find((t) => t.querySelector(".sr-only")?.textContent === "Echo"))`);
+          await until(`${navOn("echo")} && ${rowSelected("Composer")}`, "the Echo chip: Echo's tree with Composer selected");
+          await shot("the tree back on Echo");
+        }),
+      ],
+    },
+    {
       id: "server-lost",
       text: "Losing the server shows the overlay, and after it returns the UI reconnects and calls connect again for connected profiles.",
       checks: [vitest("test/shell.test.tsx", "losing the server shows the overlay"), vitest("test/units.test.ts", "supervisor")],

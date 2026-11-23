@@ -231,6 +231,12 @@ export interface TreeProps {
   retryText?: string;
   /** Shown when there are no nodes. */
   emptyText?: ReactNode;
+  /**
+   * Brings a node into view and makes it the active row, without moving focus (Mightyconsole's tree
+   * following the focused tab): each new `seq` scrolls once, as soon as the node is shown (a node
+   * whose parent is still loading is scrolled to when it appears).
+   */
+  scrollTo?: { id: string; seq: number } | null;
   /** Extra classes (give the tree a height: h-full in a sized panel), merged after the component's own. */
   className?: string;
   /** Reaches the tree element. */
@@ -255,6 +261,7 @@ export function Tree({
   loadingText = "Loading…",
   retryText = "Retry",
   emptyText = "Nothing to show",
+  scrollTo = null,
   className,
   ref,
 }: TreeProps) {
@@ -314,6 +321,19 @@ export function Tree({
     else if (top + rowHeight > element.scrollTop + (element.clientHeight || height)) element.scrollTop = top + rowHeight - (element.clientHeight || height);
     setScrollTop(element.scrollTop);
   };
+
+  // scrollTo: once per seq, when its node is among the rows. Focus stays where it is.
+  const scrolled = useRef<number | null>(null);
+  useEffect(() => {
+    if (!scrollTo || scrolled.current === scrollTo.seq) return;
+    const index = rows.findIndex((row) => row.kind === "node" && row.node.id === scrollTo.id);
+    if (index < 0) return;
+    scrolled.current = scrollTo.seq;
+    setActiveKey(rows[index]!.key);
+    scrollIntoView(index);
+    // scrollIntoView reads the latest rows and height; nothing else should run it again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the target or the rows change
+  }, [scrollTo?.seq, scrollTo?.id, rows]);
 
   const moveTo = (index: number) => {
     const row = rows[Math.min(rows.length - 1, Math.max(0, index))];

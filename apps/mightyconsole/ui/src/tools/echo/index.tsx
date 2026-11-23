@@ -257,6 +257,8 @@ export const echoTool: ToolModule = {
     { id: `${p.id}/compose`, label: "Composer", icon: <Icon icon={Edit} />, open: { kind: "echo.compose", params: {}, title: `Composer · ${p.name}` } },
   ],
   // DOC-21 §3.7: /echo/<profile>/ping, …/ticks, …/messages, …/compose.
+  // The tree that follows the tab (DOC-21 §3.2.1): each tab kind has its own node.
+  nodeOfTab: ({ kind }, p) => [`${p.id}/${({ "echo.ping": "ping", "echo.ticks": "ticks", "echo.messages": "messages", "echo.compose": "compose" } as Record<string, string>)[kind] ?? "ping"}`],
   tabKinds: {
     "echo.ping": { title: () => "Ping", Component: PingTab, href: () => ({ path: "ping" }) },
     "echo.ticks": { title: () => "Ticks", Component: TicksTab, href: () => ({ path: "ticks" }) },

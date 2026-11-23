@@ -52,6 +52,11 @@
       "description": "Shows only nodes whose label contains the text, with their ancestors expanded; it filters loaded nodes, it does not load."
     },
     {
+      "name": "scrollTo",
+      "type": "{ id: string; seq: number } | null",
+      "description": "Brings a node into view and makes it the active row without moving focus, once per seq, as soon as the node is shown (a tree that follows another part of the app)."
+    },
+    {
       "name": "aria-label",
       "type": "string",
       "default": "Tree",
