@@ -8797,11 +8797,21 @@
           "type": "string"
         },
         "jq": {
-          "description": "A jq program, run by jaq.",
+          "description": "A jq program, run by jaq in a worker (spec §5.4.1).",
           "type": "string"
         },
         "payloadId": {
           "type": "string"
+        },
+        "timeoutMs": {
+          "default": null,
+          "description": "The deadline in milliseconds (the user's setting); 2 s when absent, clamped to 0.5 to 30 s.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [
@@ -8828,8 +8838,18 @@
           "items": true,
           "type": "array"
         },
+        "stopped": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Stopped"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "truncated": {
-          "description": "Results were left out: over 1 MiB, or past 10 seconds.",
+          "description": "Results were left out: over 1 MiB, or past the deadline (`stopped` says which).",
           "type": "boolean"
         }
       },
@@ -8902,6 +8922,78 @@
           ]
         }
       },
+      "type": "object"
+    },
+    "QueryInput": {
+      "description": "`messaging.query`: a jq program on a JSON value the UI shows (the message detail's Query bar\nand Profile, spec §5.6), run in a worker with the limits of §5.4.1.",
+      "properties": {
+        "jq": {
+          "description": "A jq program, run by jaq.",
+          "type": "string"
+        },
+        "text": {
+          "description": "The value's JSON text, at most 8 MiB.",
+          "type": "string"
+        },
+        "timeoutMs": {
+          "default": null,
+          "description": "The deadline in milliseconds (the user's setting); 2 s when absent, clamped to 0.5 to 30 s.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "text",
+        "jq"
+      ],
+      "type": "object"
+    },
+    "QueryOutput": {
+      "properties": {
+        "bytes": {
+          "description": "The results' JSON text, in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "count": {
+          "description": "How many outputs `results` holds.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "results": {
+          "description": "The program's outputs, in order.",
+          "items": true,
+          "type": "array"
+        },
+        "stopped": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Stopped"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why the run returned before the program ended: the 1 MiB cap, or the deadline."
+        }
+      },
+      "required": [
+        "results",
+        "count",
+        "bytes",
+        "ms"
+      ],
       "type": "object"
     },
     "ReadValueInput": {
@@ -11177,6 +11269,21 @@
         "interrupts"
       ],
       "type": "object"
+    },
+    "Stopped": {
+      "description": "Why a run returned before its program ended.",
+      "oneOf": [
+        {
+          "const": "output",
+          "description": "The next result would have passed 1 MiB of JSON text.",
+          "type": "string"
+        },
+        {
+          "const": "deadline",
+          "description": "The deadline passed; the results are those that arrived before it.",
+          "type": "string"
+        }
+      ]
     },
     "StoreItem": {
       "properties": {
@@ -15133,6 +15240,27 @@
         "$ref": "#/$defs/ToolError"
       },
       "input": {
+        "$ref": "#/$defs/QueryInput"
+      },
+      "kind": "query",
+      "log_input": false,
+      "name": "messaging.query",
+      "output": {
+        "$ref": "#/$defs/QueryOutput"
+      },
+      "perm": "messaging.read",
+      "redact": [],
+      "risk": "Read",
+      "timeout_default_ms": 35000,
+      "timeout_max_ms": 35000
+    },
+    {
+      "agent": "hidden",
+      "deprecated": false,
+      "error": {
+        "$ref": "#/$defs/ToolError"
+      },
+      "input": {
         "$ref": "#/$defs/RegistrySetInput"
       },
       "kind": "mutation",
@@ -17257,5 +17385,5 @@
     }
   ],
   "protocol": 1,
-  "schema_hash": "sha256:5e9ee5ee1126bc4c490ae0e08ae43b5ed625fe55cb7ebc25163e85c0f80e10cb"
+  "schema_hash": "sha256:c5e1792ec1139fe96e98fa2157f4fda8b6846297cf81bfd97227427463b639fb"
 }

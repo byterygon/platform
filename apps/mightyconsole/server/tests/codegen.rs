@@ -521,6 +521,14 @@ fn the_procedures_of_the_spec() {
             Risk::Read,
             defaults,
         ),
+        // jq on a value in a worker (TSK-113, spec §5.4.1): its own deadline is at most 30 s.
+        (
+            "messaging.query",
+            Query,
+            "messaging.read",
+            Risk::Read,
+            (Some(Duration::from_secs(35)), Some(Duration::from_secs(35))),
+        ),
         (
             "messaging.registry.set",
             Mutation,

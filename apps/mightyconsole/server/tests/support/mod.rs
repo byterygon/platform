@@ -92,9 +92,13 @@ pub async fn start_with(ui: Option<std::path::PathBuf>, options: StartOptions) -
 /// A server whose configuration `change` adjusts (router mode, base path).
 pub async fn start_configured(
     ui: Option<std::path::PathBuf>,
-    options: StartOptions,
+    mut options: StartOptions,
     change: impl FnOnce(&mut ServeConfig),
 ) -> TestServer {
+    // The server runs inside the test harness: jq queries run in the built server binary.
+    options
+        .jq_worker
+        .get_or_insert_with(|| env!("CARGO_BIN_EXE_mightyconsole-server").into());
     let dir = tempfile::tempdir().unwrap();
     let mut config = config(dir.path(), ui);
     change(&mut config);

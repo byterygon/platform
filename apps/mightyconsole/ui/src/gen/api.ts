@@ -10,7 +10,7 @@ export const API_VERSION = "0.1.0";
 /** Frame protocol major. */
 export const PROTOCOL = 1;
 /** Sent in Hello; the server refuses any other value with `VersionMismatch`. */
-export const SCHEMA_HASH = "sha256:5e9ee5ee1126bc4c490ae0e08ae43b5ed625fe55cb7ebc25163e85c0f80e10cb";
+export const SCHEMA_HASH = "sha256:c5e1792ec1139fe96e98fa2157f4fda8b6846297cf81bfd97227427463b639fb";
 
 // ---- Types
 
@@ -2410,9 +2410,13 @@ limit?: number | null, };
 
 export type PayloadQueryInput = { connId: string, payloadId: string, 
 /**
- * A jq program, run by jaq.
+ * A jq program, run by jaq in a worker (spec §5.4.1).
  */
-jq: string, };
+jq: string, 
+/**
+ * The deadline in milliseconds (the user's setting); 2 s when absent, clamped to 0.5 to 30 s.
+ */
+timeoutMs?: number | null, };
 
 export type PayloadQueryOutput = { results: unknown[], 
 /**
@@ -2420,9 +2424,9 @@ export type PayloadQueryOutput = { results: unknown[],
  */
 bytes: number, 
 /**
- * Results were left out: over 1 MiB, or past 10 seconds.
+ * Results were left out: over 1 MiB, or past the deadline (`stopped` says which).
  */
-truncated: boolean, ms: number, };
+truncated: boolean, stopped?: Stopped, ms: number, };
 
 export type Poller = { identity: string, lastAccessTime?: string, ratePerSecond: number, };
 
@@ -2443,6 +2447,42 @@ published: Array<string>, };
  * An inclusive range of offsets or sequences, as decimal strings.
  */
 export type PositionRange = { from?: string | null, to?: string | null, };
+
+/**
+ * `messaging.query`: a jq program on a JSON value the UI shows (the message detail's Query bar
+ * and Profile, spec §5.6), run in a worker with the limits of §5.4.1.
+ */
+export type QueryInput = { 
+/**
+ * The value's JSON text, at most 8 MiB.
+ */
+text: string, 
+/**
+ * A jq program, run by jaq.
+ */
+jq: string, 
+/**
+ * The deadline in milliseconds (the user's setting); 2 s when absent, clamped to 0.5 to 30 s.
+ */
+timeoutMs?: number | null, };
+
+export type QueryOutput = { 
+/**
+ * The program's outputs, in order.
+ */
+results: unknown[], 
+/**
+ * How many outputs `results` holds.
+ */
+count: number, 
+/**
+ * The results' JSON text, in bytes.
+ */
+bytes: number, 
+/**
+ * Why the run returned before the program ended: the 1 MiB cap, or the deadline.
+ */
+stopped?: Stopped, ms: number, };
 
 /**
  * What `langgraph.threads.readValue` reads: one value of a checkpoint or of a run, whole.
@@ -3204,6 +3244,11 @@ export type StateTask = { id: string, name: string, error?: string, interrupts: 
  * A subgraph task's own state (when asked for subgraphs).
  */
 state?: JsonValue, result?: JsonValue, };
+
+/**
+ * Why a run returned before its program ended.
+ */
+export type Stopped = "output" | "deadline";
 
 export type StoreItem = { namespace: Array<string>, key: string, value: JsonValue, createdAt?: string, updatedAt?: string, 
 /**
@@ -3996,6 +4041,7 @@ export interface Procedures {
   readonly "messaging.decode": ProcedureDef<"query", DecodeInput, DecodeOutput, ToolError>;
   readonly "messaging.encode": ProcedureDef<"query", EncodeInput, EncodeOutput, ToolError>;
   readonly "messaging.filter.check": ProcedureDef<"query", FilterCheckInput, FilterCheckOutput, never>;
+  readonly "messaging.query": ProcedureDef<"query", QueryInput, QueryOutput, ToolError>;
   readonly "messaging.registry.set": ProcedureDef<"mutation", RegistrySetInput, Empty, ToolError>;
   readonly "messaging.registry.subjects": ProcedureDef<"query", RegistrySubjectsInput, Array<string>, ToolError>;
   readonly "messaging.registry.test": ProcedureDef<"query", RegistryTestInput, RegistryTestOutput, ToolError>;
@@ -4211,6 +4257,7 @@ export interface Api {
     readonly filter: {
       readonly check: Procedures["messaging.filter.check"];
     };
+    readonly query: Procedures["messaging.query"];
     readonly registry: {
       readonly set: Procedures["messaging.registry.set"];
       readonly subjects: Procedures["messaging.registry.subjects"];
@@ -5138,6 +5185,16 @@ export const procedures: Api = {
         timeoutDefaultMs: 30000,
         timeoutMaxMs: 300000,
       },
+    },
+    query: {
+      name: "messaging.query",
+      kind: "query",
+      perm: "messaging.read",
+      risk: "Read",
+      agent: "hidden",
+      deprecated: false,
+      timeoutDefaultMs: 35000,
+      timeoutMaxMs: 35000,
     },
     registry: {
       set: {

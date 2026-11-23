@@ -465,7 +465,7 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
           <div className="shrink-0 px-inset-lg pb-stack-sm">
             <p role="status" className="pb-stack-xs text-caption-1 text-fg-muted">
               {formatCount(result.results.length)} {result.results.length === 1 ? "result" : "results"}, {formatBytes(result.bytes)}
-              {result.truncated ? ", cut at 1 MiB" : ""} · on the server, {result.ms} ms
+              {result.stopped === "deadline" ? ", stopped at the time limit" : result.truncated ? ", cut at 1 MiB" : ""} · on the server, {result.ms} ms
             </p>
             {/* json-exception: jq prints a sequence of JSON values, one after another, which is not one JSON value */}
             <CodeBlock code={result.results.map((r) => JSON.stringify(r, null, 2)).join("\n")} language="json" appearance="inset" copyable aria-label="jq results" className="max-h-panel-sm" />

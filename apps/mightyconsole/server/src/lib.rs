@@ -210,6 +210,9 @@ pub struct StartOptions {
     pub idle_timeout: Duration,
     /// `None` runs no background sweep (tests call [`Hub::sweep`] themselves).
     pub sweep_interval: Option<Duration>,
+    /// The program jq queries run in (spec §5.4.1): `None` is the server's own binary. Tests that
+    /// start the server inside the test harness name the built server binary.
+    pub jq_worker: Option<std::path::PathBuf>,
 }
 
 impl Default for StartOptions {
@@ -218,6 +221,7 @@ impl Default for StartOptions {
             clock: Arc::new(SystemClock),
             idle_timeout: IDLE_TIMEOUT,
             sweep_interval: Some(SWEEP_INTERVAL),
+            jq_worker: None,
         }
     }
 }
@@ -266,6 +270,9 @@ impl Server {
             None => ServedUi::Placeholder,
         };
 
+        if let Some(worker) = options.jq_worker {
+            core::jq::set_worker_program(worker);
+        }
         let principal = local_principal();
         let hub = Arc::new(Hub::new(options.clock, options.idle_timeout));
         let state = Arc::new(AppState {

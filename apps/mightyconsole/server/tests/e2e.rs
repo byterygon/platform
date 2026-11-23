@@ -176,6 +176,7 @@ async fn the_idle_sweep_releases_unused_handles_but_not_streaming_ones() {
         clock: clock.clone(),
         idle_timeout: Duration::from_secs(600),
         sweep_interval: None,
+        jq_worker: None,
     };
     let t = start_with(None, options).await;
     let hub = Arc::clone(t.server.hub());

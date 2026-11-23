@@ -7,7 +7,12 @@ use mightyconsole_server::cli::{Command, USAGE, default_data_dir, parse};
 use mightyconsole_server::{API_VERSION, SCHEMA_HASH, ServeConfig, ServedUi, Server, VERSION};
 
 fn main() -> ExitCode {
-    let command = match parse(std::env::args().skip(1), default_data_dir()) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // A query's child process (spec §5.4.1): no runtime, no configuration, one run.
+    if args.first().map(String::as_str) == Some(mightyconsole_server::core::jq::WORKER_ARG) {
+        return ExitCode::from(mightyconsole_server::core::jq::worker_main(&args[1..]));
+    }
+    let command = match parse(args, default_data_dir()) {
         Ok(command) => command,
         Err(message) => {
             eprintln!("mightyconsole-server: {message}\n\n{USAGE}");

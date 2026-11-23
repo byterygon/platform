@@ -20,6 +20,7 @@
 //! tool's client.
 
 pub mod error;
+pub mod jq;
 pub mod messaging;
 pub mod tls;
 pub mod types;
