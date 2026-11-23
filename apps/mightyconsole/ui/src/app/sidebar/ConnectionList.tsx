@@ -138,6 +138,9 @@ export function ConnectionList(props: ConnectionListProps) {
   const setExpanded = (next: string[] | ((current: string[]) => string[])) => {
     const now = latest.current;
     const ids = typeof next === "function" ? next(now.expanded) : next;
+    // Two changes in one commit (a node's first showing and the profile a double click opened) build
+    // on each other, as a state updater's would: the next one starts from this one, not the render's.
+    now.expanded = ids;
     for (const p of now.profiles ?? []) now.onExpandedChange(p.id, ids.filter((id) => parseNode(id)?.profileId === p.id));
   };
   // The tool's tree data (counts, namespaces), loaded for each connected profile; a change redraws the tree.

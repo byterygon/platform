@@ -115,12 +115,12 @@ const walkTool: ToolModule = {
 };
 const tools = [walkTool, echoTool];
 
-async function mount(fake: ReturnType<typeof createFakeServices>, history: RouterHistory) {
-  const persisted = await loadPersisted(fake.storage, tools.map((t) => t.id));
+async function mount(fake: ReturnType<typeof createFakeServices>, history: RouterHistory, list: ToolModule[] = tools) {
+  const persisted = await loadPersisted(fake.storage, list.map((t) => t.id));
   const view = render(
     <ServicesContext.Provider value={fake.services}>
       <StoreProvider persisted={persisted} storage={fake.storage} saveDelayMs={0}>
-        <App tools={tools} history={history} />
+        <App tools={list} history={history} />
       </StoreProvider>
     </ServicesContext.Provider>,
   );
@@ -209,6 +209,27 @@ describe("the tree follows the focused tab (DOC-21 §3.2.1)", () => {
     await waitFor(() => selectedRow() === "Second page", "the step's node");
     await act(async () => void document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", altKey: true, bubbles: true })));
     await waitFor(() => selectedRow() === "First page", "Back to First page");
+  });
+
+  test("a node that opens the first time it shows stays open when the profile is connected by a double click", async () => {
+    // As a Temporal profile's own namespace: two expansions land in one commit (the node's first
+    // showing and the profile the double click asked to open); the second must not drop the first.
+    const foldTool: ToolModule = {
+      ...walkTool,
+      id: "fold",
+      label: "Fold",
+      sidebarTree: ({ profile: p }) => [{ id: `${p.id}/ns`, label: "Namespace lab", expanded: true, children: [{ id: `${p.id}/ns/list`, label: "The list", open: { kind: "walk.page", params: { n: "1" }, title: "The list" } }] }],
+      nodeOfTab: (_place, p) => [`${p.id}/ns`, `${p.id}/ns/list`],
+    };
+    const fake = createFakeServices();
+    await fake.storage.putProfile(profile("fold"));
+    await mount(fake, createMemoryHistory({ initialEntries: ["/"] }), [foldTool, echoTool]);
+    await waitFor(() => treeItem("lab") !== null, "the Fold profile");
+    await dblclick(treeItem("lab"));
+    await waitFor(() => treeItem("Namespace lab") !== null, "the profile open");
+    await waitFor(() => treeItem("The list") !== null, "the namespace open");
+    await settle(4);
+    expect(treeItem("The list")).not.toBeNull();
   });
 
   test("the expanded nodes are saved per profile and come back after a reload", async () => {

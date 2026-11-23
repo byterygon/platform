@@ -139,11 +139,13 @@ export default {
           await until(`${selected("Composer")} && document.querySelectorAll("[role=tab][data-preview]").length === 1 && ![...document.querySelectorAll("[role=tab]")].some((t) => t.textContent.includes("Ping"))`, "the preview replaced");
           await run(`__mc.dblclick(__mc.item("Composer"))`);
           await until(`${selected("Composer")} && !document.querySelector("[role=tab][data-preview]")`, "the preview kept by a double click");
-          // A second tool's tab through its URL: two groups, the tree on that tool.
-          await page.navigate(`${origin}/langgraph/acceptance-lg/threads`);
-          await until(`__mc.has("This link needs a LangGraph profile named acceptance-lg") || ${selected("Threads")}`, "the LangGraph link");
-          if (await run<boolean>(`Boolean(__mc.button("Create profile acceptance-lg"))`)) {
-            await run(`__mc.click(__mc.button("Create profile acceptance-lg"))`);
+          // A second tool's tab through its URL: two groups, the tree on that tool. The profile is
+          // "lab" with the defaults, the one the LangGraph checklist adds and connects later in this
+          // browser: another name would leave it a list with neither "lab" nor the empty state.
+          await page.navigate(`${origin}/langgraph/lab/threads`);
+          await until(`__mc.has("This link needs a LangGraph profile named lab") || ${selected("Threads")}`, "the LangGraph link");
+          if (await run<boolean>(`Boolean(__mc.button("Create profile lab"))`)) {
+            await run(`__mc.click(__mc.button("Create profile lab"))`);
             await until(`__mc.button("Save")`, "the LangGraph profile sheet");
             await run(`__mc.click(__mc.button("Save"))`);
           }
