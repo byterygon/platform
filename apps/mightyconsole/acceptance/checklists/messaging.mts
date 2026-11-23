@@ -2,7 +2,18 @@
 // wired the crate, codecs, wire-format and local-schemas items; batch 2 (the server) the filter, Arrow,
 // live tail and procedures; batch 3 the UI tests and a browser walk (the real server and UI in Chrome) before the task closes with
 // `pnpm --filter @byterygon/mightyconsole acceptance messaging --lab-up --strict`.
-import { cargo, type Checklist, command, vitest } from "../checklist.mts";
+import { browser, cargo, type Checklist, command, vitest } from "../checklist.mts";
+import { editorArea, pasteInEditor } from "../editors.mts";
+
+// A JSON message large enough to explore (TSK-113): 2,000 orders, about 130 KB, pasted.
+const ORDERS = JSON.stringify(
+  {
+    page: 1,
+    orders: Array.from({ length: 2000 }, (_, i) => ({ id: `ord-${String(i).padStart(5, "0")}`, status: ["paid", "open", "refunded"][i % 3], total: Math.round((10 + (i % 90) + i / 100) * 100) / 100, region: ["eu", "us", "apac"][i % 4 === 3 ? 0 : i % 3] })),
+  },
+  null,
+  1,
+);
 
 // The crate's own tests (the harness's `cargo` checks run mightyconsole-server's).
 const codecs = (label: string, ...args: string[]) =>
@@ -103,6 +114,76 @@ export default {
         command("CodeEditor, HexView and KeyValueEditor in packages/ui (behaviour and conventions)", ["pnpm", "--filter", "@byterygon/ui", "exec", "vitest", "run", "src/components/code-editor", "src/components/hex-view", "src/components/key-value-editor", "test/conventions.test.tsx"]),
         command("the registry is current", ["pnpm", "--filter", "@byterygon/ui", "registry:check"]),
         command("synced into the app", ["pnpm", "--filter", "@byterygon/mightyconsole", "sync:ui:check"]),
+      ],
+    },
+    {
+      id: "query",
+      text: "TSK-113 (DOC-21 §5.4.1, §5.6): the Value tab's Query bar runs jq on the server (messaging.query) in a worker: results in the same view with their count, errors at their line and column, Snippets for the value's shape, recent programs per profile, Profile for an array of objects; refused builtins, the deadline, the output cap, a stack overflow and Cancel never hurt the server; the query and the filter agree.",
+      checks: [
+        codecs("message-codecs: refused builtins, the library, the worker's lines", "--lib", "--", "jq::"),
+        cargo("a_program_that_never_ends_is_stopped_at_the_deadline"),
+        cargo("results_stop_at_the_output_cap"),
+        cargo("a_stack_overflow_ends_only_the_worker"),
+        cargo("refused_builtins_and_errors_name_the_program_s_position"),
+        cargo("a_third_run_waits_for_a_slot_and_then_fails_as_busy"),
+        cargo("the_query_and_the_filter_agree"),
+        cargo("a_jq_query_runs_in_a_worker_and_the_server_stays_responsive"),
+        vitest("test/value-query.test.tsx"),
+        browser("a 2,000-order message: group by a snippet, a program that never ends stopped at the time limit, the Profile", async (ctx) => {
+          const { page, origin, until, run, shot } = ctx;
+          await page.navigate(`${origin}/`);
+          await until(`__mc.button("Echo")`, "the tool navigation");
+          await run(`__mc.click(__mc.button("Echo"))`);
+          await until(`__mc.has("No Echo connections yet") || __mc.item("acceptance")`, "the connection list");
+          if (!(await run<boolean>(`Boolean(__mc.item("acceptance"))`))) {
+            await run(`__mc.click(__mc.button("Add connection"))`);
+            await until(`__mc.field("Name")`, "the profile sheet");
+            await run(`__mc.type(__mc.field("Name"), "acceptance")`);
+            await run(`__mc.click(__mc.button("Save"))`);
+            await until(`__mc.item("acceptance")`, "the saved profile");
+          }
+          await run(`__mc.dblclick(__mc.item("acceptance"))`);
+          await until(`__mc.item("Composer")`, "echo.connect and the resource tree");
+          await run(`__mc.dblclick(__mc.item("Composer"))`);
+          await pasteInEditor(ctx, "Payload", ORDERS);
+          await run(`__mc.click([...document.querySelectorAll("[data-slot=composer] button")].find((b) => b.textContent.trim() === "Send"))`);
+          await until(`__mc.has("Written to partition")`, "echo.messages.produce", 30_000);
+          await run(`__mc.dblclick(__mc.item("Messages"))`);
+          const toolbar = `document.querySelector('[role=toolbar][aria-label="records actions"]')`;
+          await until(toolbar, "the Messages tab");
+          await run(`__mc.click([...${toolbar}.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start"))`);
+          // The orders message: the newest row (its payload's column is off to the side).
+          const row = `[...document.querySelectorAll("[data-slot=message-viewer] .bdg-body [role=row]")].at(-1)?.querySelector("[role=gridcell]")`;
+          await until(row, "the orders message in the list", 30_000);
+          await run(`(() => { const c = ${row}; for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) c.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, button: 0, pointerId: 1, isPrimary: true })); return true; })()`);
+          await until(`[...document.querySelectorAll("[data-slot=message-detail] [role=treeitem]")].some((r) => r.textContent.includes("orders"))`, "the orders message in the detail");
+          const query = `[...document.querySelectorAll("[data-slot=message-detail] [data-slot=json-viewer-toolbar] button")].find((b) => b.textContent.trim() === "Query")`;
+          await until(query, "the Query button in the value's toolbar");
+          await run(`${query}.click()`);
+          await until(`Boolean(${editorArea("jq program")})`, "the Query bar", 30_000);
+          // Group by: the snippet selects the field in each place; typing replaces them all.
+          await run(`__mc.click(__mc.button("Snippets"))`);
+          await until(`[...document.querySelectorAll("[role=menuitem]")].some((m) => m.textContent.includes("Group by a field"))`, "the Snippets menu");
+          await run(`[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.includes("Group by a field")).click()`);
+          await until(`${editorArea("jq program")}.closest(".monaco-editor").classList.contains("focused")`, "the snippet in the editor, focused");
+          await page.send("Input.insertText", { text: "status" });
+          await run(`__mc.click(__mc.button("Run"))`);
+          await until(`[...document.querySelectorAll("[data-slot=value-explorer] [role=status]")].some((s) => /^1 result/.test(s.textContent))`, "the group by's result", 30_000);
+          const grouped = await run<string>(`[...document.querySelectorAll("[data-slot=value-explorer] [role=status]")].map((s) => s.textContent).join(" ")`);
+          if (!/1 result/.test(grouped)) throw new Error(`the group by gave: ${grouped}`);
+          await shot("group by status");
+          // A program that never ends: stopped at the time limit, and the server goes on answering.
+          await pasteInEditor(ctx, "jq program", "def f: f; f");
+          const started = Date.now();
+          await run(`__mc.click(__mc.button("Run"))`);
+          await until(`__mc.has("was stopped before its first result")`, "the runaway stopped", 15_000);
+          const took = Date.now() - started;
+          if (took > 10_000) throw new Error(`the runaway took ${took} ms to stop`);
+          await shot("a program that never ends, stopped");
+          await run(`__mc.click(__mc.button("Profile"))`);
+          await until(`document.querySelector('table[aria-label="Profile of the fields"] tbody tr')`, "the Profile table", 30_000);
+          await shot("profile of the orders");
+        }),
       ],
     },
     {

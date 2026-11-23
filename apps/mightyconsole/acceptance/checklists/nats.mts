@@ -171,6 +171,8 @@ export default {
         cargo("server_errors_name_their_field"),
         lab("streams_list_info_create_update_purge_and_delete"),
         lab("browse_from_first_last_a_sequence_and_a_time_and_follow"),
+        // TSK-113: jq on a message's value (and on the large message loaded whole), on the server.
+        lab("a_jq_query_on_a_nats_message"),
         vitest("test/nats-jetstream.test.tsx", "a configuration goes to the form and back unchanged"),
         vitest("test/nats-jetstream.test.tsx", "the list opens a stream; New stream creates one"),
         vitest("test/nats-jetstream.test.tsx", "Info: counts, limits as bars"),

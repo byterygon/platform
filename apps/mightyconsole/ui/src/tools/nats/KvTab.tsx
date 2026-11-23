@@ -450,7 +450,7 @@ function WatchView({ bucket, connId, client, note, onLive, registerActions, deco
       <FilterBar system="kv" applied={filter} onApply={setFilter} check={check} />
     </>
   );
-  return <MessageViewer paneKey="nats.kv" system="kv" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} {...(decoding.decodeAs ? { decodeAs: decoding.decodeAs } : {})} />;
+  return <MessageViewer paneKey="nats.kv" system="kv" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={null} {...(decoding.decodeAs ? { decodeAs: decoding.decodeAs } : {})} query={decoding.query} />;
 }
 
 export function KvTab({ tab, profile, connId, client, useTabActions, onLive, note, openTab, navigate, updateProfile, active }: TabProps) {

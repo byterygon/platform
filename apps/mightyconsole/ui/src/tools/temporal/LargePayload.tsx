@@ -9,6 +9,7 @@
 // size, the largest arrays), Temporal's default limits as bars and the run's largest payloads.
 // LargeStubCard stands for a stub where there is no room for the view (History, Pending, Queries)
 // and opens it in its own tab.
+import { useStoreIfAny } from "@/app/store";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -245,12 +246,14 @@ export function PayloadView({ client, connId, stub, label, fileName, context, no
     });
   };
 
+  // The user's time limit for jq on the server (TSK-113, spec §5.4.1).
+  const jqTimeoutMs = useStoreIfAny()?.state.settings.jqTimeoutMs ?? 2000;
   const runJq = async () => {
     if (jq.trim() === "") return;
     setRunning(true);
     setJqError(null);
     try {
-      setResult(await api.query({ connId, payloadId: stub.id, jq }));
+      setResult(await api.query({ connId, payloadId: stub.id, jq, timeoutMs: jqTimeoutMs }, { timeoutMs: 35_000 }));
     } catch (e) {
       const d = note(e);
       setResult(null);

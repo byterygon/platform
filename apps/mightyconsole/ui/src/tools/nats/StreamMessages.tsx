@@ -191,7 +191,7 @@ export function StreamMessages({ stream, lastSequence, connId, client, note, onL
   );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <MessageViewer paneKey="nats.stream" system="jetstream" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={loadFull} loadSchema={loadSchema} {...(decoding?.decodeAs ? { decodeAs: decoding.decodeAs } : {})} />
+      <MessageViewer paneKey="nats.stream" system="jetstream" tail={tail} maxMessages={state.settings.liveBuffer} controls={controls} onLoadFull={loadFull} loadSchema={loadSchema} {...(decoding?.decodeAs ? { decodeAs: decoding.decodeAs } : {})} {...(decoding ? { query: decoding.query } : {})} />
       <PageFooter>
         <span>Ordered consumer, no acks; {stopsAt}.</span>
       </PageFooter>

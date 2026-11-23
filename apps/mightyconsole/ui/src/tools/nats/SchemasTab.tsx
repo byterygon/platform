@@ -3,6 +3,7 @@
 // `nats.schemas.test` on the last messages JetStream keeps, and a Schema Registry whose wire
 // format is looked for on the subjects the profile lists (`create: "registry"` opens its sheet). Also the "Decode as…" of the NATS
 // message tabs, which keeps a choice as a mapping for the message's subject or bucket.
+import { type ValueQuery, useValueQuery } from "@/messaging/query";
 import { useCallback, useContext, useMemo } from "react";
 import type { MightyClient } from "@/app/client";
 import { NoticeContext } from "@/app/page";
@@ -80,9 +81,12 @@ export interface ViewDecoding {
   decodeAs: DecodeAs | undefined;
   choices: readonly SchemaChoice[];
   onManage(): void;
+  /** jq on a message's value, on the server (TSK-113). */
+  query: ValueQuery;
 }
 
 export function useViewDecoding({ client, connId, profile, updateProfile, openTab }: Pick<TabProps, "client" | "connId" | "profile" | "openTab"> & { updateProfile: TabProps["updateProfile"] | undefined }, placeOf: (message: MessageRow) => DecodePlace | null): ViewDecoding {
   const { decodeAs, decoding } = useNatsDecoding(client, connId, profile, updateProfile, placeOf);
-  return { decodeAs, choices: decoding.choices, onManage: () => openTab({ kind: "nats.schemas", params: {}, title: "Schemas" }) };
+  const query = useValueQuery({ client, profile, updateProfile });
+  return { decodeAs, choices: decoding.choices, onManage: () => openTab({ kind: "nats.schemas", params: {}, title: "Schemas" }), query };
 }

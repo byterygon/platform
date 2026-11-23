@@ -18,6 +18,7 @@ import type { ArrowBatch } from "@byterygon/ambidex/arrow";
 import { bigAt, columnIndex, dropFront, intAt, locate, type MessageRow, projectStream, readMessage, textAt } from "./arrow";
 import { COLUMNS, LABELS, type MessageLabels, type MessageSystem } from "./columns";
 import { MessageDetail, type SchemaLoader } from "./MessageDetail";
+import type { ValueQuery } from "./query";
 import type { DecodeAs } from "./schemas/DecodeAs";
 import { exportObject, toJsonLines } from "./export";
 import { DETAIL_PANE_LIMITS } from "@/app/store";
@@ -57,12 +58,14 @@ export interface MessageViewerProps {
   onPositions?: (positions: LastPosition[]) => void;
   /** "Decode as…" on messages that did not decode. */
   decodeAs?: DecodeAs;
+  /** jq on a message's value, on the server (TSK-113): the detail's Query bar. */
+  query?: ValueQuery;
   /** Names this kind of view in the settings: its detail pane's side, size and maximized state are kept under it. */
   paneKey?: string;
 }
 
 /** A message list with a detail pane, on a live or finite message stream. */
-export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = DEFAULT_MAX_MESSAGES, maxBytes = DEFAULT_MAX_BYTES, controls, onCompose, onLoadFull, loadSchema, rowActions, onPositions, decodeAs, paneKey }: MessageViewerProps) {
+export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = DEFAULT_MAX_MESSAGES, maxBytes = DEFAULT_MAX_BYTES, controls, onCompose, onLoadFull, loadSchema, rowActions, onPositions, decodeAs, paneKey, query }: MessageViewerProps) {
   const labels = { ...LABELS[system], ...labelsProp };
   const grid = useRef<DataGridHandle | null>(null);
   const view = useRef<HTMLDivElement | null>(null);
@@ -254,6 +257,7 @@ export function MessageViewer({ system, labels: labelsProp, tail, maxMessages = 
                 loadSchema={loadSchema}
                 rowActions={rowActions}
                 decodeAs={decodeAs}
+                query={query}
               />
             ) : (
               <EmptyLine>Select a {labels.item} to see it.</EmptyLine>

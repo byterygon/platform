@@ -105,6 +105,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <SettingRow icon={ArrowImport} label="Messages a consume reads by default">
                 <NumberInput aria-label="Messages a consume reads by default" value={settings.consumeLimit} min={1} max={100_000} onValueChange={(v) => v !== null && onChange({ consumeLimit: v })} className="w-panel-xs" />
               </SettingRow>
+              <SettingRow icon={Server} label="Time limit of a jq query, in seconds" description="The server stops a query that runs longer (0.5 to 30 s).">
+                <NumberInput aria-label="Time limit of a jq query, in seconds" value={settings.jqTimeoutMs / 1000} min={0.5} max={30} step={0.5} onValueChange={(v) => v !== null && onChange({ jqTimeoutMs: Math.round(Math.min(30, Math.max(0.5, v)) * 1000) })} className="w-panel-xs" />
+              </SettingRow>
             </TabsContent>
             <TabsContent value="profiles" className="flex flex-col gap-stack-sm">
               <SettingRow icon={ArrowExport} label="Export all profiles" description={`${props.profileCount} profiles in this browser${used !== null ? `, ${Math.ceil(used / 1024)} KiB stored` : ""}.`}>

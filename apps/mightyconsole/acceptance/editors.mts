@@ -26,6 +26,23 @@ export async function typeInEditor(ctx: Pick<BrowserContext, "page" | "run" | "u
   else await ctx.page.send("Input.insertText", { text });
 }
 
+/**
+ * Replaces the editor's text with a paste of `text`: one edit, as Ctrl+V. Typing a long text
+ * through insertText runs Monaco's auto-indent and auto-close on every line and never returned
+ * for 13 KB in a local run (TSK-113).
+ */
+export async function pasteInEditor(ctx: Pick<BrowserContext, "page" | "run" | "until">, label: string, text: string): Promise<void> {
+  await ctx.until(`Boolean(${editorArea(label)})`, `the ${label} editor`);
+  const box = await ctx.run<{ x: number; y: number }>(`(() => { const root = ${editorArea(label)}.closest("[data-slot=code-editor]"); root.scrollIntoView({ block: "center" }); const r = root.getBoundingClientRect(); return { x: r.left + Math.min(r.width / 2, 120), y: r.top + Math.min(r.height / 2, 16) }; })()`);
+  for (const type of ["mousePressed", "mouseReleased"]) await ctx.page.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
+  await ctx.until(`${editorArea(label)}.closest(".monaco-editor").classList.contains("focused")`, `the ${label} editor focused`);
+  // The selectAll command too: on macOS the key alone does not reach it.
+  for (const type of ["rawKeyDown", "keyUp"]) await ctx.page.send("Input.dispatchKeyEvent", { type, key: "a", code: "KeyA", windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65, modifiers: MAC ? META : CTRL, ...(type === "rawKeyDown" ? { commands: ["selectAll"] } : {}) });
+  await ctx.run(`(() => { const dt = new DataTransfer(); dt.setData("text/plain", ${JSON.stringify(text)}); ${editorArea(label)}.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); return true; })()`);
+  // The view follows the cursor to the end of the pasted text.
+  await ctx.until(`${editorArea(label)}.closest("[data-slot=code-editor]").querySelector(".view-lines").textContent.replace(/\\s+/g, "").includes(${JSON.stringify(text.slice(-60).replace(/\s+/g, ""))})`, `the text pasted into the ${label} editor`);
+}
+
 /** The visible suggest widget (Monaco's, in an editor's overflow layer). */
 export const SUGGEST = `document.querySelector("[data-slot=code-editor-overflow] .suggest-widget.visible")`;
 

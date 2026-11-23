@@ -18,6 +18,8 @@
 //   - the page opened through 127.0.0.1 is redirected to the public origin;
 //   - every request goes to the server's origin (or data:/blob:), and no script or CSP error is
 //     logged;
+//   - jq on a message's value (TSK-113): a snippet's group by on a 2,000-order message, a program
+//     that never ends stopped at the time limit, and the Profile;
 //   - Monaco (TSK-93: every query, JSON and jq input) is in chunks of its own that the page loads
 //     on demand, and the report gives their size and the time to the first keystroke in the
 //     Messages tab's jq editor (median of three cold loads), as packages/ui's check does for
@@ -94,6 +96,28 @@ const pressUntil = async (page: Page, el: string, expression: string, what: stri
   }
   return until(page, expression, what, 1);
 };
+/** The text area of the drawn Monaco editor named `label` (as acceptance/editors.mts finds it). */
+const editorArea = (label: string) =>
+  `[...document.querySelectorAll("[data-slot=code-editor]")].filter((e) => e.getClientRects().length > 0).map((e) => e.querySelector(".monaco-editor [role=textbox], .monaco-editor textarea")).find((t) => t && (t.getAttribute("aria-label") === ${JSON.stringify(label)} || document.getElementById(t.getAttribute("aria-labelledby") ?? "")?.textContent?.trim() === ${JSON.stringify(label)}))`;
+
+/**
+ * Replaces a Monaco editor's text as a person would: a click into it, select all, then a paste of
+ * the text (one edit; typing a long text through insertText runs Monaco's auto-indent and
+ * auto-close on every line and never returned for 13 KB in a local run).
+ */
+async function pasteInEditor(page: Page, label: string, text: string): Promise<boolean> {
+  if (!(await until(page, `Boolean(${editorArea(label)})`, `the ${label} editor`, 30_000))) return false;
+  const box = await page.evaluate<{ x: number; y: number }>(`(() => { const root = ${editorArea(label)}.closest("[data-slot=code-editor]"); root.scrollIntoView({ block: "center" }); const r = root.getBoundingClientRect(); return { x: r.left + Math.min(r.width / 2, 120), y: r.top + Math.min(r.height / 2, 16) }; })()`);
+  for (const type of ["mousePressed", "mouseReleased"]) await page.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
+  if (!(await until(page, `${editorArea(label)}.closest(".monaco-editor").classList.contains("focused")`, `the ${label} editor focused`))) return false;
+  // Ctrl+A (Cmd+A on macOS, where the key alone does not reach the editing command).
+  const modifiers = process.platform === "darwin" ? 4 : 2;
+  for (const type of ["rawKeyDown", "keyUp"]) await page.send("Input.dispatchKeyEvent", { type, key: "a", code: "KeyA", windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65, modifiers, ...(type === "rawKeyDown" ? { commands: ["selectAll"] } : {}) });
+  await page.evaluate(`(() => { const dt = new DataTransfer(); dt.setData("text/plain", ${JSON.stringify(text)}); ${editorArea(label)}.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); return true; })()`);
+  // The view follows the cursor to the end of the pasted text.
+  return until(page, `${editorArea(label)}.closest("[data-slot=code-editor]").querySelector(".view-lines").textContent.replace(/\\s+/g, "").includes(${JSON.stringify(text.slice(-60).replace(/\s+/g, ""))})`, `the text pasted into the ${label} editor`);
+}
+
 /** The visible element of `selector` whose text is `label` (or contains it, with `contains`). */
 const visible = (selector: string, label: string, contains = false) =>
   `[...document.querySelectorAll(${JSON.stringify(selector)})].find((e) => e.checkVisibility() && (${contains ? `e.textContent.includes(${JSON.stringify(label)})` : `e.textContent.trim() === ${JSON.stringify(label)} || e.getAttribute("aria-label") === ${JSON.stringify(label)}`}))`;
@@ -286,6 +310,51 @@ async function main(): Promise<number> {
     await run(page, `[...document.querySelectorAll("[data-slot=message-detail] [data-slot=json-viewer-toolbar] button")].find((b) => b.textContent.trim() === "Tree").click()`);
     await until(page, `document.querySelector("[data-slot=message-detail] [role=tree]")`, "the value as a tree again");
     console.log(`detail pane at 1920x1080: ${lines} rows of the value to the right of the list, ${below} below it`);
+
+    // 2d. jq on a message's value, on the server (TSK-113, DOC-21 §5.4.1): a 2,000-order message,
+    // grouped by status through a snippet (its field selected in each place, so typing replaces
+    // them all), then a program that never ends, stopped at the 2 s time limit while the page and
+    // the server stay responsive, then the Profile of the orders.
+    const orders = JSON.stringify({ orders: Array.from({ length: 2000 }, (_, i) => ({ id: `ord-${String(i).padStart(5, "0")}`, status: ["paid", "open", "refunded"][i % 3], total: 10 + (i % 90) })) }, null, 1);
+    await run(page, `__mc.dblclick(__mc.item("Composer"))`);
+    if (await pasteInEditor(page, "Payload", orders)) {
+      await run(page, `__mc.click([...document.querySelectorAll("[data-slot=composer] button")].find((b) => b.textContent.trim() === "Send"))`);
+      await until(page, `/Written to partition \\d+ at offset \\d+, \\d{2,3},\\d{3} bytes/.test(document.body.innerText)`, "the orders message produced", 30_000);
+    }
+    await run(page, `__mc.dblclick(__mc.item("Messages"))`);
+    // The newest row (the payload's column is off to the side, so find it by its place).
+    const ordersRow = `[...document.querySelectorAll("[data-slot=message-viewer] .bdg-body [role=row]")].at(-1)?.querySelector("[role=gridcell]")`;
+    if (await until(page, `__mc.has("2 records shown") && ${ordersRow}`, "the orders message in the live tail", 30_000)) {
+      await run(page, press(ordersRow));
+      await until(page, `[...document.querySelectorAll("[data-slot=message-detail] [role=treeitem]")].some((r) => r.textContent.includes("orders"))`, "the orders message in the detail");
+      const queryButton = `[...document.querySelectorAll("[data-slot=message-detail] [data-slot=json-viewer-toolbar] button")].find((b) => b.textContent.trim() === "Query")`;
+      await until(page, queryButton, "the Query button in the value's toolbar");
+      await run(page, `${queryButton}.click()`);
+      await until(page, `Boolean(${editorArea("jq program")}) && ${editorArea("jq program")}.closest("[data-slot=code-editor]").querySelector(".view-lines")`, "the Query bar's editor", 30_000);
+      await run(page, `__mc.click(__mc.button("Snippets"))`);
+      const groupBy = `[...document.querySelectorAll("[role=menuitem]")].find((m) => m.textContent.includes("Group by a field"))`;
+      if (await until(page, groupBy, "the Snippets menu")) {
+        await run(page, `${groupBy}.click()`);
+        await until(page, `${editorArea("jq program")}.closest(".monaco-editor").classList.contains("focused")`, "the snippet in the editor");
+        await page.send("Input.insertText", { text: "status" });
+        await run(page, `__mc.click(__mc.button("Run"))`);
+        const status = `[...document.querySelectorAll("[data-slot=value-explorer] [role=status]")].map((s) => s.textContent).join(" ")`;
+        if (await until(page, `/^1 result/.test(${status})`, "the group by's one result", 30_000)) {
+          const counts = await page.evaluate<string>(`[...document.querySelectorAll("[data-slot=message-detail] [role=treeitem]")].map((r) => r.textContent).join(" | ").slice(0, 400)`);
+          check(/paid/.test(counts) && /open/.test(counts) && /refunded/.test(counts), `group by status shows the three statuses: ${counts}`);
+        }
+      }
+      if (await pasteInEditor(page, "jq program", "def f: f; f")) {
+        const started = Date.now();
+        await run(page, `__mc.click(__mc.button("Run"))`);
+        await until(page, `__mc.has("was stopped before its first result")`, "the never-ending program stopped", 15_000);
+        const took = Date.now() - started;
+        check(took < 6_000, `a program that never ends was stopped after ${took} ms (the time limit is 2 s)`);
+        console.log(`jq: a program that never ends stopped after ${took} ms`);
+      }
+      await run(page, `__mc.click(__mc.button("Profile"))`);
+      await until(page, `document.querySelectorAll('table[aria-label="Profile of the fields"] tbody tr').length === 3`, "the Profile of the orders' three fields", 30_000);
+    }
     await page.send("Emulation.clearDeviceMetricsOverride", {});
 
     // 3. A reload: the tab is restored and connects again. The tabs are saved 200 ms after they
